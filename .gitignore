@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+build/
+dist/
+.next/
+out/
+
+# Coverage
+coverage/
+
+# Environment files
+.env*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/
+.idea/
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Misc root-level fix/patch scripts (dev artifacts, not source)
+fix-*.ts
+fix_mock*.cjs
+patch_mock.cjs
+clean-admin.ts
+metadata.json
+
+# Vite leftover artifacts (project uses Next.js)
+vite.config.ts
+index.html
+src/main.tsx
