@@ -1,11 +1,11 @@
 ---
 name: saas-scalability
-description: Enterprise SaaS architecture, multi-tenancy, subscription plans, feature gating, audit logging, scalability, billing, and migration-readiness patterns for LeadCRM. Apply when adding any module, data operation, or feature that touches tenant data or plan-gated functionality.
+description: SaaS Architecture Constitution for LeadCRM. Defines multi-tenancy, subscription plans, feature gating, domain-driven module boundaries, domain events, data lifecycle, tenant resource isolation, workflow engine standards, integration architecture, feature flags, analytics readiness, disaster recovery, audit logging, billing, migration readiness, and the SaaS Architecture Validation Gate. Apply to every data operation, module boundary, or architectural decision.
 ---
 
-# SaaS Scalability Standards — LeadCRM
+# SaaS Architecture Constitution — LeadCRM
 
-> These rules apply to every data operation, feature gate, and architectural decision in LeadCRM. Multi-tenancy is not optional — it is the foundation of the product.
+> This document is the architectural authority for LeadCRM's SaaS design. It governs not just how code is written, but how the product is structured at every layer. Every feature, module, and data operation must conform to these standards.
 
 ---
 
@@ -14,9 +14,11 @@ description: Enterprise SaaS architecture, multi-tenancy, subscription plans, fe
 LeadCRM serves multiple independent organizations (tenants) from a single codebase. Every feature must be:
 
 - **Tenant-isolated** — one tenant can never see or touch another's data
-- **Plan-aware** — features are gated by subscription tier
-- **Audit-traceable** — every mutation is logged with who, what, when
-- **Migration-ready** — today's localStorage → tomorrow's PostgreSQL, zero rewrites
+- **Plan-aware** — features are gated by subscription tier, enforced server-side
+- **Audit-traceable** — every mutation is logged with who, what, and when
+- **Migration-ready** — today's localStorage transitions to tomorrow's PostgreSQL with zero rewrites
+- **Event-driven** — major business actions emit domain events that decouple modules
+- **Archive-first** — historical data is preserved, not destroyed
 
 ---
 
@@ -24,40 +26,39 @@ LeadCRM serves multiple independent organizations (tenants) from a single codeba
 
 ### The Fundamental Rule
 
-**Every data record must have `tenantId`.** No exceptions. This is enforced at the DataContext level now and will be enforced at the database level during migration.
+**Every data record must have `tenantId`.** No exceptions. This is enforced at the DataContext level now and at the database level after migration.
 
 ```typescript
 // WRONG — no tenant scoping
 const newContact = { id: uuid(), ...data };
 
 // CORRECT — tenantId always present
-const newContact = { id: uuid(), tenantId: tenant.id, ...data };
+const newContact = { id: uuid(), tenantId: tenant.id, createdAt: now(), ...data };
 ```
 
 ### Tenant Role Hierarchy
 
 | Role | Tenant Scope | Data Access |
 |---|---|---|
-| `System Admin` | `tenantId: 'system'` | All tenants |
-| `Client Admin` | Own tenant only | All records in own tenant |
-| `Sales Rep`, `Viewer` | Own tenant only | Permitted records in own tenant |
+| `System Admin` | `tenantId: 'system'` | All tenants — cross-tenant aggregation |
+| `Client Admin` | Own tenant only | All records within own tenant |
+| `Sales Rep`, `Viewer` | Own tenant only | RBAC-permitted records only |
 | `Technician` | Own tenant only | Service orders + assets only |
 
-**Never query without `tenantId` filter** — except for `System Admin` views which explicitly aggregate across tenants.
+Never query without a `tenantId` filter — except in `System Admin` views that explicitly aggregate across tenants.
 
 ### Cross-Tenant Safety
 
-Cross-tenant data access is a **critical security failure**. It must be impossible by design:
+Cross-tenant data access is a **critical security failure**. It must be impossible by design, not convention:
 
 ```typescript
-// WRONG — no tenant filter
+// WRONG — no tenant guard
 const contact = await db.contact.findById(id);
 
-// CORRECT — tenant-scoped
+// CORRECT — tenant-scoped, returns null if wrong tenant
 const contact = await db.contact.findFirst({
-  where: { id, tenantId: currentUser.tenantId }
+  where: { id, tenantId: currentUser.tenantId },
 });
-// Returns null if the record belongs to a different tenant — never throws
 ```
 
 ---
@@ -72,17 +73,17 @@ type PlanTier = 'free' | 'pro' | 'enterprise';
 interface TenantPlan {
   tier: PlanTier;
   limits: {
-    contacts:  number; // free: 250 | pro: 5000 | enterprise: unlimited
-    users:     number; // free: 3   | pro: 15   | enterprise: unlimited
-    campaigns: number; // free: 2/mo| pro: 20/mo| enterprise: unlimited
-    workflows: number; // free: 3   | pro: 25   | enterprise: unlimited
-    storageGB: number; // free: 1   | pro: 10   | enterprise: unlimited
+    contacts:  number; // free: 250   | pro: 5000  | enterprise: unlimited
+    users:     number; // free: 3     | pro: 15    | enterprise: unlimited
+    campaigns: number; // free: 2/mo  | pro: 20/mo | enterprise: unlimited
+    workflows: number; // free: 3     | pro: 25    | enterprise: unlimited
+    storageGB: number; // free: 1     | pro: 10    | enterprise: unlimited
   };
-  features: string[]; // which modules are enabled
+  features: string[];
 }
 ```
 
-### Feature Gating Pattern
+### Feature Gating
 
 ```typescript
 const isFeatureEnabled = (feature: string): boolean => {
@@ -90,43 +91,325 @@ const isFeatureEnabled = (feature: string): boolean => {
   const features: Record<PlanTier, string[]> = {
     free:       ['contacts', 'pipeline', 'basic-reports'],
     pro:        ['contacts', 'pipeline', 'reports', 'campaigns', 'workflows', 'service-orders'],
-    enterprise: ['*'], // all features
+    enterprise: ['*'],
   };
   return features[plan]?.includes('*') || features[plan]?.includes(feature) || false;
 };
 ```
 
-**Feature gates must be enforced in both:**
-- The API/service layer (authoritative — enforced server-side)
-- The UI (secondary — prevents wasted API calls, not a security boundary)
+**Enforcement locations:**
+- API/service layer — **authoritative** (server enforces, cannot be bypassed)
+- UI layer — **secondary** (prevents wasted API calls, not a security boundary)
 
-**Never rely on frontend-only feature gating.** The backend must enforce plan limits independently.
+Never rely on frontend-only feature gating. The backend must enforce plan limits independently.
+
+### Feature Flags vs Plan Features
+
+These are separate concerns and must not be conflated:
+
+```typescript
+// Plan feature — governs what the subscription tier allows
+const isPlanAllowed = isFeatureEnabled('workflows');
+
+// Feature flag — governs rollout, beta, or experimental access
+const isFlagEnabled = featureFlags.get('workflow-visual-builder-v2');
+
+// A restricted feature may require both
+const canAccess = isPlanAllowed && isFlagEnabled;
+```
+
+| Flag Type | Purpose |
+|---|---|
+| Plan Features | `free`, `pro`, `enterprise` entitlements |
+| Feature Flags | `beta`, `experimental`, `rollout`, `ab-test` |
 
 ### Current Module Toggles (localStorage phase)
 
-| Toggle | localStorage Key |
-|---|---|
-| `isServiceModuleEnabled` | `leadcrm_service_enabled` |
-| `isAssetModuleEnabled` | `leadcrm_asset_enabled` |
-| `isBillingModuleEnabled` | `leadcrm_billing_enabled` |
-
-When migrating to the backend: these become `plan.features` fields on the Tenant record. The toggle API in DataContext must remain signature-compatible so UI components require zero changes.
+| Toggle | localStorage Key | Future: Plan Field |
+|---|---|---|
+| `isServiceModuleEnabled` | `leadcrm_service_enabled` | `plan.features.includes('service-orders')` |
+| `isAssetModuleEnabled` | `leadcrm_asset_enabled` | `plan.features.includes('assets')` |
+| `isBillingModuleEnabled` | `leadcrm_billing_enabled` | `plan.features.includes('billing')` |
 
 ---
 
-## 3. DataContext — API Migration Readiness
+## 3. Domain-Driven Module Boundaries
 
-All DataContext functions must be structured so that swapping localStorage for a real API requires changing only the function body — never the signature or the callers.
+As LeadCRM grows, uncontrolled coupling between modules creates cascading failures. Each module must own its data and communicate through defined interfaces.
 
-**Preparation checklist for every DataContext function:**
+### Module Ownership
 
-- [ ] Function reads from React state (not directly from `localStorage`)
-- [ ] Function updates React state via its setter
-- [ ] `localStorage` is used only as a persistence layer — isolated from business logic
-- [ ] Function signature will remain identical after migration to `fetch('/api/...')`
+| Module | Owns |
+|---|---|
+| **Contacts** | contacts, organizations, contact activities |
+| **Pipeline** | deals, stages, pipeline definitions, forecasts |
+| **Campaigns** | campaigns, templates, campaign analytics |
+| **Workflows** | automation rules, execution history, pending actions |
+| **Service** | service orders, assets, inventory |
+| **Billing** | invoices, subscriptions, payment records |
+| **Users** | users, roles, permissions |
+| **Audit** | audit logs (read-only from all modules) |
+
+### Module Interaction Rules
+
+**Modules may reference each other's data IDs.** A deal may reference `contactId` — that is fine.
+
+**Modules may not directly mutate another module's data.** A workflow engine must not directly call `db.contact.update()`. It must call the Contacts service.
+
+**Cross-module data changes must flow through the service layer:**
+
+```
+Workflow Engine
+  ↓
+Contacts Service (via domain event or direct service call)
+  ↓
+Contacts Repository
+  ↓
+Database
+```
+
+**Never create hidden dependencies.** If module A must call module B, that dependency must be explicit, documented, and owned.
+
+---
+
+## 4. Domain Events Architecture
+
+Every major business action should emit a domain event. Events decouple modules and enable automation, integrations, analytics, and audit logging to work independently of the triggering action.
+
+### Event Flow
+
+```
+User Action → Service Layer → Domain Event Emitted
+                                      ↓
+                             ┌────────┴─────────┐
+                             ↓                  ↓
+                      Audit Logger       Workflow Engine
+                             ↓                  ↓
+                     Notification        Future Integrations
+                       System               (Zapier, Webhooks)
+```
+
+### Domain Event Naming
+
+Format: `entity.action` — always past tense.
+
+| Event | Triggers |
+|---|---|
+| `contact.created` | Audit log, workflow check, analytics |
+| `contact.updated` | Audit log, workflow check |
+| `deal.created` | Audit log, workflow check, forecasting |
+| `deal.won` | Audit log, analytics, notification, commission |
+| `deal.lost` | Audit log, analytics |
+| `campaign.sent` | Audit log, analytics, engagement tracking |
+| `invoice.paid` | Plan upgrade, access unlock, audit log |
+| `user.invited` | Notification, audit log |
+| `workflow.executed` | Audit log, analytics |
+
+**Current implementation:** `addAuditLog()` is the event stub. As the system matures, replace with a proper event bus. The function signature `addAuditLog(event, details)` is intentionally compatible with future event emitters.
+
+---
+
+## 5. Data Lifecycle Management
+
+CRM data is business-critical. It must be preserved through its entire lifecycle.
+
+### Data Stages
+
+```
+Active → Archived → Soft-Deleted → Purged (GDPR only)
+```
+
+### Rules
+
+- **Prefer archive over delete** — contacts, deals, and service orders should never be hard-deleted
+- **Audit logs are never deleted** — they are the permanent record of business activity
+- **Billing records are never deleted** — required for financial compliance
+- **Workflow execution history is retained** — required for debugging and compliance
+
+### Soft Delete Standard
 
 ```typescript
-// CURRENT — localStorage persistence
+// Preferred soft delete pattern
+interface SoftDeletable {
+  deletedAt?: string;  // ISO 8601 | null = active
+  deletedBy?: string;  // userId who deleted
+  archiveReason?: string;
+}
+
+// Query active records only
+const activeContacts = await db.contact.findMany({
+  where: { tenantId, deletedAt: null },
+});
+
+// Soft delete — never hard delete CRM records
+await db.contact.update({
+  where: { id, tenantId },
+  data: { deletedAt: new Date().toISOString(), deletedBy: currentUser.id },
+});
+```
+
+Hard deletes are reserved for explicit GDPR data removal requests only, and must go through the compliance workflow with an audit entry.
+
+---
+
+## 6. Tenant Resource Isolation
+
+Data isolation is necessary but not sufficient. Resources must also be isolated at every layer.
+
+### Isolation Requirements
+
+```
+Tenant
+  ↓
+Database Records      (tenantId on every row)
+  ↓
+File Storage          (isolated storage bucket per tenant)
+  ↓
+Cache Namespace       (tenant-prefixed cache keys)
+  ↓
+Rate Limits           (per-tenant rate limiting, not global)
+  ↓
+Audit Namespace       (audit logs always tagged with tenantId)
+```
+
+### No Shared Resources Without Explicit Partitioning
+
+```typescript
+// WRONG — shared cache key
+await cache.set('contacts', data);
+
+// CORRECT — tenant-namespaced
+await cache.set(`tenant:${tenantId}:contacts`, data);
+
+// WRONG — global rate limit
+rateLimiter.consume(ip);
+
+// CORRECT — per-tenant rate limit
+rateLimiter.consume(`tenant:${tenantId}`);
+```
+
+---
+
+## 7. Workflow Engine Standards
+
+The workflow automation engine is a core feature of LeadCRM. It must be built to production quality from the start.
+
+### Execution Requirements
+
+Every workflow execution must be:
+- **Idempotent** — running the same workflow twice with the same input produces the same result
+- **Retryable** — failed executions can be retried without side effects
+- **Auditable** — every execution is recorded with full context
+
+### Execution Record
+
+```typescript
+interface WorkflowExecution {
+  id:          string;
+  workflowId:  string;
+  tenantId:    string;
+  status:      'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  triggeredBy: string;       // userId or 'system'
+  entityId:    string;       // ID of the contact/deal that triggered it
+  entityType:  string;       // 'Contact' | 'Deal'
+  startedAt:   string;       // ISO 8601
+  completedAt?: string;
+  errorMessage?: string;
+  details:     string;       // human-readable execution summary
+}
+```
+
+### Workflow Safety Rules
+
+- Workflows must check `tenantId` before executing any action
+- Workflows must check RBAC for the action they're performing
+- Failed workflows must not retry more than 3 times without manual intervention
+- Workflow execution logs are retained permanently (never purged)
+
+---
+
+## 8. Integration Architecture
+
+External integrations (Gmail, Outlook, Stripe, Twilio, Webhooks) must never bypass business rules or directly modify domain data.
+
+### Integration Flow
+
+```
+External System (Stripe, Twilio, etc.)
+  ↓
+Integration Adapter (receive + validate)
+  ↓
+Controller (parse + authorize)
+  ↓
+Service (apply business rules)
+  ↓
+Repository (persist with tenantId)
+  ↓
+Domain Event (emit for audit + automation)
+```
+
+**Never allow integrations to:**
+- Write directly to the database
+- Skip permission checks
+- Skip audit logging
+- Access data from multiple tenants
+
+### Webhook Standards
+
+Incoming webhooks must:
+1. Verify signature before processing
+2. Resolve the `tenantId` from the payload
+3. Route to the correct service
+4. Emit the appropriate domain event
+
+---
+
+## 9. Analytics Readiness
+
+CRM products are data products. Every major business action must be trackable at the service layer — not dependent on UI clicks.
+
+### Required Trackable Events
+
+| Event | Layer |
+|---|---|
+| Contacts created / updated / deleted | Service layer |
+| Deals created / moved / won / lost | Service layer |
+| Campaigns sent / opened / clicked | Service layer |
+| Workflow executions (success / fail) | Service layer |
+| User logins | Auth layer |
+| Feature usage by plan tier | Service layer |
+
+**Analytics events must not depend on UI actions.** Track at the service layer so that API clients, automations, and future integrations are also tracked.
+
+### Analytics Data Shape
+
+```typescript
+interface AnalyticsEvent {
+  event:     string;       // 'deal.won', 'campaign.sent'
+  tenantId:  string;
+  userId:    string;
+  entityId:  string;
+  entityType: string;
+  properties: Record<string, unknown>;
+  timestamp: string;       // ISO 8601
+}
+```
+
+---
+
+## 10. DataContext — API Migration Readiness
+
+All DataContext functions must be structured so migrating from localStorage to a real API requires changing only the function body — never the signature or any caller.
+
+**Checklist for every DataContext function:**
+
+- [ ] Reads from React state, not directly from `localStorage`
+- [ ] Updates state via its setter function
+- [ ] `localStorage` is only used as a persistence layer, isolated from business logic
+- [ ] Function signature stays identical after migration to `fetch('/api/...')`
+
+```typescript
+// CURRENT — localStorage
 const addContact = (data: CreateContactInput): void => {
   const newContact = buildContact(data, tenant.id);
   const all = JSON.parse(localStorage.getItem('leadcrm_contacts') ?? '[]');
@@ -135,28 +418,27 @@ const addContact = (data: CreateContactInput): void => {
   addAuditLog('contact.created', { contactId: newContact.id });
 };
 
-// FUTURE — API persistence (same signature, zero component changes)
+// FUTURE — API (same signature, zero component rewrites)
 const addContact = async (data: CreateContactInput): Promise<void> => {
-  const response = await fetch('/api/contacts', {
+  const res = await fetch('/api/contacts', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  const { data: newContact } = await response.json();
+  const { data: newContact } = await res.json();
   setContacts(prev => [...prev, newContact]);
 };
 ```
 
 ---
 
-## 4. Audit Logging
+## 11. Audit Logging
 
-**Every create, update, and delete must call `addAuditLog()`.** This is required for enterprise plan compliance and is non-negotiable.
+Every create, update, and delete must call `addAuditLog()`. Non-negotiable for enterprise compliance.
 
 ```typescript
-// Required call after every mutation
 addAuditLog('contact.created', {
-  contactId: newContact.id,
+  contactId:  newContact.id,
   contactName: newContact.contactPerson,
   assignedTo: newContact.assignedUserId,
 });
@@ -166,128 +448,129 @@ addAuditLog('contact.created', {
 
 | Event | When |
 |---|---|
-| `contact.created` | New contact added |
-| `contact.updated` | Contact fields changed |
-| `contact.deleted` | Contact archived/deleted |
-| `deal.created` | New deal added |
-| `deal.stage_changed` | Deal moved to different stage |
-| `deal.assigned` | Deal reassigned to user |
-| `user.role_changed` | User's role modified |
-| `workflow.executed` | Automation workflow triggered |
+| `contact.created/updated/deleted` | Any contact mutation |
+| `deal.created/stage_changed/assigned` | Any deal mutation |
+| `user.role_changed/invited/deactivated` | Any user mutation |
+| `workflow.executed` | Automation triggered |
 | `campaign.sent` | Campaign dispatched |
+| `invoice.paid/failed` | Billing event |
+| `permission.changed` | RBAC modification |
 
-Include in every log: who performed the action, what entity was affected, what changed.
+Audit logs must include: `tenantId`, `userId`, `action`, `entityType`, `entityId`, `timestamp`, and a human-readable `details` string.
 
 ---
 
-## 5. Performance at Scale
+## 12. Performance at Scale
 
-As tenant datasets grow, these patterns become critical:
-
-**Filter all lists with `useMemo`:**
+**Filter with `useMemo` — never inline in JSX:**
 
 ```typescript
-// WRONG — filtering inline in JSX re-runs on every render
-return <div>{contacts.filter(c => c.status === filter).map(...)}</div>
-
-// CORRECT — memoized, only recalculates when dependencies change
 const filteredContacts = useMemo(
   () => contacts.filter(c => statusFilter.length === 0 || statusFilter.includes(c.status)),
   [contacts, statusFilter]
 );
 ```
 
-**Debounce search inputs (300ms):**
+**Debounce search inputs (300ms)** to prevent excessive re-renders.
 
-```typescript
-const debouncedSearch = useDebounce(searchTerm, 300);
-const filtered = useMemo(
-  () => contacts.filter(c => c.contactPerson.toLowerCase().includes(debouncedSearch.toLowerCase())),
-  [contacts, debouncedSearch]
-);
-```
+**Paginate all list endpoints:** default `limit: 20`, max `limit: 100`. Never return unbounded record sets.
 
-**Virtualize large lists (1000+ rows):** Use windowing when real data volumes arrive.
-
-**Paginate API results:** Never return unbounded record sets. Default `limit: 20`, max `limit: 100`.
-
----
-
-## 6. Pagination Standard
+**Virtualize lists with 1000+ rows** when real data volumes arrive.
 
 ```typescript
 interface PaginatedResult<T> {
   data: T[];
-  meta: {
-    total:   number;
-    page:    number;
-    limit:   number;
-    hasMore: boolean;
-  };
+  meta: { total: number; page: number; limit: number; hasMore: boolean; };
 }
-// Default: page=1, limit=20 | Max limit: 100
 ```
-
-Required for: contacts, deals, audit logs, campaigns, service orders, workflows, reports.
 
 ---
 
-## 7. SaaS Billing Integration (Planned — Stripe)
+## 13. SaaS Billing Integration (Planned — Stripe)
 
 ```
-Stripe → Webhook Events → Backend → Update tenant.plan
+Stripe Webhook → Backend → Update tenant.plan → Unlock/Downgrade features
 ```
 
 | Webhook Event | Action |
 |---|---|
-| `customer.subscription.created` | Upgrade tenant plan |
+| `customer.subscription.created` | Upgrade tenant plan tier |
 | `customer.subscription.updated` | Adjust plan tier and limits |
 | `invoice.payment_failed` | Begin 7-day grace period |
 | `customer.subscription.deleted` | Downgrade to free tier |
 
-Store on Tenant record: `stripeCustomerId`, `subscriptionId`, `planTier`, `planExpiresAt`.
+Store on Tenant: `stripeCustomerId`, `subscriptionId`, `planTier`, `planExpiresAt`.
+
+Billing records are never deleted. Payment history is a permanent compliance record.
 
 ---
 
-## 8. White-Labeling (Future)
+## 14. Disaster Recovery Planning
 
-Tenant-level branding is already modeled:
+Enterprise customers require data reliability guarantees.
+
+**Future backend must support:**
+
+| Requirement | Target |
+|---|---|
+| Automated daily backups | All tenant data |
+| Point-in-time recovery | Last 30 days |
+| Audit log restoration | Permanent retention |
+| Tenant data export | On-demand GDPR export |
+| Recovery Point Objective (RPO) | < 24 hours |
+| Recovery Time Objective (RTO) | < 4 hours |
+
+Tenant data loss is a **critical failure**. It must trigger incident response, not just a bug report.
+
+---
+
+## 15. White-Labeling (Future)
 
 ```typescript
 interface TenantBranding {
-  domain?:     string;  // custom subdomain
-  brandColor?: string;  // accent color (CSS custom property)
-  logoUrl?:    string;  // tenant logo URL
+  domain?:     string;  // custom subdomain or CNAME
+  brandColor?: string;  // CSS custom property — applied to accent
+  logoUrl?:    string;  // tenant logo
   currency?:   string;  // display currency
   timezone?:   string;  // default timezone
 }
 ```
 
-CSS custom properties for accent color are already implemented in `App.tsx`. Do not hardcode color values — always reference CSS variables.
+CSS custom properties for accent color are already implemented in `App.tsx`. Never hardcode color values — always reference CSS variables.
 
 ---
 
-## 9. Security at Scale
+## 16. Security at Scale
 
 | Concern | Requirement |
 |---|---|
 | Rate limiting | 100 req/min per tenant (API layer) |
 | PII at rest | Encrypt email, phone for enterprise tier |
-| File storage | Each tenant's files in isolated storage bucket |
+| File storage | Isolated storage bucket per tenant |
 | GDPR | Export + delete endpoints required for enterprise |
-| Data isolation | Verified at query level, not just UI level |
+| Data isolation | Enforced at query level — not just at UI level |
+| Webhook security | Signature verification on all inbound webhooks |
 
 ---
 
-## SaaS Scalability Checklist
+## SaaS Architecture Validation Gate
 
-Before marking any data-touching feature complete:
+Before marking any data-touching feature, module, or architectural change complete:
 
-- [ ] `tenantId` present on every new record
-- [ ] No query executes without `tenantId` filter (except System Admin)
-- [ ] Feature gated by plan where applicable
-- [ ] `addAuditLog()` called for every create / update / delete
-- [ ] DataContext function signature will survive API migration unchanged
-- [ ] Filter operations use `useMemo` — not inline in JSX
-- [ ] List endpoints support pagination
-- [ ] No cross-tenant data access is possible through this code path
+- [ ] `tenantId` enforced on all records and queries
+- [ ] RBAC enforced — no action without permission check
+- [ ] Audit logging present — `addAuditLog()` called for all mutations
+- [ ] Plan gating enforced — feature disabled for ineligible plans
+- [ ] Pagination supported — no unbounded list returns
+- [ ] Migration-ready — DataContext function signature survives API migration
+- [ ] No cross-tenant data access possible through this code path
+- [ ] No direct module coupling — cross-module changes go through service layer
+- [ ] Domain events emitted for major business actions
+- [ ] Analytics-ready — events tracked at service layer, not UI layer
+- [ ] Archive strategy respected — no hard deletes of business records
+- [ ] Integration-safe — external systems cannot bypass business rules
+- [ ] Scalable to enterprise tier — no architectural blockers for growth
+
+---
+
+> **Note on Future Skills:** As LeadCRM matures, the enterprise architecture concerns in this file (module boundaries, domain events, workflow engine, integration architecture) will grow large enough to warrant a dedicated `enterprise-architecture` skill file covering: module ownership contracts, event-driven architecture patterns, microservice extraction strategy, integration adapters, and future scalability milestones.
