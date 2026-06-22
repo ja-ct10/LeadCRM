@@ -1,0 +1,17 @@
+{
+  "enabled": true,
+  "name": "TypeCheck on Edit",
+  "description": "Checks for TypeScript type errors when .ts or .tsx files are saved, catching issues early before they compound.",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "**/*.ts",
+      "**/*.tsx"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A TypeScript file was just saved. Quickly scan it for type errors, missing return types on exported functions, any use of `any` type, and untyped catch blocks. If issues are found, fix them inline. Do not run terminal commands — check the file directly using your tools. Keep the response brief."
+  }
+}

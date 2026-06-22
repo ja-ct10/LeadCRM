@@ -1,0 +1,17 @@
+{
+  "enabled": true,
+  "name": "TDD Reminder",
+  "description": "Reminds to write tests first when a new TypeScript file is created, reinforcing TDD discipline.",
+  "version": "1",
+  "when": {
+    "type": "fileCreated",
+    "patterns": [
+      "**/*.ts",
+      "**/*.tsx"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A new TypeScript file was just created. Before any implementation is written, remind the user to follow the TDD workflow: write a failing test first (RED), then implement the minimum code to pass it (GREEN), then refactor (CLEAN). If the file already contains a test (it has describe/it/test blocks), acknowledge that and say nothing more. If the file appears to be an implementation file with no corresponding test file yet, ask: \"Have you written the failing test for this file yet? Remember: test first, then implement.\""
+  }
+}
