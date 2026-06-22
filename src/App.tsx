@@ -1,29 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './store/AuthContext';
 import { DataProvider } from './store/DataContext';
-import Layout from './components/Layout';
-import LandingPage from './pages/LandingPage';
-import AuthPage from './pages/AuthPage';
-import Dashboard from './pages/Dashboard';
-import ContactsPage from './pages/ContactsPage';
-import PipelinePage from './pages/PipelinePage';
-import WorkflowsPage from './pages/WorkflowsPage';
-import CampaignsPage from './pages/CampaignsPage';
-import ReportsPage from './pages/ReportsPage';
-import UsersPage from './pages/UsersPage';
-import AdminConsole from './pages/AdminConsole';
-import SettingsPage from './pages/SettingsPage';
-import ServiceOrdersPage from './pages/ServiceOrdersPage';
-import AssetsPage from './pages/AssetsPage';
-import BillingPage from './pages/BillingPage';
-import ClientBillingPage from './pages/ClientBillingPage';
-import TechnicianDashboard from './pages/TechnicianDashboard';
-import AccountDetailsPage from './pages/AccountDetailsPage';
-import AuditLogsPage from './pages/AuditLogsPage';
-import ProfileSettingsPage from './pages/ProfileSettingsPage';
+import Layout from './portals/client/components/layout/CrmLayout';
+import LandingPage from './portals/client/pages/LandingPage';
+import AuthPage from './portals/client/pages/AuthPage';
+import Dashboard from './portals/client/pages/Dashboard';
+import ContactsPage from './portals/client/pages/contacts/ContactsPage';
+import PipelinePage from './portals/client/pages/pipeline/PipelinePage';
+import WorkflowsPage from './portals/client/pages/workflows/WorkflowsPage';
+import CampaignsPage from './portals/client/pages/campaigns/CampaignsPage';
+import ReportsPage from './portals/client/pages/reports/ReportsPage';
+import UsersPage from './portals/client/pages/users/UsersPage';
+import AdminConsole from './portals/admin/pages/AdminConsole';
+import SettingsPage from './portals/client/pages/settings/SettingsPage';
+import ServiceOrdersPage from './portals/client/pages/service/ServiceOrdersPage';
+import AssetsPage from './portals/client/pages/service/AssetsPage';
+import BillingPage from './portals/client/pages/billing/BillingPage';
+import ClientBillingPage from './portals/client/pages/billing/ClientBillingPage';
+import TechnicianDashboard from './portals/client/pages/technician/TechnicianDashboard';
+import AccountDetailsPage from './portals/client/pages/settings/AccountDetailsPage';
+import TaskBoard from './portals/client/pages/tasks/TaskBoard';
+import InventoryPage from './portals/client/pages/service/InventoryPage';
+import AuditLogsPage from './portals/client/pages/audit/AuditLogsPage';
+import ProfileSettingsPage from './portals/client/pages/settings/ProfileSettingsPage';
 
 import { Toaster } from 'sonner';
-import GlobalLoader from './components/GlobalLoader';
+import GlobalLoader from './shared/components/GlobalLoader';
 
 function AppContent() {
   const { user } = useAuth();
@@ -109,9 +111,11 @@ function AppContent() {
       case 'service-orders': return <ServiceOrdersPage />;
       case 'technician-jobs': return <TechnicianDashboard />;
       case 'assets': return <AssetsPage />;
+      case 'inventory': return <InventoryPage />;
       case 'billing': return <BillingPage />;
       case 'client-billing': return <ClientBillingPage />;
       case 'audit-log': return <AuditLogsPage />;
+      case 'tasks': return <TaskBoard />;
       default: return <Dashboard />;
     }
   };

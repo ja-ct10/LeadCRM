@@ -660,8 +660,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
           return score > threshold;
         }
       }
-    } catch (e) {
-      console.error("Error evaluating workflow condition:", e);
+    } catch (_e) {
+      // Condition evaluation failed — treat as non-matching to prevent broken automations
       return false;
     }
     return true;
@@ -1520,7 +1520,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       firstName,
       lastName,
       email: userData.email || "",
-      role: userData.role || "Sales Representative",
+      role: userData.role || "Sales Rep",
       status: userData.status || "Active",
       phone: userData.phone || "",
     };

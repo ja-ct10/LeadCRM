@@ -1155,7 +1155,7 @@ export const MOCK_ROLES: RoleDefinition[] = [
   {
     id: 'r3',
     tenantId: 'tenant_demo',
-    name: 'Sales Representative',
+    name: 'Sales Rep',
     description: 'Create and manage own contacts and deals',
     isSystemRole: true,
     userCount: 8,
