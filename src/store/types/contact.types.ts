@@ -12,6 +12,12 @@ export interface Organization {
   tags?: string[];
   createdAt: string;
   isArchived?: boolean;
+  // Location fields
+  address?: string;
+  city?: string;
+  province?: string;
+  country?: string;
+  postalCode?: string;
 }
 
 export interface Contact {

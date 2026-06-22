@@ -2,7 +2,7 @@ import React, { useState, useMemo } from "react";
 import { useData } from "../../../../store/DataContext";
 import { useAuth } from "../../../../store/AuthContext";
 import { Plus } from "lucide-react";
-import { Contact } from "../../../../store/types";
+import { Contact, Organization } from "../../../../store/types";
 import { ClientTable } from "./ClientTable";
 import { ClientFilters } from "./ClientFilters";
 import { ContactFormSheet } from "./ContactFormSheet";

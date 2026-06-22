@@ -1220,7 +1220,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
           title="No Pipelines Created Yet"
           description="Build your first sales pipeline to start tracking deals, managing stages, and forecasting revenue visually."
           actionLabel="Create Pipeline"
-          onAction={() => setIsManageModalOpen(true)}
+          onAction={() => setIsManagePipelinesModalOpen(true)}
         />
       </div>
     );
@@ -2240,7 +2240,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                   title="No Deals in Pipeline"
                   description="Start populating this pipeline with potential sales opportunities and manage them through stages."
                   actionLabel="Add Deal"
-                  onAction={() => setIsManageModalOpen(true)}
+                  onAction={() => setIsManagePipelinesModalOpen(true)}
                 />
               ) : (
                 <div className="text-slate-500 text-sm">
@@ -2325,7 +2325,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                   title="No Deals in Pipeline"
                   description="Start populating this pipeline with potential sales opportunities and manage them through stages."
                   actionLabel="Add Deal"
-                  onAction={() => setIsManageModalOpen(true)}
+                  onAction={() => setIsManagePipelinesModalOpen(true)}
                 />
               ) : (
                 <div className="text-slate-500 text-sm text-center">

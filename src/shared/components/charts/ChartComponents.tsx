@@ -58,20 +58,39 @@ interface BarChartProps {
   margin?: object;
   width?: number | string;
   height?: number | string;
+  layout?: 'horizontal' | 'vertical';
 }
 interface BarProps {
   dataKey: string; name?: string; fill?: string;
   radius?: number | number[]; barSize?: number;
   data?: Array<{ color?: string }>;
+  stackId?: string;
+  children?: React.ReactNode;
 }
 interface AreaProps {
   dataKey: string; name?: string; stroke?: string;
   strokeWidth?: number; fill?: string; type?: string; fillOpacity?: number;
+  activeDot?: boolean | object;
 }
 interface LineItemProps {
   dataKey: string; name?: string; stroke?: string;
-  strokeWidth?: number; dot?: boolean | object; type?: string;
+  strokeWidth?: number; dot?: boolean | object; activeDot?: boolean | object; type?: string;
 }
+interface TooltipProps {
+  contentStyle?: object; itemStyle?: object;
+  formatter?: (v: unknown, n: string) => unknown;
+  cursor?: boolean | object;
+  content?: (props: unknown) => React.ReactNode;
+}
+interface PieProps {
+  data: Array<{ name: string; value?: number; color?: string; [key: string]: unknown }>;
+  dataKey: string; cx?: string | number; cy?: string | number;
+  innerRadius?: number; outerRadius?: number; paddingAngle?: number;
+  label?: boolean | object | ((props: unknown) => string);
+  labelLine?: boolean | object;
+  stroke?: string; children?: React.ReactNode;
+}
+interface CellProps { fill?: string; stroke?: string; }
 interface XAxisProps { 
   dataKey?: string; 
   stroke?: string; 
@@ -91,7 +110,7 @@ interface XAxisProps {
 interface YAxisProps { 
   stroke?: string; 
   fontSize?: number; 
-  tickFormatter?: (v: any) => string; 
+  tickFormatter?: (v: unknown) => string; 
   tickLine?: boolean; 
   axisLine?: boolean;
   dy?: number;
@@ -100,19 +119,13 @@ interface YAxisProps {
   hide?: boolean;
   dataKey?: string;
   width?: number;
-  domain?: any[];
+  domain?: unknown[];
   ticks?: number[];
+  allowDecimals?: boolean;
+  unit?: string;
 }
-interface TooltipProps { contentStyle?: object; itemStyle?: object; formatter?: (v: any, n: string) => any; cursor?: object; }
 interface LegendProps { iconType?: string; wrapperStyle?: object; }
 interface PieChartProps { children?: React.ReactNode; width?: number | string; height?: number | string; }
-interface PieProps {
-  data: Array<{ name: string; value: number; color?: string }>;
-  dataKey: string; cx?: string | number; cy?: string | number;
-  innerRadius?: number; outerRadius?: number; paddingAngle?: number;
-  label?: any; labelLine?: boolean; stroke?: string; children?: React.ReactNode;
-}
-interface CellProps { fill?: string; }
 
 // ─────────────────────────────────────────────────────────────
 // STUBS — declared first so their function identity is stable

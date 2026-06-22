@@ -163,7 +163,7 @@ export function ClientDetailSheet({
                       (client as Contact).country
                     ].filter(Boolean).join(', ') || '--' : [
                       (client as Organization).city,
-                      (client as Organization).state,
+                      (client as Organization).province,
                       (client as Organization).country
                     ].filter(Boolean).join(', ') || '--'}
                   </div>

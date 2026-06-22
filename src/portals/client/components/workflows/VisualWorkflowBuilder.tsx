@@ -1038,7 +1038,7 @@ export default function VisualWorkflowBuilder({
                   // Color styling
                   let strokeColor = 'rgba(148, 163, 184, 0.4)';
                   let markerEnd = 'url(#arrow)';
-                  let strokeDash = undefined;
+                  let strokeDash: string | undefined = undefined;
 
                   if (edge.type === 'dashed') {
                     strokeColor = 'rgba(59, 130, 246, 0.5)';
