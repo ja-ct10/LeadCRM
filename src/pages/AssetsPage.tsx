@@ -6,6 +6,7 @@ import {
   ExternalLink, History
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { TrelloFilter } from '../components/TrelloFilter';
 
 interface Asset {
   id: string;
@@ -79,17 +80,17 @@ const MOCK_ASSETS: Asset[] = [
 
 export default function AssetsPage() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterCategory, setFilterCategory] = useState<string>('All');
+  const [filterCategories, setFilterCategories] = useState<string[]>([]);
+  const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
 
   const filteredAssets = MOCK_ASSETS.filter(asset => {
     const matchesSearch = 
       asset.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       asset.serialNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
       asset.client.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesCategory = filterCategory === 'All' || asset.category === filterCategory;
-    
-    return matchesSearch && matchesCategory;
+    const matchesCategory = filterCategories.length === 0 || filterCategories.includes(asset.category);
+    const matchesStatus = filterStatuses.length === 0 || filterStatuses.includes(asset.status);
+    return matchesSearch && matchesCategory && matchesStatus;
   });
 
   const getStatusColor = (status: string) => {
@@ -159,20 +160,27 @@ export default function AssetsPage() {
             className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-xl pl-10 pr-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500/50 transition-all"
           />
         </div>
-        <div className="flex items-center gap-2">
-          <Filter size={18} className="text-slate-500" />
-          <select 
-            value={filterCategory}
-            onChange={(e) => setFilterCategory(e.target.value)}
-            className="bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-xl px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500/50 transition-all cursor-pointer"
-          >
-            <option value="All" className="bg-gray-50 dark:bg-[#030712]">All Categories</option>
-            <option value="Security" className="bg-gray-50 dark:bg-[#030712]">Security</option>
-            <option value="Telecom" className="bg-gray-50 dark:bg-[#030712]">Telecom</option>
-            <option value="IT" className="bg-gray-50 dark:bg-[#030712]">IT</option>
-            <option value="Infrastructure" className="bg-gray-50 dark:bg-[#030712]">Infrastructure</option>
-          </select>
-        </div>
+        <TrelloFilter
+          searchTerm={searchQuery}
+          setSearchTerm={setSearchQuery}
+          statuses={[
+            { id: 'Active', label: 'Active' },
+            { id: 'Maintenance', label: 'Maintenance' },
+            { id: 'Retired', label: 'Retired' },
+            { id: 'Faulty', label: 'Faulty' },
+          ]}
+          selectedStatuses={filterStatuses}
+          setSelectedStatuses={setFilterStatuses}
+          labelsTitle="Category"
+          labels={[
+            { id: 'Security', label: 'Security' },
+            { id: 'Telecom', label: 'Telecom' },
+            { id: 'IT', label: 'IT' },
+            { id: 'Infrastructure', label: 'Infrastructure' },
+          ]}
+          selectedLabels={filterCategories}
+          setSelectedLabels={setFilterCategories}
+        />
       </div>
 
       {/* Assets List */}

@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useData } from '../store/DataContext';
 import { useAuth } from '../store/AuthContext';
 import { Plus, Play, Pause, Settings, X, Zap, ArrowRight, History, Clock, FileText, Trash2, Edit2, CheckCircle2, FlaskConical, GitMerge, MoreVertical, Compass } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
 import VisualWorkflowBuilder from '../components/VisualWorkflowBuilder';
+import { TrelloFilter } from '../components/TrelloFilter';
 import { toast } from 'sonner';
 
 export default function WorkflowsPage() {
@@ -17,6 +18,11 @@ export default function WorkflowsPage() {
   const [isTesting, setIsTesting] = useState<string | null>(null);
   const [isVisualCanvasOpen, setIsVisualCanvasOpen] = useState(false);
   const [visualBuilderWorkflow, setVisualBuilderWorkflow] = useState<any>(null);
+
+  // Filter state
+  const [wfSearchTerm, setWfSearchTerm] = useState('');
+  const [wfStatusFilter, setWfStatusFilter] = useState<string[]>([]);
+  const [wfCategoryFilter, setWfCategoryFilter] = useState<string[]>([]);
 
   const handleOpenVisualBuilderNode = (wf: any) => {
     setEditingWorkflowId(wf.id);
@@ -122,6 +128,19 @@ export default function WorkflowsPage() {
   const canEditWorkflow = isClientAdmin || userPerms.includes('p14');
   const canDeleteWorkflow = isClientAdmin || userPerms.includes('p15');
   const canExecuteWorkflow = isClientAdmin || userPerms.includes('p16');
+
+  // Filtered workflows — funnel through search + status + category
+  const filteredWorkflows = useMemo(() => {
+    return workflows.filter(wf => {
+      if (wf.isArchived) return false;
+      const matchesSearch = wfSearchTerm === '' ||
+        wf.name.toLowerCase().includes(wfSearchTerm.toLowerCase()) ||
+        (wf.description && wf.description.toLowerCase().includes(wfSearchTerm.toLowerCase()));
+      const matchesStatus = wfStatusFilter.length === 0 || wfStatusFilter.includes(wf.status);
+      const matchesCategory = wfCategoryFilter.length === 0 || (wf.category && wfCategoryFilter.includes(wf.category));
+      return matchesSearch && matchesStatus && matchesCategory;
+    });
+  }, [workflows, wfSearchTerm, wfStatusFilter, wfCategoryFilter]);
 
   const handleSave = () => {
     if (!newWorkflow.name) return;
@@ -264,6 +283,25 @@ export default function WorkflowsPage() {
               <Plus size={18} /> Create Workflow
             </button>
           )}
+          <TrelloFilter
+            searchTerm={wfSearchTerm}
+            setSearchTerm={setWfSearchTerm}
+            statuses={[
+              { id: 'active', label: 'Active' },
+              { id: 'paused', label: 'Paused' },
+            ]}
+            selectedStatuses={wfStatusFilter}
+            setSelectedStatuses={setWfStatusFilter}
+            labelsTitle="Category"
+            labels={[
+              { id: 'Security', label: 'Security' },
+              { id: 'Telecom', label: 'Telecom' },
+              { id: 'IT', label: 'IT' },
+              { id: 'General', label: 'General' },
+            ]}
+            selectedLabels={wfCategoryFilter}
+            setSelectedLabels={setWfCategoryFilter}
+          />
         </div>
       </div>
 
@@ -442,12 +480,12 @@ export default function WorkflowsPage() {
         </div>
       </div>
 
-      {workflows.length === 0 ? (
+      {filteredWorkflows.length === 0 ? (
         <div className="py-12">
           <EmptyState
             type="workflows"
-            title="Create Your First Automated Workflow"
-            description="Connect real-time data triggers like New Contact with actions such as Send Automation Email, Create Task, or Update Deal state without writing any code."
+            title={workflows.filter(wf => !wf.isArchived).length === 0 ? "Create Your First Automated Workflow" : "No Workflows Match Your Filters"}
+            description={workflows.filter(wf => !wf.isArchived).length === 0 ? "Connect real-time data triggers like New Contact with actions such as Send Automation Email, Create Task, or Update Deal state without writing any code." : "Try adjusting your filters to find what you're looking for."}
             actionLabel="Create Custom Workflow"
             onAction={() => setIsModalOpen(true)}
             secondaryActionLabel="Explore Recipe Templates"
@@ -456,7 +494,7 @@ export default function WorkflowsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {workflows.filter(wf => !wf.isArchived).map(wf => (
+          {filteredWorkflows.map(wf => (
             <div key={wf.id} className="bg-white dark:bg-white/[0.02] rounded-2xl border border-gray-200 dark:border-white/[0.05] p-6 flex flex-col hover:border-[#0A6EFF]/50 transition-all group shadow-lg backdrop-blur-xl hover:shadow-[0_8px_30px_rgba(10,110,255,0.1)] relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[#0A6EFF]/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
               <div className="flex justify-between items-start mb-4">

@@ -36,7 +36,8 @@ export default function CampaignsPage() {
   const [activeTab, setActiveTab] = useState<'all' | 'email' | 'sms'>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [typeFilter, setTypeFilter] = useState<string[]>([]);
   const [isScheduling, setIsScheduling] = useState(false);
   const [selectedCampaignForReport, setSelectedCampaignForReport] = useState<any>(null);
   const [activeMetricTab, setActiveMetricTab] = useState<'sent' | 'delivered' | 'opened' | 'clicked' | 'responded' | 'bounced'>('sent');
@@ -307,8 +308,9 @@ export default function CampaignsPage() {
     if (camp.isArchived) return false;
     const matchesSearch = camp.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           (camp.description && camp.description.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchesStatus = statusFilter === 'All' || camp.status.toLowerCase() === statusFilter.toLowerCase();
-    return matchesSearch && matchesStatus;
+    const matchesStatus = statusFilter.length === 0 || statusFilter.some(s => camp.status.toLowerCase() === s.toLowerCase());
+    const matchesType = typeFilter.length === 0 || typeFilter.some(t => camp.type.toLowerCase() === t.toLowerCase());
+    return matchesSearch && matchesStatus && matchesType;
   });
 
   if (selectedCampaignForReport) {
@@ -739,14 +741,22 @@ export default function CampaignsPage() {
                    searchTerm={searchTerm}
                    setSearchTerm={setSearchTerm}
                    statuses={[
-                     { id: 'Active', label: 'Active', color: 'bg-emerald-500' },
-                     { id: 'Scheduled', label: 'Scheduled', color: 'bg-blue-500' },
-                     { id: 'Paused', label: 'Paused', color: 'bg-amber-500' },
-                     { id: 'Completed', label: 'Completed', color: 'bg-slate-500' },
-                     { id: 'Draft', label: 'Draft', color: 'bg-slate-400' }
+                     { id: 'active', label: 'Active' },
+                     { id: 'scheduled', label: 'Scheduled' },
+                     { id: 'paused', label: 'Paused' },
+                     { id: 'completed', label: 'Completed' },
+                     { id: 'draft', label: 'Draft' },
                    ]}
-                   selectedStatuses={statusFilter === 'All' ? [] : [statusFilter]}
-                   setSelectedStatuses={(s) => setStatusFilter(s.length > 0 ? s[0] : 'All')}
+                   selectedStatuses={statusFilter}
+                   setSelectedStatuses={setStatusFilter}
+                   labelsTitle="Type"
+                   labels={[
+                     { id: 'email', label: 'Email' },
+                     { id: 'sms', label: 'SMS' },
+                     { id: 'multi-channel', label: 'Multi-Channel' },
+                   ]}
+                   selectedLabels={typeFilter}
+                   setSelectedLabels={setTypeFilter}
                  />
               </div>
             </div>

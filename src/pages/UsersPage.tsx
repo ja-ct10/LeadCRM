@@ -1890,31 +1890,30 @@ export default function UsersPage() {
                   labelsTitle="Role"
                   labels={[
                     {
-                      id: "Administrator",
-                      label: "Administrator",
+                      id: "Client Admin",
+                      label: "Client Admin",
                       color: "bg-rose-500",
                     },
                     {
-                      id: "Sales Manager",
-                      label: "Sales Manager",
-                      color: "bg-purple-500",
-                    },
-                    {
-                      id: "Sales Representative",
-                      label: "Sales Representative",
+                      id: "Sales Rep",
+                      label: "Sales Rep",
                       color: "bg-blue-500",
                     },
                     {
-                      id: "Support Agent",
-                      label: "Support Agent",
+                      id: "Technician",
+                      label: "Technician",
+                      color: "bg-emerald-500",
+                    },
+                    {
+                      id: "Viewer",
+                      label: "Viewer",
                       color: "bg-amber-500",
                     },
                     {
-                      id: "Marketing Manager",
-                      label: "Marketing Manager",
-                      color: "bg-emerald-500",
+                      id: "Guest",
+                      label: "Guest",
+                      color: "bg-slate-500",
                     },
-                    { id: "Viewer", label: "Viewer", color: "bg-slate-500" },
                   ]}
                   selectedLabels={roleFilter}
                   setSelectedLabels={setRoleFilter}

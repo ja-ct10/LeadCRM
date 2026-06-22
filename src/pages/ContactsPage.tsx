@@ -56,7 +56,7 @@ export default function ContactsPage() {
 
         // Smart View Filter
         if (
-          smartView === "Prospects" &&
+          smartView === "Leads" &&
           !["Hot", "Warm", "Cold"].includes(l.status)
         )
           return false;

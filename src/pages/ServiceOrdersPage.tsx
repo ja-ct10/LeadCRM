@@ -6,20 +6,19 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useData } from '../store/DataContext';
+import { TrelloFilter } from '../components/TrelloFilter';
 
 export default function ServiceOrdersPage() {
   const { serviceOrders } = useData();
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string>('All');
+  const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
 
   const filteredOrders = serviceOrders.filter(order => {
     const matchesSearch = 
       order.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.title.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesStatus = filterStatus === 'All' || order.status.toLowerCase() === filterStatus.toLowerCase();
-    
+    const matchesStatus = filterStatuses.length === 0 || filterStatuses.some(s => order.status.toLowerCase() === s.toLowerCase());
     return matchesSearch && matchesStatus;
   });
 
@@ -81,20 +80,17 @@ export default function ServiceOrdersPage() {
             className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-xl pl-10 pr-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500/50 transition-all"
           />
         </div>
-        <div className="flex items-center gap-2">
-          <Filter size={18} className="text-slate-500" />
-          <select 
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-xl px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500/50 transition-all cursor-pointer"
-          >
-            <option value="All" className="bg-gray-50 dark:bg-[#030712]">All Status</option>
-            <option value="Scheduled" className="bg-gray-50 dark:bg-[#030712]">Scheduled</option>
-            <option value="In Progress" className="bg-gray-50 dark:bg-[#030712]">In Progress</option>
-            <option value="Completed" className="bg-gray-50 dark:bg-[#030712]">Completed</option>
-            <option value="On Hold" className="bg-gray-50 dark:bg-[#030712]">On Hold</option>
-          </select>
-        </div>
+        <TrelloFilter
+          searchTerm={searchQuery}
+          setSearchTerm={setSearchQuery}
+          statuses={[
+            { id: 'pending', label: 'Pending' },
+            { id: 'in-progress', label: 'In Progress' },
+            { id: 'completed', label: 'Completed' },
+          ]}
+          selectedStatuses={filterStatuses}
+          setSelectedStatuses={setFilterStatuses}
+        />
       </div>
 
       {/* Service Orders List */}
