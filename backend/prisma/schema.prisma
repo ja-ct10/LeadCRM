@@ -1,0 +1,217 @@
+// LeadCRM — Prisma Schema
+// Single source of truth for all database models
+// ORM: Prisma | DB: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// TENANT (Client Organization)
+// ─────────────────────────────────────────────
+model Tenant {
+  id          String       @id @default(cuid())
+  name        String
+  slug        String       @unique
+  status      TenantStatus @default(SANDBOX)
+  plan        PlanType     @default(FREE)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  users       User[]
+  contacts    Contact[]
+  deals       Deal[]
+  pipelines   Pipeline[]
+  campaigns   Campaign[]
+  workflows   Workflow[]
+  auditLogs   AuditLog[]
+}
+
+enum TenantStatus {
+  SANDBOX
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+}
+
+enum PlanType {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+// ─────────────────────────────────────────────
+// USER
+// ─────────────────────────────────────────────
+model User {
+  id           String     @id @default(cuid())
+  tenantId     String
+  email        String
+  firstName    String
+  lastName     String
+  passwordHash String
+  role         String     @default("Sales Rep")
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  tenant       Tenant     @relation(fields: [tenantId], references: [id])
+  auditLogs    AuditLog[]
+
+  @@unique([tenantId, email])
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  PENDING
+}
+
+// ─────────────────────────────────────────────
+// CONTACT (Lead)
+// ─────────────────────────────────────────────
+model Contact {
+  id           String        @id @default(cuid())
+  tenantId     String        // REQUIRED — enforces data isolation
+  firstName    String
+  lastName     String
+  email        String?
+  phone        String?
+  company      String?
+  status       ContactStatus @default(WARM)
+  source       String?
+  notes        String?
+  isArchived   Boolean       @default(false)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  deals        Deal[]
+}
+
+enum ContactStatus {
+  HOT
+  WARM
+  COLD
+  CANCELLED
+  CLOSED
+}
+
+// ─────────────────────────────────────────────
+// PIPELINE & DEALS
+// ─────────────────────────────────────────────
+model Pipeline {
+  id        String   @id @default(cuid())
+  tenantId  String   // REQUIRED
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  stages    Stage[]
+  deals     Deal[]
+}
+
+model Stage {
+  id         String   @id @default(cuid())
+  pipelineId String
+  name       String
+  order      Int
+  createdAt  DateTime @default(now())
+
+  pipeline   Pipeline @relation(fields: [pipelineId], references: [id])
+  deals      Deal[]
+}
+
+model Deal {
+  id          String     @id @default(cuid())
+  tenantId    String     // REQUIRED
+  pipelineId  String
+  stageId     String
+  contactId   String?
+  title       String
+  value       Float?
+  priority    Priority   @default(MEDIUM)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  tenant      Tenant     @relation(fields: [tenantId], references: [id])
+  pipeline    Pipeline   @relation(fields: [pipelineId], references: [id])
+  stage       Stage      @relation(fields: [stageId], references: [id])
+  contact     Contact?   @relation(fields: [contactId], references: [id])
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+// ─────────────────────────────────────────────
+// CAMPAIGN
+// ─────────────────────────────────────────────
+model Campaign {
+  id        String         @id @default(cuid())
+  tenantId  String         // REQUIRED
+  name      String
+  type      CampaignType
+  status    CampaignStatus @default(DRAFT)
+  subject   String?
+  body      String?
+  sentAt    DateTime?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  tenant    Tenant         @relation(fields: [tenantId], references: [id])
+}
+
+enum CampaignType {
+  EMAIL
+  SMS
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+// ─────────────────────────────────────────────
+// WORKFLOW
+// ─────────────────────────────────────────────
+model Workflow {
+  id          String         @id @default(cuid())
+  tenantId    String         // REQUIRED
+  name        String
+  description String?
+  trigger     String
+  actions     Json
+  isActive    Boolean        @default(false)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  tenant      Tenant         @relation(fields: [tenantId], references: [id])
+}
+
+// ─────────────────────────────────────────────
+// AUDIT LOG
+// ─────────────────────────────────────────────
+model AuditLog {
+  id         String   @id @default(cuid())
+  tenantId   String   // REQUIRED
+  userId     String
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  user       User     @relation(fields: [userId], references: [id])
+}

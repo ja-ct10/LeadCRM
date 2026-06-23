@@ -173,4 +173,13 @@ The project uses drawer/sheet pattern for contact, company, and deal detail view
 When restructuring, do NOT create `tailwind.config.ts` or `tailwind.config.js`. The project uses Tailwind v4 with `@import "tailwindcss"` in CSS. Any structure template (ChatGPT, external guides) that lists `tailwind.config.ts` is wrong for this stack — omit it.
 
 ### `modules/` Not `features/` Is the Established Domain Naming Convention
-External structure templates use `features/crm/contacts/`. This project uses `modules/contacts/` (and will use `modules/crm/contacts/` after domain grouping). Always use `modules/` — it signals DDD domain ownership vs generic React feature organization. Do not rename to `features/` even if a template suggests it.
+External structure templates use `features/crm/contacts/`. This project uses `src/client-admin/` and `src/system-admin/` for the portal split (Structure 3 naming). Backend uses `modules/crm/contacts/`. Always use `modules/` on the backend — it signals DDD domain ownership. Do not rename to `features/` even if a template suggests it.
+
+### Structure 3 Frontend: `portals/` → `client-admin/` + `system-admin/`
+The original `src/portals/client/` is now `src/client-admin/` and `src/portals/admin/` is now `src/system-admin/`. App.tsx imports were updated accordingly. Any new portal code goes in the respective folder — never recreate a `portals/` wrapper.
+
+### `src/modules/` Was a Partial Migration — It Is Now Deleted
+The `src/modules/` folder was a half-migrated copy of pages from `portals/client/pages/`. It was not imported anywhere. It has been deleted. The canonical source of all CRM page components is `src/client-admin/pages/`. Do not recreate `src/modules/`.
+
+### Monorepo Shared Package Is `@leadcrm/shared`
+Types, RBAC constants (roles, permissions), API contracts, and Zod validation schemas all live in `shared/src/`. Both frontend and backend import from `@leadcrm/shared`. Never define these in both places — always import from the shared package. The tsconfig path alias `@leadcrm/shared` → `../shared/src/index.ts` is wired in `frontend/tsconfig.json`.
