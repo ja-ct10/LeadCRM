@@ -1,5 +1,5 @@
 ---
-inclusion: auto
+inclusion: manual
 description: LeadCRM Engineering Standards — SOLID principles, TypeScript strictness, immutability, naming, file structure, React patterns, design patterns, and pre-commit quality checklist. Auto-loaded in every conversation.
 ---
 

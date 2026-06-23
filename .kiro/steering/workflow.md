@@ -1,5 +1,5 @@
 ---
-inclusion: auto
+inclusion: manual
 description: Development workflow, PR process, and collaboration standards for LeadCRM. Auto-loaded in every conversation.
 ---
 

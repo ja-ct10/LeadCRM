@@ -43,6 +43,7 @@ import {
   MOCK_ASSETS,
   MOCK_INVENTORY,
 } from "./mockData";
+import { evaluateWorkflowCondition } from "../modules/workflows/services/workflowConditionEvaluator";
 
 interface DataContextType {
   organizations: Organization[];
@@ -492,182 +493,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     loadData();
   }, [user, tenant]);
 
-  // Evaluate a workflow condition directly
+  // Delegates to extracted pure service: src/modules/workflows/services/workflowConditionEvaluator.ts
   const evaluateWorkflowConditionDirectly = (
     wf: Workflow,
     context: { contact?: Contact; deal?: Deal },
-  ) => {
-    if (!wf.condition) return true;
-    try {
-      if (wf.condition.startsWith("{")) {
-        const complexCondition = JSON.parse(wf.condition);
-        const evaluateRule = (rule: any) => {
-          const { field, operator, value } = rule;
-          let actualValue: any;
+  ) => evaluateWorkflowCondition(wf, context, deals, contacts);
 
-          // Cross-entity resolution context lookup
-          let resolvedDeal = context.deal;
-          let resolvedLead = context.contact;
-
-          if (field.startsWith("deal.") && !resolvedDeal && resolvedLead) {
-            // Find a deal associated with the current contact
-            resolvedDeal = deals.find(
-              (d) =>
-                (d.companyName &&
-                  resolvedLead.companyName &&
-                  d.companyName.toLowerCase() ===
-                    resolvedLead.companyName.toLowerCase()) ||
-                (d.contactPerson &&
-                  resolvedLead.contactPerson &&
-                  d.contactPerson.toLowerCase() ===
-                    resolvedLead.contactPerson.toLowerCase()),
-            );
-          } else if (
-            field.startsWith("contact.") &&
-            !resolvedLead &&
-            resolvedDeal
-          ) {
-            // Find a contact associated with the current deal
-            resolvedLead = contacts.find(
-              (l) =>
-                (l.companyName &&
-                  resolvedDeal.companyName &&
-                  l.companyName.toLowerCase() ===
-                    resolvedDeal.companyName.toLowerCase()) ||
-                (l.contactPerson &&
-                  resolvedDeal.contactPerson &&
-                  l.contactPerson.toLowerCase() ===
-                    resolvedDeal.contactPerson.toLowerCase()),
-            );
-          }
-
-          if (
-            field === "deal.daysUntilClose" &&
-            resolvedDeal?.expectedCloseDate
-          ) {
-            const closeDate = new Date(resolvedDeal.expectedCloseDate);
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            closeDate.setHours(0, 0, 0, 0);
-            const diffTime = closeDate.getTime() - today.getTime();
-            actualValue = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          } else if (
-            field === "contact.daysUntilClose" &&
-            resolvedLead?.expectedCloseDate
-          ) {
-            const closeDate = new Date(resolvedLead.expectedCloseDate);
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            closeDate.setHours(0, 0, 0, 0);
-            const diffTime = closeDate.getTime() - today.getTime();
-            actualValue = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          } else if (field.startsWith("deal.")) {
-            actualValue = resolvedDeal?.[field.split(".")[1] as keyof Deal];
-          } else if (field.startsWith("contact.")) {
-            actualValue = resolvedLead?.[field.split(".")[1] as keyof Contact];
-          }
-
-          // If the operator checks for emptiness, we shouldn't fail simply because field is undefined
-          if (operator === "is_empty") {
-            return (
-              actualValue === undefined ||
-              actualValue === null ||
-              String(actualValue).trim() === ""
-            );
-          }
-          if (operator === "is_not_empty") {
-            return (
-              actualValue !== undefined &&
-              actualValue !== null &&
-              String(actualValue).trim() !== ""
-            );
-          }
-
-          if (actualValue === undefined || actualValue === null) return false;
-
-          const numActual = Number(actualValue);
-          const numValue = Number(value);
-          const strActual = String(actualValue).toLowerCase();
-          const strValue = String(value).toLowerCase();
-
-          switch (operator) {
-            case ">":
-              return !isNaN(numActual) && numActual > numValue;
-            case "<":
-              return !isNaN(numActual) && numActual < numValue;
-            case ">=":
-              return !isNaN(numActual) && numActual >= numValue;
-            case "<=":
-              return !isNaN(numActual) && numActual <= numValue;
-            case "==":
-              return (
-                String(actualValue).toLowerCase() ===
-                String(value).toLowerCase()
-              );
-            case "!=":
-              return (
-                String(actualValue).toLowerCase() !==
-                String(value).toLowerCase()
-              );
-            case "contains":
-              return strActual.includes(strValue);
-            case "not_contains":
-              return !strActual.includes(strValue);
-            case "starts_with":
-              return strActual.startsWith(strValue);
-            case "ends_with":
-              return strActual.endsWith(strValue);
-            default:
-              return false;
-          }
-        };
-
-        if (complexCondition.logic === "OR") {
-          return complexCondition.rules.some((rule: any) => evaluateRule(rule));
-        } else {
-          return complexCondition.rules.every((rule: any) =>
-            evaluateRule(rule),
-          );
-        }
-      } else {
-        // Fallback to legacy string conditions with cross-entity lookup
-        if (wf.condition.startsWith("title_contains_")) {
-          const searchStr = wf.condition
-            .replace("title_contains_", "")
-            .toLowerCase();
-          const title =
-            context.deal?.title || context.contact?.companyName || "";
-          return title.toLowerCase().includes(searchStr);
-        } else if (wf.condition.includes("deal value >")) {
-          const threshold = parseFloat(wf.condition.split(">")[1].trim());
-          const val =
-            context.deal?.value ??
-            (context.contact
-              ? (deals.find(
-                  (d) => d.companyName === context.contact?.companyName,
-                )?.value ?? 0)
-              : 0);
-          return val > threshold;
-        } else if (wf.condition.includes("contact score >")) {
-          const threshold = parseFloat(wf.condition.split(">")[1].trim());
-          const score =
-            context.contact?.score ??
-            (context.deal
-              ? (contacts.find(
-                  (l) => l.companyName === context.deal?.companyName,
-                )?.score ?? 0)
-              : 0);
-          return score > threshold;
-        }
-      }
-    } catch (_e) {
-      // Condition evaluation failed — treat as non-matching to prevent broken automations
-      return false;
-    }
-    return true;
-  };
-
-  // Run actions for a single matched workflow
+    // Run actions for a single matched workflow
   const runSingleWorkflow = (
     wf: Workflow,
     context: { contact?: Contact; deal?: Deal },

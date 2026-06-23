@@ -27,13 +27,15 @@ Steering files are instructions that Kiro reads automatically. Think of them as 
 
 | File | Loads | Purpose |
 |---|---|---|
-| `project.md` | Always | **Supreme authority.** AgentOS phases, agent routing, stop conditions, response format. Everything starts here. |
-| `standards.md` | Always | SOLID principles, TypeScript rules, naming conventions, design patterns, pre-commit checklist. |
-| `workflow.md` | Always | Task lifecycle, 5-role team review, branch strategy, commit format, Definition of Done. |
+| `project-core.md` | Always | Tech stack, file structure, and non-negotiable rules (TrelloFilter, animations, charts, RBAC, audit logs). |
 | `security.md` | Always | Threat model, RBAC enforcement, tenant isolation, secret management, security protocol. |
-| `testing.md` | Always | TDD workflow, coverage requirements, critical test cases (RBAC, tenant, audit). |
 | `lessons-learned.md` | Always | Project-specific patterns, known pitfalls, accumulated team knowledge. Updated as you build. |
+| `clean-code-rules.md` | Always | Naming conventions, function size limits, DRY, error handling, file size hard limits, and pre-commit checklist. |
 | `typescript-context.md` | When editing `.ts`/`.tsx` | TypeScript + React rules injected inline while you edit code files. |
+| `project.md` | On demand | **Supreme authority.** AgentOS phases, agent routing, stop conditions, response format. Everything starts here. |
+| `standards.md` | On demand | SOLID principles, TypeScript rules, naming conventions, design patterns, pre-commit checklist. |
+| `workflow.md` | On demand | Task lifecycle, 5-role team review, branch strategy, commit format, Definition of Done. |
+| `testing.md` | On demand | TDD workflow, coverage requirements, critical test cases (RBAC, tenant, audit). |
 | `modes.md` | On demand | Four work modes loaded by tag (see below). |
 
 ### On-Demand Modes (`modes.md`)

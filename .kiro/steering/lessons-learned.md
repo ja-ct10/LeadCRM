@@ -133,3 +133,29 @@ Format:
 Brief description of what was learned and why it matters.
 Code example if helpful.
 ```
+
+### str_replace on Function Headers Leaves Body Orphaned
+Replacing only the opening lines of a multi-line function leaves the body
+orphaned in the file, breaking scope for ALL code below it (251 errors in this case).
+Always read the full function from start to closing `};` before replacing.
+Do the full block replacement in one operation. Use `git stash` to recover.
+
+### Auto-Loaded Steering Files Multiply Token Cost Per Message
+Every file with `inclusion: auto` is injected into EVERY message in the session.
+With 6+ large steering files, context can exceed 2,000+ lines per request causing throttling.
+Rule: only `security.md`, `lessons-learned.md`, `project-core.md`, `clean-code-rules.md` auto-load.
+Everything else → `inclusion: manual`, activated only when relevant.
+
+### Double-Quote Import Paths in Some Files
+Some files use double-quote imports while others use single quotes.
+When doing string replacement for import path fixes, always handle both quote styles:
+```powershell
+$c = $c.Replace("'../../../../store/", "'../../../store/")
+$c = $c.Replace('"../../../../store/', '"../../../store/')
+```
+Missing this causes files to copy with unfixed import depths that silently work but break at runtime.
+
+### Migration Shim Pattern for Zero-Breakage File Moves
+When moving a file to `modules/<domain>/pages/`, leave a one-line re-export shim at the old path.
+All callers (App.tsx etc.) keep working unchanged until explicitly updated.
+Also recount import depth: `portals/client/pages/x/` = 4 levels, `modules/x/pages/` = 3 levels.

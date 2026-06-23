@@ -1,5 +1,5 @@
 ---
-inclusion: auto
+inclusion: manual
 description: Testing requirements for LeadCRM — 80% coverage minimum, TDD workflow, test types, and what must be tested. Auto-loaded in every conversation.
 ---
 

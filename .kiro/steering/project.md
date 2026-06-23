@@ -1,5 +1,5 @@
 ---
-inclusion: auto
+inclusion: manual
 description: LeadCRM AgentOS — supreme authority for all AI-assisted work. Defines all phases, agent routing, skill activation, stop conditions, and required response format. Auto-loaded in every conversation.
 ---
 
