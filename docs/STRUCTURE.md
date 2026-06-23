@@ -1,347 +1,278 @@
 # LeadCRM — Project Structure
 
-## Portal Separation
+## Monorepo Root
 
-LeadCRM has two completely distinct user-facing portals:
-
-| Portal | Who Uses It | Entry Path | Purpose |
-|---|---|---|---|
-| **Client Portal** | Client Admin, Sales Rep, Viewer, Technician | `src/portals/client/` | Day-to-day CRM operations for companies that subscribe to LeadCRM |
-| **Admin Portal** | System Admin (LeadCRM operator/developer) | `src/portals/admin/` | Platform control — manage tenants, pricing, environments, billing |
-
-These portals share no UI components. They have separate layouts, separate navigation, and separate module ownership.
+```
+leadcrm/
+├── frontend/              ← @leadcrm/frontend  (Next.js 15)
+├── backend/               ← @leadcrm/backend   (Node.js + Express)
+├── shared/                ← @leadcrm/shared    (types, RBAC, contracts, validation)
+├── infrastructure/        ← Docker, Nginx, deployment scripts
+├── docs/                  ← All project documentation
+├── .github/               ← GitHub Actions CI/CD
+├── package.json           ← Turborepo workspaces root
+├── turbo.json             ← Build pipeline
+├── tsconfig.base.json     ← Shared TypeScript base config
+├── .gitignore
+└── README.md
+```
 
 ---
 
-## Architecture Overview
+## Frontend (`frontend/`)
 
 ```
-src/
-├── App.tsx                    # SPA root — thin, delegates to portals
-├── index.css                  # Global styles
+frontend/
+├── app/                          ← Next.js App Router (routing layer ONLY)
+│   ├── layout.tsx                ← Root layout: metadata, PWA manifest link
+│   └── page.tsx                  ← Loads App.tsx dynamically (SSR disabled)
 │
-├── core/                      # Cross-cutting infrastructure (auth, permissions, audit, tenant)
-├── modules/                   # Feature domains — owned by the CLIENT portal
-├── portals/                   # Portal shells (layout, routing, navigation config)
-│   ├── client/                # CLIENT portal shell
-│   └── admin/                 # ADMIN portal shell + admin-specific modules
-├── shared/                    # Reusable code used by BOTH portals
-├── store/                     # Global state (being migrated → core/ + module services)
-└── lib/                       # Utilities, constants, helpers
-```
-
----
-
-## Design Principles
-
-- **Domain ownership** — each module owns its own types, hooks, services, and components
-- **No god files** — max 400 lines for components, 800 for pages
-- **Service layer** — business logic lives in `services/`, not in pages or DataContext
-- **Thin pages** — pages are orchestrators that compose hooks + components
-- **Migration-ready** — service functions can swap localStorage for API calls with no UI changes
-- **SOLID enforced** — single responsibility, open for extension, no cross-module mutation
-
----
-
-## Target Folder Structure
-
-### `src/core/` — Infrastructure Layer
-
-Cross-cutting concerns shared by the entire application.
-
-```
-core/
-├── auth/
-│   ├── AuthContext.tsx          # Auth state + login/logout
-│   └── useAuth.ts               # Hook wrapper
-├── permissions/
-│   ├── PermissionContext.tsx
-│   └── usePermissions.ts        # Role + permission resolution
-├── audit/
-│   └── useAuditLog.ts           # Audit logging hook
-├── tenant/
-│   └── useTenant.ts             # Current tenant context
-└── data/
-    └── DataContext.tsx          # Thin orchestrator — delegates to module services
-```
-
----
-
-### `src/modules/` — Feature Domains (Client Portal)
-
-Each domain follows the same internal structure:
-
-```
-modules/<domain>/
-├── types/         # Domain-specific TypeScript types and interfaces
-├── schemas/       # Validation schemas (Zod — planned)
-├── services/      # Business logic — extracted from DataContext
-├── hooks/         # Custom React hooks for this domain
-├── components/    # Domain-specific UI components
-└── pages/         # Route-level page components (thin orchestrators)
-```
-
-#### Contacts Domain
-```
-modules/contacts/
-├── types/
-│   ├── contact.types.ts
-│   └── organization.types.ts
-├── schemas/
-│   └── contactSchema.ts
-├── services/
-│   └── contactService.ts        # CRUD + business rules
-├── hooks/
-│   ├── useContacts.ts
-│   ├── useContactFilters.ts
-│   ├── useContactForm.ts
-│   └── useContactPermissions.ts
-├── components/
-│   ├── ContactTable.tsx
-│   ├── ContactFormSheet.tsx
-│   ├── ContactFilters.tsx
-│   ├── profile/
-│   │   ├── ContactProfileTabs.tsx
-│   │   ├── CompanyProfileTabs.tsx
-│   │   └── tabs/
-│   │       ├── ContactActivitiesTab.tsx
-│   │       ├── ContactEmailTab.tsx
-│   │       └── ContactSmsTab.tsx
-│   └── detail/
-│       ├── ContactDetailSheet.tsx
-│       └── UnifiedDetailView.tsx
-└── pages/
-    └── ContactsPage.tsx
-```
-
-#### Pipeline Domain
-```
-modules/pipeline/
-├── types/
-├── services/
-│   └── dealService.ts
-├── hooks/
-│   ├── usePipeline.ts
-│   ├── useDealFilters.ts
-│   ├── useDealForm.ts
-│   └── useDealDragDrop.ts       # @dnd-kit logic extracted
-├── components/
-│   ├── KanbanBoard.tsx
-│   ├── KanbanColumn.tsx
-│   ├── DealCard.tsx
-│   ├── DealFormModal.tsx
-│   ├── DealDetailPanel.tsx
-│   ├── PipelineAnalytics.tsx
-│   ├── PipelineFilters.tsx
-│   └── PipelineTableView.tsx
-└── pages/
-    └── PipelinePage.tsx          # Thin orchestrator
-```
-
-#### Other Domains (same structure)
-- `modules/workflows/` — automation rules, visual builder, execution logs
-- `modules/campaigns/` — email/SMS campaigns, templates, analytics
-- `modules/tasks/` — task board, task management
-- `modules/service-orders/` — service orders, assets, inventory
-- `modules/billing/` — billing pages, invoice management
-- `modules/reports/` — analytics dashboards
-- `modules/users/` — team management, roles, permissions
-- `modules/settings/` — appearance, modules, security, notifications
-- `modules/audit/` — audit log viewer
-
----
-
-### `src/portals/client/` — Client Portal Shell
-
-The SaaS product UI used by companies that subscribe to LeadCRM.
-
-```
-portals/client/
-├── layout/
-│   └── CrmLayout.tsx            # Sidebar + header + navigation
-├── navigation/
-│   └── navConfig.ts             # Nav items with RBAC config
-├── router/
-│   └── ClientRouter.tsx         # Route → module mapping
-└── pages/
-    ├── Dashboard.tsx             # Client dashboard
-    ├── LandingPage.tsx           # Marketing landing page
-    └── AuthPage.tsx              # Login / register
-```
-
-**Who uses this portal:**
-- `Client Admin` — manages their company's CRM instance
-- `Sales Rep` — manages contacts and pipeline deals
-- `Viewer` — read-only access
-- `Technician` — service orders only
-
----
-
-### `src/portals/admin/` — Admin Portal Shell
-
-The LeadCRM operator console. Used ONLY by the LeadCRM development team.
-
-```
-portals/admin/
-├── layout/
-│   └── AdminLayout.tsx          # Admin sidebar + header
-├── modules/
-│   ├── tenants/                  # Tenant/client management
+├── src/
+│   ├── client-admin/             ← CRM portal (Client Admin, Sales Rep, Viewer, Technician)
+│   │   ├── components/
+│   │   │   ├── contacts/         ← Contact detail, profile tabs, notes panel
+│   │   │   ├── layout/           ← CrmLayout (sidebar + header)
+│   │   │   └── workflows/        ← Visual workflow builder
+│   │   ├── hooks/
+│   │   │   ├── useContacts.ts
+│   │   │   ├── useDashboard.ts
+│   │   │   ├── usePipeline.ts
+│   │   │   └── useWorkflows.ts
+│   │   └── pages/
+│   │       ├── AuthPage.tsx
+│   │       ├── Dashboard.tsx
+│   │       ├── LandingPage.tsx
+│   │       ├── audit/            ← AuditLogsPage
+│   │       ├── billing/          ← BillingPage, ClientBillingPage
+│   │       ├── campaigns/        ← CampaignsPage, CampaignReportView
+│   │       ├── contacts/         ← ContactsPage, ContactFormSheet, filters, table
+│   │       ├── pipeline/         ← PipelinePage (kanban + @dnd-kit)
+│   │       ├── reports/          ← ReportsPage
+│   │       ├── service/          ← ServiceOrdersPage, AssetsPage, InventoryPage
+│   │       ├── settings/         ← SettingsPage, ProfileSettingsPage, AccountDetailsPage
+│   │       ├── tasks/            ← TaskBoard
+│   │       ├── technician/       ← TechnicianDashboard
+│   │       ├── users/            ← UsersPage
+│   │       └── workflows/        ← WorkflowsPage, modals
+│   │
+│   ├── system-admin/             ← System Admin portal (LeadCRM operators only)
+│   │   ├── components/
+│   │   │   └── layout/           ← AdminLayout
 │   │   ├── hooks/
 │   │   │   └── useTenants.ts
+│   │   └── pages/
+│   │       ├── AdminConsole.tsx   ← Tabbed admin shell
+│   │       ├── billing/          ← AdminBillingPage
+│   │       ├── environments/     ← EnvironmentsPage
+│   │       ├── overview/         ← AdminDashboard
+│   │       ├── pricing/          ← PricingPage
+│   │       └── tenants/          ← ClientManagement
+│   │
+│   ├── shared/                   ← Reusable UI (used by both portals)
 │   │   ├── components/
-│   │   └── pages/
-│   │       └── ClientManagement.tsx
-│   ├── billing/                  # Platform billing
-│   │   └── pages/
-│   │       └── AdminBillingPage.tsx
-│   ├── pricing/                  # Plan pricing management
-│   │   └── pages/
-│   │       └── PricingPage.tsx
-│   ├── environments/             # Infrastructure health
-│   │   └── pages/
-│   │       └── EnvironmentsPage.tsx
-│   └── overview/                 # Platform analytics
-│       └── pages/
-│           └── AdminDashboard.tsx
-└── pages/
-    └── AdminConsole.tsx          # Tabbed admin shell
+│   │   │   ├── ui/               ← ShadCN primitives (Button, Input, Badge, etc.)
+│   │   │   ├── charts/           ← ChartComponents.tsx (ONLY chart import source)
+│   │   │   ├── TrelloFilter.tsx  ← ONLY filter component to use
+│   │   │   ├── SideSheet.tsx
+│   │   │   ├── SlidingDrawer.tsx
+│   │   │   ├── EmptyState.tsx
+│   │   │   ├── GlobalLoader.tsx
+│   │   │   ├── CommandPalette.tsx
+│   │   │   ├── DashboardSkeleton.tsx
+│   │   │   └── CountryCodeSelector.tsx
+│   │   └── hooks/
+│   │       └── useTheme.ts
+│   │
+│   ├── store/                    ← Global state (localStorage phase)
+│   │   ├── AuthContext.tsx        ← Auth state + login/logout
+│   │   ├── DataContext.tsx        ← Data access layer (delegates to services)
+│   │   ├── types.ts               ← Legacy type file (kept for zero-breakage)
+│   │   ├── types/                 ← Split type files (use these for new code)
+│   │   │   ├── contact.types.ts
+│   │   │   ├── deal.types.ts
+│   │   │   ├── user.types.ts
+│   │   │   ├── campaign.types.ts
+│   │   │   ├── workflow.types.ts
+│   │   │   ├── shared.types.ts
+│   │   │   └── index.ts
+│   │   └── mockData/             ← Seed data split by domain
+│   │       ├── contacts.mock.ts
+│   │       ├── deals.mock.ts
+│   │       ├── campaigns.mock.ts
+│   │       ├── workflows.mock.ts
+│   │       ├── users.mock.ts
+│   │       ├── service-orders.mock.ts
+│   │       └── index.ts
+│   │
+│   ├── lib/                      ← Utilities
+│   │   ├── utils.ts              ← cn() and shared helpers
+│   │   ├── constants.ts          ← App-wide constants
+│   │   └── countries.ts          ← Country/region data
+│   │
+│   ├── App.tsx                   ← SPA root — string-based routing switch
+│   └── index.css                 ← Global styles + Tailwind v4 @import
+│
+├── public/                       ← Static assets
+│   ├── leadcrm_logo.png
+│   ├── manifest.json             ← PWA manifest
+│   └── sw.js                     ← Service worker
+│
+├── package.json                  ← @leadcrm/frontend dependencies
+├── next.config.ts
+├── postcss.config.mjs
+├── tsconfig.json                 ← Includes path aliases for monorepo
+├── shadcn.json
+└── .env.local.example
 ```
-
-**Who uses this portal:**
-- `System Admin` only — the LeadCRM operator/developer
-- Has cross-tenant visibility
-- Manages pricing, tenant onboarding, environment health, platform billing
 
 ---
 
-### `src/shared/` — Shared Components
+## Backend (`backend/`)
 
-Reusable UI and logic used by BOTH portals.
+```
+backend/
+├── prisma/
+│   ├── schema.prisma             ← Single source of truth for all DB models
+│   ├── migrations/               ← Auto-generated by prisma migrate dev
+│   └── seed.ts                   ← Entry point for all seeders
+│
+├── src/
+│   ├── modules/                  ← Domain-driven business modules
+│   │   ├── crm/
+│   │   │   ├── contacts/         ← controller, service, repository, dto, types
+│   │   │   ├── companies/
+│   │   │   ├── deals/
+│   │   │   └── pipeline/
+│   │   ├── marketing/
+│   │   │   ├── campaigns/
+│   │   │   ├── email/
+│   │   │   └── templates/
+│   │   ├── automation/
+│   │   │   ├── workflows/
+│   │   │   ├── triggers/
+│   │   │   └── actions/
+│   │   ├── operations/
+│   │   │   ├── service-orders/
+│   │   │   └── tasks/
+│   │   ├── administration/
+│   │   │   ├── users/
+│   │   │   ├── roles/
+│   │   │   ├── permissions/
+│   │   │   └── audit/
+│   │   ├── billing/
+│   │   │   ├── invoices/
+│   │   │   └── payments/
+│   │   └── reporting/
+│   │       └── reports/
+│   │
+│   ├── integrations/
+│   │   ├── gmail/                ← gmail.service.ts, gmail.oauth.ts, gmail.types.ts
+│   │   └── paymongo/             ← paymongo.service.ts, paymongo.webhooks.ts, paymongo.types.ts
+│   │
+│   ├── core/
+│   │   ├── auth/                 ← auth.service.ts, jwt.service.ts
+│   │   ├── permissions/          ← permission.registry.ts
+│   │   ├── audit/                ← audit.service.ts
+│   │   └── tenant/               ← tenant.service.ts
+│   │
+│   ├── api/
+│   │   ├── middleware/           ← auth, rbac, tenant, validate, error, logger, rate-limit
+│   │   └── routes/               ← crm, marketing, automation, operations, administration, billing, reporting
+│   │
+│   ├── database/
+│   │   └── seeders/              ← roles.seed.ts, permissions.seed.ts, admin.seed.ts
+│   │
+│   ├── config/                   ← app.config.ts, database.config.ts, mail.config.ts
+│   ├── shared/
+│   │   ├── constants/            ← permissions.ts, roles.ts, http-status.ts
+│   │   ├── helpers/              ← pagination.ts, date.ts, crypto.ts
+│   │   └── errors/               ← app-error.ts, http-error.ts
+│   │
+│   ├── app.ts                    ← Express app setup
+│   └── server.ts                 ← Entry point — env guard + listen
+│
+├── package.json                  ← @leadcrm/backend dependencies
+├── tsconfig.json
+└── .env.example
+```
+
+---
+
+## Shared Package (`shared/`)
 
 ```
 shared/
-├── components/
-│   ├── ui/                      # ShadCN primitives (Button, Badge, Card, etc.)
-│   ├── charts/
-│   │   └── ChartComponents.tsx  # Chart.js wrapper — ONLY import source for charts
-│   ├── TrelloFilter.tsx         # Filter UI — ONLY filter component to use
-│   ├── EmptyState.tsx
-│   ├── SideSheet.tsx
-│   ├── SlidingDrawer.tsx
-│   ├── CommandPalette.tsx
-│   ├── GlobalLoader.tsx
-│   ├── DashboardSkeleton.tsx
-│   └── CountryCodeSelector.tsx
-└── hooks/
-    └── useTheme.ts
+└── src/
+    ├── types/
+    │   ├── contact.types.ts      ← Contact, ContactStatus
+    │   ├── company.types.ts      ← Company
+    │   ├── deal.types.ts         ← Deal, Pipeline, Stage, DealPriority
+    │   ├── user.types.ts         ← User, UserStatus
+    │   ├── campaign.types.ts     ← Campaign, CampaignType, CampaignStatus
+    │   ├── billing.types.ts      ← Invoice, PlanType, BillingCycle, PaymentStatus
+    │   ├── tenant.types.ts       ← Tenant, TenantStatus
+    │   ├── api.types.ts          ← ApiResponse, PaginatedResponse, PaginationMeta
+    │   └── index.ts              ← Re-exports all types
+    │
+    ├── constants/
+    │   ├── roles.ts              ← Role enum (System Admin, Client Admin, etc.)
+    │   ├── permissions.ts        ← Permission constants (contacts.create, etc.)
+    │   └── index.ts
+    │
+    ├── contracts/
+    │   ├── contact.contract.ts   ← CreateContactRequest, ContactListResponse
+    │   ├── user.contract.ts      ← CreateUserRequest, AuthResponse
+    │   ├── billing.contract.ts   ← UpgradePlanRequest, InvoiceListResponse
+    │   ├── campaign.contract.ts  ← CreateCampaignRequest
+    │   └── index.ts
+    │
+    ├── validation/
+    │   ├── contact.schema.ts     ← Zod: ContactSchema, UpdateContactSchema
+    │   ├── user.schema.ts        ← Zod: LoginSchema, RegisterSchema, CreateUserSchema
+    │   ├── billing.schema.ts     ← Zod: UpgradePlanSchema
+    │   └── index.ts
+    │
+    └── index.ts                  ← Main barrel export (@leadcrm/shared entry)
 ```
 
 ---
 
-### `src/store/` — Global State (transitional)
-
-During the current localStorage phase, state lives here. As the architecture matures, domain state migrates into `src/modules/<domain>/services/`.
+## Infrastructure (`infrastructure/`)
 
 ```
-store/
-├── AuthContext.tsx               # Auth — migrating to core/auth/
-├── DataContext.tsx               # Thin orchestrator — delegates to module services
-├── types.ts                     # Legacy type file — kept for zero-breakage migration
-├── types/                       # Split type files (canonical — use these for new code)
-│   ├── index.ts                 # Re-exports all types
-│   ├── contact.types.ts
-│   ├── deal.types.ts
-│   ├── user.types.ts
-│   ├── workflow.types.ts
-│   ├── campaign.types.ts
-│   └── shared.types.ts
-└── mockData/                    # Seed data split by domain
-    ├── contacts.mock.ts
-    ├── deals.mock.ts
-    ├── workflows.mock.ts
-    ├── campaigns.mock.ts
-    ├── users.mock.ts
-    └── index.ts                 # Re-exports all mock data
+infrastructure/
+├── docker/
+│   ├── Dockerfile.frontend
+│   ├── Dockerfile.backend
+│   └── docker-compose.yml
+├── nginx/
+│   └── nginx.conf
+└── scripts/
+    └── db-migrate.sh
 ```
 
 ---
 
-### `src/lib/` — Utilities
+## Non-Negotiable Rules
 
-```
-lib/
-├── utils.ts          # cn() and shared utility functions
-├── constants.ts      # App-wide constants
-└── countries.ts      # Country/region data
-```
+### Frontend
+- `app/page.tsx` loads `src/App` with `ssr: false` — full SPA, no SSR
+- All data ops through `DataContext` — never direct `localStorage` in components
+- All charts from `ChartComponents.tsx` only — never recharts
+- All filters use `<TrelloFilter>` — never raw `<select>`
+- No `tailwind.config.js` — Tailwind v4 uses `@import "tailwindcss"` in CSS
+- Animations: `motion/react` only — never `framer-motion`
+- `tenantId` on every data record; `addAuditLog()` on every mutation
+- RBAC guard before every create/edit/delete UI element
 
----
+### Backend
+- Controller → never touches DB
+- Service → never uses `req`/`res`
+- Repository → never has business logic, always filters by `tenantId`
+- `tenantId` sourced from JWT only — never from request body
+- All input validated with Zod before controller executes
 
-## Migration Status
-
-The project is being incrementally migrated from the current structure to the target structure above.
-
-| Phase | Status | Description |
-|---|---|---|
-| A — Folder Scaffolding | ✅ Complete | Target directories created |
-| B — mockData Split | ✅ Complete | 1,295-line mockData.ts split into 6 domain files + barrel + shim |
-| C1 — Tasks Domain | ✅ Complete | TaskBoard → modules/tasks/pages/ |
-| C2 — Reports Domain | ✅ Complete | ReportsPage → modules/reports/pages/ |
-| C3 — Audit Domain | ✅ Complete | AuditLogsPage → modules/audit/pages/ |
-| C4 — Campaigns Domain | ✅ Complete | CampaignsPage + CampaignReportView → modules/campaigns/pages/ |
-| C5 — Workflows Domain | ✅ Complete | WorkflowsPage + 2 modals → modules/workflows/pages/ |
-| C6 — Service Orders Domain | ✅ Complete | ServiceOrdersPage + AssetsPage + InventoryPage + TechnicianDashboard → modules/service-orders/pages/ |
-| C7 — Billing Domain | ✅ Complete | BillingPage + ClientBillingPage → modules/billing/pages/ |
-| C8 — Contacts Domain | ✅ Complete | ContactsPage + 4 siblings → modules/contacts/pages/ |
-| C9 — Settings Domain | ✅ Complete | SettingsPage + ProfileSettingsPage + AccountDetailsPage → modules/settings/pages/ |
-| C10 — Users Domain | ✅ Complete | UsersPage → modules/users/pages/ |
-| C11 — Pipeline Domain | 🔲 Pending | PipelinePage (3,224 lines) — requires dnd-kit state analysis |
-
----
-
-## Component Size Rules
-
-| File Type | Target | Warning | Hard Limit |
-|---|---|---|---|
-| Components | 250 lines | 300 lines | 400 lines |
-| Pages | 500 lines | 600 lines | 800 lines |
-| Hooks | 100 lines | 150 lines | 200 lines |
-| Services | 100 lines | 150 lines | 200 lines |
-| Utils | 100 lines | 150 lines | 150 lines |
-
-Files over the hard limit must be split before new features are added.
-
----
-
-## Import Path Convention
-
-With the modules structure, prefer clean imports via barrel files:
-
-```typescript
-// AVOID — deep relative path
-import { useContacts } from '../../../../portals/client/hooks/useContacts';
-
-// PREFER — domain-relative
-import { useContacts } from '../../hooks/useContacts';
-
-// FUTURE — barrel import (when barrel files are added)
-import { useContacts } from '@/modules/contacts/hooks';
-```
-
----
-
-## Currently Open Violations
-
-These files exist and work but violate the target structure. They are tracked as technical debt:
-
-| File | Lines | Violation | Priority |
-|---|---|---|---|
-| `portals/client/pages/pipeline/PipelinePage.tsx` | 3,224 | God file — 8+ concerns | HIGH |
-| `portals/client/pages/users/UsersPage.tsx` | 2,822 | God file — roles + users + permissions | HIGH |
-| `store/DataContext.tsx` | 1,894 | God context — all domains in one file | HIGH |
-| `portals/client/pages/settings/SettingsPage.tsx` | 1,836 | God file — 5+ settings domains | MEDIUM |
-| `portals/client/pages/campaigns/CampaignsPage.tsx` | 1,378 | Mixed concerns | MEDIUM |
-| `portals/admin/pages/AdminConsole.tsx` | 1,356 | All admin views in one file | MEDIUM |
-| `portals/client/pages/settings/ProfileSettingsPage.tsx` | 1,299 | Multiple settings sections | MEDIUM |
-| `store/mockData.ts` | 1,295 | All domain seed data in one file | LOW |
+### Shared
+- Types, RBAC constants, API contracts, and Zod schemas defined once in `shared/`
+- Both frontend and backend import from `@leadcrm/shared`
+- Never duplicate type definitions across packages
