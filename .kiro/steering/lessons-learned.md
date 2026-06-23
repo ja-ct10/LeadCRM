@@ -159,3 +159,18 @@ Missing this causes files to copy with unfixed import depths that silently work 
 When moving a file to `modules/<domain>/pages/`, leave a one-line re-export shim at the old path.
 All callers (App.tsx etc.) keep working unchanged until explicitly updated.
 Also recount import depth: `portals/client/pages/x/` = 4 levels, `modules/x/pages/` = 3 levels.
+
+### App Router Routing vs SPA Switch — Defer the Swap
+The project is a pure SPA using a `currentPath` string switch in `App.tsx`. Converting to App Router file-based routing is the correct long-term move but is the single highest-risk step in the restructuring. It can be deferred: move all files into the new folder structure first, keep `App.tsx` working as-is, then migrate to App Router routing as a separate sprint. Never do both the folder restructure and the routing change in the same pass.
+
+### Portal Separation Requires Physical Folder Split, Not Just Route Groups
+App Router route groups like `(client-admin)` and `(system-admin)` handle routing but don't prevent developers from importing across portals. The physical folder split — `portal/client/` and `portal/admin/` as separate top-level directories inside `frontend/` — is what enforces true isolation. Route groups and physical folders must both be used together.
+
+### Detail Views Stay as Drawers/Sheets — No `[id]` Routes Needed
+The project uses drawer/sheet pattern for contact, company, and deal detail views. There are no separate `contacts/[id]/page.tsx` routes. External structure templates always scaffold `[id]` routes — ignore them for this project. Adding `[id]` routes would require a full navigation model change.
+
+### Tailwind v4 Config File Must Not Exist in the Restructured Project
+When restructuring, do NOT create `tailwind.config.ts` or `tailwind.config.js`. The project uses Tailwind v4 with `@import "tailwindcss"` in CSS. Any structure template (ChatGPT, external guides) that lists `tailwind.config.ts` is wrong for this stack — omit it.
+
+### `modules/` Not `features/` Is the Established Domain Naming Convention
+External structure templates use `features/crm/contacts/`. This project uses `modules/contacts/` (and will use `modules/crm/contacts/` after domain grouping). Always use `modules/` — it signals DDD domain ownership vs generic React feature organization. Do not rename to `features/` even if a template suggests it.

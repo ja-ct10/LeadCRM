@@ -68,17 +68,18 @@ Hooks fire automatically when events happen — no command needed. They enforce 
 
 | Hook File | Triggers When | What It Does |
 |---|---|---|
-| `activate-on-prompt.kiro.hook` | Every chat message | Silently routes to correct skills based on work type |
-| `activate-on-task.kiro.hook` | Before any spec task starts | Runs Phase 0 research, classifies severity, activates skills |
-| `typecheck-on-edit.kiro.hook` | `.ts`/`.tsx` file saved | Scans for type errors, `any` usage, missing return types |
-| `auto-format.kiro.hook` | `.ts`/`.tsx`/`.js` file saved | Fixes formatting issues (indentation, import order) |
-| `console-log-check.kiro.hook` | `.ts`/`.tsx`/`.js` file saved | Removes `console.log` — replaces with `toast` where needed |
+| `activate-on-task.kiro.hook` | Before any spec task starts | Prints activation header, runs Phase 0 context scan, classifies severity |
 | `code-review-on-write.kiro.hook` | After any file write | Quick security + quality scan on written code |
+| `console-log-check.kiro.hook` | `.ts`/`.tsx`/`.js` file saved | Removes `console.log` — replaces with `toast` where needed |
 | `tdd-reminder.kiro.hook` | New `.ts`/`.tsx` file created | Reminds to write the failing test before implementing |
-| `security-check-on-create.kiro.hook` | New file in `auth/`, `api/`, `store/` | Security audit on sensitive new files |
+| `security-check-on-create.kiro.hook` | New file in `auth/`, `api/`, `middleware/`, `store/` | Security audit on sensitive new files |
 | `quality-gate.kiro.hook` | Manual trigger | Full 5-gate quality check before committing |
-| `session-summary.kiro.hook` | Session ends | 2–3 sentence summary of what was done |
-| `extract-patterns.kiro.hook` | Session ends | Suggests new entries for `lessons-learned.md` |
+| `session-wrap.kiro.hook` | Session ends | 2–3 sentence summary + suggests `lessons-learned.md` entries in one response |
+| `session-summary.kiro.hook` | Session ends *(disabled)* | Superseded by `session-wrap` |
+| `extract-patterns.kiro.hook` | Session ends *(disabled)* | Superseded by `session-wrap` |
+| `sync-readme.kiro.hook` | Any `.kiro` file edited | Reviews and updates `ReadMe-Kiro.md` sections that are out of date |
+| `sync-readme-on-create.kiro.hook` | New file added to `.kiro` | Adds the new file to the correct section in `ReadMe-Kiro.md` |
+| `sync-readme-on-delete.kiro.hook` | File deleted from `.kiro` | Removes the deleted file's entry from `ReadMe-Kiro.md` |
 
 ### How to Trigger the Quality Gate Manually
 
