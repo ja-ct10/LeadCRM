@@ -1,0 +1,13 @@
+{
+  "name": "Session Wrap",
+  "version": "1.0.0",
+  "enabled": true,
+  "description": "After every agent session ends: summarizes what was accomplished and suggests any patterns worth capturing in lessons-learned.md. Replaces session-summary and extract-patterns hooks.",
+  "when": {
+    "type": "agentStop"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "The agent session just ended. Do two things in one response:\n\n**1. Session Summary (2-3 sentences)**\nWhat was accomplished? Focus on concrete outcomes: files created/modified, problems solved, decisions made.\n\n**2. Lessons Learned**\nWas there anything non-obvious discovered? Any gotcha, pattern, naming convention, or architectural decision a future developer should know?\n- If YES — suggest adding it to `.kiro/steering/lessons-learned.md` using this format:\n  ### [Pattern Name]\n  Brief description. Code example if helpful.\n- If NO — say \"Nothing new to capture this session.\"\n\nKeep the entire response under 12 lines."
+  }
+}

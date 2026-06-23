@@ -285,15 +285,18 @@ The project is being incrementally migrated from the current structure to the ta
 | Phase | Status | Description |
 |---|---|---|
 | A — Folder Scaffolding | ✅ Complete | Target directories created |
-| B — mockData Split | 🔲 Pending | Split 1,295-line mockData.ts by domain |
-| C1 — Tasks Domain | 🔲 Pending | Extract TaskBoard (526 lines) |
-| C2 — Reports Domain | 🔲 Pending | Extract ReportsPage (208 lines) |
-| C3 — Campaigns Domain | 🔲 Pending | Split CampaignsPage (1,378 lines) |
-| C4 — Workflows Domain | 🔲 Pending | Split WorkflowsPage (1,102 lines) |
-| C5 — Contacts Domain | 🔲 Pending | Split contact components |
-| C6 — Settings Domain | 🔲 Pending | Split SettingsPage (1,836 lines) |
-| C7 — Users Domain | 🔲 Pending | Split UsersPage (2,822 lines) |
-| C8 — Pipeline Domain | 🔲 Pending | Split PipelinePage (3,224 lines) |
+| B — mockData Split | ✅ Complete | 1,295-line mockData.ts split into 6 domain files + barrel + shim |
+| C1 — Tasks Domain | ✅ Complete | TaskBoard → modules/tasks/pages/ |
+| C2 — Reports Domain | ✅ Complete | ReportsPage → modules/reports/pages/ |
+| C3 — Audit Domain | ✅ Complete | AuditLogsPage → modules/audit/pages/ |
+| C4 — Campaigns Domain | ✅ Complete | CampaignsPage + CampaignReportView → modules/campaigns/pages/ |
+| C5 — Workflows Domain | ✅ Complete | WorkflowsPage + 2 modals → modules/workflows/pages/ |
+| C6 — Service Orders Domain | ✅ Complete | ServiceOrdersPage + AssetsPage + InventoryPage + TechnicianDashboard → modules/service-orders/pages/ |
+| C7 — Billing Domain | ✅ Complete | BillingPage + ClientBillingPage → modules/billing/pages/ |
+| C8 — Contacts Domain | ✅ Complete | ContactsPage + 4 siblings → modules/contacts/pages/ |
+| C9 — Settings Domain | ✅ Complete | SettingsPage + ProfileSettingsPage + AccountDetailsPage → modules/settings/pages/ |
+| C10 — Users Domain | ✅ Complete | UsersPage → modules/users/pages/ |
+| C11 — Pipeline Domain | 🔲 Pending | PipelinePage (3,224 lines) — requires dnd-kit state analysis |
 
 ---
 

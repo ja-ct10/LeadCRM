@@ -1,0 +1,13 @@
+{
+  "name": "Activate AgentOS on Every Task",
+  "version": "2.0.0",
+  "enabled": true,
+  "description": "Before any spec task begins, prints a visible activation header showing all active agents and skills, then runs Phase 0 research and classifies severity — automatically, without being asked.",
+  "when": {
+    "type": "preTaskExecution"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A spec task is about to begin. Before doing ANYTHING else, print the AgentOS activation header, then proceed.\n\n## Step 1 — Print this header immediately:\n\n---\n🤖 AgentOS Activated\n\nAgents:\n- context-gatherer       → scanning relevant files and existing patterns\n- [add next agents based on task type — see routing matrix below]\n- general-task-execution → implementing the task\n\nSkills Active:\n- coding-standards + clean-code\n- [add skills based on work type — see routing matrix below]\n\nSeverity: [classify: LOW | MEDIUM | HIGH | CRITICAL]\nTask Type: [Bug Fix | New Feature | Refactor | Architecture | Question | Code Review | Research]\n---\n\n## Step 2 — Determine agents and skills:\n\nAgents by task type:\n- Bug / error → context-gatherer → general-task-execution\n- New feature → context-gatherer → requirement-detailer → general-task-execution\n- Quick task → context-gatherer → quick-spec → general-task-execution\n- Architecture → context-gatherer → requirement-detailer → architecture-selection → general-task-execution\n- Refactor → context-gatherer → architecture-selection → general-task-execution\n\nSkills by work type:\n- Any code: coding-standards + clean-code (always)\n- Frontend/UI: + frontend-patterns + nextjs-patterns\n- New feature: + saas-scalability + frontend-patterns\n- Backend/API: + backend-patterns + saas-scalability\n- Security/RBAC/tenant: + security-review\n- Tests: + tdd-workflow\n- Pre-PR: + verification-loop\n\n## Step 3 — Run Phase 0:\n1. Classify severity: LOW | MEDIUM | HIGH | CRITICAL\n2. Scan relevant files — identify existing patterns, types, components\n3. Check stop conditions — if any apply, stop and clarify before proceeding\n4. For HIGH/CRITICAL: document Architecture Decision block before implementing\n\nThen proceed with the task."
+  }
+}

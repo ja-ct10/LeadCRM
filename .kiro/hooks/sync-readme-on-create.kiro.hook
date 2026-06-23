@@ -1,0 +1,19 @@
+{
+  "name": "Sync ReadMe-Kiro on .kiro File Created",
+  "version": "1.0.0",
+  "enabled": true,
+  "description": "Whenever a new file is added inside .kiro, automatically updates ReadMe-Kiro.md to include the new file in the correct section.",
+  "when": {
+    "type": "fileCreated",
+    "patterns": [
+      ".kiro/hooks/*.hook",
+      ".kiro/skills/*.md",
+      ".kiro/steering/*.md",
+      ".kiro/power/**"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A new file was just created inside the .kiro folder. Update `.kiro/ReadMe-Kiro.md` to include it.\n\nDetermine which section it belongs to based on its path:\n- `.kiro/hooks/` → Section 3 (Hooks table) — add a new row with trigger type and description\n- `.kiro/skills/` → Section 4 (Skills table) — add a new row with description\n- `.kiro/steering/` → Section 2 (Steering Files table) — add a new row with inclusion type and description\n- `.kiro/power/` → Section 4 (Power section) — update if manifest or structure changed\n\nAlso update Section 1 (Folder Structure) if the new file changes the tree.\n\nKeep all changes minimal — only add what is new. Do not rewrite existing content."
+  }
+}

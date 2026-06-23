@@ -1,3 +1,8 @@
+---
+inclusion: auto
+description: LeadCRM AgentOS — supreme authority for all AI-assisted work. Defines all phases, agent routing, skill activation, stop conditions, and required response format. Auto-loaded in every conversation.
+---
+
 # LeadCRM — Agent Operating System (AgentOS)
 
 > This document is the **supreme authority** for all AI-assisted work in this codebase. No task — regardless of size — may bypass this system. Every action begins here.
@@ -95,23 +100,30 @@ No implementation begins until this block is complete.
 
 ## PHASE 1 — AGENT ACTIVATION SYSTEM
 
-Every response must begin with a declared agent activation header.
+**Every response MUST begin with a visible activation header — automatically, without being asked.**
+This header is printed before any analysis, code, explanation, or output.
 
-### Required Header Format
+### Required Header Format — ALWAYS SHOWN
 
-```markdown
-# Skills & Agents Activated
-
-## Agent Skills Used
-- `context-gatherer` → scanned [list files/directories]
-- `requirement-detailer` → defined [N] requirements with acceptance criteria
-- `general-task-execution` → implemented [brief description]
-
-## Kiro Skills Activated
-- `coding-standards`
-- `clean-code`
-- `frontend-patterns`
 ```
+---
+🤖 AgentOS Activated
+
+Agents:
+- context-gatherer     → [what was / will be scanned]
+- [next agent]         → [what it does for this task]
+- general-task-execution → [what will be implemented or answered]
+
+Skills Active:
+- coding-standards + clean-code
+- [additional skills based on work type]
+
+Severity: LOW | MEDIUM | HIGH | CRITICAL
+Task Type: Bug Fix | New Feature | Refactor | Architecture | Question | Code Review | Research
+---
+```
+
+This header is **non-negotiable**. It appears on every response — questions, code changes, reviews, research, everything. It confirms which agents and skills are governing the current work.
 
 ### Agent Routing Matrix
 
@@ -119,20 +131,35 @@ Every response must begin with a declared agent activation header.
 |---|---|
 | Bug investigation / unknown area | `context-gatherer` → `general-task-execution` |
 | New feature or module | `context-gatherer` → `requirement-detailer` → `general-task-execution` |
+| Quick task breakdown / spec | `context-gatherer` → `quick-spec` → `general-task-execution` |
 | Architecture decision | `context-gatherer` → `requirement-detailer` → `architecture-selection` → `general-task-execution` |
 | Refactor existing code | `context-gatherer` → `architecture-selection` → `general-task-execution` |
 | Multi-file error fix | `context-gatherer` → `general-task-execution` |
 | Spec-driven feature | `context-gatherer` → `requirement-detailer` → `general-task-execution` |
+| Pure question / explanation | *(no agents — answer directly)* |
+
+### Skill Routing Matrix
+
+| Work Type | Skills to Activate |
+|---|---|
+| Any code at all | `coding-standards` + `clean-code` |
+| Frontend / UI / component | + `frontend-patterns` + `nextjs-patterns` |
+| New feature or module | + `saas-scalability` + `frontend-patterns` |
+| API or backend work | + `backend-patterns` + `saas-scalability` |
+| Security / auth / RBAC / tenant | + `security-review` |
+| Testing / TDD | + `tdd-workflow` |
+| Before PR / task complete | + `verification-loop` |
+| Full project error fix | all skills |
 
 ### Agent Definitions
 
-**`context-gatherer`** — The first agent to run — always, without exception.
+**`context-gatherer`** — Always runs first. No exceptions.
 - Scan all files relevant to the task
 - Identify imports, exports, and re-exports
 - Map component relationships and data flow
 - Discover existing patterns to reuse
 - Find already-solved implementations that prevent duplication
-- Output required: Context Analysis block, list of affected files, list of dependencies, risk level with justification
+- Output: Context Analysis block, affected files list, dependencies, risk level
 
 **`requirement-detailer`** — Converts vague requests into engineering contracts.
 - Decompose the request into clear, testable requirements
@@ -150,9 +177,21 @@ Output required:
   - [ ] ...
   - [ ] ...
 - Edge Cases: ...
+```
 
-### Requirement 2 — [Title]
-...
+**`quick-spec`** — Fast task breakdown for well-understood, lower-complexity work.
+- Identify the 2–4 key things that need to happen
+- List files that will change
+- Confirm no stop conditions apply
+- Skip full requirement-detailer ceremony for LOW/MEDIUM severity tasks
+
+Output required:
+```markdown
+## Quick Spec
+- [ ] [thing 1 that needs to happen]
+- [ ] [thing 2 that needs to happen]
+- Files: [list]
+- Risk: LOW | MEDIUM
 ```
 
 **`architecture-selection`** — Prevents over-engineering and wrong-pattern choices.
@@ -174,10 +213,6 @@ Output required:
 - Approach: ...
 - Pros: ...
 - Cons: ...
-
-### Selected: Option [X]
-Reason: [one clear paragraph]
-```
 
 **`general-task-execution`** — The implementation agent. Runs only after all prior agents are complete.
 - Implement, fix, or refactor based on gathered context and confirmed requirements
@@ -591,36 +626,56 @@ Classify every task before starting. Higher severity = more phases required befo
 
 ## PHASE 7 — REQUIRED RESPONSE FORMAT
 
-Every task completion must use this format:
+**Every response — regardless of size or type — begins with the activation header.**
+This is automatic. It is never skipped. It is printed before any other content.
+
+### STEP 1 — Activation Header (always first)
+
+```
+---
+🤖 AgentOS Activated
+
+Agents:
+- context-gatherer       → [what was scanned / will be scanned]
+- requirement-detailer   → [requirements defined] (if applicable)
+- quick-spec             → [task breakdown] (if applicable)
+- architecture-selection → [options evaluated] (if applicable)
+- general-task-execution → [what was / will be implemented]
+
+Skills Active:
+- coding-standards + clean-code
+- [frontend-patterns + nextjs-patterns] (if frontend work)
+- [saas-scalability] (if feature/data work)
+- [backend-patterns] (if API/backend work)
+- [security-review] (if auth/RBAC/tenant work)
+- [tdd-workflow] (if testing work)
+- [verification-loop] (if pre-PR/task complete)
+
+Severity: LOW | MEDIUM | HIGH | CRITICAL
+Task Type: Bug Fix | New Feature | Refactor | Architecture | Question | Code Review | Research
+---
+```
+
+### STEP 2 — Body (after header)
 
 ```markdown
-# Skills & Agents Activated
-
-## Agent Skills Used
-- `context-gatherer` → [what was scanned]
-- `requirement-detailer` → [what was defined] (if applicable)
-- `architecture-selection` → [what was evaluated] (if applicable)
-- `general-task-execution` → [what was implemented]
-
-## Kiro Skills Activated
-- `coding-standards`
-- `clean-code`
-- [additional skills]
-
----
-
 ## Context Analysis
-[Phase 0 block]
+[Phase 0 block — always present for code tasks]
 
 ---
 
 ## Requirements
-[Phase 1 requirement-detailer output, if applicable]
+[requirement-detailer output — if applicable]
+
+---
+
+## Quick Spec
+[quick-spec output — if applicable]
 
 ---
 
 ## Architecture Decision
-[Phase 1 architecture-selection output, if applicable]
+[architecture-selection output — if applicable]
 
 ---
 
@@ -647,10 +702,13 @@ Every task completion must use this format:
 - [ ] Dark Mode Applied
 
 ## Risk Assessment
-
-**Level:** LOW | MEDIUM | HIGH
+**Level:** LOW | MEDIUM | HIGH | CRITICAL
 **Reason:** [one sentence]
 ```
+
+### For pure questions / explanations (no code)
+
+Still print the header — use `Task Type: Question` and list only `context-gatherer` if files were read, or mark agents as `N/A` if it was a conceptual answer. Then answer directly.
 
 ---
 

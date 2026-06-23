@@ -1,5 +1,5 @@
 {
-  "enabled": true,
+  "enabled": false,
   "name": "Extract Patterns to Lessons Learned",
   "description": "After every agent session ends, suggests patterns worth capturing in lessons-learned.md to build team knowledge over time.",
   "version": "1",
