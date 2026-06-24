@@ -1,3 +1,4 @@
 ﻿import { z } from 'zod';
 // TODO: define pipeline DTOs and Zod validation schemas
-export const Create pipeline.Value[0].ToString().ToUpper() ipelineSchema = z.object({});
+// Pattern: see backend/src/modules/crm/contacts/contacts.dto.ts
+export const CreatePipelineSchema = z.object({});

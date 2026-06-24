@@ -24,7 +24,7 @@ export async function addAuditLog(dto: AuditLogDto): Promise<void> {
         action: dto.action,
         entityType: dto.entityType,
         entityId: dto.entityId,
-        metadata: dto.metadata ?? {},
+        metadata: (dto.metadata ?? {}) as object,
       },
     });
   } catch (err) {

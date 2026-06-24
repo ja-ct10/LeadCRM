@@ -1,11 +1,11 @@
-'use client';
+﻿'use client';
 import React, { useState } from 'react';
 import {
   LayoutDashboard, Building2, CreditCard, Receipt,
   Activity, LogOut, Shield, Sun, Moon, Menu, X
 } from 'lucide-react';
-import { useAuth } from '../../../../store/AuthContext';
-import { useTheme } from '../../../../shared/hooks/useTheme';
+import { useAuth } from '../../../store/AuthContext';
+import { useTheme } from '../../../shared/hooks/useTheme';
 import { toast } from 'sonner';
 
 interface AdminLayoutProps {
@@ -25,7 +25,7 @@ const NAV_ITEMS = [
 
 /**
  * Dedicated sidebar + topbar layout for System Admin (LeadCRM operator).
- * Completely separate from CrmLayout — different nav, different colour identity.
+ * Completely separate from CrmLayout â€” different nav, different colour identity.
  */
 export default function AdminLayout({ children, currentPath, navigate }: AdminLayoutProps) {
   const { user, logout } = useAuth();
@@ -48,7 +48,7 @@ export default function AdminLayout({ children, currentPath, navigate }: AdminLa
         />
       )}
 
-      {/* ── Sidebar ─────────────────────────────────────────────── */}
+      {/* â”€â”€ Sidebar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <aside className={`
         fixed lg:static inset-y-0 left-0 z-50 w-64
         bg-[#0B1120] border-r border-slate-800
@@ -120,7 +120,7 @@ export default function AdminLayout({ children, currentPath, navigate }: AdminLa
         </div>
       </aside>
 
-      {/* ── Main content ─────────────────────────────────────────── */}
+      {/* â”€â”€ Main content â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
         {/* Topbar */}

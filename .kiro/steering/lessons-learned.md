@@ -183,3 +183,9 @@ The `src/modules/` folder was a half-migrated copy of pages from `portals/client
 
 ### Monorepo Shared Package Is `@leadcrm/shared`
 Types, RBAC constants (roles, permissions), API contracts, and Zod validation schemas all live in `shared/src/`. Both frontend and backend import from `@leadcrm/shared`. Never define these in both places — always import from the shared package. The tsconfig path alias `@leadcrm/shared` → `../shared/src/index.ts` is wired in `frontend/tsconfig.json`.
+
+### `prisma generate` Must Run Before Backend Can Start
+The `@prisma/client` package is not usable until `prisma generate` has been run at least once. On a fresh clone or after `npm install`, the backend will crash immediately with "PrismaClient did not initialize yet." Always run `npx prisma generate` inside `backend/` before the first `npm run dev`. Add this to any onboarding checklist.
+
+### Workspace `npm install` Hoists Packages — Frontend/Backend Have No Own `node_modules`
+npm workspaces hoist all dependencies to the root `node_modules/`. Running `npm install` inside `frontend/` or `backend/` subdirectories does nothing new — the root install covers them. The binaries (`next`, `express`, `ts-node-dev`, etc.) are all available from root `node_modules/.bin/`. Only run `npm install` from the monorepo root.

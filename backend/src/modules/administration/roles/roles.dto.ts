@@ -1,3 +1,4 @@
 ﻿import { z } from 'zod';
 // TODO: define roles DTOs and Zod validation schemas
-export const Create roles.Value[0].ToString().ToUpper() olesSchema = z.object({});
+// Pattern: see backend/src/modules/crm/contacts/contacts.dto.ts
+export const CreateRolesSchema = z.object({});

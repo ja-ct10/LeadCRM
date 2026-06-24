@@ -1,6 +1,6 @@
-import React from 'react';
+﻿import React from 'react';
 import { X, Zap, Plus } from 'lucide-react';
-import { Workflow } from '../../../../store/types';
+import { Workflow } from '../../../store/types';
 
 interface RecipeDefinition {
   name: string;

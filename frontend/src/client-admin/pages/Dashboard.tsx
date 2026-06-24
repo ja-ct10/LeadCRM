@@ -1,14 +1,14 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useAuth } from '../../../store/AuthContext';
-import { useData } from '../../../store/DataContext';
+﻿import React, { useState, useEffect, useMemo } from 'react';
+import { useAuth } from '../../store/AuthContext';
+import { useData } from '../../store/DataContext';
 import { Users, Briefcase, TrendingUp, DollarSign, Activity, ArrowUpRight, ArrowDownRight, LayoutDashboard, Check, Zap, RefreshCw } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, AreaChart, Area
-} from '../../../shared/components/charts/ChartComponents';
+} from '../../shared/components/charts/ChartComponents';
 import { Responsive } from 'react-grid-layout';
 import isEqual from 'lodash/isEqual';
-import DashboardSkeleton from '../../../shared/components/DashboardSkeleton';
+import DashboardSkeleton from '../../shared/components/DashboardSkeleton';
 import { toast } from 'sonner';
 
 function useMyContainerWidth() {
@@ -75,7 +75,7 @@ export default function Dashboard() {
     });
     setTimeout(() => {
       setIsLoading(false);
-      toast.success('All metrics and pipelines updated! ⚡📈');
+      toast.success('All metrics and pipelines updated! âš¡ðŸ“ˆ');
     }, 800);
   };
 
@@ -407,7 +407,7 @@ export default function Dashboard() {
         <div key="stat1" className="bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl shadow-lg flex flex-col justify-between group hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors h-full">
           <div className="flex justify-between items-start mb-4">
             <div className={`p-2.5 rounded-xl shadow-[0_0_15px_rgba(59,130,246,0.15)] group-hover:shadow-[0_0_20px_rgba(59,130,246,0.3)] transition-shadow flex items-center justify-center font-bold text-lg w-10 h-10 ${isClientAdmin ? 'bg-blue-500/10 text-blue-400' : 'bg-orange-500/10 text-orange-400'}`}>
-              {isClientAdmin ? '₱' : <Zap size={20} />}
+              {isClientAdmin ? 'â‚±' : <Zap size={20} />}
             </div>
           </div>
           <div>
@@ -415,7 +415,7 @@ export default function Dashboard() {
               {isClientAdmin ? 'Total Revenue' : 'My Hot Leads'}
             </p>
             <p className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
-              {isClientAdmin ? `₱${totalRevenue > 0 ? totalRevenue.toLocaleString() : '328,000'}` : myHotLeads.length}
+              {isClientAdmin ? `â‚±${totalRevenue > 0 ? totalRevenue.toLocaleString() : '328,000'}` : myHotLeads.length}
             </p>
           </div>
         </div>
@@ -423,7 +423,7 @@ export default function Dashboard() {
         <div key="stat2" className="bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl shadow-lg flex flex-col justify-between group hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors h-full">
           <div className="flex justify-between items-start mb-4">
             <div className={`p-2.5 rounded-xl shadow-[0_0_15px_rgba(16,185,129,0.15)] group-hover:shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-shadow flex items-center justify-center font-bold text-lg w-10 h-10 ${isClientAdmin ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
-              {isClientAdmin ? '₱' : <Activity size={20} />}
+              {isClientAdmin ? 'â‚±' : <Activity size={20} />}
             </div>
           </div>
           <div>
@@ -431,7 +431,7 @@ export default function Dashboard() {
               {isClientAdmin ? 'Forecasted Revenue' : 'Pending Tasks'}
             </p>
             <p className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
-              {isClientAdmin ? `₱${Math.round(forecastedRevenue).toLocaleString()}` : myPendingTasks.length}
+              {isClientAdmin ? `â‚±${Math.round(forecastedRevenue).toLocaleString()}` : myPendingTasks.length}
             </p>
           </div>
         </div>
@@ -512,7 +512,7 @@ export default function Dashboard() {
           </div>
           <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-3">
             {myPendingTasks.length === 0 && myHotLeads.length === 0 ? (
-               <div className="text-center text-slate-500 py-8 text-sm">You are all caught up! ✨</div>
+               <div className="text-center text-slate-500 py-8 text-sm">You are all caught up! âœ¨</div>
             ) : null}
             
             {myPendingTasks.map(task => (
@@ -529,7 +529,7 @@ export default function Dashboard() {
               <div key={lead.id} className="p-3 rounded-xl bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/30">
                 <div className="flex justify-between items-start mb-1">
                   <span className="text-xs font-bold text-red-600 dark:text-red-400 uppercase tracking-wider flex items-center gap-1"><Zap size={10} /> Hot Lead</span>
-                  <span className="text-xs font-bold text-red-500">₱{lead.estimatedValue?.toLocaleString() || '0'}</span>
+                  <span className="text-xs font-bold text-red-500">â‚±{lead.estimatedValue?.toLocaleString() || '0'}</span>
                 </div>
                 <div className="text-sm font-semibold text-slate-900 dark:text-white">{lead.firstName} {lead.lastName}</div>
                 <div className="text-xs text-slate-500">{lead.companyName || 'Individual'}</div>
@@ -562,14 +562,14 @@ export default function Dashboard() {
               <BarChart data={revenueData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                 <XAxis dataKey="name" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} dy={10} />
-                <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `₱${value / 1000}k`} dx={-10} />
+                <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value: number) => `â‚±${value / 1000}k`} dx={-10} />
                 <Tooltip 
                   contentStyle={{ backgroundColor: '#030712', borderColor: 'rgba(255,255,255,0.1)', color: '#f8fafc', borderRadius: '12px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)' }}
                   itemStyle={{ color: '#f8fafc' }}
                   cursor={{ fill: 'rgba(255,255,255,0.02)' }}
                 />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }} />
-                <Bar dataKey="revenue" name="Revenue (₱)" fill="#3B82F6" radius={[6, 6, 0, 0]} barSize={16} />
+                <Bar dataKey="revenue" name="Revenue (â‚±)" fill="#3B82F6" radius={[6, 6, 0, 0]} barSize={16} />
                 <Bar dataKey="deals" name="Deals Closed" fill="#8B5CF6" radius={[6, 6, 0, 0]} barSize={16} />
               </BarChart>
             </ResponsiveContainer>
@@ -589,7 +589,7 @@ export default function Dashboard() {
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-gray-200 dark:border-white/[0.05] flex items-center justify-center text-slate-900 dark:text-white font-bold">
                       {perf.user.firstName[0]}{perf.user.lastName[0]}
                     </div>
-                    {idx === 0 && <div className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-500 rounded-full border-2 border-[#0B1120] flex items-center justify-center text-[8px]">👑</div>}
+                    {idx === 0 && <div className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-500 rounded-full border-2 border-[#0B1120] flex items-center justify-center text-[8px]">ðŸ‘‘</div>}
                   </div>
                   <div>
                     <div className="text-sm font-medium text-slate-900 dark:text-white">{perf.user.firstName} {perf.user.lastName}</div>
@@ -597,7 +597,7 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm font-bold text-emerald-400">₱{perf.totalWonValue.toLocaleString()}</div>
+                  <div className="text-sm font-bold text-emerald-400">â‚±{perf.totalWonValue.toLocaleString()}</div>
                   <div className="text-xs text-slate-500">{perf.activeDeals} active</div>
                 </div>
               </div>
@@ -667,12 +667,12 @@ export default function Dashboard() {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                 <XAxis dataKey="name" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} dy={10} />
-                <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `₱${value / 1000}k`} dx={-10} />
+                <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value: number) => `â‚±${value / 1000}k`} dx={-10} />
                 <Tooltip 
                   contentStyle={{ backgroundColor: '#030712', borderColor: 'rgba(255,255,255,0.1)', color: '#f8fafc', borderRadius: '12px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)' }}
                   itemStyle={{ color: '#f8fafc' }}
                 />
-                <Area type="monotone" dataKey="revenue" name="Revenue (₱)" stroke="#3B82F6" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" activeDot={{ r: 6, strokeWidth: 0, fill: '#3B82F6' }} />
+                <Area type="monotone" dataKey="revenue" name="Revenue (â‚±)" stroke="#3B82F6" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" activeDot={{ r: 6, strokeWidth: 0, fill: '#3B82F6' }} />
               </AreaChart>
             </ResponsiveContainer>
           </div>

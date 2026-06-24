@@ -1,6 +1,6 @@
-'use client';
+﻿'use client';
 import { useMemo } from 'react';
-import { Contact, Deal, Task, Campaign } from '../../../store/types';
+import { Contact, Deal, Task, Campaign } from '../../store/types';
 
 interface UseDashboardOptions {
   contacts: Contact[];

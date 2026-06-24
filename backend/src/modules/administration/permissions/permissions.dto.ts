@@ -1,3 +1,4 @@
 ﻿import { z } from 'zod';
 // TODO: define permissions DTOs and Zod validation schemas
-export const Create permissions.Value[0].ToString().ToUpper() ermissionsSchema = z.object({});
+// Pattern: see backend/src/modules/crm/contacts/contacts.dto.ts
+export const CreatePermissionsSchema = z.object({});

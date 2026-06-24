@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { useData } from '../../../../store/DataContext';
-import { useAuth } from '../../../../store/AuthContext';
+﻿import React, { useState } from 'react';
+import { useData } from '../../../store/DataContext';
+import { useAuth } from '../../../store/AuthContext';
 import { toast } from 'sonner';
 import { 
   Plus, MoreHorizontal, X, Building, Calendar, 
@@ -33,14 +33,14 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Deal, Stage, Pipeline } from '../../../../store/types';
+import { Deal, Stage, Pipeline } from '../../../store/types';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell
-} from '../../../../shared/components/charts/ChartComponents';
+} from '../../../shared/components/charts/ChartComponents';
 import { TrendingUp, AlertTriangle } from 'lucide-react';
-import { TrelloFilter } from '../../../../shared/components/TrelloFilter';
-import EmptyState from '../../../../shared/components/EmptyState';
+import { TrelloFilter } from '../../../shared/components/TrelloFilter';
+import EmptyState from '../../../shared/components/EmptyState';
 
 interface SortableDealCardProps {
   key?: any;
@@ -487,7 +487,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
         const automationNote = {
           id: 'auto_' + Date.now(),
           type: 'note' as const,
-          description: `🤖 AUTOMATION TRIGGER: Stage advanced automatically from "${oldStageName}" to "${targetStage.name}" after satisfying all digital workflows.`,
+          description: `ðŸ¤– AUTOMATION TRIGGER: Stage advanced automatically from "${oldStageName}" to "${targetStage.name}" after satisfying all digital workflows.`,
           timestamp: new Date().toISOString(),
           userId: 'system'
         };
@@ -2149,7 +2149,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                         <div className="flex items-center gap-1.5 font-sans">
                           <span>{col.label}</span>
                           <span className="text-slate-350 dark:text-slate-700">
-                            {isSorted ? (tableSortAsc ? '↑' : '↓') : '↕'}
+                            {isSorted ? (tableSortAsc ? 'â†‘' : 'â†“') : 'â†•'}
                           </span>
                         </div>
                       </th>
@@ -2183,7 +2183,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                         )}
                       </td>
                       <td className="p-4 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                        {deal.companyName || '—'}
+                        {deal.companyName || 'â€”'}
                       </td>
                       <td className="p-4 text-xs font-bold text-slate-900 dark:text-white">
                         ${deal.value ? deal.value.toLocaleString() : '0'}
@@ -2206,17 +2206,17 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                         )}
                       </td>
                       <td className="p-4 text-xs text-slate-500">
-                        {deal.expectedCloseDate ? new Date(deal.expectedCloseDate).toLocaleDateString() : '—'}
+                        {deal.expectedCloseDate ? new Date(deal.expectedCloseDate).toLocaleDateString() : 'â€”'}
                       </td>
                       <td className="p-4 text-xs text-slate-505">
                         {deal.leadSource ? (
                           <span className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold px-2 py-0.5 rounded-md">
                             {deal.leadSource}
                           </span>
-                        ) : '—'}
+                        ) : 'â€”'}
                       </td>
                       <td className="p-4 text-xs text-slate-505">
-                        {deal.customerType || '—'}
+                        {deal.customerType || 'â€”'}
                       </td>
                       <td className="p-4">
                         <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border
@@ -2723,23 +2723,23 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                               </span>
                             </div>
                             <div className="flex items-center justify-between text-sm">
-                              <span className="text-slate-500 dark:text-slate-400 flex items-center gap-2">🌐 Contact Source</span>
-                              <span className="text-slate-900 dark:text-white font-medium">{selectedDeal.leadSource || '—'}</span>
+                              <span className="text-slate-500 dark:text-slate-400 flex items-center gap-2">ðŸŒ Contact Source</span>
+                              <span className="text-slate-900 dark:text-white font-medium">{selectedDeal.leadSource || 'â€”'}</span>
                             </div>
                             <div className="flex items-center justify-between text-sm">
-                              <span className="text-slate-500 dark:text-slate-400 flex items-center gap-2">🏭 Industry</span>
-                              <span className="text-slate-900 dark:text-white font-medium">{selectedDeal.industry || '—'}</span>
+                              <span className="text-slate-500 dark:text-slate-400 flex items-center gap-2">ðŸ­ Industry</span>
+                              <span className="text-slate-900 dark:text-white font-medium">{selectedDeal.industry || 'â€”'}</span>
                             </div>
                             <div className="flex items-center justify-between text-sm">
-                              <span className="text-slate-500 dark:text-slate-400 flex items-center gap-2">📍 Location</span>
-                              <span className="text-slate-900 dark:text-white font-medium">{selectedDeal.location || '—'}</span>
+                              <span className="text-slate-500 dark:text-slate-400 flex items-center gap-2">ðŸ“ Location</span>
+                              <span className="text-slate-900 dark:text-white font-medium">{selectedDeal.location || 'â€”'}</span>
                             </div>
                             <div className="flex items-center justify-between text-sm">
-                              <span className="text-slate-500 dark:text-slate-400 flex items-center gap-2">📣 Campaign</span>
-                              <span className="text-slate-900 dark:text-white font-medium">{selectedDeal.campaign || '—'}</span>
+                              <span className="text-slate-500 dark:text-slate-400 flex items-center gap-2">ðŸ“£ Campaign</span>
+                              <span className="text-slate-900 dark:text-white font-medium">{selectedDeal.campaign || 'â€”'}</span>
                             </div>
                             <div className="flex items-center justify-between text-sm">
-                              <span className="text-slate-500 dark:text-slate-400 flex items-center gap-2">👥 Customer Type</span>
+                              <span className="text-slate-500 dark:text-slate-400 flex items-center gap-2">ðŸ‘¥ Customer Type</span>
                               <span className="text-slate-907 dark:text-white font-medium">{selectedDeal.customerType || 'New Customer'}</span>
                             </div>
                             {selectedDeal.tags && (

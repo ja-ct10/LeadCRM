@@ -1,17 +1,17 @@
-'use client';
+﻿'use client';
 import React, { useState } from 'react';
 import {
   Search, Eye, UserX, UserCheck, CheckCircle, ChevronDown,
   ChevronLeft, ChevronRight, X
 } from 'lucide-react';
-import { useData } from '../../../../store/DataContext';
-import { Tenant } from '../../../../store/types';
+import { useData } from '../../../store/DataContext';
+import { Tenant } from '../../../store/types';
 import { useTenants } from '../../hooks/useTenants';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 
 /**
- * System Admin — Client Management page.
+ * System Admin â€” Client Management page.
  * Lists all tenant accounts with approve / suspend / activate actions.
  */
 export default function ClientManagement() {

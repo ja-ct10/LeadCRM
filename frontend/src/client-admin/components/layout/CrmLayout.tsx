@@ -1,14 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../../../../store/AuthContext';
-import { useData } from '../../../../store/DataContext';
-import { MOCK_USERS } from '../../../../store/mockData';
+﻿import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../../store/AuthContext';
+import { useData } from '../../../store/DataContext';
+import { MOCK_USERS } from '../../../store/mockData';
 import { 
   LayoutDashboard, Users, Briefcase, 
   Workflow, Mail, Settings, LogOut, Menu, X, Shield, Search, Bell, Wrench,
   Package, Receipt, Building2, CreditCard, Activity, ListTodo, Layers,
   Sun, Moon, StickyNote, ChevronDown, Check, Book, User
 } from 'lucide-react';
-import CommandPalette from '../../../../shared/components/CommandPalette';
+import CommandPalette from '../../../shared/components/CommandPalette';
 import NotesSidePanel from '../contacts/NotesSidePanel';
 import { toast } from 'sonner';
 

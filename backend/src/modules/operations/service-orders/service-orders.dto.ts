@@ -1,3 +1,4 @@
 ﻿import { z } from 'zod';
 // TODO: define service-orders DTOs and Zod validation schemas
-export const Create serviceorders.Value[0].ToString().ToUpper() erviceordersSchema = z.object({});
+// Pattern: see backend/src/modules/crm/contacts/contacts.dto.ts
+export const CreateServiceOrderSchema = z.object({});

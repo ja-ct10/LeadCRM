@@ -1,11 +1,11 @@
-'use client';
+﻿'use client';
 import React, { useState } from 'react';
 import { ChevronDown, DollarSign, Users, TrendingUp, UserCheck, UserX } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, Cell, LineChart, Line, PieChart, Pie, Legend
-} from '../../../../shared/components/charts/ChartComponents';
-import { useTheme } from '../../../../shared/hooks/useTheme';
+} from '../../../shared/components/charts/ChartComponents';
+import { useTheme } from '../../../shared/hooks/useTheme';
 
 const REVENUE_DATA = [
   { month: 'Jan', amount: 180000 }, { month: 'Feb', amount: 195000 },
@@ -56,7 +56,7 @@ const PAYMENT_STATUS = [
 ];
 
 /**
- * System Admin — Dashboard page.
+ * System Admin â€” Dashboard page.
  * Shows platform KPIs: MRR, client growth, churn, plan distribution.
  */
 export default function AdminDashboard() {
@@ -148,7 +148,7 @@ export default function AdminDashboard() {
   );
 }
 
-// ─── Local helpers ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Local helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function KpiCard({ icon, label, value, sub, badge }: { icon: React.ReactNode; label: string; value: string; sub: string; badge: string }) {
   return (

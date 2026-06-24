@@ -1,4 +1,4 @@
-import React, {
+﻿import React, {
   createContext,
   useContext,
   useState,
@@ -43,7 +43,7 @@ import {
   MOCK_ASSETS,
   MOCK_INVENTORY,
 } from "./mockData";
-import { evaluateWorkflowCondition } from "../modules/workflows/services/workflowConditionEvaluator";
+import { evaluateWorkflowCondition } from "../client-admin/pages/workflows/services/workflowConditionEvaluator";
 
 interface DataContextType {
   organizations: Organization[];
@@ -917,7 +917,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         updates.estimatedValue &&
         updates.estimatedValue !== original.estimatedValue
       ) {
-        changes.push(`value to ₱${updates.estimatedValue}`);
+        changes.push(`value to â‚±${updates.estimatedValue}`);
       }
       if (
         updates.assignedUserId &&
@@ -975,7 +975,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     saveAndSet("leadcrm_deals", newDeals, setDeals);
     addAuditLog(
       "Deal Created",
-      `Added a new deal '${newDeal.title}' (₱${newDeal.value.toLocaleString()}) for client '${newDeal.companyName}'.`,
+      `Added a new deal '${newDeal.title}' (â‚±${newDeal.value.toLocaleString()}) for client '${newDeal.companyName}'.`,
       newDeal.id,
     );
     runWorkflows("deal_created", { deal: newDeal });
@@ -1036,7 +1036,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         changes.push(`pipeline stage from '${oldName}' to '${newName}'`);
       }
       if (updates.value && updates.value !== original.value) {
-        changes.push(`revenue value to ₱${updates.value.toLocaleString()}`);
+        changes.push(`revenue value to â‚±${updates.value.toLocaleString()}`);
       }
       if (updates.priority && updates.priority !== original.priority) {
         changes.push(`priority to '${updates.priority}'`);

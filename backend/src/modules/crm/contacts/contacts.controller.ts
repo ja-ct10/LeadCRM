@@ -5,7 +5,10 @@ import * as service from './contacts.service';
 
 export async function getContacts(req: Request, res: Response, next: NextFunction) {
   try {
-    const result = await service.getContacts(req.user!.tenantId, req.query as Record<string, unknown>);
+    const result = await service.getContacts(
+      req.user!.tenantId,
+      req.query as Record<string, unknown>,
+    );
     res.json({ success: true, ...result });
   } catch (err) {
     next(err);
@@ -14,7 +17,8 @@ export async function getContacts(req: Request, res: Response, next: NextFunctio
 
 export async function getContactById(req: Request, res: Response, next: NextFunction) {
   try {
-    const contact = await service.getContactById(req.params.id, req.user!.tenantId);
+    const id = String(req.params.id);
+    const contact = await service.getContactById(id, req.user!.tenantId);
     res.json({ success: true, data: contact });
   } catch (err) {
     next(err);
@@ -23,7 +27,11 @@ export async function getContactById(req: Request, res: Response, next: NextFunc
 
 export async function createContact(req: Request, res: Response, next: NextFunction) {
   try {
-    const contact = await service.createContact(req.user!.tenantId, req.user!.userId, req.body);
+    const contact = await service.createContact(
+      req.user!.tenantId,
+      req.user!.userId,
+      req.body,
+    );
     res.status(201).json({ success: true, data: contact });
   } catch (err) {
     next(err);
@@ -32,8 +40,9 @@ export async function createContact(req: Request, res: Response, next: NextFunct
 
 export async function updateContact(req: Request, res: Response, next: NextFunction) {
   try {
+    const id = String(req.params.id);
     const contact = await service.updateContact(
-      req.params.id,
+      id,
       req.user!.tenantId,
       req.user!.userId,
       req.body,
@@ -46,7 +55,8 @@ export async function updateContact(req: Request, res: Response, next: NextFunct
 
 export async function archiveContact(req: Request, res: Response, next: NextFunction) {
   try {
-    await service.archiveContact(req.params.id, req.user!.tenantId, req.user!.userId);
+    const id = String(req.params.id);
+    await service.archiveContact(id, req.user!.tenantId, req.user!.userId);
     res.status(204).send();
   } catch (err) {
     next(err);

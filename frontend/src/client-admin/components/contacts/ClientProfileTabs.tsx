@@ -1,15 +1,15 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { 
   User, Mail, Phone, Building, FileText, ChevronRight, MapPin, Tag, Calendar, 
   Clock, Plus, CheckCircle, MessageSquare, Send, Bell, Shield, Layers, HelpCircle, Briefcase, Activity, Edit
 } from 'lucide-react';
-import { Contact, User as UserType, Deal, Task, Campaign } from '../../../../store/types';
+import { Contact, User as UserType, Deal, Task, Campaign } from '../../../store/types';
 import { ClientProfileFiles } from './ClientProfileFiles';
 import { ContactActivitiesTab } from './tabs/ContactActivitiesTab';
 import { ContactEmailTab } from './tabs/ContactEmailTab';
 import { ContactSmsTab } from './tabs/ContactSmsTab';
 import { toast } from 'sonner';
-import { getCRMStatusStyles, getCRMStatusStripColor } from '../../../../lib/utils';
+import { getCRMStatusStyles, getCRMStatusStripColor } from '../../../lib/utils';
 
 interface Props {
   selectedContact: Contact;
@@ -221,8 +221,8 @@ export const ClientProfileTabs = ({
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             {contact.customerType === 'Individual' 
-              ? '🏡 Residential Customer' 
-              : `${contact.jobTitle || 'Customer Client'} • ${contact.companyName}`}
+              ? 'ðŸ¡ Residential Customer' 
+              : `${contact.jobTitle || 'Customer Client'} â€¢ ${contact.companyName}`}
           </p>
           
           <div className="mt-4 flex flex-wrap justify-center gap-1">
@@ -308,23 +308,23 @@ export const ClientProfileTabs = ({
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <span className="text-slate-400 text-[10px] block">First Name</span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">{contact.firstName || contact.contactPerson.split(' ')[0] || '—'}</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">{contact.firstName || contact.contactPerson.split(' ')[0] || 'â€”'}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 text-[10px] block">Last Name</span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">{contact.lastName || contact.contactPerson.split(' ').slice(1).join(' ') || '—'}</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">{contact.lastName || contact.contactPerson.split(' ').slice(1).join(' ') || 'â€”'}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 text-[10px] block">Preferred Name</span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">{contact.preferredName || '—'}</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">{contact.preferredName || 'â€”'}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 text-[10px] block">Middle Name</span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">{contact.middleName || '—'}</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">{contact.middleName || 'â€”'}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 text-[10px] block">Suffix / Honorific</span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">{contact.suffix || '—'}</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">{contact.suffix || 'â€”'}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 text-[10px] block">Customer Type</span>
@@ -339,15 +339,15 @@ export const ClientProfileTabs = ({
                   <div className="space-y-2">
                     <div>
                       <span className="text-slate-400 text-[10px] block">Secondary Email</span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200 block truncate">{contact.secondaryEmail || '—'}</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200 block truncate">{contact.secondaryEmail || 'â€”'}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 text-[10px] block">Work Email</span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200 block truncate">{contact.workEmail || '—'}</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200 block truncate">{contact.workEmail || 'â€”'}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 text-[10px] block">Alternate Telephone</span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200 block">{contact.altPhone || '—'}</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200 block">{contact.altPhone || 'â€”'}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 text-[10px] block">LinkedIn URL</span>
@@ -368,29 +368,29 @@ export const ClientProfileTabs = ({
                     </div>
                     <div>
                       <span className="text-slate-400 text-[10px] block">Region / Province</span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">{contact.region || contact.province || '—'}</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">{contact.region || contact.province || 'â€”'}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 text-[10px] block">City / Municipality</span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">{contact.city || '—'}</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">{contact.city || 'â€”'}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 text-[10px] block">Barangay</span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">{contact.barangay || '—'}</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">{contact.barangay || 'â€”'}</span>
                     </div>
                     <div className="col-span-2">
                       <span className="text-slate-400 text-[10px] block">Street Address Details</span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">{contact.streetAddress || '—'}</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">{contact.streetAddress || 'â€”'}</span>
                     </div>
                     <div>
                       <span className="text-slate-400 text-[10px] block">Building / Suite / Unit</span>
                       <span className="font-semibold text-slate-800 dark:text-slate-200">
-                        {[contact.building, contact.floor, contact.unit].filter(Boolean).join(', ') || '—'}
+                        {[contact.building, contact.floor, contact.unit].filter(Boolean).join(', ') || 'â€”'}
                       </span>
                     </div>
                     <div>
                       <span className="text-slate-400 text-[10px] block">Postal Code</span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">{contact.postalCode || '—'}</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">{contact.postalCode || 'â€”'}</span>
                     </div>
                   </div>
                 </div>
@@ -577,7 +577,7 @@ export const ClientProfileTabs = ({
                       />
                       <div className="text-left">
                         <span className={`font-semibold ${t.status === 'completed' ? 'line-through text-slate-500' : 'text-slate-800 dark:text-slate-200'}`}>{t.title}</span>
-                        <div className="text-[10px] text-slate-500 mt-0.5">Due: {t.dueDate} • Priority: {t.priority}</div>
+                        <div className="text-[10px] text-slate-500 mt-0.5">Due: {t.dueDate} â€¢ Priority: {t.priority}</div>
                       </div>
                     </div>
                   </div>

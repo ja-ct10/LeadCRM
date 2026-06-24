@@ -366,7 +366,7 @@ export function PieChart({ children }: PieChartProps) {
 
   const p = pieProps as PieProps;
   const labels = p.data.map((d) => d.name);
-  const values = p.data.map((d) => d.value);
+  const values = p.data.map((d) => d.value ?? 0);
 
   // Collect Cell fill colors from Pie's children
   const cellColors: string[] = [];

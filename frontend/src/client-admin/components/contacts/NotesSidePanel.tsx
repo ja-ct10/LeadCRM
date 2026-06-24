@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useData } from '../../../../store/DataContext';
+﻿import React, { useState, useEffect, useMemo } from 'react';
+import { useData } from '../../../store/DataContext';
 import { 
   Pin, Trash2, Edit3, Plus, Search, X, Check, Copy, 
   FileText, Link2, User, Briefcase, Sparkles, StickyNote, RefreshCw
@@ -102,7 +102,7 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
       try {
         setNotes(JSON.parse(raw));
       } catch (_e) {
-        // Corrupted localStorage data — reset to empty notes list
+        // Corrupted localStorage data â€” reset to empty notes list
         localStorage.removeItem('leadcrm_quick_notes');
       }
     } else {
@@ -552,7 +552,7 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
                             : 'bg-gray-100 dark:bg-white/[0.03] hover:bg-gray-200 dark:hover:bg-white/[0.06]'
                         }`}
                       >
-                        {tab === 'All' ? 'All' : tab === 'Pinned' ? '📌 Pinned' : tab}
+                        {tab === 'All' ? 'All' : tab === 'Pinned' ? 'ðŸ“Œ Pinned' : tab}
                       </button>
                     );
                   })}

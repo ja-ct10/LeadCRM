@@ -1,8 +1,8 @@
-import React, { useMemo } from 'react';
-import { SlidingDrawer } from '../../../../shared/components/SlidingDrawer';
-import { Contact, Organization } from '../../../../store/types';
-import { useData } from '../../../../store/DataContext';
-import { getCRMStatusStyles } from '../../../../lib/utils';
+﻿import React, { useMemo } from 'react';
+import { SlidingDrawer } from '../../../shared/components/SlidingDrawer';
+import { Contact, Organization } from '../../../store/types';
+import { useData } from '../../../store/DataContext';
+import { getCRMStatusStyles } from '../../../lib/utils';
 import { AlertTriangle, Archive, Building, Briefcase, Calendar, CheckCircle, Clock, FileText, Mail, MapPin, Package, Phone, TrendingUp, User } from 'lucide-react';
 
 const formatDate = (dateString: string) => {

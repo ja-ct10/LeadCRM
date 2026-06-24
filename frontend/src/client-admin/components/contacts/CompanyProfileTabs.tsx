@@ -1,14 +1,14 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { 
   Building, Mail, Phone, FileText, ChevronRight, MapPin, Tag, Calendar, 
   Clock, Plus, CheckCircle, MessageSquare, Send, Bell, Shield, Layers, HelpCircle, Briefcase, Activity, Edit, Users, Globe
 } from 'lucide-react';
-import { Contact, Organization, User as UserType, Deal, Task, Campaign } from '../../../../store/types';
+import { Contact, Organization, User as UserType, Deal, Task, Campaign } from '../../../store/types';
 import { ContactActivitiesTab } from './tabs/ContactActivitiesTab';
 import { ContactEmailTab } from './tabs/ContactEmailTab';
 import { ContactSmsTab } from './tabs/ContactSmsTab';
 import { toast } from 'sonner';
-import { getCRMStatusStyles, getCRMStatusStripColor } from '../../../../lib/utils';
+import { getCRMStatusStyles, getCRMStatusStripColor } from '../../../lib/utils';
 
 
 
@@ -101,7 +101,7 @@ export const CompanyProfileTabs = ({
   useEffect(() => {
     const defaultActivities = [
       { id: 'e1', type: 'system', text: `Registered corporate directory node for ${selectedOrg.name} under ${selectedOrg.industry} industry sector.`, time: '5 days ago', user: 'System CRM Parser' },
-      { id: 'e2', type: 'system', text: `Rollup pipeline calculation established: $${selectedOrg.estimatedValue.toLocaleString()} across ${selectedOrg.contacts.length} representative personnel.`, time: 'Just now', user: 'System CRM Parser' },
+      { id: 'e2', type: 'system', text: `Rollup pipeline calculation established: $${(selectedOrg.estimatedValue ?? 0).toLocaleString()} across ${selectedOrg.contacts.length} representative personnel.`, time: 'Just now', user: 'System CRM Parser' },
       { id: 'e3', type: 'system', text: selectedOrg.repId ? `Mapped primary CRM staff handler.` : 'Registered as unassigned corporate portfolio.', time: '5 days ago', user: 'System CRM Parser' }
     ];
 
@@ -254,7 +254,7 @@ export const CompanyProfileTabs = ({
             {selectedOrg.name}
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            🏢 {selectedOrg.industry} • Corporate Account
+            ðŸ¢ {selectedOrg.industry} â€¢ Corporate Account
           </p>
           
           <div className="mt-4 flex flex-wrap justify-center gap-1">
@@ -280,7 +280,7 @@ export const CompanyProfileTabs = ({
               <Globe size={13} className="text-slate-400 shrink-0" />
               <span className="truncate text-slate-705 dark:text-slate-300 font-medium">
                 {selectedOrg.website !== 'N/A' ? (
-                  <a href={selectedOrg.website.startsWith('http') ? selectedOrg.website : `https://${selectedOrg.website}`} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">
+                  <a href={selectedOrg.website?.startsWith('http') ? selectedOrg.website : `https://${selectedOrg.website}`} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">
                     {selectedOrg.website}
                   </a>
                 ) : 'No website synced'}
@@ -302,12 +302,12 @@ export const CompanyProfileTabs = ({
         {/* Dynamic Financial Worth card */}
         <div className="bg-gradient-to-br from-indigo-900 to-slate-900 border border-slate-800 text-white rounded-2xl p-5 shadow-sm">
           <div className="text-[10px] uppercase font-bold tracking-wider text-indigo-250">Combined B2B Account Worth</div>
-          <div className="text-2xl font-bold mt-1.5 text-slate-100">${selectedOrg.estimatedValue.toLocaleString()}</div>
+          <div className="text-2xl font-bold mt-1.5 text-slate-100">${(selectedOrg.estimatedValue ?? 0).toLocaleString()}</div>
           <p className="text-[10px] text-slate-400 mt-1 leading-snug">Weighted based on aggregate contact files from personnel contacts.</p>
           
           <div className="border-t border-white/5 mt-4 pt-3 text-xs flex justify-between items-center text-slate-300">
             <span>Corporate Tier:</span>
-            <span className="font-semibold text-white">{selectedOrg.estimatedValue > 150000 ? 'Tier-1 Key Account' : 'Midmarket Entity'}</span>
+            <span className="font-semibold text-white">{(selectedOrg.estimatedValue ?? 0) > 150000 ? 'Tier-1 Key Account' : 'Midmarket Entity'}</span>
           </div>
         </div>
       </div>
@@ -328,8 +328,8 @@ export const CompanyProfileTabs = ({
               }`}
             >
               {tab === 'sms' ? 'SMS Messages' : 
-               tab === 'cascade' ? '🔄 Cascade Sync' : 
-               tab === 'contacts' ? '👥 Personnel Contacts' : 
+               tab === 'cascade' ? 'ðŸ”„ Cascade Sync' : 
+               tab === 'contacts' ? 'ðŸ‘¥ Personnel Contacts' : 
                tab === 'overview' ? 'Overview' : tab}
             </button>
           ))}
@@ -436,7 +436,7 @@ export const CompanyProfileTabs = ({
                   >
                     <div className="text-left space-y-0.5">
                       <span className="font-bold text-slate-900 dark:text-white block text-xs md:text-sm">{c.contactPerson}</span>
-                      <span className="text-[10px] text-slate-500 block font-semibold">{c.jobTitle || 'Representative Contact'} • {c.email || 'No email'}</span>
+                      <span className="text-[10px] text-slate-500 block font-semibold">{c.jobTitle || 'Representative Contact'} â€¢ {c.email || 'No email'}</span>
                     </div>
                     <button
                       type="button"
@@ -502,7 +502,7 @@ export const CompanyProfileTabs = ({
           {/* TAB 5: BROADCAST EMAIL */}
           {activeTab === 'emails' && (
             <ContactEmailTab
-              contactEmail={`[Broadcast → all ${selectedOrg.contacts.length} contacts of ${selectedOrg.name}]`}
+              contactEmail={`[Broadcast â†’ all ${selectedOrg.contacts.length} contacts of ${selectedOrg.name}]`}
               templates={EMAIL_TEMPLATES}
               emailSubject={emailSubject}
               emailBody={emailBody}
@@ -593,7 +593,7 @@ export const CompanyProfileTabs = ({
                         <span className={`font-bold block ${t.status === 'completed' ? 'line-through text-slate-400' : 'text-slate-900 dark:text-white'}`}>{t.title}</span>
                         <div className="flex items-center gap-2 text-[9px] text-slate-400 mt-0.5 font-semibold">
                           <span>Due: {t.dueDate}</span>
-                          <span>•</span>
+                          <span>â€¢</span>
                           <span className={`px-1.5 py-0.2 rounded ${
                             t.priority === 'High' ? 'bg-red-500/10 text-red-500' :
                             t.priority === 'Medium' ? 'bg-amber-500/10 text-amber-500' :
@@ -630,7 +630,7 @@ export const CompanyProfileTabs = ({
                       <span className="font-bold text-slate-900 dark:text-white block text-sm">{d.title}</span>
                       <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-500 font-semibold">
                         <span>Contact Rep Contact: {d.contactPerson || 'General'}</span>
-                        <span>•</span>
+                        <span>â€¢</span>
                         <span className="text-slate-400">Owner User ID: {d.assignedUserId || 'System'}</span>
                       </div>
                     </div>
@@ -656,7 +656,7 @@ export const CompanyProfileTabs = ({
           {activeTab === 'cascade' && (
             <div className="space-y-4 text-left animate-in fade-in duration-100">
               <h4 className="font-bold text-slate-900 dark:text-white text-xs border-b border-gray-150 dark:border-white/5 pb-1.5 uppercase tracking-wider font-sans flex items-center gap-1.5">
-                <span>🔄 Cascade sync company-wide updates</span>
+                <span>ðŸ”„ Cascade sync company-wide updates</span>
               </h4>
               <p className="text-[11px] text-slate-500 leading-relaxed dark:text-slate-400">
                 Any modifications entered down below will instantly propagate to all <span className="font-bold text-blue-500">{selectedOrg.contacts.length} personnel contacts</span> registered under the firm name <span className="font-bold">'{selectedOrg.name}'</span>. This ensures dataset alignment automatically.
@@ -725,7 +725,7 @@ export const CompanyProfileTabs = ({
                     type="submit" 
                     className="bg-blue-600 hover:bg-blue-550 text-white font-bold text-xs px-4.5 py-2 rounded-xl transition-all shadow-md shadow-blue-500/10 flex items-center gap-1.5"
                   >
-                    🔄 Propagate sync to {selectedOrg.contacts.length} personnel profiles
+                    ðŸ”„ Propagate sync to {selectedOrg.contacts.length} personnel profiles
                   </button>
                 </div>
               </form>

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useAuth } from '../../../store/AuthContext';
+﻿import React, { useState } from 'react';
+import { useAuth } from '../../store/AuthContext';
 import { ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -95,7 +95,7 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
           
           {error && (
             <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-lg mb-6 text-sm flex items-start gap-2">
-              <div className="mt-0.5">⚠️</div>
+              <div className="mt-0.5">âš ï¸</div>
               <p>{error}</p>
             </div>
           )}
@@ -198,7 +198,7 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
 
         {error && (
           <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-lg mb-6 text-sm flex items-start gap-2">
-            <div className="mt-0.5">⚠️</div>
+            <div className="mt-0.5">âš ï¸</div>
             <p>{error}</p>
           </div>
         )}

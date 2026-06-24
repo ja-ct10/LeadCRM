@@ -1,3 +1,4 @@
 ﻿import { z } from 'zod';
 // TODO: define reports DTOs and Zod validation schemas
-export const Create reports.Value[0].ToString().ToUpper() eportsSchema = z.object({});
+// Pattern: see backend/src/modules/crm/contacts/contacts.dto.ts
+export const CreateReportsSchema = z.object({});

@@ -1,3 +1,4 @@
 ﻿import { z } from 'zod';
 // TODO: define triggers DTOs and Zod validation schemas
-export const Create triggers.Value[0].ToString().ToUpper() riggersSchema = z.object({});
+// Pattern: see backend/src/modules/crm/contacts/contacts.dto.ts
+export const CreateTriggersSchema = z.object({});

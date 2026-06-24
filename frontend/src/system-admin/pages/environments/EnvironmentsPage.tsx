@@ -1,11 +1,11 @@
-'use client';
+﻿'use client';
 import React, { useState } from 'react';
 import { Search, Database, CheckCircle2, AlertTriangle, XCircle, Cpu, HardDrive, Activity } from 'lucide-react';
-import { useData } from '../../../../store/DataContext';
+import { useData } from '../../../store/DataContext';
 import { motion } from 'motion/react';
 
 /**
- * System Admin — Environment Health page.
+ * System Admin â€” Environment Health page.
  * Real-time monitoring of all tenant sandbox/production environments.
  */
 export default function EnvironmentsPage() {
@@ -60,7 +60,7 @@ export default function EnvironmentsPage() {
       <div className="bg-white dark:bg-[#0B1120] rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex flex-col md:flex-row gap-4">
         <div className="relative flex-grow">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-          <input type="text" placeholder="Search by client name…" value={searchQuery}
+          <input type="text" placeholder="Search by client nameâ€¦" value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
@@ -125,7 +125,7 @@ export default function EnvironmentsPage() {
   );
 }
 
-// ─── Local helpers ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Local helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type ColorKey = 'slate' | 'emerald' | 'amber' | 'red';
 

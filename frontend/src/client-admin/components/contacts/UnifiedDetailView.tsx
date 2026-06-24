@@ -1,9 +1,9 @@
-import React from 'react';
-import { Contact, Organization, User as UserType, Deal, Task, Campaign } from '../../../../store/types';
+﻿import React from 'react';
+import { Contact, Organization, User as UserType, Deal, Task, Campaign } from '../../../store/types';
 import { ClientProfileTabs } from './ClientProfileTabs';
 import { CompanyProfileTabs } from './CompanyProfileTabs';
 import { ShieldCheck, TrendingUp } from 'lucide-react';
-import { getCRMStatusStyles } from '../../../../lib/utils';
+import { getCRMStatusStyles } from '../../../lib/utils';
 
 
 

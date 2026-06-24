@@ -1,6 +1,6 @@
-'use client';
+﻿'use client';
 import { useMemo, useState } from 'react';
-import { Contact } from '../../../store/types';
+import { Contact } from '../../store/types';
 
 interface UseContactsOptions {
   contacts: Contact[];

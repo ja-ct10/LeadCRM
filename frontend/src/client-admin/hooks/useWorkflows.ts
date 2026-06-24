@@ -1,6 +1,6 @@
-'use client';
+﻿'use client';
 import { useMemo, useState } from 'react';
-import { Workflow } from '../../../store/types';
+import { Workflow } from '../../store/types';
 
 interface UseWorkflowsOptions {
   workflows: Workflow[];

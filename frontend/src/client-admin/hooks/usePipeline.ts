@@ -1,6 +1,6 @@
-'use client';
+﻿'use client';
 import { useMemo, useState } from 'react';
-import { Deal, Pipeline } from '../../../store/types';
+import { Deal, Pipeline } from '../../store/types';
 
 interface UsePipelineOptions {
   deals: Deal[];

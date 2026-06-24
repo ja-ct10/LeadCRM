@@ -1,6 +1,6 @@
-'use client';
+﻿'use client';
 import { useMemo, useState } from 'react';
-import { Tenant } from '../../../store/types';
+import { Tenant } from '../../store/types';
 
 type StatusFilter = 'all' | 'pending' | 'active' | 'inactive' | 'rejected';
 type PlanFilter = 'all' | 'Basic' | 'Pro' | 'Enterprise';
@@ -25,7 +25,7 @@ export function useTenants({ tenants }: UseTenantsOptions) {
         t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         t.email.toLowerCase().includes(searchQuery.toLowerCase());
 
-      // Map 'suspended' → 'inactive' for UI display
+      // Map 'suspended' â†’ 'inactive' for UI display
       const normalizedStatus = t.status === 'suspended' ? 'inactive' : t.status;
       const matchesStatus =
         statusFilter === 'all' || normalizedStatus === statusFilter;
