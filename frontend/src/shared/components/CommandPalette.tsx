@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, Users, Briefcase, LayoutDashboard, Workflow, Mail, Settings, ShieldAlert, Wrench, Package, Receipt, Activity, Book } from 'lucide-react';
 import { useData } from '../../store/DataContext';

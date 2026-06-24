@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import authRoutes from './auth.routes';
 import crmRoutes from './crm.routes';
 import marketingRoutes from './marketing.routes';
 import operationsRoutes from './operations.routes';
@@ -9,6 +10,7 @@ import reportingRoutes from './reporting.routes';
 
 const router = Router();
 
+router.use('/auth', authRoutes);
 router.use('/crm', crmRoutes);
 router.use('/marketing', marketingRoutes);
 router.use('/operations', operationsRoutes);

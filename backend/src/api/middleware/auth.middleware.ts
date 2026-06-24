@@ -19,13 +19,16 @@ declare global {
 }
 
 export function authMiddleware(req: Request, _res: Response, next: NextFunction): void {
+  // Prefer HttpOnly cookie; fall back to Bearer token for API clients
+  const cookieToken: string | undefined = req.cookies?.leadcrm_token;
   const authHeader = req.headers.authorization;
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : undefined;
 
-  if (!authHeader?.startsWith('Bearer ')) {
+  const token = cookieToken ?? bearerToken;
+
+  if (!token) {
     throw new AppError('Authentication required', 401);
   }
-
-  const token = authHeader.split(' ')[1];
 
   try {
     const payload = jwt.verify(token, appConfig.jwtSecret) as AuthenticatedUser;

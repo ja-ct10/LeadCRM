@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState } from 'react';
 import { Search, Filter, X, ChevronDown, Check, User as UserIcon, Calendar, Activity, Tag } from 'lucide-react';
 

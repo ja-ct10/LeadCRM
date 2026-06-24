@@ -1,4 +1,6 @@
-﻿import React, {
+'use client';
+
+import React, {
   createContext,
   useContext,
   useState,
@@ -43,7 +45,7 @@ import {
   MOCK_ASSETS,
   MOCK_INVENTORY,
 } from "./mockData";
-import { evaluateWorkflowCondition } from "../client-admin/pages/workflows/services/workflowConditionEvaluator";
+import { evaluateWorkflowCondition } from "../client-admin/automation/workflows/services/workflow-condition-evaluator";
 
 interface DataContextType {
   organizations: Organization[];

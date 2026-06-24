@@ -474,46 +474,51 @@ A full-featured SaaS CRM for IT solutions providers, security firms, and telecom
 
 ### File Structure
 
+See `project-core.md` for the authoritative full monorepo tree.
+
 ```
-app/
-  layout.tsx              # App shell
-  page.tsx                # SPA entry — dynamic import of src/App, ssr: false
-
-src/
-  portals/
-    client/
-      pages/              # CRM portal pages
-      components/         # CRM portal components
-      hooks/              # CRM custom hooks
-    admin/
-      pages/              # Admin portal pages
-      components/
-        layout/
-          AdminLayout.tsx
-      hooks/              # Admin custom hooks
-
+frontend/src/
+  client-admin/           # CRM portal — domain modules
+    crm/
+      contacts/           # ui/ hooks/ services/ schemas/ types/ constants/ index.ts
+      companies/
+      deals/
+      pipeline/
+    marketing/
+    automation/
+    operations/
+    reporting/
+    billing/
+    dashboard/
+    settings/
+  system-admin/           # LeadCRM operator console (cross-tenant)
+    tenants/
+    users/
+    permissions/
+    monitoring/
   shared/
-    components/
-      ui/                 # ShadCN components
-      charts/
-        ChartComponents.tsx   # ONLY chart import source
-    hooks/                # Shared hooks
-
+    ui/                   # ShadCN components
+    charts/
+      ChartComponents.tsx # ONLY chart import source
+    layouts/
+    hooks/
+    providers/
   store/
     AuthContext           # Auth state + permissions
     DataContext           # All data operations + audit logging
     mockData/             # Seed data for localStorage phase
-    types/                # Split type definitions (new canonical location)
+    types/                # Split type definitions (canonical location)
       index.ts            # Re-exports all types
     types.ts              # Legacy types — kept for zero-breakage migration
-
   lib/
     utils.ts              # cn() and shared utilities
+  App.tsx                 # SPA root — string-based routing (Sprint 1 only, migrated in Sprint 2)
 ```
 
 **Type import rule:**
-- New code: `import from src/store/types`
-- Legacy code: `src/store/types.ts` remains valid — do not migrate unless the file is being modified for another reason
+- New code: `import from @leadcrm/shared` (monorepo shared package)
+- Frontend legacy: `import from src/store/types` — kept for zero-breakage migration
+- Never duplicate type definitions — the shared package is the single source of truth
 
 ### Key Modules
 - Contacts — Leads, Customers, Organizations

@@ -1,5 +1,7 @@
-﻿import React, { useState } from 'react';
-import { useAuth } from '../../store/AuthContext';
+'use client';
+
+import React, { useState } from 'react';
+import { useAuth } from '@/store/AuthContext';
 import { ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -28,7 +30,7 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
     setBotCheck(prev => ({ ...prev, expected: (num1 + num2).toString(), question: `What is ${num1} + ${num2}?` }));
   }, [step]);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!showOTP) {
       setShowOTP(true);
@@ -39,7 +41,8 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
       setError('Invalid OTP. Use 123456 for demo.');
       return;
     }
-    if (login(email, password)) {
+    const success = await login(email, password);
+    if (success) {
       onNavigate('dashboard');
     } else {
       setError('Invalid credentials or tenant pending approval.');
@@ -95,7 +98,7 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
           
           {error && (
             <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-lg mb-6 text-sm flex items-start gap-2">
-              <div className="mt-0.5">âš ï¸</div>
+              <div className="mt-0.5">⚠️</div>
               <p>{error}</p>
             </div>
           )}
@@ -198,7 +201,7 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
 
         {error && (
           <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-lg mb-6 text-sm flex items-start gap-2">
-            <div className="mt-0.5">âš ï¸</div>
+            <div className="mt-0.5">⚠️</div>
             <p>{error}</p>
           </div>
         )}

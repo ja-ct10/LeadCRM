@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Loader2, Shield } from 'lucide-react';
@@ -128,17 +130,17 @@ export default function GlobalLoader() {
 
             <div className="space-y-1">
               <h3 className="font-semibold text-slate-900 dark:text-white text-sm">
-                Executing Live API Call
+                Processing Request
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Piping records and enforcing connection status overlays...
+                Please wait while we securely fetch your data...
               </p>
             </div>
 
             {/* Design & Requirement Traceability Info */}
             <div className="w-full bg-slate-50 dark:bg-white/[0.02] rounded-lg py-2 px-3 border border-gray-100 dark:border-white/[0.04] flex items-center justify-center gap-1.5 text-[10px] font-mono text-slate-500 dark:text-blue-400/80">
               <Shield size={11} className="text-blue-500" />
-              <span>REQ085 Guard • Active Operation</span>
+              <span>Secure Connection • LeadCRM</span>
             </div>
           </motion.div>
         </motion.div>

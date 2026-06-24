@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import { errorMiddleware } from './api/middleware/error.middleware';
 import { loggerMiddleware } from './api/middleware/logger.middleware';
 import { rateLimitMiddleware } from './api/middleware/rate-limit.middleware';
@@ -11,6 +12,7 @@ const app = express();
 app.use(cors({ origin: process.env.APP_URL, credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 app.use(loggerMiddleware);
 app.use(rateLimitMiddleware);
 

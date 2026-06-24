@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import '../src/index.css';
+import { AppProviders } from '../src/shared/providers/app-providers';
+import { ThemeProvider } from '../src/shared/providers/theme-provider';
 
 export const metadata: Metadata = {
   title: 'LeadCRM - Smart SaaS CRM',
@@ -10,17 +12,19 @@ export const viewport: Viewport = {
   themeColor: '#07142A',
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <head>
         <link rel="manifest" href="/manifest.json" />
       </head>
-      <body>{children}</body>
+      <body>
+        <AppProviders>
+          <ThemeProvider>
+            {children}
+          </ThemeProvider>
+        </AppProviders>
+      </body>
     </html>
   );
 }

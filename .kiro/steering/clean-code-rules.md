@@ -53,13 +53,15 @@ doWork();
 ## 7. File Size Limits
 | Type | Target | Hard Limit |
 |---|---|---|
-| Component | 250 lines | 400 lines |
-| Page | 500 lines | 800 lines |
-| Hook | 100 lines | 150 lines |
-| Service | 100 lines | 200 lines |
-| Util | 80 lines | 150 lines |
+| React Page | ≤ 200 lines | 200+ → extract hooks and sub-components |
+| React Component | ≤ 250 lines | 250+ → split into smaller focused components |
+| Custom Hook | ≤ 150 lines | 150+ → extract secondary logic into a second hook |
+| Frontend Service | ≤ 200 lines | 200+ → split by concern |
+| Backend Controller | ≤ 100 lines | 100+ → logic belongs in service, not controller |
+| Backend Service | ≤ 250 lines | 250+ → extract helpers or split by sub-domain |
+| Backend Repository | ≤ 150 lines | 150+ → split by query group |
 
-Files over the hard limit **must be split** before adding new features.
+Files over the hard limit **must be split before adding new features**. Never extend an oversized file.
 
 ## 8. Error Handling
 - Never ignore errors silently: `catch (e) {}` is forbidden
