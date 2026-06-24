@@ -182,10 +182,15 @@ The original `src/portals/client/` is now `src/client-admin/` and `src/portals/a
 The `src/modules/` folder was a half-migrated copy of pages from `portals/client/pages/`. It was not imported anywhere. It has been deleted. The canonical source of all CRM page components is `src/client-admin/pages/`. Do not recreate `src/modules/`.
 
 ### Monorepo Shared Package Is `@leadcrm/shared`
-Types, RBAC constants (roles, permissions), API contracts, and Zod validation schemas all live in `shared/src/`. Both frontend and backend import from `@leadcrm/shared`. Never define these in both places — always import from the shared package. The tsconfig path alias `@leadcrm/shared` → `../shared/src/index.ts` is wired in `frontend/tsconfig.json`.
 
 ### `prisma generate` Must Run Before Backend Can Start
 The `@prisma/client` package is not usable until `prisma generate` has been run at least once. On a fresh clone or after `npm install`, the backend will crash immediately with "PrismaClient did not initialize yet." Always run `npx prisma generate` inside `backend/` before the first `npm run dev`. Add this to any onboarding checklist.
 
 ### Workspace `npm install` Hoists Packages — Frontend/Backend Have No Own `node_modules`
 npm workspaces hoist all dependencies to the root `node_modules/`. Running `npm install` inside `frontend/` or `backend/` subdirectories does nothing new — the root install covers them. The binaries (`next`, `express`, `ts-node-dev`, etc.) are all available from root `node_modules/.bin/`. Only run `npm install` from the monorepo root.
+
+### Import Depth Map — Verify Before Bulk Replace
+When fixing relative import paths during restructuring, always verify actual filesystem depth before doing bulk find-replace. Use `[System.IO.Path]::GetFullPath()` in PowerShell to confirm what `../../store/` actually resolves to from a given file. For this project: top-level pages at `src/portal/pages/` need `../../store/`, subdomain pages at `src/portal/pages/domain/` need `../../../store/`, services at `src/portal/pages/domain/services/` need `../../../../store/`. Blind bulk replace without depth verification creates new broken paths.
+
+### Migration Shims Break When Their Target Is Deleted
+The `src/modules/` folder contained shim files re-exporting from a canonical source. When `src/modules/` was deleted, all the shims in `src/client-admin/pages/` broke silently — TypeScript couldn't find the modules. Real implementations must be restored from git (`git show <commit>:<old-path>`) and placed directly at the shim location. Never delete a directory that has active shims pointing into it without first replacing those shims with the real implementations.
