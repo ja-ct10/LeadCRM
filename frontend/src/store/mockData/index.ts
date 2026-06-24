@@ -37,3 +37,5 @@ export {
   MOCK_PERMISSIONS,
   MOCK_ROLES,
 } from './users.mock';
+
+export { MOCK_INVOICES } from './invoices.mock';

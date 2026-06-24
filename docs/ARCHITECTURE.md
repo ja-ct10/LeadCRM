@@ -39,14 +39,23 @@ The portals are **physically separated folders**, not just route groups. This pr
 
 ```
 frontend/
-├── app/                   ← Next.js App Router (routing layer ONLY)
+├── app/                   ← Next.js App Router (routing shells ONLY — 3-line imports)
 │   ├── (auth)/            ← Public auth routes
 │   └── layout.tsx         ← Root layout — metadata, PWA manifest
 └── src/
-    ├── client-admin/      ← CRM portal: components/, hooks/, pages/
-    ├── system-admin/      ← Admin portal: components/, hooks/, pages/
+    ├── client-admin/      ← CRM portal — domain module layout
+    │   ├── crm/           ← contacts/, companies/, deals/, pipeline/
+    │   │   └── pipeline/ui/deal-details-modal.tsx  ← reusable Deal drawer
+    │   ├── marketing/     ← campaigns/, email/, templates/
+    │   ├── automation/    ← workflows/, triggers/, actions/
+    │   ├── operations/    ← service-orders/, tasks/
+    │   ├── reporting/
+    │   ├── billing/
+    │   ├── dashboard/
+    │   └── settings/
+    ├── system-admin/      ← Admin portal — tenants/, users/, permissions/, monitoring/
     ├── shared/            ← Reusable UI: ui/, charts/, components/, hooks/
-    ├── store/             ← DataContext, AuthContext, types, mockData
+    ├── store/             ← DataContext, AuthContext, types/, types.ts (shim), mockData/
     ├── lib/               ← utils.ts, constants.ts, countries.ts
     ├── App.tsx            ← SPA root — string-based routing switch
     └── index.css          ← Global styles + Tailwind v4
@@ -58,6 +67,11 @@ frontend/
 - All data operations go through `DataContext` — never direct `localStorage` in components
 - All chart imports come from `src/shared/components/charts/ChartComponents.tsx`
 - All filter UI uses `<TrelloFilter>` — never raw `<select>`
+- `tenant` comes from `useAuth()` — never from `useData()`
+- Deal modal interactions use `DealDetailsModal` (`crm/pipeline/ui/deal-details-modal.tsx`) — never re-implement inline
+- `store/types.ts` is a re-export shim only — all canonical types live in `store/types/*.ts`
+- Task status uses `TaskStatus` type: `pending | in-progress | blocked | completed | cancelled`
+- Stage history is automatic — `DataContext.updateDeal` appends `previousStageId` on every stage change
 
 ### Tech Stack
 - **Framework:** Next.js 15 (App Router)
@@ -180,3 +194,12 @@ All data lives in browser `localStorage`. `DataContext` acts as the data access 
 - [STRUCTURE.md](./STRUCTURE.md) — detailed folder map
 - [API.md](./API.md) — backend API spec
 - [capstone-documentation.md](./capstone-documentation.md) — full project documentation
+- [dashboard-kpis.md](./dashboard-kpis.md) — KPI formulas and metric definitions
+- [database/erd.md](./database/erd.md) — entity relationships and Prisma model map
+- [security/permission-matrix.md](./security/permission-matrix.md) — RBAC role × module matrix
+- [security/audit-log-strategy.md](./security/audit-log-strategy.md) — what gets logged and how
+- [workflows/customer-lifecycle.md](./workflows/customer-lifecycle.md) — full customer journey
+- [workflows/lead-to-deal.md](./workflows/lead-to-deal.md) — lead capture to deal creation
+- [workflows/deal-to-payment.md](./workflows/deal-to-payment.md) — deal won to payment collected
+- [workflows/pipeline-stage-flow.md](./workflows/pipeline-stage-flow.md) — 4 pipelines, stage rules, velocity
+- [workflows/task-assignment.md](./workflows/task-assignment.md) — task ownership and audit trail

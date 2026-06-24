@@ -25,6 +25,24 @@ Components depend on `DataContext` (the abstraction). Only DataContext internals
 ### tenantId Never From User Input
 Always: `tenantId: tenant.id` (from AuthContext). Never: `tenantId: data.tenantId`.
 
+### tenant Comes from AuthContext, Not DataContext
+`const { user, tenant } = useAuth()` — tenant is never destructured from `useData()`. Components that need tenant (e.g. for `tenantId` prop) must import `useAuth`.
+
+### Deal Details Modal Is a Reusable Component
+`crm/pipeline/ui/deal-details-modal.tsx` is the canonical Deal modal. Use it anywhere a deal needs to be displayed (Pipeline, Client Profile, future Deals page). Never re-implement the drawer inline.
+
+### Stage History Is Automatic
+`DataContext.updateDeal` auto-appends a `{ stageId, previousStageId, timestamp, userId }` history entry whenever `stageId` changes. Never manually append history entries — call `updateDeal` with the new `stageId` and it handles the rest.
+
+### Task Assignment Is Auditable
+`addTask` seeds the first `TaskAssignmentRecord`. `updateTask` appends a new record whenever `assignedUserId` changes. Always pass `assignedBy: currentUserId` when calling either function so the audit trail is complete.
+
+### Deal Matching Uses contactId First
+`connectedDeals` in Client Profile filters by `deal.contactId === contact.id` first. String matching (`companyName`, `contactPerson`) is a legacy fallback only. New deals created from a contact context must set `deal.contactId`.
+
+### store/types.ts Is a Re-Export Shim Only
+Never define new types in `store/types.ts`. It only re-exports from `store/types/`. All canonical types live in `store/types/*.ts`. This was corrected when duplicate `Deal`, `Pipeline`, `Stage`, and `Task` definitions caused stale type resolution.
+
 ---
 
 ## Known Pitfalls
@@ -52,6 +70,25 @@ Always read the full function (start to closing `};`) before replacing. Partial 
 
 ### Migration Shims Break When Their Target Is Deleted
 Never delete a directory that has active shims pointing into it. Restore real implementations from git (`git show <commit>:<path>`) before deleting the shim target.
+
+### Duplicate Type Definitions in store/types.ts Cause Stale Resolution
+`store/types.ts` historically defined `Deal`, `Pipeline`, `Stage`, `Task` inline. These shadow the canonical definitions in `store/types/*.ts`. Any new field added to the canonical file (e.g. `previousStageId`, `assignedBy`) will be invisible to code that resolves the type from the shim. Fix: replace the inline definition in `store/types.ts` with a `export type { X } from './types/x.types'` re-export.
+
+### Removing a Dead Code Block from JSX — Use PowerShell for Large Ranges
+`str_replace` has a size limit on `oldStr`. When removing a 700+ line dead block from JSX, use PowerShell string index replacement:
+```powershell
+$content = Get-Content $file -Raw
+$start = $content.IndexOf("UNIQUE_START_MARKER")
+$end   = $content.IndexOf("UNIQUE_END_MARKER")
+$newContent = $content.Substring(0, $start) + $content.Substring($end)
+Set-Content $file $newContent -NoNewline
+```
+
+### AnimatePresence — Only One Wrapper Per Island
+If you have two `<AnimatePresence>` wrappers for the same conditional block (old + replacement), the old one's closing tags will leave orphaned JSX that breaks the TypeScript compiler. When replacing an `AnimatePresence` block, delete the entire old block before adding the new one.
+
+### tasks/addTask/updateTask Not in Default PipelinePage Destructure
+`PipelinePage` originally only destructured `updateDeal` and `users` from `useData`. If the page needs `tasks`, `addTask`, or `updateTask`, they must be explicitly added to the destructure. The same applies to `tenant` — it comes from `useAuth`, not `useData`.
 
 ---
 
@@ -82,19 +119,21 @@ Never delete a directory that has active shims pointing into it. Restore real im
 
 ---
 
-## Final Monorepo Layout (Sprint 1 Target)
+## Sprint 6 — Deal Details Enhancement (Option A+)
 
----
+Changes shipped in this sprint:
 
-## Sprint Status
-
-| Sprint | Scope | Status |
-|---|---|---|
-| **Sprint 1** | Folder structure — migrate flat `pages/` → domain modules | ✅ Done |
-| **Sprint 2** | Routing — `App.tsx` string switch → Next.js App Router | ✅ Done |
-| **Sprint 3** | Authentication — real backend auth with mock fallback | ✅ Done |
-| **Sprint 4** | RBAC — roles and permissions wired to DB | 🔜 Next |
-| **Sprint 5** | Multi-tenancy — `tenantId` on all data, DataContext → API | 🔜 |
+| Area | What Changed |
+|---|---|
+| `store/types/shared.types.ts` | `TaskStatus` type (5 values), `TaskAssignmentRecord` interface, `Task` extended with `assignedBy`, `assignmentHistory` |
+| `store/types/deal.types.ts` | `Deal.history` entry extended with `previousStageId?: string` |
+| `store/types/index.ts` | Exports `TaskStatus`, `TaskAssignmentRecord` |
+| `store/types.ts` | Removed duplicate `Deal`, `Pipeline`, `Stage`, `Task` inline definitions — replaced with re-exports from canonical files |
+| `store/DataContext.tsx` | `updateDeal` writes `previousStageId` on stage change; `addTask` seeds `assignmentHistory`; `updateTask` appends `TaskAssignmentRecord` on reassign |
+| `crm/pipeline/ui/deal-details-modal.tsx` | New reusable component — extracted from `PipelinePage`. 4 tabs: Overview, Activities, Tasks, History. Tasks tab: create + assign + overdue badge. History tab: From→To stage trail |
+| `crm/pipeline/PipelinePage.tsx` | Reduced ~785 lines — old inline drawer replaced with `<DealDetailsModal>`. Dead state removed. "Edit Deal" footer button wired. `tasks`, `addTask`, `updateTask`, `tenant` added to destructure |
+| `crm/contacts/ui/contact-profile-tabs.tsx` | Deals tab: Deal Summary bar (5 stat cards). Deal matching: `contactId` FK first, string fallback. Pipelines tab: real stage bars from DataContext (not hardcoded) |
+| `operations/tasks/TaskBoard.tsx` | Status dropdown updated to 5 values (Pending/In Progress/Blocked/Completed/Cancelled) |
 
 ---
 
@@ -106,90 +145,21 @@ DataContext already injects `tenant.id` (from AuthContext — never from user in
 ### USE_MOCK_DATA flag
 `src/lib/config.ts` exports `USE_MOCK_DATA`. Set `NEXT_PUBLIC_USE_MOCK_DATA=false` in `.env.local` to switch DataContext from localStorage to real API calls. Each module migrates independently.
 
-### API service pattern per module
-Every domain module has a `services/*.service.ts` file with typed API calls. These are the swap points when the backend goes live:
-
-| Module | Service file | Endpoint prefix |
-|---|---|---|
-| contacts | `crm/contacts/services/contacts.service.ts` | `/crm/contacts` |
-| pipeline/deals | `crm/pipeline/services/pipeline.service.ts` | `/crm/deals` |
-| campaigns | `marketing/campaigns/services/campaigns.service.ts` | `/marketing/campaigns` |
-| workflows | `automation/workflows/services/workflows.service.ts` | `/automation/workflows` |
-| service-orders | `operations/service-orders/services/service-orders.service.ts` | `/operations/service-orders` |
-| users/roles | `administration/users/services/users.service.ts` | `/administration/users` |
-| reporting | `reporting/services/reporting.service.ts` | `/reporting/summary` |
-
-### How to migrate one module to real API
-1. Set `NEXT_PUBLIC_USE_MOCK_DATA=false`
-2. In `DataContext.tsx`, replace the localStorage read/write for that module with a call to its service file
-3. The service file already has the correct types and endpoint — just call it
-4. Run `npx tsc --noEmit` and `npx next build` to verify
-
 ### PERMISSION_BRIDGE removal (when roles use module.action)
-When `DataContext` migrates to real API, roles will return `module.action` strings instead of `p`-IDs. At that point, remove `PERMISSION_BRIDGE` from `usePermissions.ts` — `useHasPermission` will work directly without it.
+When `DataContext` migrates to real API, roles will return `module.action` strings instead of `p`-IDs. Remove `PERMISSION_BRIDGE` from `usePermissions.ts` — `useHasPermission` will work directly without it.
 
 ---
 
 ## Auth Architecture (Sprint 3)
 
-### How it works
-- `AuthContext` has a `USE_MOCK_AUTH` flag driven by `NEXT_PUBLIC_USE_MOCK_AUTH` env var
-- **Mock mode** (`true`, default): uses localStorage + mock users — no backend needed for demo/development
-- **Real mode** (`false`): calls `POST /api/v1/auth/login` → gets JWT in HttpOnly cookie → all requests send `credentials: 'include'`
-- `AuthGuard` waits for `isLoading` before redirecting — prevents flash-redirect on hard refresh
-
-### To switch to real auth
-Set in `frontend/.env.local`:
-```
-NEXT_PUBLIC_USE_MOCK_AUTH=false
-NEXT_PUBLIC_API_URL=http://localhost:4000/api/v1
-```
-Then run `npx prisma migrate dev` and `npm run db:seed` in `backend/`.
-
 ### login() is async
-`login()` now returns `Promise<boolean>`. All callers must `await` or use `.then()`:
+`login()` returns `Promise<boolean>`. All callers must `await` or use `.then()`:
 ```typescript
 // ✅ correct
 const success = await login(email, password);
-login(email).then(() => toast.success('...'));
-
 // ❌ wrong — will not work
 if (login(email)) { ... }
 ```
-
-### Backend auth endpoints
-- `POST /api/v1/auth/login` — rate-limited (5/15min), sets HttpOnly cookie
-- `POST /api/v1/auth/logout` — clears cookie
-- `GET  /api/v1/auth/me` — returns current user from cookie token
-- `authMiddleware` reads cookie first, falls back to `Authorization: Bearer` header
-
-### cookie-parser is required
-`app.ts` uses `cookie-parser` — must be installed. It is in `backend/package.json`.
-
-
-
-- `frontend/src/client-admin/` — CRM portal (was `portals/client/`, then flat pages/)
-- `frontend/src/system-admin/` — Admin portal (was `portals/admin/`)
-- `shared/` — `@leadcrm/shared` package: types, RBAC constants, contracts, Zod schemas
-- Backend: `modules/crm/contacts/` pattern — controller → service (calls prisma directly) → dto
-- **Never recreate `src/modules/`, `src/portals/`, flat `pages/`, or flat `components/`**
-
-### Import Depth Map (frontend/src/ — domain module layout)
-| File location | Prefix to reach `src/` |
-|---|---|
-| `client-admin/crm/contacts/index.ts` | `../../` |
-| `client-admin/crm/contacts/ui/File.tsx` | `../../../` |
-| `client-admin/crm/contacts/hooks/File.ts` | `../../../` |
-| `client-admin/crm/contacts/services/File.ts` | `../../../` |
-| `client-admin/crm/contacts/schemas/File.ts` | `../../../` |
-
-### Sprint Sequencing — Enforced
-- **Sprint 1:** Folder structure only. Migrate `client-admin/pages/` → domain modules. Keep `App.tsx`. No behavior change.
-- **Sprint 2:** Routing migration. `App.tsx` → Next.js App Router. Module structure untouched.
-- Never combine Sprint 1 and Sprint 2. One change, one purpose.
-
-### services/ Not actions/ in Frontend Modules
-The `actions/` subfolder is banned. All API calls go in `services/contacts.service.ts` as a single object with named methods. File is named `contacts.service.ts` — not `contacts.api.ts` — to keep naming consistent with the backend. See `project-core.md` for the pattern.
 
 ### Detail Views = Drawers/Sheets Only
 No `[id]` routes. Contact/deal detail views use drawer pattern. Ignore external templates that scaffold `[id]` routes.

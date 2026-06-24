@@ -23,50 +23,76 @@ leadcrm/
 
 ```
 frontend/
-├── app/                          ← Next.js App Router (routing layer ONLY)
-│   ├── layout.tsx                ← Root layout: metadata, PWA manifest link
-│   └── page.tsx                  ← Loads App.tsx dynamically (SSR disabled)
+├── app/                          ← Next.js App Router (routing shells ONLY — 3-line imports)
+│   ├── layout.tsx
+│   ├── (auth)/login/page.tsx
+│   └── (client)/
+│       ├── layout.tsx
+│       ├── crm/contacts/page.tsx
+│       ├── crm/pipeline/page.tsx
+│       ├── marketing/campaigns/page.tsx
+│       ├── automation/workflows/page.tsx
+│       ├── operations/tasks/page.tsx
+│       ├── operations/taskboard/page.tsx
+│       ├── operations/service-orders/page.tsx
+│       ├── operations/assets/page.tsx
+│       ├── operations/inventory/page.tsx
+│       ├── billing/page.tsx
+│       ├── reporting/page.tsx
+│       ├── settings/page.tsx
+│       ├── settings/account/page.tsx
+│       ├── settings/profile/page.tsx
+│       └── (admin)/dashboard/page.tsx
 │
 ├── src/
-│   ├── client-admin/             ← CRM portal (Client Admin, Sales Rep, Viewer, Technician)
-│   │   ├── components/
-│   │   │   ├── contacts/         ← Contact detail, profile tabs, notes panel
-│   │   │   ├── layout/           ← CrmLayout (sidebar + header)
-│   │   │   └── workflows/        ← Visual workflow builder
-│   │   ├── hooks/
-│   │   │   ├── useContacts.ts
-│   │   │   ├── useDashboard.ts
-│   │   │   ├── usePipeline.ts
-│   │   │   └── useWorkflows.ts
-│   │   └── pages/
-│   │       ├── AuthPage.tsx
-│   │       ├── Dashboard.tsx
-│   │       ├── LandingPage.tsx
-│   │       ├── audit/            ← AuditLogsPage
-│   │       ├── billing/          ← BillingPage, ClientBillingPage
-│   │       ├── campaigns/        ← CampaignsPage, CampaignReportView
-│   │       ├── contacts/         ← ContactsPage, ContactFormSheet, filters, table
-│   │       ├── pipeline/         ← PipelinePage (kanban + @dnd-kit)
-│   │       ├── reports/          ← ReportsPage
-│   │       ├── service/          ← ServiceOrdersPage, AssetsPage, InventoryPage
-│   │       ├── settings/         ← SettingsPage, ProfileSettingsPage, AccountDetailsPage
-│   │       ├── tasks/            ← TaskBoard
-│   │       ├── technician/       ← TechnicianDashboard
-│   │       ├── users/            ← UsersPage
-│   │       └── workflows/        ← WorkflowsPage, modals
+│   ├── client-admin/             ← CRM portal — domain module layout
+│   │   ├── crm/
+│   │   │   ├── contacts/         ← ui/ hooks/ services/ schemas/ types/ constants/ index.ts
+│   │   │   │   └── ui/
+│   │   │   │       ├── contact-profile-tabs.tsx   ← Deals tab: summary bar (Total/Active/
+│   │   │   │       │                                Won/Lost/Value), contactId-first matching,
+│   │   │   │       │                                real pipeline stage tracker
+│   │   │   │       ├── contact-detail-sheet.tsx
+│   │   │   │       ├── contact-form.tsx
+│   │   │   │       └── tabs/
+│   │   │   ├── companies/
+│   │   │   ├── deals/            ← scaffold (future standalone deals table page)
+│   │   │   └── pipeline/
+│   │   │       ├── PipelinePage.tsx    ← Kanban + table + list, @dnd-kit, 14-filter system
+│   │   │       │                         ~2,440 lines (reduced from 3,225 after extraction)
+│   │   │       ├── hooks/
+│   │   │       │   └── use-pipeline.ts
+│   │   │       ├── services/
+│   │   │       │   └── pipeline.service.ts
+│   │   │       └── ui/
+│   │   │           └── deal-details-modal.tsx  ← Reusable Deal Details drawer
+│   │   │                                          4 tabs: Overview · Activities · Tasks · History
+│   │   │                                          Tasks: inline create + assign, overdue badge
+│   │   │                                          History: From→To stage trail with user+timestamp
+│   │   │                                          Edit Deal: footer button wired (was broken)
+│   │   ├── marketing/
+│   │   │   ├── campaigns/
+│   │   │   ├── email/
+│   │   │   └── templates/
+│   │   ├── automation/
+│   │   │   └── workflows/
+│   │   ├── operations/
+│   │   │   ├── service-orders/
+│   │   │   └── tasks/
+│   │   │       ├── TaskBoard.tsx        ← 5-status task board (Pending/In Progress/
+│   │   │       │                          Blocked/Completed/Cancelled)
+│   │   │       └── ui/
+│   │   │           └── technician-dashboard.tsx
+│   │   ├── reporting/
+│   │   ├── billing/
+│   │   ├── dashboard/
+│   │   └── settings/
 │   │
-│   ├── system-admin/             ← System Admin portal (LeadCRM operators only)
-│   │   ├── components/
-│   │   │   └── layout/           ← AdminLayout
-│   │   ├── hooks/
-│   │   │   └── useTenants.ts
-│   │   └── pages/
-│   │       ├── AdminConsole.tsx   ← Tabbed admin shell
-│   │       ├── billing/          ← AdminBillingPage
-│   │       ├── environments/     ← EnvironmentsPage
-│   │       ├── overview/         ← AdminDashboard
-│   │       ├── pricing/          ← PricingPage
-│   │       └── tenants/          ← ClientManagement
+│   ├── system-admin/             ← LeadCRM operator console (cross-tenant)
+│   │   ├── tenants/
+│   │   ├── users/
+│   │   ├── permissions/
+│   │   └── monitoring/
 │   │
 │   ├── shared/                   ← Reusable UI (used by both portals)
 │   │   ├── components/
@@ -84,17 +110,24 @@ frontend/
 │   │       └── useTheme.ts
 │   │
 │   ├── store/                    ← Global state (localStorage phase)
-│   │   ├── AuthContext.tsx        ← Auth state + login/logout
-│   │   ├── DataContext.tsx        ← Data access layer (delegates to services)
-│   │   ├── types.ts               ← Legacy type file (kept for zero-breakage)
-│   │   ├── types/                 ← Split type files (use these for new code)
+│   │   ├── AuthContext.tsx        ← Auth state + login/logout; tenant from here
+│   │   ├── DataContext.tsx        ← Single source of truth for all data ops + audit logging
+│   │   │                            updateDeal: auto-appends history with previousStageId
+│   │   │                            addTask: seeds first TaskAssignmentRecord on creation
+│   │   │                            updateTask: appends TaskAssignmentRecord on reassign
+│   │   ├── types.ts               ← Legacy shim — re-exports from types/ only.
+│   │   │                            Do NOT define types here. No duplicate definitions.
+│   │   ├── types/                 ← Canonical source — always import from here for new code
 │   │   │   ├── contact.types.ts
-│   │   │   ├── deal.types.ts
+│   │   │   ├── deal.types.ts      ← Deal.history entry has previousStageId?: string
 │   │   │   ├── user.types.ts
 │   │   │   ├── campaign.types.ts
 │   │   │   ├── workflow.types.ts
-│   │   │   ├── shared.types.ts
-│   │   │   └── index.ts
+│   │   │   ├── shared.types.ts    ← Task: TaskStatus (5 values), assignedBy?,
+│   │   │   │                        assignmentHistory?: TaskAssignmentRecord[]
+│   │   │   │                        TaskAssignmentRecord: assignedTo, assignedBy,
+│   │   │   │                        assignedAt, previousAssignee?, reason?
+│   │   │   └── index.ts           ← Re-exports TaskStatus, TaskAssignmentRecord
 │   │   └── mockData/             ← Seed data split by domain
 │   │       ├── contacts.mock.ts
 │   │       ├── deals.mock.ts
@@ -276,3 +309,28 @@ infrastructure/
 - Types, RBAC constants, API contracts, and Zod schemas defined once in `shared/`
 - Both frontend and backend import from `@leadcrm/shared`
 - Never duplicate type definitions across packages
+
+---
+
+## Documentation Index
+
+| Doc | Purpose |
+|---|---|
+| [ARCHITECTURE.md](./ARCHITECTURE.md) | System overview, tech stack, dual-portal design, key rules |
+| [STRUCTURE.md](./STRUCTURE.md) | This file — full folder map |
+| [API.md](./API.md) | Backend API endpoints reference |
+| [dashboard-kpis.md](./dashboard-kpis.md) | KPI formulas — Pipeline Value, Win Rate, Conversion Rate, etc. |
+| **workflows/** | |
+| [workflows/customer-lifecycle.md](./workflows/customer-lifecycle.md) | Full customer journey from lead to retention |
+| [workflows/lead-to-deal.md](./workflows/lead-to-deal.md) | Lead capture → deal creation step-by-step |
+| [workflows/deal-to-payment.md](./workflows/deal-to-payment.md) | Closed Won → invoice → PayMongo payment |
+| [workflows/pipeline-stage-flow.md](./workflows/pipeline-stage-flow.md) | 4 pipelines, stage rules, velocity, aging indicators |
+| [workflows/task-assignment.md](./workflows/task-assignment.md) | Task lifecycle, assignment audit trail, overdue detection |
+| **security/** | |
+| [security/permission-matrix.md](./security/permission-matrix.md) | Role × module access matrix + granular permission keys |
+| [security/audit-log-strategy.md](./security/audit-log-strategy.md) | What gets logged, log entry shape, changeset format |
+| **database/** | |
+| [database/erd.md](./database/erd.md) | Entity relationships, Prisma model map, migration path |
+| **setup/** | |
+| [setup/local-dev.md](./setup/local-dev.md) | Local development setup guide |
+| [setup/environment-variables.md](./setup/environment-variables.md) | All environment variables reference |

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import AuthPage from '@/client-admin/pages/AuthPage';
+import AuthPage from '@/features/tenant/pages/AuthPage';
 import { PATH_TO_PATHNAME } from '@/shared/lib/route-map';
 
 export default function RegisterPage() {

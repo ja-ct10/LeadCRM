@@ -1,5 +1,25 @@
 // ─── Task, AuditLog, Asset, Inventory, ServiceOrder ───────────────────────
 
+// ─── Activity — universal event record for all business objects ─────────────
+
+export type ActivityType =
+  | 'call' | 'meeting' | 'email' | 'sms' | 'whatsapp'
+  | 'note' | 'task' | 'workflow' | 'stage-change'
+  | 'file-upload' | 'deal-created' | 'contact-created';
+
+export interface Activity {
+  id: string;
+  tenantId: string;
+  type: ActivityType;
+  relatedToType: 'contact' | 'company' | 'deal' | 'task' | 'invoice';
+  relatedToId: string;
+  title: string;
+  description?: string;
+  createdBy: string;        // userId or 'system' for automations
+  createdAt: string;        // ISO timestamp
+  metadata?: Record<string, unknown>;
+}
+
 export interface AuditLog {
   id: string;
   userId: string;
@@ -14,15 +34,32 @@ export interface AuditLog {
   operatorRole?: string;
 }
 
+export type TaskStatus =
+  | 'pending'
+  | 'in-progress'
+  | 'blocked'
+  | 'completed'
+  | 'cancelled';
+
+export interface TaskAssignmentRecord {
+  assignedTo: string;       // userId
+  assignedBy: string;       // userId
+  assignedAt: string;       // ISO timestamp
+  previousAssignee?: string; // userId before this assignment
+  reason?: string;           // e.g. "Territory Transfer", "Capacity"
+}
+
 export interface Task {
   id: string;
   tenantId: string;
   dealId?: string;
   title: string;
   description: string;
-  status: 'pending' | 'in-progress' | 'completed';
+  status: TaskStatus;
   dueDate: string;
   assignedUserId: string;
+  assignedBy?: string;              // userId of whoever made the assignment
+  assignmentHistory?: TaskAssignmentRecord[];
   createdAt: string;
   priority?: 'Low' | 'Medium' | 'High';
 }
@@ -67,4 +104,23 @@ export interface InventoryItem {
   unitPrice: number;
   supplier: string;
   lastRestocked: string;
+}
+
+// ─── Invoice ──────────────────────────────────────────────────────────────────
+
+export interface Invoice {
+  id: string;
+  tenantId: string;
+  dealId?: string;
+  contactId?: string;
+  companyName: string;
+  plan: string;
+  amount: number;
+  frequency: 'Monthly' | 'Quarterly' | 'Annual' | 'One-time';
+  status: 'Active' | 'Pending Renewal' | 'Expired' | 'Cancelled';
+  startDate: string;
+  nextBillingDate: string;
+  paymentStatus: 'Paid' | 'Unpaid' | 'Overdue';
+  createdAt: string;
+  isArchived?: boolean;
 }

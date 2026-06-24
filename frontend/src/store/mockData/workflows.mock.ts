@@ -62,6 +62,68 @@ export const MOCK_WORKFLOWS: Workflow[] = [
     actions: [{ id: 'action_1', type: 'send_email', config: { templateId: 'tpl_2' } }],
     executionCount: 142,
   },
+  // ── Scenario 1: New Lead Auto-Workflow ──────────────────────────────────
+  {
+    id: 'wf_scenario_1',
+    tenantId: 'tenant_demo',
+    name: 'New Lead Auto-Setup',
+    description: 'When a new contact is created, create a welcome task and assign to a sales rep.',
+    category: 'General',
+    status: 'active',
+    trigger: 'lead_created',
+    actions: [
+      { id: 'act_s1_1', type: 'create_task', config: { taskTitle: 'Welcome Call — [Contact Name]', taskDescription: 'Reach out to the new lead within 24 hours.' } },
+      { id: 'act_s1_2', type: 'send_email', config: { templateId: 'tpl_2' } },
+    ],
+    executionCount: 0,
+  },
+  // ── Scenario 2: High-Value Deal Escalation ──────────────────────────────
+  {
+    id: 'wf_scenario_2',
+    tenantId: 'tenant_demo',
+    name: 'High-Value Deal Escalation',
+    description: 'Notify the senior manager and create an approval task when a deal exceeds ₱500,000.',
+    category: 'General',
+    status: 'active',
+    trigger: 'deal_created',
+    condition: 'value_above_500000',
+    actions: [
+      { id: 'act_s2_1', type: 'create_task', config: { taskTitle: 'Manager Approval Required — [Deal Name]', taskDescription: 'Deal value exceeds ₱500,000. Requires senior manager approval before proceeding.' } },
+      { id: 'act_s2_2', type: 'send_email', config: { templateId: 'tpl_1' } },
+    ],
+    executionCount: 0,
+  },
+  // ── Scenario 3: Stuck Deal Re-engagement (time-based) ───────────────────
+  {
+    id: 'wf_scenario_3',
+    tenantId: 'tenant_demo',
+    name: 'Stuck Deal Follow-up',
+    description: 'If a deal has had no activity in 14 days and is not closed, create a follow-up task.',
+    category: 'General',
+    status: 'active',
+    trigger: 'deal_expected_close_date_approaching',
+    condition: 'no_activity_14_days',
+    actions: [
+      { id: 'act_s3_1', type: 'create_task', config: { taskTitle: 'Follow-up Required — [Deal Name]', taskDescription: 'No activity recorded in 14 days. Please contact the client and update the deal stage.' } },
+    ],
+    executionCount: 0,
+  },
+  // ── Scenario 4: Closed Won → Full Handoff ──────────────────────────────
+  {
+    id: 'wf_scenario_4',
+    tenantId: 'tenant_demo',
+    name: 'Closed Won — Onboarding Handoff',
+    description: 'When a deal is marked as Closed Won, create onboarding and billing tasks.',
+    category: 'General',
+    status: 'active',
+    trigger: 'deal_stage_won',
+    actions: [
+      { id: 'act_s4_1', type: 'create_task', config: { taskTitle: 'Customer Onboarding — [Deal Name]', taskDescription: 'Begin customer onboarding process. Assign dedicated support contact.' } },
+      { id: 'act_s4_2', type: 'create_task', config: { taskTitle: 'Generate Invoice — [Deal Name]', taskDescription: 'Create and send the initial invoice to the client for the closed deal.' } },
+      { id: 'act_s4_3', type: 'send_email', config: { templateId: 'tpl_2' } },
+    ],
+    executionCount: 0,
+  },
 ];
 
 // ─── Workflow Executions ──────────────────────────────────────────────────────

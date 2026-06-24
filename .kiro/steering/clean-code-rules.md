@@ -15,7 +15,18 @@ description: Clean Code rules enforced on every file in LeadCRM. Auto-loaded eve
 
 ## 2. Small Functions — One Responsibility
 - One function = one job
-- Ideal: 5–20 lines. Review at 20–40. **Refactor required at 40+**
+- **Maximum: 40 lines.** Review at 20–40. Refactor required at 40+.
+- If a function does more than one thing, its name will contain "and" — that's the signal to split it:
+  ```typescript
+  // BAD — one function, five jobs
+  handleDealSaveAndAssignAndNotifyAndAuditAndUpdateDashboard()
+
+  // GOOD — one function, one job each
+  handleDealSave()
+  handleDealAssign()
+  notifyDealAssignee()
+  auditDealChange()
+  ```
 - If a function needs a comment to explain what it does → extract it
 
 ## 3. Avoid Code Duplication — DRY
@@ -51,17 +62,7 @@ doWork();
 ```
 
 ## 7. File Size Limits
-| Type | Target | Hard Limit |
-|---|---|---|
-| React Page | ≤ 200 lines | 200+ → extract hooks and sub-components |
-| React Component | ≤ 250 lines | 250+ → split into smaller focused components |
-| Custom Hook | ≤ 150 lines | 150+ → extract secondary logic into a second hook |
-| Frontend Service | ≤ 200 lines | 200+ → split by concern |
-| Backend Controller | ≤ 100 lines | 100+ → logic belongs in service, not controller |
-| Backend Service | ≤ 250 lines | 250+ → extract helpers or split by sub-domain |
-| Backend Repository | ≤ 150 lines | 150+ → split by query group |
-
-Files over the hard limit **must be split before adding new features**. Never extend an oversized file.
+See `project-core.md` for the full file size table. Key rule: **functions ≤ 20 lines; 40+ lines → refactor required, no exceptions.** Files over the hard limit must be split before adding new features.
 
 ## 8. Error Handling
 - Never ignore errors silently: `catch (e) {}` is forbidden
@@ -82,6 +83,7 @@ Files over the hard limit **must be split before adding new features**. Never ex
 - [ ] No `any` types
 - [ ] No `console.log`
 - [ ] No functions over 40 lines
+- [ ] No function doing more than one job (no "and" in the name)
 - [ ] No files over hard limit without split
 - [ ] No magic numbers/strings
 - [ ] No deep nesting (early returns used)

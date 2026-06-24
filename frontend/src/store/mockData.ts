@@ -44,3 +44,5 @@ export {
   MOCK_PERMISSIONS,
   MOCK_ROLES,
 } from './mockData/users.mock';
+
+export { MOCK_INVOICES } from './mockData/invoices.mock';

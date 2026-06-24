@@ -22,11 +22,16 @@ import {
   Permission,
   Task,
   WorkflowExecution,
+  WorkflowExecutionRun,
+  WorkflowExecutionStep,
+  WorkflowTriggerRecord,
   PendingAction,
   ServiceOrder,
   AuditLog,
   Asset,
   InventoryItem,
+  Activity,
+  Invoice,
 } from "./types";
 import {
   MOCK_LEADS,
@@ -44,8 +49,9 @@ import {
   MOCK_SERVICE_ORDERS,
   MOCK_ASSETS,
   MOCK_INVENTORY,
+  MOCK_INVOICES,
 } from "./mockData";
-import { evaluateWorkflowCondition } from "../client-admin/automation/workflows/services/workflow-condition-evaluator";
+import { evaluateWorkflowCondition } from "@/features/tenant/automation/workflows/services/workflow-condition-evaluator";
 
 interface DataContextType {
   organizations: Organization[];
@@ -61,6 +67,14 @@ interface DataContextType {
   tenants: Tenant[];
   tasks: Task[];
   workflowExecutions: WorkflowExecution[];
+  workflowExecutionRuns: WorkflowExecutionRun[];
+  workflowExecutionSteps: WorkflowExecutionStep[];
+  activities: Activity[];
+  addActivity: (activity: Omit<Activity, 'id' | 'tenantId'>) => void;
+  invoices: Invoice[];
+  addInvoice: (invoice: Omit<Invoice, 'id' | 'tenantId' | 'createdAt'>) => void;
+  updateInvoice: (id: string, updates: Partial<Invoice>) => void;
+  removeInvoice: (id: string) => void;
   pendingActions: PendingAction[];
   serviceOrders: ServiceOrder[];
   assets: Asset[];
@@ -242,9 +256,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<User[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [workflowExecutions, setWorkflowExecutions] = useState<
-    WorkflowExecution[]
-  >([]);
+  const [workflowExecutions, setWorkflowExecutions] = useState<WorkflowExecution[]>([]);
+  const [workflowExecutionRuns, setWorkflowExecutionRuns] = useState<WorkflowExecutionRun[]>([]);
+  const [workflowExecutionSteps, setWorkflowExecutionSteps] = useState<WorkflowExecutionStep[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [pendingActions, setPendingActions] = useState<PendingAction[]>([]);
   const [serviceOrders, setServiceOrders] = useState<ServiceOrder[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -309,7 +325,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     const d = JSON.parse(
       localStorage.getItem("leadcrm_deals") || JSON.stringify(MOCK_DEALS),
-    );
+    ).map((deal: any) => {
+      // Migration: backfill contactIds from legacy contactId
+      if (!deal.contactIds && deal.contactId) {
+        return { ...deal, contactIds: [deal.contactId] };
+      }
+      if (!deal.contactIds) {
+        return { ...deal, contactIds: [] };
+      }
+      return deal;
+    });
 
     const p = JSON.parse(
       localStorage.getItem("leadcrm_pipelines") ||
@@ -408,6 +433,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
       localStorage.getItem("leadcrm_billing_enabled") || "false",
     );
 
+    const activityData = JSON.parse(
+      localStorage.getItem("leadcrm_activities") || "[]",
+    );
+    const execRuns = JSON.parse(
+      localStorage.getItem("leadcrm_workflow_execution_runs") || "[]",
+    );
+    const execSteps = JSON.parse(
+      localStorage.getItem("leadcrm_workflow_execution_steps") || "[]",
+    );
+    const invoiceData = JSON.parse(
+      localStorage.getItem("leadcrm_invoices") || JSON.stringify(MOCK_INVOICES),
+    );
+
     setIsServiceModuleEnabled(serviceEnabled);
     setIsAssetModuleEnabled(assetEnabled);
     setIsBillingModuleEnabled(billingEnabled);
@@ -430,6 +468,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setServiceOrders(so);
       setAssets(ast);
       setInventoryItems(inv);
+      setActivities(activityData);
+      setWorkflowExecutionRuns(execRuns);
+      setWorkflowExecutionSteps(execSteps);
+      setInvoices(invoiceData);
     } else if (tenant) {
       setAuditLogs(
         logs.filter((log: any) => !log.tenantId || log.tenantId === tenant.id),
@@ -488,6 +530,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setServiceOrders(so.filter((x: any) => x.tenantId === tenant.id));
       setAssets(ast.filter((x: any) => x.tenantId === tenant.id));
       setInventoryItems(inv.filter((x: any) => x.tenantId === tenant.id));
+      setActivities(activityData.filter((x: any) => x.tenantId === tenant.id));
+      setWorkflowExecutionRuns(execRuns.filter((x: any) => x.tenantId === tenant.id));
+      setWorkflowExecutionSteps(execSteps.filter((x: any) => x.tenantId === tenant.id));
+      setInvoices(invoiceData.filter((x: any) => x.tenantId === tenant.id && !x.isArchived));
     }
   };
 
@@ -509,6 +555,47 @@ export function DataProvider({ children }: { children: ReactNode }) {
   ) => {
     if (!tenant) return;
 
+    // ── Phase 3: Create WorkflowExecutionRun record ────────────────────────
+    const entityId = context.deal?.id || context.contact?.id || '';
+    const entityType = context.deal ? 'deal' : 'contact';
+    const runId = 'wfrun_' + Date.now() + Math.random().toString(36).slice(2, 7);
+
+    const newRun: WorkflowExecutionRun = {
+      id: runId,
+      tenantId: tenant.id,
+      workflowId: wf.id,
+      workflowName: wf.name,
+      triggerId: trigger,
+      entityType,
+      entityId,
+      status: 'running',
+      startedAt: new Date().toISOString(),
+    };
+
+    // Persist the run record
+    setWorkflowExecutionRuns(prev => {
+      const updated = [newRun, ...prev].slice(0, 200);
+      const all = JSON.parse(localStorage.getItem('leadcrm_workflow_execution_runs') || '[]');
+      const merged = all.filter((x: any) => x.tenantId !== tenant.id).concat(updated);
+      localStorage.setItem('leadcrm_workflow_execution_runs', JSON.stringify(merged));
+      return updated;
+    });
+
+    // ── Create Activity entry for timeline ────────────────────────────────
+    if (entityId) {
+      addActivity({
+        type: 'workflow',
+        relatedToType: entityType as 'contact' | 'deal',
+        relatedToId: entityId,
+        title: `Workflow "${wf.name}" triggered`,
+        description: `Trigger: ${trigger}`,
+        createdBy: 'system',
+        createdAt: new Date().toISOString(),
+        metadata: { workflowId: wf.id, runId },
+      });
+    }
+    // ──────────────────────────────────────────────────────────────────────
+
     const actionsToRun = wf.actions || [
       {
         id: "legacy_action",
@@ -519,7 +606,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       },
     ];
 
-    actionsToRun.forEach((action: any) => {
+    actionsToRun.forEach((action: any, stepIndex: number) => {
       if (action.delay && action.delay > 0) {
         // Schedule for later
         const executeAt = new Date();
@@ -540,7 +627,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
           actionId: action.id,
         };
 
-        // Save using functional state updates to be solid and clear
         setPendingActions((prev) => {
           const updated = [...prev, newPending];
           const allData = JSON.parse(
@@ -556,35 +642,52 @@ export function DataProvider({ children }: { children: ReactNode }) {
           return updated;
         });
 
-        // Log scheduling
+        // Record step as 'skipped' (scheduled for later)
+        const step: WorkflowExecutionStep = {
+          id: 'wfstep_' + Date.now() + Math.random().toString(36).slice(2, 7),
+          executionId: runId,
+          tenantId: tenant.id,
+          stepIndex,
+          actionType: action.type,
+          status: 'skipped',
+          output: { scheduledFor: executeAt.toISOString() },
+          executedAt: new Date().toISOString(),
+        };
+        setWorkflowExecutionSteps(prev => {
+          const updated = [step, ...prev].slice(0, 500);
+          const all = JSON.parse(localStorage.getItem('leadcrm_workflow_execution_steps') || '[]');
+          const merged = all.filter((x: any) => x.tenantId !== tenant.id).concat(updated);
+          localStorage.setItem('leadcrm_workflow_execution_steps', JSON.stringify(merged));
+          return updated;
+        });
+
+        // Legacy execution log
         const newExec: WorkflowExecution = {
           id: "exec_" + Date.now() + Math.random(),
           workflowId: wf.id,
           tenantId: tenant.id,
           timestamp: new Date().toISOString(),
           status: "success",
-          details: `Scheduled action '${action.type}' to run at ${executeAt.toLocaleString()} (${action.delay} ${action.delayUnit})`,
-          relatedEntityId: context.deal?.id || context.contact?.id,
+          details: `Scheduled action '${action.type}' for ${executeAt.toLocaleString()}`,
+          relatedEntityId: entityId,
         };
         setWorkflowExecutions((prev) => {
           const updated = [newExec, ...prev].slice(0, 100);
-          const allData = JSON.parse(
-            localStorage.getItem("leadcrm_workflow_executions") || "[]",
-          );
-          let newData = allData
-            .filter((x: any) => x.tenantId !== tenant.id)
-            .concat(updated);
-          localStorage.setItem(
-            "leadcrm_workflow_executions",
-            JSON.stringify(newData),
-          );
+          const allData = JSON.parse(localStorage.getItem("leadcrm_workflow_executions") || "[]");
+          const newData = allData.filter((x: any) => x.tenantId !== tenant.id).concat(updated);
+          localStorage.setItem("leadcrm_workflow_executions", JSON.stringify(newData));
           return updated;
         });
       } else {
-        // Execute immediately
-        executeWorkflowAction(wf, action, context);
+        // Execute immediately — pass runId and stepIndex for step tracking
+        executeWorkflowAction(wf, action, context, runId, stepIndex);
       }
     });
+
+    // Mark run as completed
+    setWorkflowExecutionRuns(prev =>
+      prev.map(r => r.id === runId ? { ...r, status: 'completed', completedAt: new Date().toISOString() } : r),
+    );
   };
 
   // Evaluate time-based triggers periodically
@@ -674,7 +777,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
               type: wf.action || "send_email",
               config: wf.actionConfig,
             };
-            executeWorkflowAction(wf, action, pa.context);
+            executeWorkflowAction(wf, action, pa.context, undefined, 0);
           }
         });
 
@@ -739,6 +842,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     wf: Workflow,
     action: any,
     context: { contact?: Contact; deal?: Deal },
+    runId?: string,
+    stepIndex?: number,
   ) => {
     if (!tenant) return;
 
@@ -757,33 +862,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
         )
         .replace(
           /\[Value\]/g,
-          (
-            context.deal?.value ||
-            context.contact?.estimatedValue ||
-            0
-          ).toString(),
+          (context.deal?.value || context.contact?.estimatedValue || 0).toString(),
         )
         .replace(/\[Score\]/g, (context.contact?.score || 0).toString());
     };
 
     let executionDetails = "";
-    // Execute action
-    if (action.type === "create_task") {
-      const taskTitle = replaceMergeTags(
-        action.config?.taskTitle || `Workflow: ${wf.name}`,
-      );
-      const taskDesc = replaceMergeTags(
-        action.config?.taskDescription || wf.description,
-      );
+    let stepOutput: Record<string, unknown> = {};
 
+    if (action.type === "create_task") {
+      const taskTitle = replaceMergeTags(action.config?.taskTitle || `Workflow: ${wf.name}`);
+      const taskDesc  = replaceMergeTags(action.config?.taskDescription || wf.description);
       addTask({
         dealId: context.deal?.id,
         title: taskTitle,
         description: taskDesc,
         status: "pending",
-        dueDate: new Date(Date.now() + 86400000 * 2)
-          .toISOString()
-          .split("T")[0],
+        dueDate: new Date(Date.now() + 86400000 * 2).toISOString().split("T")[0],
         assignedUserId:
           context.deal?.assignedUserId ||
           context.contact?.assignedUserId ||
@@ -791,16 +886,39 @@ export function DataProvider({ children }: { children: ReactNode }) {
           "system",
       });
       executionDetails = `Created task: ${taskTitle}`;
+      stepOutput = { taskTitle };
     } else if (action.type === "send_email" || action.type === "send_sms") {
-      const template = templates.find(
-        (t) => t.id === action.config?.templateId,
-      );
+      const template = templates.find(t => t.id === action.config?.templateId);
       executionDetails = `Sent ${action.type === "send_email" ? "Email" : "SMS"} using template: ${template?.name || "Default"}`;
+      stepOutput = { templateName: template?.name || "Default" };
     } else {
       executionDetails = `Executed action: ${action.type}`;
+      stepOutput = { actionType: action.type };
     }
 
-    // Log execution
+    // ── WorkflowExecutionStep record ──────────────────────────────────────
+    if (runId !== undefined && stepIndex !== undefined) {
+      const step: WorkflowExecutionStep = {
+        id: 'wfstep_' + Date.now() + Math.random().toString(36).slice(2, 7),
+        executionId: runId,
+        tenantId: tenant.id,
+        stepIndex,
+        actionType: action.type,
+        status: 'success',
+        output: stepOutput,
+        executedAt: new Date().toISOString(),
+      };
+      setWorkflowExecutionSteps(prev => {
+        const updated = [step, ...prev].slice(0, 500);
+        const all = JSON.parse(localStorage.getItem('leadcrm_workflow_execution_steps') || '[]');
+        const merged = all.filter((x: any) => x.tenantId !== tenant.id).concat(updated);
+        localStorage.setItem('leadcrm_workflow_execution_steps', JSON.stringify(merged));
+        return updated;
+      });
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
+    // Legacy execution log (keep for backward compat)
     const newExec: WorkflowExecution = {
       id: "exec_" + Date.now() + Math.random(),
       workflowId: wf.id,
@@ -810,11 +928,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       details: executionDetails,
       relatedEntityId: context.deal?.id || context.contact?.id,
     };
-    const newExecs = [newExec, ...workflowExecutions].slice(0, 100); // Keep last 100
+    const newExecs = [newExec, ...workflowExecutions].slice(0, 100);
     saveAndSet("leadcrm_workflow_executions", newExecs, setWorkflowExecutions);
 
-    // Update execution count
-    const newWorkflows = workflows.map((w) =>
+    const newWorkflows = workflows.map(w =>
       w.id === wf.id ? { ...w, executionCount: w.executionCount + 1 } : w,
     );
     saveAndSet("leadcrm_workflows", newWorkflows, setWorkflows);
@@ -954,10 +1071,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const addDeal = (dealData: any) => {
     if (!tenant) return;
+    // Normalise: always maintain contactIds array, backfill from legacy contactId
+    const contactIds: string[] = dealData.contactIds
+      ? dealData.contactIds
+      : dealData.contactId
+        ? [dealData.contactId]
+        : [];
+
     const newDeal: Deal = {
       ...dealData,
       id: "deal_" + Date.now(),
       tenantId: tenant.id,
+      contactIds,
+      lastStageChangeDate: new Date().toISOString(),
       order: deals.filter(
         (d) =>
           d.pipelineId === dealData.pipelineId &&
@@ -972,14 +1098,25 @@ export function DataProvider({ children }: { children: ReactNode }) {
           note: "Deal created",
         },
       ],
+      ownershipHistory: dealData.assignedUserId
+        ? [{ assignedTo: dealData.assignedUserId, assignedBy: user?.id || 'system', assignedAt: new Date().toISOString() }]
+        : [],
     };
     const newDeals = [...deals, newDeal];
     saveAndSet("leadcrm_deals", newDeals, setDeals);
     addAuditLog(
       "Deal Created",
-      `Added a new deal '${newDeal.title}' (â‚±${newDeal.value.toLocaleString()}) for client '${newDeal.companyName}'.`,
+      `Added a new deal '${newDeal.title}' (₱${newDeal.value.toLocaleString()}) for client '${newDeal.companyName}'.`,
       newDeal.id,
     );
+    addActivity({
+      type: 'deal-created',
+      relatedToType: 'deal',
+      relatedToId: newDeal.id,
+      title: `Deal created: ${newDeal.title}`,
+      createdBy: user?.id || 'system',
+      createdAt: new Date().toISOString(),
+    });
     runWorkflows("deal_created", { deal: newDeal });
   };
 
@@ -988,10 +1125,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const newDeals = deals.map((d) => {
       if (d.id === id) {
         const updated = { ...d, ...updates };
-        // If stage changed, add to history
+
+        // Track stage change
         if (updates.stageId && updates.stageId !== d.stageId) {
+          updated.lastStageChangeDate = new Date().toISOString();
           const historyEntry = {
             stageId: updates.stageId,
+            previousStageId: d.stageId,
             timestamp: new Date().toISOString(),
             userId: user?.id || "system",
             note: updates.lostReason
@@ -1000,14 +1140,35 @@ export function DataProvider({ children }: { children: ReactNode }) {
           };
           updated.history = [...(d.history || []), historyEntry];
 
-          // Trigger workflow based on stage
-          // Check if stageId is a UUID or a string like 'stage_1'
+          // Fire stage-change Activity
+          addActivity({
+            type: 'stage-change',
+            relatedToType: 'deal',
+            relatedToId: d.id,
+            title: `Deal moved to new stage`,
+            createdBy: user?.id || 'system',
+            createdAt: new Date().toISOString(),
+            metadata: { previousStageId: d.stageId, newStageId: updates.stageId },
+          });
+
           const stageSuffix = updates.stageId.includes("stage_")
             ? updates.stageId.replace("stage_", "")
             : updates.stageId;
-          const trigger = `deal_stage_${stageSuffix}`;
-          runWorkflows(trigger, { deal: updated });
+          runWorkflows(`deal_stage_${stageSuffix}`, { deal: updated });
         }
+
+        // Track owner change — append DealOwnershipRecord
+        if (updates.assignedUserId && updates.assignedUserId !== d.assignedUserId) {
+          updated.ownershipHistory = [
+            ...(d.ownershipHistory || []),
+            {
+              assignedTo: updates.assignedUserId,
+              assignedBy: user?.id || 'system',
+              assignedAt: new Date().toISOString(),
+            },
+          ];
+        }
+
         return updated;
       }
       return d;
@@ -1119,11 +1280,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const addTask = (taskData: any) => {
     if (!tenant) return;
+    const now = new Date().toISOString();
     const newTask: Task = {
       ...taskData,
       id: "task_" + Date.now(),
       tenantId: tenant.id,
-      createdAt: new Date().toISOString(),
+      createdAt: now,
+      assignedBy: taskData.assignedBy || user?.id || 'system',
+      assignmentHistory: [
+        {
+          assignedTo: taskData.assignedUserId || 'system',
+          assignedBy: taskData.assignedBy || user?.id || 'system',
+          assignedAt: now,
+          reason: taskData.assignReason,
+        },
+      ],
     };
     const newTasks = [...tasks, newTask];
     saveAndSet("leadcrm_tasks", newTasks, setTasks);
@@ -1135,7 +1306,25 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const updateTask = (id: string, updates: Partial<Task>) => {
     const original = tasks.find((t) => t.id === id);
-    const newTasks = tasks.map((t) => (t.id === id ? { ...t, ...updates } : t));
+    const newTasks = tasks.map((t) => {
+      if (t.id !== id) return t;
+      const updated = { ...t, ...updates };
+
+      // Track assignment history when assignedUserId changes
+      if (updates.assignedUserId && updates.assignedUserId !== t.assignedUserId) {
+        const record: import('./types').TaskAssignmentRecord = {
+          assignedTo: updates.assignedUserId,
+          assignedBy: user?.id || 'system',
+          assignedAt: new Date().toISOString(),
+          previousAssignee: t.assignedUserId || undefined,
+          reason: (updates as any).reassignReason,
+        };
+        updated.assignmentHistory = [...(t.assignmentHistory || []), record];
+        updated.assignedBy = user?.id || 'system';
+      }
+
+      return updated;
+    });
     saveAndSet("leadcrm_tasks", newTasks, setTasks);
     if (original) {
       const changes: string[] = [];
@@ -1144,6 +1333,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
       if (updates.title && updates.title !== original.title) {
         changes.push(`title to '${updates.title}'`);
+      }
+      if (updates.assignedUserId && updates.assignedUserId !== original.assignedUserId) {
+        const assignedUser = users.find((u) => u.id === updates.assignedUserId);
+        changes.push(
+          `assigned to '${assignedUser ? `${assignedUser.firstName} ${assignedUser.lastName}` : updates.assignedUserId}'`,
+        );
       }
       const details =
         changes.length > 0
@@ -1627,6 +1822,53 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const addActivity = (activityData: Omit<Activity, 'id' | 'tenantId'>) => {
+    const currentTenantId = tenant?.id || user?.tenantId || '';
+    if (!currentTenantId) return;
+
+    const newActivity: Activity = {
+      ...activityData,
+      id: 'act_' + Math.random().toString(36).substring(2, 11),
+      tenantId: currentTenantId,
+    };
+
+    const allActivities = JSON.parse(
+      localStorage.getItem('leadcrm_activities') || '[]',
+    );
+    const updated = [newActivity, ...allActivities].slice(0, 1000);
+    localStorage.setItem('leadcrm_activities', JSON.stringify(updated));
+    setActivities(updated.filter((a: Activity) => a.tenantId === currentTenantId));
+  };
+
+  const addInvoice = (invoiceData: Omit<Invoice, 'id' | 'tenantId' | 'createdAt'>) => {
+    if (!tenant) return;
+    const newInvoice: Invoice = {
+      ...invoiceData,
+      id: 'INV-' + Date.now(),
+      tenantId: tenant.id,
+      createdAt: new Date().toISOString(),
+    };
+    const all = JSON.parse(localStorage.getItem('leadcrm_invoices') || JSON.stringify(MOCK_INVOICES));
+    const updated = [...all, newInvoice];
+    localStorage.setItem('leadcrm_invoices', JSON.stringify(updated));
+    setInvoices(updated.filter((x: Invoice) => x.tenantId === tenant.id && !x.isArchived));
+    addAuditLog('Invoice Created', `Created invoice ${newInvoice.id} for ${newInvoice.companyName}`);
+  };
+
+  const updateInvoice = (id: string, updates: Partial<Invoice>) => {
+    const all = JSON.parse(localStorage.getItem('leadcrm_invoices') || JSON.stringify(MOCK_INVOICES));
+    const updated = all.map((inv: Invoice) => inv.id === id ? { ...inv, ...updates } : inv);
+    localStorage.setItem('leadcrm_invoices', JSON.stringify(updated));
+    if (tenant) setInvoices(updated.filter((x: Invoice) => x.tenantId === tenant.id && !x.isArchived));
+  };
+
+  const removeInvoice = (id: string) => {
+    const all = JSON.parse(localStorage.getItem('leadcrm_invoices') || JSON.stringify(MOCK_INVOICES));
+    const updated = all.map((inv: Invoice) => inv.id === id ? { ...inv, isArchived: true } : inv);
+    localStorage.setItem('leadcrm_invoices', JSON.stringify(updated));
+    if (tenant) setInvoices(updated.filter((x: Invoice) => x.tenantId === tenant.id && !x.isArchived));
+  };
+
   const approveTenant = (id: string) => {
     const allTenants = JSON.parse(
       localStorage.getItem("leadcrm_tenants") || "[]",
@@ -1776,6 +2018,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
         tenants,
         tasks,
         workflowExecutions,
+        workflowExecutionRuns,
+        workflowExecutionSteps,
+        activities,
+        addActivity,
+        invoices,
+        addInvoice,
+        updateInvoice,
+        removeInvoice,
         pendingActions,
         serviceOrders,
         assets,

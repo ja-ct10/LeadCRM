@@ -8,12 +8,12 @@ export const MOCK_PIPELINES: Pipeline[] = [
     tenantId: 'tenant_demo',
     name: 'Sales Inquiries',
     stages: [
-      { id: 'stage_lead',        name: 'Discovery',    order: 0 },
-      { id: 'stage_assessment',  name: 'Assessment',   order: 1 },
-      { id: 'stage_proposal',    name: 'Proposal',     order: 2 },
-      { id: 'stage_negotiation', name: 'Negotiation',  order: 3 },
-      { id: 'stage_won',         name: 'Closed Won',   order: 4 },
-      { id: 'stage_lost',        name: 'Closed Lost',  order: 5 },
+      { id: 'stage_lead',        name: 'Discovery',    order: 0, probability: 10 },
+      { id: 'stage_assessment',  name: 'Assessment',   order: 1, probability: 25 },
+      { id: 'stage_proposal',    name: 'Proposal',     order: 2, probability: 40 },
+      { id: 'stage_negotiation', name: 'Negotiation',  order: 3, probability: 70 },
+      { id: 'stage_won',         name: 'Closed Won',   order: 4, probability: 100 },
+      { id: 'stage_lost',        name: 'Closed Lost',  order: 5, probability: 0 },
     ],
   },
   {
@@ -21,10 +21,10 @@ export const MOCK_PIPELINES: Pipeline[] = [
     tenantId: 'tenant_demo',
     name: 'Technical Support',
     stages: [
-      { id: 'stage_ticket',   name: 'Ticket Opened', order: 0 },
-      { id: 'stage_review',   name: 'Under Review',  order: 1 },
-      { id: 'stage_progress', name: 'In Progress',   order: 2 },
-      { id: 'stage_resolved', name: 'Resolved',      order: 3 },
+      { id: 'stage_ticket',   name: 'Ticket Opened', order: 0, probability: 10 },
+      { id: 'stage_review',   name: 'Under Review',  order: 1, probability: 40 },
+      { id: 'stage_progress', name: 'In Progress',   order: 2, probability: 70 },
+      { id: 'stage_resolved', name: 'Resolved',      order: 3, probability: 100 },
     ],
   },
   {
@@ -32,10 +32,10 @@ export const MOCK_PIPELINES: Pipeline[] = [
     tenantId: 'tenant_demo',
     name: 'Project Implementation',
     stages: [
-      { id: 'stage_init',    name: 'Initiation', order: 0 },
-      { id: 'stage_plan',    name: 'Planning',   order: 1 },
-      { id: 'stage_exec',    name: 'Execution',  order: 2 },
-      { id: 'stage_handoff', name: 'Handoff',    order: 3 },
+      { id: 'stage_init',    name: 'Initiation', order: 0, probability: 20 },
+      { id: 'stage_plan',    name: 'Planning',   order: 1, probability: 40 },
+      { id: 'stage_exec',    name: 'Execution',  order: 2, probability: 75 },
+      { id: 'stage_handoff', name: 'Handoff',    order: 3, probability: 95 },
     ],
   },
   {
@@ -43,9 +43,9 @@ export const MOCK_PIPELINES: Pipeline[] = [
     tenantId: 'tenant_demo',
     name: 'After-sales Concerns',
     stages: [
-      { id: 'stage_inquiry',    name: 'Inquiry',    order: 0 },
-      { id: 'stage_followup',   name: 'Follow-up',  order: 1 },
-      { id: 'stage_conclusion', name: 'Conclusion', order: 2 },
+      { id: 'stage_inquiry',    name: 'Inquiry',    order: 0, probability: 30 },
+      { id: 'stage_followup',   name: 'Follow-up',  order: 1, probability: 60 },
+      { id: 'stage_conclusion', name: 'Conclusion', order: 2, probability: 90 },
     ],
   },
 ];

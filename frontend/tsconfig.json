@@ -24,8 +24,8 @@
     ],
     "paths": {
       "@/*": ["./*"],
-      "@/client-admin/*": ["./src/client-admin/*"],
-      "@/system-admin/*": ["./src/system-admin/*"],
+      "@/features/tenant/*": ["./src/features/tenant/*"],
+      "@/features/system-admin/*": ["./src/features/system-admin/*"],
       "@/shared/*": ["./src/shared/*"],
       "@/store/*": ["./src/store/*"],
       "@/lib/*": ["./src/lib/*"],

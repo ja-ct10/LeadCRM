@@ -2,6 +2,16 @@
 
 
 _______________________
+CRM              → Contacts · Companies · Deals · Pipeline · Lead Status
+Marketing        → Campaigns · Email Templates
+Operations       → Service Orders · Tasks · Assets · Inventory
+Automation       → Workflow Rules · Triggers · Actions · Execution Logs
+Billing          → Invoices · Payments
+Reporting        → Lead Sources · Revenue Attribution · Sales Reports
+Administration   → Users · Roles · Permissions · Audit Logs
+System Admin     → Tenants · Plans · Billing Monitor · Environment Health
+
+_______________________
 
 Skills list add: 
 Clean Code Best Practices

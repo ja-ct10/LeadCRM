@@ -47,3 +47,41 @@ export interface WorkflowExecution {
   details: string;
   relatedEntityId?: string;
 }
+
+// ─── Three-level workflow execution (replaces single WorkflowExecution log) ─
+
+export interface WorkflowTriggerRecord {
+  id: string;
+  tenantId: string;
+  workflowId: string;
+  triggerType: string;               // e.g. 'contact.created', 'deal.stage_changed'
+  entityType: string;
+  entityId: string;
+  triggeredAt: string;
+  payload: Record<string, unknown>;
+}
+
+export interface WorkflowExecutionRun {
+  id: string;
+  tenantId: string;
+  workflowId: string;
+  workflowName: string;
+  triggerId: string;                 // → WorkflowTriggerRecord.id
+  entityType: string;
+  entityId: string;
+  status: 'running' | 'completed' | 'failed' | 'skipped';
+  startedAt: string;
+  completedAt?: string;
+}
+
+export interface WorkflowExecutionStep {
+  id: string;
+  executionId: string;               // → WorkflowExecutionRun.id
+  tenantId: string;
+  stepIndex: number;
+  actionType: string;                // e.g. 'create_task', 'send_email', 'assign_owner'
+  status: 'success' | 'failed' | 'skipped';
+  output?: Record<string, unknown>;  // what was created (task id, email id, etc.)
+  error?: string;
+  executedAt: string;
+}

@@ -64,9 +64,13 @@ When writing or editing this file, verify:
 - [ ] No unused imports
 - [ ] Booleans prefixed: `is`, `has`, `can`, `should`
 - [ ] If this creates/updates/deletes data: `addAuditLog()` is called
-- [ ] If this creates a record: `tenantId: tenant.id` is present
+- [ ] If this creates a record: `tenantId: tenant.id` is present (tenant from `useAuth`, not `useData`)
 - [ ] If this renders create/edit/delete UI: RBAC guard is present
 - [ ] Dark mode classes on every UI element
 - [ ] Charts imported from `ChartComponents.tsx` only
 - [ ] Animations imported from `'motion/react'` only
 - [ ] Filters use `<TrelloFilter>` — not raw `<select>`
+- [ ] Types imported from `store/types/` (canonical) — not from `store/types.ts` (legacy shim)
+- [ ] Task status uses `TaskStatus` type — values: `pending | in-progress | blocked | completed | cancelled`
+- [ ] New deals created from a Contact context set `deal.contactId = contact.id`
+- [ ] Deal modal interactions use `DealDetailsModal` from `crm/pipeline/ui/deal-details-modal.tsx`
