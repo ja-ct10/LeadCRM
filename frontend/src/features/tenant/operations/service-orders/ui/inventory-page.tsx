@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState } from 'react';
 import { 
@@ -60,7 +60,7 @@ export default function InventoryPage() {
       {/* Stats Overview */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Total Value', value: 'G�1.2M', icon: DollarSign, color: 'text-emerald-400', trend: '+12%', trendUp: true },
+          { label: 'Total Value', value: '₱1.2M', icon: DollarSign, color: 'text-emerald-400', trend: '+12%', trendUp: true },
           { label: 'Total Items', value: '452', icon: Package, color: 'text-blue-400', trend: '+5%', trendUp: true },
           { label: 'Low Stock', value: '8', icon: AlertTriangle, color: 'text-amber-400', trend: '-2', trendUp: false },
           { label: 'Out of Stock', value: '2', icon: RefreshCw, color: 'text-red-400', trend: '0', trendUp: true },
@@ -175,7 +175,7 @@ export default function InventoryPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="text-sm font-bold text-slate-900 dark:text-white">G�{item.unitPrice.toLocaleString()}</span>
+                        <span className="text-sm font-bold text-slate-900 dark:text-white">₱{item.unitPrice.toLocaleString()}</span>
                       </td>
                       <td className="px-6 py-4">
                         <span className="text-sm text-slate-500 dark:text-slate-400">{item.supplier}</span>
@@ -214,7 +214,7 @@ export default function InventoryPage() {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-slate-900 dark:text-white">{log.item}</p>
-                    <p className="text-[10px] text-slate-500">{log.action} G�� {log.date}</p>
+                    <p className="text-[10px] text-slate-500">{log.action} · {log.date}</p>
                   </div>
                 </div>
                 <span className={`text-xs font-bold ${log.color}`}>{log.qty}</span>

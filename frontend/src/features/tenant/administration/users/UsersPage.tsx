@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
@@ -615,12 +615,12 @@ export default function UsersPage() {
                   <Users className="w-3.5 h-3.5" />
                   <span>{role.userCount} users</span>
                 </div>
-                <span className="text-slate-700">G��</span>
+                <span className="text-slate-700">·</span>
                 <div className="flex items-center gap-1.5">
                   <Lock className="w-3.5 h-3.5" />
                   <span>{role.permissions.length} permissions</span>
                 </div>
-                <span className="text-slate-700">G��</span>
+                <span className="text-slate-700">·</span>
                 <span>Updated {role.updatedAt}</span>
               </div>
 
@@ -990,7 +990,7 @@ export default function UsersPage() {
                                   <div
                                     className={`text-[10px] ${isSelected ? "text-blue-105" : "text-slate-500 dark:text-slate-450"} font-medium mt-0.5`}
                                   >
-                                    {role.permissions.length} Privileges G��{" "}
+                                    {role.permissions.length} Privileges ·{" "}
                                     {role.userCount} users
                                   </div>
                                 </div>

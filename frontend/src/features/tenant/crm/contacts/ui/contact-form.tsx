@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect } from "react";
 import { Contact, Organization } from "@/store/types";
@@ -12,6 +12,8 @@ import {
   Calendar,
   AlertCircle,
   ChevronDown,
+  User,
+  Building,
 } from "lucide-react";
 import { OrganizationSelector } from "./organization-combobox";
 import {
@@ -161,7 +163,7 @@ export function AddContactForm({ initialData, onSave, onCancel }: AddContactForm
     onSave(updated);
   };
 
-  // G��G��G�� Shared field classes G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+  // ··· Shared field classes ···················································
   const inputCls = "w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none transition-all focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500";
   const selectCls = "w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl pl-3.5 pr-8 py-2.5 text-sm text-slate-900 dark:text-white outline-none appearance-none cursor-pointer focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all [&>option]:bg-white dark:[&>option]:bg-slate-900";
   const sectionNum = (n: number) => formData.customerType === "Organization" ? n : n - 1;
@@ -174,14 +176,14 @@ export function AddContactForm({ initialData, onSave, onCancel }: AddContactForm
   return (
     <form onSubmit={handleSubmit} className="flex flex-col h-full">
 
-      {/* G��G�� Scrollable Body G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G�� */}
+      {/* ·· Scrollable Body ······················· */}
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
 
         {/* Customer Type */}
         <div className="rounded-2xl border border-gray-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.02] p-4">
           <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">Customer Type</p>
           <div className="flex gap-2">
-            {[{ val: "Individual", emoji: "=���" }, { val: "Organization", emoji: "=���" }].map(({ val, emoji }) => (
+            {[{ val: "Individual", Icon: User }, { val: "Organization", Icon: Building }].map(({ val, Icon }) => (
               <button key={val} type="button"
                 onClick={() => setFormData({ ...formData, customerType: val as any, ...(val === "Individual" ? { companyName: "" } : {}) })}
                 className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all border ${
@@ -189,7 +191,7 @@ export function AddContactForm({ initialData, onSave, onCancel }: AddContactForm
                     ? "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20"
                     : "bg-white dark:bg-white/[0.03] border-gray-200 dark:border-white/[0.08] text-slate-500 dark:text-slate-400 hover:border-blue-400 hover:text-blue-500"
                 }`}
-              >{emoji} {val}</button>
+              ><Icon size={16} /> {val}</button>
             ))}
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-3 leading-relaxed">
@@ -285,10 +287,10 @@ export function AddContactForm({ initialData, onSave, onCancel }: AddContactForm
               <div className="relative">
                 <select className={selectCls} value={formData.status || "Cold"}
                   onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}>
-                  <option value="Hot">=��� Hot</option>
-                  <option value="Warm">=��� Warm</option>
-                  <option value="Cold">=��� Cold</option>
-                  <option value="Closed">=��� Closed</option>
+                  <option value="Hot">=··· Hot</option>
+                  <option value="Warm">=··· Warm</option>
+                  <option value="Cold">=··· Cold</option>
+                  <option value="Closed">=··· Closed</option>
                   <option value="Cancelled">Gܽ Cancelled</option>
                 </select>
                 <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
@@ -397,7 +399,7 @@ export function AddContactForm({ initialData, onSave, onCancel }: AddContactForm
 
       </div>{/* end scrollable body */}
 
-      {/* G��G�� Sticky Footer G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G�� */}
+      {/* ·· Sticky Footer ···························· */}
       <div className="shrink-0 px-6 py-4 border-t border-gray-200 dark:border-white/[0.06] bg-white dark:bg-slate-900 flex items-center justify-end gap-3">
         <button type="button" onClick={onCancel}
           className="px-5 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-white/[0.05] hover:bg-slate-200 dark:hover:bg-white/[0.08] border border-gray-200 dark:border-white/[0.08] rounded-xl transition-colors">
@@ -412,7 +414,7 @@ export function AddContactForm({ initialData, onSave, onCancel }: AddContactForm
   );
 }
 
-// G��G��G�� Small reusable helpers G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+// ··· Small reusable helpers ···················································
 
 function SectionHeader({ num, title }: { num: number; title: string }) {
   return (
@@ -443,7 +445,7 @@ function FieldWrap({ label, error, children }: { label: string; error?: string; 
   );
 }
 
-// G��G��G�� Sheet wrapper G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+// ··· Sheet wrapper ·····························································
 
 export function ContactFormSheet({ initialData, isOpen, onClose, onSave }: ContactFormProps) {
   return (

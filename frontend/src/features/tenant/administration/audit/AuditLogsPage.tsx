@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useData } from '@/store/DataContext';
@@ -375,7 +375,7 @@ export default function AuditLogsPage() {
     link.click();
     document.body.removeChild(link);
 
-    toast.success('Successfully exported audit logs to CSV! =���');
+    toast.success('Successfully exported audit logs to CSV! =···');
   };
 
   // Clear log state (retains in-memory only or clears local storage keys safely)

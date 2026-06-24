@@ -1,8 +1,8 @@
-/**
+﻿/**
  * workflowConditionEvaluator.ts
  *
  * Pure, stateless workflow condition evaluation logic.
- * Extracted from DataContext G�� no React state dependencies.
+ * Extracted from DataContext · no React state dependencies.
  *
  * Usage:
  *   import { evaluateWorkflowCondition } from './workflowConditionEvaluator';
@@ -27,7 +27,7 @@ interface ComplexCondition {
   rules: ConditionRule[];
 }
 
-// G��G��G�� Field resolution G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+// ··· Field resolution ························································
 
 function resolveContext(
   field: string,
@@ -86,7 +86,7 @@ function resolveFieldValue(
   return undefined;
 }
 
-// G��G��G�� Operator evaluation G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+// ··· Operator evaluation ·····················································
 
 function applyOperator(actualValue: unknown, operator: string, value: string): boolean {
   if (operator === 'is_empty') {
@@ -118,7 +118,7 @@ function applyOperator(actualValue: unknown, operator: string, value: string): b
   }
 }
 
-// G��G��G�� Rule evaluation G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+// ··· Rule evaluation ·························································
 
 function evaluateRule(
   rule: ConditionRule,
@@ -131,7 +131,7 @@ function evaluateRule(
   return applyOperator(actualValue, rule.operator, rule.value);
 }
 
-// G��G��G�� Main export G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+// ··· Main export ·····························································
 
 /**
  * Evaluates whether a workflow's condition is satisfied for the given context.
@@ -197,7 +197,7 @@ export function evaluateWorkflowCondition(
     }
 
   } catch (_e) {
-    // Condition parse failure G�� treat as non-matching to prevent broken automations
+    // Condition parse failure · treat as non-matching to prevent broken automations
     return false;
   }
 

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState } from 'react';
 import { Contact } from '@/store/types';
@@ -207,7 +207,7 @@ export function ClientTable({ data, viewMode, onEdit, onView, organizations, onE
                     <span className="text-sm font-medium text-slate-800 dark:text-slate-200">{contact.companyName || '-'}</span>
                     {(contact.businessType || contact.orgWebsite) && (
                       <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                        {contact.businessType}{contact.businessType && contact.orgWebsite ? ' G�� ' : ''}{contact.orgWebsite}
+                        {contact.businessType}{contact.businessType && contact.orgWebsite ? ' · ' : ''}{contact.orgWebsite}
                       </span>
                     )}
                   </div>

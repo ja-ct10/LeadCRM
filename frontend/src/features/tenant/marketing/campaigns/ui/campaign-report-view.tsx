@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import {
   ArrowLeft, Send, Eye, MousePointerClick, MessageSquare, X, Sparkles,
 } from 'lucide-react';
@@ -8,7 +8,7 @@ import {
 } from '@/shared/components/charts/ChartComponents';
 import { Campaign } from '@/store/types';
 
-// G��G��G�� Static chart data G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+// ··· Static chart data ························································
 
 const REPORT_DATA = [
   { name: 'Day 1', opens: 400, clicks: 240 },
@@ -36,7 +36,7 @@ const TOP_LINKS = [
 
 const BOUNCE_RATE = 2.4;
 
-// G��G��G�� Types G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+// ··· Types ····································································
 
 type MetricTab = 'sent' | 'delivered' | 'opened' | 'clicked' | 'responded' | 'bounced';
 
@@ -47,7 +47,7 @@ interface CampaignReportViewProps {
   onBack: () => void;
 }
 
-// G��G��G�� Helpers G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+// ··· Helpers ·································································
 
 function deriveMetrics(campaign: Campaign) {
   const sent = campaign.sentCount ?? 0;
@@ -76,7 +76,7 @@ function getMetricTabActiveClass(tab: MetricTab, active: MetricTab): string {
   return tab === active ? colorMap[tab] : inactive;
 }
 
-// G��G��G�� Component G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+// ··· Component ································································
 
 export function CampaignReportView({
   campaign,
@@ -89,7 +89,7 @@ export function CampaignReportView({
   const metricPanelText: Record<MetricTab, string> = {
     sent:      `The campaign broadcast successfully hit ${m.sent.toLocaleString()} active target contacts in the segment.`,
     delivered: `High sender reputation yielded a success rate of ${m.deliveredPct}% with ${m.delivered.toLocaleString()} delivered emails.`,
-    opened:    `${m.opened.toLocaleString()} individual contacts opened. Peak engagement occurred between 9:00 AM G�� 11:30 AM.`,
+    opened:    `${m.opened.toLocaleString()} individual contacts opened. Peak engagement occurred between 9:00 AM · 11:30 AM.`,
     clicked:   `${m.clicked.toLocaleString()} custom links were engaged (${m.clickedPct}% rate). The pricing sheet link led with 72% of total clicks.`,
     responded: `${m.responded.toLocaleString()} contacts took action by writing a manual response or auto-initiating a direct CRM scheduling trigger.`,
     bounced:   `Soft bounce retry logs: 1.8% soft, 0.6% hard bounces. System automatically quarantined 3 inaccurate contact addresses.`,

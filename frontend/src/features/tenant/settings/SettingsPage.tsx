@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect } from "react";
 import { useData } from "@/store/DataContext";
@@ -580,12 +580,12 @@ export default function SettingsPage() {
                   <Users className="w-3.5 h-3.5" />
                   <span>{role.userCount} users</span>
                 </div>
-                <span className="text-slate-700">G��</span>
+                <span className="text-slate-300 dark:text-slate-600">·</span>
                 <div className="flex items-center gap-1.5">
                   <Lock className="w-3.5 h-3.5" />
                   <span>{role.permissions.length} permissions</span>
                 </div>
-                <span className="text-slate-700">G��</span>
+                <span className="text-slate-300 dark:text-slate-600">·</span>
                 <span>Updated {role.updatedAt}</span>
               </div>
 
@@ -955,7 +955,7 @@ export default function SettingsPage() {
                                   <div
                                     className={`text-[10px] ${isSelected ? "text-blue-100" : "text-slate-500 dark:text-slate-400"} font-medium mt-0.5`}
                                   >
-                                    {role.permissions.length} Permissions G��{" "}
+                                    {role.permissions.length} Permissions ·{" "}
                                     {role.userCount} users
                                   </div>
                                 </div>
@@ -1378,10 +1378,10 @@ export default function SettingsPage() {
                   className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-slate-800/50 border border-gray-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all appearance-none"
                 >
                   <option value="USD">USD ($) - US Dollar</option>
-                  <option value="EUR">EUR (G�) - Euro</option>
-                  <option value="GBP">GBP (-�) - British Pound</option>
-                  <option value="JPY">JPY (-�) - Japanese Yen</option>
-                  <option value="PHP">PHP (G�) - Philippine Peso</option>
+                  <option value="EUR">EUR (₱) - Euro</option>
+                  <option value="GBP">GBP (-·) - British Pound</option>
+                  <option value="JPY">JPY (-·) - Japanese Yen</option>
+                  <option value="PHP">PHP (₱) - Philippine Peso</option>
                   <option value="AUD">AUD ($) - Australian Dollar</option>
                   <option value="CAD">CAD ($) - Canadian Dollar</option>
                 </select>

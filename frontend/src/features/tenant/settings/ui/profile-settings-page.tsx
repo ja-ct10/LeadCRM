@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState } from "react";
 import { useAuth } from "@/store/AuthContext";
@@ -132,7 +132,7 @@ export default function ProfileSettingsPage({
   const [department, setDepartment] = useState("IT");
 
   // Preferences states
-  const [timezone, setTimezone] = useState("UTC-5 G�� Eastern Time");
+  const [timezone, setTimezone] = useState("UTC-5  · Eastern Time");
   const [language, setLanguage] = useState("English (US)");
 
   // Security password states
@@ -487,17 +487,17 @@ export default function ProfileSettingsPage({
                     onChange={(e) => setTimezone(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:border-blue-500 font-medium transition-colors cursor-pointer"
                   >
-                    <option value="UTC-5 G�� Eastern Time">
-                      UTC-5 G�� Eastern Time
+                    <option value="UTC-5  · Eastern Time">
+                      UTC-5  · Eastern Time
                     </option>
-                    <option value="UTC-8 G�� Pacific Time">
-                      UTC-8 G�� Pacific Time
+                    <option value="UTC-8  · Pacific Time">
+                      UTC-8  · Pacific Time
                     </option>
-                    <option value="UTC+0 G�� GMT / London">
-                      UTC+0 G�� GMT / London
+                    <option value="UTC+0  · GMT / London">
+                      UTC+0  · GMT / London
                     </option>
-                    <option value="UTC+8 G�� Singapore / Manila">
-                      UTC+8 G�� Singapore / Manila
+                    <option value="UTC+8  · Singapore / Manila">
+                      UTC+8  · Singapore / Manila
                     </option>
                   </select>
                 </div>
@@ -598,7 +598,7 @@ export default function ProfileSettingsPage({
                   Organization
                 </h3>
                 <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                  Read-only G�� contact a system administrator to change
+                  Read-only · contact a system administrator to change
                 </p>
               </div>
 
@@ -1038,7 +1038,7 @@ export default function ProfileSettingsPage({
                       type="password"
                       value={currentPassword}
                       onChange={(e) => setCurrentPassword(e.target.value)}
-                      placeholder="G��G��G��G��G��G��G��G��"
+                      placeholder="••••••••"
                       className="w-full bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:border-blue-500 font-medium transition-colors"
                     />
                   </div>

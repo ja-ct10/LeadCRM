@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Building, Plus, Search, X, ChevronsUpDown, Check } from 'lucide-react';
@@ -156,7 +156,7 @@ export function OrganizationCombobox({ organizations, value, companyName, onChan
                       <span className={isSelected ? "font-semibold" : "font-medium"}>{org.name}</span>
                       {(org.industry || org.website) && (
                         <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">
-                          {org.industry}{org.industry && org.website ? ' G�� ' : ''}{org.website}
+                          {org.industry}{org.industry && org.website ? ' · ' : ''}{org.website}
                         </span>
                       )}
                     </div>

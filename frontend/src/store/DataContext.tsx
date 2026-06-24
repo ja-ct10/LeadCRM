@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, {
   createContext,
@@ -38,7 +38,7 @@ import {
   MOCK_DEALS,
   MOCK_PIPELINES,
   MOCK_WORKFLOWS,
-  MOCK_CAMPAIGNS,
+  MOCK_CAMPAI·NS,
   MOCK_USERS,
   MOCK_TENANTS,
   MOCK_TEMPLATES,
@@ -159,7 +159,7 @@ interface DataContextType {
   toggleBillingModule: () => void;
 }
 
-const MOCK_AUDIT_LOGS: AuditLog[] = [
+const MOCK_AUDIT_LO·S: AuditLog[] = [
   {
     id: "log_seed_1",
     userId: "user_client_admin",
@@ -290,7 +290,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       localStorage.setItem("leadcrm_migrated_v3", "true");
     }
 
-    // MIGRATION: Auto-extract Organizations from Leads if not done yet
+    // MI·RATION: Auto-extract Organizations from Leads if not done yet
     if (!orgs && l && l.length > 0) {
       orgs = [];
       const orgMap: Record<string, string> = {}; // Name to ID
@@ -346,7 +346,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     );
     const c = JSON.parse(
       localStorage.getItem("leadcrm_campaigns") ||
-        JSON.stringify(MOCK_CAMPAIGNS),
+        JSON.stringify(MOCK_CAMPAI·NS),
     );
     const tpl = JSON.parse(
       localStorage.getItem("leadcrm_templates") ||
@@ -415,12 +415,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     );
     const logs = JSON.parse(
       localStorage.getItem("leadcrm_audit_logs") ||
-        JSON.stringify(MOCK_AUDIT_LOGS),
+        JSON.stringify(MOCK_AUDIT_LO·S),
     );
     if (!localStorage.getItem("leadcrm_audit_logs")) {
       localStorage.setItem(
         "leadcrm_audit_logs",
-        JSON.stringify(MOCK_AUDIT_LOGS),
+        JSON.stringify(MOCK_AUDIT_LO·S),
       );
     }
     const serviceEnabled = JSON.parse(
@@ -1036,7 +1036,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         updates.estimatedValue &&
         updates.estimatedValue !== original.estimatedValue
       ) {
-        changes.push(`value to â‚±${updates.estimatedValue}`);
+        changes.push(`value to  ${updates.estimatedValue}`);
       }
       if (
         updates.assignedUserId &&
@@ -1106,7 +1106,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     saveAndSet("leadcrm_deals", newDeals, setDeals);
     addAuditLog(
       "Deal Created",
-      `Added a new deal '${newDeal.title}' (₱${newDeal.value.toLocaleString()}) for client '${newDeal.companyName}'.`,
+      `Added a new deal '${newDeal.title}' ( ${newDeal.value.toLocaleString()}) for client '${newDeal.companyName}'.`,
       newDeal.id,
     );
     addActivity({
@@ -1199,7 +1199,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         changes.push(`pipeline stage from '${oldName}' to '${newName}'`);
       }
       if (updates.value && updates.value !== original.value) {
-        changes.push(`revenue value to â‚±${updates.value.toLocaleString()}`);
+        changes.push(`revenue value to  ${updates.value.toLocaleString()}`);
       }
       if (updates.priority && updates.priority !== original.priority) {
         changes.push(`priority to '${updates.priority}'`);
@@ -1968,7 +1968,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("leadcrm_deals", JSON.stringify(MOCK_DEALS));
     localStorage.setItem("leadcrm_pipelines", JSON.stringify(MOCK_PIPELINES));
     localStorage.setItem("leadcrm_workflows", JSON.stringify(MOCK_WORKFLOWS));
-    localStorage.setItem("leadcrm_campaigns", JSON.stringify(MOCK_CAMPAIGNS));
+    localStorage.setItem("leadcrm_campaigns", JSON.stringify(MOCK_CAMPAI·NS));
     localStorage.setItem("leadcrm_templates", JSON.stringify(MOCK_TEMPLATES));
     localStorage.setItem("leadcrm_roles", JSON.stringify(MOCK_ROLES));
     localStorage.setItem(

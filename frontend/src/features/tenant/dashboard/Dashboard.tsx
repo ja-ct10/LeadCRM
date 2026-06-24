@@ -1,198 +1,49 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
-import { Users, Briefcase, TrendingUp, DollarSign, Activity, ArrowUpRight, ArrowDownRight, LayoutDashboard, Check, Zap, RefreshCw } from 'lucide-react';
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  PieChart, Pie, Cell, AreaChart, Area
+import {
+  Users, Briefcase, TrendingUp, DollarSign, Activity,
+  ArrowUpRight, ArrowDownRight, Zap, RefreshCw, LayoutDashboard,
+  Check, Target, Clock, Star, ChevronRight,
+} from 'lucide-react';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area,
 } from '@/shared/components/charts/ChartComponents';
-import { Responsive } from 'react-grid-layout';
-import isEqual from 'lodash/isEqual';
 import DashboardSkeleton from '@/shared/components/DashboardSkeleton';
 import { toast } from 'sonner';
 
-function useMyContainerWidth() {
-  const [width, setWidth] = useState(1200);
-  const [mounted, setMounted] = useState(false);
-  const containerRef = React.useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setMounted(true);
-    const node = containerRef.current;
-    if (!node) return;
-
-    // Initial measurement
-    setWidth(node.offsetWidth);
-
-    let rafId: number | null = null;
-    const resizeObserver = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (entry) {
-        const newWidth = Math.floor(entry.contentRect.width);
-        if (rafId !== null) {
-          cancelAnimationFrame(rafId);
-        }
-        rafId = requestAnimationFrame(() => {
-          setWidth((prevWidth) => {
-            // Only update if change is significant (> 24px) to prevent scrollbar-triggered infinite loops
-            if (Math.abs(prevWidth - newWidth) > 24) {
-              return newWidth;
-            }
-            return prevWidth;
-          });
-          rafId = null;
-        });
-      }
-    });
-
-    resizeObserver.observe(node);
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      resizeObserver.disconnect();
-    };
-  }, []);
-
-  return { width, containerRef, mounted };
-}
-
 export default function Dashboard() {
   const { user } = useAuth();
-  const { contacts, deals, tenants, users, roles, tasks } = useData();
-
-  const myOverdueTasks = tasks
-    ? tasks.filter(t =>
-        t.assignedUserId === user?.id &&
-        t.status !== 'completed' &&
-        t.status !== 'cancelled' &&
-        t.dueDate && new Date(t.dueDate) < new Date(),
-      )
-    : [];
-  const [isEditingLayout, setIsEditingLayout] = useState(false);
+  const { contacts, deals, users, roles, tasks, tenants } = useData();
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 750);
-    return () => clearTimeout(timer);
+    const t = setTimeout(() => setIsLoading(false), 700);
+    return () => clearTimeout(t);
   }, []);
 
   const handleRefresh = () => {
     setIsLoading(true);
-    toast.message('Synchronizing SaaS database connection...', {
-      description: 'Refreshing charts and checking user quotas.'
-    });
     setTimeout(() => {
       setIsLoading(false);
-      toast.success('All metrics and pipelines updated! âš¡ðŸ“ˆ');
+      toast.success('Metrics refreshed');
     }, 800);
   };
 
   const userRoleDef = roles.find(r => r.name === user?.role);
   const userPerms = userRoleDef?.permissions || [];
   const isClientAdmin = user?.role === 'Client Admin';
-  const canManageDashboard = isClientAdmin || userPerms.includes('p34');
-  
-  const defaultLayouts = {
-    lg: [
-      { i: 'stat1', x: 0, y: 0, w: 2, h: 2 },
-      { i: 'stat2', x: 2, y: 0, w: 2, h: 2 },
-      { i: 'stat3', x: 4, y: 0, w: 2, h: 2 },
-      { i: 'stat4', x: 6, y: 0, w: 2, h: 2 },
-      { i: 'stat5', x: 8, y: 0, w: 2, h: 2 },
-      { i: 'velocity', x: 10, y: 0, w: 2, h: 2 },
-      { i: 'chart3', x: 0, y: 2, w: 8, h: 6 },
-      { i: 'action_center', x: 8, y: 2, w: 4, h: 6 },
-      { i: 'chart1', x: 0, y: 8, w: 4, h: 6 },
-      { i: 'leaderboard', x: 4, y: 8, w: 4, h: 6 },
-      { i: 'chart2', x: 8, y: 8, w: 4, h: 6 },
-    ],
-    md: [
-      { i: 'stat1', x: 0, y: 0, w: 2, h: 2 },
-      { i: 'stat2', x: 2, y: 0, w: 2, h: 2 },
-      { i: 'stat3', x: 4, y: 0, w: 2, h: 2 },
-      { i: 'stat4', x: 6, y: 0, w: 2, h: 2 },
-      { i: 'stat5', x: 8, y: 0, w: 2, h: 2 },
-      { i: 'velocity', x: 0, y: 2, w: 2, h: 2 },
-      { i: 'chart3', x: 0, y: 4, w: 6, h: 6 },
-      { i: 'action_center', x: 6, y: 4, w: 4, h: 6 },
-      { i: 'chart1', x: 0, y: 10, w: 5, h: 6 },
-      { i: 'chart2', x: 5, y: 10, w: 5, h: 6 },
-      { i: 'leaderboard', x: 0, y: 16, w: 10, h: 6 },
-    ],
-    sm: [
-      { i: 'stat1', x: 0, y: 0, w: 4, h: 2 },
-      { i: 'stat2', x: 4, y: 0, w: 4, h: 2 },
-      { i: 'stat3', x: 0, y: 2, w: 4, h: 2 },
-      { i: 'stat4', x: 4, y: 2, w: 4, h: 2 },
-      { i: 'stat5', x: 0, y: 4, w: 4, h: 2 },
-      { i: 'velocity', x: 4, y: 4, w: 4, h: 2 },
-      { i: 'chart3', x: 0, y: 6, w: 8, h: 6 },
-      { i: 'action_center', x: 0, y: 12, w: 8, h: 6 },
-      { i: 'chart1', x: 0, y: 18, w: 8, h: 6 },
-      { i: 'chart2', x: 0, y: 24, w: 8, h: 6 },
-      { i: 'leaderboard', x: 0, y: 30, w: 8, h: 6 },
-    ]
-  };
 
-  const [layouts, setLayouts] = useState(defaultLayouts);
-
-  useEffect(() => {
-    const saved = localStorage.getItem('dashboard_layout');
-    if (saved) {
-      try {
-        setLayouts(JSON.parse(saved));
-      } catch (e) {}
-    }
-  }, []);
-
-  const handleLayoutChange = (layout: any, allLayouts: any) => {
-    if (!isEditingLayout) return;
-
-    // Extract only standard properties to avoid infinite loops with RGL internals (like 'moved')
-    const layoutsToSave = Object.keys(allLayouts).reduce((acc: any, key) => {
-      acc[key] = allLayouts[key].map((item: any) => ({
-        i: item.i, x: item.x, y: item.y, w: item.w, h: item.h
-      }));
-      return acc;
-    }, {});
-    
-    if (!isEqual(layoutsToSave, layouts)) {
-      setLayouts(layoutsToSave);
-      localStorage.setItem('dashboard_layout', JSON.stringify(layoutsToSave));
-    }
-  };
-
-  const responsiveLayouts = useMemo(() => {
-    return Object.keys(layouts).reduce((acc: any, key) => {
-      acc[key] = layouts[key].map((item: any) => ({
-        ...item,
-        static: !isEditingLayout
-      }));
-      return acc;
-    }, {});
-  }, [layouts, isEditingLayout]);
-
-  const { width, containerRef, mounted } = useMyContainerWidth();
-
-  if (!mounted || isLoading) {
+  if (!user || isLoading) {
     return (
       <div className="space-y-6">
-        <div className="mb-8 flex justify-between items-center animate-fade-in">
+        <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-1 tracking-tight">Dashboard Overview</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Welcome back! Here's what's happening with your business today.</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              disabled
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-white dark:bg-white/[0.02] border border-gray-250 dark:border-white/[0.05] text-slate-400 dark:text-slate-500 cursor-not-allowed"
-            >
-              <RefreshCw size={14} className="animate-spin" />
-              <span>Syncing Live...</span>
-            </button>
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Dashboard</h2>
+            <p className="text-sm text-slate-500 mt-0.5">Syncing live metrics...</p>
           </div>
         </div>
         <DashboardSkeleton />
@@ -200,63 +51,58 @@ export default function Dashboard() {
     );
   }
 
-  if (user?.role === 'System Admin') {
+  // ── System Admin view ──────────────────────────────────────
+  if (user.role === 'System Admin') {
     return (
       <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl shadow-lg transition-colors duration-300">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-blue-500/10 rounded-xl text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.2)]"><Briefcase size={24} /></div>
-              <div>
-                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Total Tenants</p>
-                <p className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight mt-1">{tenants.length}</p>
-              </div>
-            </div>
+        <div className="flex justify-between items-center mb-2">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">System Overview</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Platform-wide metrics across all tenants</p>
           </div>
-          <div className="bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl shadow-lg transition-colors duration-300">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-green-500/10 rounded-xl text-green-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]"><Users size={24} /></div>
-              <div>
-                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Total Users</p>
-                <p className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight mt-1">{users.length}</p>
-              </div>
-            </div>
-          </div>
-          <div className="bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl shadow-lg transition-colors duration-300">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-purple-500/10 rounded-xl text-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.2)]"><TrendingUp size={24} /></div>
-              <div>
-                <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Total Revenue (Est)</p>
-                <p className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight mt-1">${deals.reduce((acc, d) => acc + d.value, 0).toLocaleString()}</p>
-              </div>
-            </div>
-          </div>
+          <button onClick={handleRefresh} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.08] text-slate-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition-colors">
+            <RefreshCw size={14} /> Refresh
+          </button>
         </div>
-        
-        <div className="bg-white dark:bg-white/[0.02] rounded-2xl border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl shadow-lg overflow-hidden transition-colors duration-300">
-          <div className="p-6 border-b border-gray-200 dark:border-white/[0.05]">
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Recent Tenants</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {[
+            { label: 'Total Tenants', value: tenants.length, icon: Briefcase, color: 'blue' },
+            { label: 'Total Users', value: users.length, icon: Users, color: 'emerald' },
+            { label: 'Total Deals', value: deals.length, icon: TrendingUp, color: 'purple' },
+          ].map(({ label, value, icon: Icon, color }) => (
+            <div key={label} className={`bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.06] shadow-sm flex items-center gap-4`}>
+              <div className={`p-3 rounded-xl bg-${color}-500/10 text-${color}-500`}><Icon size={22} /></div>
+              <div>
+                <p className="text-sm text-slate-500 dark:text-slate-400">{label}</p>
+                <p className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">{value}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="bg-white dark:bg-white/[0.02] rounded-2xl border border-gray-200 dark:border-white/[0.06] shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 dark:border-white/[0.05]">
+            <h3 className="font-semibold text-slate-900 dark:text-white">Active Tenants</h3>
           </div>
-          <table className="w-full text-left text-sm text-slate-600 dark:text-slate-300">
-            <thead className="bg-gray-50 dark:bg-white/[0.02] text-slate-500 dark:text-slate-400">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 dark:bg-white/[0.02] text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider">
               <tr>
-                <th className="px-6 py-4 font-medium">Company</th>
-                <th className="px-6 py-4 font-medium">Industry</th>
-                <th className="px-6 py-4 font-medium">Status</th>
-                <th className="px-6 py-4 font-medium">Created</th>
+                <th className="px-6 py-3 text-left font-semibold">Company</th>
+                <th className="px-6 py-3 text-left font-semibold">Industry</th>
+                <th className="px-6 py-3 text-left font-semibold">Status</th>
+                <th className="px-6 py-3 text-left font-semibold">Created</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-white/[0.05]">
+            <tbody className="divide-y divide-gray-100 dark:divide-white/[0.04]">
               {tenants.map(t => (
-                <tr key={t.id} className="hover:bg-gray-50 dark:hover:bg-white dark:bg-white/[0.02] transition-colors">
-                  <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">{t.name}</td>
-                  <td className="px-6 py-4 text-slate-500 dark:text-slate-400">{t.industry}</td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${t.status === 'active' ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'}`}>
+                <tr key={t.id} className="hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors">
+                  <td className="px-6 py-3.5 font-medium text-slate-900 dark:text-white">{t.name}</td>
+                  <td className="px-6 py-3.5 text-slate-500 dark:text-slate-400">{t.industry}</td>
+                  <td className="px-6 py-3.5">
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${t.status === 'active' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400' : 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400'}`}>
                       {t.status}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-slate-500 dark:text-slate-400">{new Date(t.createdAt).toLocaleDateString()}</td>
+                  <td className="px-6 py-3.5 text-slate-500 dark:text-slate-400">{new Date(t.createdAt).toLocaleDateString()}</td>
                 </tr>
               ))}
             </tbody>
@@ -266,436 +112,276 @@ export default function Dashboard() {
     );
   }
 
-  // Client Admin / Sales Rep Dashboard
-  const activeDeals = deals.filter(d => d.stageId !== 'stage_won' && d.stageId !== 'stage_lost');
-  const wonDeals = deals.filter(d => d.stageId === 'stage_won');
-  const totalRevenue = wonDeals.reduce((acc, d) => acc + d.value, 0);
-  const winRate = deals.length > 0 ? Math.round((wonDeals.length / deals.length) * 100) : 0;
+  // ── Tenant dashboard data ──────────────────────────────────
+  const activeDeals   = deals.filter(d => !d.isArchived && d.stageId !== 'stage_won' && d.stageId !== 'stage_lost');
+  const wonDeals      = deals.filter(d => d.stageId === 'stage_won');
+  const totalRevenue  = wonDeals.reduce((s, d) => s + d.value, 0);
+  const winRate       = deals.length > 0 ? Math.round((wonDeals.length / deals.length) * 100) : 0;
+  const myTasks       = tasks.filter(t => t.assignedUserId === user.id);
+  const myPending     = myTasks.filter(t => t.status === 'pending');
+  const myOverdue     = myTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled' && t.dueDate && new Date(t.dueDate) < new Date());
+  const myHotLeads    = contacts.filter(c => c.status === 'Hot' && c.assignedUserId === user.id);
 
-  // Dynamic Pipeline Data
-  const stageNames: Record<string, string> = {
-    'stage_lead': 'Contact In',
-    'stage_qualified': 'Qualified',
-    'stage_proposal': 'Proposal Sent',
-    'stage_negotiation': 'Negotiation',
-    'stage_won': 'Closed Won',
-    'stage_lost': 'Closed Lost'
-  };
+  const forecastedRevenue = activeDeals.reduce((acc, d) => {
+    const prob: Record<string, number> = { stage_lead: 0.1, stage_qualified: 0.3, stage_proposal: 0.6, stage_negotiation: 0.8 };
+    return acc + d.value * (prob[d.stageId] || 0.1);
+  }, 0);
 
-  // Quick Action Metrics
-  const myHotLeads = contacts.filter(c => c.status === 'Hot' && c.assignedUserId === user?.id);
-  const myPendingTasks = tasks ? tasks.filter(t => t.status === 'pending' && t.assignedUserId === user?.id) : [];
-  const recentlyAssignedLeads = contacts.filter(c => c.assignedUserId === user?.id && Date.now() - new Date(c.createdAt).getTime() < 7 * 24 * 60 * 60 * 1000);
-  const stageColors: Record<string, string> = {
-    'stage_lead': '#3B82F6',
-    'stage_qualified': '#8B5CF6',
-    'stage_proposal': '#EC4899',
-    'stage_negotiation': '#F59E0B',
-    'stage_won': '#10B981',
-    'stage_lost': '#EF4444'
-  };
+  const avgVelocity = (() => {
+    const days = wonDeals.map(d => {
+      const created = new Date(d.createdAt || Date.now()).getTime();
+      const wonH = d.history?.find(h => h.stageId === 'stage_won');
+      const closed = wonH ? new Date(wonH.timestamp).getTime() : Date.now();
+      return Math.max(1, Math.round((closed - created) / 86400000));
+    });
+    return days.length ? Math.round(days.reduce((a, b) => a + b, 0) / days.length) : 14;
+  })();
 
-  const pipelineCounts = deals.reduce((acc, deal) => {
-    acc[deal.stageId] = (acc[deal.stageId] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  const pipelineData = Object.keys(pipelineCounts)
-    .filter(stageId => stageId !== 'stage_lost') // Hide lost deals from pie chart
-    .map(stageId => ({
-      name: stageNames[stageId] || stageId,
-      value: pipelineCounts[stageId],
-      color: stageColors[stageId] || '#64748b'
-    }));
-
-  // Dynamic Revenue Data (Mocking historical, using real for current month)
-  const currentMonthRevenue = wonDeals.reduce((acc, d) => acc + d.value, 0);
-  const currentMonthDeals = wonDeals.length;
-  
   const revenueData = [
     { name: 'Nov', revenue: 45000, deals: 4 },
     { name: 'Dec', revenue: 52000, deals: 5 },
     { name: 'Jan', revenue: 48000, deals: 4 },
     { name: 'Feb', revenue: 61000, deals: 6 },
     { name: 'Mar', revenue: 55000, deals: 5 },
-    { name: 'Apr', revenue: currentMonthRevenue > 0 ? currentMonthRevenue : 68000, deals: currentMonthDeals > 0 ? currentMonthDeals : 7 },
+    { name: 'Apr', revenue: totalRevenue > 0 ? totalRevenue : 68000, deals: wonDeals.length > 0 ? wonDeals.length : 7 },
   ];
 
-  // Sales Forecasting
-  const stageProbabilities: Record<string, number> = {
-    'stage_lead': 0.1,
-    'stage_qualified': 0.3,
-    'stage_proposal': 0.6,
-    'stage_negotiation': 0.8,
+  const stageColors: Record<string, string> = {
+    stage_lead: '#3B82F6', stage_qualified: '#8B5CF6',
+    stage_proposal: '#EC4899', stage_negotiation: '#F59E0B',
+    stage_won: '#10B981', stage_lost: '#EF4444',
   };
+  const stageNames: Record<string, string> = {
+    stage_lead: 'Contact In', stage_qualified: 'Qualified',
+    stage_proposal: 'Proposal', stage_negotiation: 'Negotiation',
+    stage_won: 'Won', stage_lost: 'Lost',
+  };
+  const pipelineData = Object.entries(
+    deals.filter(d => d.stageId !== 'stage_lost').reduce((acc, d) => {
+      acc[d.stageId] = (acc[d.stageId] || 0) + 1; return acc;
+    }, {} as Record<string, number>)
+  ).map(([stageId, value]) => ({ name: stageNames[stageId] || stageId, value, color: stageColors[stageId] || '#64748b' }));
 
-  const forecastedRevenue = activeDeals.reduce((acc, deal) => {
-    const prob = stageProbabilities[deal.stageId] || 0;
-    return acc + (deal.value * prob);
-  }, 0);
+  const topPerformers = users.map(u => {
+    const won = wonDeals.filter(d => d.assignedUserId === u.id);
+    return { user: u, wonDeals: won.length, wonValue: won.reduce((s, d) => s + d.value, 0), activeDeals: activeDeals.filter(d => d.assignedUserId === u.id).length };
+  }).sort((a, b) => b.wonValue - a.wonValue).slice(0, 5);
 
-  // Activity Leaderboard
-  const userPerformance = users.map(u => {
-    const userWonDeals = wonDeals.filter(d => d.assignedUserId === u.id);
-    const userActiveDeals = activeDeals.filter(d => d.assignedUserId === u.id);
-    const totalWonValue = userWonDeals.reduce((acc, d) => acc + d.value, 0);
-    return {
-      user: u,
-      wonDeals: userWonDeals.length,
-      activeDeals: userActiveDeals.length,
-      totalWonValue
-    };
-  }).sort((a, b) => b.totalWonValue - a.totalWonValue).slice(0, 5);
+  // ── Stat card config ──────────────────────────────────────
+  const statCards = isClientAdmin ? [
+    { label: 'Total Revenue', value: `₱${totalRevenue > 0 ? totalRevenue.toLocaleString() : '328,000'}`, icon: DollarSign, color: 'blue',    trend: '+12%', up: true },
+    { label: 'Forecasted',    value: `₱${Math.round(forecastedRevenue).toLocaleString()}`,               icon: TrendingUp, color: 'emerald', trend: '+8%',  up: true },
+    { label: 'Active Deals',  value: activeDeals.length || 90,                                           icon: Briefcase,  color: 'purple',  trend: '+12',  up: true },
+    { label: 'Total Leads',   value: contacts.length || 0,                                               icon: Users,      color: 'orange',  trend: '+180', up: true },
+    { label: 'Win Rate',      value: `${winRate || 24}%`,                                                icon: Target,     color: 'pink',    trend: '-1.2%', up: false },
+    { label: 'Avg Velocity',  value: `${avgVelocity}d`,                                                  icon: Zap,        color: 'indigo',  trend: '-2 days', up: true },
+  ] : [
+    { label: 'My Hot Leads',     value: myHotLeads.length,  icon: Zap,       color: 'orange',  trend: `${myHotLeads.length} hot`,   up: true },
+    { label: 'Pending Tasks',    value: myPending.length,   icon: Clock,     color: 'red',     trend: myOverdue.length > 0 ? `${myOverdue.length} overdue` : 'On track', up: myOverdue.length === 0 },
+    { label: 'My Active Deals',  value: activeDeals.filter(d => d.assignedUserId === user.id).length, icon: Briefcase, color: 'blue', trend: 'Active', up: true },
+    { label: 'Total Contacts',   value: contacts.length,    icon: Users,     color: 'purple',  trend: '+recent', up: true },
+    { label: 'Win Rate',         value: `${winRate || 0}%`, icon: Target,    color: 'emerald', trend: 'This month', up: winRate > 0 },
+    { label: 'Avg Velocity',     value: `${avgVelocity}d`,  icon: Zap,       color: 'indigo',  trend: 'To close', up: true },
+  ];
 
-  // Conversion Velocity
-  const velocityData = wonDeals.map(deal => {
-    const created = new Date(deal.createdAt || Date.now()).getTime();
-    const wonHistory = deal.history?.find(h => h.stageId === 'stage_won');
-    const closed = wonHistory ? new Date(wonHistory.timestamp).getTime() : new Date(deal.expectedCloseDate || Date.now()).getTime();
-    const diffDays = Math.max(1, Math.round((closed - created) / (1000 * 60 * 60 * 24)));
-    return diffDays;
-  });
-
-  const avgVelocity = velocityData.length > 0
-    ? Math.round(velocityData.reduce((a, b) => a + b, 0) / velocityData.length)
-    : 14;
+  const colorMap: Record<string, { bg: string; text: string; glow: string }> = {
+    blue:   { bg: 'bg-blue-500/10',   text: 'text-blue-500',   glow: 'shadow-blue-500/20'   },
+    emerald:{ bg: 'bg-emerald-500/10', text: 'text-emerald-500', glow: 'shadow-emerald-500/20' },
+    purple: { bg: 'bg-purple-500/10', text: 'text-purple-500', glow: 'shadow-purple-500/20' },
+    orange: { bg: 'bg-orange-500/10', text: 'text-orange-500', glow: 'shadow-orange-500/20' },
+    pink:   { bg: 'bg-pink-500/10',   text: 'text-pink-500',   glow: 'shadow-pink-500/20'   },
+    indigo: { bg: 'bg-indigo-500/10', text: 'text-indigo-500', glow: 'shadow-indigo-500/20' },
+    red:    { bg: 'bg-red-500/10',    text: 'text-red-500',    glow: 'shadow-red-500/20'    },
+  };
 
   return (
     <div className="space-y-6">
-      <div className="mb-8 flex justify-between items-center">
+      {/* Header */}
+      <div className="flex flex-wrap justify-between items-start gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-1 tracking-tight">Dashboard Overview</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Welcome back! Here's what's happening with your business today.</p>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Dashboard</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+            Welcome back, {user.firstName}. Here's what's happening today.
+          </p>
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleRefresh}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] text-slate-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-white/[0.04] hover:text-slate-900 dark:hover:text-white cursor-pointer active:scale-95"
-          >
-            <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
-            <span>Sync Live Metrics</span>
-          </button>
-          {canManageDashboard && isEditingLayout && (
-            <button
-              onClick={() => {
-                setLayouts(defaultLayouts);
-                localStorage.removeItem('dashboard_layout');
-                toast.success('Layout reset to default');
-              }}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-white dark:bg-white/[0.02] border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
-            >
-              <RefreshCw size={16} /> Reset
-            </button>
-          )}
-          {canManageDashboard && (
-            <button 
-              onClick={() => setIsEditingLayout(!isEditingLayout)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                isEditingLayout 
-                  ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30' 
-                  : 'bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] text-slate-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-white/[0.04] hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              {isEditingLayout ? <><Check size={16} /> Done Editing</> : <><LayoutDashboard size={16} /> Edit Layout</>}
-            </button>
-          )}
+        <button onClick={handleRefresh} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.08] text-slate-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition-colors shadow-sm">
+          <RefreshCw size={14} /> Sync Metrics
+        </button>
+      </div>
+
+      {/* ── Stat Cards ─────────────────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+        {statCards.map(({ label, value, icon: Icon, color, trend, up }) => {
+          const c = colorMap[color] || colorMap.blue;
+          return (
+            <div key={label} className="bg-white dark:bg-white/[0.02] p-5 rounded-2xl border border-gray-200 dark:border-white/[0.06] shadow-sm hover:shadow-md dark:hover:bg-white/[0.04] transition-all group flex flex-col gap-3">
+              <div className="flex items-start justify-between">
+                <div className={`p-2.5 rounded-xl ${c.bg} ${c.text} shadow-sm group-hover:shadow-lg group-hover:${c.glow} transition-shadow`}>
+                  <Icon size={18} />
+                </div>
+                <span className={`text-[11px] font-semibold flex items-center gap-0.5 ${up ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}`}>
+                  {up ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}{trend}
+                </span>
+              </div>
+              <div>
+                <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-0.5">{label}</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight leading-none">{value}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Middle row: Revenue Trend + Action Center ─────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        {/* Area Chart */}
+        <div className="lg:col-span-8 bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.06] shadow-sm flex flex-col min-h-[320px]">
+          <div className="flex items-start justify-between mb-5 shrink-0">
+            <div>
+              <h3 className="font-semibold text-slate-900 dark:text-white">Revenue Trend</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">6-month revenue progression</p>
+            </div>
+            <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">
+              <ArrowUpRight size={11} /> +15.3% Overall
+            </span>
+          </div>
+          <div className="flex-1 min-h-0">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={revenueData} margin={{ top: 5, right: 10, bottom: 0, left: 0 }}>
+                <defs>
+                  <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" vertical={false} />
+                <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v: number) => `₱${v / 1000}k`} />
+                <Tooltip />
+                <Area type="monotone" dataKey="revenue" name="Revenue (₱)" stroke="#3B82F6" strokeWidth={2.5} fill="url(#revGrad)" activeDot={{ r: 5 }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Action Center */}
+        <div className="lg:col-span-4 bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.06] shadow-sm flex flex-col min-h-[320px]">
+          <div className="mb-4 shrink-0">
+            <h3 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+              <Zap size={16} className="text-amber-500" /> Action Center
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Hot leads & pending tasks</p>
+          </div>
+          <div className="flex-1 overflow-y-auto space-y-2.5 custom-scrollbar pr-1">
+            {myPending.length === 0 && myHotLeads.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full gap-2 text-slate-400 py-8">
+                <Check size={28} className="text-emerald-500" />
+                <p className="text-sm font-medium text-slate-600 dark:text-slate-300">All caught up!</p>
+                <p className="text-xs text-slate-400">No pending actions right now.</p>
+              </div>
+            ) : null}
+            {myHotLeads.slice(0, 3).map(lead => (
+              <div key={lead.id} className="p-3 rounded-xl bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30">
+                <span className="text-[10px] font-bold text-red-500 uppercase tracking-wide flex items-center gap-1 mb-1"><Zap size={10} /> Hot Lead</span>
+                <p className="text-sm font-semibold text-slate-800 dark:text-white">{lead.firstName} {lead.lastName}</p>
+                <p className="text-xs text-slate-500">{lead.companyName || 'Individual'}</p>
+              </div>
+            ))}
+            {myPending.slice(0, 3).map(task => (
+              <div key={task.id} className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30">
+                <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wide mb-1 block">Follow-up</span>
+                <p className="text-sm font-semibold text-slate-800 dark:text-white truncate">{task.title}</p>
+                {task.dueDate && <p className="text-xs text-slate-500 mt-0.5">Due {new Date(task.dueDate).toLocaleDateString()}</p>}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
-      <div ref={containerRef} style={{ width: '100%', minHeight: '800px', overflowX: 'hidden' }}>
-        {mounted && (
-          <Responsive
-            className="layout"
-            layouts={responsiveLayouts}
-            breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-            cols={{ lg: 12, md: 10, sm: 8, xs: 4, xxs: 2 }}
-            rowHeight={60}
-            width={width}
-            onLayoutChange={handleLayoutChange}
-            margin={[24, 24]}
-          >
-        {/* Top Stats Cards */}
-        <div key="stat1" className="bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl shadow-lg flex flex-col justify-between group hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors h-full">
-          <div className="flex justify-between items-start mb-4">
-            <div className={`p-2.5 rounded-xl shadow-[0_0_15px_rgba(59,130,246,0.15)] group-hover:shadow-[0_0_20px_rgba(59,130,246,0.3)] transition-shadow flex items-center justify-center font-bold text-lg w-10 h-10 ${isClientAdmin ? 'bg-blue-500/10 text-blue-400' : 'bg-orange-500/10 text-orange-400'}`}>
-              {isClientAdmin ? 'â‚±' : <Zap size={20} />}
-            </div>
-          </div>
-          <div>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
-              {isClientAdmin ? 'Total Revenue' : 'My Hot Leads'}
-            </p>
-            <p className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
-              {isClientAdmin ? `â‚±${totalRevenue > 0 ? totalRevenue.toLocaleString() : '328,000'}` : myHotLeads.length}
-            </p>
-          </div>
-        </div>
-
-        <div key="stat2" className="bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl shadow-lg flex flex-col justify-between group hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors h-full">
-          <div className="flex justify-between items-start mb-4">
-            <div className={`p-2.5 rounded-xl shadow-[0_0_15px_rgba(16,185,129,0.15)] group-hover:shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-shadow flex items-center justify-center font-bold text-lg w-10 h-10 ${isClientAdmin ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
-              {isClientAdmin ? 'â‚±' : <Activity size={20} />}
-            </div>
-          </div>
-          <div>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
-              {isClientAdmin ? 'Forecasted Revenue' : 'Pending Tasks'}
-            </p>
-            <p className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
-              {isClientAdmin ? `₱${Math.round(forecastedRevenue).toLocaleString()}` : myPendingTasks.length}
-            </p>
-            {!isClientAdmin && myOverdueTasks.length > 0 && (
-              <p className="text-xs font-semibold text-red-500 dark:text-red-400 mt-1 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse inline-block" />
-                {myOverdueTasks.length} overdue
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div key="stat3" className="bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl shadow-lg flex flex-col justify-between group hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors h-full">
-          <div className="flex justify-between items-start mb-4">
-            <div className={`p-2.5 rounded-xl shadow-[0_0_15px_rgba(168,85,247,0.15)] group-hover:shadow-[0_0_20px_rgba(168,85,247,0.3)] transition-shadow ${isClientAdmin ? 'bg-purple-500/10 text-purple-400' : 'bg-indigo-500/10 text-indigo-400'}`}>
-              <Briefcase size={20} />
-            </div>
-            {isClientAdmin && (
-              <span className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20">
-                <ArrowUpRight size={12} /> 12 new
-              </span>
-            )}
-          </div>
-          <div>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">
-              {isClientAdmin ? 'Active Deals' : 'Recently Assigned'}
-            </p>
-            <p className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
-              {isClientAdmin ? (activeDeals.length > 0 ? activeDeals.length : '90') : recentlyAssignedLeads.length}
-            </p>
-          </div>
-        </div>
-
-        <div key="stat4" className="bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl shadow-lg flex flex-col justify-between group hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors h-full">
-          <div className="flex justify-between items-start mb-4">
-            <div className="p-2.5 bg-orange-500/10 rounded-xl text-orange-400 shadow-[0_0_15px_rgba(249,115,22,0.15)] group-hover:shadow-[0_0_20px_rgba(249,115,22,0.3)] transition-shadow">
-              <Users size={20} />
-            </div>
-            <span className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20">
-              <ArrowUpRight size={12} /> 180+
-            </span>
-          </div>
-          <div>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Leads</p>
-            <p className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">{contacts.length > 0 ? contacts.length : '2,350'}</p>
-          </div>
-        </div>
-
-        <div key="stat5" className="bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl shadow-lg flex flex-col justify-between group hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors h-full">
-          <div className="flex justify-between items-start mb-4">
-            <div className="p-2.5 bg-pink-500/10 rounded-xl text-pink-400 shadow-[0_0_15px_rgba(236,72,153,0.15)] group-hover:shadow-[0_0_20px_rgba(236,72,153,0.3)] transition-shadow">
-              <Activity size={20} />
-            </div>
-            <span className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20">
-              <ArrowDownRight size={12} /> 1.2%
-            </span>
-          </div>
-          <div>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Conversion Rate</p>
-            <p className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">{winRate > 0 ? `${winRate}%` : '24.5%'}</p>
-          </div>
-        </div>
-
-        <div key="velocity" className="bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl shadow-lg flex flex-col justify-between group hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors h-full">
-          <div className="flex justify-between items-start mb-4">
-            <div className="p-2.5 bg-indigo-500/10 rounded-xl text-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.15)] group-hover:shadow-[0_0_20px_rgba(99,102,241,0.3)] transition-shadow">
-               <Zap size={20} />
-            </div>
-            <span className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20">
-              <ArrowDownRight size={12} /> 2 days faster
-            </span>
-          </div>
-          <div>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-1">Conversion Velocity</p>
-            <p className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">{avgVelocity} <span className="text-lg font-normal text-slate-500">days</span></p>
-          </div>
-        </div>
-
-        {/* Middle Row: Charts & Leaderboard & Action Center */}
-        <div key="action_center" className="bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl shadow-lg flex flex-col h-full">
+      {/* ── Bottom row: Bar Chart + Leaderboard + Pipeline ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-5">
+        {/* Bar Chart */}
+        <div className="md:col-span-1 lg:col-span-4 bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.06] shadow-sm flex flex-col min-h-[300px]">
           <div className="mb-4 shrink-0">
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-              <Zap size={18} className="text-amber-500" /> Action Center
-            </h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Critical tasks & hot leads</p>
+            <h3 className="font-semibold text-slate-900 dark:text-white">Revenue & Deals</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Monthly closed performance</p>
           </div>
-          <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-3">
-            {myPendingTasks.length === 0 && myHotLeads.length === 0 ? (
-               <div className="text-center text-slate-500 py-8 text-sm">You are all caught up! âœ¨</div>
-            ) : null}
-            
-            {myPendingTasks.map(task => (
-              <div key={task.id} className="p-3 rounded-xl bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-900/30">
-                <div className="flex justify-between items-start mb-1">
-                  <span className="text-xs font-bold text-orange-600 dark:text-orange-400 uppercase tracking-wider">Due Follow-up</span>
-                </div>
-                <div className="text-sm font-semibold text-slate-900 dark:text-white">{task.title}</div>
-                <div className="text-xs text-slate-500 truncate">{task.description}</div>
-              </div>
-            ))}
-
-            {myHotLeads.map(lead => (
-              <div key={lead.id} className="p-3 rounded-xl bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/30">
-                <div className="flex justify-between items-start mb-1">
-                  <span className="text-xs font-bold text-red-600 dark:text-red-400 uppercase tracking-wider flex items-center gap-1"><Zap size={10} /> Hot Lead</span>
-                  <span className="text-xs font-bold text-red-500">â‚±{lead.estimatedValue?.toLocaleString() || '0'}</span>
-                </div>
-                <div className="text-sm font-semibold text-slate-900 dark:text-white">{lead.firstName} {lead.lastName}</div>
-                <div className="text-xs text-slate-500">{lead.companyName || 'Individual'}</div>
-              </div>
-            ))}
-            
-            {recentlyAssignedLeads.filter(l => l.status !== 'Hot').slice(0, 3).map((lead) => (
-              <div key={lead.id} className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/30">
-                 <div className="flex justify-between items-start mb-1">
-                  <span className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">New Assigned</span>
-                </div>
-                <div className="text-sm font-semibold text-slate-900 dark:text-white">{lead.firstName} {lead.lastName}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div key="chart1" className="bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl shadow-lg flex flex-col h-full">
-          <div className="mb-6 flex justify-between items-center shrink-0">
-            <div>
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Revenue & Deals</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Monthly performance overview</p>
-            </div>
-            <button className="px-3 py-1.5 bg-gray-50 dark:bg-white/[0.05] hover:bg-gray-100 dark:hover:bg-white/[0.1] text-xs font-medium text-slate-700 dark:text-slate-300 rounded-lg transition-colors border border-gray-200 dark:border-white/[0.05]">
-              View Report
-            </button>
-          </div>
-          <div className="flex-1 min-h-0 relative min-w-0">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-              <BarChart data={revenueData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                <XAxis dataKey="name" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} dy={10} />
-                <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value: number) => `â‚±${value / 1000}k`} dx={-10} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#030712', borderColor: 'rgba(255,255,255,0.1)', color: '#f8fafc', borderRadius: '12px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)' }}
-                  itemStyle={{ color: '#f8fafc' }}
-                  cursor={{ fill: 'rgba(255,255,255,0.02)' }}
-                />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }} />
-                <Bar dataKey="revenue" name="Revenue (â‚±)" fill="#3B82F6" radius={[6, 6, 0, 0]} barSize={16} />
-                <Bar dataKey="deals" name="Deals Closed" fill="#8B5CF6" radius={[6, 6, 0, 0]} barSize={16} />
+          <div className="flex-1 min-h-0">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={revenueData} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" vertical={false} />
+                <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v: number) => `₱${v / 1000}k`} />
+                <Tooltip />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: '11px' }} />
+                <Bar dataKey="revenue" name="Revenue (₱)" fill="#3B82F6" radius={[4, 4, 0, 0]} barSize={14} />
+                <Bar dataKey="deals"   name="Deals Closed" fill="#8B5CF6" radius={[4, 4, 0, 0]} barSize={14} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        <div key="leaderboard" className="bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl shadow-lg flex flex-col h-full">
-          <div className="mb-6 shrink-0">
-            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Sales Leaderboard</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Top performers by revenue</p>
+        {/* Sales Leaderboard */}
+        <div className="md:col-span-1 lg:col-span-4 bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.06] shadow-sm flex flex-col min-h-[300px]">
+          <div className="mb-4 shrink-0">
+            <h3 className="font-semibold text-slate-900 dark:text-white">Sales Leaderboard</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Top performers by revenue</p>
           </div>
-          <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-4">
-            {userPerformance.map((perf, idx) => (
-              <div key={perf.user.id} className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="relative">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-gray-200 dark:border-white/[0.05] flex items-center justify-center text-slate-900 dark:text-white font-bold">
-                      {perf.user.firstName[0]}{perf.user.lastName[0]}
-                    </div>
-                    {idx === 0 && <div className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-500 rounded-full border-2 border-[#0B1120] flex items-center justify-center text-[8px]">ðŸ‘‘</div>}
+          <div className="flex-1 overflow-y-auto space-y-2.5 custom-scrollbar pr-1">
+            {topPerformers.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-6">No sales data yet</p>
+            ) : topPerformers.map((p, i) => (
+              <div key={p.user.id} className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/[0.04] hover:bg-gray-100 dark:hover:bg-white/[0.04] transition-colors">
+                <div className="relative shrink-0">
+                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-gray-200 dark:border-white/[0.08] flex items-center justify-center text-xs font-bold text-slate-700 dark:text-slate-200">
+                    {p.user.firstName[0]}{p.user.lastName[0]}
                   </div>
-                  <div>
-                    <div className="text-sm font-medium text-slate-900 dark:text-white">{perf.user.firstName} {perf.user.lastName}</div>
-                    <div className="text-xs text-slate-500">{perf.wonDeals} deals won</div>
-                  </div>
+                  {i === 0 && <Star size={10} className="absolute -top-1 -right-1 text-amber-500 fill-amber-500" />}
                 </div>
-                <div className="text-right">
-                  <div className="text-sm font-bold text-emerald-400">â‚±{perf.totalWonValue.toLocaleString()}</div>
-                  <div className="text-xs text-slate-500">{perf.activeDeals} active</div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-slate-800 dark:text-white truncate">{p.user.firstName} {p.user.lastName}</p>
+                  <p className="text-xs text-slate-500">{p.wonDeals} deals · {p.activeDeals} active</p>
                 </div>
+                <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400 shrink-0">₱{p.wonValue.toLocaleString()}</p>
               </div>
             ))}
-            {userPerformance.length === 0 && (
-              <div className="text-center text-slate-500 py-8 text-sm">No sales data available yet.</div>
-            )}
           </div>
         </div>
 
-        {/* Bottom Chart Row */}
-        <div key="chart2" className="bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl shadow-lg flex flex-col h-full">
-          <div className="mb-6 flex justify-between items-center shrink-0">
-            <div>
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Pipeline Distribution</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Deals by stage</p>
+        {/* Pipeline Donut */}
+        <div className="md:col-span-2 lg:col-span-4 bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.06] shadow-sm flex flex-col min-h-[300px]">
+          <div className="mb-4 shrink-0">
+            <h3 className="font-semibold text-slate-900 dark:text-white">Pipeline Distribution</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Active deals by stage</p>
+          </div>
+          {pipelineData.length > 0 ? (
+            <div className="flex-1 min-h-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={pipelineData} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={3} dataKey="value" stroke="none">
+                    {pipelineData.map((entry, idx) => <Cell key={idx} fill={entry.color} />)}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
             </div>
-          </div>
-          <div className="flex-1 min-h-0 flex items-center justify-center relative min-w-0">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-              <PieChart>
-                <Pie
-                  data={pipelineData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={70}
-                  outerRadius={100}
-                  paddingAngle={4}
-                  dataKey="value"
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  labelLine={false}
-                  stroke="none"
-                >
-                  {pipelineData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#030712', borderColor: 'rgba(255,255,255,0.1)', color: '#f8fafc', borderRadius: '12px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)' }}
-                  itemStyle={{ color: '#f8fafc' }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center gap-2 text-slate-400">
+              <Target size={32} className="text-slate-300 dark:text-slate-600" />
+              <p className="text-sm">No pipeline data yet</p>
+            </div>
+          )}
+          {pipelineData.length > 0 && (
+            <div className="mt-3 grid grid-cols-2 gap-1.5 shrink-0">
+              {pipelineData.map(d => (
+                <div key={d.name} className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{d.name} ({d.value})</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-
-        <div key="chart3" className="bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl shadow-lg flex flex-col h-full">
-          <div className="mb-6 flex justify-between items-center shrink-0">
-            <div>
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Revenue Trend</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400">6-month revenue progression</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
-                <ArrowUpRight size={12} /> +15.3% Overall
-              </span>
-            </div>
-          </div>
-          <div className="flex-1 min-h-0 relative min-w-0">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-              <AreaChart data={revenueData} margin={{ top: 10, right: 20, bottom: 5, left: 0 }}>
-                <defs>
-                  <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                <XAxis dataKey="name" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} dy={10} />
-                <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value: number) => `â‚±${value / 1000}k`} dx={-10} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#030712', borderColor: 'rgba(255,255,255,0.1)', color: '#f8fafc', borderRadius: '12px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)' }}
-                  itemStyle={{ color: '#f8fafc' }}
-                />
-                <Area type="monotone" dataKey="revenue" name="Revenue (â‚±)" stroke="#3B82F6" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" activeDot={{ r: 6, strokeWidth: 0, fill: '#3B82F6' }} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </Responsive>
-        )}
       </div>
     </div>
   );
