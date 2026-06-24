@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState } from 'react';
 import {
@@ -11,7 +11,7 @@ import { useData } from '@/store/DataContext';
 import { useHasPermission } from '@/shared/hooks/usePermissions';
 import type { Invoice } from '@/store/types';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// --- Helpers ------------------------------------------------------------------
 
 function statusColor(status: Invoice['status']): string {
   const map: Record<Invoice['status'], string> = {
@@ -36,7 +36,7 @@ function paymentDot(status: Invoice['paymentStatus']): string {
   return status === 'Paid' ? 'bg-emerald-500' : status === 'Overdue' ? 'bg-red-500' : 'bg-slate-500';
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// --- Component ----------------------------------------------------------------
 
 export default function BillingPage() {
   const canView   = useHasPermission('billing.view');
@@ -77,10 +77,10 @@ export default function BillingPage() {
   const overdueAmount  = invoices.filter(i => i.paymentStatus === 'Overdue').reduce((s, i) => s + i.amount, 0);
 
   const stats = [
-    { label: 'Monthly Recurring Revenue', value: '₱' + mrr.toLocaleString('en-PH'),        icon: TrendingUp,  color: 'text-emerald-400' },
+    { label: 'Monthly Recurring Revenue', value: '?' + mrr.toLocaleString('en-PH'),        icon: TrendingUp,  color: 'text-emerald-400' },
     { label: 'Active Contracts',           value: String(activeCount),                       icon: FileText,    color: 'text-blue-400' },
     { label: 'Pending Renewals',           value: String(renewalCount),                      icon: RefreshCw,   color: 'text-amber-400' },
-    { label: 'Overdue Payments',           value: '₱' + overdueAmount.toLocaleString('en-PH'), icon: AlertCircle, color: 'text-red-400' },
+    { label: 'Overdue Payments',           value: '?' + overdueAmount.toLocaleString('en-PH'), icon: AlertCircle, color: 'text-red-400' },
   ];
 
   return (
@@ -146,7 +146,7 @@ export default function BillingPage() {
             className="bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-xl px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500/50 transition-all cursor-pointer"
           >
             {['All', 'Active', 'Pending Renewal', 'Expired', 'Cancelled'].map(s => (
-              <option key={s} value={s} className="bg-gray-50 dark:bg-white dark:bg-slate-950">{s}</option>
+              <option key={s} value={s} className="bg-gray-50 dark:bg-slate-950">{s}</option>
             ))}
           </select>
         </div>

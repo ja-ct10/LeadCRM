@@ -273,13 +273,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [isBillingModuleEnabled, setIsBillingModuleEnabled] =
     useState<boolean>(false);
 
+  // Safely parse a localStorage value, falling back to `fallback` if the
+  // stored value is missing, "undefined", or otherwise unparseable.
+  const safeParse = <T,>(key: string, fallback: T): T => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw || raw === "undefined" || raw === "null") return fallback;
+      return JSON.parse(raw) as T;
+    } catch {
+      localStorage.removeItem(key); // clear the corrupted entry
+      return fallback;
+    }
+  };
+
   const loadData = () => {
-    let orgs = JSON.parse(
-      localStorage.getItem("leadcrm_organizations") || "null",
-    );
-    let l = JSON.parse(
-      localStorage.getItem("leadcrm_leads") || JSON.stringify(MOCK_LEADS),
-    );
+    let orgs = safeParse<Organization[] | null>("leadcrm_organizations", null);
+    let l = safeParse("leadcrm_leads", MOCK_LEADS);
 
     // Force refresh leads to apply new fields only once
     if (!localStorage.getItem("leadcrm_migrated_v3")) {
@@ -323,9 +332,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       orgs = [];
     }
 
-    const d = JSON.parse(
-      localStorage.getItem("leadcrm_deals") || JSON.stringify(MOCK_DEALS),
-    ).map((deal: any) => {
+    const d = safeParse("leadcrm_deals", MOCK_DEALS).map((deal: any) => {
       // Migration: backfill contactIds from legacy contactId
       if (!deal.contactIds && deal.contactId) {
         return { ...deal, contactIds: [deal.contactId] };
@@ -336,35 +343,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
       return deal;
     });
 
-    const p = JSON.parse(
-      localStorage.getItem("leadcrm_pipelines") ||
-        JSON.stringify(MOCK_PIPELINES),
-    );
-    const w = JSON.parse(
-      localStorage.getItem("leadcrm_workflows") ||
-        JSON.stringify(MOCK_WORKFLOWS),
-    );
-    const c = JSON.parse(
-      localStorage.getItem("leadcrm_campaigns") ||
-        JSON.stringify(MOCK_CAMPAIGNS),
-    );
-    const tpl = JSON.parse(
-      localStorage.getItem("leadcrm_templates") ||
-        JSON.stringify(MOCK_TEMPLATES),
-    );
-    const r = JSON.parse(
-      localStorage.getItem("leadcrm_roles") || JSON.stringify(MOCK_ROLES),
-    );
-    const perm = JSON.parse(
-      localStorage.getItem("leadcrm_permissions") ||
-        JSON.stringify(MOCK_PERMISSIONS),
-    );
-    const u = JSON.parse(
-      localStorage.getItem("leadcrm_users") || JSON.stringify(MOCK_USERS),
-    );
-    const t = JSON.parse(
-      localStorage.getItem("leadcrm_tenants") || JSON.stringify(MOCK_TENANTS),
-    ).map((tenant: Tenant) => {
+    const p = safeParse("leadcrm_pipelines", MOCK_PIPELINES);
+    const w = safeParse("leadcrm_workflows", MOCK_WORKFLOWS);
+    const c = safeParse("leadcrm_campaigns", MOCK_CAMPAIGNS);
+    const tpl = safeParse("leadcrm_templates", MOCK_TEMPLATES);
+    const r = safeParse("leadcrm_roles", MOCK_ROLES);
+    const perm = safeParse("leadcrm_permissions", MOCK_PERMISSIONS);
+    const u = safeParse("leadcrm_users", MOCK_USERS);
+    const t = safeParse("leadcrm_tenants", MOCK_TENANTS).map((tenant: Tenant) => {
       if (tenant.environment !== "none" && !tenant.healthMetrics) {
         const cpuUsage = Math.floor(Math.random() * 90) + 5;
         const memoryUsage = Math.floor(Math.random() * 90) + 10;
@@ -391,60 +377,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
       return tenant;
     });
-    const tsk = JSON.parse(
-      localStorage.getItem("leadcrm_tasks") || JSON.stringify(MOCK_TASKS || []),
-    );
-    const execs = JSON.parse(
-      localStorage.getItem("leadcrm_workflow_executions") ||
-        JSON.stringify(MOCK_WORKFLOW_EXECUTIONS || []),
-    );
-    const pending = JSON.parse(
-      localStorage.getItem("leadcrm_pending_actions") || "[]",
-    );
-    const so = JSON.parse(
-      localStorage.getItem("leadcrm_service_orders") ||
-        JSON.stringify(MOCK_SERVICE_ORDERS || []),
-    );
-    const ast = JSON.parse(
-      localStorage.getItem("leadcrm_assets") ||
-        JSON.stringify(MOCK_ASSETS || []),
-    );
-    const inv = JSON.parse(
-      localStorage.getItem("leadcrm_inventory") ||
-        JSON.stringify(MOCK_INVENTORY || []),
-    );
-    const logs = JSON.parse(
-      localStorage.getItem("leadcrm_audit_logs") ||
-        JSON.stringify(MOCK_AUDIT_LO·S),
-    );
+    const tsk = safeParse("leadcrm_tasks", MOCK_TASKS ?? []);
+    const execs = safeParse("leadcrm_workflow_executions", MOCK_WORKFLOW_EXECUTIONS ?? []);
+    const pending = safeParse("leadcrm_pending_actions", [] as PendingAction[]);
+    const so = safeParse("leadcrm_service_orders", MOCK_SERVICE_ORDERS ?? []);
+    const ast = safeParse("leadcrm_assets", MOCK_ASSETS ?? []);
+    const inv = safeParse("leadcrm_inventory", MOCK_INVENTORY ?? []);
+    const logs = safeParse("leadcrm_audit_logs", [] as AuditLog[]);
     if (!localStorage.getItem("leadcrm_audit_logs")) {
-      localStorage.setItem(
-        "leadcrm_audit_logs",
-        JSON.stringify(MOCK_AUDIT_LO·S),
-      );
+      localStorage.setItem("leadcrm_audit_logs", JSON.stringify([]));
     }
-    const serviceEnabled = JSON.parse(
-      localStorage.getItem("leadcrm_service_enabled") || "false",
-    );
-    const assetEnabled = JSON.parse(
-      localStorage.getItem("leadcrm_asset_enabled") || "false",
-    );
-    const billingEnabled = JSON.parse(
-      localStorage.getItem("leadcrm_billing_enabled") || "false",
-    );
-
-    const activityData = JSON.parse(
-      localStorage.getItem("leadcrm_activities") || "[]",
-    );
-    const execRuns = JSON.parse(
-      localStorage.getItem("leadcrm_workflow_execution_runs") || "[]",
-    );
-    const execSteps = JSON.parse(
-      localStorage.getItem("leadcrm_workflow_execution_steps") || "[]",
-    );
-    const invoiceData = JSON.parse(
-      localStorage.getItem("leadcrm_invoices") || JSON.stringify(MOCK_INVOICES),
-    );
+    const serviceEnabled = safeParse("leadcrm_service_enabled", false);
+    const assetEnabled = safeParse("leadcrm_asset_enabled", false);
+    const billingEnabled = safeParse("leadcrm_billing_enabled", false);
+    const activityData = safeParse("leadcrm_activities", [] as Activity[]);
+    const execRuns = safeParse("leadcrm_workflow_execution_runs", [] as WorkflowExecutionRun[]);
+    const execSteps = safeParse("leadcrm_workflow_execution_steps", [] as WorkflowExecutionStep[]);
+    const invoiceData = safeParse("leadcrm_invoices", MOCK_INVOICES);
 
     setIsServiceModuleEnabled(serviceEnabled);
     setIsAssetModuleEnabled(assetEnabled);

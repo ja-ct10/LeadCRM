@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useMemo } from 'react';
 import { useData } from '@/store/DataContext';
@@ -133,7 +133,7 @@ export default function WorkflowsPage() {
   const canDeleteWorkflow = isClientAdmin || userPerms.includes('p15');
   const canExecuteWorkflow = isClientAdmin || userPerms.includes('p16');
 
-  // Filtered workflows ΓÇö funnel through search + status + category
+  // Filtered workflows GÇö funnel through search + status + category
   const filteredWorkflows = useMemo(() => {
     return workflows.filter(wf => {
       if (wf.isArchived) return false;
@@ -264,7 +264,7 @@ export default function WorkflowsPage() {
               onClick={handleCreateVisualFlow}
               className="flex items-center gap-2 bg-gradient-to-r from-blue-600/90 to-indigo-600/90 hover:from-blue-600 hover:to-indigo-600 dark:text-white px-4 py-2.5 rounded-full text-sm font-medium transition-colors shadow-[0_0_15px_rgba(10,110,255,0.2)]"
             >
-              <Compass size={18} className="animate-spin-slow" /> Visual Designer ≡ƒù║∩╕Å
+              <Compass size={18} className="animate-spin-slow" /> Visual Designer =ƒù¦n+Å
             </button>
           )}
           {canCreateWorkflow && (
@@ -433,7 +433,7 @@ export default function WorkflowsPage() {
                 <div className="absolute left-[21px] top-4 bottom-4 w-0.5 bg-gradient-to-b from-blue-500/50 via-purple-500/50 to-amber-500/50 z-0"></div>
                 
                 <div className="relative z-10 flex items-start gap-4 pb-4">
-                  <div className="w-6 h-6 rounded-full bg-blue-500/20 border border-blue-500/50 flex items-center justify-center mt-1 shrink-0 bg-gray-50 dark:bg-white dark:bg-slate-950">
+                  <div className="w-6 h-6 rounded-full bg-blue-500/20 border border-blue-500/50 flex items-center justify-center mt-1 shrink-0 bg-gray-50 dark:bg-slate-950">
                     <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]"></div>
                   </div>
                   <div className="bg-white dark:bg-white/[0.02] p-3 rounded-xl border border-gray-200 dark:border-white/[0.05] flex-1 shadow-inner">
@@ -446,7 +446,7 @@ export default function WorkflowsPage() {
                   <React.Fragment key={act.id || index}>
                     {act.delay && act.delay > 0 && (
                       <div className="relative z-10 flex items-start gap-4 pb-4">
-                        <div className="w-6 h-6 rounded-full bg-amber-500/20 border border-amber-500/50 flex items-center justify-center mt-1 shrink-0 bg-gray-50 dark:bg-white dark:bg-slate-950">
+                        <div className="w-6 h-6 rounded-full bg-amber-500/20 border border-amber-500/50 flex items-center justify-center mt-1 shrink-0 bg-gray-50 dark:bg-slate-950">
                           <div className="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.8)]"></div>
                         </div>
                         <div className="bg-white dark:bg-white/[0.02] p-3 rounded-xl border border-gray-200 dark:border-white/[0.05] flex-1 shadow-inner">
@@ -456,7 +456,7 @@ export default function WorkflowsPage() {
                       </div>
                     )}
                     <div className="relative z-10 flex items-start gap-4 pb-4">
-                      <div className="w-6 h-6 rounded-full bg-purple-500/20 border border-purple-500/50 flex items-center justify-center mt-1 shrink-0 bg-gray-50 dark:bg-white dark:bg-slate-950">
+                      <div className="w-6 h-6 rounded-full bg-purple-500/20 border border-purple-500/50 flex items-center justify-center mt-1 shrink-0 bg-gray-50 dark:bg-slate-950">
                         <div className="w-2 h-2 rounded-full bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.8)]"></div>
                       </div>
                       <div className="bg-white dark:bg-white/[0.02] p-3 rounded-xl border border-gray-200 dark:border-white/[0.05] flex-1 shadow-inner">
@@ -481,7 +481,7 @@ export default function WorkflowsPage() {
                     onClick={() => handleOpenVisualBuilderNode(wf)}
                     className="flex items-center gap-1.5 text-xs font-medium text-purple-500 hover:text-purple-400 transition-colors cursor-pointer"
                   >
-                    <Compass size={14} /> Visual Flow ≡ƒù║∩╕Å
+                    <Compass size={14} /> Visual Flow =ƒù¦n+Å
                   </button>
                 </div>
                 <div className="relative">
@@ -506,7 +506,7 @@ export default function WorkflowsPage() {
                       )}
                       {canEditWorkflow && (
                         <button onClick={() => { handleOpenVisualBuilderNode(wf); setActiveDropdown(null); }} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-gray-100 dark:bg-white/5 hover:text-slate-900 dark:hover:text-white transition-colors">
-                          <Compass size={16} className="text-blue-500" /> Edit Visually ≡ƒù║∩╕Å
+                          <Compass size={16} className="text-blue-500" /> Edit Visually =ƒù¦n+Å
                         </button>
                       )}
                       {canDeleteWorkflow && (
@@ -574,7 +574,7 @@ export default function WorkflowsPage() {
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-50 dark:bg-white dark:bg-slate-950 rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-lg overflow-hidden shadow-2xl">
+          <div className="bg-gray-50 dark:bg-slate-950 rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-lg overflow-hidden shadow-2xl">
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-white/[0.05]">
               <div>
                 <h2 className="text-xl font-semibold text-slate-900 dark:text-white">{editingWorkflowId ? 'Edit Workflow' : 'Create Workflow'}</h2>
@@ -600,10 +600,10 @@ export default function WorkflowsPage() {
                     onChange={(e) => setNewWorkflow({ ...newWorkflow, category: e.target.value as any })}
                     className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] focus:bg-white/[0.04] transition-all"
                   >
-                    <option className="bg-gray-50 dark:bg-white dark:bg-slate-950" value="General">General</option>
-                    <option className="bg-gray-50 dark:bg-white dark:bg-slate-950" value="Security">Security</option>
-                    <option className="bg-gray-50 dark:bg-white dark:bg-slate-950" value="Telecom">Telecom</option>
-                    <option className="bg-gray-50 dark:bg-white dark:bg-slate-950" value="IT">IT</option>
+                    <option className="bg-gray-50 dark:bg-slate-950" value="General">General</option>
+                    <option className="bg-gray-50 dark:bg-slate-950" value="Security">Security</option>
+                    <option className="bg-gray-50 dark:bg-slate-950" value="Telecom">Telecom</option>
+                    <option className="bg-gray-50 dark:bg-slate-950" value="IT">IT</option>
                   </select>
                 </div>
               </div>
@@ -624,24 +624,24 @@ export default function WorkflowsPage() {
                   <select 
                     value={newWorkflow.trigger}
                     onChange={(e) => setNewWorkflow({ ...newWorkflow, trigger: e.target.value })}
-                    className="w-full bg-gray-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.2] transition-all"
+                    className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.2] transition-all"
                   >
-                    <option className="bg-gray-50 dark:bg-white dark:bg-slate-950" value="lead_created">Contact Created</option>
-                    <option className="bg-gray-50 dark:bg-white dark:bg-slate-950" value="deal_created">Deal Created</option>
-                    <option className="bg-gray-50 dark:bg-white dark:bg-slate-950" value="deal_stage_qualified">Deal Reached Qualified</option>
-                    <option className="bg-gray-50 dark:bg-white dark:bg-slate-950" value="deal_stage_proposal">Deal Reached Proposal</option>
-                    <option className="bg-gray-50 dark:bg-white dark:bg-slate-950" value="deal_stage_negotiation">Deal Reached Negotiation</option>
-                    <option className="bg-gray-50 dark:bg-white dark:bg-slate-950" value="deal_stage_won">Deal Won (Closed Won)</option>
-                    <option className="bg-gray-50 dark:bg-white dark:bg-slate-950" value="deal_stage_lost">Deal Lost (Closed Lost)</option>
-                    <option className="bg-gray-50 dark:bg-white dark:bg-slate-950" value="deal_expected_close_date_approaching">Deal Expected Close Date Approaching (Time-based close/follow-up)</option>
-                    <option className="bg-gray-50 dark:bg-white dark:bg-slate-950" value="lead_expected_close_date_approaching">Contact Expected Close Date Approaching (Time-based check)</option>
-                    <option className="bg-gray-50 dark:bg-white dark:bg-slate-950" value="email_opened">Email Opened</option>
-                    <option className="bg-gray-50 dark:bg-white dark:bg-slate-950" value="meeting_scheduled">Meeting Scheduled</option>
-                    <option className="bg-gray-50 dark:bg-white dark:bg-slate-950" value="tag_added">Tag Added</option>
+                    <option className="bg-gray-50 dark:bg-slate-950" value="lead_created">Contact Created</option>
+                    <option className="bg-gray-50 dark:bg-slate-950" value="deal_created">Deal Created</option>
+                    <option className="bg-gray-50 dark:bg-slate-950" value="deal_stage_qualified">Deal Reached Qualified</option>
+                    <option className="bg-gray-50 dark:bg-slate-950" value="deal_stage_proposal">Deal Reached Proposal</option>
+                    <option className="bg-gray-50 dark:bg-slate-950" value="deal_stage_negotiation">Deal Reached Negotiation</option>
+                    <option className="bg-gray-50 dark:bg-slate-950" value="deal_stage_won">Deal Won (Closed Won)</option>
+                    <option className="bg-gray-50 dark:bg-slate-950" value="deal_stage_lost">Deal Lost (Closed Lost)</option>
+                    <option className="bg-gray-50 dark:bg-slate-950" value="deal_expected_close_date_approaching">Deal Expected Close Date Approaching (Time-based close/follow-up)</option>
+                    <option className="bg-gray-50 dark:bg-slate-950" value="lead_expected_close_date_approaching">Contact Expected Close Date Approaching (Time-based check)</option>
+                    <option className="bg-gray-50 dark:bg-slate-950" value="email_opened">Email Opened</option>
+                    <option className="bg-gray-50 dark:bg-slate-950" value="meeting_scheduled">Meeting Scheduled</option>
+                    <option className="bg-gray-50 dark:bg-slate-950" value="tag_added">Tag Added</option>
                   </select>
                 </div>
                 
-                <div className="absolute left-1/2 bottom-0 translate-y-1/2 -translate-x-1/2 w-8 h-8 bg-gray-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-full flex items-center justify-center z-10 shadow-lg">
+                <div className="absolute left-1/2 bottom-0 translate-y-1/2 -translate-x-1/2 w-8 h-8 bg-gray-50 dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-full flex items-center justify-center z-10 shadow-lg">
                   <ArrowRight size={14} className="text-slate-500 dark:text-slate-400 rotate-90" />
                 </div>
               </div>
@@ -659,7 +659,7 @@ export default function WorkflowsPage() {
                 </div>
 
                 <div className="bg-blue-500/10 border border-blue-500/25 text-blue-600 dark:text-blue-300 rounded-2xl p-3.5 text-xs flex items-start gap-2.5">
-                  <span className="text-sm mt-0.5" id="saas-badge-icon">≡ƒÆí</span>
+                  <span className="text-sm mt-0.5" id="saas-badge-icon">=ƒÆí</span>
                   <div>
                     <span className="font-bold block mb-1">SaaS Cross-Entity Resolution Active</span>
                     <p className="opacity-90 leading-relaxed text-[11px]">
@@ -675,7 +675,7 @@ export default function WorkflowsPage() {
                       <select 
                         value={conditionRules.logic}
                         onChange={(e) => setConditionRules({ ...conditionRules, logic: e.target.value as any })}
-                        className="bg-gray-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded px-2 py-0.5 text-[10px] text-slate-900 dark:text-white focus:outline-none"
+                        className="bg-gray-50 dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded px-2 py-0.5 text-[10px] text-slate-900 dark:text-white focus:outline-none"
                       >
                         <option value="AND">All (AND)</option>
                         <option value="OR">Any (OR)</option>
@@ -692,7 +692,7 @@ export default function WorkflowsPage() {
                             newRules[idx].field = e.target.value;
                             setConditionRules({ ...conditionRules, rules: newRules });
                           }}
-                          className="flex-1 bg-gray-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded px-2 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none"
+                          className="flex-1 bg-gray-50 dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded px-2 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none"
                         >
                           <optgroup label="Deal Fields">
                             <option value="deal.title">Deal Title</option>
@@ -724,7 +724,7 @@ export default function WorkflowsPage() {
                             newRules[idx].operator = e.target.value;
                             setConditionRules({ ...conditionRules, rules: newRules });
                           }}
-                          className="w-28 bg-gray-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded px-2 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none"
+                          className="w-28 bg-gray-50 dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded px-2 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none"
                         >
                           <option value=">">Gr. Than (&gt;)</option>
                           <option value="<">Less Than (&lt;)</option>
@@ -748,7 +748,7 @@ export default function WorkflowsPage() {
                               newRules[idx].value = e.target.value;
                               setConditionRules({ ...conditionRules, rules: newRules });
                             }}
-                            className="flex-1 bg-gray-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded px-2 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none"
+                            className="flex-1 bg-gray-50 dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded px-2 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none"
                             placeholder="Value"
                           />
                         ) : (
@@ -807,15 +807,15 @@ export default function WorkflowsPage() {
                           newActions[index].type = e.target.value;
                           setNewWorkflow({ ...newWorkflow, actions: newActions });
                         }}
-                        className="w-full bg-gray-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.2] transition-all"
+                        className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.2] transition-all"
                       >
-                        <option className="bg-gray-50 dark:bg-white dark:bg-slate-950" value="send_email">Send Email</option>
-                        <option className="bg-gray-50 dark:bg-white dark:bg-slate-950" value="send_sms">Send SMS</option>
-                        <option className="bg-gray-50 dark:bg-white dark:bg-slate-950" value="create_task">Create Task</option>
-                        <option className="bg-gray-50 dark:bg-white dark:bg-slate-950" value="update_lead_status">Update Contact Status</option>
-                        <option className="bg-gray-50 dark:bg-white dark:bg-slate-950" value="add_tag">Add Tag</option>
-                        <option className="bg-gray-50 dark:bg-white dark:bg-slate-950" value="send_slack_notification">Send Slack Notification</option>
-                        <option className="bg-gray-50 dark:bg-white dark:bg-slate-950" value="webhook">Trigger Webhook</option>
+                        <option className="bg-gray-50 dark:bg-slate-950" value="send_email">Send Email</option>
+                        <option className="bg-gray-50 dark:bg-slate-950" value="send_sms">Send SMS</option>
+                        <option className="bg-gray-50 dark:bg-slate-950" value="create_task">Create Task</option>
+                        <option className="bg-gray-50 dark:bg-slate-950" value="update_lead_status">Update Contact Status</option>
+                        <option className="bg-gray-50 dark:bg-slate-950" value="add_tag">Add Tag</option>
+                        <option className="bg-gray-50 dark:bg-slate-950" value="send_slack_notification">Send Slack Notification</option>
+                        <option className="bg-gray-50 dark:bg-slate-950" value="webhook">Trigger Webhook</option>
                       </select>
                     </div>
 
@@ -883,7 +883,7 @@ export default function WorkflowsPage() {
                             newActions[index].config = { ...newActions[index].config, templateId: e.target.value };
                             setNewWorkflow({ ...newWorkflow, actions: newActions });
                           }}
-                          className="w-full bg-gray-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.2] transition-all"
+                          className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.2] transition-all"
                         >
                           <option value="">Select a template...</option>
                           {templates.filter(t => t.type === (action.type === 'send_email' ? 'Email' : 'SMS')).map(t => (
@@ -903,7 +903,7 @@ export default function WorkflowsPage() {
                             newActions[index].config = { ...newActions[index].config, targetStatus: e.target.value };
                             setNewWorkflow({ ...newWorkflow, actions: newActions });
                           }}
-                          className="w-full bg-gray-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.2] transition-all"
+                          className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.2] transition-all"
                         >
                           <option value="Hot">Hot</option>
                           <option value="Warm">Warm</option>
@@ -1010,7 +1010,7 @@ export default function WorkflowsPage() {
                               newActions[index].config = { ...newActions[index].config, webhookMethod: e.target.value };
                               setNewWorkflow({ ...newWorkflow, actions: newActions });
                             }}
-                            className="w-full bg-gray-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.2] transition-all"
+                            className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.2] transition-all"
                           >
                             <option value="POST">POST (Send JSON payload)</option>
                             <option value="GET">GET (Query REST status)</option>
@@ -1044,7 +1044,7 @@ export default function WorkflowsPage() {
                             newActions[index].delayUnit = e.target.value;
                             setNewWorkflow({ ...newWorkflow, actions: newActions });
                           }}
-                          className="w-full bg-gray-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.2] transition-all"
+                          className="w-full bg-gray-50 dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.2] transition-all"
                         >
                           <option value="minutes">Minutes</option>
                           <option value="hours">Hours</option>
@@ -1080,7 +1080,7 @@ export default function WorkflowsPage() {
                 </div>
               </div>
             </div>
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-white/[0.05] bg-gray-50 dark:bg-white dark:bg-slate-950">
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-white/[0.05] bg-gray-50 dark:bg-slate-950">
               <button onClick={() => { setIsModalOpen(false); resetForm(); setEditingWorkflowId(null); }} className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:bg-white/5 rounded-lg transition-colors">Cancel</button>
               <button onClick={handleSave} className="px-4 py-2 bg-[#0A6EFF] text-slate-900 dark:text-white text-sm font-medium rounded-lg hover:bg-blue-600 transition-colors shadow-[0_0_15px_rgba(10,110,255,0.2)]">
                 {editingWorkflowId ? 'Save Changes' : 'Save Workflow'}

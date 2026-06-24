@@ -93,7 +93,7 @@ export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandP
 
   return (
     <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh]">
-      <div className="fixed inset-0 bg-gray-50 dark:bg-white dark:bg-slate-950/80 backdrop-blur-sm" onClick={() => setIsOpen(false)} />
+      <div className="fixed inset-0 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-sm" onClick={() => setIsOpen(false)} />
       <div className="relative w-full max-w-2xl bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[70vh]">
         <div className="flex items-center px-4 py-4 border-b border-gray-200 dark:border-white/[0.05]">
           <Search className="text-slate-500 dark:text-slate-400 mr-3" size={20} />

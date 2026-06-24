@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import React, { useState } from 'react';
 import {
   LayoutDashboard, Building2, CreditCard, Receipt,
@@ -39,7 +39,7 @@ export default function AdminLayout({ children, currentPath, navigate }: AdminLa
   };
 
   return (
-    <div className="flex min-h-screen bg-slate-50 dark:bg-white dark:bg-slate-950 font-sans">
+    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950 font-sans">
 
       {/* Mobile overlay */}
       {sidebarOpen && (
@@ -49,7 +49,7 @@ export default function AdminLayout({ children, currentPath, navigate }: AdminLa
         />
       )}
 
-      {/* ── Sidebar ─────────────────────────────────────────────── */}
+      {/* -- Sidebar ----------------------------------------------- */}
       <aside className={`
         fixed lg:static inset-y-0 left-0 z-50 w-64
         bg-white dark:bg-slate-950 border-r border-slate-800
@@ -121,7 +121,7 @@ export default function AdminLayout({ children, currentPath, navigate }: AdminLa
         </div>
       </aside>
 
-      {/* ── Main content ─────────────────────────────────────────── */}
+      {/* -- Main content ------------------------------------------- */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
         {/* Topbar */}

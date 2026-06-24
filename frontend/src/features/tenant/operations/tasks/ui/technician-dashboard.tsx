@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useRef } from 'react';
 import { useData } from '@/store/DataContext';
@@ -161,7 +161,7 @@ export default function TechnicianDashboard() {
 
       {/* Order Detail Modal */}
       {selectedOrder && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-gray-50 dark:bg-white dark:bg-slate-950">
+        <div className="fixed inset-0 z-50 flex flex-col bg-gray-50 dark:bg-slate-950">
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b border-white/5 bg-white dark:bg-slate-950">
             <h2 className="text-lg font-bold text-slate-900 dark:text-white truncate pr-4">{selectedOrder.title}</h2>

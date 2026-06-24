@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import React, { useState } from 'react';
 import { ChevronDown, DollarSign, Users, TrendingUp, UserCheck, UserX } from 'lucide-react';
 import {
@@ -148,11 +148,11 @@ export default function AdminDashboard() {
   );
 }
 
-// ─── Local helpers ────────────────────────────────────────────────────────────
+// --- Local helpers ------------------------------------------------------------
 
 function KpiCard({ icon, label, value, sub, badge }: { icon: React.ReactNode; label: string; value: string; sub: string; badge: string }) {
   return (
-    <div className="bg-white dark:bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 p-6 rounded-2xl shadow-sm flex flex-col justify-between">
+    <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 p-6 rounded-2xl shadow-sm flex flex-col justify-between">
       <div className="flex justify-between items-start mb-4">
         <div className="p-2 bg-slate-100 dark:bg-slate-800 rounded-lg text-slate-700 dark:text-slate-300">{icon}</div>
         <span className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400">
@@ -170,7 +170,7 @@ function KpiCard({ icon, label, value, sub, badge }: { icon: React.ReactNode; la
 
 function ChartCard({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white dark:bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 p-6 rounded-2xl shadow-sm">
+    <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 p-6 rounded-2xl shadow-sm">
       <div className="mb-6">
         <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{title}</h3>
         <p className="text-sm text-slate-500 mt-1">{subtitle}</p>
@@ -186,7 +186,7 @@ function ChartCard({ title, subtitle, children }: { title: string; subtitle: str
 
 function PieBreakdown({ title, data, tooltipProps }: { title: string; data: { name: string; value: number; color: string; amount?: string; clients?: string }[]; tooltipProps: object }) {
   return (
-    <div className="bg-white dark:bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 p-6 rounded-2xl shadow-sm flex flex-col">
+    <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 p-6 rounded-2xl shadow-sm flex flex-col">
       <div className="mb-6">
         <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{title}</h3>
       </div>

@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState } from 'react';
 import { useData } from '@/store/DataContext';
@@ -139,7 +139,7 @@ export default function CampaignsPage() {
     setAudienceName('');
     setAudienceConditions([{ field: 'Status', operator: 'Equals', value: '' }]);
 
-    toast.success(`Target Audience "${newAudName}" created and selected! ≡ƒÄ»`);
+    toast.success(`Target Audience "${newAudName}" created and selected! =ƒÄ»`);
   };
 
   const [isBrainstorming, setIsBrainstorming] = useState(false);
@@ -154,7 +154,7 @@ export default function CampaignsPage() {
     setTimeout(() => {
       setGeneratedIdeas([
         `Subject: Unlock Your Potential with ${newCampaignName}\n\nHi {{first_name}},\n\nWe noticed you're interested in scaling up. Let's talk about how we can help.`,
-        `Subject: The secret to better results? ≡ƒñ½\n\nHey {{first_name}},\n\nIf you're reading this, you probably know that managing contacts is hard. What if we told you it doesn't have to be?`,
+        `Subject: The secret to better results? =ƒñ½\n\nHey {{first_name}},\n\nIf you're reading this, you probably know that managing contacts is hard. What if we told you it doesn't have to be?`,
         `Subject: Quick question about your goals, {{first_name}}\n\nHi {{first_name}},\n\nJust reaching out to see if you have 5 minutes to chat about your upcoming projects this quarter.`
       ]);
       setIsGenerating(false);
@@ -216,7 +216,7 @@ export default function CampaignsPage() {
       description: isSequence ? 'Drip Sequence' : 'Standard Campaign',
     });
 
-    toast.success(isScheduling ? `Campaign "${newCampaignName}" scheduled successfully! ≡ƒôà` : `Campaign "${newCampaignName}" sent successfully! ≡ƒÜÇ`);
+    toast.success(isScheduling ? `Campaign "${newCampaignName}" scheduled successfully! =ƒôà` : `Campaign "${newCampaignName}" sent successfully! =ƒÜÇ`);
     setIsModalOpen(false);
     resetCampaignForm();
   };
@@ -235,7 +235,7 @@ export default function CampaignsPage() {
       description: isSequence ? 'Drip Sequence' : 'Standard Campaign',
     });
 
-    toast.success(`Draft campaign "${newCampaignName}" saved successfully! ≡ƒÆ╛`);
+    toast.success(`Draft campaign "${newCampaignName}" saved successfully! =ƒÆ+`);
     setIsModalOpen(false);
     resetCampaignForm();
   };
@@ -738,7 +738,7 @@ export default function CampaignsPage() {
       {/* Create Campaign Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-50 dark:bg-white dark:bg-slate-950 rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-gray-50 dark:bg-slate-950 rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
             <div className="flex-shrink-0 flex items-center justify-between p-6 border-b border-gray-200 dark:border-white/[0.05]">
               <div>
                 <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Create Campaign</h2>
@@ -766,9 +766,9 @@ export default function CampaignsPage() {
                     onChange={(e) => setNewCampaignType(e.target.value)} 
                     className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] focus:bg-white/[0.04] transition-all"
                   >
-                    <option value="Email" className="bg-gray-50 dark:bg-white dark:bg-slate-950">Email</option>
-                    <option value="SMS" className="bg-gray-50 dark:bg-white dark:bg-slate-950">SMS</option>
-                    <option value="Multi-channel" className="bg-gray-50 dark:bg-white dark:bg-slate-950">Multi-channel</option>
+                    <option value="Email" className="bg-gray-50 dark:bg-slate-950">Email</option>
+                    <option value="SMS" className="bg-gray-50 dark:bg-slate-950">SMS</option>
+                    <option value="Multi-channel" className="bg-gray-50 dark:bg-slate-950">Multi-channel</option>
                   </select>
                 </div>
                 <div>
@@ -790,7 +790,7 @@ export default function CampaignsPage() {
                       className="w-full appearance-none bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] focus:bg-white/[0.04] transition-all pr-10"
                     >
                       {targetAudiences.map(aud => (
-                        <option key={aud} value={aud} className="bg-gray-50 dark:bg-white dark:bg-slate-950">{aud}</option>
+                        <option key={aud} value={aud} className="bg-gray-50 dark:bg-slate-950">{aud}</option>
                       ))}
                     </select>
                     <Tags size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
@@ -848,9 +848,9 @@ export default function CampaignsPage() {
                                     setSequenceSteps(newSteps);
                                   }}
                                 >
-                                  <option value="minutes" className="bg-gray-50 dark:bg-white dark:bg-slate-950">minutes</option>
-                                  <option value="hours" className="bg-gray-50 dark:bg-white dark:bg-slate-950">hours</option>
-                                  <option value="days" className="bg-gray-50 dark:bg-white dark:bg-slate-950">days</option>
+                                  <option value="minutes" className="bg-gray-50 dark:bg-slate-950">minutes</option>
+                                  <option value="hours" className="bg-gray-50 dark:bg-slate-950">hours</option>
+                                  <option value="days" className="bg-gray-50 dark:bg-slate-950">days</option>
                                 </select>
                                 <button 
                                   onClick={() => {
@@ -1063,7 +1063,7 @@ export default function CampaignsPage() {
                                     <div className="bg-emerald-500 text-white px-4 py-3 rounded-2xl rounded-tr-sm max-w-[70%] self-end break-words shadow text-sm whitespace-pre-wrap leading-relaxed">
                                       {getPreviewText(messageContent) || <span className="italic opacity-60">Message body is empty...</span>}
                                     </div>
-                                    <div className="text-[10px] text-slate-400 dark:text-slate-500 text-right mt-1.5 pr-2 font-medium">Delivered via SMS Texting ΓÇó Today</div>
+                                    <div className="text-[10px] text-slate-400 dark:text-slate-500 text-right mt-1.5 pr-2 font-medium">Delivered via SMS Texting GÇó Today</div>
                                   </div>
                                 ) : (
                                   <div className="flex flex-col h-full">
@@ -1150,17 +1150,17 @@ export default function CampaignsPage() {
                         onChange={(e) => setTriggerEvent(e.target.value)}
                         className="w-full bg-black/20 border border-gray-200 dark:border-white/[0.05] rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] appearance-none"
                       >
-                        <option value="status_hot" className="bg-gray-50 dark:bg-white dark:bg-slate-950">Contact Status changes to 'Hot'</option>
-                        <option value="new_lead" className="bg-gray-50 dark:bg-white dark:bg-slate-950">New Contact is added</option>
-                        <option value="deal_won" className="bg-gray-50 dark:bg-white dark:bg-slate-950">Deal is marked as 'Won'</option>
-                        <option value="no_activity_30" className="bg-gray-50 dark:bg-white dark:bg-slate-950">No activity for 30 days</option>
+                        <option value="status_hot" className="bg-gray-50 dark:bg-slate-950">Contact Status changes to 'Hot'</option>
+                        <option value="new_lead" className="bg-gray-50 dark:bg-slate-950">New Contact is added</option>
+                        <option value="deal_won" className="bg-gray-50 dark:bg-slate-950">Deal is marked as 'Won'</option>
+                        <option value="no_activity_30" className="bg-gray-50 dark:bg-slate-950">No activity for 30 days</option>
                       </select>
                     </div>
                   )}
                 </div>
               </div>
             </div>
-            <div className="flex-shrink-0 flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-white/[0.05] bg-gray-50 dark:bg-white dark:bg-slate-950">
+            <div className="flex-shrink-0 flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-white/[0.05] bg-gray-50 dark:bg-slate-950">
               <button type="button" onClick={handleSaveDraft} className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/5 rounded-lg transition-colors">Save Draft</button>
               <button onClick={handleSend} className="flex items-center gap-2 px-4 py-2 bg-[#0A6EFF] text-slate-900 dark:text-white text-sm font-medium rounded-lg hover:bg-blue-600 transition-colors shadow-[0_0_15px_rgba(10,110,255,0.2)]">
                 {isScheduling ? <Calendar size={16} /> : <Send size={16} />}
@@ -1320,7 +1320,7 @@ export default function CampaignsPage() {
       {/* Create Template Modal */}
       {isTemplateModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-50 dark:bg-white dark:bg-slate-950 rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-lg overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-gray-50 dark:bg-slate-950 rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-lg overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-white/[0.05]">
               <div>
                 <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Create {newTemplateType} Template</h2>
@@ -1345,10 +1345,10 @@ export default function CampaignsPage() {
                   value={newTemplate.category}
                   onChange={(e) => setNewTemplate({...newTemplate, category: e.target.value})}
                 >
-                  <option className="bg-gray-50 dark:bg-white dark:bg-slate-950">Marketing</option>
-                  <option className="bg-gray-50 dark:bg-white dark:bg-slate-950">Sales</option>
-                  <option className="bg-gray-50 dark:bg-white dark:bg-slate-950">Onboarding</option>
-                  <option className="bg-gray-50 dark:bg-white dark:bg-slate-950">Support</option>
+                  <option className="bg-gray-50 dark:bg-slate-950">Marketing</option>
+                  <option className="bg-gray-50 dark:bg-slate-950">Sales</option>
+                  <option className="bg-gray-50 dark:bg-slate-950">Onboarding</option>
+                  <option className="bg-gray-50 dark:bg-slate-950">Support</option>
                 </select>
               </div>
               {newTemplateType === 'Email' && (
@@ -1373,7 +1373,7 @@ export default function CampaignsPage() {
                 ></textarea>
               </div>
             </div>
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-white/[0.05] bg-gray-50 dark:bg-white dark:bg-slate-950">
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-white/[0.05] bg-gray-50 dark:bg-slate-950">
               <button onClick={() => setIsTemplateModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/5 rounded-lg transition-colors">Cancel</button>
               <button 
                 onClick={handleSaveTemplate} 
@@ -1388,7 +1388,7 @@ export default function CampaignsPage() {
       {/* Preview Template Modal */}
       {previewTemplate && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-50 dark:bg-white dark:bg-slate-950 rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-lg overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-gray-50 dark:bg-slate-950 rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-lg overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-white/[0.05]">
               <div>
                 <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Template Preview</h2>
@@ -1410,7 +1410,7 @@ export default function CampaignsPage() {
                 </div>
               </div>
             </div>
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-white/[0.05] bg-gray-50 dark:bg-white dark:bg-slate-950">
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-white/[0.05] bg-gray-50 dark:bg-slate-950">
               <button onClick={() => setPreviewTemplate(null)} className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/5 rounded-lg transition-colors">Close</button>
               <button 
                 onClick={() => {
