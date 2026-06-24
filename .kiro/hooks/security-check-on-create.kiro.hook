@@ -1,19 +1,13 @@
-{
-  "enabled": true,
+﻿{
   "name": "Security Check on Sensitive Files",
-  "description": "Runs a security check when new files are created in sensitive directories like auth, api, or middleware.",
-  "version": "1",
+  "version": "1.1.0",
+  "description": "Security review when files are created in auth/api/middleware/store.",
   "when": {
     "type": "fileCreated",
-    "patterns": [
-      "**/auth/**",
-      "**/api/**",
-      "**/middleware/**",
-      "**/store/**"
-    ]
+    "patterns": ["**/auth/**", "**/api/**", "**/middleware/**", "**/store/**"]
   },
   "then": {
     "type": "askAgent",
-    "prompt": "A new file was created in a security-sensitive directory (auth, api, middleware, or store). Review it against the LeadCRM security checklist:\n1. Are there any hardcoded secrets, tokens, or API keys? (should use process.env)\n2. If it's an API route — does it have authentication and RBAC authorization middleware?\n3. If it accesses data — does every query include tenantId scoping?\n4. If it handles user input — is there input validation?\n5. Are error responses safe — no stack traces or internal paths exposed?\n\nReport findings concisely. If all clear, say so briefly. Flag any issues immediately."
+    "prompt": "A new file was created in a security-sensitive path. Check: 1) No hardcoded secrets (use process.env), 2) API routes have auth+RBAC middleware, 3) Data queries include tenantId scoping, 4) User input is validated with Zod, 5) Errors are generic to client. Flag any issues. If all clear, say so in one line."
   }
 }
