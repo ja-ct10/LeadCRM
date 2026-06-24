@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "name": "Quality Gate",
+  "description": "Runs a full quality gate check manually — TypeScript, lint, and build verification before committing or creating a PR.",
+  "version": "1",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Run the full LeadCRM quality gate. Work through each gate in sequence and report results:\n\n**Gate 1 — TypeScript**\nRun: check recently modified .ts/.tsx files for type errors, missing return types, any `any` usage.\n\n**Gate 2 — Code Quality**\nScan for: console.log statements, unused imports, direct mutations, missing RBAC guards on create/edit/delete UI.\n\n**Gate 3 — SaaS Safety**\nCheck: tenantId on new records, addAuditLog calls on mutations, DataContext used for all data ops.\n\n**Gate 4 — Security**\nCheck: no hardcoded secrets, no dangerouslySetInnerHTML without sanitization, no cross-tenant access paths.\n\n**Gate 5 — UI Quality**\nCheck: dark mode classes on all new elements, TrelloFilter used (not raw select), charts from ChartComponents.tsx only.\n\nReport each gate as PASS or FAIL with specific issues. If all pass — confirm the task is ready to commit."
+  }
+}

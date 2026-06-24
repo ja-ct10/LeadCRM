@@ -1,0 +1,113 @@
+import type { Campaign, Template } from '../types';
+
+// ─── Campaigns ────────────────────────────────────────────────────────────────
+
+export const MOCK_CAMPAIGNS: Campaign[] = [
+  {
+    id: 'camp_1',
+    tenantId: 'tenant_demo',
+    name: 'Q1 Security Upgrade Promo',
+    description: 'Special offers on CCTV and Biometrics upgrades',
+    type: 'Email',
+    status: 'active',
+    targetAudience: 'Existing Customers',
+    sentCount: 1250,
+    openedCount: 845,
+    clickedCount: 234,
+    engagement: 90,
+    createdAt: '2/1/2026',
+  },
+  {
+    id: 'camp_2',
+    tenantId: 'tenant_demo',
+    name: 'Telecom Infrastructure Audit',
+    type: 'Sms',
+    status: 'completed',
+    targetAudience: 'Enterprise Contacts',
+    sentCount: 580,
+    engagement: 15,
+    createdAt: '1/10/2026',
+  },
+  {
+    id: 'camp_3',
+    tenantId: 'tenant_demo',
+    name: 'Webinar: Modern Data Cabinets',
+    description: 'Join Us: Best Practices for Server Room Organization',
+    type: 'Multi-Channel',
+    status: 'scheduled',
+    targetAudience: 'IT Managers',
+    sentCount: 0,
+    engagement: 0,
+    createdAt: '2/14/2026',
+  },
+  {
+    id: 'camp_4',
+    tenantId: 'tenant_demo',
+    name: 'Holiday Special Offer',
+    description: '🎉 Exclusive Holiday Deal - 30% Off Installation',
+    type: 'Email',
+    status: 'paused',
+    targetAudience: 'All Contacts',
+    sentCount: 450,
+    openedCount: 198,
+    clickedCount: 67,
+    engagement: 59,
+    createdAt: '2/12/2026',
+  },
+];
+
+// ─── Templates ────────────────────────────────────────────────────────────────
+
+export const MOCK_TEMPLATES: Template[] = [
+  {
+    id: 'tpl_1',
+    tenantId: 'tenant_demo',
+    name: 'Welcome Email',
+    type: 'Email',
+    category: 'Onboarding',
+    subject: 'Welcome to Camxian Technologies!',
+    content: "Hi {{first_name}}, Welcome aboard! We're thrilled to provide you with top-tier security and IT solutions...",
+  },
+  {
+    id: 'tpl_2',
+    tenantId: 'tenant_demo',
+    name: 'Security Audit Offer',
+    type: 'Email',
+    category: 'Marketing',
+    subject: 'Free Security Audit for {{company_name}}',
+    content: "Dear {{first_name}}, We're offering a complimentary security audit for your premises...",
+  },
+  {
+    id: 'tpl_3',
+    tenantId: 'tenant_demo',
+    name: 'Follow-up',
+    type: 'Email',
+    category: 'Sales',
+    subject: 'Following up on our conversation',
+    content: 'Hi {{first_name}}, Thank you for taking the time to speak with us about your infrastructure needs...',
+  },
+  {
+    id: 'tpl_4',
+    tenantId: 'tenant_demo',
+    name: 'Site Survey Reminder',
+    type: 'SMS',
+    category: 'Reminder',
+    content: 'Hi {{first_name}}, this is a reminder about your site survey on {{date}} at {{time}}.',
+  },
+  {
+    id: 'tpl_5',
+    tenantId: 'tenant_demo',
+    name: 'Proposal Update',
+    type: 'SMS',
+    category: 'Sales',
+    content: 'Great news! Your proposal has been approved. Contact us to get started: {{phone}}',
+  },
+  {
+    id: 'tpl_6',
+    tenantId: 'tenant_demo',
+    name: 'Quick Check-in',
+    type: 'SMS',
+    category: 'Support',
+    content: 'Hi {{first_name}}! Just checking in. Any questions about your new installation? Reply or call {{phone}}',
+  },
+];
