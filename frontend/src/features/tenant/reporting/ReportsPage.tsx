@@ -232,7 +232,7 @@ export default function ReportsPage() {
           </div>
         </div>
       </div>
-    </div>
+    
 
       {/* Lead Source Attribution */}
       {leadSourceData.length > 0 && (
@@ -244,8 +244,8 @@ export default function ReportsPage() {
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={leadSourceData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-              <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#94a3b8' }} />
-              <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} tickFormatter={(v) => `₱${(v / 1000).toFixed(0)}k`} />
+              <XAxis dataKey="name" />
+              <YAxis tickFormatter={(v) => `₱${(Number(v) / 1000).toFixed(0)}k`} />
               <Tooltip
                 formatter={(value: number) => [`₱${value.toLocaleString('en-PH')}`, 'Won Revenue']}
                 contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8 }}
@@ -266,5 +266,6 @@ export default function ReportsPage() {
           </div>
         </div>
       )}
+    </div>
   );
 }

@@ -214,7 +214,7 @@ export function DealDetailsModal({
   }
 
   const tabClass = (tab: DrawerTab) =>
-    `px-4 py-3 text-sm font-medium transition-all relative ${
+    `px-3 py-3 text-sm font-medium transition-all relative whitespace-nowrap ${
       activeTab === tab
         ? 'text-blue-400'
         : 'text-slate-500 hover:text-slate-700 dark:text-slate-300'
@@ -237,7 +237,7 @@ export function DealDetailsModal({
         animate={{ x: 0 }}
         exit={{ x: '100%' }}
         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-        className="fixed right-0 top-0 h-full w-full max-w-md bg-gray-50 dark:bg-[#030712] border-l border-gray-300 dark:border-white/[0.1] z-[70] shadow-2xl flex flex-col"
+        className="fixed right-0 top-0 h-full w-full max-w-lg bg-gray-50 dark:bg-[#030712] border-l border-gray-300 dark:border-white/[0.1] z-[70] shadow-2xl flex flex-col"
       >
         {/* Header */}
         <div className="p-6 border-b border-gray-200 dark:border-white/[0.05] flex items-center justify-between shrink-0">
@@ -263,7 +263,7 @@ export function DealDetailsModal({
         </div>
 
         {/* Tabs */}
-        <div className="flex px-6 border-b border-gray-200 dark:border-white/[0.05] shrink-0">
+        <div className="flex overflow-x-auto border-b border-gray-200 dark:border-white/[0.05] shrink-0 scrollbar-none px-2">
           {(['overview', 'activities', 'tasks', 'history', 'automation'] as DrawerTab[]).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)} className={tabClass(tab)}>
               {tab.charAt(0).toUpperCase() + tab.slice(1)}

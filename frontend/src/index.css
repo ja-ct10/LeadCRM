@@ -119,6 +119,14 @@
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     @apply bg-slate-400 dark:bg-white/[0.2];
   }
+
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 @keyframes shimmer {

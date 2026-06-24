@@ -50,7 +50,7 @@ import {
   MOCK_ASSETS,
   MOCK_INVENTORY,
   MOCK_INVOICES,
-} from "./mockData";
+} from "./mockData/index";
 import { evaluateWorkflowCondition } from "@/features/tenant/automation/workflows/services/workflow-condition-evaluator";
 
 interface DataContextType {

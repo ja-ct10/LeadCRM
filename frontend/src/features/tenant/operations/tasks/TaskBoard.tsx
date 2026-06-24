@@ -245,7 +245,7 @@ export default function TaskBoard() {
       </div>
 
       {/* Kanban Board View */}
-      {view === 'kanban' ? (
+      {view === 'kanban' && (
         <div className="flex-1 overflow-x-auto pb-4 custom-scrollbar">
           <div className="flex gap-6 h-full min-w-[900px]">
             {columns.map((column) => (
@@ -338,8 +338,10 @@ export default function TaskBoard() {
             ))}
           </div>
         </div>
-      ) : (
-        /* List View */
+      ) }
+
+      {/* List View */}
+      {view === 'list' && (
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
@@ -423,6 +425,17 @@ export default function TaskBoard() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* Workload View */}
+      {view === 'workload' && (
+        <div className="bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06] rounded-2xl p-6">
+          <div className="mb-4">
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">Team Workload</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Open tasks per team member, sorted by total count</p>
+          </div>
+          <WorkloadView tasks={tasks} users={users} />
         </div>
       )}
 
