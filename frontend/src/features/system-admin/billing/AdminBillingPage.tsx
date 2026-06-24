@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 import React, { useState } from 'react';
 import { Search, Eye, Download, CreditCard, Building2, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -51,7 +51,7 @@ export default function AdminBillingPage() {
           { label: 'Pending Revenue',            value: '$398', sub: '2 pending invoices',   subColor: 'text-amber-600 dark:text-amber-400' },
           { label: 'Failed Payments',            value: '1',    sub: 'Requires attention',   subColor: 'text-red-600 dark:text-red-400' },
         ].map((s) => (
-          <div key={s.label} className="bg-white dark:bg-[#0B1120] rounded-xl border border-slate-200 dark:border-slate-800 p-6">
+          <div key={s.label} className="bg-white dark:bg-white dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 p-6">
             <h3 className="text-sm text-slate-500 dark:text-slate-400 mb-4">{s.label}</h3>
             <div className="text-3xl font-bold text-slate-900 dark:text-white mb-4">{s.value}</div>
             <div className={`text-sm ${s.subColor}`}>{s.sub}</div>
@@ -60,7 +60,7 @@ export default function AdminBillingPage() {
       </div>
 
       {/* Invoice table */}
-      <div className="bg-white dark:bg-[#0B1120] rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+      <div className="bg-white dark:bg-white dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
         <div className="p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20">
           <div className="relative max-w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -71,7 +71,7 @@ export default function AdminBillingPage() {
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm text-slate-600 dark:text-slate-400">
-            <thead className="bg-white dark:bg-[#0B1120] text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-700">
+            <thead className="bg-white dark:bg-white dark:bg-slate-950 text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-700">
               <tr>
                 {['Invoice #', 'Client', 'Plan', 'Amount', 'Date', 'Payment Method', 'Status', ''].map((h) => (
                   <th key={h} className={`px-6 py-4 font-semibold ${!h ? 'text-right' : ''}`}>{h}</th>
@@ -122,7 +122,7 @@ export default function AdminBillingPage() {
         {selectedInvoice && (
           <div className="fixed inset-0 bg-slate-900/40 dark:bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-[#0B1120] rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+              className="bg-white dark:bg-white dark:bg-slate-950 rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
               <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800 flex justify-between items-start">
                 <div>
                   <h3 className="text-lg font-bold text-slate-900 dark:text-white">Invoice Details</h3>
@@ -151,7 +151,7 @@ export default function AdminBillingPage() {
                 </div>
               </div>
               <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/30 flex justify-end gap-3">
-                <button onClick={() => setSelectedInvoice(null)} className="px-4 py-2 bg-white dark:bg-[#0B1120] border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg font-medium text-sm transition-colors">Close</button>
+                <button onClick={() => setSelectedInvoice(null)} className="px-4 py-2 bg-white dark:bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg font-medium text-sm transition-colors">Close</button>
                 <button onClick={() => { handleDownload(selectedInvoice.id); setSelectedInvoice(null); }}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 transition-colors flex items-center gap-2">
                   <Download size={16} /> Download PDF

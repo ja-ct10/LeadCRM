@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 import React, { useState } from 'react';
 import {
   LayoutDashboard, Building2, CreditCard, Receipt,
@@ -39,7 +39,7 @@ export default function AdminLayout({ children, currentPath, navigate }: AdminLa
   };
 
   return (
-    <div className="flex min-h-screen bg-slate-50 dark:bg-[#030712] font-sans">
+    <div className="flex min-h-screen bg-slate-50 dark:bg-white dark:bg-slate-950 font-sans">
 
       {/* Mobile overlay */}
       {sidebarOpen && (
@@ -52,7 +52,7 @@ export default function AdminLayout({ children, currentPath, navigate }: AdminLa
       {/* ── Sidebar ─────────────────────────────────────────────── */}
       <aside className={`
         fixed lg:static inset-y-0 left-0 z-50 w-64
-        bg-[#0B1120] border-r border-slate-800
+        bg-white dark:bg-slate-950 border-r border-slate-800
         flex flex-col shadow-xl lg:shadow-none
         transform transition-transform duration-300 ease-in-out
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
@@ -125,7 +125,7 @@ export default function AdminLayout({ children, currentPath, navigate }: AdminLa
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
         {/* Topbar */}
-        <header className="h-16 bg-[#0B1120]/80 backdrop-blur-xl border-b border-slate-800 flex items-center justify-between px-4 lg:px-8 shrink-0 sticky top-0 z-30">
+        <header className="h-16 bg-white dark:bg-slate-950/80 backdrop-blur-xl border-b border-slate-800 flex items-center justify-between px-4 lg:px-8 shrink-0 sticky top-0 z-30">
           <div className="flex items-center gap-4">
             <button
               className="lg:hidden text-slate-400 hover:text-white bg-slate-800 p-2 rounded-lg"

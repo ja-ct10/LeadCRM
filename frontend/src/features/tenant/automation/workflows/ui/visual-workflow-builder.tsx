@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
@@ -476,20 +476,20 @@ export default function VisualWorkflowBuilder({
             <select
               value={triggerType}
               onChange={e => setTriggerType(e.target.value)}
-              className="w-full text-xs bg-slate-50 dark:bg-[#030712] border border-gray-300 dark:border-white/[0.1] rounded-lg px-3.5 py-2.5 text-slate-850 dark:text-white focus:outline-none"
+              className="w-full text-xs bg-slate-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg px-3.5 py-2.5 text-slate-850 dark:text-white focus:outline-none"
             >
-              <option value="lead_created" className="dark:bg-[#0b1120]">Contact is Created</option>
-              <option value="deal_created" className="dark:bg-[#0b1120]">Deal is Created</option>
-              <option value="deal_stage_qualified" className="dark:bg-[#0b1120]">Deal Stage Reached Qualified</option>
-              <option value="deal_stage_proposal" className="dark:bg-[#0b1120]">Deal Stage Reached Proposal</option>
-              <option value="deal_stage_negotiation" className="dark:bg-[#0b1120]">Deal Stage Reached Negotiation</option>
-              <option value="deal_stage_won" className="dark:bg-[#0b1120]">Deal Status Closed Won</option>
-              <option value="deal_stage_lost" className="dark:bg-[#0b1120]">Deal Status Closed Lost</option>
-              <option value="deal_expected_close_date_approaching" className="dark:bg-[#0b1120]">Expected Close Date Approaching (Deal)</option>
-              <option value="lead_expected_close_date_approaching" className="dark:bg-[#0b1120]">Expected Check Date Approaching (Contact)</option>
-              <option value="email_opened" className="dark:bg-[#0b1120]">Customer Email Opened</option>
-              <option value="meeting_scheduled" className="dark:bg-[#0b1120]">Client Meeting Scheduled</option>
-              <option value="tag_added" className="dark:bg-[#0b1120]">Append System Tag Added</option>
+              <option value="lead_created" className="dark:bg-white dark:bg-slate-950">Contact is Created</option>
+              <option value="deal_created" className="dark:bg-white dark:bg-slate-950">Deal is Created</option>
+              <option value="deal_stage_qualified" className="dark:bg-white dark:bg-slate-950">Deal Stage Reached Qualified</option>
+              <option value="deal_stage_proposal" className="dark:bg-white dark:bg-slate-950">Deal Stage Reached Proposal</option>
+              <option value="deal_stage_negotiation" className="dark:bg-white dark:bg-slate-950">Deal Stage Reached Negotiation</option>
+              <option value="deal_stage_won" className="dark:bg-white dark:bg-slate-950">Deal Status Closed Won</option>
+              <option value="deal_stage_lost" className="dark:bg-white dark:bg-slate-950">Deal Status Closed Lost</option>
+              <option value="deal_expected_close_date_approaching" className="dark:bg-white dark:bg-slate-950">Expected Close Date Approaching (Deal)</option>
+              <option value="lead_expected_close_date_approaching" className="dark:bg-white dark:bg-slate-950">Expected Check Date Approaching (Contact)</option>
+              <option value="email_opened" className="dark:bg-white dark:bg-slate-950">Customer Email Opened</option>
+              <option value="meeting_scheduled" className="dark:bg-white dark:bg-slate-950">Client Meeting Scheduled</option>
+              <option value="tag_added" className="dark:bg-white dark:bg-slate-950">Append System Tag Added</option>
             </select>
           </div>
         </div>
@@ -510,7 +510,7 @@ export default function VisualWorkflowBuilder({
             <select
               value={logicGate}
               onChange={e => setLogicGate(e.target.value as any)}
-              className="w-full text-xs bg-slate-50 dark:bg-[#030712] border border-gray-300 dark:border-white/[0.1] rounded-lg px-3.5 py-2.5 text-slate-850 dark:text-white focus:outline-none"
+              className="w-full text-xs bg-slate-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg px-3.5 py-2.5 text-slate-850 dark:text-white focus:outline-none"
             >
               <option value="AND">All criteria must match (AND)</option>
               <option value="OR">At least one criterion matches (OR)</option>
@@ -556,9 +556,9 @@ export default function VisualWorkflowBuilder({
             <select
               value={rule.field}
               onChange={e => handleUpdateRule(rIdx, 'field', e.target.value)}
-              className="w-full text-xs bg-slate-50 dark:bg-[#030712] border border-gray-300 dark:border-white/[0.1] rounded-lg p-2.5 text-slate-900 dark:text-white"
+              className="w-full text-xs bg-slate-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg p-2.5 text-slate-900 dark:text-white"
             >
-              <optgroup label="Deal Variables" className="dark:bg-[#0b1120]">
+              <optgroup label="Deal Variables" className="dark:bg-white dark:bg-slate-950">
                 <option value="deal.title">Deal Title (text)</option>
                 <option value="deal.value">Deal Value ($)</option>
                 <option value="deal.daysUntilClose">Days relative to Target Close</option>
@@ -567,7 +567,7 @@ export default function VisualWorkflowBuilder({
                 <option value="deal.companyName">SaaS Company Name</option>
                 <option value="deal.contactPerson">Contact Person Name</option>
               </optgroup>
-              <optgroup label="Contact Variables" className="dark:bg-[#0b1120]">
+              <optgroup label="Contact Variables" className="dark:bg-white dark:bg-slate-950">
                 <option value="contact.customerType">Customer Type (Individual/Organization)</option>
                 <option value="contact.score">Contact Score (0 - 100)</option>
                 <option value="contact.estimatedValue">Estimate Budget ($)</option>
@@ -587,20 +587,20 @@ export default function VisualWorkflowBuilder({
             <select
               value={rule.operator}
               onChange={e => handleUpdateRule(rIdx, 'operator', e.target.value)}
-              className="w-full text-xs bg-slate-50 dark:bg-[#030712] border border-gray-300 dark:border-white/[0.1] rounded-lg p-2.5 text-slate-900 dark:text-white"
+              className="w-full text-xs bg-slate-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg p-2.5 text-slate-900 dark:text-white"
             >
-              <option value=">" className="dark:bg-[#0b1120]">Greater than (&gt;)</option>
-              <option value="<" className="dark:bg-[#0b1120]">Less than (&lt;)</option>
-              <option value=">=" className="dark:bg-[#0b1120]">Greater or Eq (&gt;=)</option>
-              <option value="<=" className="dark:bg-[#0b1120]">Less or Eq (&lt;=)</option>
-              <option value="==" className="dark:bg-[#0b1120]">Exact Match (==)</option>
-              <option value="!=" className="dark:bg-[#0b1120]">Exclude (!=)</option>
-              <option value="contains" className="dark:bg-[#0b1120]">Substring Contains</option>
-              <option value="not_contains" className="dark:bg-[#0b1120]">Substring Excludes</option>
-              <option value="starts_with" className="dark:bg-[#0b1120]">Starts with prefix</option>
-              <option value="ends_with" className="dark:bg-[#0b1120]">Ends with suffix</option>
-              <option value="is_empty" className="dark:bg-[#0b1120]">Is Field Null/Empty</option>
-              <option value="is_not_empty" className="dark:bg-[#0b1120]">Is Field Populated</option>
+              <option value=">" className="dark:bg-white dark:bg-slate-950">Greater than (&gt;)</option>
+              <option value="<" className="dark:bg-white dark:bg-slate-950">Less than (&lt;)</option>
+              <option value=">=" className="dark:bg-white dark:bg-slate-950">Greater or Eq (&gt;=)</option>
+              <option value="<=" className="dark:bg-white dark:bg-slate-950">Less or Eq (&lt;=)</option>
+              <option value="==" className="dark:bg-white dark:bg-slate-950">Exact Match (==)</option>
+              <option value="!=" className="dark:bg-white dark:bg-slate-950">Exclude (!=)</option>
+              <option value="contains" className="dark:bg-white dark:bg-slate-950">Substring Contains</option>
+              <option value="not_contains" className="dark:bg-white dark:bg-slate-950">Substring Excludes</option>
+              <option value="starts_with" className="dark:bg-white dark:bg-slate-950">Starts with prefix</option>
+              <option value="ends_with" className="dark:bg-white dark:bg-slate-950">Ends with suffix</option>
+              <option value="is_empty" className="dark:bg-white dark:bg-slate-950">Is Field Null/Empty</option>
+              <option value="is_not_empty" className="dark:bg-white dark:bg-slate-950">Is Field Populated</option>
             </select>
           </div>
 
@@ -611,7 +611,7 @@ export default function VisualWorkflowBuilder({
                 type="text"
                 value={rule.value || ''}
                 onChange={e => handleUpdateRule(rIdx, 'value', e.target.value)}
-                className="w-full text-xs bg-slate-50 dark:bg-[#030712] border border-gray-300 dark:border-white/[0.1] rounded-lg p-2.5 text-slate-900 dark:text-white"
+                className="w-full text-xs bg-slate-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg p-2.5 text-slate-900 dark:text-white"
                 placeholder="Type test limit value..."
               />
             </div>
@@ -646,15 +646,15 @@ export default function VisualWorkflowBuilder({
             <select
               value={act.type}
               onChange={e => handleUpdateAction(act.id, 'type', e.target.value)}
-              className="w-full text-xs bg-slate-50 dark:bg-[#030712] border border-gray-300 dark:border-white/[0.1] rounded-lg p-2.5 text-slate-900 dark:text-white h-10"
+              className="w-full text-xs bg-slate-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg p-2.5 text-slate-900 dark:text-white h-10"
             >
-              <option value="send_email" className="dark:bg-[#0b1120]">Send Automated Email</option>
-              <option value="send_sms" className="dark:bg-[#0b1120]">Send Mobile SMS</option>
-              <option value="create_task" className="dark:bg-[#0b1120]">Assign Task Ticket</option>
-              <option value="update_lead_status" className="dark:bg-[#0b1120]">Update CRM Contact State</option>
-              <option value="add_tag" className="dark:bg-[#0b1120]">Append Customer Tag</option>
-              <option value="send_slack_notification" className="dark:bg-[#0b1120]">Broadcast Slack message</option>
-              <option value="webhook" className="dark:bg-[#0b1120]">Fire Webhook API call</option>
+              <option value="send_email" className="dark:bg-white dark:bg-slate-950">Send Automated Email</option>
+              <option value="send_sms" className="dark:bg-white dark:bg-slate-950">Send Mobile SMS</option>
+              <option value="create_task" className="dark:bg-white dark:bg-slate-950">Assign Task Ticket</option>
+              <option value="update_lead_status" className="dark:bg-white dark:bg-slate-950">Update CRM Contact State</option>
+              <option value="add_tag" className="dark:bg-white dark:bg-slate-950">Append Customer Tag</option>
+              <option value="send_slack_notification" className="dark:bg-white dark:bg-slate-950">Broadcast Slack message</option>
+              <option value="webhook" className="dark:bg-white dark:bg-slate-950">Fire Webhook API call</option>
             </select>
           </div>
 
@@ -665,7 +665,7 @@ export default function VisualWorkflowBuilder({
                 type="number"
                 value={act.delay || 0}
                 onChange={e => handleUpdateAction(act.id, 'delay', parseInt(e.target.value) || 0)}
-                className="w-full text-xs bg-slate-50 dark:bg-[#030712] border border-gray-300 dark:border-white/[0.1] rounded-lg p-2 text-slate-900 dark:text-white"
+                className="w-full text-xs bg-slate-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg p-2 text-slate-900 dark:text-white"
               />
             </div>
             <div>
@@ -673,11 +673,11 @@ export default function VisualWorkflowBuilder({
               <select
                 value={act.delayUnit || 'minutes'}
                 onChange={e => handleUpdateAction(act.id, 'delayUnit', e.target.value)}
-                className="w-full text-xs bg-slate-50 dark:bg-[#030712] border border-gray-300 dark:border-white/[0.1] rounded-lg p-2 text-slate-900 dark:text-white"
+                className="w-full text-xs bg-slate-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg p-2 text-slate-900 dark:text-white"
               >
-                <option value="minutes" className="dark:bg-[#0b1120]">Minutes</option>
-                <option value="hours" className="dark:bg-[#0b1120]">Hours</option>
-                <option value="days" className="dark:bg-[#0b1120]">Days</option>
+                <option value="minutes" className="dark:bg-white dark:bg-slate-950">Minutes</option>
+                <option value="hours" className="dark:bg-white dark:bg-slate-950">Hours</option>
+                <option value="days" className="dark:bg-white dark:bg-slate-950">Days</option>
               </select>
             </div>
           </div>
@@ -688,13 +688,13 @@ export default function VisualWorkflowBuilder({
               <select
                 value={act.config?.templateId || ''}
                 onChange={e => handleUpdateAction(act.id, 'config.templateId', e.target.value)}
-                className="w-full text-xs bg-slate-50 dark:bg-[#030712] border border-gray-300 dark:border-white/[0.1] rounded-lg p-2 text-slate-900 dark:text-white"
+                className="w-full text-xs bg-slate-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg p-2 text-slate-900 dark:text-white"
               >
-                <option value="" className="dark:bg-[#0b1120]">Select template...</option>
+                <option value="" className="dark:bg-white dark:bg-slate-950">Select template...</option>
                 {templates
                   .filter(t => t.type === (act.type === 'send_email' ? 'Email' : 'SMS'))
                   .map(t => (
-                    <option key={t.id} value={t.id} className="dark:bg-[#0b1120]">{t.name}</option>
+                    <option key={t.id} value={t.id} className="dark:bg-white dark:bg-slate-950">{t.name}</option>
                   ))
                 }
               </select>
@@ -709,7 +709,7 @@ export default function VisualWorkflowBuilder({
                   type="text"
                   value={act.config?.taskTitle || ''}
                   onChange={e => handleUpdateAction(act.id, 'config.taskTitle', e.target.value)}
-                  className="w-full text-xs bg-slate-50 dark:bg-[#030712] border border-gray-300 dark:border-white/[0.1] rounded-lg p-2.5 text-slate-900 dark:text-white"
+                  className="w-full text-xs bg-slate-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg p-2.5 text-slate-900 dark:text-white"
                   placeholder="e.g. Schedule visual workspace survey"
                 />
               </div>
@@ -719,7 +719,7 @@ export default function VisualWorkflowBuilder({
                 <textarea
                   value={act.config?.taskDescription || ''}
                   onChange={e => handleUpdateAction(act.id, 'config.taskDescription', e.target.value)}
-                  className="w-full text-xs bg-slate-50 dark:bg-[#030712] border border-gray-300 dark:border-white/[0.1] rounded-lg p-2.5 text-slate-900 dark:text-white h-24 resize-none"
+                  className="w-full text-xs bg-slate-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg p-2.5 text-slate-900 dark:text-white h-24 resize-none"
                   placeholder="Details relative to automated trigger..."
                 />
               </div>
@@ -750,13 +750,13 @@ export default function VisualWorkflowBuilder({
               <select
                 value={act.config?.targetStatus || 'Hot'}
                 onChange={e => handleUpdateAction(act.id, 'config.targetStatus', e.target.value)}
-                className="w-full text-xs bg-slate-50 dark:bg-[#030712] border border-gray-300 dark:border-white/[0.1] rounded-lg p-2.5 text-slate-900 dark:text-white"
+                className="w-full text-xs bg-slate-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg p-2.5 text-slate-900 dark:text-white"
               >
-                <option value="Hot" className="dark:bg-[#0b1120]">Hot</option>
-                <option value="Warm" className="dark:bg-[#0b1120]">Warm</option>
-                <option value="Cold" className="dark:bg-[#0b1120]">Cold</option>
-                <option value="Cancelled" className="dark:bg-[#0b1120]">Cancelled</option>
-                <option value="Closed" className="dark:bg-[#0b1120]">Closed (Converted)</option>
+                <option value="Hot" className="dark:bg-white dark:bg-slate-950">Hot</option>
+                <option value="Warm" className="dark:bg-white dark:bg-slate-950">Warm</option>
+                <option value="Cold" className="dark:bg-white dark:bg-slate-950">Cold</option>
+                <option value="Cancelled" className="dark:bg-white dark:bg-slate-950">Cancelled</option>
+                <option value="Closed" className="dark:bg-white dark:bg-slate-950">Closed (Converted)</option>
               </select>
               <p className="text-[10px] text-slate-500 mt-1.5 leading-relaxed">
                 Applies the designated visual category status back to the CRM candidate record instantly when this action fires.
@@ -772,7 +772,7 @@ export default function VisualWorkflowBuilder({
                   type="text"
                   value={act.config?.tagName || ''}
                   onChange={e => handleUpdateAction(act.id, 'config.tagName', e.target.value)}
-                  className="w-full text-xs bg-slate-50 dark:bg-[#030712] border border-gray-300 dark:border-white/[0.1] rounded-lg p-2.5 text-slate-900 dark:text-white"
+                  className="w-full text-xs bg-slate-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg p-2.5 text-slate-900 dark:text-white"
                   placeholder="e.g. enterprise-deal, auto-qualified"
                 />
               </div>
@@ -790,7 +790,7 @@ export default function VisualWorkflowBuilder({
                   type="text"
                   value={act.config?.slackChannel || ''}
                   onChange={e => handleUpdateAction(act.id, 'config.slackChannel', e.target.value)}
-                  className="w-full text-xs bg-slate-50 dark:bg-[#030712] border border-gray-300 dark:border-white/[0.1] rounded-lg p-2.5 text-slate-900 dark:text-white"
+                  className="w-full text-xs bg-slate-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg p-2.5 text-slate-900 dark:text-white"
                   placeholder="e.g. #sales-alerts, #contacts-feed"
                 />
               </div>
@@ -800,7 +800,7 @@ export default function VisualWorkflowBuilder({
                 <textarea
                   value={act.config?.slackMessage || ''}
                   onChange={e => handleUpdateAction(act.id, 'config.slackMessage', e.target.value)}
-                  className="w-full text-xs bg-slate-50 dark:bg-[#030712] border border-gray-300 dark:border-white/[0.1] rounded-lg p-2.5 text-slate-900 dark:text-white h-24 resize-none"
+                  className="w-full text-xs bg-slate-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg p-2.5 text-slate-900 dark:text-white h-24 resize-none"
                   placeholder="e.g. :tada: Attention! A hot new contact [Contact Name] has been checked!"
                 />
               </div>
@@ -834,7 +834,7 @@ export default function VisualWorkflowBuilder({
                   type="text"
                   value={act.config?.webhookUrl || ''}
                   onChange={e => handleUpdateAction(act.id, 'config.webhookUrl', e.target.value)}
-                  className="w-full text-xs bg-slate-50 dark:bg-[#030712] border border-gray-300 dark:border-white/[0.1] rounded-lg p-2.5 text-slate-900 dark:text-white"
+                  className="w-full text-xs bg-slate-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg p-2.5 text-slate-900 dark:text-white"
                   placeholder="https://zapier.com/hooks/catch/..."
                 />
               </div>
@@ -844,11 +844,11 @@ export default function VisualWorkflowBuilder({
                 <select
                   value={act.config?.webhookMethod || 'POST'}
                   onChange={e => handleUpdateAction(act.id, 'config.webhookMethod', e.target.value)}
-                  className="w-full text-xs bg-slate-50 dark:bg-[#030712] border border-gray-300 dark:border-white/[0.1] rounded-lg p-2.5 text-slate-900 dark:text-white"
+                  className="w-full text-xs bg-slate-50 dark:bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-lg p-2.5 text-slate-900 dark:text-white"
                 >
-                  <option value="POST" className="dark:bg-[#0b1120]">POST (Send JSON payload)</option>
-                  <option value="GET" className="dark:bg-[#0b1120]">GET (Query REST status)</option>
-                  <option value="PUT" className="dark:bg-[#0b1120]">PUT (Update resource)</option>
+                  <option value="POST" className="dark:bg-white dark:bg-slate-950">POST (Send JSON payload)</option>
+                  <option value="GET" className="dark:bg-white dark:bg-slate-950">GET (Query REST status)</option>
+                  <option value="PUT" className="dark:bg-white dark:bg-slate-950">PUT (Update resource)</option>
                 </select>
               </div>
 
@@ -873,7 +873,7 @@ export default function VisualWorkflowBuilder({
       <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex flex-col h-screen overflow-hidden text-slate-800 dark:text-slate-100">
         
         {/* TOP BAR / COMMAND MODULE */}
-        <div className="bg-white dark:bg-[#0B1120] border-b border-gray-200 dark:border-white/[0.08] px-6 py-4 flex items-center justify-between z-10">
+        <div className="bg-white dark:bg-white dark:bg-slate-950 border-b border-gray-200 dark:border-white/[0.08] px-6 py-4 flex items-center justify-between z-10">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-gradient-to-tr from-blue-500 to-indigo-600 rounded-xl text-white shadow-[0_0_15px_rgba(10,110,255,0.3)] flex items-center justify-center animate-spin-slow">
               <Compass className="w-5 h-5" />
@@ -914,7 +914,7 @@ export default function VisualWorkflowBuilder({
         <div className="flex-1 flex overflow-hidden relative">
           
           {/* 1. NODE SELECTION TOOLBAR BAR */}
-          <div className="w-64 bg-white dark:bg-[#0B1120] border-r border-gray-200 dark:border-white/[0.08] p-5 flex flex-col gap-6 overflow-y-auto shrink-0 select-none">
+          <div className="w-64 bg-white dark:bg-white dark:bg-slate-950 border-r border-gray-200 dark:border-white/[0.08] p-5 flex flex-col gap-6 overflow-y-auto shrink-0 select-none">
             <div>
               <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-2">Automation Presets</span>
               <div className="space-y-2">
@@ -924,7 +924,7 @@ export default function VisualWorkflowBuilder({
                     type="text"
                     value={workflowName}
                     onChange={e => setWorkflowName(e.target.value)}
-                    className="w-full text-xs bg-slate-50 dark:bg-[#030712] border border-gray-200 dark:border-white/[0.06] px-3 py-2 rounded-lg text-slate-800 dark:text-white focus:outline-none"
+                    className="w-full text-xs bg-slate-50 dark:bg-white dark:bg-slate-950 border border-gray-200 dark:border-white/[0.06] px-3 py-2 rounded-lg text-slate-800 dark:text-white focus:outline-none"
                     placeholder="e.g. Contact Auto Assign"
                   />
                 </div>
@@ -933,7 +933,7 @@ export default function VisualWorkflowBuilder({
                   <select
                     value={workflowCategory}
                     onChange={e => setWorkflowCategory(e.target.value)}
-                    className="w-full text-xs bg-slate-50 dark:bg-[#030712] border border-gray-200 dark:border-white/[0.06] px-3 py-2 rounded-lg text-slate-800 dark:text-white focus:outline-none"
+                    className="w-full text-xs bg-slate-50 dark:bg-white dark:bg-slate-950 border border-gray-200 dark:border-white/[0.06] px-3 py-2 rounded-lg text-slate-800 dark:text-white focus:outline-none"
                   >
                     <option value="General">General Category</option>
                     <option value="Security">Security Solutions</option>
@@ -994,7 +994,7 @@ export default function VisualWorkflowBuilder({
 
           {/* 2. CORE FLOW CANVAS VIEWPORT */}
           <div 
-            className="flex-1 h-full overflow-hidden bg-slate-50 dark:bg-[#030712] relative cursor-grab active:cursor-grabbing outline-none"
+            className="flex-1 h-full overflow-hidden bg-slate-50 dark:bg-white dark:bg-slate-950 relative cursor-grab active:cursor-grabbing outline-none"
             onPointerDown={handleCanvasPointerDown}
             onPointerMove={handleCanvasPointerMove}
             onPointerUp={handleCanvasPointerUp}
@@ -1088,7 +1088,7 @@ export default function VisualWorkflowBuilder({
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.8 }}
-                        className={`absolute w-[240px] p-4 rounded-2xl border bg-white dark:bg-[#0B1120] select-none shadow-xl cursor-default canvas-node transition-all ${
+                        className={`absolute w-[240px] p-4 rounded-2xl border bg-white dark:bg-white dark:bg-slate-950 select-none shadow-xl cursor-default canvas-node transition-all ${
                           isSelected 
                             ? 'border-blue-500 ring-2 ring-blue-500/20 shadow-blue-500/5' 
                             : 'border-gray-200 dark:border-white/[0.08] hover:border-gray-300 dark:hover:border-white/[0.15]'
@@ -1167,7 +1167,7 @@ export default function VisualWorkflowBuilder({
             </div>
 
             {/* FLOAT FLOATING INTERACTION CONTROLS */}
-            <div className="absolute bottom-6 left-6 bg-white dark:bg-[#0B1120] border border-gray-200 dark:border-white/[0.08] px-4 py-2.5 rounded-full flex items-center gap-3.5 shadow-2xl z-20">
+            <div className="absolute bottom-6 left-6 bg-white dark:bg-white dark:bg-slate-950 border border-gray-200 dark:border-white/[0.08] px-4 py-2.5 rounded-full flex items-center gap-3.5 shadow-2xl z-20">
               <button 
                 onClick={() => adjustZoom(0.05)}
                 className="p-1.5 hover:bg-gray-100 dark:hover:bg-white/[0.04] rounded-full text-slate-500 hover:text-white transition-colors cursor-pointer"
@@ -1217,7 +1217,7 @@ export default function VisualWorkflowBuilder({
           </div>
 
           {/* 3. DYNAMIC RIGHT SIDE PROPERTY INSPECTOR BAR */}
-          <div className="w-96 bg-white dark:bg-[#0B1120] border-l border-gray-200 dark:border-white/[0.08] flex flex-col overflow-hidden shrink-0 z-10 shadow-2xl">
+          <div className="w-96 bg-white dark:bg-white dark:bg-slate-950 border-l border-gray-200 dark:border-white/[0.08] flex flex-col overflow-hidden shrink-0 z-10 shadow-2xl">
             
             <div className="p-5 border-b border-gray-200 dark:border-white/[0.05] flex items-center justify-between shrink-0 bg-slate-50 dark:bg-white/[0.01]">
               <div className="flex items-center gap-2">
@@ -1240,7 +1240,7 @@ export default function VisualWorkflowBuilder({
             </div>
 
             {/* Bottom panel hint */}
-            <div className="p-4 bg-slate-50 dark:bg-[#0B1120] border-t border-gray-200 dark:border-white/[0.05] text-[10px] text-slate-500 text-center select-none flex items-center justify-center gap-1 shrink-0">
+            <div className="p-4 bg-slate-50 dark:bg-white dark:bg-slate-950 border-t border-gray-200 dark:border-white/[0.05] text-[10px] text-slate-500 text-center select-none flex items-center justify-center gap-1 shrink-0">
               <Sparkles className="w-3 h-3 text-indigo-400" />
               SaaS automations build instantly relative to constraints.
             </div>

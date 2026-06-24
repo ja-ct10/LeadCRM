@@ -33,14 +33,42 @@ ChartJS.register(
 );
 
 // ─── Shared style defaults ────────────────────────────────────
+function isDarkMode() {
+  if (typeof document === 'undefined') return true;
+  return document.documentElement.classList.contains('dark');
+}
+
+function getTooltipStyle() {
+  const dark = isDarkMode();
+  return {
+    backgroundColor: dark ? '#1e293b' : '#ffffff',
+    borderColor: dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+    borderWidth: 1,
+    titleColor: dark ? '#f8fafc' : '#0f172a',
+    bodyColor: dark ? '#94a3b8' : '#475569',
+    cornerRadius: 10,
+    padding: 10,
+    boxPadding: 4,
+  };
+}
+
+function getAxisDefaults() {
+  const dark = isDarkMode();
+  return {
+    ticks: { color: dark ? '#64748b' : '#94a3b8', font: { size: 12 } },
+    grid: { color: dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)' },
+  };
+}
+
+// Keep for backward compat
 const darkTooltip = {
-  backgroundColor: '#030712',
+  backgroundColor: '#1e293b',
   borderColor: 'rgba(255,255,255,0.1)',
   borderWidth: 1,
   titleColor: '#f8fafc',
-  bodyColor: '#f8fafc',
-  cornerRadius: 12,
-  padding: 12,
+  bodyColor: '#94a3b8',
+  cornerRadius: 10,
+  padding: 10,
   boxPadding: 4,
 };
 
@@ -216,13 +244,13 @@ export function BarChart({ data, children }: BarChartProps) {
       legend: showLegend
         ? { labels: { color: '#94a3b8', boxWidth: 12 } }
         : { display: false },
-      tooltip: { ...darkTooltip },
+      tooltip: { ...getTooltipStyle() },
     },
     scales: {
-      x: { ...axisDefaults, grid: { color: 'transparent' } },
+      x: { ...getAxisDefaults(), grid: { color: 'transparent' } },
       y: {
-        ...axisDefaults,
-        ticks: { ...axisDefaults.ticks, callback: yTickFormatter || ((v: any) => v) },
+        ...getAxisDefaults(),
+        ticks: { ...getAxisDefaults().ticks, callback: yTickFormatter || ((v: any) => v) },
       },
     },
   };
@@ -277,13 +305,13 @@ export function AreaChart({ data, children }: BarChartProps) {
     maintainAspectRatio: false,
     plugins: {
       legend: { display: false },
-      tooltip: { ...darkTooltip },
+      tooltip: { ...getTooltipStyle() },
     },
     scales: {
-      x: { ...axisDefaults, grid: { color: 'transparent' } },
+      x: { ...getAxisDefaults(), grid: { color: 'transparent' } },
       y: {
-        ...axisDefaults,
-        ticks: { ...axisDefaults.ticks, callback: yTickFormatter || ((v: any) => v) },
+        ...getAxisDefaults(),
+        ticks: { ...getAxisDefaults().ticks, callback: yTickFormatter || ((v: any) => v) },
       },
     },
   };
@@ -331,13 +359,13 @@ export function LineChart({ data, children }: BarChartProps) {
     maintainAspectRatio: false,
     plugins: {
       legend: showLegend ? { labels: { color: '#94a3b8', boxWidth: 12 } } : { display: false },
-      tooltip: { ...darkTooltip },
+      tooltip: { ...getTooltipStyle() },
     },
     scales: {
-      x: { ...axisDefaults, grid: { color: 'transparent' } },
+      x: { ...getAxisDefaults(), grid: { color: 'transparent' } },
       y: {
-        ...axisDefaults,
-        ticks: { ...axisDefaults.ticks, callback: yTickFormatter || ((v: any) => v) },
+        ...getAxisDefaults(),
+        ticks: { ...getAxisDefaults().ticks, callback: yTickFormatter || ((v: any) => v) },
       },
     },
   };
@@ -404,7 +432,7 @@ export function PieChart({ children }: PieChartProps) {
       legend: showLegend
         ? { position: 'bottom', labels: { color: '#94a3b8', boxWidth: 12, padding: 16 } }
         : { display: false },
-      tooltip: { ...darkTooltip },
+      tooltip: { ...getTooltipStyle() },
     },
   };
 

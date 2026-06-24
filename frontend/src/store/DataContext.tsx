@@ -38,7 +38,7 @@ import {
   MOCK_DEALS,
   MOCK_PIPELINES,
   MOCK_WORKFLOWS,
-  MOCK_CAMPAI·NS,
+  MOCK_CAMPAIGNS,
   MOCK_USERS,
   MOCK_TENANTS,
   MOCK_TEMPLATES,
@@ -346,7 +346,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     );
     const c = JSON.parse(
       localStorage.getItem("leadcrm_campaigns") ||
-        JSON.stringify(MOCK_CAMPAI·NS),
+        JSON.stringify(MOCK_CAMPAIGNS),
     );
     const tpl = JSON.parse(
       localStorage.getItem("leadcrm_templates") ||

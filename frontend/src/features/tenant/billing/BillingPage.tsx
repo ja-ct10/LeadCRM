@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState } from 'react';
 import {
@@ -146,7 +146,7 @@ export default function BillingPage() {
             className="bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-xl px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500/50 transition-all cursor-pointer"
           >
             {['All', 'Active', 'Pending Renewal', 'Expired', 'Cancelled'].map(s => (
-              <option key={s} value={s} className="bg-gray-50 dark:bg-[#030712]">{s}</option>
+              <option key={s} value={s} className="bg-gray-50 dark:bg-white dark:bg-slate-950">{s}</option>
             ))}
           </select>
         </div>

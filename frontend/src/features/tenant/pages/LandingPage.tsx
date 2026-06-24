@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React from 'react';
 import { motion } from 'motion/react';
@@ -32,7 +32,7 @@ export default function LandingPage({ onNavigate }: { onNavigate: (path: string)
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-[#030712] text-slate-800 dark:text-slate-200 font-sans selection:bg-[#0A6EFF] selection:text-white overflow-x-hidden">
+    <div className="min-h-screen bg-gray-50 dark:bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-200 font-sans selection:bg-[#0A6EFF] selection:text-white overflow-x-hidden">
       {/* Grid Background */}
       <div className="fixed inset-0 z-0 pointer-events-none opacity-[0.03]" 
         style={{ backgroundImage: `radial-gradient(#ffffff 1px, transparent 1px)`, backgroundSize: '40px 40px' }} 
@@ -125,8 +125,8 @@ export default function LandingPage({ onNavigate }: { onNavigate: (path: string)
             className="relative mx-auto max-w-6xl group"
           >
             <div className="absolute -inset-1 bg-gradient-to-r from-[#0A6EFF] to-purple-500 rounded-2xl blur opacity-20 group-hover:opacity-30 transition duration-1000 group-hover:duration-200"></div>
-            <div className="relative rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#0B1120]/80 backdrop-blur-xl p-2 shadow-2xl overflow-hidden">
-              <div className="rounded-xl overflow-hidden border border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-[#030712] aspect-[16/10] flex items-center justify-center relative">
+            <div className="relative rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white dark:bg-slate-950/80 backdrop-blur-xl p-2 shadow-2xl overflow-hidden">
+              <div className="rounded-xl overflow-hidden border border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-white dark:bg-slate-950 aspect-[16/10] flex items-center justify-center relative">
                 {/* Mock UI */}
                 <div className="absolute inset-0 flex">
                   <div className="w-64 border-r border-gray-200 dark:border-white/5 p-6 space-y-6 hidden md:block">
@@ -242,7 +242,7 @@ export default function LandingPage({ onNavigate }: { onNavigate: (path: string)
               </h2>
               <div className="flex items-center gap-4">
                 <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 p-0.5">
-                  <div className="w-full h-full rounded-full bg-gray-50 dark:bg-[#030712] flex items-center justify-center text-xl font-bold">CT</div>
+                  <div className="w-full h-full rounded-full bg-gray-50 dark:bg-white dark:bg-slate-950 flex items-center justify-center text-xl font-bold">CT</div>
                 </div>
                 <div>
                   <div className="text-slate-900 dark:text-white font-bold text-lg">Camxian Technologies</div>
@@ -252,7 +252,7 @@ export default function LandingPage({ onNavigate }: { onNavigate: (path: string)
             </div>
             <div className="relative">
               <Quote size={120} className="absolute -top-10 -left-10 text-slate-900 dark:text-white/[0.03] pointer-events-none" />
-              <div className="bg-white dark:bg-[#0B1120] p-10 rounded-[2.5rem] border border-gray-200 dark:border-white/5 relative z-10">
+              <div className="bg-white dark:bg-white dark:bg-slate-950 p-10 rounded-[2.5rem] border border-gray-200 dark:border-white/5 relative z-10">
                 <p className="text-xl text-slate-700 dark:text-slate-300 italic leading-relaxed mb-8">
                   "Before LeadCRM, we were losing track of site surveys and hardware warranties. Now, everything is automated. Our technicians are more efficient, and our sales conversion has increased by 40%."
                 </p>
@@ -319,7 +319,7 @@ export default function LandingPage({ onNavigate }: { onNavigate: (path: string)
               <motion.div 
                 key={i}
                 whileHover={{ y: -10 }}
-                className={`p-10 rounded-[2.5rem] border flex flex-col ${plan.popular ? 'bg-gradient-to-b from-[#0B1120] to-[#030712] border-[#0A6EFF] shadow-[0_0_50px_rgba(10,110,255,0.15)] relative' : 'bg-white dark:bg-[#0B1120] border-gray-200 dark:border-white/5'}`}
+                className={`p-10 rounded-[2.5rem] border flex flex-col ${plan.popular ? 'bg-gradient-to-b from-[#0B1120] to-[#030712] border-[#0A6EFF] shadow-[0_0_50px_rgba(10,110,255,0.15)] relative' : 'bg-white dark:bg-white dark:bg-slate-950 border-gray-200 dark:border-white/5'}`}
               >
                 {plan.popular && <span className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#0A6EFF] text-slate-900 dark:text-white px-6 py-1.5 text-xs font-bold rounded-full uppercase tracking-widest shadow-xl">Best Value</span>}
                 <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-2 font-display">{plan.name}</h3>
@@ -437,7 +437,7 @@ export default function LandingPage({ onNavigate }: { onNavigate: (path: string)
       </section>
 
       {/* Footer */}
-      <footer className="bg-gray-50 dark:bg-[#030712] border-t border-gray-200 dark:border-white/5 py-20">
+      <footer className="bg-gray-50 dark:bg-white dark:bg-slate-950 border-t border-gray-200 dark:border-white/5 py-20">
         <div className="container mx-auto px-6">
           <div className="grid md:grid-cols-4 gap-12 mb-20">
             <div className="col-span-2">

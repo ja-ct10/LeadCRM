@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState } from 'react';
 import { useAuth } from '@/store/AuthContext';
@@ -78,7 +78,7 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
 
   if (mode === 'login') {
     return (
-      <div className="min-h-screen bg-[#07142A] flex items-center justify-center p-4 relative overflow-hidden">
+      <div className="min-h-screen bg-white dark:bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden">
         {/* Background glow effects */}
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-[100px] pointer-events-none"></div>
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-[100px] pointer-events-none"></div>
@@ -112,7 +112,7 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
                     type="email" 
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-[#07142A] border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors"
+                    className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors"
                     required
                   />
                 </div>
@@ -125,7 +125,7 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
                     type="password" 
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-[#07142A] border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors"
+                    className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors"
                     required
                   />
                 </div>
@@ -144,7 +144,7 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
                     type="text" 
                     value={otp}
                     onChange={(e) => setOtp(e.target.value)}
-                    className="w-full bg-[#07142A] border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors text-center text-lg tracking-widest"
+                    className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors text-center text-lg tracking-widest"
                     required
                     maxLength={6}
                     placeholder="------"
@@ -177,7 +177,7 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
   }
 
   return (
-    <div className="min-h-screen bg-[#07142A] flex items-center justify-center p-4 py-12 relative overflow-hidden">
+    <div className="min-h-screen bg-white dark:bg-slate-950 flex items-center justify-center p-4 py-12 relative overflow-hidden">
       {/* Background glow effects */}
       <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-500/5 rounded-full blur-[120px] pointer-events-none"></div>
       <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-purple-500/5 rounded-full blur-[120px] pointer-events-none"></div>
@@ -216,11 +216,11 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <div className="sm:col-span-2">
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Company Name</label>
-                  <input required value={tenantData.companyName} onChange={e => setTenantData({...tenantData, companyName: e.target.value})} className="w-full bg-[#07142A] border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors" placeholder="e.g. Acme Corp" />
+                  <input required value={tenantData.companyName} onChange={e => setTenantData({...tenantData, companyName: e.target.value})} className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors" placeholder="e.g. Acme Corp" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Industry</label>
-                  <select value={tenantData.industry} onChange={e => setTenantData({...tenantData, industry: e.target.value})} className="w-full bg-[#07142A] border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors">
+                  <select value={tenantData.industry} onChange={e => setTenantData({...tenantData, industry: e.target.value})} className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors">
                     <option>IT Solutions</option>
                     <option>Software Development</option>
                     <option>Consulting</option>
@@ -229,7 +229,7 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Company Size</label>
-                  <select value={tenantData.size} onChange={e => setTenantData({...tenantData, size: e.target.value})} className="w-full bg-[#07142A] border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors">
+                  <select value={tenantData.size} onChange={e => setTenantData({...tenantData, size: e.target.value})} className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors">
                     <option>1-10</option>
                     <option>11-50</option>
                     <option>51-200</option>
@@ -238,7 +238,7 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
                 </div>
                 <div className="sm:col-span-2">
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Business Email</label>
-                  <input type="email" required value={tenantData.businessEmail} onChange={e => setTenantData({...tenantData, businessEmail: e.target.value})} className="w-full bg-[#07142A] border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors" placeholder="hello@democorp.com" />
+                  <input type="email" required value={tenantData.businessEmail} onChange={e => setTenantData({...tenantData, businessEmail: e.target.value})} className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors" placeholder="hello@democorp.com" />
                 </div>
               </div>
             </div>
@@ -258,13 +258,13 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
                     rows={4}
                     value={businessReqs.requirements} 
                     onChange={e => setBusinessReqs({...businessReqs, requirements: e.target.value})} 
-                    className="w-full bg-[#07142A] border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors resize-none" 
+                    className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors resize-none" 
                     placeholder="Tell us about the modules you need, your workflow, and any specific customizations..." 
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Business Documents (Optional)</label>
-                  <div className="w-full bg-[#07142A] border border-gray-200 dark:border-slate-700 border-dashed rounded-lg px-4 py-8 text-center hover:border-[#0A6EFF] transition-all group relative">
+                  <div className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 border-dashed rounded-lg px-4 py-8 text-center hover:border-[#0A6EFF] transition-all group relative">
                     <div className="absolute inset-0 bg-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg"></div>
                     <div className="relative z-10">
                       <div className="w-12 h-12 bg-gray-50 dark:bg-slate-800/50 rounded-full flex items-center justify-center mx-auto mb-4 border border-gray-200 dark:border-slate-700 group-hover:border-blue-500/30 transition-colors">
@@ -317,7 +317,7 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
                       id="permit-upload"
                       onChange={(e) => e.target.files && setVerificationDocs({...verificationDocs, businessPermit: e.target.files[0].name})}
                     />
-                    <label htmlFor="permit-upload" className="flex-1 bg-[#07142A] border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-500 dark:text-slate-400 cursor-pointer hover:border-[#0A6EFF] transition-colors truncate">
+                    <label htmlFor="permit-upload" className="flex-1 bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-500 dark:text-slate-400 cursor-pointer hover:border-[#0A6EFF] transition-colors truncate">
                       {verificationDocs.businessPermit || 'Select File...'}
                     </label>
                     {verificationDocs.businessPermit && <CheckCircle2 className="text-green-400" size={20} />}
@@ -333,7 +333,7 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
                       id="tin-upload"
                       onChange={(e) => e.target.files && setVerificationDocs({...verificationDocs, taxId: e.target.files[0].name})}
                     />
-                    <label htmlFor="tin-upload" className="flex-1 bg-[#07142A] border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-500 dark:text-slate-400 cursor-pointer hover:border-[#0A6EFF] transition-colors truncate">
+                    <label htmlFor="tin-upload" className="flex-1 bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-500 dark:text-slate-400 cursor-pointer hover:border-[#0A6EFF] transition-colors truncate">
                       {verificationDocs.taxId || 'Select File...'}
                     </label>
                     {verificationDocs.taxId && <CheckCircle2 className="text-green-400" size={20} />}
@@ -349,7 +349,7 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
                       id="id-upload"
                       onChange={(e) => e.target.files && setVerificationDocs({...verificationDocs, validId: e.target.files[0].name})}
                     />
-                    <label htmlFor="id-upload" className="flex-1 bg-[#07142A] border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-500 dark:text-slate-400 cursor-pointer hover:border-[#0A6EFF] transition-colors truncate">
+                    <label htmlFor="id-upload" className="flex-1 bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-500 dark:text-slate-400 cursor-pointer hover:border-[#0A6EFF] transition-colors truncate">
                       {verificationDocs.validId || 'Select File...'}
                     </label>
                     {verificationDocs.validId && <CheckCircle2 className="text-green-400" size={20} />}
@@ -368,23 +368,23 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">First Name</label>
-                  <input required value={adminData.firstName} onChange={e => setAdminData({...adminData, firstName: e.target.value})} className="w-full bg-[#07142A] border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors" placeholder="Jane" />
+                  <input required value={adminData.firstName} onChange={e => setAdminData({...adminData, firstName: e.target.value})} className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors" placeholder="Jane" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Last Name</label>
-                  <input required value={adminData.lastName} onChange={e => setAdminData({...adminData, lastName: e.target.value})} className="w-full bg-[#07142A] border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors" placeholder="Doe" />
+                  <input required value={adminData.lastName} onChange={e => setAdminData({...adminData, lastName: e.target.value})} className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors" placeholder="Doe" />
                 </div>
                 <div className="sm:col-span-2">
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Admin Email</label>
-                  <input type="email" required value={adminData.email} onChange={e => setAdminData({...adminData, email: e.target.value})} className="w-full bg-[#07142A] border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors" placeholder="jane.doe@democorp.com" />
+                  <input type="email" required value={adminData.email} onChange={e => setAdminData({...adminData, email: e.target.value})} className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors" placeholder="jane.doe@democorp.com" />
                 </div>
                 <div className="sm:col-span-2">
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Password</label>
-                  <input type="password" required value={adminData.password} onChange={e => setAdminData({...adminData, password: e.target.value})} className="w-full bg-[#07142A] border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors" />
+                  <input type="password" required value={adminData.password} onChange={e => setAdminData({...adminData, password: e.target.value})} className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors" />
                 </div>
                 <div className="sm:col-span-2">
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Confirm Password</label>
-                  <input type="password" required value={adminData.confirmPassword} onChange={e => setAdminData({...adminData, confirmPassword: e.target.value})} className="w-full bg-[#07142A] border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors" />
+                  <input type="password" required value={adminData.confirmPassword} onChange={e => setAdminData({...adminData, confirmPassword: e.target.value})} className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors" />
                 </div>
               </div>
             </div>
@@ -397,7 +397,7 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
                 <h3 className="text-lg font-medium text-slate-900 dark:text-white">Confirmation & Security</h3>
               </div>
               
-              <div className="bg-[#07142A] p-5 rounded-xl border border-slate-800/80 space-y-3">
+              <div className="bg-white dark:bg-slate-950 p-5 rounded-xl border border-slate-800/80 space-y-3">
                 <div className="flex justify-between items-center pb-3 border-b border-slate-800/50">
                   <span className="text-slate-500 dark:text-slate-400 text-sm">Company</span>
                   <span className="text-slate-900 dark:text-white font-medium">{tenantData.companyName || 'Not provided'}</span>
@@ -421,14 +421,14 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
                   required 
                   value={botCheck.answer} 
                   onChange={e => setBotCheck({...botCheck, answer: e.target.value})} 
-                  className="w-full bg-[#07142A] border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors" 
+                  className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors" 
                   placeholder="Enter answer"
                 />
               </div>
 
               {!showRegOTP ? (
                 <>
-                  <label className="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300 cursor-pointer p-4 bg-[#07142A]/50 rounded-xl border border-slate-800/50 hover:border-gray-200 dark:hover:border-slate-700 transition-colors">
+                  <label className="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300 cursor-pointer p-4 bg-white dark:bg-slate-950/50 rounded-xl border border-slate-800/50 hover:border-gray-200 dark:hover:border-slate-700 transition-colors">
                     <div className="mt-0.5">
                       <input type="checkbox" required className="rounded border-gray-200 dark:border-slate-700 bg-blue-50 dark:bg-[#0A1931] text-[#0A6EFF] focus:ring-[#0A6EFF] w-4 h-4" />
                     </div>
@@ -436,7 +436,7 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
                   </label>
                 </>
               ) : (
-                <div className="p-4 bg-[#07142A]/50 rounded-xl border border-slate-800/50 text-center animate-in fade-in slide-in-from-right-4">
+                <div className="p-4 bg-white dark:bg-slate-950/50 rounded-xl border border-slate-800/50 text-center animate-in fade-in slide-in-from-right-4">
                   <h4 className="text-sm font-medium text-slate-300 mb-2">Email Verification</h4>
                   <p className="text-xs text-slate-500 mb-4">We sent a verification OTP to {adminData.email}. For this demo, use <strong>123456</strong>.</p>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5 text-left">Enter OTP</label>
@@ -444,7 +444,7 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
                     type="text" 
                     value={otp}
                     onChange={(e) => setOtp(e.target.value)}
-                    className="w-full bg-[#07142A] border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors text-center tracking-widest text-lg"
+                    className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors text-center tracking-widest text-lg"
                     required
                     maxLength={6}
                     placeholder="------"

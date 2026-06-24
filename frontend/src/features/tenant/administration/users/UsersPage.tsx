@@ -2477,7 +2477,7 @@ export default function UsersPage() {
                       className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
                         formStatus === "Active"
                           ? "bg-[#0A6EFF]/15 text-[#0A6EFF] border-[#0A6EFF]/30"
-                          : "bg-slate-50 dark:bg-[#030712] border-gray-200 dark:border-white/[0.04] text-slate-400"
+                          : "bg-slate-50 dark:bg-white dark:bg-slate-950 border-gray-200 dark:border-white/[0.04] text-slate-400"
                       }`}
                     >
                       Active
@@ -2488,7 +2488,7 @@ export default function UsersPage() {
                       className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
                         formStatus === "Inactive"
                           ? "bg-rose-500/15 text-rose-500 border-rose-500/30"
-                          : "bg-slate-50 dark:bg-[#030712] border-gray-200 dark:border-white/[0.04] text-slate-400"
+                          : "bg-slate-50 dark:bg-white dark:bg-slate-950 border-gray-200 dark:border-white/[0.04] text-slate-400"
                       }`}
                     >
                       Pending Suspended

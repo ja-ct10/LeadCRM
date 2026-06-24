@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 import React, { useState } from 'react';
 import { Search, Database, CheckCircle2, AlertTriangle, XCircle, Cpu, HardDrive, Activity } from 'lucide-react';
 import { useData } from '@/store/DataContext';
@@ -57,7 +57,7 @@ export default function EnvironmentsPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white dark:bg-[#0B1120] rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex flex-col md:flex-row gap-4">
+      <div className="bg-white dark:bg-white dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex flex-col md:flex-row gap-4">
         <div className="relative flex-grow">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input type="text" placeholder="Search by client name…" value={searchQuery}
@@ -85,7 +85,7 @@ export default function EnvironmentsPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredEnvData.map((env, i) => (
           <div key={`${env.id}-${env.displayEnv}-${i}`}
-            className="bg-white dark:bg-[#0B1120] rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col">
+            className="bg-white dark:bg-white dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col">
             <div className="p-5 border-b border-slate-100 dark:border-slate-800/50">
               <div className="flex justify-between items-start mb-2">
                 <div>
@@ -130,7 +130,7 @@ export default function EnvironmentsPage() {
 type ColorKey = 'slate' | 'emerald' | 'amber' | 'red';
 
 const PALETTE: Record<ColorKey, { bg: string; border: string; label: string; icon: string; text: string }> = {
-  slate:   { bg: 'bg-white dark:bg-[#0B1120]', border: 'border-slate-200 dark:border-slate-800',   label: 'text-slate-500 dark:text-slate-400', icon: 'bg-slate-50 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400', text: 'text-slate-900 dark:text-white' },
+  slate:   { bg: 'bg-white dark:bg-white dark:bg-slate-950', border: 'border-slate-200 dark:border-slate-800',   label: 'text-slate-500 dark:text-slate-400', icon: 'bg-slate-50 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400', text: 'text-slate-900 dark:text-white' },
   emerald: { bg: 'bg-emerald-50 dark:bg-emerald-500/10', border: 'border-emerald-200 dark:border-emerald-500/20', label: 'text-emerald-600 dark:text-emerald-400', icon: 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400', text: 'text-emerald-700 dark:text-emerald-300' },
   amber:   { bg: 'bg-amber-50 dark:bg-amber-500/10',     border: 'border-amber-200 dark:border-amber-500/20',     label: 'text-amber-600 dark:text-amber-400',     icon: 'bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400',     text: 'text-amber-700 dark:text-amber-300' },
   red:     { bg: 'bg-red-50 dark:bg-red-500/10',         border: 'border-red-200 dark:border-red-500/20',         label: 'text-red-600 dark:text-red-400',         icon: 'bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400',         text: 'text-red-700 dark:text-red-300' },

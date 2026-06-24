@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useRef } from 'react';
 import { useData } from '@/store/DataContext';
@@ -131,7 +131,7 @@ export default function TechnicianDashboard() {
           <div 
             key={order.id} 
             onClick={() => handleOrderClick(order)}
-            className="bg-[#0B1120] border border-white/5 rounded-2xl p-4 active:scale-[0.98] transition-transform cursor-pointer"
+            className="bg-white dark:bg-slate-950 border border-white/5 rounded-2xl p-4 active:scale-[0.98] transition-transform cursor-pointer"
           >
             <div className="flex justify-between items-start mb-3">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">{order.title}</h3>
@@ -152,7 +152,7 @@ export default function TechnicianDashboard() {
           </div>
         ))}
         {myOrders.length === 0 && (
-          <div className="text-center py-12 bg-[#0B1120] rounded-2xl border border-white/5">
+          <div className="text-center py-12 bg-white dark:bg-slate-950 rounded-2xl border border-white/5">
             <CheckCircle2 size={48} className="mx-auto text-slate-600 mb-4" />
             <p className="text-slate-500 dark:text-slate-400">No jobs assigned for today.</p>
           </div>
@@ -161,9 +161,9 @@ export default function TechnicianDashboard() {
 
       {/* Order Detail Modal */}
       {selectedOrder && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-gray-50 dark:bg-[#030712]">
+        <div className="fixed inset-0 z-50 flex flex-col bg-gray-50 dark:bg-white dark:bg-slate-950">
           {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-white/5 bg-[#0B1120]">
+          <div className="flex items-center justify-between p-4 border-b border-white/5 bg-white dark:bg-slate-950">
             <h2 className="text-lg font-bold text-slate-900 dark:text-white truncate pr-4">{selectedOrder.title}</h2>
             <button onClick={closeOrder} className="p-2 bg-gray-100 dark:bg-white/5 rounded-full text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
               <X size={20} />
@@ -171,7 +171,7 @@ export default function TechnicianDashboard() {
           </div>
 
           {/* Tabs */}
-          <div className="flex border-b border-white/5 bg-[#0B1120]">
+          <div className="flex border-b border-white/5 bg-white dark:bg-slate-950">
             <button 
               onClick={() => setActiveTab('details')}
               className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'details' ? 'border-[#0A6EFF] text-[#0A6EFF]' : 'border-transparent text-slate-500 dark:text-slate-400'}`}

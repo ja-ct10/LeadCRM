@@ -94,7 +94,7 @@ export default function ClientBillingPage() {
         {activeTab === 'overview' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="md:col-span-2 space-y-6">
-              <div className="bg-white dark:bg-[#0B1120] border border-slate-200 dark:border-slate-700 rounded-2xl p-6 shadow-sm">
+              <div className="bg-white dark:bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 shadow-sm">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-lg font-bold text-slate-900 dark:text-white">Current Plan</h3>
                   <span className="px-3 py-1 bg-blue-50 text-blue-700 text-xs font-bold rounded-full border border-blue-100">Professional</span>
@@ -125,7 +125,7 @@ export default function ClientBillingPage() {
               </div>
             </div>
             <div className="space-y-6">
-              <div className="bg-white dark:bg-[#0B1120] border border-slate-200 dark:border-slate-700 rounded-2xl p-6 shadow-sm">
+              <div className="bg-white dark:bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 shadow-sm">
                 <h3 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-4">Next Payment</h3>
                 <div className="text-2xl font-bold text-slate-900 dark:text-white mb-1">May 01, 2026</div>
                 <div className="text-sm text-slate-500 dark:text-slate-400 mb-4">Amount: ₱9,999.00</div>
@@ -136,7 +136,7 @@ export default function ClientBillingPage() {
               </div>
 
               {/* Payment Prediction Widget */}
-              <div className="bg-white dark:bg-[#0B1120] border border-slate-200 dark:border-slate-700 rounded-2xl p-6 shadow-sm space-y-5">
+              <div className="bg-white dark:bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 shadow-sm space-y-5">
                 <div className="flex items-center gap-2 border-b border-slate-100 dark:border-slate-800/60 pb-3">
                   <Calculator size={18} className="text-blue-500" />
                   <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">Payment Prediction</h3>
@@ -327,7 +327,7 @@ export default function ClientBillingPage() {
         )}
 
         {activeTab === 'history' && (
-          <div className="bg-white dark:bg-[#0B1120] border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm overflow-hidden">
+          <div className="bg-white dark:bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm overflow-hidden">
             <div className="p-6 border-b border-slate-200 dark:border-slate-700">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">Invoice History</h3>
             </div>
@@ -370,7 +370,7 @@ export default function ClientBillingPage() {
         )}
 
         {activeTab === 'payment-methods' && (
-          <div className="bg-white dark:bg-[#0B1120] border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm overflow-hidden">
+          <div className="bg-white dark:bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm overflow-hidden">
             <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">Payment Methods</h3>
               <button 
@@ -383,7 +383,7 @@ export default function ClientBillingPage() {
             <div className="p-6 space-y-4">
               <div className="flex items-center justify-between p-4 border border-blue-200 bg-blue-50/50 rounded-xl">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-8 bg-white dark:bg-[#0B1120] border border-slate-200 dark:border-slate-700 rounded flex items-center justify-center font-bold text-blue-900 italic">
+                  <div className="w-12 h-8 bg-white dark:bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded flex items-center justify-center font-bold text-blue-900 italic">
                     VISA
                   </div>
                   <div>

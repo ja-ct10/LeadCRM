@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { X, History, Clock, FileText } from 'lucide-react';
 import { Workflow, WorkflowExecution } from '@/store/types';
 
@@ -20,7 +20,7 @@ export function WorkflowExecutionLogModal({
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-gray-50 dark:bg-[#030712] rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-2xl overflow-hidden shadow-2xl">
+      <div className="bg-gray-50 dark:bg-white dark:bg-slate-950 rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-2xl overflow-hidden shadow-2xl">
         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-white/[0.05]">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-[#0A6EFF]/10 text-[#0A6EFF] border border-[#0A6EFF]/20">
@@ -81,7 +81,7 @@ export function WorkflowExecutionLogModal({
           )}
         </div>
 
-        <div className="p-6 border-t border-gray-200 dark:border-white/[0.05] bg-gray-50 dark:bg-[#030712] flex justify-end">
+        <div className="p-6 border-t border-gray-200 dark:border-white/[0.05] bg-gray-50 dark:bg-white dark:bg-slate-950 flex justify-end">
           <button
             onClick={onClose}
             className="px-6 py-2 bg-gray-50 dark:bg-white/[0.05] text-slate-900 dark:text-white text-sm font-medium rounded-lg hover:bg-gray-200 dark:bg-white/10 transition-colors"
