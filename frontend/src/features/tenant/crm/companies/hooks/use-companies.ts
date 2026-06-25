@@ -1,5 +1,6 @@
 'use client';
 
+import { uuid } from '@/lib/utils';
 import { useState, useMemo, useCallback } from 'react';
 import { useAuth } from '@/store/AuthContext';
 import { companiesService } from '../services/companies.service';
@@ -51,7 +52,7 @@ export function useCompanies() {
     const all = companiesService.getAll();
     const newCompany: Company = {
       ...data,
-      id: 'company_' + Date.now(),
+      id: uuid(),
       tenantId: tenant.id,
       createdAt: new Date().toISOString(),
     };

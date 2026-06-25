@@ -38,7 +38,7 @@ git checkout dev && git merge dev-copy-1 --no-edit && git push
 | `fix` | Bug fix |
 | `refactor` | Code change, no behavior change |
 | `docs` | Documentation only |
-| `style` | Dark mode, color fixes, visual-only |
+| `style` | Dark mode, Light Mode, color fixes, visual-only |
 | `chore` | Config, deps, cleanup |
 | `perf` | Performance improvement |
 | `security` | Security fix or hardening |

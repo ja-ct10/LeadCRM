@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, {
   createContext,
@@ -52,6 +52,7 @@ import {
   MOCK_INVOICES,
 } from "./mockData/index";
 import { evaluateWorkflowCondition } from "@/features/tenant/automation/workflows/services/workflow-condition-evaluator";
+import { uuid } from "@/lib/utils";
 
 interface DataContextType {
   organizations: Organization[];
@@ -308,7 +309,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         if (lead.customerType === "Organization" && lead.companyName) {
           if (!orgMap[lead.companyName]) {
             const orgId =
-              "org_" + Date.now() + Math.random().toString(36).substr(2, 9);
+              uuid();
             orgMap[lead.companyName] = orgId;
             orgs.push({
               id: orgId,
@@ -507,7 +508,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     // ── Phase 3: Create WorkflowExecutionRun record ────────────────────────
     const entityId = context.deal?.id || context.contact?.id || '';
     const entityType = context.deal ? 'deal' : 'contact';
-    const runId = 'wfrun_' + Date.now() + Math.random().toString(36).slice(2, 7);
+    const runId = uuid();
 
     const newRun: WorkflowExecutionRun = {
       id: runId,
@@ -567,7 +568,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           executeAt.setDate(executeAt.getDate() + action.delay);
 
         const newPending: PendingAction = {
-          id: "pa_" + Date.now() + Math.random(),
+          id: uuid(),
           workflowId: wf.id,
           tenantId: tenant.id,
           executeAt: executeAt.toISOString(),
@@ -593,7 +594,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
         // Record step as 'skipped' (scheduled for later)
         const step: WorkflowExecutionStep = {
-          id: 'wfstep_' + Date.now() + Math.random().toString(36).slice(2, 7),
+          id: uuid(),
           executionId: runId,
           tenantId: tenant.id,
           stepIndex,
@@ -612,7 +613,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
         // Legacy execution log
         const newExec: WorkflowExecution = {
-          id: "exec_" + Date.now() + Math.random(),
+          id: uuid(),
           workflowId: wf.id,
           tenantId: tenant.id,
           timestamp: new Date().toISOString(),
@@ -848,7 +849,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     // ── WorkflowExecutionStep record ──────────────────────────────────────
     if (runId !== undefined && stepIndex !== undefined) {
       const step: WorkflowExecutionStep = {
-        id: 'wfstep_' + Date.now() + Math.random().toString(36).slice(2, 7),
+        id: uuid(),
         executionId: runId,
         tenantId: tenant.id,
         stepIndex,
@@ -869,7 +870,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     // Legacy execution log (keep for backward compat)
     const newExec: WorkflowExecution = {
-      id: "exec_" + Date.now() + Math.random(),
+      id: uuid(),
       workflowId: wf.id,
       tenantId: tenant.id,
       timestamp: new Date().toISOString(),
@@ -890,7 +891,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!tenant) return null;
     const newOrg = {
       ...orgData,
-      id: "org_" + Date.now(),
+      id: uuid(),
       tenantId: tenant.id,
       createdAt: new Date().toISOString(),
     };
@@ -935,7 +936,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!tenant) return;
     const newLead: Contact = {
       ...leadData,
-      id: "lead_" + Date.now(),
+      id: uuid(),
       tenantId: tenant.id,
       score: calculateScore(leadData.status),
       createdAt: new Date().toISOString(),
@@ -1029,7 +1030,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     const newDeal: Deal = {
       ...dealData,
-      id: "deal_" + Date.now(),
+      id: uuid(),
       tenantId: tenant.id,
       contactIds,
       lastStageChangeDate: new Date().toISOString(),
@@ -1199,7 +1200,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!tenant) return;
     const newPipeline: Pipeline = {
       ...pipelineData,
-      id: `pipe_${Date.now()}`,
+      id: uuid(),
       tenantId: tenant.id,
     };
     const newPipelines = [...pipelines, newPipeline];
@@ -1232,7 +1233,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const now = new Date().toISOString();
     const newTask: Task = {
       ...taskData,
-      id: "task_" + Date.now(),
+      id: uuid(),
       tenantId: tenant.id,
       createdAt: now,
       assignedBy: taskData.assignedBy || user?.id || 'system',
@@ -1315,7 +1316,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!tenant) return;
     const newWorkflow: Workflow = {
       ...workflowData,
-      id: "wf_" + Date.now(),
+      id: uuid(),
       tenantId: tenant.id,
       executionCount: 0,
       status: "active",
@@ -1360,7 +1361,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!tenant) return;
     const newCampaign: Campaign = {
       ...campaignData,
-      id: "camp_" + Date.now(),
+      id: uuid(),
       tenantId: tenant.id,
       createdAt: new Date().toLocaleDateString(),
       sentCount: 0,
@@ -1408,7 +1409,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!tenant) return;
     const newTemplate: Template = {
       ...templateData,
-      id: "tpl_" + Date.now(),
+      id: uuid(),
       tenantId: tenant.id,
       createdAt: new Date().toLocaleDateString(),
     };
@@ -1441,7 +1442,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!tenant) return;
     const newRole: RoleDefinition = {
       ...roleData,
-      id: "role_" + Date.now(),
+      id: uuid(),
       tenantId: tenant.id,
       updatedAt: new Date().toLocaleString(),
     };
@@ -1493,7 +1494,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const newUser: User = {
       id:
         userData.id ||
-        "usr_" + Date.now() + Math.random().toString(36).substr(2, 5),
+        uuid(),
       tenantId: tenant.id,
       firstName,
       lastName,
@@ -1739,7 +1740,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const ipAddress = mockIPs[hashedIndex];
 
     const newLog: AuditLog = {
-      id: "log_" + Math.random().toString(36).substring(2, 11),
+      id: uuid(),
       userId: currentUser.id,
       userEmail: currentUser.email,
       action,
@@ -1777,7 +1778,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     const newActivity: Activity = {
       ...activityData,
-      id: 'act_' + Math.random().toString(36).substring(2, 11),
+      id: uuid(),
       tenantId: currentTenantId,
     };
 
@@ -1793,7 +1794,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!tenant) return;
     const newInvoice: Invoice = {
       ...invoiceData,
-      id: 'INV-' + Date.now(),
+      id: uuid(),
       tenantId: tenant.id,
       createdAt: new Date().toISOString(),
     };

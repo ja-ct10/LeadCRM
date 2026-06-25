@@ -1,4 +1,5 @@
 'use client';
+import { uuid } from '@/lib/utils';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useData } from '@/store/DataContext';
@@ -196,7 +197,7 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
     } else {
       // Create
       const newNote: QuickNote = {
-        id: 'note_' + Date.now(),
+        id: uuid(),
         title: noteTitle,
         content: content.trim(),
         category,

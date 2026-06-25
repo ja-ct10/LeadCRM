@@ -1,8 +1,21 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
-export function cn(...inputs: ClassValue[]) {
+export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
+}
+
+/**
+ * Generates a cryptographically-random UUID v4.
+ * Uses the native Web Crypto API (crypto.randomUUID) — available in all
+ * modern browsers (Chrome 92+, Firefox 95+, Safari 15.4+) and Node 14.17+.
+ * No external package required.
+ *
+ * This is the ONLY approved ID-generation function in this codebase.
+ * Never use Date.now(), Math.random(), or string prefixes for record IDs.
+ */
+export function uuid(): string {
+  return crypto.randomUUID();
 }
 
 export function getCRMStatusStyles(status: string): string {

@@ -1,4 +1,5 @@
-﻿'use client';
+'use client';
+import { uuid } from '@/lib/utils';
 
 import React, { useState, useMemo } from 'react';
 import {
@@ -184,7 +185,7 @@ export function DealDetailsModal({
     e.preventDefault();
     if (!newActivity.description.trim()) return;
     const activity = {
-      id: 'act_' + Date.now(),
+      id: uuid(),
       ...newActivity,
       timestamp: newActivity.timestamp || new Date().toISOString(),
     };

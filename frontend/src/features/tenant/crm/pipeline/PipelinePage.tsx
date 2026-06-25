@@ -1,4 +1,5 @@
 'use client';
+import { uuid } from '@/lib/utils';
 
 import React, { useState } from 'react';
 import { useData } from '@/store/DataContext';
@@ -494,7 +495,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
         // Finalize transaction
         const oldStageName = activePipeline?.stages.find(s => s.id === selectedDeal.stageId)?.name || 'Previous';
         const automationNote = {
-          id: 'auto_' + Date.now(),
+          id: uuid(),
           type: 'note' as const,
           description: `?? AUTOMATION TRIGGER: Stage advanced automatically from "${oldStageName}" to "${targetStage.name}" after satisfying all digital workflows.`,
           timestamp: new Date().toISOString(),
@@ -902,15 +903,15 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
     e.preventDefault();
     if (!newPipelineName.trim()) return;
     
-    const newPipelineId = `pipe_${Date.now()}`;
+    const newPipelineId = uuid();
     // Create a pipeline with default stages
     const defaultStages: Stage[] = [
-      { id: `stage_${Date.now()}_1`, name: 'Contact', order: 0 },
-      { id: `stage_${Date.now()}_2`, name: 'Site Inspection', order: 1 },
-      { id: `stage_${Date.now()}_3`, name: 'Proposal', order: 2 },
-      { id: `stage_${Date.now()}_4`, name: 'Negotiation', order: 3 },
-      { id: `stage_${Date.now()}_5`, name: 'Closed Won', order: 4 },
-      { id: `stage_${Date.now()}_6`, name: 'Closed Lost', order: 5 },
+      { id: uuid(), name: 'Contact', order: 0 },
+      { id: uuid(), name: 'Site Inspection', order: 1 },
+      { id: uuid(), name: 'Proposal', order: 2 },
+      { id: uuid(), name: 'Negotiation', order: 3 },
+      { id: uuid(), name: 'Closed Won', order: 4 },
+      { id: uuid(), name: 'Closed Lost', order: 5 },
     ];
     
     addPipeline({ name: newPipelineName, stages: defaultStages });
@@ -1280,7 +1281,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                             <button 
                               type="button"
                               onClick={() => {
-                                const newStage = { id: `stage_${Date.now()}`, name: 'New Stage', order: editingPipeline.stages.length };
+                                const newStage = { id: uuid(), name: 'New Stage', order: editingPipeline.stages.length };
                                 setEditingPipeline({ ...editingPipeline, stages: [...editingPipeline.stages, newStage] });
                               }}
                               className="text-xs text-blue-400 hover:text-blue-300 font-medium flex items-center gap-1"
