@@ -25,6 +25,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     Permission.DEALS_EDIT,
     Permission.CAMPAIGNS_VIEW,
     Permission.WORKFLOWS_VIEW,
+    Permission.WORKFLOWS_ACTIVATE,
     Permission.REPORTS_VIEW,
     Permission.SETTINGS_VIEW,
   ],

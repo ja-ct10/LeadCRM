@@ -1,5 +1,5 @@
 import * as repo from './contacts.repository';
-import { addAuditLog } from '../../../core/audit/audit.service';
+import { writeAuditLog } from '../../../core/audit/audit.service';
 import { NotFoundError } from '../../../shared/errors/http-error';
 import { CreateContactDto, UpdateContactDto } from './contacts.dto';
 import { paginate } from '../../../shared/helpers/pagination';
@@ -18,13 +18,13 @@ export async function getContactById(id: string, tenantId: string) {
 export async function createContact(tenantId: string, userId: string, dto: CreateContactDto) {
   const contact = await repo.createContact(tenantId, dto);
 
-  await addAuditLog({
+  await writeAuditLog({
     tenantId,
     userId,
-    action: 'contact.created',
+    action:     'contact.created',
     entityType: 'Contact',
-    entityId: contact.id,
-    metadata: { firstName: dto.firstName, lastName: dto.lastName },
+    entityId:   contact.id,
+    after:      { firstName: dto.firstName, lastName: dto.lastName },
   });
 
   return contact;
@@ -39,12 +39,12 @@ export async function updateContact(
   const contact = await repo.updateContact(id, tenantId, dto);
   if (!contact) throw new NotFoundError('Contact');
 
-  await addAuditLog({
+  await writeAuditLog({
     tenantId,
     userId,
-    action: 'contact.updated',
+    action:     'contact.updated',
     entityType: 'Contact',
-    entityId: id,
+    entityId:   id,
   });
 
   return contact;
@@ -54,12 +54,12 @@ export async function archiveContact(id: string, tenantId: string, userId: strin
   const contact = await repo.archiveContact(id, tenantId);
   if (!contact) throw new NotFoundError('Contact');
 
-  await addAuditLog({
+  await writeAuditLog({
     tenantId,
     userId,
-    action: 'contact.archived',
+    action:     'contact.archived',
     entityType: 'Contact',
-    entityId: id,
+    entityId:   id,
   });
 
   return contact;
