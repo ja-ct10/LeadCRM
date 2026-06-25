@@ -1919,7 +1919,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("leadcrm_deals", JSON.stringify(MOCK_DEALS));
     localStorage.setItem("leadcrm_pipelines", JSON.stringify(MOCK_PIPELINES));
     localStorage.setItem("leadcrm_workflows", JSON.stringify(MOCK_WORKFLOWS));
-    localStorage.setItem("leadcrm_campaigns", JSON.stringify(MOCK_CAMPAI·NS));
+    localStorage.setItem("leadcrm_campaigns", JSON.stringify(MOCK_CAMPAIGNS));
     localStorage.setItem("leadcrm_templates", JSON.stringify(MOCK_TEMPLATES));
     localStorage.setItem("leadcrm_roles", JSON.stringify(MOCK_ROLES));
     localStorage.setItem(
