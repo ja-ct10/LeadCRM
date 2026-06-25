@@ -76,9 +76,9 @@ Before writing a single line, answer these questions from the codebase — not f
 ## Context Analysis
 
 ### Relevant Files
-- `src/portals/client/pages/ExamplePage.tsx` — page consuming this feature
-- `src/store/types/example.ts` — type definitions
-- `src/portals/client/hooks/useExample.ts` — data-fetching hook
+- `src/features/tenant/crm/contacts/ui/ContactsPage.tsx` — page consuming this feature
+- `src/store/types/contact.types.ts` — type definitions
+- `src/features/tenant/crm/contacts/hooks/use-contacts.ts` — data hook
 
 ### Dependencies
 - AuthContext — for current user and permissions
@@ -364,7 +364,7 @@ Do not silently ignore code that violates standards, blocks scalability, or crea
 ```markdown
 ### Technical Debt Found
 
-**Location:** `src/portals/client/pages/ExamplePage.tsx`
+**Location:** `src/features/tenant/crm/pipeline/PipelinePage.tsx`
 
 **Issue:** Component is 650 lines mixing data fetching, business logic, and rendering in a single function.
 
@@ -478,41 +478,44 @@ See `project-core.md` for the authoritative full monorepo tree.
 
 ```
 frontend/src/
-  client-admin/           # CRM portal — domain modules
-    crm/
-      contacts/           # ui/ hooks/ services/ schemas/ types/ constants/ index.ts
-      companies/
-      deals/
-      pipeline/
-    marketing/
-    automation/
-    operations/
-    reporting/
-    billing/
-    dashboard/
-    settings/
-  system-admin/           # LeadCRM operator console (cross-tenant)
-    tenants/
-    users/
-    permissions/
-    monitoring/
+  features/
+    tenant/             # CRM portal — domain modules
+      crm/
+        contacts/       # ui/ hooks/ services/ schemas/ types/ constants/ index.ts
+        companies/
+        deals/
+        pipeline/
+      marketing/
+      automation/
+      operations/
+      reporting/
+      billing/
+      administration/
+      dashboard/
+      settings/
+      layout/           # CrmLayout, sidebar-nav, topbar, account-dropdown
+    system-admin/       # LeadCRM operator console (cross-tenant)
+      dashboard/
+      tenants/
+      billing/
+      monitoring/
+      layout/           # AdminLayout, AdminLayoutShell
   shared/
-    ui/                   # ShadCN components
+    ui/                 # ShadCN components
     charts/
       ChartComponents.tsx # ONLY chart import source
-    layouts/
+    components/         # NotesSidePanel, CommandPalette, TrelloFilter, etc.
     hooks/
     providers/
   store/
-    AuthContext           # Auth state + permissions
-    DataContext           # All data operations + audit logging
-    mockData/             # Seed data for localStorage phase
-    types/                # Split type definitions (canonical location)
-      index.ts            # Re-exports all types
-    types.ts              # Legacy types — kept for zero-breakage migration
+    AuthContext         # Auth state + permissions
+    DataContext         # All data operations + audit logging + safeParse
+    mockData/           # Seed data for localStorage phase
+    types/              # Split type definitions (canonical location)
+      index.ts          # Re-exports all types
+    types.ts            # Legacy shim — re-exports only, never defines types
   lib/
-    utils.ts              # cn() and shared utilities
-  App.tsx                 # SPA root — string-based routing (Sprint 1 only, migrated in Sprint 2)
+    utils.ts            # cn() and shared utilities
 ```
 
 **Type import rule:**

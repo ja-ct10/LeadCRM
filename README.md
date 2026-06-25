@@ -90,9 +90,17 @@ Backend runs at `http://localhost:4000`
 
 | Package | Status |
 |---|---|
-| Frontend | ✅ Active — full SPA with localStorage data layer |
+| Frontend | ✅ Active — Next.js 15 App Router, full feature set, localStorage data layer |
 | Backend | 🔲 Scaffolded — structure complete, DB integration pending |
-| Shared | ✅ Complete — types, RBAC constants, contracts, validation |
+| Shared | ✅ Complete — types, RBAC constants, contracts, Zod validation |
+
+### Current Phase
+- **Phase 0 ✅** — `features/` folder structure complete (`features/tenant/` + `features/system-admin/`)
+- **Phase 1** — Folder structure cleanup & dead code removal (in progress)
+- **Phase 2** — CRM Core Loop (Contacts ↔ Deals ↔ Pipeline sync)
+- **Phase 3** — Automation Visibility (WorkflowExecution 3-level + Automation tab)
+- **Phase 4** — Permission Hardening
+- **Phase 5** — Operations & Billing Integration
 
 ---
 

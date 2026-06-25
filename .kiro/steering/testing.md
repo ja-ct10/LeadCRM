@@ -222,13 +222,17 @@ describe('ContactForm validation', () => {
 Tests live **next to the file they test** — not in a separate `__tests__` folder.
 
 ```
-src/portals/client/pages/contacts/
+src/features/tenant/crm/contacts/ui/
   ContactsPage.tsx
   ContactsPage.test.tsx          ← page tests
 
-src/portals/client/components/
+src/features/tenant/crm/contacts/ui/
   ContactCard.tsx
   ContactCard.test.tsx           ← component tests
+
+src/features/tenant/crm/contacts/hooks/
+  use-contacts.ts
+  use-contacts.test.ts           ← hook tests
 
 src/store/
   DataContext.tsx

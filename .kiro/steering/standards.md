@@ -489,7 +489,7 @@ When discovering code that violates standards — document it, do not silently s
 ```markdown
 ### Technical Debt Found
 
-**Location:** `src/portals/client/pages/pipeline/PipelinePage.tsx`
+**Location:** `src/features/tenant/crm/pipeline/PipelinePage.tsx`
 **Issue:** Component is 3,224 lines — mixes drag-and-drop, filtering, forms, and analytics.
 **Severity:** HIGH
 **Recommended Fix:** Extract deal form into `DealFormModal`, filters into `usePipelineFilters`, analytics into `PipelineAnalytics`.
