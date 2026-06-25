@@ -1,2 +1,3 @@
-﻿// TODO: implement reports repository
-// Pattern: same as contacts.repository.ts — DB queries only, always filter by tenantId
+﻿// Reporting queries live directly in reports.service.ts (read-only aggregates).
+// No additional repository layer needed — service IS the query layer for reports.
+export {};

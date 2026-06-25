@@ -5,6 +5,7 @@ import { NotFoundError, ValidationError } from '../../../shared/errors/http-erro
 import { enforcePlanLimit } from '../../../config/database.config';
 import { CreateDealDto, UpdateDealDto, MoveDealStageDto } from './deals.dto';
 import { paginate } from '../../../shared/helpers/pagination';
+import { fireDealCreated, fireDealStageChanged } from '../../automation/triggers/triggers.service';
 
 export async function getDeals(tenantId: string, query: Record<string, unknown>) {
   const result = await repo.findAllDeals(tenantId, query);
@@ -27,6 +28,9 @@ export async function createDeal(tenantId: string, userId: string, dto: CreateDe
     action: 'deal.created', entityType: 'Deal', entityId: deal.id,
     after: { title: dto.title, pipelineId: dto.pipelineId, stageId: dto.stageId, value: dto.value },
   });
+
+  // Fire workflow trigger (non-blocking — never fails the request)
+  fireDealCreated({ tenantId, deal }).catch(() => {});
 
   return deal;
 }
@@ -72,6 +76,17 @@ export async function moveDealStage(id: string, tenantId: string, userId: string
     action: 'deal.stage_changed', entityType: 'Deal', entityId: id,
     after: { newStageId: dto.stageId, isWon: newStage.isWon, isLost: newStage.isLost, note: dto.note, lostReason: dto.lostReason },
   });
+
+  // Fire workflow trigger (non-blocking)
+  fireDealStageChanged({
+    tenantId,
+    deal: result.deal,
+    newStageId:   newStage.id,
+    newStageName: newStage.name,
+    isWon:        newStage.isWon,
+    isLost:       newStage.isLost,
+    prevStageId:  result.stageHistory.previousStageId ?? undefined,
+  }).catch(() => {});
 
   return result;
 }

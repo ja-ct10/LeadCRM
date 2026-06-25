@@ -1,2 +1,3 @@
-﻿// TODO: implement permissions repository
-// Pattern: same as contacts.repository.ts — DB queries only, always filter by tenantId
+﻿// Permissions are compile-time constants — no DB table needed.
+// See permissions.service.ts and shared/constants/permissions.ts.
+export {};
