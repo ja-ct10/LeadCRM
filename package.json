@@ -1,6 +1,7 @@
 {
   "name": "leadcrm",
   "private": true,
+  "packageManager": "npm@11.13.0",
   "workspaces": [
     "frontend",
     "backend",
