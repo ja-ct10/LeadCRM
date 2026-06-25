@@ -129,8 +129,11 @@ it('shows toast error when save fails', () => { ... });
 ## Test File Naming & Location
 
 ```
-src/portals/client/pages/contacts/ContactsPage.tsx
-src/portals/client/pages/contacts/ContactsPage.test.tsx
+src/features/tenant/crm/contacts/ui/ContactsPage.tsx
+src/features/tenant/crm/contacts/ui/ContactsPage.test.tsx
+
+src/features/tenant/crm/contacts/hooks/use-contacts.ts
+src/features/tenant/crm/contacts/hooks/use-contacts.test.ts
 
 src/store/DataContext.tsx
 src/store/DataContext.test.tsx

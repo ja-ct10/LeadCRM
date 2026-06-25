@@ -25,74 +25,101 @@ leadcrm/
 frontend/
 ├── app/                          ← Next.js App Router (routing shells ONLY — 3-line imports)
 │   ├── layout.tsx
-│   ├── (auth)/login/page.tsx
-│   └── (client)/
+│   ├── page.tsx                  ← Root — redirects to login or dashboard
+│   ├── login/page.tsx
+│   ├── register/page.tsx
+│   ├── (tenant)/                 ← CRM portal routes (no URL segment added)
+│   │   ├── layout.tsx
+│   │   ├── dashboard/page.tsx
+│   │   ├── crm/
+│   │   │   ├── contacts/page.tsx
+│   │   │   ├── companies/page.tsx
+│   │   │   ├── deals/page.tsx
+│   │   │   └── pipeline/page.tsx
+│   │   ├── marketing/
+│   │   │   ├── campaigns/page.tsx
+│   │   │   ├── email/page.tsx
+│   │   │   └── templates/page.tsx
+│   │   ├── operations/
+│   │   │   ├── service-orders/page.tsx
+│   │   │   ├── tasks/page.tsx
+│   │   │   ├── taskboard/page.tsx
+│   │   │   ├── assets/page.tsx
+│   │   │   └── inventory/page.tsx
+│   │   ├── automation/
+│   │   │   └── workflows/page.tsx
+│   │   ├── reporting/page.tsx
+│   │   ├── billing/page.tsx
+│   │   ├── settings/page.tsx
+│   │   └── administration/
+│   │       ├── users/page.tsx
+│   │       └── audit/page.tsx
+│   └── (system-admin)/           ← System Admin routes (URLs: /admin/*)
 │       ├── layout.tsx
-│       ├── crm/contacts/page.tsx
-│       ├── crm/pipeline/page.tsx
-│       ├── marketing/campaigns/page.tsx
-│       ├── automation/workflows/page.tsx
-│       ├── operations/tasks/page.tsx
-│       ├── operations/taskboard/page.tsx
-│       ├── operations/service-orders/page.tsx
-│       ├── operations/assets/page.tsx
-│       ├── operations/inventory/page.tsx
-│       ├── billing/page.tsx
-│       ├── reporting/page.tsx
-│       ├── settings/page.tsx
-│       ├── settings/account/page.tsx
-│       ├── settings/profile/page.tsx
-│       └── (admin)/dashboard/page.tsx
+│       └── admin/
+│           ├── dashboard/page.tsx
+│           ├── clients/page.tsx
+│           ├── billing/page.tsx
+│           ├── pricing/page.tsx
+│           └── environments/page.tsx
 │
 ├── src/
-│   ├── client-admin/             ← CRM portal — domain module layout
-│   │   ├── crm/
-│   │   │   ├── contacts/         ← ui/ hooks/ services/ schemas/ types/ constants/ index.ts
-│   │   │   │   └── ui/
-│   │   │   │       ├── contact-profile-tabs.tsx   ← Deals tab: summary bar (Total/Active/
-│   │   │   │       │                                Won/Lost/Value), contactId-first matching,
-│   │   │   │       │                                real pipeline stage tracker
-│   │   │   │       ├── contact-detail-sheet.tsx
-│   │   │   │       ├── contact-form.tsx
-│   │   │   │       └── tabs/
-│   │   │   ├── companies/
-│   │   │   ├── deals/            ← scaffold (future standalone deals table page)
-│   │   │   └── pipeline/
-│   │   │       ├── PipelinePage.tsx    ← Kanban + table + list, @dnd-kit, 14-filter system
-│   │   │       │                         ~2,440 lines (reduced from 3,225 after extraction)
-│   │   │       ├── hooks/
-│   │   │       │   └── use-pipeline.ts
-│   │   │       ├── services/
-│   │   │       │   └── pipeline.service.ts
-│   │   │       └── ui/
-│   │   │           └── deal-details-modal.tsx  ← Reusable Deal Details drawer
-│   │   │                                          4 tabs: Overview · Activities · Tasks · History
-│   │   │                                          Tasks: inline create + assign, overdue badge
-│   │   │                                          History: From→To stage trail with user+timestamp
-│   │   │                                          Edit Deal: footer button wired (was broken)
-│   │   ├── marketing/
-│   │   │   ├── campaigns/
-│   │   │   ├── email/
-│   │   │   └── templates/
-│   │   ├── automation/
-│   │   │   └── workflows/
-│   │   ├── operations/
-│   │   │   ├── service-orders/
-│   │   │   └── tasks/
-│   │   │       ├── TaskBoard.tsx        ← 5-status task board (Pending/In Progress/
-│   │   │       │                          Blocked/Completed/Cancelled)
-│   │   │       └── ui/
-│   │   │           └── technician-dashboard.tsx
-│   │   ├── reporting/
-│   │   ├── billing/
-│   │   ├── dashboard/
-│   │   └── settings/
-│   │
-│   ├── system-admin/             ← LeadCRM operator console (cross-tenant)
-│   │   ├── tenants/
-│   │   ├── users/
-│   │   ├── permissions/
-│   │   └── monitoring/
+│   ├── features/                 ← ALL business feature code
+│   │   ├── tenant/               ← CRM portal — domain module layout
+│   │   │   ├── crm/
+│   │   │   │   ├── contacts/     ← ui/ hooks/ services/ schemas/ types/ constants/ index.ts
+│   │   │   │   │   └── ui/
+│   │   │   │   │       ├── contact-profile-tabs.tsx   ← Deals tab: summary bar (Total/Active/
+│   │   │   │   │       │                                Won/Lost/Value), contactIds-first matching,
+│   │   │   │   │       │                                real pipeline stage tracker
+│   │   │   │   │       ├── contact-detail-sheet.tsx
+│   │   │   │   │       ├── contact-form.tsx
+│   │   │   │   │       └── tabs/
+│   │   │   │   ├── companies/
+│   │   │   │   ├── deals/            ← standalone deals table page
+│   │   │   │   └── pipeline/
+│   │   │   │       ├── PipelinePage.tsx    ← Kanban + table + list, @dnd-kit, 14-filter system
+│   │   │   │       ├── hooks/
+│   │   │   │       │   └── use-pipeline.ts
+│   │   │   │       ├── services/
+│   │   │   │       │   └── pipeline.service.ts
+│   │   │   │       └── ui/
+│   │   │   │           └── deal-details-modal.tsx  ← Reusable Deal Details drawer
+│   │   │   │                                          7 tabs: Overview · Activities · Tasks ·
+│   │   │   │                                          Emails · Files · History · Automation
+│   │   │   │                                          Tasks: inline create + assign, overdue badge
+│   │   │   │                                          History: From→To stage trail with user+timestamp
+│   │   │   ├── marketing/
+│   │   │   │   ├── campaigns/
+│   │   │   │   ├── email/
+│   │   │   │   └── templates/
+│   │   │   ├── automation/
+│   │   │   │   └── workflows/
+│   │   │   ├── operations/
+│   │   │   │   ├── service-orders/
+│   │   │   │   ├── tasks/
+│   │   │   │   │   ├── TaskBoard.tsx        ← 5-status task board (Pending/In Progress/
+│   │   │   │   │   │                          Blocked/Completed/Cancelled)
+│   │   │   │   │   └── ui/
+│   │   │   │   │       └── technician-dashboard.tsx
+│   │   │   │   ├── assets/
+│   │   │   │   └── inventory/
+│   │   │   ├── reporting/
+│   │   │   ├── billing/
+│   │   │   ├── administration/
+│   │   │   │   ├── users/
+│   │   │   │   └── audit/
+│   │   │   ├── dashboard/
+│   │   │   ├── settings/
+│   │   │   ├── pages/            ← LandingPage, login shell
+│   │   │   └── layout/           ← CrmLayout, sidebar-nav, topbar, account-dropdown, use-layout
+│   │   │
+│   │   └── system-admin/         ← LeadCRM operator console (cross-tenant)
+│   │       ├── dashboard/        ← AdminDashboard.tsx
+│   │       ├── tenants/          ← ClientManagement.tsx
+│   │       ├── billing/          ← AdminBillingPage.tsx, ui/pricing-page.tsx
+│   │       ├── monitoring/       ← EnvironmentsPage.tsx
+│   │       └── layout/           ← AdminLayout.tsx, AdminLayoutShell.tsx
 │   │
 │   ├── shared/                   ← Reusable UI (used by both portals)
 │   │   ├── components/
@@ -104,10 +131,17 @@ frontend/
 │   │   │   ├── EmptyState.tsx
 │   │   │   ├── GlobalLoader.tsx
 │   │   │   ├── CommandPalette.tsx
+│   │   │   ├── NotesSidePanel.tsx
 │   │   │   ├── DashboardSkeleton.tsx
 │   │   │   └── CountryCodeSelector.tsx
-│   │   └── hooks/
-│   │       └── useTheme.ts
+│   │   ├── hooks/
+│   │   │   └── useTheme.ts
+│   │   ├── providers/
+│   │   │   ├── app-providers.tsx
+│   │   │   ├── auth-guard.tsx
+│   │   │   └── theme-provider.tsx
+│   │   └── lib/
+│   │       └── route-map.ts
 │   │
 │   ├── store/                    ← Global state (localStorage phase)
 │   │   ├── AuthContext.tsx        ← Auth state + login/logout; tenant from here
@@ -115,19 +149,20 @@ frontend/
 │   │   │                            updateDeal: auto-appends history with previousStageId
 │   │   │                            addTask: seeds first TaskAssignmentRecord on creation
 │   │   │                            updateTask: appends TaskAssignmentRecord on reassign
+│   │   │                            safeParse helper: resilient localStorage reads
 │   │   ├── types.ts               ← Legacy shim — re-exports from types/ only.
 │   │   │                            Do NOT define types here. No duplicate definitions.
 │   │   ├── types/                 ← Canonical source — always import from here for new code
 │   │   │   ├── contact.types.ts
 │   │   │   ├── deal.types.ts      ← Deal.history entry has previousStageId?: string
+│   │   │   │                        deal.contactIds: string[] (never contactId singular)
 │   │   │   ├── user.types.ts
 │   │   │   ├── campaign.types.ts
-│   │   │   ├── workflow.types.ts
+│   │   │   ├── workflow.types.ts  ← WorkflowExecution, WorkflowExecutionStep (3-level)
 │   │   │   ├── shared.types.ts    ← Task: TaskStatus (5 values), assignedBy?,
 │   │   │   │                        assignmentHistory?: TaskAssignmentRecord[]
-│   │   │   │                        TaskAssignmentRecord: assignedTo, assignedBy,
-│   │   │   │                        assignedAt, previousAssignee?, reason?
-│   │   │   └── index.ts           ← Re-exports TaskStatus, TaskAssignmentRecord
+│   │   │   │                        Activity: unified timeline entity
+│   │   │   └── index.ts           ← Re-exports all types
 │   │   └── mockData/             ← Seed data split by domain
 │   │       ├── contacts.mock.ts
 │   │       ├── deals.mock.ts
@@ -135,6 +170,7 @@ frontend/
 │   │       ├── workflows.mock.ts
 │   │       ├── users.mock.ts
 │   │       ├── service-orders.mock.ts
+│   │       ├── invoices.mock.ts
 │   │       └── index.ts
 │   │
 │   ├── lib/                      ← Utilities
@@ -142,7 +178,6 @@ frontend/
 │   │   ├── constants.ts          ← App-wide constants
 │   │   └── countries.ts          ← Country/region data
 │   │
-│   ├── App.tsx                   ← SPA root — string-based routing switch
 │   └── index.css                 ← Global styles + Tailwind v4 @import
 │
 ├── public/                       ← Static assets
@@ -289,14 +324,15 @@ infrastructure/
 ## Non-Negotiable Rules
 
 ### Frontend
-- `app/page.tsx` loads `src/App` with `ssr: false` — full SPA, no SSR
 - All data ops through `DataContext` — never direct `localStorage` in components
 - All charts from `ChartComponents.tsx` only — never recharts
 - All filters use `<TrelloFilter>` — never raw `<select>`
 - No `tailwind.config.js` — Tailwind v4 uses `@import "tailwindcss"` in CSS
 - Animations: `motion/react` only — never `framer-motion`
-- `tenantId` on every data record; `addAuditLog()` on every mutation
+- `tenantId` on every data record; `addAuditLog()` on every mutation; `addActivity()` on every observable event
 - RBAC guard before every create/edit/delete UI element
+- `deal.contactIds` is always `string[]` — never `deal.contactId` (singular) for new code
+- Path aliases: `@/features/tenant/*`, `@/features/system-admin/*`, `@/shared/*`, `@/store/*`, `@/lib/*`
 
 ### Backend
 - Controller → never touches DB

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useMemo } from 'react';
 import {
@@ -237,7 +237,7 @@ export function DealDetailsModal({
         animate={{ x: 0 }}
         exit={{ x: '100%' }}
         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-        className="fixed right-0 top-0 h-full w-full max-w-lg bg-gray-50 dark:bg-[#030712] border-l border-gray-300 dark:border-white/[0.1] z-[70] shadow-2xl flex flex-col"
+        className="fixed right-0 top-0 h-full w-full max-w-lg bg-gray-50 dark:bg-slate-900 border-l border-gray-300 dark:border-white/[0.1] z-[70] shadow-2xl flex flex-col"
       >
         {/* Header */}
         <div className="p-6 border-b border-gray-200 dark:border-white/[0.05] flex items-center justify-between shrink-0">
@@ -362,19 +362,19 @@ export function DealDetailsModal({
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Deal Title</label>
                     <input required type="text" value={editFields.title} onChange={e => setEditFields({ ...editFields, title: e.target.value })}
-                      className="w-full bg-white dark:bg-[#030712] border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none transition-all" />
+                      className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none transition-all" />
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Value ($)</label>
                       <input required type="number" value={editFields.value} onChange={e => setEditFields({ ...editFields, value: Number(e.target.value) })}
-                        className="w-full bg-white dark:bg-[#030712] border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
+                        className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Priority</label>
                       <select value={editFields.priority} onChange={e => setEditFields({ ...editFields, priority: e.target.value })}
-                        className="w-full bg-white dark:bg-[#030712] border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none">
+                        className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none">
                         <option>High</option><option>Medium</option><option>Low</option>
                       </select>
                     </div>
@@ -383,7 +383,7 @@ export function DealDetailsModal({
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Assigned Agent</label>
                     <select value={editFields.assignedUserId} onChange={e => setEditFields({ ...editFields, assignedUserId: e.target.value })}
-                      className="w-full bg-white dark:bg-[#030712] border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none">
+                      className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none">
                       <option value="">Unassigned</option>
                       {users.map(u => <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>)}
                     </select>
@@ -392,46 +392,46 @@ export function DealDetailsModal({
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Expected Close Date</label>
                     <input type="date" value={editFields.expectedCloseDate} onChange={e => setEditFields({ ...editFields, expectedCloseDate: e.target.value })}
-                      className="w-full bg-white dark:bg-[#030712] border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
+                      className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Company Name</label>
                       <input type="text" value={editFields.companyName} onChange={e => setEditFields({ ...editFields, companyName: e.target.value })}
-                        className="w-full bg-white dark:bg-[#030712] border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
+                        className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Contact Person</label>
                       <input type="text" value={editFields.contactPerson} onChange={e => setEditFields({ ...editFields, contactPerson: e.target.value })}
-                        className="w-full bg-white dark:bg-[#030712] border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
+                        className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Source</label>
                       <input type="text" value={editFields.leadSource} onChange={e => setEditFields({ ...editFields, leadSource: e.target.value })}
-                        className="w-full bg-white dark:bg-[#030712] border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
+                        className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Industry</label>
                       <input type="text" value={editFields.industry} onChange={e => setEditFields({ ...editFields, industry: e.target.value })}
-                        className="w-full bg-white dark:bg-[#030712] border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
+                        className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Location</label>
                       <input type="text" value={editFields.location} onChange={e => setEditFields({ ...editFields, location: e.target.value })}
-                        className="w-full bg-white dark:bg-[#030712] border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
+                        className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Campaign</label>
                       <input type="text" value={editFields.campaign} onChange={e => setEditFields({ ...editFields, campaign: e.target.value })}
-                        className="w-full bg-white dark:bg-[#030712] border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
+                        className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
                     </div>
                   </div>
 
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Customer Type</label>
                     <select value={editFields.customerType} onChange={e => setEditFields({ ...editFields, customerType: e.target.value })}
-                      className="w-full bg-white dark:bg-[#030712] border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none">
+                      className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none">
                       <option>New Customer</option><option>Existing Business</option><option>Partner</option>
                     </select>
                   </div>
@@ -439,13 +439,13 @@ export function DealDetailsModal({
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Tags (comma-separated)</label>
                     <input type="text" value={editFields.tags} onChange={e => setEditFields({ ...editFields, tags: e.target.value })}
-                      className="w-full bg-white dark:bg-[#030712] border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
+                      className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
                   </div>
 
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Description</label>
                     <textarea rows={3} value={editFields.description} onChange={e => setEditFields({ ...editFields, description: e.target.value })}
-                      className="w-full bg-white dark:bg-[#030712] border border-gray-200 dark:border-white/[0.05] rounded-xl p-3 text-slate-900 dark:text-white text-sm focus:outline-none resize-none" />
+                      className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl p-3 text-slate-900 dark:text-white text-sm focus:outline-none resize-none" />
                   </div>
 
                   <div className="flex gap-2 justify-end pt-1">
@@ -703,20 +703,20 @@ export function DealDetailsModal({
                   <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">New Task</h4>
                   <input required type="text" value={newTask.title} onChange={e => setNewTask({ ...newTask, title: e.target.value })}
                     placeholder="Task title..."
-                    className="w-full bg-white dark:bg-[#030712] border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
+                    className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
                   <textarea rows={2} value={newTask.description} onChange={e => setNewTask({ ...newTask, description: e.target.value })}
                     placeholder="Description (optional)..."
-                    className="w-full bg-white dark:bg-[#030712] border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none resize-none" />
+                    className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none resize-none" />
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Due Date</label>
                       <input type="date" value={newTask.dueDate} onChange={e => setNewTask({ ...newTask, dueDate: e.target.value })}
-                        className="w-full bg-white dark:bg-[#030712] border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
+                        className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Priority</label>
                       <select value={newTask.priority} onChange={e => setNewTask({ ...newTask, priority: e.target.value as any })}
-                        className="w-full bg-white dark:bg-[#030712] border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none">
+                        className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none">
                         <option>Low</option><option>Medium</option><option>High</option>
                       </select>
                     </div>
@@ -724,7 +724,7 @@ export function DealDetailsModal({
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Assign To</label>
                     <select value={newTask.assignedUserId} onChange={e => setNewTask({ ...newTask, assignedUserId: e.target.value })}
-                      className="w-full bg-white dark:bg-[#030712] border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none">
+                      className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none">
                       <option value="">Unassigned</option>
                       {users.map(u => <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>)}
                     </select>
@@ -780,7 +780,7 @@ export function DealDetailsModal({
                             <select value={task.status}
                               onChange={e => { onUpdateTask(task.id, { status: e.target.value as TaskStatus }); toast.success('Task status updated'); }}
                               className="text-[11px] bg-transparent border-none outline-none text-blue-400 cursor-pointer font-semibold">
-                              {TASK_STATUS_OPTIONS.map(s => <option key={s} value={s} className="bg-white dark:bg-[#030712] text-slate-900 dark:text-white">{s}</option>)}
+                              {TASK_STATUS_OPTIONS.map(s => <option key={s} value={s} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{s}</option>)}
                             </select>
                           )}
                         </div>

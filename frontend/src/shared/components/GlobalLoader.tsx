@@ -109,7 +109,7 @@ export default function GlobalLoader() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.15 }}
-          className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-gray-900/60 dark:bg-[#030712]/75 backdrop-blur-md"
+          className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-gray-900/60 dark:bg-slate-950/75 backdrop-blur-md"
         >
           <motion.div
             initial={{ scale: 0.92, opacity: 0 }}

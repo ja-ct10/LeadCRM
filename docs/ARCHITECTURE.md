@@ -28,8 +28,8 @@ leadcrm/
 |---|---|---|
 | Audience | Tenant users (Client Admin, Sales Rep, Viewer, Technician) | LeadCRM operator (System Admin) |
 | Purpose | Daily CRM work — contacts, pipeline, campaigns, automation | Platform control — tenant management, pricing, infrastructure |
-| Physical path | `frontend/src/client-admin/` | `frontend/src/system-admin/` |
-| App Router group | `app/(portal)/` | `app/(system-admin)/` |
+| Physical path | `frontend/src/features/tenant/` | `frontend/src/features/system-admin/` |
+| App Router group | `app/(tenant)/` | `app/(system-admin)/` |
 
 The portals are **physically separated folders**, not just route groups. This prevents cross-portal imports at the file system level.
 
@@ -40,24 +40,29 @@ The portals are **physically separated folders**, not just route groups. This pr
 ```
 frontend/
 ├── app/                   ← Next.js App Router (routing shells ONLY — 3-line imports)
-│   ├── (auth)/            ← Public auth routes
+│   ├── login/             ← Public auth routes
+│   ├── register/          ← Public registration
+│   ├── (tenant)/          ← CRM portal routes (no URL segment)
+│   ├── (system-admin)/    ← Admin portal routes (URLs: /admin/*)
 │   └── layout.tsx         ← Root layout — metadata, PWA manifest
 └── src/
-    ├── client-admin/      ← CRM portal — domain module layout
-    │   ├── crm/           ← contacts/, companies/, deals/, pipeline/
-    │   │   └── pipeline/ui/deal-details-modal.tsx  ← reusable Deal drawer
-    │   ├── marketing/     ← campaigns/, email/, templates/
-    │   ├── automation/    ← workflows/, triggers/, actions/
-    │   ├── operations/    ← service-orders/, tasks/
-    │   ├── reporting/
-    │   ├── billing/
-    │   ├── dashboard/
-    │   └── settings/
-    ├── system-admin/      ← Admin portal — tenants/, users/, permissions/, monitoring/
-    ├── shared/            ← Reusable UI: ui/, charts/, components/, hooks/
+    ├── features/
+    │   ├── tenant/        ← CRM portal — domain module layout
+    │   │   ├── crm/       ← contacts/, companies/, deals/, pipeline/
+    │   │   │   └── pipeline/ui/deal-details-modal.tsx  ← reusable Deal drawer
+    │   │   ├── marketing/ ← campaigns/, email/, templates/
+    │   │   ├── automation/← workflows/, triggers/, actions/
+    │   │   ├── operations/← service-orders/, tasks/, assets/, inventory/
+    │   │   ├── reporting/
+    │   │   ├── billing/
+    │   │   ├── administration/ ← users/, audit/
+    │   │   ├── dashboard/
+    │   │   ├── settings/
+    │   │   └── layout/    ← CrmLayout, sidebar-nav, topbar, account-dropdown
+    │   └── system-admin/  ← Admin portal — dashboard/, tenants/, billing/, monitoring/, layout/
+    ├── shared/            ← Reusable UI: ui/, charts/, components/, hooks/, providers/
     ├── store/             ← DataContext, AuthContext, types/, types.ts (shim), mockData/
     ├── lib/               ← utils.ts, constants.ts, countries.ts
-    ├── App.tsx            ← SPA root — string-based routing switch
     └── index.css          ← Global styles + Tailwind v4
 ```
 
@@ -68,9 +73,10 @@ frontend/
 - All chart imports come from `src/shared/components/charts/ChartComponents.tsx`
 - All filter UI uses `<TrelloFilter>` — never raw `<select>`
 - `tenant` comes from `useAuth()` — never from `useData()`
-- Deal modal interactions use `DealDetailsModal` (`crm/pipeline/ui/deal-details-modal.tsx`) — never re-implement inline
+- Deal modal interactions use `DealDetailsModal` (`features/tenant/crm/pipeline/ui/deal-details-modal.tsx`) — never re-implement inline
 - `store/types.ts` is a re-export shim only — all canonical types live in `store/types/*.ts`
 - Task status uses `TaskStatus` type: `pending | in-progress | blocked | completed | cancelled`
+- `deal.contactIds` is always `string[]` — never use `deal.contactId` (singular) for new code
 - Stage history is automatic — `DataContext.updateDeal` appends `previousStageId` on every stage change
 
 ### Tech Stack

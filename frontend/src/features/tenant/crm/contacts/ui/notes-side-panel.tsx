@@ -311,7 +311,7 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-            className="fixed inset-y-0 right-0 w-full max-w-md bg-white dark:bg-[#0B1120] border-l border-gray-200 dark:border-white/[0.1] z-50 shadow-2xl flex flex-col h-full"
+            className="fixed inset-y-0 right-0 w-full max-w-md bg-white dark:bg-slate-950 border-l border-gray-200 dark:border-white/[0.1] z-50 shadow-2xl flex flex-col h-full"
           >
             {/* Header */}
             <div className="p-5 border-b border-gray-100 dark:border-white/[0.05] flex items-center justify-between shrink-0">
@@ -372,7 +372,7 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
                       value={title}
                       onChange={e => setTitle(e.target.value)}
                       placeholder="Note Heading (e.g. Call logs with John)"
-                      className="w-full text-sm font-semibold bg-white dark:bg-[#030712] border border-gray-200 dark:border-white/[0.08] rounded-xl px-3 py-2 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
+                      className="w-full text-sm font-semibold bg-white dark:bg-slate-950 border border-gray-200 dark:border-white/[0.08] rounded-xl px-3 py-2 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
                     />
                   </div>
 
@@ -384,7 +384,7 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
                       rows={4}
                       required
                       placeholder="Jot down customer specifications, billing details or meeting notes details..."
-                      className="w-full text-xs font-normal bg-white dark:bg-[#030712] border border-gray-200 dark:border-white/[0.08] rounded-xl px-3 py-2 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-blue-500 resize-none"
+                      className="w-full text-xs font-normal bg-white dark:bg-slate-950 border border-gray-200 dark:border-white/[0.08] rounded-xl px-3 py-2 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-blue-500 resize-none"
                     />
                   </div>
 
@@ -396,7 +396,7 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
                       <select
                         value={category}
                         onChange={e => setCategory(e.target.value as QuickNote['category'])}
-                        className="w-full text-xs bg-white dark:bg-[#030712] border border-gray-200 dark:border-white/[0.08] rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-none"
+                        className="w-full text-xs bg-white dark:bg-slate-950 border border-gray-200 dark:border-white/[0.08] rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-none"
                       >
                         <option value="Thought" className="dark:bg-slate-950">Fleeting Thought</option>
                         <option value="Customer" className="dark:bg-slate-950">Customer Detail</option>
@@ -465,7 +465,7 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
                       <select
                         value={selectedEntityId}
                         onChange={e => setSelectedEntityId(e.target.value)}
-                        className="w-full text-xs bg-white dark:bg-[#030712] border border-gray-200 dark:border-white/[0.08] rounded-lg p-1.5 focus:outline-none"
+                        className="w-full text-xs bg-white dark:bg-slate-950 border border-gray-200 dark:border-white/[0.08] rounded-lg p-1.5 focus:outline-none"
                       >
                         {contacts.map(l => (
                           <option key={l.id} value={l.id} className="dark:bg-slate-950">
@@ -480,7 +480,7 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
                       <select
                         value={selectedEntityId}
                         onChange={e => setSelectedEntityId(e.target.value)}
-                        className="w-full text-xs bg-white dark:bg-[#030712] border border-gray-200 dark:border-white/[0.08] rounded-lg p-1.5 focus:outline-none"
+                        className="w-full text-xs bg-white dark:bg-slate-950 border border-gray-200 dark:border-white/[0.08] rounded-lg p-1.5 focus:outline-none"
                       >
                         {deals.map(d => (
                           <option key={d.id} value={d.id} className="dark:bg-slate-950">
@@ -554,7 +554,7 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
                             : 'bg-gray-100 dark:bg-white/[0.03] hover:bg-gray-200 dark:hover:bg-white/[0.06]'
                         }`}
                       >
-                        {tab === 'All' ? 'All' : tab === 'Pinned' ? '📌 Pinned' : tab}
+                        {tab === 'All' ? 'All' : tab === 'Pinned' ? '?? Pinned' : tab}
                       </button>
                     );
                   })}

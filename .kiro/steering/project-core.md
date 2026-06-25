@@ -149,7 +149,6 @@ leadcrm/                          ← monorepo root (Turborepo)
 │       │   └── providers/
 │       ├── lib/                  ← utils.ts, constants.ts, countries.ts
 │       ├── store/                ← DataContext, AuthContext, types, mockData
-│       ├── App.tsx               ← SPA root — string-based routing (deferred to Sprint 2)
 │       └── index.css             ← Global styles + Tailwind v4 @import
 │
 └── backend/

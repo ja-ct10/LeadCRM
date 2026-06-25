@@ -246,7 +246,7 @@ export default function ProfileSettingsPage({
           <div className="flex flex-col sm:flex-row gap-4 -mt-10 sm:items-end">
             {/* Round Avatar with floating camera icon */}
             <div className="relative shrink-0 select-none">
-              <div className="w-24 h-24 rounded-full bg-[#030712] dark:bg-slate-800 border-4 border-white dark:border-slate-900 flex items-center justify-center text-white text-3xl font-extrabold relative overflow-hidden shadow-md">
+              <div className="w-24 h-24 rounded-full bg-white dark:bg-slate-950 dark:bg-slate-800 border-4 border-white dark:border-slate-900 flex items-center justify-center text-white text-3xl font-extrabold relative overflow-hidden shadow-md">
                 {firstName.charAt(0)}
                 {lastName.charAt(0)}
               </div>

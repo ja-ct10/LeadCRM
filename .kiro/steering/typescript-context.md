@@ -72,5 +72,5 @@ When writing or editing this file, verify:
 - [ ] Filters use `<TrelloFilter>` — not raw `<select>`
 - [ ] Types imported from `store/types/` (canonical) — not from `store/types.ts` (legacy shim)
 - [ ] Task status uses `TaskStatus` type — values: `pending | in-progress | blocked | completed | cancelled`
-- [ ] New deals created from a Contact context set `deal.contactId = contact.id`
-- [ ] Deal modal interactions use `DealDetailsModal` from `crm/pipeline/ui/deal-details-modal.tsx`
+- [ ] New deals created from a Contact context push `contact.id` into `deal.contactIds` (array, never singular `contactId`)
+- [ ] Deal modal interactions use `DealDetailsModal` from `features/tenant/crm/pipeline/ui/deal-details-modal.tsx`

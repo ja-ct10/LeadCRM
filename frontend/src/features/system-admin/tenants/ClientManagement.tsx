@@ -33,7 +33,7 @@ export default function ClientManagement() {
       </div>
 
       {/* Filters bar */}
-      <div className="bg-white dark:bg-[#0B1120] rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-4 flex flex-col md:flex-row gap-4">
+      <div className="bg-white dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-4 flex flex-col md:flex-row gap-4">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input
@@ -75,10 +75,10 @@ export default function ClientManagement() {
       </div>
 
       {/* Table */}
-      <div className="bg-white dark:bg-[#0B1120] rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex flex-col">
+      <div className="bg-white dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex flex-col">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm text-slate-600 dark:text-slate-400">
-            <thead className="bg-white dark:bg-[#0B1120] text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-700">
+            <thead className="bg-white dark:bg-slate-950 text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-700">
               <tr>
                 <th className="px-6 py-4 font-semibold">Company Name</th>
                 <th className="px-6 py-4 font-semibold">Industry</th>
@@ -158,7 +158,7 @@ function TenantDetailModal({ tenant, onClose, onApprove }: { tenant: Tenant; onC
   return (
     <div className="fixed inset-0 bg-slate-900/40 dark:bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-white dark:bg-[#0B1120] rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden">
+        className="bg-white dark:bg-slate-950 rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
           <h3 className="text-lg font-bold text-slate-900 dark:text-white">Client Details</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"><X size={20} /></button>
@@ -176,7 +176,7 @@ function TenantDetailModal({ tenant, onClose, onApprove }: { tenant: Tenant; onC
           </div>
         </div>
         <div className="p-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 bg-white dark:bg-[#0B1120] border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-xl font-medium text-sm hover:bg-slate-50 transition-colors">Close</button>
+          <button onClick={onClose} className="px-4 py-2 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-xl font-medium text-sm hover:bg-slate-50 transition-colors">Close</button>
           {tenant.status === 'pending' && (
             <button onClick={onApprove} className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-medium text-sm hover:bg-emerald-700 transition-colors">Approve Client</button>
           )}

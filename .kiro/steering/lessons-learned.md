@@ -37,8 +37,8 @@ Always: `tenantId: tenant.id` (from AuthContext). Never: `tenantId: data.tenantI
 ### Task Assignment Is Auditable
 `addTask` seeds the first `TaskAssignmentRecord`. `updateTask` appends a new record whenever `assignedUserId` changes. Always pass `assignedBy: currentUserId` when calling either function so the audit trail is complete.
 
-### Deal Matching Uses contactId First
-`connectedDeals` in Client Profile filters by `deal.contactId === contact.id` first. String matching (`companyName`, `contactPerson`) is a legacy fallback only. New deals created from a contact context must set `deal.contactId`.
+### Deal Matching Uses contactIds First
+`connectedDeals` in Client Profile filters by `deal.contactIds.includes(contact.id)` first. String matching (`companyName`, `contactPerson`) is a legacy fallback only. New deals created from a contact context must push `contact.id` into `deal.contactIds` (array).
 
 ### store/types.ts Is a Re-Export Shim Only
 Never define new types in `store/types.ts`. It only re-exports from `store/types/`. All canonical types live in `store/types/*.ts`. This was corrected when duplicate `Deal`, `Pipeline`, `Stage`, and `Task` definitions caused stale type resolution.
@@ -130,7 +130,7 @@ Changes shipped in this sprint:
 | `store/types/index.ts` | Exports `TaskStatus`, `TaskAssignmentRecord` |
 | `store/types.ts` | Removed duplicate `Deal`, `Pipeline`, `Stage`, `Task` inline definitions — replaced with re-exports from canonical files |
 | `store/DataContext.tsx` | `updateDeal` writes `previousStageId` on stage change; `addTask` seeds `assignmentHistory`; `updateTask` appends `TaskAssignmentRecord` on reassign |
-| `crm/pipeline/ui/deal-details-modal.tsx` | New reusable component — extracted from `PipelinePage`. 4 tabs: Overview, Activities, Tasks, History. Tasks tab: create + assign + overdue badge. History tab: From→To stage trail |
+| `crm/pipeline/ui/deal-details-modal.tsx` | New reusable component — extracted from `PipelinePage`. 7 tabs: Overview, Activities, Tasks, Emails, Files, History, Automation. Tasks tab: create + assign + overdue badge. History tab: From→To stage trail |
 | `crm/pipeline/PipelinePage.tsx` | Reduced ~785 lines — old inline drawer replaced with `<DealDetailsModal>`. Dead state removed. "Edit Deal" footer button wired. `tasks`, `addTask`, `updateTask`, `tenant` added to destructure |
 | `crm/contacts/ui/contact-profile-tabs.tsx` | Deals tab: Deal Summary bar (5 stat cards). Deal matching: `contactId` FK first, string fallback. Pipelines tab: real stage bars from DataContext (not hardcoded) |
 | `operations/tasks/TaskBoard.tsx` | Status dropdown updated to 5 values (Pending/In Progress/Blocked/Completed/Cancelled) |

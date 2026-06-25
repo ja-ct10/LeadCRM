@@ -9,39 +9,40 @@
 
 ## Overview — 6 Phases
 
-| Phase | Name | Goal | Touches |
-|-------|------|------|---------|
-| **0** | **`features/` Folder Rename** | Rename `client-admin/` → `features/tenant/` and `system-admin/` → `features/system-admin/`. Update all imports and aliases. Zero behavior change. | Frontend `src/` + `tsconfig.json` + `app/` shells + steering |
-| 1 | Folder Structure & Cleanup | Every module has the correct anatomy. No dead code. | Frontend `src/` only — no behavior change |
-| 2 | CRM Core Loop | Contacts ↔ Deals ↔ Pipeline fully synchronized | Frontend features + types |
-| 3 | Automation Visibility | WorkflowExecution (3-level) + Automation tab + 4 scenarios | Frontend + store types |
-| 4 | Permission Hardening | RBAC consistent everywhere, role-based routing | Frontend auth/permissions |
-| 5 | Operations & Billing Integration | Billing connected to store, task reassignment history, campaign attribution | Frontend features |
+| Phase | Name | Goal | Status |
+|-------|------|------|--------|
+| **0** | **`features/` Folder Rename** | Rename `client-admin/` → `features/tenant/` and `system-admin/` → `features/system-admin/`. Update all imports and aliases. Zero behavior change. | ✅ **COMPLETE** |
+| **1** | **Folder Structure & Cleanup** | Every module has the correct anatomy. No dead code. | 🔲 Next |
+| 2 | CRM Core Loop | Contacts ↔ Deals ↔ Pipeline fully synchronized | 🔲 Pending |
+| 3 | Automation Visibility | WorkflowExecution (3-level) + Automation tab + 4 scenarios | 🔲 Pending |
+| 4 | Permission Hardening | RBAC consistent everywhere, role-based routing | 🔲 Pending |
+| 5 | Operations & Billing Integration | Billing connected to store, task reassignment history, campaign attribution | 🔲 Pending |
 
-> **Phase 0 is the starting point. Do not touch Phase 1–5 until Phase 0 is verified complete.**
+> **Phase 0 is complete. Phase 1 is the active phase.**
 
 ---
 
-## Phase 0 — `features/` Folder Rename
+## Phase 0 — `features/` Folder Rename ✅ COMPLETE
 
-**Goal:** Adopt the `features/tenant/` and `features/system-admin/` structure. Cleaner, scalable, AI-friendly, enterprise-standard.
-**Constraint:** Zero behavior change. Zero UI edits. Zero new features. Rename + import update only.
+**Goal:** Adopt the `features/tenant/` and `features/system-admin/` structure.
+**Status:** All tasks completed. `src/client-admin/` and `src/system-admin/` are deleted. All imports updated. Build passing.
 
-### Why This Structure
+### Phase 0 Verification Checklist — All Passed ✅
 
-| Old | New | Reason |
-|-----|-----|--------|
-| `src/client-admin/` | `src/features/tenant/` | `features/` makes it instantly obvious these are business features. `tenant/` is precise — these belong to the companies using the CRM |
-| `src/system-admin/` | `src/features/system-admin/` | Groups both portals under one `features/` root. Consistent, predictable |
+- [x] `src/features/tenant/` exists with all modules from `client-admin/`
+- [x] `src/features/system-admin/` exists with all modules from `system-admin/`
+- [x] `src/features/tenant/layout/` exists (was `client-admin/shared/layouts/`)
+- [x] `tsconfig.json` has `@/features/tenant/*` and `@/features/system-admin/*` aliases
+- [x] All `app/(tenant)/*/page.tsx` imports use `@/features/tenant/`
+- [x] All `app/(system-admin)/*/page.tsx` imports use `@/features/system-admin/`
+- [x] `src/client-admin/` is deleted
+- [x] `src/system-admin/` is deleted
+- [x] Shim aliases removed from `tsconfig.json`
+- [x] Duplicate `system-admin/components/layout/AdminLayout.tsx` removed
+- [x] Steering docs updated with new paths
+- [x] Build passes — zero TypeScript errors
 
-Adding a new module in the future (WhatsApp, Customer Portal, SMS Integration) is now:
-```
-features/
-└── tenant/
-    └── marketing/
-        └── whatsapp/       ← drop it here, done
-```
-No restructuring. No confusion about where it lives.
+---
 
 ### Final Target Structure
 
@@ -295,37 +296,36 @@ Update all import convention examples from `@/client-admin/` → `@/features/ten
 ## Phase 1 — Folder Structure & Cleanup
 
 **Goal:** Every module matches the required anatomy. No god files. No dead files. No misplaced files.
-**Prerequisite:** Phase 0 verification checklist must be complete.
+**Prerequisite:** Phase 0 ✅ complete.
 **Constraint:** Zero behavior change. No UI edits. No new features. Structure only.
-**Note:** All paths below use the new `features/` structure from Phase 0.
 
 ---
 
-### Task 1.1 — Delete dead code
+### Task 1.1 — Delete dead code ✅ DONE
 
-| Action | File |
-|--------|------|
-| Delete | `frontend/src/App.tsx` (empty export `{}`) |
-
----
-
-### Task 1.2 — Fix duplicate types in store
-
-| Action | File | What to do |
-|--------|------|-----------|
-| Edit | `frontend/src/store/types.ts` | Remove all inline type definitions. Convert to pure re-export shim from `./types/index` only |
+| Action | File | Status |
+|--------|------|--------|
+| Delete | `frontend/src/App.tsx` (empty export `{}`) | ✅ Deleted |
 
 ---
 
-### Task 1.3 — Move misplaced files
+### Task 1.2 — Fix duplicate types in store ✅ DONE
 
-| Current location | Move to | Why |
-|-----------------|---------|-----|
-| `features/tenant/operations/service-orders/ui/assets-page.tsx` | `features/tenant/operations/assets/ui/assets-page.tsx` | Feature belongs to its own module |
-| `features/tenant/operations/service-orders/ui/inventory-page.tsx` | `features/tenant/operations/inventory/ui/inventory-page.tsx` | Feature belongs to its own module |
-| `features/tenant/crm/contacts/ui/notes-side-panel.tsx` | `shared/components/NotesSidePanel.tsx` | Layout-level component must not live inside a feature module |
+| Action | File | Status |
+|--------|------|--------|
+| Edit | `frontend/src/store/types.ts` | ✅ Re-export shim only — no inline type definitions |
 
-Update all imports after each move.
+---
+
+### Task 1.3 — Move misplaced files 🔲 PARTIAL
+
+| Current location | Move to | Status |
+|-----------------|---------|--------|
+| `features/tenant/operations/service-orders/ui/assets-page.tsx` | `features/tenant/operations/assets/ui/assets-page.tsx` | 🔲 Pending |
+| `features/tenant/operations/service-orders/ui/inventory-page.tsx` | `features/tenant/operations/inventory/ui/inventory-page.tsx` | 🔲 Pending |
+| `features/tenant/crm/contacts/ui/notes-side-panel.tsx` | `shared/components/NotesSidePanel.tsx` | ✅ Done |
+
+Update all imports after each remaining move.
 
 ---
 

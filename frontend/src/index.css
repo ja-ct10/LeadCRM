@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+﻿@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 
 @custom-variant dark (&:is(.dark, .dark *));
@@ -83,19 +83,37 @@
   * {
     @apply border-gray-200 dark:border-white/[0.08];
   }
+
+  /* Light theme base */
+  html {
+    @apply bg-slate-50 text-slate-900;
+  }
   body {
     @apply bg-slate-50 text-slate-900 antialiased transition-colors duration-300;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
-  .dark body {
-    @apply bg-slate-950 text-slate-100;
+
+  /* Dark theme base — applied when html.dark */
+  html.dark,
+  html.dark body {
+    @apply bg-[#030712] text-slate-100;
   }
-  
-  /* Global theme-responsive focus ring and text selection updates */
+
+  /* Inputs, selects, textareas */
+  input, select, textarea {
+    @apply text-slate-900 dark:text-white;
+  }
   input:focus, select:focus, textarea:focus {
     border-color: var(--color-blue-500) !important;
-    --tw-ring-color: var(--color-blue-500) !important;
     outline: none !important;
+  }
+
+  /* Light mode: select option readable */
+  select option {
+    @apply bg-white text-slate-900;
+  }
+  html.dark select option {
+    @apply bg-slate-900 text-white;
   }
   
   ::selection {
@@ -127,6 +145,25 @@
   .scrollbar-none::-webkit-scrollbar {
     display: none;
   }
+}
+
+
+/* ── Theme-safe select options ─────────────────────────────── */
+select, select option {
+  background-color: #ffffff;
+  color: #0f172a;
+}
+html.dark select, html.dark select option {
+  background-color: #1e293b;
+  color: #f1f5f9;
+}
+
+/* ── Modal / overlay backgrounds ───────────────────────────── */
+.modal-bg {
+  background-color: #ffffff;
+}
+html.dark .modal-bg {
+  background-color: #030712;
 }
 
 @keyframes shimmer {

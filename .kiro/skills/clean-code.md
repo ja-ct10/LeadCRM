@@ -206,8 +206,8 @@ contacts/
 ```
 
 **Portal separation (non-negotiable):**
-- `client-admin/` code never imports from `system-admin/`
-- `system-admin/` code never imports from `client-admin/`
+- `features/tenant/` code never imports from `features/system-admin/`
+- `features/system-admin/` code never imports from `features/tenant/`
 - Shared UI only → `src/shared/`
 
 ---

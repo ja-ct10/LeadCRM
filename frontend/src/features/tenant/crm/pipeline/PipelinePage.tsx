@@ -184,7 +184,7 @@ const SortableDealCard = ({ deal, assignedUser, onClick, canDrag = true, isAutom
       className={`p-4 rounded-xl border transition-all cursor-pointer group relative ${
         isDragging 
           ? 'border-blue-500/50 bg-blue-500/5 ring-2 ring-blue-500/20' 
-          : `${isRotting || isAging ? '' : 'bg-white dark:bg-[#030712]'} ${borderStyle} shadow-sm hover:shadow-md hover:-translate-y-0.5`
+          : `${isRotting || isAging ? '' : 'bg-white dark:bg-slate-950'} ${borderStyle} shadow-sm hover:shadow-md hover:-translate-y-0.5`
       }`}
     >
       <DealCardContent 
@@ -496,7 +496,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
         const automationNote = {
           id: 'auto_' + Date.now(),
           type: 'note' as const,
-          description: `🤖 AUTOMATION TRIGGER: Stage advanced automatically from "${oldStageName}" to "${targetStage.name}" after satisfying all digital workflows.`,
+          description: `?? AUTOMATION TRIGGER: Stage advanced automatically from "${oldStageName}" to "${targetStage.name}" after satisfying all digital workflows.`,
           timestamp: new Date().toISOString(),
           userId: 'system'
         };
@@ -1229,7 +1229,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
       {/* Manage Pipelines Modal */}
       {isManagePipelinesModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-50 dark:bg-[#030712] rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-2xl overflow-hidden flex flex-col shadow-2xl max-h-[80vh]">
+          <div className="bg-gray-50 dark:bg-slate-950 rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-2xl overflow-hidden flex flex-col shadow-2xl max-h-[80vh]">
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-white/[0.05] shrink-0">
               <div>
                 <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Manage Pipelines</h2>
@@ -1361,7 +1361,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
       {/* New Pipeline Modal */}
       {isPipelineModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-50 dark:bg-[#030712] rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-md overflow-hidden flex flex-col shadow-2xl">
+          <div className="bg-gray-50 dark:bg-slate-950 rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-md overflow-hidden flex flex-col shadow-2xl">
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-white/[0.05] shrink-0">
               <div>
                 <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Create New Pipeline</h2>
@@ -1384,7 +1384,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                 </div>
               </form>
             </div>
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-white/[0.05] shrink-0 bg-gray-50 dark:bg-[#030712]">
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-white/[0.05] shrink-0 bg-gray-50 dark:bg-slate-950">
               <button type="button" onClick={() => setIsPipelineModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg transition-colors">Cancel</button>
               <button type="submit" form="add-pipeline-form" className="px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/20">Create Pipeline</button>
             </div>
@@ -1393,7 +1393,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
       )}
 
       {/* View Options & Advanced Funnel Filtering Bar */}
-      <div className="flex flex-col gap-4 p-4 bg-white dark:bg-[#030712]/40 rounded-2xl border border-gray-200 dark:border-white/[0.05] shadow-sm">
+      <div className="flex flex-col gap-4 p-4 bg-white dark:bg-slate-950/40 rounded-2xl border border-gray-200 dark:border-white/[0.05] shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-center gap-4 flex-1">
             <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-white/[0.02] p-1 rounded-xl border border-gray-200/50 dark:border-white/[0.05] w-fit">
@@ -1402,7 +1402,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                 onClick={() => handleViewModeChange('kanban')}
                 className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all ${
                   viewMode === 'kanban'
-                    ? 'bg-white dark:bg-[#030712] text-blue-500 dark:text-blue-400 shadow-sm border border-gray-255 dark:border-white/[0.05]'
+                    ? 'bg-white dark:bg-slate-950 text-blue-500 dark:text-blue-400 shadow-sm border border-gray-255 dark:border-white/[0.05]'
                     : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white font-normal'
                 }`}
               >
@@ -1414,7 +1414,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                 onClick={() => handleViewModeChange('table')}
                 className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all ${
                   viewMode === 'table'
-                    ? 'bg-white dark:bg-[#030712] text-blue-500 dark:text-blue-400 shadow-sm border border-gray-255 dark:border-white/[0.05]'
+                    ? 'bg-white dark:bg-slate-950 text-blue-500 dark:text-blue-400 shadow-sm border border-gray-255 dark:border-white/[0.05]'
                     : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white font-normal'
                 }`}
               >
@@ -1426,7 +1426,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                 onClick={() => handleViewModeChange('list')}
                 className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all ${
                   viewMode === 'list'
-                    ? 'bg-white dark:bg-[#030712] text-blue-500 dark:text-blue-400 shadow-sm border border-gray-255 dark:border-white/[0.05]'
+                    ? 'bg-white dark:bg-slate-950 text-blue-500 dark:text-blue-400 shadow-sm border border-gray-255 dark:border-white/[0.05]'
                     : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white font-normal'
                 }`}
               >
@@ -1588,7 +1588,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                       onClick={() => setFilterStatus(st)}
                       className={`py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide transition-all ${
                         filterStatus === st
-                          ? 'bg-white dark:bg-[#030712] text-blue-500 dark:text-blue-400 shadow-sm border border-slate-200/40 dark:border-white/[0.05]'
+                          ? 'bg-white dark:bg-slate-950 text-blue-500 dark:text-blue-400 shadow-sm border border-slate-200/40 dark:border-white/[0.05]'
                           : 'text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'
                       }`}
                     >
@@ -1703,11 +1703,11 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                 <div className="flex items-center justify-between">
                   <label className="text-[10px] font-bold uppercase text-slate-400">Location/Region</label>
                   <select value={filterLocationOp} onChange={e => setFilterLocationOp(e.target.value)} className="bg-transparent border-none text-[10px] font-bold text-slate-400">
-                    <option value="contains" className="bg-gray-100 dark:bg-[#030712]">Contains</option>
-                    <option value="equals" className="bg-gray-100 dark:bg-[#030712]">Equals</option>
-                    <option value="notequals" className="bg-gray-100 dark:bg-[#030712]">Not Equals</option>
-                    <option value="starts" className="bg-gray-100 dark:bg-[#030712]">Starts With</option>
-                    <option value="ends" className="bg-gray-100 dark:bg-[#030712]">Ends With</option>
+                    <option value="contains" className="bg-gray-100 dark:bg-slate-950">Contains</option>
+                    <option value="equals" className="bg-gray-100 dark:bg-slate-950">Equals</option>
+                    <option value="notequals" className="bg-gray-100 dark:bg-slate-950">Not Equals</option>
+                    <option value="starts" className="bg-gray-100 dark:bg-slate-950">Starts With</option>
+                    <option value="ends" className="bg-gray-100 dark:bg-slate-950">Ends With</option>
                   </select>
                 </div>
                 <input
@@ -1724,11 +1724,11 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                 <div className="flex items-center justify-between">
                   <label className="text-[10px] font-bold uppercase text-slate-400">Contact Source</label>
                   <select value={filterLeadSourceOp} onChange={e => setFilterLeadSourceOp(e.target.value)} className="bg-transparent border-none text-[10px] font-bold text-slate-400">
-                    <option value="contains" className="bg-gray-100 dark:bg-[#030712]">Contains</option>
-                    <option value="equals" className="bg-gray-100 dark:bg-[#030712]">Equals</option>
-                    <option value="notequals" className="bg-gray-100 dark:bg-[#030712]">Not Equals</option>
-                    <option value="starts" className="bg-gray-100 dark:bg-[#030712]">Starts With</option>
-                    <option value="ends" className="bg-gray-100 dark:bg-[#030712]">Ends With</option>
+                    <option value="contains" className="bg-gray-100 dark:bg-slate-950">Contains</option>
+                    <option value="equals" className="bg-gray-100 dark:bg-slate-950">Equals</option>
+                    <option value="notequals" className="bg-gray-100 dark:bg-slate-950">Not Equals</option>
+                    <option value="starts" className="bg-gray-100 dark:bg-slate-950">Starts With</option>
+                    <option value="ends" className="bg-gray-100 dark:bg-slate-950">Ends With</option>
                   </select>
                 </div>
                 <input
@@ -1745,11 +1745,11 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                 <div className="flex items-center justify-between">
                   <label className="text-[10px] font-bold uppercase text-slate-400">Industry</label>
                   <select value={filterIndustryOp} onChange={e => setFilterIndustryOp(e.target.value)} className="bg-transparent border-none text-[10px] font-bold text-slate-400">
-                    <option value="contains" className="bg-gray-100 dark:bg-[#030712]">Contains</option>
-                    <option value="equals" className="bg-gray-100 dark:bg-[#030712]">Equals</option>
-                    <option value="notequals" className="bg-gray-100 dark:bg-[#030712]">Not Equals</option>
-                    <option value="starts" className="bg-gray-100 dark:bg-[#030712]">Starts With</option>
-                    <option value="ends" className="bg-gray-100 dark:bg-[#030712]">Ends With</option>
+                    <option value="contains" className="bg-gray-100 dark:bg-slate-950">Contains</option>
+                    <option value="equals" className="bg-gray-100 dark:bg-slate-950">Equals</option>
+                    <option value="notequals" className="bg-gray-100 dark:bg-slate-950">Not Equals</option>
+                    <option value="starts" className="bg-gray-100 dark:bg-slate-950">Starts With</option>
+                    <option value="ends" className="bg-gray-100 dark:bg-slate-950">Ends With</option>
                   </select>
                 </div>
                 <input
@@ -1766,10 +1766,10 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                 <div className="flex items-center justify-between">
                   <label className="text-[10px] font-bold uppercase text-slate-400">Campaign</label>
                   <select value={filterCampaignOp} onChange={e => setFilterCampaignOp(e.target.value)} className="bg-transparent border-none text-[10px] font-bold text-slate-400">
-                    <option value="contains" className="bg-gray-100 dark:bg-[#030712]">Contains</option>
-                    <option value="equals" className="bg-gray-100 dark:bg-[#030712]">Equals</option>
-                    <option value="starts" className="bg-gray-100 dark:bg-[#030712]">Starts With</option>
-                    <option value="ends" className="bg-gray-100 dark:bg-[#030712]">Ends With</option>
+                    <option value="contains" className="bg-gray-100 dark:bg-slate-950">Contains</option>
+                    <option value="equals" className="bg-gray-100 dark:bg-slate-950">Equals</option>
+                    <option value="starts" className="bg-gray-100 dark:bg-slate-950">Starts With</option>
+                    <option value="ends" className="bg-gray-100 dark:bg-slate-950">Ends With</option>
                   </select>
                 </div>
                 <input
@@ -1787,7 +1787,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                 <select
                   value={filterCustomerType}
                   onChange={e => setFilterCustomerType(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-[#030712] border border-slate-200/50 dark:border-white/[0.05] rounded-xl px-2.5 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none"
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200/50 dark:border-white/[0.05] rounded-xl px-2.5 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none"
                 >
                   <option value="all">Any Type</option>
                   <option value="new">New Business</option>
@@ -1800,9 +1800,9 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                 <div className="flex items-center justify-between">
                   <label className="text-[10px] font-bold uppercase text-slate-400">Organization Company</label>
                   <select value={filterOrganizationOp} onChange={e => setFilterOrganizationOp(e.target.value)} className="bg-transparent border-none text-[10px] font-bold text-slate-400">
-                    <option value="contains" className="bg-gray-100 dark:bg-[#030712]">Contains</option>
-                    <option value="equals" className="bg-gray-100 dark:bg-[#030712]">Equals</option>
-                    <option value="starts" className="bg-gray-100 dark:bg-[#030712]">Starts With</option>
+                    <option value="contains" className="bg-gray-100 dark:bg-slate-950">Contains</option>
+                    <option value="equals" className="bg-gray-100 dark:bg-slate-950">Equals</option>
+                    <option value="starts" className="bg-gray-100 dark:bg-slate-950">Starts With</option>
                   </select>
                 </div>
                 <input
@@ -1819,11 +1819,11 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                 <div className="flex items-center justify-between">
                   <label className="text-[10px] font-bold uppercase text-slate-400">Date Created</label>
                   <select value={filterDateCreatedOp} onChange={e => setFilterDateCreatedOp(e.target.value)} className="bg-transparent border-none text-[10px] font-bold text-slate-400">
-                    <option value="any" className="bg-gray-100 dark:bg-[#030712]">Any Date</option>
-                    <option value="equals" className="bg-gray-100 dark:bg-[#030712]">On Date</option>
-                    <option value="before" className="bg-gray-100 dark:bg-[#030712]">Before Date</option>
-                    <option value="after" className="bg-gray-100 dark:bg-[#030712]">After Date</option>
-                    <option value="between" className="bg-gray-100 dark:bg-[#030712]">Between Dates</option>
+                    <option value="any" className="bg-gray-100 dark:bg-slate-950">Any Date</option>
+                    <option value="equals" className="bg-gray-100 dark:bg-slate-950">On Date</option>
+                    <option value="before" className="bg-gray-100 dark:bg-slate-950">Before Date</option>
+                    <option value="after" className="bg-gray-100 dark:bg-slate-950">After Date</option>
+                    <option value="between" className="bg-gray-100 dark:bg-slate-950">Between Dates</option>
                   </select>
                 </div>
                 {filterDateCreatedOp !== 'any' && (
@@ -1851,8 +1851,8 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                 <div className="flex items-center justify-between">
                   <label className="text-[10px] font-bold uppercase text-slate-400">Tags/Custom Labels</label>
                   <select value={filterTagsOp} onChange={e => setFilterTagsOp(e.target.value)} className="bg-transparent border-none text-[10px] font-bold text-slate-400">
-                    <option value="contains" className="bg-gray-100 dark:bg-[#030712]">Contains</option>
-                    <option value="equals" className="bg-gray-100 dark:bg-[#030712]">Equals</option>
+                    <option value="contains" className="bg-gray-100 dark:bg-slate-950">Contains</option>
+                    <option value="equals" className="bg-gray-100 dark:bg-slate-950">Equals</option>
                   </select>
                 </div>
                 <input
@@ -2054,7 +2054,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
             }),
           }}>
             {activeDeal ? (
-              <div className="bg-white dark:bg-[#030712] p-4 rounded-xl border border-blue-500/50 shadow-2xl flex flex-col gap-3 w-80 scale-105 rotate-2">
+              <div className="bg-white dark:bg-slate-950 p-4 rounded-xl border border-blue-500/50 shadow-2xl flex flex-col gap-3 w-80 scale-105 rotate-2">
                 <DealCardContent 
                   deal={activeDeal} 
                   assignedUser={users?.find((u: any) => u.id === activeDeal.assignedUserId)} 
@@ -2067,7 +2067,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
       )}
 
       {viewMode === 'table' && (
-        <div className="bg-white dark:bg-[#030712]/40 rounded-2xl border border-gray-200 dark:border-white/[0.05] overflow-hidden shadow-sm">
+        <div className="bg-white dark:bg-slate-950/40 rounded-2xl border border-gray-200 dark:border-white/[0.05] overflow-hidden shadow-sm">
           <div className="overflow-x-auto custom-scrollbar">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -2100,7 +2100,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                         <div className="flex items-center gap-1.5 font-sans">
                           <span>{col.label}</span>
                           <span className="text-slate-350 dark:text-slate-700">
-                            {isSorted ? (tableSortAsc ? '↑' : '↓') : '↕'}
+                            {isSorted ? (tableSortAsc ? '?' : '?') : '?'}
                           </span>
                         </div>
                       </th>
@@ -2213,7 +2213,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
               <div
                 key={deal.id}
                 onClick={() => setSelectedDealId(deal.id)}
-                className="group p-4 bg-white dark:bg-[#030712]/40 rounded-2xl border border-gray-200 dark:border-white/[0.05] shadow-sm hover:border-blue-500/30 transition-all cursor-pointer relative flex flex-col justify-between"
+                className="group p-4 bg-white dark:bg-slate-950/40 rounded-2xl border border-gray-200 dark:border-white/[0.05] shadow-sm hover:border-blue-500/30 transition-all cursor-pointer relative flex flex-col justify-between"
               >
                 <div>
                   <div className="flex justify-between items-start gap-2 mb-1.5">
@@ -2317,7 +2317,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
          {/* Add Deal Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-50 dark:bg-[#030712] rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+          <div className="bg-gray-50 dark:bg-slate-950 rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-white/[0.05] shrink-0">
               <div>
                 <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Add New Deal/Ticket</h2>
@@ -2398,21 +2398,21 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                     <div>
                       <label className="block text-sm text-slate-500 dark:text-slate-400 mb-1.5">Stage</label>
                       <select value={newDeal.stageId} onChange={e => setNewDeal({...newDeal, stageId: e.target.value})} className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] focus:bg-white/[0.04] transition-all">
-                        {(activePipeline.stages as any[]).map((s: any) => <option key={s.id} value={s.id} className="bg-gray-50 dark:bg-[#030712]">{s.name}</option>)}
+                        {(activePipeline.stages as any[]).map((s: any) => <option key={s.id} value={s.id} className="bg-gray-50 dark:bg-slate-950">{s.name}</option>)}
                       </select>
                     </div>
                     <div>
                       <label className="block text-sm text-slate-500 dark:text-slate-400 mb-1.5">Priority</label>
                       <select value={newDeal.priority} onChange={e => setNewDeal({...newDeal, priority: e.target.value})} className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] focus:bg-white/[0.04] transition-all">
-                        <option className="bg-gray-50 dark:bg-[#030712]">Low</option><option className="bg-gray-50 dark:bg-[#030712]">Medium</option><option className="bg-gray-50 dark:bg-[#030712]">High</option>
+                        <option className="bg-gray-50 dark:bg-slate-950">Low</option><option className="bg-gray-50 dark:bg-slate-950">Medium</option><option className="bg-gray-50 dark:bg-slate-950">High</option>
                       </select>
                     </div>
                     <div>
                       <label className="block text-sm text-slate-500 dark:text-slate-400 mb-1.5">Assigned Agent</label>
                       <select value={newDeal.assignedUserId} onChange={e => setNewDeal({...newDeal, assignedUserId: e.target.value})} className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] focus:bg-white/[0.04] transition-all">
-                        <option className="bg-gray-50 dark:bg-[#030712]" value="">Unassigned</option>
+                        <option className="bg-gray-50 dark:bg-slate-950" value="">Unassigned</option>
                         {users.filter(u => u.role === 'Sales Rep' || u.role === 'Client Admin').map(u => (
-                          <option key={u.id} className="bg-gray-50 dark:bg-[#030712]" value={u.id}>{u.firstName} {u.lastName}</option>
+                          <option key={u.id} className="bg-gray-50 dark:bg-slate-950" value={u.id}>{u.firstName} {u.lastName}</option>
                         ))}
                       </select>
                     </div>
@@ -2438,9 +2438,9 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                     <div>
                       <label className="block text-sm text-slate-500 dark:text-slate-400 mb-1.5">Customer Type</label>
                       <select value={newDeal.customerType} onChange={e => setNewDeal({...newDeal, customerType: e.target.value})} className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] focus:bg-white/[0.04] transition-all">
-                        <option className="bg-gray-50 dark:bg-[#030712]">New Customer</option>
-                        <option className="bg-gray-50 dark:bg-[#030712]">Existing Business</option>
-                        <option className="bg-gray-50 dark:bg-[#030712]">Partner</option>
+                        <option className="bg-gray-50 dark:bg-slate-950">New Customer</option>
+                        <option className="bg-gray-50 dark:bg-slate-950">Existing Business</option>
+                        <option className="bg-gray-50 dark:bg-slate-950">Partner</option>
                       </select>
                     </div>
                     <div>
@@ -2456,7 +2456,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                 </div>
               </form>
             </div>
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-white/[0.05] shrink-0 bg-gray-50 dark:bg-[#030712]">
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-white/[0.05] shrink-0 bg-gray-50 dark:bg-slate-950">
               <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg transition-colors">Cancel</button>
               <button 
                 type="submit" 
@@ -2477,7 +2477,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
           <motion.div 
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="bg-gray-50 dark:bg-[#030712] rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-md shadow-2xl flex flex-col overflow-hidden"
+            className="bg-gray-50 dark:bg-slate-950 rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-md shadow-2xl flex flex-col overflow-hidden"
           >
             <div className="p-6 border-b border-gray-200 dark:border-white/[0.05]">
               <div className="flex items-center gap-3 mb-2">
@@ -2526,7 +2526,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
           <motion.div 
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="bg-gray-50 dark:bg-[#030712] rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-md shadow-2xl flex flex-col overflow-hidden"
+            className="bg-gray-50 dark:bg-slate-950 rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-md shadow-2xl flex flex-col overflow-hidden"
           >
             <div className="p-6 border-b border-gray-200 dark:border-white/[0.05]">
               <div className="flex items-center gap-3 mb-2">
@@ -2571,7 +2571,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
           <motion.div 
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="bg-gray-50 dark:bg-[#030712] rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-md shadow-2xl flex flex-col overflow-hidden"
+            className="bg-gray-50 dark:bg-slate-950 rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-md shadow-2xl flex flex-col overflow-hidden"
           >
             <div className="p-6 border-b border-gray-200 dark:border-white/[0.05]">
               <div className="flex items-center gap-3 mb-2">

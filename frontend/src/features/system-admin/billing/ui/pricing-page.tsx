@@ -85,7 +85,7 @@ export default function PricingPage() {
             <button key={v} onClick={() => setPricingView(v)}
               className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
                 pricingView === v
-                  ? 'bg-white dark:bg-[#0B1120] text-blue-600 shadow-sm border border-slate-200 dark:border-slate-700/50'
+                  ? 'bg-white dark:bg-slate-950 text-blue-600 shadow-sm border border-slate-200 dark:border-slate-700/50'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}>{v}</button>
           ))}
@@ -95,7 +95,7 @@ export default function PricingPage() {
       {/* Plan cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {plans.map((plan) => (
-          <div key={plan.id} className={`relative bg-white dark:bg-[#0B1120] border rounded-2xl p-6 flex flex-col hover:shadow-md transition-shadow ${plan.isPopular ? 'border-blue-500 shadow-lg shadow-blue-500/10' : 'border-slate-200 dark:border-slate-700'}`}>
+          <div key={plan.id} className={`relative bg-white dark:bg-slate-950 border rounded-2xl p-6 flex flex-col hover:shadow-md transition-shadow ${plan.isPopular ? 'border-blue-500 shadow-lg shadow-blue-500/10' : 'border-slate-200 dark:border-slate-700'}`}>
             {plan.isPopular && (
               <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-3 py-1 rounded-full text-xs font-bold uppercase">Most Popular</div>
             )}
@@ -129,7 +129,7 @@ export default function PricingPage() {
         {editingPlan && (
           <div className="fixed inset-0 bg-slate-900/40 dark:bg-slate-900/80 backdrop-blur-sm z-50 flex justify-end">
             <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="bg-white dark:bg-[#0B1120] w-full max-w-md h-full shadow-2xl flex flex-col border-l border-slate-200 dark:border-slate-700">
+              className="bg-white dark:bg-slate-950 w-full max-w-md h-full shadow-2xl flex flex-col border-l border-slate-200 dark:border-slate-700">
               <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
                 <h3 className="text-lg font-bold text-slate-900 dark:text-white">Edit {editingPlan.name} Plan</h3>
                 <button onClick={() => setEditingPlan(null)} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"><X size={20} /></button>
@@ -162,7 +162,7 @@ export default function PricingPage() {
                 </div>
               </div>
               <div className="p-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex gap-3">
-                <button onClick={() => setEditingPlan(null)} className="flex-1 px-4 py-2 bg-white dark:bg-[#0B1120] border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-xl font-medium text-sm transition-colors">Cancel</button>
+                <button onClick={() => setEditingPlan(null)} className="flex-1 px-4 py-2 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-xl font-medium text-sm transition-colors">Cancel</button>
                 <button onClick={handleSavePlan} disabled={isSaving} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-xl font-medium text-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-70">
                   {isSaving ? <Loader2 size={16} className="animate-spin" /> : saveStatus === 'success' ? <CheckCircle2 size={16} /> : 'Save Changes'}
                 </button>

@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { CheckCircle } from 'lucide-react';
 
 interface TimelineEvent {
@@ -82,7 +82,7 @@ export function ContactActivitiesTab({
       <div className="relative border-l border-gray-200 dark:border-white/5 pl-5 ml-2.5 space-y-5">
         {timelineEvents.map((evt, i) => (
           <div key={evt.id || i} className="relative animate-in fade-in duration-200">
-            <div className={`absolute -left-[27px] top-0.5 w-3.5 h-3.5 rounded-full border-2 bg-[#030712] ${EVENT_BORDER_COLOR[evt.type] ?? 'border-slate-500'}`} />
+            <div className={`absolute -left-[27px] top-0.5 w-3.5 h-3.5 rounded-full border-2 bg-white dark:bg-slate-950 ${EVENT_BORDER_COLOR[evt.type] ?? 'border-slate-500'}`} />
             <div className="text-xs">
               <div className="flex items-center justify-between text-slate-400 text-[10px]">
                 <span className="font-semibold text-slate-500">{evt.user ?? 'Admin'}</span>

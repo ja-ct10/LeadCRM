@@ -71,9 +71,9 @@ Before writing a single line, answer these questions from the codebase — not f
 ## Context Analysis
 
 ### Relevant Files
-- `src/portals/client/pages/ExamplePage.tsx` — page consuming this feature
-- `src/store/types/example.ts` — type definitions
-- `src/portals/client/hooks/useExample.ts` — data-fetching hook
+- `src/features/tenant/crm/contacts/ui/ContactsPage.tsx` — page consuming this feature
+- `src/store/types/contact.types.ts` — type definitions
+- `src/features/tenant/crm/contacts/hooks/use-contacts.ts` — data hook
 
 ### Dependencies
 - AuthContext — for current user and permissions
@@ -324,7 +324,7 @@ Document discovered debt immediately:
 ```markdown
 ### Technical Debt Found
 
-**Location:** `src/portals/client/pages/ExamplePage.tsx`
+**Location:** `src/features/tenant/crm/pipeline/PipelinePage.tsx`
 **Issue:** [description]
 **Severity:** LOW | MEDIUM | HIGH
 **Recommended Fix:** [action]

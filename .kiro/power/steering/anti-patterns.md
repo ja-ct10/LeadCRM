@@ -68,7 +68,7 @@ When you find an anti-pattern in existing code, document it before extending:
 ```markdown
 ### Technical Debt Found
 
-**Location:** `src/portals/client/pages/ExamplePage.tsx`
+**Location:** `src/features/tenant/crm/pipeline/PipelinePage.tsx`
 **Issue:** [what the problem is]
 **Severity:** LOW | MEDIUM | HIGH
 **Recommended Fix:** [specific action to take]
