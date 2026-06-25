@@ -7,7 +7,26 @@
 
 import prisma from '../../../config/database.config';
 import * as repo from './workflows.repository';
-import type { WorkflowCondition, WorkflowAction } from '../../../../shared/src/contracts/workflow.contracts';
+
+// ─────────────────────────────────────────────────────
+// Types (mirrors shared/contracts/workflow.contracts.ts)
+// ─────────────────────────────────────────────────────
+
+interface WorkflowConditionRule {
+  field:    string;
+  operator: string;
+  value:    string | number | boolean | null;
+}
+
+interface WorkflowCondition {
+  operator:   'AND' | 'OR';
+  conditions: WorkflowConditionRule[];
+}
+
+interface WorkflowAction {
+  type:   string;
+  config: Record<string, unknown>;
+}
 
 // ─────────────────────────────────────────────────────
 // Condition Evaluator
@@ -21,14 +40,14 @@ export function evaluateCondition(
   condition: WorkflowCondition,
   context: Record<string, unknown>,
 ): boolean {
-  const results = condition.conditions.map((rule) => evaluateRule(rule, context));
+  const results = condition.conditions.map((rule: WorkflowConditionRule) => evaluateRule(rule, context));
   return condition.operator === 'AND'
     ? results.every(Boolean)
     : results.some(Boolean);
 }
 
 function evaluateRule(
-  rule: WorkflowCondition['conditions'][number],
+  rule: WorkflowConditionRule,
   context: Record<string, unknown>,
 ): boolean {
   const fieldValue = resolveField(rule.field, context);

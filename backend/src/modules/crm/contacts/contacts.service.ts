@@ -19,7 +19,7 @@ export async function getContactById(id: string, tenantId: string) {
 
 export async function createContact(tenantId: string, userId: string, dto: CreateContactDto) {
   await enforcePlanLimit(tenantId, 'contacts');
-  const contact = await repo.createContact(tenantId, dto);
+  const contact = await repo.createContact(tenantId, { ...dto, ownerId: userId } as CreateContactDto & { ownerId: string });
 
   await writeAuditLog({
     tenantId, userId,
@@ -29,8 +29,7 @@ export async function createContact(tenantId: string, userId: string, dto: Creat
     after:      { firstName: dto.firstName, lastName: dto.lastName, status: contact.status },
   });
 
-  // Fire workflow trigger (non-blocking — never fails the request)
-  fireContactCreated({ tenantId, contact }).catch(() => {/* already logged inside */});
+  fireContactCreated({ tenantId, contact }).catch(() => {});
 
   return contact;
 }

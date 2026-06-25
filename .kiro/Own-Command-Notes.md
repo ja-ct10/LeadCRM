@@ -48,17 +48,71 @@ git checkout dev && git merge dev-copy-1 --no-edit && git push
 ## Dev Commands
 
 ```bash
+# Root (runs both frontend + backend via Turborepo)
+npm run dev                          # start everything (port 3000 + 4000)
+
 # Frontend
-cd frontend && npm run dev       # start dev server (port 3000)
-npx tsc --noEmit                 # type check only
-npm run build                    # production build
+cd frontend && npm run dev           # Next.js dev server (port 3000)
+npx tsc --noEmit                     # type check only
+npm run build                        # production build
 
 # Backend
-cd backend && npm run dev        # start backend (port 4000)
-npx prisma migrate dev           # run pending migrations
-npx prisma generate              # regenerate client after schema change
-npx ts-node prisma/seed.ts       # seed the database
+cd backend && npm run dev            # Express dev server (port 4000, ts-node-dev)
+npx tsc --noEmit                     # type check only (0 errors required before commit)
+npx prisma validate                  # validate schema syntax
+npx prisma generate                  # regenerate Prisma client after schema change
+npm run db:migrate                   # run pending migrations (creates tables)
+npm run db:seed                      # seed system admin + default pipelines
+npx prisma studio                    # visual DB browser at localhost:5555
 ```
+
+---
+
+## Backend API Route Map (85 routes, all under /api/v1/)
+
+```
+/auth          login · logout · me
+/crm           contacts · companies · deals · pipelines · stages
+/operations    tasks · service-orders
+/marketing     campaigns · templates
+/automation    workflows · actions · triggers
+/billing       invoices · webhooks/paymongo
+/administration users · roles · permissions · audit
+/reporting     pipeline-summary · deal-velocity · contact-status · task-completion · campaign-summary
+```
+
+---
+
+## Backend Architecture Rules
+
+```
+Controller  →  HTTP only (req/res/next) — no business logic
+Service     →  Business logic — no req/res references
+Repository  →  Prisma queries only — always include { tenantId }
+
+tenantId    →  Always from req.user.tenantId (JWT) — NEVER from req.body
+Audit log   →  writeAuditLog() after every mutation (fire-and-forget)
+Plan limits →  enforcePlanLimit() before contact/deal create
+Triggers    →  fire*() from triggers.service.ts after mutations (non-blocking)
+Sessions    →  validateSession() on every authenticated request
+```
+
+---
+
+## Key Backend File Paths
+
+| What | Path |
+|---|---|
+| Prisma schema | `backend/prisma/schema.prisma` |
+| Prisma client | `backend/src/config/database.config.ts` |
+| Session service | `backend/src/core/auth/session.service.ts` |
+| Audit service | `backend/src/core/audit/audit.service.ts` |
+| Workflow engine | `backend/src/modules/automation/workflows/workflow.engine.ts` |
+| Trigger helpers | `backend/src/modules/automation/triggers/triggers.service.ts` |
+| Permission keys | `backend/src/shared/constants/permissions.ts` |
+| Role constants | `backend/src/shared/constants/roles.ts` |
+| Workflow types | `shared/src/contracts/workflow.contracts.ts` |
+| API contracts | `shared/src/contracts/api.contracts.ts` |
 
 ---
 

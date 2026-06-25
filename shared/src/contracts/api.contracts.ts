@@ -1,36 +1,22 @@
 /**
- * Standard API response shape — ALL endpoints must use this format.
- * Enforced by the error middleware and all controllers.
+ * Standard API contracts — re-exports from types + adds error shape and list query.
+ *
+ * NOTE: ApiResponse and PaginatedResponse are defined in shared/src/types/api.types.ts
+ * and re-exported from there. This file adds the error envelope and list query params.
  */
 
-// Success response
-export interface ApiResponse<T = unknown> {
-  success: true;
-  data:    T;
-}
+// Re-export the canonical response types so api.contracts is the single import point
+export type { ApiResponse, PaginatedResponse, PaginationMeta } from '../types/api.types';
 
-// Error response
+// Error response envelope (used by backend error middleware)
 export interface ApiError {
   success: false;
   error: {
-    code:      string;    // e.g. CONTACT_NOT_FOUND | PLAN_LIMIT_EXCEEDED | VALIDATION_ERROR
-    message:   string;    // Human-readable message
-    field?:    string;    // For validation errors — which field failed
-    requestId: string;    // For debugging (correlate with server logs)
-    timestamp: string;    // ISO timestamp
-  };
-}
-
-// Paginated list response
-export interface PaginatedResponse<T> {
-  success: true;
-  data: T[];
-  pagination: {
-    total:       number;
-    page:        number;
-    pageSize:    number;
-    hasNextPage: boolean;
-    cursor?:     string;  // For cursor-based pagination (future)
+    code:      string;    // e.g. CONTACT_NOT_FOUND | PLAN_LIMIT_EXCEEDED
+    message:   string;
+    field?:    string;    // for validation errors
+    requestId: string;
+    timestamp: string;
   };
 }
 
