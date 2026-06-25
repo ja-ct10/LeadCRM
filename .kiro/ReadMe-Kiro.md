@@ -1,6 +1,6 @@
 # LeadCRM — Kiro AI Configuration Guide
 
-This folder contains everything that controls how Kiro (and any AI agent) behaves when working on this project. You never need to activate most of this manually — it runs automatically.
+Everything in this folder controls how Kiro behaves on this project. Most of it runs automatically — you never need to activate it manually.
 
 ---
 
@@ -8,277 +8,155 @@ This folder contains everything that controls how Kiro (and any AI agent) behave
 
 ```
 .kiro/
-├── hooks/          ← Automatic triggers (run on events without being asked)
-├── skills/         ← Deep knowledge files (activated by name when needed)
-├── steering/       ← Always-on rules (loaded into every conversation)
-├── power/          ← Portable package (import this into other projects)
-└── README.md       ← This file
+├── steering/       ← Always-on rules (compact enforcement, loaded every session)
+├── skills/         ← Deep knowledge files (activated on-demand by work type)
+├── power/          ← Portable package (import into new projects)
+├── hooks/          ← Automatic triggers (fire on IDE events)
+├── MASTER-AUDIT.md         ← Full architecture audit + prioritised recommendations
+├── IMPLEMENTATION-PLAN.md  ← 6-phase build plan with task status
+├── ReadMe-Kiro.md           ← This file
+└── Own-Command-Notes.md     ← Developer quick reference (not loaded by agents)
 ```
 
 ---
 
-## 1. STEERING — Always-On Rules
+## 1. STEERING — Always-On Enforcement
 
 **Location:** `.kiro/steering/`
 
-Steering files are instructions that Kiro reads automatically. Think of them as your team's engineering handbook — always open on the desk.
-
-### Files and What They Do
+Loaded automatically into every conversation. These are **compact enforcement rules**, not deep references. For full examples and patterns, activate the corresponding skill.
 
 | File | Loads | Purpose |
 |---|---|---|
-| `project-core.md` | Always | Tech stack, file structure, and non-negotiable rules (TrelloFilter, animations, charts, RBAC, audit logs). |
-| `security.md` | Always | Threat model, RBAC enforcement, tenant isolation, secret management, security protocol. |
-| `lessons-learned.md` | Always | Project-specific patterns, known pitfalls, accumulated team knowledge. Updated as you build. |
-| `clean-code-rules.md` | Always | Naming conventions, function size limits, DRY, error handling, file size hard limits, and pre-commit checklist. |
-| `typescript-context.md` | When editing `.ts`/`.tsx` | TypeScript + React rules injected inline while you edit code files. |
-| `project.md` | On demand | **Supreme authority.** AgentOS phases, agent routing, stop conditions, response format. Everything starts here. |
-| `standards.md` | On demand | SOLID principles, TypeScript rules, naming conventions, design patterns, pre-commit checklist. |
-| `workflow.md` | On demand | Task lifecycle, 5-role team review, branch strategy, commit format, Definition of Done. |
-| `testing.md` | On demand | TDD workflow, coverage requirements, critical test cases (RBAC, tenant, audit). |
-| `modes.md` | On demand | Four work modes loaded by tag (see below). |
+| `project-core.md` | Always | Tech stack, file structure, non-negotiable rules (TrelloFilter, animations, charts, RBAC, audit). The single authoritative reference. |
+| `security.md` | Always | RBAC enforcement, tenant isolation, secret management, security protocol. |
+| `lessons-learned.md` | Always | Project-specific patterns, known pitfalls, accumulated knowledge. Updated as you build. |
+| `clean-code-rules.md` | Always | Naming, function size limits, pre-commit checklist. Compact. See `skills/clean-code.md` for depth. |
+| `typescript-context.md` | When editing `.ts`/`.tsx` | TypeScript + React rules injected inline while editing code files. |
+| `project.md` | Manual (`#project`) | Supreme authority — AgentOS phases, agent routing, stop conditions, response format. |
+| `standards.md` | Manual (`#standards`) | SOLID principles, TypeScript rules, naming, React patterns, pre-commit checklist. See `skills/coding-standards.md` for depth. |
+| `workflow.md` | Manual (`#workflow`) | Task lifecycle, 5-role team review, branch strategy, commit format. |
+| `testing.md` | Manual (`#testing`) | Coverage minimums, required test scenarios, critical RBAC/tenant/audit patterns. See `skills/tdd-workflow.md` for depth. |
+| `modes.md` | Manual (`#dev-mode` etc.) | Four focused work modes — dev, review, research, performance. |
 
-### On-Demand Modes (`modes.md`)
-
-Type these tags in chat to load focused context:
-
-| Tag | When to Use |
-|---|---|
-| `#dev-mode` | Starting implementation — loads pre-impl checklist and LeadCRM reminders |
-| `#review-mode` | Reviewing a PR or diff — loads all 5-role review checklists |
-| `#research-mode` | Evaluating options or making architecture decisions |
-| `#performance` | Model selection, context window tips, build troubleshooting |
-
-**Example:**
-```
-#review-mode
-
-Review the changes I made to ContactsPage.tsx
-```
+**Design principle:** Steering files are concise. They tell you *what* the rule is. Skills tell you *why* and *how* with full examples.
 
 ---
 
-## 2. HOOKS — Automatic Triggers
-
-**Location:** `.kiro/hooks/`
-
-Hooks fire automatically when events happen — no command needed. They enforce quality without interrupting your flow.
-
-### Hook Reference
-
-| Hook File | Triggers When | What It Does |
-|---|---|---|
-| `activate-on-task.kiro.hook` | Before any spec task starts | Prints activation header, runs Phase 0 context scan, classifies severity |
-| `code-review-on-write.kiro.hook` | After any file write | Quick security + quality scan on written code |
-| `console-log-check.kiro.hook` | `.ts`/`.tsx`/`.js` file saved | Removes `console.log` — replaces with `toast` where needed |
-| `tdd-reminder.kiro.hook` | New `.ts`/`.tsx` file created | Reminds to write the failing test before implementing |
-| `security-check-on-create.kiro.hook` | New file in `auth/`, `api/`, `middleware/`, `store/` | Security audit on sensitive new files |
-| `quality-gate.kiro.hook` | Manual trigger | Full 5-gate quality check before committing |
-| `session-wrap.kiro.hook` | Session ends | 2–3 sentence summary + suggests `lessons-learned.md` entries in one response |
-| `session-summary.kiro.hook` | Session ends *(disabled)* | Superseded by `session-wrap` |
-| `extract-patterns.kiro.hook` | Session ends *(disabled)* | Superseded by `session-wrap` |
-| `sync-readme.kiro.hook` | Any `.kiro` file edited | Reviews and updates `ReadMe-Kiro.md` sections that are out of date |
-| `sync-readme-on-create.kiro.hook` | New file added to `.kiro` | Adds the new file to the correct section in `ReadMe-Kiro.md` |
-| `sync-readme-on-delete.kiro.hook` | File deleted from `.kiro` | Removes the deleted file's entry from `ReadMe-Kiro.md` |
-
-### How to Trigger the Quality Gate Manually
-
-Open the Kiro Agent Hooks panel and click the **Quality Gate** hook, or ask:
-```
-Run the quality gate
-```
-
----
-
-## 3. SKILLS — Deep Knowledge Files
+## 2. SKILLS — Deep Knowledge Files
 
 **Location:** `.kiro/skills/`
 
-Skills are detailed reference documents activated when specific types of work begin. They go deeper than steering files — full patterns, examples, checklists.
+Activated when specific work begins. Contain full patterns, code examples, and checklists. Go deeper than steering files.
 
-### Skill Reference
-
-| Skill File | Activated For | Contains |
+| Skill | Activated For | Covers |
 |---|---|---|
-| `coding-standards.md` | All code | TypeScript strictness, naming, immutability, React standards, commit format |
-| `clean-code.md` | All code | SOLID, naming, functions, error handling, DRY, Boy Scout Rule |
-| `frontend-patterns.md` | UI / components | TrelloFilter rules, form patterns, dark mode, RBAC guards, animation imports |
-| `nextjs-patterns.md` | Next.js files | App Router rules, SSR boundary, dynamic imports, env vars, Tailwind v4 |
+| `coding-standards.md` | All code | SOLID, TypeScript strictness, naming, immutability, React patterns, commit format |
+| `clean-code.md` | All code | Function design, DRY, readability, error handling, file size limits, Boy Scout Rule |
+| `frontend-patterns.md` | UI / components | TrelloFilter rules, form patterns, dark mode, RBAC guards, animation imports, loading states |
+| `nextjs-patterns.md` | Next.js files | App Router boundaries, SSR rules, dynamic imports, env vars, Tailwind v4 |
 | `saas-scalability.md` | Features / data ops | Multi-tenancy, plan gating, domain events, audit logging, migration readiness |
 | `backend-patterns.md` | API / backend | Layer architecture, repository pattern, auth, RBAC middleware, Zod validation |
 | `security-review.md` | Security-sensitive work | Full security checklist, RBAC patterns, tenant-safe queries, input validation |
-| `tdd-workflow.md` | Tests / new features | TDD cycle, test naming, coverage requirements, critical scenarios |
+| `tdd-workflow.md` | Tests / new features | TDD cycle, test naming, coverage requirements, AAA pattern, critical test scenarios |
 | `verification-loop.md` | Before PR / task complete | 7-gate verification: TypeScript → quality → build → SaaS → security → UI → regression |
 
-### Skill Routing (automatic via hooks)
+### Skill Routing (applied automatically via steering + hooks)
 
-```
-Any code                → coding-standards + clean-code
-Frontend/UI work        → + frontend-patterns + nextjs-patterns
-New feature             → + saas-scalability + frontend-patterns
-API/backend             → + backend-patterns + saas-scalability
-Security/auth/RBAC      → + security-review
-Tests/TDD               → + tdd-workflow
-Before PR               → verification-loop
-```
+| Work Type | Skills |
+|---|---|
+| Any code | `coding-standards` + `clean-code` |
+| Frontend / UI | + `frontend-patterns` + `nextjs-patterns` |
+| New feature | + `saas-scalability` + `frontend-patterns` |
+| API / backend | + `backend-patterns` + `saas-scalability` |
+| Security / auth / RBAC | + `security-review` |
+| Tests / TDD | + `tdd-workflow` |
+| Before PR | `verification-loop` |
+
+### Steering vs Skills — The Design Decision
+
+The two layers are intentionally separate:
+
+| Layer | Size | Loaded | Purpose |
+|---|---|---|---|
+| Steering | Compact (< 80 lines) | Auto, always | Enforce the rule inline during every task |
+| Skill | Deep (200–400 lines) | On-demand | Explain why, show patterns, provide checklists |
+
+`clean-code-rules.md` (steering) tells you *no functions over 40 lines*. `clean-code.md` (skill) shows you how to refactor a 80-line function into focused units with real examples.
 
 ---
 
-## 4. POWER — Portable Package
+## 3. POWER — Portable Package
 
 **Location:** `.kiro/power/`
 
-The Power packages everything above so you can import it into a new project with one click.
+The Power packages the AgentOS so you can import it into any new project with one click.
 
 ```
 power/
 ├── POWER.md              ← Power manifest (name, keywords, description)
 └── steering/
-    ├── project.md        ← Full AgentOS (always loaded)
+    ├── project.md        ← Full AgentOS (always loaded when power is active)
     ├── quick-reference.md ← Decision tree + severity table (#quick-reference)
     ├── anti-patterns.md   ← Never-do list (#anti-patterns)
     └── validation-gates.md ← All 6 gates + DoD checklist (#validation-gates)
 ```
 
-### How to Import Into a New Project
-
-1. Open Kiro **Powers panel**
-2. Click **Add Custom Power → Import from folder**
+**To import into a new project:**
+1. Open Kiro Powers panel
+2. Click Add Custom Power → Import from folder
 3. Point it at `.kiro/power/`
 
 ---
 
-## 5. ACTIVATION HEADER — What You'll See Automatically
+## 4. HOOKS — Automatic Triggers
 
-**Every single response** starts with this header. You never ask for it — it just appears.
+**Location:** `.kiro/hooks/`
 
-```
----
-🤖 AgentOS Activated
+Fire automatically on IDE events — no command needed.
 
-Agents:
-- context-gatherer       → scanned ContactsPage.tsx, useContactFilters, TrelloFilter
-- requirement-detailer   → defined 2 requirements with acceptance criteria
-- general-task-execution → implementing country filter with TrelloFilter + string[] state
-
-Skills Active:
-- coding-standards + clean-code
-- frontend-patterns + nextjs-patterns
-- saas-scalability
-
-Severity: MEDIUM
-Task Type: New Feature
----
-```
-
-This tells you exactly what the agent knows, what rules it's following, and what it's about to do — before it does anything.
-
-### What Each Part Means
-
-| Part | Meaning |
-|---|---|
-| **Agents** | Which sub-agents are running and what each one is doing for this specific task |
-| **Skills Active** | Which rule sets are enforced during this work |
-| **Severity** | How risky this task is — determines how many phases are required |
-| **Task Type** | Category of work — affects agent routing |
-
-### Agent Descriptions
-
-| Agent | When It Runs | What It Does |
+| Hook | Triggers When | What It Does |
 |---|---|---|
-| `context-gatherer` | Always, first | Reads existing files, finds patterns, maps dependencies |
-| `requirement-detailer` | New features | Breaks request into testable requirements with acceptance criteria |
-| `quick-spec` | Simple/medium tasks | Fast 2–4 point task breakdown, skips full ceremony |
-| `architecture-selection` | Complex/HIGH tasks | Evaluates ≥2 options, documents trade-offs, picks best approach |
-| `general-task-execution` | Always, last | Writes the actual code/answer after all prior agents complete |
+| `activate-on-task.kiro.hook` | Before any spec task starts | Prints activation header, Phase 0 context scan, severity classification |
+| `code-review-on-write.kiro.hook` | After any file write | Quick security + quality scan on written code |
+| `security-check-on-create.kiro.hook` | New file in `auth/`, `api/`, `middleware/`, `store/` | Security audit on sensitive new files |
+| `quality-gate.kiro.hook` | Manual trigger | Full 5-gate quality check before committing |
+| `session-wrap.kiro.hook` | Session ends | 2–3 sentence summary + suggests `lessons-learned.md` entries |
 
 ---
 
-## 6. REAL SCENARIOS
+## 5. DOCS Reference
 
-### Scenario A — You ask Kiro to "add a filter to the Contacts page"
+All engineering documentation lives in `docs/`. Key files:
 
-**What happens automatically:**
-1. `activate-on-prompt` hook fires → detects frontend work → activates `frontend-patterns` + `nextjs-patterns` + `coding-standards` + `clean-code`
-2. Kiro runs **Phase 0** — reads `ContactsPage.tsx`, finds existing filter pattern, checks `TrelloFilter` usage
-3. Classifies as **MEDIUM** severity
-4. Implements using `<TrelloFilter>`, `string[]` state, `useMemo` for filtered list, dark mode classes
-5. `code-review-on-write` hook fires after writing → scans for missing RBAC guard, tenantId, audit log
-6. `typecheck-on-edit` hook fires → verifies no `any`, correct return types
-7. Session ends → `session-summary` and `extract-patterns` hooks fire
-
-**You never typed "activate skills" once.**
-
----
-
-### Scenario B — You create a new file `src/core/auth/useSession.ts`
-
-**What happens automatically:**
-1. `tdd-reminder` hook fires → "Have you written the failing test for this file yet?"
-2. `security-check-on-create` hook fires → scans for hardcoded secrets, missing RBAC, missing tenantId
-3. `typescript-context.md` steering is injected → TypeScript rules are active while you edit
-
----
-
-### Scenario C — You ask Kiro to "redesign the pipeline board"
-
-**What happens automatically:**
-1. `activate-on-prompt` fires → detects frontend + potential architecture work
-2. Kiro classifies as **HIGH** severity (DataContext + drag-and-drop + shared types)
-3. Stop condition triggered: "More than 5 files require modification" → Kiro stops, produces Context Analysis block, proposes ≥2 architecture options, asks for your choice before writing a line
-4. After you choose → full implementation with all skills active
-
----
-
-### Scenario D — You manually run the Quality Gate
-
-Click the Quality Gate hook or type "run the quality gate":
-
-```
-Gate 1 — TypeScript:  PASS — zero type errors
-Gate 2 — Code Quality: PASS — no console.log, no unused imports
-Gate 3 — SaaS Safety:  PASS — tenantId present, addAuditLog called
-Gate 4 — Security:     FAIL — ContactCard renders delete button without RBAC guard
-Gate 5 — UI Quality:   PASS — dark mode classes on all elements
-```
-
-Kiro then fixes Gate 4 and re-confirms.
-
----
-
-## 7. QUICK REFERENCE
-
-### How Inclusion Works
-
-| Front Matter | Behaviour |
+| Doc | Purpose |
 |---|---|
-| `inclusion: auto` | Loaded in **every** conversation automatically |
-| `inclusion: fileMatch` + `fileMatchPattern` | Loaded when a matching file is open in the editor |
-| `inclusion: manual` | Only loaded when you type its `#tag` in chat |
-| *(no front matter)* | Same as `auto` — loads always |
+| `docs/ARCHITECTURE.md` | System overview, dual-portal design, tech stack, key rules |
+| `docs/STRUCTURE.md` | Complete folder map — authoritative source for project layout |
+| `docs/PORTAL-SEPARATION.md` | Why two portals, physical separation, routing |
+| `docs/API.md` | Backend API endpoint reference |
+| `docs/database/erd.md` | Entity relationships, Prisma model map |
+| `docs/security/permission-matrix.md` | Role × module access matrix |
+| `docs/security/audit-log-strategy.md` | What gets logged and how |
+| `docs/workflows/` | Customer lifecycle, lead-to-deal, pipeline flow, task assignment |
+| `docs/setup/local-dev.md` | Local development setup |
+| `docs/setup/environment-variables.md` | All environment variables |
 
-### The 5-Role Team Model
+---
 
-Every task is reviewed through 5 lenses:
-
-| Role | Checks |
-|---|---|
-| Developer | Clean code, SOLID, error handling |
-| Tech Lead | Patterns, reuse, migration-readiness |
-| QA Engineer | All 6 test scenarios, UI states, regression |
-| Security Engineer | RBAC, tenantId, secrets, audit logs |
-| Product Owner | Acceptance criteria, UX, dark mode, responsiveness |
-
-### Never-Do Shortcuts
+## 6. Quick Reference — Never-Do List
 
 | ❌ Never | ✅ Always |
 |---|---|
 | Raw `<select>` for filters | `<TrelloFilter>` |
 | `string` for multi-select state | `string[]` |
 | `framer-motion` imports | `motion/react` |
-| Direct recharts imports | `ChartComponents.tsx` |
+| Direct recharts imports | `ChartComponents.tsx` only |
 | `any` type | `unknown` + narrow |
 | `localStorage` in components | DataContext |
-| Mutation without `addAuditLog` | Call `addAuditLog()` first |
+| Mutation without `addAuditLog` | `addAuditLog()` on every mutation |
 | Record without `tenantId` | `tenantId: tenant.id` always |
-| Create/edit/delete without RBAC | `canCreate && <Button>` |
+| Create/edit/delete without RBAC | Permission check first |
+| `deal.contactId` (singular) | `deal.contactIds` (array) |
+| `git add .` | Stage specific files only |
+| Commit to `main` directly | Always via `dev-copy-1` → PR |

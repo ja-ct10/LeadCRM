@@ -350,10 +350,9 @@ infrastructure/
 
 ## Documentation Index
 
-| Doc | Purpose |
-|---|---|
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | System overview, tech stack, dual-portal design, key rules |
 | [STRUCTURE.md](./STRUCTURE.md) | This file — full folder map |
+| [PORTAL-SEPARATION.md](./PORTAL-SEPARATION.md) | Why two portals, physical separation, routing |
 | [API.md](./API.md) | Backend API endpoints reference |
 | [dashboard-kpis.md](./dashboard-kpis.md) | KPI formulas — Pipeline Value, Win Rate, Conversion Rate, etc. |
 | **workflows/** | |

@@ -281,19 +281,16 @@ Mitigation: [how the risk is managed]
 
 ## DEFINITION OF DONE
 
-Work is **not complete** until every item is satisfied:
+Run the `verification-loop` skill for the full 7-gate checklist before marking any task complete.
 
-- [ ] All acceptance criteria from the task are satisfied
-- [ ] TypeScript compiles without errors
-- [ ] Lint passes with no warnings
+Quick summary — work is **not done** until:
+
+- [ ] TypeScript compiles — zero errors
+- [ ] Lint passes — zero warnings
 - [ ] Build succeeds cleanly
-- [ ] All tests pass — no regressions
-- [ ] No dead code or unused imports
-- [ ] RBAC permission logic validated (all 5 roles' checklists passed)
-- [ ] Tenant safety verified — `tenantId` on all records, no cross-tenant access
-- [ ] Audit logging verified — `addAuditLog()` called for all mutations
-- [ ] Dark mode applied to every UI element
-- [ ] Responsive layout verified
+- [ ] All tests pass — no regressions, coverage ≥ 80%
+- [ ] RBAC + tenant safety + audit logging verified
+- [ ] Dark mode applied, responsive layout verified
 - [ ] Error, loading, and empty states handled
-- [ ] Risk assessment declared
+- [ ] Risk level declared: LOW | MEDIUM | HIGH | CRITICAL
 - [ ] PR description complete
