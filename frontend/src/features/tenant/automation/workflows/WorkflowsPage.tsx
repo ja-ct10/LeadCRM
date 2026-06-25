@@ -1,4 +1,5 @@
 'use client';
+import { uuid } from '@/lib/utils';
 
 import React, { useState, useMemo } from 'react';
 import { useData } from '@/store/DataContext';
@@ -36,7 +37,7 @@ export default function WorkflowsPage() {
     if (!actions || actions.length === 0) {
       actions = [
         {
-          id: 'action_' + Date.now(),
+          id: uuid(),
           type: wf.action || 'send_email',
           delay: wf.delay || 0,
           delayUnit: wf.delayUnit || 'minutes',
@@ -67,7 +68,7 @@ export default function WorkflowsPage() {
       description: 'SaaS interactive node flow automation guidelines configuration',
       actions: [
         {
-          id: 'action_init_' + Date.now(),
+          id: uuid(),
           type: 'send_email',
           delay: 0,
           delayUnit: 'minutes',
@@ -112,7 +113,7 @@ export default function WorkflowsPage() {
     description: '',
     actions: [
       {
-        id: 'action_' + Date.now(),
+        id: uuid(),
         type: 'send_email',
         delay: 0,
         delayUnit: 'minutes',
@@ -179,7 +180,7 @@ export default function WorkflowsPage() {
       description: '',
       actions: [
         {
-          id: 'action_' + Date.now(),
+          id: uuid(),
           type: 'send_email',
           delay: 0,
           delayUnit: 'minutes',
@@ -202,7 +203,7 @@ export default function WorkflowsPage() {
     if (!actions || actions.length === 0) {
       actions = [
         {
-          id: 'action_' + Date.now(),
+          id: uuid(),
           type: wf.action || 'send_email',
           delay: wf.delay || 0,
           delayUnit: wf.delayUnit || 'minutes',
@@ -1064,7 +1065,7 @@ export default function WorkflowsPage() {
                         actions: [
                           ...newWorkflow.actions,
                           {
-                            id: 'action_' + Date.now(),
+                            id: uuid(),
                             type: 'send_email',
                             delay: 0,
                             delayUnit: 'minutes',

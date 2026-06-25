@@ -1,5 +1,6 @@
 'use client';
 
+import { uuid } from '@/lib/utils';
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, Tenant } from './types';
 import { MOCK_USERS, MOCK_TENANTS } from './mockData';
@@ -125,7 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const allTenants = JSON.parse(localStorage.getItem('leadcrm_tenants') || JSON.stringify(MOCK_TENANTS));
     const allUsers   = JSON.parse(localStorage.getItem('leadcrm_users')   || JSON.stringify(MOCK_USERS));
 
-    const newTenantId = 'tenant_' + Date.now();
+    const newTenantId = uuid();
     const newTenant: Tenant = {
       id:               newTenantId,
       name:             tenantData.companyName,
@@ -143,7 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const newUser: User = {
-      id:        'user_' + Date.now(),
+      id:        uuid(),
       tenantId:  newTenantId,
       firstName: adminData.firstName,
       lastName:  adminData.lastName,

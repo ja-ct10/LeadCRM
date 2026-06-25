@@ -1,4 +1,5 @@
 'use client';
+import { uuid } from '@/lib/utils';
 
 import React, { useState } from 'react';
 import { Upload, FileText, Download, Trash2, ShieldAlert } from 'lucide-react';
@@ -40,7 +41,7 @@ export const ClientProfileFiles = ({ leadId, initialAttachments = [], currentUse
       Array.from(e.target.files).forEach(file => {
         const sizeInMb = (file.size / (1024 * 1024)).toFixed(1);
         const newFile: Attachment = {
-          id: Math.random().toString(36).substr(2, 9),
+          id: uuid(),
           name: file.name,
           size: `${sizeInMb} MB`,
           uploadedAt: new Date().toLocaleDateString('en-US', { hour: '2-digit', minute: '2-digit' }),
@@ -71,7 +72,7 @@ export const ClientProfileFiles = ({ leadId, initialAttachments = [], currentUse
             Array.from(e.dataTransfer.files).forEach(file => {
               const sizeInMb = (file.size / (1024 * 1024)).toFixed(1);
               const newFile: Attachment = {
-                id: Math.random().toString(),
+                id: uuid(),
                 name: file.name,
                 size: `${sizeInMb} MB`,
                 uploadedAt: 'Just now',

@@ -1,4 +1,5 @@
 'use client';
+import { uuid } from '@/lib/utils';
 
 import React, { useState, useEffect } from 'react';
 import { 
@@ -113,7 +114,7 @@ export const ClientProfileTabs = ({
 
   const addActivityLog = (text: string, type: string = 'system') => {
     const newLog = {
-      id: Math.random().toString(),
+      id: uuid(),
       type,
       text,
       time: 'Just now',

@@ -1,4 +1,5 @@
 'use client';
+import { uuid } from '@/lib/utils';
 import React, { useState } from 'react';
 import { CheckCircle2, Server, Users, Plus, Trash2, Loader2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';

@@ -1,4 +1,5 @@
 'use client';
+import { uuid } from '@/lib/utils';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
@@ -107,7 +108,7 @@ export default function VisualWorkflowBuilder({
     let actList = workflow.actions || [];
     if (actList.length === 0 && workflow.action) {
       actList = [{
-        id: 'action_init_' + Date.now(),
+        id: uuid(),
         type: workflow.action,
         delay: workflow.delay || 0,
         delayUnit: workflow.delayUnit || 'minutes',
@@ -404,7 +405,7 @@ export default function VisualWorkflowBuilder({
 
   const handleAddActionNode = (type: string) => {
     const newAct = {
-      id: 'action_node_' + Date.now(),
+      id: uuid(),
       type,
       delay: 0,
       delayUnit: 'minutes',

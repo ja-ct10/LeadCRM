@@ -1,3 +1,4 @@
+import { uuid } from '@/lib/utils';
 import React from 'react';
 import { X, Zap, Plus } from 'lucide-react';
 
@@ -99,7 +100,7 @@ export function WorkflowRecipesModal({ onClose, onAddWorkflow }: WorkflowRecipes
       status: 'active',
       actions: [
         {
-          id: `action_${Date.now()}`,
+          id: uuid(),
           type: recipe.action,
           delay: recipe.delay ?? 0,
           delayUnit: recipe.delayUnit ?? 'minutes',
