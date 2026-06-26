@@ -14,5 +14,11 @@
   },
   "devDependencies": {
     "turbo": "^2.5.4"
+  },
+  "optionalDependencies": {
+    "lightningcss": "^1.32.0"
+  },
+  "dependencies": {
+    "lightningcss-darwin-arm64": "^1.32.0"
   }
 }
