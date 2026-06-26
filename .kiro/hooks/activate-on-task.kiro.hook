@@ -1,0 +1,13 @@
+{
+  "name": "Activate AgentOS on Every Task",
+  "version": "2.2.0",
+  "enabled": true,
+  "description": "Before any spec task begins, prints the activation header and runs a context scan.",
+  "when": {
+    "type": "preTaskExecution"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Before starting this task: 1) Print the AgentOS activation header (agents used, skills active, severity, task type). 2) Run Phase 0 — read the relevant files, map dependencies, identify risks. 3) Classify severity: LOW | MEDIUM | HIGH | CRITICAL. 4) If HIGH or CRITICAL — write an Architecture Decision block with at least two options before writing any code. Then proceed with implementation."
+  }
+}

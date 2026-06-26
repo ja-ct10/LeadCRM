@@ -1,0 +1,13 @@
+﻿{
+  "name": "Security Check on Sensitive Files",
+  "version": "1.1.0",
+  "description": "Security review when files are created in auth/api/middleware/store.",
+  "when": {
+    "type": "fileCreated",
+    "patterns": ["**/auth/**", "**/api/**", "**/middleware/**", "**/store/**"]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A new file was created in a security-sensitive path. Check: 1) No hardcoded secrets (use process.env), 2) API routes have auth+RBAC middleware, 3) Data queries include tenantId scoping, 4) User input is validated with Zod, 5) Errors are generic to client. Flag any issues. If all clear, say so in one line."
+  }
+}
