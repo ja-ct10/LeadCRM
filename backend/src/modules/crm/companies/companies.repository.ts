@@ -2,6 +2,7 @@
 import { getPaginationParams } from '../../../shared/helpers/pagination';
 import { CreateCompanyDto, UpdateCompanyDto } from './companies.dto';
 
+
 // All queries scoped to tenantId — cross-tenant access is impossible by design
 
 export async function findAllCompanies(tenantId: string, query: Record<string, unknown>) {

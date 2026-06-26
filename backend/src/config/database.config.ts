@@ -1,60 +1,38 @@
 import { PrismaClient } from '@prisma/client';
 import { AppError } from '../shared/errors/app-error';
 
-// ── Singleton Prisma client ───────────────────────────
+// ── Singleton raw Prisma client ───────────────────────
+// This is the default export used by all repositories and services.
+// It is the standard PrismaClient — full model type safety included.
 const prisma = new PrismaClient({
-  log: process.env.NODE_ENV === 'development' ? ['query', 'warn', 'error'] : ['error'],
+  log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
 });
 
 export default prisma;
 
 // ── Tenant-scoped Prisma extension ───────────────────
-// Returns a Prisma client that automatically injects tenantId into
-// all findMany / findFirst / count operations on tenant-scoped models.
-// Use this in service layer instead of the raw prisma client.
+// Returns a client that auto-injects tenantId on read operations.
+// Use in service layer when you want automatic tenant scoping.
+// Note: $extends returns an extended client — types differ from raw PrismaClient.
 export function createTenantClient(tenantId: string) {
   return prisma.$extends({
     query: {
-      contact:               buildTenantScope(tenantId),
-      deal:                  buildTenantScope(tenantId),
-      contactDeal:           buildTenantScope(tenantId),
-      dealStageHistory:      buildTenantScope(tenantId),
-      task:                  buildTenantScope(tenantId),
-      activity:              buildTenantScope(tenantId),
-      organization:          buildTenantScope(tenantId),
-      campaign:              buildTenantScope(tenantId),
-      campaignContact:       buildTenantScope(tenantId),
-      template:              buildTenantScope(tenantId),
-      workflow:              buildTenantScope(tenantId),
-      workflowTriggerRecord: buildTenantScope(tenantId),
-      workflowExecutionRun:  buildTenantScope(tenantId),
-      invoice:               buildTenantScope(tenantId),
-      paymentTransaction:    buildTenantScope(tenantId),
-      serviceOrder:          buildTenantScope(tenantId),
-      asset:                 buildTenantScope(tenantId),
-      inventoryItem:         buildTenantScope(tenantId),
-      notification:          buildTenantScope(tenantId),
-      auditLog:              buildTenantScope(tenantId),
+      $allModels: {
+        async findMany({ args, query }: { args: Record<string, unknown>; query: (args: unknown) => unknown }) {
+          args.where = { ...(args.where as object ?? {}), tenantId };
+          return query(args);
+        },
+        async findFirst({ args, query }: { args: Record<string, unknown>; query: (args: unknown) => unknown }) {
+          args.where = { ...(args.where as object ?? {}), tenantId };
+          return query(args);
+        },
+        async count({ args, query }: { args: Record<string, unknown>; query: (args: unknown) => unknown }) {
+          args.where = { ...(args.where as object ?? {}), tenantId };
+          return query(args);
+        },
+      },
     },
   });
-}
-
-// Intercept read operations and inject tenantId automatically
-function buildTenantScope(tenantId: string) {
-  return {
-    async findMany({ args, query }: { args: Record<string, unknown>; query: (args: unknown) => unknown }) {
-      args.where = { ...(args.where as object ?? {}), tenantId };
-      return query(args);
-    },
-    async findFirst({ args, query }: { args: Record<string, unknown>; query: (args: unknown) => unknown }) {
-      args.where = { ...(args.where as object ?? {}), tenantId };
-      return query(args);
-    },
-    async count({ args, query }: { args: Record<string, unknown>; query: (args: unknown) => unknown }) {
-      args.where = { ...(args.where as object ?? {}), tenantId };
-      return query(args);
-    },
-  };
 }
 
 // ── Plan limit enforcement ────────────────────────────
@@ -71,14 +49,12 @@ export async function enforcePlanLimit(
 
   if (!tenant) throw new AppError('Tenant not found', 404);
 
-  const limitMap: Record<PlanResource, number | null | undefined> = {
-    contacts: tenant.maxContacts,
-    users:    tenant.maxUsers,
-    deals:    tenant.maxDeals,
-  };
+  let limit: number | null | undefined;
+  if (resource === 'contacts') limit = tenant.maxContacts;
+  else if (resource === 'users') limit = tenant.maxUsers;
+  else if (resource === 'deals') limit = tenant.maxDeals;
 
-  const limit = limitMap[resource];
-  if (!limit) return; // No limit set on this plan
+  if (!limit) return; // No limit set — allow
 
   let count = 0;
   if (resource === 'contacts') count = await prisma.contact.count({ where: { tenantId } });
@@ -86,8 +62,9 @@ export async function enforcePlanLimit(
   else if (resource === 'deals') count = await prisma.deal.count({ where: { tenantId } });
 
   if (count >= limit) {
+    const label = resource.charAt(0).toUpperCase() + resource.slice(1);
     throw new AppError(
-      `${resource.charAt(0).toUpperCase() + resource.slice(1)} limit reached for your current plan. Upgrade to add more.`,
+      `${label} limit reached for your current plan. Upgrade to add more.`,
       403,
     );
   }

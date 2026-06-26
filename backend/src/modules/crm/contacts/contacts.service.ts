@@ -29,7 +29,11 @@ export async function createContact(tenantId: string, userId: string, dto: Creat
     after:      { firstName: dto.firstName, lastName: dto.lastName, status: contact.status },
   });
 
-  fireContactCreated({ tenantId, contact }).catch(() => {});
+  // Fire workflow trigger (non-blocking — never fails the request)
+  fireContactCreated({
+    tenantId,
+    contact: { ...contact, score: contact.score ?? 75 },
+  }).catch(() => {});
 
   return contact;
 }
@@ -52,7 +56,11 @@ export async function updateContact(
 
   // Fire status-change trigger if status changed
   if (dto.status && dto.status !== before.status) {
-    fireContactStatusChanged({ tenantId, contact, prevStatus: before.status }).catch(() => {});
+    fireContactStatusChanged({
+      tenantId,
+      contact: { ...contact, score: contact.score ?? 75 },
+      prevStatus: before.status,
+    }).catch(() => {});
   }
 
   return contact;
