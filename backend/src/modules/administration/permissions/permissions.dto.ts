@@ -1,4 +1,2 @@
-﻿import { z } from 'zod';
-// TODO: define permissions DTOs and Zod validation schemas
-// Pattern: see backend/src/modules/crm/contacts/contacts.dto.ts
-export const CreatePermissionsSchema = z.object({});
+﻿// No input DTOs needed — GET-only endpoint, no body validation required.
+export {};

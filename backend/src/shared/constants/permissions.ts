@@ -23,10 +23,11 @@ export const Permission = {
   CAMPAIGNS_SEND: 'campaigns.send',
 
   // Workflows
-  WORKFLOWS_VIEW: 'workflows.view',
+  WORKFLOWS_VIEW:   'workflows.view',
   WORKFLOWS_CREATE: 'workflows.create',
-  WORKFLOWS_EDIT: 'workflows.edit',
+  WORKFLOWS_EDIT:   'workflows.edit',
   WORKFLOWS_DELETE: 'workflows.delete',
+  WORKFLOWS_ACTIVATE: 'workflows.activate',
 
   // Users
   USERS_VIEW: 'users.view',

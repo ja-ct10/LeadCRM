@@ -304,6 +304,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!orgs && l && l.length > 0) {
       orgs = [];
       const orgMap: Record<string, string> = {}; // Name to ID
+      const orgList = orgs as NonNullable<typeof orgs>;
 
       l.forEach((lead: any) => {
         if (lead.customerType === "Organization" && lead.companyName) {
@@ -311,7 +312,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
             const orgId =
               uuid();
             orgMap[lead.companyName] = orgId;
-            orgs.push({
+            orgList.push({
               id: orgId,
               tenantId: lead.tenantId,
               name: lead.companyName,
@@ -327,7 +328,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           lead.customerType = undefined; // Deprecating
         }
       });
-      localStorage.setItem("leadcrm_organizations", JSON.stringify(orgs));
+      localStorage.setItem("leadcrm_organizations", JSON.stringify(orgList));
       localStorage.setItem("leadcrm_leads", JSON.stringify(l)); // save updated leads back
     } else if (!orgs) {
       orgs = [];
@@ -416,7 +417,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setTasks(tsk);
       setWorkflowExecutions(execs);
       setServiceOrders(so);
-      setAssets(ast);
+      setAssets(ast as Asset[]);
       setInventoryItems(inv);
       setActivities(activityData);
       setWorkflowExecutionRuns(execRuns);
@@ -478,7 +479,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setWorkflowExecutions(execs.filter((x: any) => x.tenantId === tenant.id));
       setPendingActions(pending.filter((x: any) => x.tenantId === tenant.id));
       setServiceOrders(so.filter((x: any) => x.tenantId === tenant.id));
-      setAssets(ast.filter((x: any) => x.tenantId === tenant.id));
+      setAssets((ast as Asset[]).filter((x: any) => x.tenantId === tenant.id));
       setInventoryItems(inv.filter((x: any) => x.tenantId === tenant.id));
       setActivities(activityData.filter((x: any) => x.tenantId === tenant.id));
       setWorkflowExecutionRuns(execRuns.filter((x: any) => x.tenantId === tenant.id));
@@ -1918,7 +1919,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("leadcrm_deals", JSON.stringify(MOCK_DEALS));
     localStorage.setItem("leadcrm_pipelines", JSON.stringify(MOCK_PIPELINES));
     localStorage.setItem("leadcrm_workflows", JSON.stringify(MOCK_WORKFLOWS));
-    localStorage.setItem("leadcrm_campaigns", JSON.stringify(MOCK_CAMPAI·NS));
+    localStorage.setItem("leadcrm_campaigns", JSON.stringify(MOCK_CAMPAIGNS));
     localStorage.setItem("leadcrm_templates", JSON.stringify(MOCK_TEMPLATES));
     localStorage.setItem("leadcrm_roles", JSON.stringify(MOCK_ROLES));
     localStorage.setItem(

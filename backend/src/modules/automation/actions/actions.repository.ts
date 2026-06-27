@@ -1,2 +1,3 @@
-﻿// TODO: implement actions repository
-// Pattern: same as contacts.repository.ts — DB queries only, always filter by tenantId
+﻿// Action definitions are static constants returned by actions.service.ts.
+// No DB table or repository needed.
+export {};

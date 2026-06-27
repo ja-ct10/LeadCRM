@@ -1,9 +1,9 @@
 ﻿import { Request, Response, NextFunction } from 'express';
-// TODO: implement actions controller
-// Pattern: getAll, getById, create, update, delete — same as contacts
+import { getAvailableActions } from './actions.service';
 
-export async function getAll(req: Request, res: Response, next: NextFunction) {
+/** GET /api/v1/automation/actions — returns available action types for workflow builder */
+export function getActions(_req: Request, res: Response, next: NextFunction): void {
   try {
-    res.json({ success: true, data: [], meta: { total: 0, page: 1, limit: 20, hasMore: false } });
+    res.json({ success: true, data: getAvailableActions() });
   } catch (err) { next(err); }
 }

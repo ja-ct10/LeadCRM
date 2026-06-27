@@ -1,9 +1,12 @@
 ﻿import { Request, Response, NextFunction } from 'express';
-// TODO: implement permissions controller
-// Pattern: getAll, getById, create, update, delete — same as contacts
+import { getAllPermissions } from './permissions.service';
 
-export async function getAll(req: Request, res: Response, next: NextFunction) {
+/** GET /api/v1/administration/permissions
+ *  Returns the canonical permission list grouped by module.
+ *  Used by the frontend role builder to render permission checkboxes.
+ */
+export function getPermissions(_req: Request, res: Response, next: NextFunction): void {
   try {
-    res.json({ success: true, data: [], meta: { total: 0, page: 1, limit: 20, hasMore: false } });
+    res.json({ success: true, data: getAllPermissions() });
   } catch (err) { next(err); }
 }

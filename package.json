@@ -1,6 +1,7 @@
 {
   "name": "leadcrm",
   "private": true,
+  "packageManager": "npm@11.13.0",
   "workspaces": [
     "frontend",
     "backend",
@@ -13,5 +14,8 @@
   },
   "devDependencies": {
     "turbo": "^2.5.4"
+  },
+  "optionalDependencies": {
+    "lightningcss": "^1.32.0"
   }
 }

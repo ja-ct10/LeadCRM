@@ -265,7 +265,7 @@ export default function WorkflowsPage() {
               onClick={handleCreateVisualFlow}
               className="flex items-center gap-2 bg-gradient-to-r from-blue-600/90 to-indigo-600/90 hover:from-blue-600 hover:to-indigo-600 dark:text-white px-4 py-2.5 rounded-full text-sm font-medium transition-colors shadow-[0_0_15px_rgba(10,110,255,0.2)]"
             >
-              <Compass size={18} className="animate-spin-slow" /> Visual Designer =ƒù¦n+Å
+              <Compass size={18} className="animate-spin-slow" /> Visual Designer
             </button>
           )}
           {canCreateWorkflow && (

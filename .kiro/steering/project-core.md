@@ -36,11 +36,20 @@ The canonical tab order is: **Overview · Activities · Tasks · Emails · Files
 - Automation tab: shows connected workflows, execution status, and triggered action history
 - Always use `DealDetailsModal` from `crm/pipeline/ui/` — never implement a new inline drawer
 
-### Master Audit Reference
-The full audit (current problems, missing features, prioritized recommendations, and phased build plan) is at:
-`.kiro/MASTER-AUDIT.md`
+---
 
-Read it before planning any new feature.
+## Skills Reference
+
+| Skill | When to activate |
+|---|---|
+| `workflow-process` | Any non-trivial task — AgentOS phases, agent routing, severity, 5-role review, branch/commit, architecture decisions, on-demand modes (`#dev-mode` `#review-mode` `#research-mode` `#performance`) |
+| `leadcrm-design-system` | Any UI work — color tokens, typography, spacing, component specs, page layout, animation specs |
+| `frontend-patterns` | Component structure, filter patterns, charts, forms, animation, dark mode, RBAC guards, performance |
+| `nextjs-patterns` | App Router architecture, client/server boundaries, dynamic imports, env vars, migration-ready data flow |
+| `backend-patterns` | Express layers, repository pattern, auth middleware, Zod validation, API response envelope |
+| `saas-scalability` | Multi-tenancy, subscription plans, feature gating, domain events, audit logging, migration readiness |
+| `security-review` | Auth flows, RBAC enforcement, tenant isolation, input validation, secret management |
+| `verification-loop` | Before any PR or task completion — 7 quality gates, TDD workflow, coverage, Definition of Done |
 
 ---
 
@@ -421,3 +430,82 @@ history?: {
 // Always use this — never re-implement inline
 import { DealDetailsModal } from '@/features/tenant/crm/pipeline/ui/deal-details-modal';
 ```
+
+---
+
+## Dev Commands
+
+```bash
+# Root — runs frontend + backend via Turborepo
+npm run dev                       # port 3000 (frontend) + 4000 (backend)
+
+# Frontend only
+cd frontend && npm run dev
+npx tsc --noEmit                  # type check — 0 errors required before commit
+npm run build
+
+# Backend only
+cd backend && npm run dev         # Express dev server (ts-node-dev)
+npx tsc --noEmit
+npx prisma validate               # validate schema syntax
+npx prisma generate               # regenerate client after schema change
+npm run db:migrate                # run pending migrations
+npm run db:seed                   # seed system admin + default pipelines
+npx prisma studio                 # visual DB browser at localhost:5555
+```
+
+---
+
+## Backend API Route Map (85 routes — all under `/api/v1/`)
+
+```
+/auth            login · logout · me
+/crm             contacts · companies · deals · pipelines · stages
+/operations      tasks · service-orders
+/marketing       campaigns · templates
+/automation      workflows · actions · triggers
+/billing         invoices · webhooks/paymongo
+/administration  users · roles · permissions · audit
+/reporting       pipeline-summary · deal-velocity · contact-status · task-completion · campaign-summary
+```
+
+---
+
+## Backend Layer Rules
+
+```
+Controller  → HTTP only (req/res/next) — no business logic
+Service     → Business logic — no req/res references
+Repository  → Prisma queries only — always include { tenantId }
+
+tenantId    → Always from req.user.tenantId (JWT) — NEVER from req.body
+Audit log   → writeAuditLog() after every mutation (fire-and-forget)
+Plan limits → enforcePlanLimit() before contact/deal create
+Triggers    → fire*() from triggers.service.ts after mutations (non-blocking)
+Sessions    → validateSession() on every authenticated request
+```
+
+---
+
+## Key File Paths
+
+| What | Path |
+|---|---|
+| Prisma schema | `backend/prisma/schema.prisma` |
+| Session service | `backend/src/core/auth/session.service.ts` |
+| Audit service | `backend/src/core/audit/audit.service.ts` |
+| Workflow engine | `backend/src/modules/automation/workflows/workflow.engine.ts` |
+| Trigger helpers | `backend/src/modules/automation/triggers/triggers.service.ts` |
+| Permission keys | `backend/src/shared/constants/permissions.ts` |
+| Role constants | `backend/src/shared/constants/roles.ts` |
+| API contracts | `shared/src/contracts/api.contracts.ts` |
+| CRM portal features | `frontend/src/features/tenant/` |
+| Admin portal features | `frontend/src/features/system-admin/` |
+| Shared UI components | `frontend/src/shared/components/` |
+| Charts (only source) | `frontend/src/shared/components/charts/ChartComponents.tsx` |
+| Global state | `frontend/src/store/DataContext.tsx` |
+| Auth state | `frontend/src/store/AuthContext.tsx` |
+| Type definitions | `frontend/src/store/types/` |
+| Mock data | `frontend/src/store/mockData/` |
+| Global CSS | `frontend/src/index.css` |
+| Logo | `frontend/public/leadcrm_logo.png` |

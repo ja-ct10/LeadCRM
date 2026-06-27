@@ -1,2 +1,3 @@
-﻿// TODO: implement triggers repository
-// Pattern: same as contacts.repository.ts — DB queries only, always filter by tenantId
+﻿// Trigger records are written by workflow.engine.ts via workflows.repository.ts.
+// No additional repository needed here.
+export {};

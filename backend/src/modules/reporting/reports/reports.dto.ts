@@ -1,4 +1,11 @@
 ﻿import { z } from 'zod';
-// TODO: define reports DTOs and Zod validation schemas
-// Pattern: see backend/src/modules/crm/contacts/contacts.dto.ts
-export const CreateReportsSchema = z.object({});
+
+// Query param schema for report endpoints
+export const ReportQuerySchema = z.object({
+  pipelineId: z.string().cuid().optional(),
+  from:       z.string().datetime().optional(),
+  to:         z.string().datetime().optional(),
+  userId:     z.string().cuid().optional(),
+});
+
+export type ReportQueryDto = z.infer<typeof ReportQuerySchema>;

@@ -1,9 +1,20 @@
 ﻿import { Request, Response, NextFunction } from 'express';
-// TODO: implement reports controller
-// Pattern: getAll, getById, create, update, delete — same as contacts
+import * as service from './reports.service';
 
-export async function getAll(req: Request, res: Response, next: NextFunction) {
+export async function getPipelineSummary(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    res.json({ success: true, data: [], meta: { total: 0, page: 1, limit: 20, hasMore: false } });
+    res.json({ success: true, data: await service.getPipelineSummary(req.user!.tenantId, req.query.pipelineId as string | undefined) });
   } catch (err) { next(err); }
+}
+export async function getDealVelocity(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try { res.json({ success: true, data: await service.getDealVelocity(req.user!.tenantId) }); } catch (err) { next(err); }
+}
+export async function getContactStatusBreakdown(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try { res.json({ success: true, data: await service.getContactStatusBreakdown(req.user!.tenantId) }); } catch (err) { next(err); }
+}
+export async function getTaskCompletion(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try { res.json({ success: true, data: await service.getTaskCompletion(req.user!.tenantId) }); } catch (err) { next(err); }
+}
+export async function getCampaignSummary(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try { res.json({ success: true, data: await service.getCampaignSummary(req.user!.tenantId) }); } catch (err) { next(err); }
 }
