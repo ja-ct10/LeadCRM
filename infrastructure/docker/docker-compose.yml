@@ -1,0 +1,40 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-leadcrm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-leadcrm_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-leadcrm_dev}
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.backend
+    ports:
+      - '4000:4000'
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-leadcrm}:${POSTGRES_PASSWORD:-leadcrm_dev}@db:5432/${POSTGRES_DB:-leadcrm_dev}
+      NODE_ENV: development
+    depends_on:
+      - db
+
+  frontend:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.frontend
+    ports:
+      - '3000:3000'
+    environment:
+      NEXT_PUBLIC_API_URL: http://backend:4000/api/v1
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

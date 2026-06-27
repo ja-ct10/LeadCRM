@@ -1,0 +1,34 @@
+// Permission constants — module.action format
+// Defined once, imported by both frontend (RBAC guards) and backend (authorize middleware)
+export const Permission = {
+  CONTACTS_VIEW: 'contacts.view',
+  CONTACTS_CREATE: 'contacts.create',
+  CONTACTS_EDIT: 'contacts.edit',
+  CONTACTS_DELETE: 'contacts.delete',
+  CONTACTS_EXPORT: 'contacts.export',
+  DEALS_VIEW: 'deals.view',
+  DEALS_CREATE: 'deals.create',
+  DEALS_EDIT: 'deals.edit',
+  DEALS_DELETE: 'deals.delete',
+  CAMPAIGNS_VIEW: 'campaigns.view',
+  CAMPAIGNS_CREATE: 'campaigns.create',
+  CAMPAIGNS_EDIT: 'campaigns.edit',
+  CAMPAIGNS_DELETE: 'campaigns.delete',
+  CAMPAIGNS_SEND: 'campaigns.send',
+  WORKFLOWS_VIEW: 'workflows.view',
+  WORKFLOWS_CREATE: 'workflows.create',
+  WORKFLOWS_EDIT: 'workflows.edit',
+  WORKFLOWS_DELETE: 'workflows.delete',
+  USERS_VIEW: 'users.view',
+  USERS_MANAGE: 'users.manage',
+  REPORTS_VIEW: 'reports.view',
+  REPORTS_EXPORT: 'reports.export',
+  BILLING_VIEW: 'billing.view',
+  BILLING_MANAGE: 'billing.manage',
+  SETTINGS_VIEW: 'settings.view',
+  ROLES_MANAGE: 'roles.manage',
+  AUDIT_VIEW: 'audit.view',
+  ADMIN_ACCESS: 'admin.access',
+} as const;
+
+export type PermissionKey = (typeof Permission)[keyof typeof Permission];
