@@ -6,83 +6,43 @@ A research-first, team-modeled SaaS engineering operating system for building pr
 
 Enforces a disciplined, phased engineering workflow on every task. Turns Kiro into a full engineering team — Developer, Tech Lead, QA Engineer, Security Engineer, and Product Owner — all checking their respective domains before any work is considered done.
 
-- **Researches before coding** — Phase 0 context analysis before any file is touched
-- **Applies SOLID principles** — SRP, OCP, LSP, ISP, DIP mapped to React + TypeScript
-- **Runs 5-role team review** — Developer, Tech Lead, QA, Security, Product Owner checklists
-- **Classifies task severity** — LOW / MEDIUM / HIGH / CRITICAL, each requiring different rigor
-- **Enforces SaaS safety** — tenantId on every record, RBAC on every action, audit log on every mutation
-- **Validates before submitting** — 6 pre-submit gates + full Definition of Done
-
 ## Keywords
 
 saas, crm, nextjs, typescript, react, multi-tenant, rbac, agentos, solid, engineering, research-first, clean-code, frontend, backend, audit, tenant, leadcrm, quality-gates, tdd, security
 
-## When to Use
+## Consolidated Structure (as of latest optimization)
 
-Activate this Power when working on any SaaS CRM project built with:
-- Next.js 15 (App Router)
-- TypeScript + React Context API
-- Multi-tenant architecture with role-based permissions
-- localStorage → Express + PostgreSQL migration path
+All content has been merged and de-duplicated. The authoritative files are:
 
-## Steering Files
-
-### Always Loaded (auto)
+### Steering (auto-loaded every session)
 
 | File | Purpose |
 |---|---|
-| `project.md` | Supreme authority — AgentOS phases, agent routing, skill activation, response format |
-| `standards.md` | SOLID principles, TypeScript rules, naming, file limits, design patterns, pre-commit checklist |
-| `workflow.md` | Task lifecycle, 5-role team review, branch strategy, commit format, Definition of Done |
-| `security.md` | Threat model, RBAC enforcement, tenant isolation, secret management, security protocol |
-| `testing.md` | TDD workflow, coverage requirements, critical test cases, QA mindset |
-| `lessons-learned.md` | Project-specific patterns, known pitfalls, accumulated team knowledge |
+| `steering/project-core.md` | Tech stack, monorepo structure, module anatomy, non-negotiable rules |
+| `steering/rules.md` | ALL hard constraints — UI, React, TypeScript, SaaS safety, anti-patterns, pre-commit checklist |
+| `steering/security.md` | Threat model, RBAC, tenant isolation, secret management, security protocol |
+| `steering/lessons-learned.md` | Project-specific patterns, known pitfalls, accumulated team knowledge |
+| `steering/typescript-context.md` | Auto-injected on any `.ts`/`.tsx` file — inline active rules |
 
-### On-Demand (manual — load with `#tag`)
+### Skills (on-demand, activate per task)
 
-| File | Tag | Purpose |
+| Skill | Activate When |
+|---|---|
+| `workflow-process` | Any non-trivial task — AgentOS phases, agent routing, 5-role review, on-demand modes |
+| `leadcrm-design-system` | Any UI work — color tokens, typography, component specs, layout rules |
+| `frontend-patterns` | Frontend components, filters, charts, forms, RBAC guards |
+| `nextjs-patterns` | App Router, client/server boundaries, dynamic imports |
+| `backend-patterns` | Express, repository pattern, auth, Zod validation |
+| `saas-scalability` | Multi-tenancy, plans, feature gating, domain events |
+| `security-review` | Auth, RBAC, tenant isolation, input validation |
+| `verification-loop` | Pre-PR / task completion — 7 gates, TDD, Definition of Done |
+
+### Hooks (automatic triggers)
+
+| Hook | Trigger | Action |
 |---|---|---|
-| `modes.md` | `#dev-mode` | Active implementation — pre-impl checklist, LeadCRM reminders |
-| `modes.md` | `#review-mode` | Code review — all 5 role checklists, severity classification, report format |
-| `modes.md` | `#research-mode` | Architecture decisions — evaluation criteria, decision output format |
-| `modes.md` | `#performance` | Model selection, context window management, build troubleshooting |
-
-## Agent Routing Matrix
-
-| Task | Agent Sequence |
-|---|---|
-| Bug / unknown area | context-gatherer → general-task-execution |
-| New feature | context-gatherer → requirement-detailer → general-task-execution |
-| Architecture decision | context-gatherer → requirement-detailer → architecture-selection → general-task-execution |
-| Refactor | context-gatherer → architecture-selection → general-task-execution |
-
-## Skill Routing Matrix
-
-| Work Type | Skills |
-|---|---|
-| Any code | `coding-standards` + `clean-code` |
-| Frontend UI | + `frontend-patterns` + `nextjs-patterns` |
-| New feature | + `saas-scalability` + `frontend-patterns` |
-| API / backend | + `backend-patterns` + `saas-scalability` |
-| Full error fix | All six skills |
-
-## Task Severity
-
-| Severity | Examples | Phases Required |
-|---|---|---|
-| LOW | Copy, styling, icon swaps, layout tweaks | Phase 0, checklist, report |
-| MEDIUM | Forms, filters, hooks, new pages | Phases 0–1, checklist, report |
-| HIGH | DataContext, RBAC, workflows, shared types | All phases |
-| CRITICAL | Auth, billing, audit, tenant architecture | All phases + risk analysis doc |
-
-## Engineering Team Model
-
-Every task is reviewed through 5 lenses before it is done:
-
-| Role | Owns |
-|---|---|
-| Developer | Clean code, SOLID, error handling, no duplication |
-| Tech Lead | Pattern consistency, reuse, migration-readiness, SOLID |
-| QA Engineer | All 6 test scenarios, UI states, regression coverage |
-| Security Engineer | RBAC, tenantId, secrets, input validation, audit logs |
-| Product Owner | Acceptance criteria, UX, dark mode, responsiveness |
+| `activate-on-task` | preTaskExecution | Prints AgentOS header + Phase 0 scan |
+| `code-review-on-write` | postToolUse: write | Quick security + quality review |
+| `quality-gate` | userTriggered | Full 5-gate quality check |
+| `security-check-on-create` | fileCreated in auth/api/middleware/store | Security scan |
+| `session-wrap` | agentStop | Capture new lessons learned |
