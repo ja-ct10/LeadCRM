@@ -108,7 +108,7 @@ If you have two `<AnimatePresence>` wrappers for the same conditional block (old
 
 - **Contacts:** linked to Organizations via `organizationId`. Status: `Hot | Warm | Cold | Cancelled | Closed`
 - **Pipeline:** `stageId` always resolved from pipeline definition. Stages are tenant-specific — never hardcode. DnD must call `addAuditLog('deal.stage_changed',...)`
-- **RBAC:** `Client Admin` bypasses all checks. `System Admin` is cross-tenant (admin portal only). Permission keys: `module.action`
+- **RBAC:** `Client Admin` bypasses all checks. `System Admin` is cross-tenant (admin portal only). Permissions stored in `RolePermission` table — one row per module per role with `canView/canCreate/canEdit/canDelete` flags. Unique on `[roleId, module]`.
 
 ---
 
@@ -145,8 +145,8 @@ DataContext already injects `tenant.id` (from AuthContext — never from user in
 ### USE_MOCK_DATA flag
 `src/lib/config.ts` exports `USE_MOCK_DATA`. Set `NEXT_PUBLIC_USE_MOCK_DATA=false` in `.env.local` to switch DataContext from localStorage to real API calls. Each module migrates independently.
 
-### PERMISSION_BRIDGE removal (when roles use module.action)
-When `DataContext` migrates to real API, roles will return `module.action` strings instead of `p`-IDs. Remove `PERMISSION_BRIDGE` from `usePermissions.ts` — `useHasPermission` will work directly without it.
+### PERMISSION_BRIDGE removal (now complete)
+`RolePermission` table is in the schema. When `DataContext` migrates to the real API, resolve permissions by querying `RolePermission` rows for the user's `roleId`. Remove `PERMISSION_BRIDGE` from `usePermissions.ts` — `useHasPermission` will read `canView/canCreate/canEdit/canDelete` directly.
 
 ---
 
@@ -163,3 +163,45 @@ if (login(email)) { ... }
 
 ### Detail Views = Drawers/Sheets Only
 No `[id]` routes. Contact/deal detail views use drawer pattern. Ignore external templates that scaffold `[id]` routes.
+
+---
+
+## Schema v2 — Key Patterns (June 2026)
+
+### DealAction is the manual audit trail for deals
+Every user-initiated operation on a deal (send email, assign agent, add note, change status, etc.) must create a `DealAction` row AND an `Activity` entry. `DealStageHistory` is specifically for stage moves. These are separate concerns — do not conflate them.
+
+```typescript
+// Correct pattern when a Sales Rep sends an email from a deal:
+await dealActionService.perform({
+  tenantId, dealId, performedById: user.id,
+  actionType: 'SEND_EMAIL',
+  payload: { to: contact.email, subject: '...' },
+});
+// → creates DealAction row
+// → creates Activity({ type: 'email', dealId })
+// → creates AuditLog({ action: 'deal.action_performed', category: 'crm' })
+```
+
+### TargetAudience has NO junction table — contacts are resolved dynamically
+`TargetAudienceCondition` rows define filter rules (field + operator + value). Contacts are queried at runtime using these conditions — never stored in a junction table. This was a deliberate mentor decision.
+
+```typescript
+// Resolving contacts for an audience at send time:
+const contacts = await prisma.contact.findMany({
+  where: {
+    tenantId,
+    status: { equals: audience.conditions.find(c => c.field === 'status')?.value },
+    // ... build dynamic where from conditions
+  }
+});
+```
+
+### Subscription is billing source of truth — Tenant.plan is a cache
+`Tenant.plan` and `Tenant.subscriptionStatus` are denormalized caches for fast plan-gating checks (e.g. feature flags). The authoritative state is in `Subscription`. Always update the Subscription first, then sync the Tenant cache fields.
+
+### DealStageHistory.timeInPrevStage must be computed on insert
+Compute `timeInPrevStage` (minutes) when creating each `DealStageHistory` row by diffing `movedAt` against the previous history row's `movedAt`. This powers the Stage Velocity chart — never calculate velocity from `Deal.updatedAt`.
+
+### AuditLog.category is required on every log entry
+Every `addAuditLog()` call must include a `category` value: `auth | crm | billing | workflow | admin | system`. This enables the Administration → Audit Logs filter UI and retention policy enforcement per plan tier.

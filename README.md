@@ -42,8 +42,8 @@ The system has a **Trigger → Condition → Action** engine. Deals are not only
 | **Marketing** | Email & SMS Campaigns, Audience builder, Template library, Campaign analytics |
 | **Operations** | Task Board (Kanban), Service Orders, Asset Tracking, Inventory Management |
 | **Reporting** | Revenue Trend, Pipeline Distribution, Lead Attribution, Sales Leaderboard |
-| **Billing** | Contracts, Invoices, PayMongo integration |
-| **Administration** | Users & Roles, RBAC Permissions, Audit Logs, Role Hierarchy |
+| **Billing** | Contracts, Invoices, Subscriptions, PaymentMethods, PayMongo integration |
+| **Administration** | Users & Roles, RolePermissions (canView/canCreate/canEdit/canDelete per module), Audit Logs |
 | **Settings** | Org Profile, Appearance (Light/Dark), Archived Data, Profile & Security |
 
 ---
@@ -376,6 +376,10 @@ Every route and UI element is permission-gated. Permissions follow the format `m
 | `@leadcrm/frontend` | ✅ Active — Next.js 15, full feature set, localStorage data layer |
 | `@leadcrm/backend` | 🔲 Scaffolded — structure + routes complete, DB integration in progress |
 | `@leadcrm/shared` | ✅ Complete — types, RBAC constants, contracts, Zod schemas |
+
+**Schema:** v2 — 30 entities, all in Prisma DB. Includes `Subscription`, `PaymentMethod`,
+`PricingPlan`, `RolePermission`, `DealAction`, `TargetAudience`, `TargetAudienceCondition`,
+`CampaignMetrics`, `SystemAdmin`, `TenantDocument`, `Environment`, `PlanFeature`.
 
 ### Data Layer
 
