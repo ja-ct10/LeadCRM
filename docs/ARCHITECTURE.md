@@ -105,8 +105,8 @@ backend/
     │   ├── marketing/     ← campaigns, email, templates
     │   ├── automation/    ← workflows, triggers, actions
     │   ├── operations/    ← service-orders, tasks
-    │   ├── administration/← users, roles, permissions, audit
-    │   ├── billing/       ← invoices, payments
+    │   ├── administration/ ← users, roles, role-permissions, audit
+    │   ├── billing/        ← invoices, subscriptions, payment-methods, pricing-plans
     │   └── reporting/     ← reports
     ├── integrations/      ← gmail/, paymongo/
     ├── core/              ← auth/, permissions/, audit/, tenant/
@@ -172,6 +172,17 @@ if (user.role === Role.CLIENT_ADMIN) { ... }
 hasPermission(user, Permission.CONTACTS_CREATE);
 ```
 
+**Permission model:** `RolePermission` table — one row per module per role with
+`canView`, `canCreate`, `canEdit`, `canDelete` booleans. Unique on `[roleId, module]`.
+
+```typescript
+// Backend middleware
+router.post('/contacts', rbac('contacts', 'canCreate'), controller.create);
+
+// Frontend guard
+const { canCreate } = useModulePermissions('contacts');
+{canCreate && <Button>Add Contact</Button>}
+
 ---
 
 ## Multi-Tenancy Model
@@ -189,9 +200,16 @@ const contact = await repo.createContact(req.user.tenantId, dto);
 
 ---
 
-## Data Layer (Current Phase)
+## Data Layer
 
-All data lives in browser `localStorage`. `DataContext` acts as the data access layer. When the backend is ready, only `DataContext` internals change — all components remain unchanged. This is the Dependency Inversion Principle applied to the data layer.
+`DataContext` acts as the data access layer. All 30 entities are now in the Prisma schema.
+Set `NEXT_PUBLIC_USE_MOCK_DATA=false` in `.env.local` to switch from localStorage to real API calls.
+Each module migrates independently — only `DataContext` internals change, all components remain untouched.
+This is the Dependency Inversion Principle applied to the data layer.
+
+**Schema version:** v2 — 30 entities, all in DB. Includes `Subscription`, `PaymentMethod`, `PricingPlan`,
+`RolePermission`, `DealAction`, `TargetAudience`, `TargetAudienceCondition`, `CampaignMetrics`,
+`SystemAdmin`, `TenantDocument`, `Environment`, `PlanFeature`.
 
 ---
 

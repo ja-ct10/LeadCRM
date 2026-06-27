@@ -1,29 +1,56 @@
 # Workflow: Task Assignment & Ownership
 
+> Last updated: June 27, 2026
+
 ## Overview
 
-Tasks in LeadCRM are always linked to a deal (`task.dealId`) and always have an owner (`task.assignedUserId`). Every assignment and reassignment is tracked in `task.assignmentHistory[]` for full auditability.
+Tasks in LeadCRM are linked to deals, contacts, or organizations and always have an owner (`assignedUserId`). Every assignment and reassignment is stored in the `Task` model fields (`assignedById`, `completedById`) and in `AuditLog` for full traceability.
+
+Tasks can also be created automatically via `DealAction (CREATE_TASK)` or by the Workflow Engine.
 
 ---
 
 ## Task Status Values
 
 ```
-Pending → In Progress → Completed
-                │
-                ├── Blocked  (waiting on dependency or external factor)
-                └── Cancelled (task no longer needed)
+pending → in_progress → completed
+             │
+             ├── blocked    (waiting on external factor)
+             └── cancelled  (no longer needed)
 ```
 
 | Status | Meaning |
 |---|---|
 | `pending` | Created, not yet started |
-| `in-progress` | Actively being worked on |
+| `in_progress` | Actively being worked on |
 | `blocked` | Cannot proceed — dependency or external blocker |
-| `completed` | Done |
-| `cancelled` | Abandoned — no longer required |
+| `completed` | Done — `completedAt` stamped, `completedById` recorded |
+| `cancelled` | Abandoned |
 
-**Overdue:** Any task where `dueDate < today` and `status !== completed` and `status !== cancelled` is highlighted with a red "Overdue" badge.
+**Overdue:** `dueDate < now()` AND `status NOT IN (completed, cancelled)` → red "Overdue" badge.
+
+---
+
+## Task Model Fields
+
+```
+id             cuid PK
+tenantId       FK → Tenant    REQUIRED
+dealId         FK → Deal?     (set null on delete)
+contactId      FK → Contact?  (set null on delete)
+organizationId String?
+assignedUserId FK → User      current owner
+assignedById   FK → User?     who made the last assignment
+completedById  FK → User?     who marked it complete
+title          String
+description    String?
+status         pending | in_progress | blocked | completed | cancelled
+priority       Low | Medium | High
+dueDate        DateTime
+reminderAt     DateTime?
+completedAt    DateTime?
+isArchived     Boolean
+```
 
 ---
 
@@ -32,79 +59,93 @@ Pending → In Progress → Completed
 | Role | Can Do |
 |---|---|
 | Client Admin | Create, assign, reassign, delete any task |
-| Sales Rep | Create tasks on own deals; reassign with reason |
+| Sales Rep | Create tasks on own deals; reassign with `assignedById` recorded |
+| Technician | View assigned tasks; update `status` |
 | Viewer | Read only |
-| Technician | View assigned tasks; update status |
 
 ---
 
-## Step-by-Step: Creating and Assigning a Task
+## Step-by-Step: Creating a Task
 
 ### From Deal Details Modal
-1. Open any deal in Pipeline Management → click the deal card
-2. In the modal, click the **Tasks** tab
-3. Click **Add Task**
-4. Fill in: title, description (optional), due date, priority, assign to (user dropdown)
-5. Click **Create Task**
+1. Open deal → **Tasks tab** → **Add Task**
+2. Fill: title, description, due date, priority, assign to (user dropdown)
+3. Click **Create Task**
 
-**What happens internally:**
 ```typescript
-addTask({
-  dealId: deal.id,
-  title: '...',
-  assignedUserId: selectedUserId,
-  assignedBy: currentUser.id,   // auto-captured
-  status: 'pending',
-  // ...
-})
+// Service layer
+await taskService.create({
+  tenantId:      req.user.tenantId,
+  dealId:        deal.id,
+  title:         dto.title,
+  assignedUserId: dto.assignedUserId,
+  assignedById:  req.user.id,   // captured automatically
+  status:        'pending',
+  dueDate:       dto.dueDate,
+});
+// addAuditLog({ action: 'task.created', category: 'crm' })
+// addActivity({ type: 'task', dealId: deal.id })
 ```
-`assignmentHistory` is seeded with the first record automatically.
 
-### From TaskBoard (Operations → Tasks)
-1. Navigate to Operations → Task Board
-2. Click **+ New Task**
-3. Fill in form including assignee
+### Via DealAction
+```typescript
+// DealAction (CREATE_TASK) triggers task creation:
+await dealActionService.perform({
+  actionType:   'CREATE_TASK',
+  dealId:       deal.id,
+  performedById: req.user.id,
+  payload: { title: 'Prepare proposal document', dueDate: '...' }
+});
+// → Creates Task + DealAction row + Activity entry
+```
+
+### Via Workflow Engine
+When a workflow action `create_task` fires:
+- `WorkflowExecutionStep.actionType = create_task`
+- Task created with `assignedById = null` (system-created)
+- `Activity ({ type: 'workflow', dealId })` created
 
 ---
 
 ## Step-by-Step: Reassigning a Task
 
-1. Open deal → Tasks tab → find the task
-2. Change status or reassignee from the inline dropdown
-3. Optionally provide a reassignment reason
+1. Open task → change assignee dropdown
+2. Optionally enter reassignment reason
 
-**What happens internally:**
 ```typescript
-updateTask(taskId, {
+await taskService.update(taskId, {
   assignedUserId: newUserId,
-  reassignReason: 'Territory Transfer',
-})
+  assignedById:   currentUser.id,
+});
+// addAuditLog({ action: 'task.reassigned', category: 'crm', changeset: { before: { assignedUserId: old }, after: { assignedUserId: new } } })
 ```
-A new `TaskAssignmentRecord` is appended to `assignmentHistory`:
+
+---
+
+## Step-by-Step: Completing a Task
+
 ```typescript
-{
-  assignedTo:       newUserId,
-  assignedBy:       currentUser.id,
-  assignedAt:       '2026-06-24T10:00:00Z',
-  previousAssignee: oldUserId,
-  reason:           'Territory Transfer',
-}
+await taskService.update(taskId, {
+  status:        'completed',
+  completedById: currentUser.id,
+  completedAt:   new Date(),
+});
+// addAuditLog({ action: 'task.completed', category: 'crm' })
+// addActivity({ type: 'task', dealId, title: 'Task completed: ...' })
 ```
 
 ---
 
 ## Audit Trail
 
-Every task maintains a complete assignment history. Managers can always answer:
-
 | Question | Where to Find It |
 |---|---|
-| Who owns the task now? | `task.assignedUserId` |
-| Who assigned it? | `task.assignedBy` |
-| Who owned it before? | `task.assignmentHistory[last].previousAssignee` |
-| When was it reassigned? | `task.assignmentHistory[last].assignedAt` |
-| Why was it reassigned? | `task.assignmentHistory[last].reason` |
-| When was it completed? | `task.updatedAt` (when status → completed) |
+| Who owns the task now? | `Task.assignedUserId` |
+| Who assigned it? | `Task.assignedById` |
+| When was it completed? | `Task.completedAt` |
+| Who completed it? | `Task.completedById` |
+| Full history of changes? | `AuditLog` (action: `task.*`, category: `crm`) |
+| Deal timeline entry? | `Activity` (type: `task`, dealId) |
 
 ---
 
@@ -112,18 +153,18 @@ Every task maintains a complete assignment history. Managers can always answer:
 
 ```typescript
 function isOverdue(task: Task): boolean {
-  if (task.status === 'completed' || task.status === 'cancelled') return false;
-  if (!task.dueDate) return false;
+  if (['completed', 'cancelled'].includes(task.status)) return false;
   return new Date(task.dueDate) < new Date();
 }
 ```
 
-Shown as a red **Overdue** badge in:
+Displayed in:
 - Deal Details Modal → Tasks tab
-- TaskBoard (Operations)
+- TaskBoard (Operations → Tasks)
 
 ---
 
 ## Related Docs
-- [pipeline-stage-flow.md](./pipeline-stage-flow.md)
-- [lead-to-deal.md](./lead-to-deal.md)
+- `docs/workflows/pipeline-stage-flow.md`
+- `docs/workflows/lead-to-deal.md`
+- `docs/database/erd.md` — Task entity definition

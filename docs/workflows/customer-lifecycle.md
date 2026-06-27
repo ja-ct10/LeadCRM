@@ -1,8 +1,10 @@
 # Workflow: Customer Lifecycle
 
+> Last updated: June 27, 2026
+
 ## Overview
 
-This document maps the complete journey of a customer from first contact through long-term account management. It connects all CRM modules and shows how data flows between them.
+Maps the complete journey of a customer from first contact through long-term account management. Connects all CRM modules and shows how data flows between entities.
 
 ---
 
@@ -10,67 +12,78 @@ This document maps the complete journey of a customer from first contact through
 
 ```
 1. DISCOVERY
-   Lead captured (Facebook ad, referral, cold call, website)
-          │
+   Lead captured (Facebook ad, referral, cold call, website form, campaign response)
+          │  Contact created · ownerId stamped (immutable)
           ▼
 2. QUALIFICATION
-   Contact created → Status: Warm
-   Sales Rep qualifies → Status: Hot
+   Contact.status = WARM (default score=75)
+   Sales Rep qualifies → Contact.status = HOT (score=95)
+   Workflow may auto-fire: "Send Welcome Email", "Create Follow-up Task"
           │
           ▼
 3. PROPOSAL
    Deal created in Sales Inquiries pipeline
+   ContactDeal junction links Contact ↔ Deal (supports multiple contacts per deal)
    Stages: Discovery → Assessment → Proposal
+   DealStageHistory row per stage move · DealAction per manual action
           │
           ▼
 4. NEGOTIATION
-   Proposal reviewed by customer
    Stage: Negotiation
+   Sales Rep performs DealActions: SEND_EMAIL, ADD_NOTE, ASSIGN_AGENT, etc.
+   Tasks created via DealAction or Workflow
           │
           ├── Accepted ──────────────────────────────┐
           └── Declined → Stage: Closed Lost           │
-                         Contact: remains in CRM      │
+                         Deal.lostReason required     │
+                         Contact stays in CRM         │
                                                       ▼
 5. CONVERSION                                   Stage: Closed Won
-                                                Contact Status: Closed
+                                                Deal.closedAt stamped
+                                                Contact.status = CLOSED
                                                        │
                                                        ▼
 6. BILLING
-   Invoice created from deal
-   PayMongo payment link sent
-   Invoice: Draft → Sent → Paid
+   Invoice created (optionally linked to Subscription)
+   PaymentMethod selected (saved or ad-hoc PayMongo link)
+   PaymentTransaction created
+   Invoice: Pending → Paid (PayMongo webhook)
+   AuditLog (category: billing) per transition
           │
           ▼
 7. DELIVERY
-   Project moved to Implementation pipeline
+   Deal moved to Implementation pipeline
    Stages: Initiation → Planning → Execution → Handoff
+   ServiceOrders assigned to Technicians
+   Tasks linked to deal with assignedById tracked
           │
           ▼
 8. POST-SALES
    After-Sales pipeline: Inquiry → Follow-up → Conclusion
-   Support tickets resolved
+   AuditLog + Activity entries per action
           │
           ▼
 9. RETENTION
    Customer becomes Returning Client
-   New deal cycle begins from Step 3
+   New Deal cycle begins from Step 3
+   Campaign sent via TargetAudience + TargetAudienceCondition filters
 ```
 
 ---
 
 ## Contact Status Across the Lifecycle
 
-| Stage | Contact Status |
-|---|---|
-| Just created / unresponsive | `Warm` |
-| Actively engaged, ready to buy | `Hot` |
-| Stopped responding | `Cold` |
-| Formally withdrew | `Cancelled` |
-| Deal won, paid, delivered | `Closed` |
+| Phase | Contact.status | Score |
+|---|---|---|
+| Just created / unresponsive | `WARM` | 75 |
+| Actively engaged, ready to buy | `HOT` | 95 |
+| Stopped responding | `COLD` | 40 |
+| Formally withdrew | `CANCELLED` | — |
+| Deal won, paid, delivered | `CLOSED` | — |
 
 ---
 
-## Deal Status Across the Lifecycle
+## Deal Stage Across the Lifecycle
 
 | Lifecycle Phase | Deal Stage |
 |---|---|
@@ -85,32 +98,17 @@ This document maps the complete journey of a customer from first contact through
 
 ## Module Involvement per Phase
 
-| Phase | Modules Used |
+| Phase | Modules / Entities Used |
 |---|---|
-| Discovery | Client Profiles (Contacts) |
-| Qualification | Client Profiles, Campaigns (email/SMS) |
-| Proposal | Pipeline Management, Deal Details Modal |
-| Negotiation | Pipeline, Tasks, Activities |
-| Conversion | Pipeline (Closed Won), Billing |
-| Billing | Billing Module, PayMongo |
-| Delivery | Pipeline (Project Implementation), Tasks, Service Orders |
-| Post-Sales | Pipeline (After-Sales), Support Tickets |
-| Retention | Client Profiles, Campaigns, new Deal cycle |
-
----
-
-## Data Entities per Phase
-
-| Phase | Entities Created / Updated |
-|---|---|
-| Discovery | `Contact` |
-| Qualification | `Contact.status`, `AuditLog` |
-| Proposal | `Deal`, `Deal.history[]` |
-| Negotiation | `Task[]`, `Deal.activities[]`, `Deal.history[]` |
-| Conversion | `Deal.stageId = Closed Won`, `AuditLog` |
-| Billing | `Invoice`, `Payment` |
-| Delivery | `Deal` (Implementation pipeline), `Task[]`, `ServiceOrder` |
-| Post-Sales | `Deal` (After-Sales pipeline) |
+| Discovery | Contact, Activity, AuditLog |
+| Qualification | Contact, Campaign (email/SMS), TargetAudience, Workflow |
+| Proposal | Pipeline, Stage, Deal, ContactDeal, DealStageHistory, DealAction |
+| Negotiation | Deal, DealAction, Task, Activity, DealStageHistory |
+| Conversion | Deal (Closed Won), DealAction, AuditLog |
+| Billing | Invoice, Subscription, PaymentTransaction, PaymentMethod |
+| Delivery | Pipeline (Implementation), Task, ServiceOrder, Asset |
+| Post-Sales | Pipeline (After-Sales), Activity |
+| Retention | Contact, Campaign, TargetAudience, TargetAudienceCondition |
 
 ---
 
@@ -118,16 +116,35 @@ This document maps the complete journey of a customer from first contact through
 
 1. A contact can have multiple deals across multiple pipelines simultaneously
 2. A deal belongs to exactly one pipeline and one stage at a time
-3. Closed deals (Won or Lost) are never deleted — only archived
-4. A contact's status does not automatically change when a deal is won — Sales Rep confirms
-5. Every status transition generates an `AuditLog` record
-6. Tasks are always linked to a deal (`task.dealId`) and always have an owner
-7. Payment confirmation triggers onboarding workflow (optional, configurable)
+3. `Deal.contactId` is the legacy singular FK — use `ContactDeal` junction for new multi-contact deals
+4. `Contact.ownerId` is immutable — set on create, never updated (commission attribution)
+5. `Contact.assignedUserId` can change freely — tracks current handler
+6. Every stage change creates a `DealStageHistory` row — never rely on `Deal.updatedAt` for velocity
+7. Every manual deal operation creates a `DealAction` row + `Activity` entry
+8. Closed deals (Won or Lost) are never deleted — only archived with `archiveReason`
+9. Every status/field mutation fires `addAuditLog()` — no exceptions
+10. Workflow automations always create: `WorkflowExecutionRun` + `WorkflowExecutionStep` + `Activity`
+
+---
+
+## Data Entities per Phase
+
+| Phase | Entities Created / Updated |
+|---|---|
+| Discovery | `Contact`, `Activity`, `AuditLog (crm)` |
+| Qualification | `Contact.status`, `AuditLog (crm)`, `WorkflowExecutionRun` (if triggered) |
+| Proposal | `Deal`, `ContactDeal`, `DealStageHistory`, `DealAction`, `AuditLog (crm)` |
+| Negotiation | `Task`, `DealAction`, `Activity`, `DealStageHistory` |
+| Conversion | `Deal.closedAt`, `AuditLog (crm)`, `Notification` |
+| Billing | `Invoice`, `PaymentTransaction`, `Subscription`, `AuditLog (billing)` |
+| Delivery | `Deal` (Implementation pipeline), `Task`, `ServiceOrder` |
+| Post-Sales | `Deal` (After-Sales pipeline), `Activity` |
 
 ---
 
 ## Related Docs
-- [lead-to-deal.md](./lead-to-deal.md)
-- [deal-to-payment.md](./deal-to-payment.md)
-- [pipeline-stage-flow.md](./pipeline-stage-flow.md)
-- [task-assignment.md](./task-assignment.md)
+- `docs/workflows/lead-to-deal.md`
+- `docs/workflows/deal-to-payment.md`
+- `docs/workflows/pipeline-stage-flow.md`
+- `docs/workflows/task-assignment.md`
+- `docs/database/erd.md`

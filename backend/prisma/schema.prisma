@@ -38,6 +38,12 @@ enum PlanType {
   ENTERPRISE
 }
 
+enum BillingCycle {
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+}
+
 enum UserStatus {
   ACTIVE
   INACTIVE
@@ -72,21 +78,94 @@ enum CampaignStatus {
   SCHEDULED
 }
 
+// Actions that can be manually performed on a deal
+enum DealActionType {
+  UPDATE_FIELD
+  ASSIGN_AGENT
+  CHANGE_STATUS
+  SEND_EMAIL
+  SEND_SMS
+  ADD_NOTE
+  CREATE_TASK
+  CHANGE_STAGE
+}
+
+// ─────────────────────────────────────────────
+// SYSTEM ADMIN (cross-tenant — LeadCRM operators)
+// No tenantId — these users own the platform itself
+// ─────────────────────────────────────────────
+model SystemAdmin {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  firstName    String
+  lastName     String
+  passwordHash String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────
+// PRICING PLAN (global — not tenant-scoped)
+// Managed by SystemAdmin, consumed by Subscription
+// ─────────────────────────────────────────────
+model PricingPlan {
+  id             String   @id @default(cuid())
+  name           String   @unique  // "Free" | "Pro" | "Enterprise"
+  planType       PlanType
+  monthlyPrice   Float    @default(0)
+  quarterlyPrice Float    @default(0)
+  annualPrice    Float    @default(0)
+  maxUsers       Int?
+  maxContacts    Int?
+  maxDeals       Int?
+  storageLimit   Int?     // MB
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  features      PlanFeature[]
+  subscriptions Subscription[]
+}
+
+// ─────────────────────────────────────────────
+// PLAN FEATURE
+// ─────────────────────────────────────────────
+model PlanFeature {
+  id          String @id @default(cuid())
+  planId      String
+  name        String // e.g. "Workflow Automation", "Gmail Integration"
+  description String?
+
+  plan PricingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId])
+}
+
 // ─────────────────────────────────────────────
 // TENANT
+// plan/subscriptionStatus are denormalized caches for fast plan-gating.
+// Subscription is the authoritative billing source.
 // ─────────────────────────────────────────────
 model Tenant {
   id                 String             @id @default(cuid())
   name               String
   slug               String             @unique
+  industry           String?
+  companySize        String?            // "1-10" | "11-50" | "51-200" | "200+"
+  email              String?
+  phone              String?
+  address            String?
   status             TenantStatus       @default(SANDBOX)
   subscriptionStatus SubscriptionStatus @default(TRIAL)
-  plan               PlanType           @default(FREE)
+  plan               PlanType           @default(FREE)  // denorm cache — source of truth = Subscription
   trialEndsAt        DateTime?
   subscriptionEndsAt DateTime?
   maxUsers           Int?
   maxContacts        Int?
   maxDeals           Int?
+  approvedById       String?            // SystemAdmin id who approved
+  approvedAt         DateTime?
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
@@ -95,17 +174,22 @@ model Tenant {
   roleDefinitions    RoleDefinition[]
   sessions           Session[]
   invitations        TenantInvitation[]
+  subscriptions      Subscription[]
+  paymentMethods     PaymentMethod[]
   organizations      Organization[]
   contacts           Contact[]
   pipelines          Pipeline[]
   deals              Deal[]
+  dealActions        DealAction[]
   contactDeals       ContactDeal[]
   dealStageHistories DealStageHistory[]
   tasks              Task[]
   activities         Activity[]
   campaigns          Campaign[]
   campaignContacts   CampaignContact[]
+  campaignMetrics    CampaignMetrics[]
   templates          Template[]
+  targetAudiences    TargetAudience[]
   workflows          Workflow[]
   wfTriggerRecords   WorkflowTriggerRecord[]
   wfExecutionRuns    WorkflowExecutionRun[]
@@ -118,6 +202,52 @@ model Tenant {
   notifications      Notification[]
   auditLogs          AuditLog[]
   emailDeliveryLogs  EmailDeliveryLog[]
+  documents          TenantDocument[]
+  environments       Environment[]
+}
+
+// ─────────────────────────────────────────────
+// SUBSCRIPTION (billing source of truth)
+// ─────────────────────────────────────────────
+model Subscription {
+  id              String             @id @default(cuid())
+  tenantId        String
+  planId          String
+  billingCycle    BillingCycle
+  status          SubscriptionStatus @default(TRIAL)
+  amount          Float
+  startDate       DateTime
+  endDate         DateTime?
+  nextBillingDate DateTime?
+  cancelledAt     DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  tenant   Tenant      @relation(fields: [tenantId], references: [id])
+  plan     PricingPlan @relation(fields: [planId], references: [id])
+  invoices Invoice[]
+
+  @@index([tenantId, status])
+}
+
+// ─────────────────────────────────────────────
+// PAYMENT METHOD (saved methods per tenant)
+// ─────────────────────────────────────────────
+model PaymentMethod {
+  id            String   @id @default(cuid())
+  tenantId      String
+  methodName    String   // "GCash" | "Maya" | "Credit Card" | "Bank Transfer"
+  accountName   String?
+  accountNumber String?  // masked — e.g. "****1234"
+  isDefault     Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant       Tenant               @relation(fields: [tenantId], references: [id])
+  transactions PaymentTransaction[]
+
+  @@index([tenantId, isActive])
 }
 
 // ─────────────────────────────────────────────
@@ -148,6 +278,7 @@ model User {
   ownedDeals           Deal[]             @relation("OwnedDeals")
   contactDealsAdded    ContactDeal[]
   dealStageHistories   DealStageHistory[]
+  dealActionsPerformed DealAction[]
   assignedTasks        Task[]             @relation("AssignedTasks")
   tasksAssignedByMe    Task[]             @relation("TaskAssignedBy")
   completedTasks       Task[]             @relation("TaskCompletedBy")
@@ -162,6 +293,7 @@ model User {
 
 // ─────────────────────────────────────────────
 // ROLE DEFINITION
+// permissions String[] removed — use RolePermission table instead
 // ─────────────────────────────────────────────
 model RoleDefinition {
   id           String    @id @default(cuid())
@@ -169,17 +301,39 @@ model RoleDefinition {
   name         String
   description  String?
   isSystemRole Boolean   @default(false)
-  permissions  String[]
   isArchived   Boolean   @default(false)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  tenant       Tenant     @relation(fields: [tenantId], references: [id])
-  userRoles    UserRole[]
-  invitations  TenantInvitation[]
+  tenant      Tenant            @relation(fields: [tenantId], references: [id])
+  userRoles   UserRole[]
+  invitations TenantInvitation[]
+  permissions RolePermission[]
 
   @@unique([tenantId, name])
   @@index([tenantId, isArchived])
+}
+
+// ─────────────────────────────────────────────
+// ROLE PERMISSION (per-module CRUD flags)
+// One row per module per role.
+// module examples: contacts | deals | campaigns | workflows | billing | reports | users | settings
+// ─────────────────────────────────────────────
+model RolePermission {
+  id        String @id @default(cuid())
+  tenantId  String
+  roleId    String
+  module    String // e.g. "contacts", "deals", "campaigns"
+  canView   Boolean @default(false)
+  canCreate Boolean @default(false)
+  canEdit   Boolean @default(false)
+  canDelete Boolean @default(false)
+
+  role RoleDefinition @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, module])
+  @@index([roleId])
+  @@index([tenantId, module])
 }
 
 // ─────────────────────────────────────────────
@@ -245,6 +399,50 @@ model TenantInvitation {
 }
 
 // ─────────────────────────────────────────────
+// TENANT DOCUMENT (onboarding files, contracts, etc.)
+// ─────────────────────────────────────────────
+model TenantDocument {
+  id           String    @id @default(cuid())
+  tenantId     String
+  fileName     String
+  documentType String    // "contract" | "business_permit" | "id_proof" | "other"
+  filePath     String    // URL to object storage — NOT base64
+  fileSize     Int?      // bytes
+  status       String    @default("pending") // pending|verified|rejected
+  uploadedAt   DateTime  @default(now())
+  verifiedById String?   // SystemAdmin id
+  verifiedAt   DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, status])
+}
+
+// ─────────────────────────────────────────────
+// ENVIRONMENT (tenant environment monitoring)
+// Tracks resource usage per tenant environment
+// ─────────────────────────────────────────────
+model Environment {
+  id            String   @id @default(cuid())
+  tenantId      String
+  envCode       String   // e.g. "prod" | "staging" | "sandbox"
+  type          String   // "production" | "staging" | "sandbox"
+  cpuUsage      Float?   // percentage
+  ramUsage      Float?   // percentage
+  storageUsage  Float?   // percentage
+  uptimePct     Float?   // percentage
+  isDefault     Boolean  @default(false)
+  lastCheckedAt DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, envCode])
+  @@index([tenantId])
+}
+
+// ─────────────────────────────────────────────
 // ORGANIZATION
 // ─────────────────────────────────────────────
 model Organization {
@@ -267,13 +465,13 @@ model Organization {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  tenant       Tenant       @relation(fields: [tenantId], references: [id])
-  assignedUser User?        @relation(fields: [assignedUserId], references: [id])
-  contacts     Contact[]
-  deals        Deal[]
-  activities   Activity[]
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  assignedUser  User?          @relation(fields: [assignedUserId], references: [id])
+  contacts      Contact[]
+  deals         Deal[]
+  activities    Activity[]
   serviceOrders ServiceOrder[]
-  assets       Asset[]
+  assets        Asset[]
 
   @@index([tenantId, isArchived])
   @@index([tenantId, name])
@@ -309,20 +507,20 @@ model Contact {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id])
-  organization Organization? @relation(fields: [organizationId], references: [id])
-  assignedUser User?         @relation("AssignedContacts", fields: [assignedUserId], references: [id])
-  owner        User?         @relation("OwnedContacts", fields: [ownerId], references: [id])
-  contactDeals  ContactDeal[]
-  tasks         Task[]
-  activities    Activity[]
-  invoices      Invoice[]
-  serviceOrders ServiceOrder[]
-  campaignContacts CampaignContact[]
+  tenant            Tenant            @relation(fields: [tenantId], references: [id])
+  organization      Organization?     @relation(fields: [organizationId], references: [id])
+  assignedUser      User?             @relation("AssignedContacts", fields: [assignedUserId], references: [id])
+  owner             User?             @relation("OwnedContacts", fields: [ownerId], references: [id])
+  contactDeals      ContactDeal[]
+  tasks             Task[]
+  activities        Activity[]
+  invoices          Invoice[]
+  serviceOrders     ServiceOrder[]
+  campaignContacts  CampaignContact[]
   emailDeliveryLogs EmailDeliveryLog[]
 
   // legacy singular FK kept for backward compatibility during ContactDeal migration
-  deals        Deal[]
+  deals Deal[]
 
   @@index([tenantId, status])
   @@index([tenantId, assignedUserId])
@@ -335,18 +533,19 @@ model Contact {
 // PIPELINE & STAGE
 // ─────────────────────────────────────────────
 model Pipeline {
-  id        String   @id @default(cuid())
-  tenantId  String
-  name      String
-  isDefault Boolean  @default(false)
-  currency  String?  @default("PHP")
-  isArchived Boolean @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(cuid())
+  tenantId   String
+  name       String
+  type       String?  // e.g. "Sales" | "Service" | "Onboarding"
+  isDefault  Boolean  @default(false)
+  currency   String?  @default("PHP")
+  isArchived Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  tenant  Tenant   @relation(fields: [tenantId], references: [id])
-  stages  Stage[]
-  deals   Deal[]
+  tenant Tenant  @relation(fields: [tenantId], references: [id])
+  stages Stage[]
+  deals  Deal[]
 
   @@index([tenantId, isArchived])
 }
@@ -359,14 +558,14 @@ model Stage {
   probability Int?     // 0-100 for revenue forecasting
   color       String?  // hex e.g. "#3fb950"
   description String?
-  isWon       Boolean  @default(false)  // terminal: deal won
-  isLost      Boolean  @default(false)  // terminal: deal lost
-  isDefault   Boolean  @default(false)  // starting stage for new deals
+  isWon       Boolean  @default(false) // terminal: deal won
+  isLost      Boolean  @default(false) // terminal: deal lost
+  isDefault   Boolean  @default(false) // starting stage for new deals
   createdAt   DateTime @default(now())
 
-  pipeline            Pipeline          @relation(fields: [pipelineId], references: [id])
-  deals               Deal[]
-  dealStageHistoriesNew DealStageHistory[] @relation("NewStage")
+  pipeline               Pipeline           @relation(fields: [pipelineId], references: [id])
+  deals                  Deal[]
+  dealStageHistoriesNew  DealStageHistory[] @relation("NewStage")
   dealStageHistoriesPrev DealStageHistory[] @relation("PreviousStage")
 
   @@index([pipelineId, order])
@@ -376,45 +575,46 @@ model Stage {
 // DEAL
 // ─────────────────────────────────────────────
 model Deal {
-  id               String    @id @default(cuid())
-  tenantId         String
-  pipelineId       String
-  stageId          String
-  contactId        String?   // legacy singular FK — use ContactDeal for new multi-contact deals
-  organizationId   String?
-  assignedUserId   String?
-  ownerId          String?   // original deal owner (immutable)
-  title            String
-  value            Float?
-  currency         String?   @default("PHP")
-  priority         Priority  @default(MEDIUM)
+  id                String    @id @default(cuid())
+  tenantId          String
+  pipelineId        String
+  stageId           String
+  contactId         String?   // legacy singular FK — use ContactDeal for new multi-contact deals
+  organizationId    String?
+  assignedUserId    String?
+  ownerId           String?   // original deal owner (immutable)
+  title             String
+  value             Float?
+  currency          String?   @default("PHP")
+  priority          Priority  @default(MEDIUM)
   expectedCloseDate DateTime?
-  closedAt         DateTime? // stamped when stage.isWon or stage.isLost = true
-  lostReason       String?
-  description      String?
-  leadSource       String?
-  industry         String?
-  tags             String?
-  order            Int       @default(0)
-  isArchived       Boolean   @default(false)
-  archiveReason    String?
-  deletedAt        DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  closedAt          DateTime? // stamped when stage.isWon or stage.isLost = true
+  lostReason        String?
+  description       String?
+  leadSource        String?
+  industry          String?
+  tags              String?
+  order             Int       @default(0)
+  isArchived        Boolean   @default(false)
+  archiveReason     String?
+  deletedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  tenant        Tenant         @relation(fields: [tenantId], references: [id])
-  pipeline      Pipeline       @relation(fields: [pipelineId], references: [id])
-  stage         Stage          @relation(fields: [stageId], references: [id])
-  contact       Contact?       @relation(fields: [contactId], references: [id])
-  organization  Organization?  @relation(fields: [organizationId], references: [id])
-  assignedUser  User?          @relation("AssignedDeals", fields: [assignedUserId], references: [id])
-  owner         User?          @relation("OwnedDeals", fields: [ownerId], references: [id])
-  contactDeals  ContactDeal[]
+  tenant         Tenant           @relation(fields: [tenantId], references: [id])
+  pipeline       Pipeline         @relation(fields: [pipelineId], references: [id])
+  stage          Stage            @relation(fields: [stageId], references: [id])
+  contact        Contact?         @relation(fields: [contactId], references: [id])
+  organization   Organization?    @relation(fields: [organizationId], references: [id])
+  assignedUser   User?            @relation("AssignedDeals", fields: [assignedUserId], references: [id])
+  owner          User?            @relation("OwnedDeals", fields: [ownerId], references: [id])
+  contactDeals   ContactDeal[]
   stageHistories DealStageHistory[]
-  tasks         Task[]
-  activities    Activity[]
-  invoices      Invoice[]
-  serviceOrders ServiceOrder[]
+  actions        DealAction[]
+  tasks          Task[]
+  activities     Activity[]
+  invoices       Invoice[]
+  serviceOrders  ServiceOrder[]
 
   @@index([tenantId, stageId])
   @@index([tenantId, pipelineId])
@@ -424,7 +624,7 @@ model Deal {
 }
 
 // ─────────────────────────────────────────────
-// CONTACT-DEAL JUNCTION (replaces Deal.contactIds String[])
+// CONTACT-DEAL JUNCTION (multi-contact deals)
 // ─────────────────────────────────────────────
 model ContactDeal {
   id        String   @id @default(cuid())
@@ -446,7 +646,7 @@ model ContactDeal {
 }
 
 // ─────────────────────────────────────────────
-// DEAL STAGE HISTORY (replaces Deal.history JSON)
+// DEAL STAGE HISTORY
 // ─────────────────────────────────────────────
 model DealStageHistory {
   id              String    @id @default(cuid())
@@ -459,14 +659,39 @@ model DealStageHistory {
   timeInPrevStage Int?      // minutes spent in previous stage (computed on insert)
   note            String?
 
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  deal          Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  movedBy       User     @relation(fields: [movedById], references: [id])
-  newStage      Stage    @relation("NewStage", fields: [newStageId], references: [id])
-  previousStage Stage?   @relation("PreviousStage", fields: [previousStageId], references: [id])
+  tenant        Tenant  @relation(fields: [tenantId], references: [id])
+  deal          Deal    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  movedBy       User    @relation(fields: [movedById], references: [id])
+  newStage      Stage   @relation("NewStage", fields: [newStageId], references: [id])
+  previousStage Stage?  @relation("PreviousStage", fields: [previousStageId], references: [id])
 
   @@index([dealId, tenantId])
   @@index([tenantId, movedAt])
+}
+
+// ─────────────────────────────────────────────
+// DEAL ACTION (manual actions performed on a deal)
+// Mentor requirement: update_field, assign_agent, change_status, send_email, send_sms, etc.
+// Distinct from automated WorkflowExecutionStep — these are user-initiated deal operations.
+// Every DealAction also triggers an Activity entry for the timeline.
+// ─────────────────────────────────────────────
+model DealAction {
+  id            String         @id @default(cuid())
+  tenantId      String
+  dealId        String
+  performedById String
+  actionType    DealActionType
+  payload       Json?          // e.g. { field: "status", from: "WARM", to: "HOT" } or { to: "user@email.com" }
+  note          String?
+  performedAt   DateTime       @default(now())
+
+  tenant      Tenant @relation(fields: [tenantId], references: [id])
+  deal        Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  performedBy User   @relation(fields: [performedById], references: [id])
+
+  @@index([dealId, tenantId])
+  @@index([tenantId, actionType])
+  @@index([tenantId, performedAt])
 }
 
 // ─────────────────────────────────────────────
@@ -512,7 +737,7 @@ model Activity {
   id             String    @id @default(cuid())
   tenantId       String
   createdById    String
-  type           String    // call|meeting|email|sms|note|task|workflow|stage_change|file_upload
+  type           String    // call|meeting|email|sms|note|task|workflow|stage_change|deal_action|file_upload
   title          String
   description    String?
   metadata       Json?
@@ -544,7 +769,7 @@ model Notification {
   id         String    @id @default(cuid())
   tenantId   String
   userId     String
-  type       String    // deal_assigned|task_due|campaign_sent|workflow_failed|...
+  type       String    // deal_assigned|task_due|campaign_sent|workflow_failed|deal_action|...
   title      String
   body       String?
   entityType String?
@@ -561,33 +786,106 @@ model Notification {
 }
 
 // ─────────────────────────────────────────────
+// TARGET AUDIENCE (campaign segmentation — no audience_contacts table)
+// Contacts are resolved at query time using TargetAudienceCondition filters.
+// mentor: "no need for audience_contacts, just filtration logic, query from contacts"
+// ─────────────────────────────────────────────
+model TargetAudience {
+  id           String   @id @default(cuid())
+  tenantId     String
+  name         String
+  description  String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant     Tenant                   @relation(fields: [tenantId], references: [id])
+  conditions TargetAudienceCondition[]
+  campaigns  Campaign[]
+
+  @@index([tenantId, isActive])
+}
+
+// ─────────────────────────────────────────────
+// TARGET AUDIENCE CONDITION (filter rules)
+// e.g. { field: "status", operator: "equals", value: "HOT" }
+// e.g. { field: "score", operator: "gte", value: "80" }
+// ─────────────────────────────────────────────
+model TargetAudienceCondition {
+  id               String @id @default(cuid())
+  targetAudienceId String
+  field            String   // contact field name e.g. "status", "score", "source", "tags"
+  operator         String   // equals|not_equals|contains|gte|lte|in|not_in
+  value            String   // stored as string, cast at query time
+  conditionOrder   Int      @default(0)
+  createdAt        DateTime @default(now())
+
+  targetAudience TargetAudience @relation(fields: [targetAudienceId], references: [id], onDelete: Cascade)
+
+  @@index([targetAudienceId])
+}
+
+// ─────────────────────────────────────────────
 // CAMPAIGN & TEMPLATE
 // ─────────────────────────────────────────────
 model Campaign {
-  id             String         @id @default(cuid())
-  tenantId       String
-  name           String
-  type           CampaignType
-  status         CampaignStatus @default(DRAFT)
-  subject        String?
-  body           String?
-  targetAudience String?
-  sentCount      Int            @default(0)
-  openedCount    Int            @default(0)
-  clickedCount   Int            @default(0)
-  engagement     Float          @default(0)
-  scheduledFor   DateTime?
-  sentAt         DateTime?
-  isArchived     Boolean        @default(false)
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  id               String         @id @default(cuid())
+  tenantId         String
+  targetAudienceId String?        // FK to TargetAudience — replaces old targetAudience String?
+  emailTemplateId  String?        // optional FK to Template (type=Email)
+  smsTemplateId    String?        // optional FK to Template (type=SMS)
+  name             String
+  type             CampaignType
+  status           CampaignStatus @default(DRAFT)
+  subject          String?
+  body             String?        // inline body override when no template selected
+  sentCount        Int            @default(0)
+  openedCount      Int            @default(0)
+  clickedCount     Int            @default(0)
+  engagement       Float          @default(0)
+  scheduledFor     DateTime?
+  sentAt           DateTime?
+  isArchived       Boolean        @default(false)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
-  tenant           Tenant            @relation(fields: [tenantId], references: [id])
+  tenant           Tenant           @relation(fields: [tenantId], references: [id])
+  targetAudience   TargetAudience?  @relation(fields: [targetAudienceId], references: [id], onDelete: SetNull)
+  emailTemplate    Template?        @relation("CampaignEmailTemplate", fields: [emailTemplateId], references: [id], onDelete: SetNull)
+  smsTemplate      Template?        @relation("CampaignSmsTemplate", fields: [smsTemplateId], references: [id], onDelete: SetNull)
   campaignContacts CampaignContact[]
+  metrics          CampaignMetrics[]
   emailDeliveryLogs EmailDeliveryLog[]
 
   @@index([tenantId, status])
   @@index([tenantId, isArchived])
+}
+
+// ─────────────────────────────────────────────
+// CAMPAIGN METRICS (historical snapshots — separate from inline totals on Campaign)
+// ─────────────────────────────────────────────
+model CampaignMetrics {
+  id             String   @id @default(cuid())
+  tenantId       String
+  campaignId     String
+  sentCount      Int      @default(0)
+  deliveredCount Int      @default(0)
+  openedCount    Int      @default(0)
+  clickedCount   Int      @default(0)
+  respondedCount Int      @default(0)
+  bouncedCount   Int      @default(0)
+  openRate       Float    @default(0)
+  clickRate      Float    @default(0)
+  deliveryRate   Float    @default(0)
+  responseRate   Float    @default(0)
+  bounceRate     Float    @default(0)
+  snapshotAt     DateTime @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, tenantId])
+  @@index([tenantId, snapshotAt])
 }
 
 // ─────────────────────────────────────────────
@@ -614,41 +912,48 @@ model CampaignContact {
   @@index([campaignId, tenantId, status])
 }
 
+// ─────────────────────────────────────────────
+// TEMPLATE (single model, type = Email | SMS)
+// Campaign links to this via emailTemplateId or smsTemplateId
+// ─────────────────────────────────────────────
 model Template {
   id         String   @id @default(cuid())
   tenantId   String
   name       String
-  type       String   // Email|SMS
+  type       String   // "Email" | "SMS"
   category   String?
-  subject    String?
+  subject    String?  // email only
   content    String
   isArchived Boolean  @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
+  tenant            Tenant     @relation(fields: [tenantId], references: [id])
+  campaignsAsEmail  Campaign[] @relation("CampaignEmailTemplate")
+  campaignsAsSms    Campaign[] @relation("CampaignSmsTemplate")
 
   @@index([tenantId, type, isArchived])
 }
 
 // ─────────────────────────────────────────────
 // WORKFLOW & EXECUTION CHAIN
+// conditions and actions stored as typed JSON (never eval()'d)
 // ─────────────────────────────────────────────
 model Workflow {
   id          String   @id @default(cuid())
   tenantId    String
   name        String
   description String?
-  trigger     String
-  conditions  Json?    // WorkflowCondition typed JSON — never eval()'d
-  actions     Json
+  trigger     String   // e.g. "deal.stage_changed" | "contact.created" | "task.overdue"
+  conditions  Json?    // WorkflowCondition[] typed JSON
+  actions     Json     // WorkflowAction[] typed JSON
   isActive    Boolean  @default(false)
   isArchived  Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  tenant           Tenant                  @relation(fields: [tenantId], references: [id])
-  triggerRecords   WorkflowTriggerRecord[]
+  tenant         Tenant                  @relation(fields: [tenantId], references: [id])
+  triggerRecords WorkflowTriggerRecord[]
 
   @@index([tenantId, isActive])
 }
@@ -696,7 +1001,7 @@ model WorkflowExecutionStep {
   tenantId    String
   executionId String
   stepIndex   Int
-  actionType  String   // create_task|send_email|assign_owner|update_field|...
+  actionType  String   // create_task|send_email|assign_owner|update_field|send_sms|change_status|...
   status      String   // success|failed|skipped
   output      Json?
   error       String?
@@ -710,10 +1015,12 @@ model WorkflowExecutionStep {
 
 // ─────────────────────────────────────────────
 // INVOICE & PAYMENT TRANSACTION
+// Invoice now links to Subscription for billing-driven invoices
 // ─────────────────────────────────────────────
 model Invoice {
   id              String    @id @default(cuid())
   tenantId        String
+  subscriptionId  String?   // link to Subscription for recurring billing invoices
   dealId          String?
   contactId       String?
   organizationId  String?
@@ -737,6 +1044,7 @@ model Invoice {
   updatedAt       DateTime  @updatedAt
 
   tenant       Tenant               @relation(fields: [tenantId], references: [id])
+  subscription Subscription?        @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
   deal         Deal?                @relation(fields: [dealId], references: [id], onDelete: SetNull)
   contact      Contact?             @relation(fields: [contactId], references: [id], onDelete: SetNull)
   transactions PaymentTransaction[]
@@ -751,19 +1059,22 @@ model PaymentTransaction {
   id                 String    @id @default(cuid())
   tenantId           String
   invoiceId          String
+  paymentMethodId    String?   // FK to PaymentMethod (saved method) — nullable for ad-hoc
   amount             Float
   currency           String    @default("PHP")
   status             String    // pending|paid|failed|refunded
+  transactionRef     String?   // internal or external reference number
   paymongoPaymentId  String?   @unique
   paymongoPaymentUrl String?
-  paymentMethod      String?   // card|gcash|maya|bank_transfer
+  paymentMethod      String?   // card|gcash|maya|bank_transfer (denorm for quick display)
   paidAt             DateTime?
   failureReason      String?
   metadata           Json?
   createdAt          DateTime  @default(now())
 
-  tenant  Tenant  @relation(fields: [tenantId], references: [id])
-  invoice Invoice @relation(fields: [invoiceId], references: [id])
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  invoice       Invoice        @relation(fields: [invoiceId], references: [id])
+  savedMethod   PaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, status])
   @@index([invoiceId])
@@ -787,7 +1098,7 @@ model ServiceOrder {
   scheduledDate        DateTime
   completedAt          DateTime?
   actualDurationMins   Int?
-  photos               Json?     // { before: [url1], after: [url2] } — URLs to object storage, NOT base64
+  photos               Json?     // { before: [url], after: [url] } — object storage URLs, NOT base64
   signature            String?   // URL to signed document in object storage
   notes                String?
   createdAt            DateTime  @default(now())
@@ -829,7 +1140,7 @@ model Asset {
 }
 
 model InventoryItem {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   tenantId      String
   name          String
   sku           String
@@ -839,25 +1150,29 @@ model InventoryItem {
   unitPrice     Float
   supplier      String?
   lastRestocked DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
-  @@index([tenantId, category])
   @@unique([tenantId, sku])
+  @@index([tenantId, category])
 }
 
 // ─────────────────────────────────────────────
 // AUDIT LOG
+// Mentor: "Audit Log is needed, logs of all actions with categorization"
+// severity: INFO | WARNING | CRITICAL
+// category: auth | crm | billing | workflow | admin | system
 // ─────────────────────────────────────────────
 model AuditLog {
   id         String   @id @default(cuid())
   tenantId   String
   userId     String
-  action     String
-  entityType String
+  action     String   // e.g. "contact.created" | "deal.stage_changed" | "user.login"
+  entityType String   // e.g. "Contact" | "Deal" | "User"
   entityId   String?
+  category   String   @default("crm") // auth|crm|billing|workflow|admin|system
   changeset  Json?    // { before: { status: "WARM" }, after: { status: "HOT" } }
   metadata   Json?
   ipAddress  String?
@@ -872,6 +1187,8 @@ model AuditLog {
   @@index([tenantId, createdAt])
   @@index([tenantId, entityType, entityId])
   @@index([tenantId, userId])
+  @@index([tenantId, category])
+  @@index([tenantId, severity])
 }
 
 // ─────────────────────────────────────────────

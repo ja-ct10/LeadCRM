@@ -38,7 +38,7 @@ nav { background: var(--surface); border-bottom: 1px solid var(--border); displa
 #p-visual { position: relative; }
 #erd-scroll { overflow: auto; background: var(--bg); cursor: grab; user-select: none; height: calc(100vh - 140px); }
 #erd-scroll:active { cursor: grabbing; }
-#erd-canvas { position: relative; width: 2600px; height: 1900px; }
+#erd-canvas { position: relative; width: 3200px; height: 2800px; }
 #svg-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
 
 /* ── ENTITY CARDS ── */
@@ -137,7 +137,7 @@ code { background: var(--surface2); padding: 1px 6px; border-radius: 3px; font-s
 <header>
   <div>
     <h1>⚡ LeadCRM — Full Entity Relationship Diagram</h1>
-    <div style="color:var(--muted);font-size:.78rem;margin-top:3px">PostgreSQL · Prisma ORM · Multi-Tenant SaaS · 18 Entities</div>
+    <div style="color:var(--muted);font-size:.78rem;margin-top:3px">PostgreSQL · Prisma ORM · Multi-Tenant SaaS · 30 Entities</div>
   </div>
   <div class="hbadges">
     <span class="badge b-db">🟢 In Prisma DB</span>
@@ -176,13 +176,58 @@ code { background: var(--surface2); padding: 1px 6px; border-radius: 3px; font-s
   </div>
 
   <div id="erd-scroll">
-    <div id="erd-canvas" id="erd-canvas">
+    <div id="erd-canvas">
       <svg id="svg-layer"></svg>
+
+      <!-- ═══ PLATFORM LAYER: SystemAdmin (top area) ═══ -->
+
+      <!-- SYSTEM ADMIN -->
+      <div class="ecard indb" id="e-sysadmin" style="left:600px;top:20px;min-width:200px">
+        <div class="ehead">🔧 SystemAdmin <span class="badge b-db" style="font-size:.6rem">DB</span></div>
+        <div class="ebody">
+          <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
+          <div class="field req">email <span class="ftype">String unique</span></div>
+          <div class="field req">firstName / lastName <span class="ftype">String</span></div>
+          <div class="field req">passwordHash <span class="ftype">String</span></div>
+          <div class="field req">isActive <span class="ftype">Boolean</span></div>
+          <div class="field req">createdAt / updatedAt <span class="ftype">DateTime</span></div>
+          <div class="fdiv"></div>
+          <div class="field" style="color:#7c3aed;font-size:.66rem;font-weight:600">No tenantId — platform owner</div>
+        </div>
+      </div>
+
+      <!-- PRICING PLAN -->
+      <div class="ecard indb" id="e-pricingplan" style="left:20px;top:80px;min-width:210px">
+        <div class="ehead">💰 PricingPlan <span class="badge b-db" style="font-size:.6rem">DB</span></div>
+        <div class="ebody">
+          <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
+          <div class="field req">name <span class="ftype">String unique</span></div>
+          <div class="field req">planType <span class="ftype">FREE|PRO|ENTERPRISE</span></div>
+          <div class="field req">monthlyPrice <span class="ftype">Float</span></div>
+          <div class="field req">quarterlyPrice <span class="ftype">Float</span></div>
+          <div class="field req">annualPrice <span class="ftype">Float</span></div>
+          <div class="field">maxUsers / maxContacts / maxDeals <span class="ftype">Int?</span></div>
+          <div class="field">storageLimit <span class="ftype">Int? MB</span></div>
+          <div class="field req">isActive <span class="ftype">Boolean</span></div>
+          <div class="field req">createdAt / updatedAt <span class="ftype">DateTime</span></div>
+        </div>
+      </div>
+
+      <!-- PLAN FEATURE -->
+      <div class="ecard indb" id="e-planfeature" style="left:20px;top:360px;min-width:200px">
+        <div class="ehead">🏷️ PlanFeature <span class="badge b-db" style="font-size:.6rem">DB</span></div>
+        <div class="ebody">
+          <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
+          <div class="field fk">🔗 planId <span class="ftype">FK→PricingPlan</span></div>
+          <div class="field req">name <span class="ftype">String</span></div>
+          <div class="field">description <span class="ftype">String?</span></div>
+        </div>
+      </div>
 
       <!-- ═══ LAYER 0: CORE ═══ -->
 
       <!-- TENANT -->
-      <div class="ecard core" id="e-tenant" style="left:1060px;top:30px;min-width:210px">
+      <div class="ecard core" id="e-tenant" style="left:1060px;top:80px;min-width:220px">
         <div class="ehead">🏢 Tenant <span class="badge b-db" style="font-size:.6rem">DB</span></div>
         <div class="ebody">
           <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
@@ -190,10 +235,47 @@ code { background: var(--surface2); padding: 1px 6px; border-radius: 3px; font-s
           <div class="field req">slug <span class="ftype">String unique</span></div>
           <div class="field req">status <span class="ftype">SANDBOX|ACTIVE|...</span></div>
           <div class="field req">plan <span class="ftype">FREE|PRO|ENTERPRISE</span></div>
-          <div class="field">industry <span class="ftype">String? [FE]</span></div>
-          <div class="field">email / phone <span class="ftype">String? [FE]</span></div>
-          <div class="field">timezone / currency <span class="ftype">String? [FE]</span></div>
-          <div class="field">healthMetrics <span class="ftype">JSON? [FE]</span></div>
+          <div class="field req">subscriptionStatus <span class="ftype">TRIAL|ACTIVE|PAST_DUE|...</span></div>
+          <div class="field">industry <span class="ftype">String?</span></div>
+          <div class="field">companySize <span class="ftype">String?</span></div>
+          <div class="field">email / phone <span class="ftype">String?</span></div>
+          <div class="field">address <span class="ftype">String?</span></div>
+          <div class="field">timezone / currency <span class="ftype">String?</span></div>
+          <div class="field">approvedById <span class="ftype">String? (SystemAdmin)</span></div>
+          <div class="field">approvedAt <span class="ftype">DateTime?</span></div>
+          <div class="field req">createdAt / updatedAt <span class="ftype">DateTime</span></div>
+        </div>
+      </div>
+
+
+      <!-- SUBSCRIPTION -->
+      <div class="ecard indb" id="e-subscription" style="left:20px;top:560px;min-width:215px">
+        <div class="ehead">📑 Subscription <span class="badge b-db" style="font-size:.6rem">DB</span></div>
+        <div class="ebody">
+          <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
+          <div class="field fk">🔗 tenantId <span class="ftype">FK→Tenant</span></div>
+          <div class="field fk">🔗 planId <span class="ftype">FK→PricingPlan</span></div>
+          <div class="field req">billingCycle <span class="ftype">MONTHLY|QUARTERLY|ANNUAL</span></div>
+          <div class="field req">status <span class="ftype">SubscriptionStatus</span></div>
+          <div class="field req">amount <span class="ftype">Float</span></div>
+          <div class="field req">startDate <span class="ftype">DateTime</span></div>
+          <div class="field">endDate / nextBillingDate <span class="ftype">DateTime?</span></div>
+          <div class="field">cancelledAt <span class="ftype">DateTime?</span></div>
+          <div class="field req">createdAt / updatedAt <span class="ftype">DateTime</span></div>
+        </div>
+      </div>
+
+      <!-- PAYMENT METHOD -->
+      <div class="ecard indb" id="e-paymentmethod" style="left:20px;top:820px;min-width:210px">
+        <div class="ehead">💳 PaymentMethod <span class="badge b-db" style="font-size:.6rem">DB</span></div>
+        <div class="ebody">
+          <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
+          <div class="field fk">🔗 tenantId <span class="ftype">FK→Tenant</span></div>
+          <div class="field req">methodName <span class="ftype">GCash|Maya|Credit Card|...</span></div>
+          <div class="field">accountName <span class="ftype">String?</span></div>
+          <div class="field">accountNumber <span class="ftype">String? masked</span></div>
+          <div class="field req">isDefault <span class="ftype">Boolean</span></div>
+          <div class="field req">isActive <span class="ftype">Boolean</span></div>
           <div class="field req">createdAt / updatedAt <span class="ftype">DateTime</span></div>
         </div>
       </div>
@@ -201,7 +283,7 @@ code { background: var(--surface2); padding: 1px 6px; border-radius: 3px; font-s
       <!-- ═══ LAYER 1: PLATFORM ═══ -->
 
       <!-- USER -->
-      <div class="ecard indb" id="e-user" style="left:480px;top:280px;min-width:200px">
+      <div class="ecard indb" id="e-user" style="left:500px;top:340px;min-width:200px">
         <div class="ehead">👤 User <span class="badge b-db" style="font-size:.6rem">DB</span></div>
         <div class="ebody">
           <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
@@ -211,14 +293,14 @@ code { background: var(--surface2); padding: 1px 6px; border-radius: 3px; font-s
           <div class="field req">passwordHash <span class="ftype">String</span></div>
           <div class="field req">role <span class="ftype">String</span></div>
           <div class="field req">status <span class="ftype">ACTIVE|INACTIVE|PENDING</span></div>
-          <div class="field">phone / team <span class="ftype">String? [FE]</span></div>
-          <div class="field">lastLogin <span class="ftype">DateTime? [FE]</span></div>
+          <div class="field">phone / team <span class="ftype">String?</span></div>
+          <div class="field">lastLogin <span class="ftype">DateTime?</span></div>
           <div class="field req">createdAt / updatedAt <span class="ftype">DateTime</span></div>
         </div>
       </div>
 
       <!-- AUDIT LOG -->
-      <div class="ecard indb" id="e-audit" style="left:1640px;top:280px;min-width:200px">
+      <div class="ecard indb" id="e-audit" style="left:1640px;top:340px;min-width:210px">
         <div class="ehead">📋 AuditLog <span class="badge b-db" style="font-size:.6rem">DB</span></div>
         <div class="ebody">
           <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
@@ -226,37 +308,56 @@ code { background: var(--surface2); padding: 1px 6px; border-radius: 3px; font-s
           <div class="field fk">🔗 userId <span class="ftype">FK→User</span></div>
           <div class="field req">action <span class="ftype">String</span></div>
           <div class="field req">entityType <span class="ftype">String</span></div>
+          <div class="field req">category <span class="ftype">auth|crm|billing|workflow|admin|system</span></div>
           <div class="field">entityId <span class="ftype">String?</span></div>
           <div class="field">metadata <span class="ftype">JSON?</span></div>
-          <div class="field">changeset <span class="ftype">JSON? [FE]</span></div>
-          <div class="field">ipAddress <span class="ftype">String? [FE]</span></div>
+          <div class="field">changeset <span class="ftype">JSON?</span></div>
+          <div class="field">ipAddress <span class="ftype">String?</span></div>
           <div class="field req">createdAt <span class="ftype">DateTime</span></div>
         </div>
       </div>
 
       <!-- ROLE DEFINITION -->
-      <div class="ecard fonly" id="e-role" style="left:1920px;top:280px;min-width:190px">
-        <div class="ehead">🛡️ RoleDefinition <span class="badge b-fe" style="font-size:.6rem">FE</span></div>
+      <div class="ecard indb" id="e-role" style="left:1920px;top:340px;min-width:210px">
+        <div class="ehead">🛡️ RoleDefinition <span class="badge b-db" style="font-size:.6rem">DB</span></div>
         <div class="ebody">
-          <div class="field pk">🔑 id <span class="ftype">uuid PK</span></div>
+          <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
           <div class="field fk">🔗 tenantId <span class="ftype">FK→Tenant</span></div>
           <div class="field req">name <span class="ftype">String</span></div>
-          <div class="field req">description <span class="ftype">String</span></div>
+          <div class="field">description <span class="ftype">String?</span></div>
           <div class="field req">isSystemRole <span class="ftype">Boolean</span></div>
-          <div class="field req">permissions <span class="ftype">String[]</span></div>
-          <div class="field req">userCount <span class="ftype">Int derived</span></div>
           <div class="field req">isArchived <span class="ftype">Boolean</span></div>
           <div class="field req">updatedAt <span class="ftype">DateTime</span></div>
+          <div class="fdiv"></div>
+          <div class="field" style="color:#7c3aed;font-size:.66rem;font-weight:600">permissions → RolePermission table</div>
         </div>
       </div>
+
+      <!-- ROLE PERMISSION -->
+      <div class="ecard indb" id="e-rolepermission" style="left:2200px;top:340px;min-width:215px">
+        <div class="ehead">🔐 RolePermission <span class="badge b-db" style="font-size:.6rem">DB</span></div>
+        <div class="ebody">
+          <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
+          <div class="field fk">🔗 roleId <span class="ftype">FK→RoleDefinition</span></div>
+          <div class="field req">tenantId <span class="ftype">String</span></div>
+          <div class="field req">module <span class="ftype">contacts|deals|campaigns|...</span></div>
+          <div class="field req">canView <span class="ftype">Boolean</span></div>
+          <div class="field req">canCreate <span class="ftype">Boolean</span></div>
+          <div class="field req">canEdit <span class="ftype">Boolean</span></div>
+          <div class="field req">canDelete <span class="ftype">Boolean</span></div>
+          <div class="fdiv"></div>
+          <div class="field" style="color:#7c3aed;font-size:.66rem;font-weight:600">unique: [roleId, module]</div>
+        </div>
+      </div>
+
 
       <!-- ═══ LAYER 2: CRM ═══ -->
 
       <!-- ORGANIZATION -->
-      <div class="ecard fonly" id="e-org" style="left:30px;top:580px;min-width:190px">
-        <div class="ehead">🏬 Organization <span class="badge b-fe" style="font-size:.6rem">FE</span></div>
+      <div class="ecard indb" id="e-org" style="left:280px;top:680px;min-width:200px">
+        <div class="ehead">🏬 Organization <span class="badge b-db" style="font-size:.6rem">DB</span></div>
         <div class="ebody">
-          <div class="field pk">🔑 id <span class="ftype">uuid PK</span></div>
+          <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
           <div class="field fk">🔗 tenantId <span class="ftype">FK→Tenant</span></div>
           <div class="field fk">🔗 assignedUserId <span class="ftype">FK→User?</span></div>
           <div class="field req">name <span class="ftype">String</span></div>
@@ -270,36 +371,34 @@ code { background: var(--surface2); padding: 1px 6px; border-radius: 3px; font-s
       </div>
 
       <!-- CONTACT -->
-      <div class="ecard indb" id="e-contact" style="left:300px;top:580px;min-width:210px">
-        <div class="ehead">👥 Contact <span class="badge b-db" style="font-size:.6rem">DB partial</span></div>
+      <div class="ecard indb" id="e-contact" style="left:560px;top:680px;min-width:215px">
+        <div class="ehead">👥 Contact <span class="badge b-db" style="font-size:.6rem">DB</span></div>
         <div class="ebody">
           <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
           <div class="field fk">🔗 tenantId <span class="ftype">FK→Tenant</span></div>
-          <div class="field fk">🔗 organizationId <span class="ftype">FK→Org? [FE]</span></div>
-          <div class="field fk">🔗 assignedUserId <span class="ftype">FK→User [FE]</span></div>
+          <div class="field fk">🔗 organizationId <span class="ftype">FK→Org?</span></div>
+          <div class="field fk">🔗 assignedUserId <span class="ftype">FK→User</span></div>
           <div class="field req">firstName / lastName <span class="ftype">String</span></div>
           <div class="field req">email / phone <span class="ftype">String?</span></div>
           <div class="field req">company <span class="ftype">String?</span></div>
           <div class="field req">status <span class="ftype">HOT|WARM|COLD|CANCELLED|CLOSED</span></div>
           <div class="field req">score <span class="ftype">Int (Hot=95,Warm=75,Cold=40)</span></div>
           <div class="field">source / priority <span class="ftype">String?</span></div>
-          <div class="field">estimatedValue <span class="ftype">Float [FE]</span></div>
-          <div class="field">contactNumbers <span class="ftype">JSON? [FE]</span></div>
-          <div class="field">customFields <span class="ftype">JSON? [FE]</span></div>
+          <div class="field">customFields <span class="ftype">JSON?</span></div>
           <div class="field req">isArchived <span class="ftype">Boolean</span></div>
-          <div class="field req">notes <span class="ftype">String?</span></div>
           <div class="field req">createdAt / updatedAt <span class="ftype">DateTime</span></div>
         </div>
       </div>
 
       <!-- PIPELINE -->
-      <div class="ecard indb" id="e-pipeline" style="left:800px;top:580px;min-width:200px">
+      <div class="ecard indb" id="e-pipeline" style="left:860px;top:680px;min-width:210px">
         <div class="ehead">📊 Pipeline <span class="badge b-db" style="font-size:.6rem">DB</span></div>
         <div class="ebody">
           <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
           <div class="field fk">🔗 tenantId <span class="ftype">FK→Tenant</span></div>
           <div class="field req">name <span class="ftype">String</span></div>
-          <div class="field">isArchived <span class="ftype">Boolean [FE]</span></div>
+          <div class="field">type <span class="ftype">String? Sales|Service|...</span></div>
+          <div class="field">isArchived <span class="ftype">Boolean</span></div>
           <div class="field req">createdAt / updatedAt <span class="ftype">DateTime</span></div>
           <div class="fdiv"></div>
           <div class="field" style="color:#7c3aed;font-size:.66rem;font-weight:600">Default Pipelines:</div>
@@ -311,15 +410,15 @@ code { background: var(--surface2); padding: 1px 6px; border-radius: 3px; font-s
       </div>
 
       <!-- STAGE -->
-      <div class="ecard indb" id="e-stage" style="left:1070px;top:580px;min-width:190px">
+      <div class="ecard indb" id="e-stage" style="left:1140px;top:680px;min-width:190px">
         <div class="ehead">📍 Stage <span class="badge b-db" style="font-size:.6rem">DB</span></div>
         <div class="ebody">
           <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
           <div class="field fk">🔗 pipelineId <span class="ftype">FK→Pipeline</span></div>
           <div class="field req">name <span class="ftype">String</span></div>
           <div class="field req">order <span class="ftype">Int</span></div>
-          <div class="field">probability <span class="ftype">Int? 0-100 [FE]</span></div>
-          <div class="field">color <span class="ftype">String? [REC]</span></div>
+          <div class="field">probability <span class="ftype">Int? 0-100</span></div>
+          <div class="field">color <span class="ftype">String?</span></div>
           <div class="field req">createdAt <span class="ftype">DateTime</span></div>
           <div class="fdiv"></div>
           <div class="field" style="color:#7c3aed;font-size:.66rem;font-weight:600">Sales Stages:</div>
@@ -330,37 +429,35 @@ code { background: var(--surface2); padding: 1px 6px; border-radius: 3px; font-s
       </div>
 
       <!-- DEAL -->
-      <div class="ecard indb" id="e-deal" style="left:1340px;top:580px;min-width:210px">
-        <div class="ehead">💼 Deal <span class="badge b-db" style="font-size:.6rem">DB partial</span></div>
+      <div class="ecard indb" id="e-deal" style="left:1400px;top:680px;min-width:215px">
+        <div class="ehead">💼 Deal <span class="badge b-db" style="font-size:.6rem">DB</span></div>
         <div class="ebody">
           <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
           <div class="field fk">🔗 tenantId <span class="ftype">FK→Tenant</span></div>
           <div class="field fk">🔗 pipelineId <span class="ftype">FK→Pipeline</span></div>
           <div class="field fk">🔗 stageId <span class="ftype">FK→Stage</span></div>
-          <div class="field fk">🔗 contactIds <span class="ftype">String[] [FE]</span></div>
-          <div class="field fk">🔗 organizationId <span class="ftype">FK→Org? [FE]</span></div>
-          <div class="field fk">🔗 assignedUserId <span class="ftype">FK→User [FE]</span></div>
+          <div class="field fk">🔗 contactId <span class="ftype">FK→Contact? (legacy)</span></div>
+          <div class="field fk">🔗 organizationId <span class="ftype">FK→Org?</span></div>
+          <div class="field fk">🔗 assignedUserId <span class="ftype">FK→User</span></div>
           <div class="field req">title <span class="ftype">String</span></div>
           <div class="field req">value <span class="ftype">Float?</span></div>
           <div class="field req">priority <span class="ftype">LOW|MEDIUM|HIGH</span></div>
           <div class="field">expectedCloseDate <span class="ftype">DateTime</span></div>
-          <div class="field">closedAt <span class="ftype">DateTime? [REC]</span></div>
+          <div class="field">closedAt <span class="ftype">DateTime?</span></div>
           <div class="field">lostReason <span class="ftype">String?</span></div>
-          <div class="field">history <span class="ftype">JSON? StageHistoryEntry[]</span></div>
-          <div class="field">ownershipHistory <span class="ftype">JSON? [FE]</span></div>
-          <div class="field">customFields <span class="ftype">JSON? [FE]</span></div>
           <div class="field req">isArchived <span class="ftype">Boolean</span></div>
           <div class="field req">createdAt / updatedAt <span class="ftype">DateTime</span></div>
         </div>
       </div>
 
+
       <!-- ═══ LAYER 3: OPERATIONS ═══ -->
 
       <!-- TASK -->
-      <div class="ecard fonly" id="e-task" style="left:30px;top:960px;min-width:190px">
-        <div class="ehead">✅ Task <span class="badge b-fe" style="font-size:.6rem">FE</span></div>
+      <div class="ecard indb" id="e-task" style="left:280px;top:1060px;min-width:200px">
+        <div class="ehead">✅ Task <span class="badge b-db" style="font-size:.6rem">DB</span></div>
         <div class="ebody">
-          <div class="field pk">🔑 id <span class="ftype">uuid PK</span></div>
+          <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
           <div class="field fk">🔗 tenantId <span class="ftype">FK→Tenant</span></div>
           <div class="field fk">🔗 dealId <span class="ftype">FK→Deal?</span></div>
           <div class="field fk">🔗 assignedUserId <span class="ftype">FK→User</span></div>
@@ -369,19 +466,19 @@ code { background: var(--surface2); padding: 1px 6px; border-radius: 3px; font-s
           <div class="field req">status <span class="ftype">pending|in-progress|blocked|completed|cancelled</span></div>
           <div class="field req">priority <span class="ftype">Low|Medium|High</span></div>
           <div class="field req">dueDate <span class="ftype">DateTime</span></div>
-          <div class="field">assignmentHistory <span class="ftype">JSON?</span></div>
           <div class="field req">createdAt <span class="ftype">DateTime</span></div>
         </div>
       </div>
 
       <!-- INVOICE -->
-      <div class="ecard fonly" id="e-invoice" style="left:290px;top:960px;min-width:195px">
-        <div class="ehead">🧾 Invoice <span class="badge b-fe" style="font-size:.6rem">FE</span></div>
+      <div class="ecard indb" id="e-invoice" style="left:560px;top:1060px;min-width:210px">
+        <div class="ehead">🧾 Invoice <span class="badge b-db" style="font-size:.6rem">DB</span></div>
         <div class="ebody">
-          <div class="field pk">🔑 id <span class="ftype">uuid PK</span></div>
+          <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
           <div class="field fk">🔗 tenantId <span class="ftype">FK→Tenant</span></div>
           <div class="field fk">🔗 dealId <span class="ftype">FK→Deal?</span></div>
           <div class="field fk">🔗 contactId <span class="ftype">FK→Contact?</span></div>
+          <div class="field fk">🔗 subscriptionId <span class="ftype">FK→Subscription?</span></div>
           <div class="field req">companyName / plan <span class="ftype">String</span></div>
           <div class="field req">amount <span class="ftype">Float</span></div>
           <div class="field req">frequency <span class="ftype">Monthly|Quarterly|Annual|One-time</span></div>
@@ -394,10 +491,10 @@ code { background: var(--surface2); padding: 1px 6px; border-radius: 3px; font-s
       </div>
 
       <!-- SERVICE ORDER -->
-      <div class="ecard fonly" id="e-svcorder" style="left:560px;top:960px;min-width:190px">
-        <div class="ehead">🔧 ServiceOrder <span class="badge b-fe" style="font-size:.6rem">FE</span></div>
+      <div class="ecard indb" id="e-svcorder" style="left:840px;top:1060px;min-width:200px">
+        <div class="ehead">🔧 ServiceOrder <span class="badge b-db" style="font-size:.6rem">DB</span></div>
         <div class="ebody">
-          <div class="field pk">🔑 id <span class="ftype">uuid PK</span></div>
+          <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
           <div class="field fk">🔗 tenantId <span class="ftype">FK→Tenant</span></div>
           <div class="field fk">🔗 assignedTechnicianId <span class="ftype">FK→User</span></div>
           <div class="field req">title / description <span class="ftype">String</span></div>
@@ -411,10 +508,10 @@ code { background: var(--surface2); padding: 1px 6px; border-radius: 3px; font-s
       </div>
 
       <!-- ASSET -->
-      <div class="ecard fonly" id="e-asset" style="left:820px;top:960px;min-width:185px">
-        <div class="ehead">🖥️ Asset <span class="badge b-fe" style="font-size:.6rem">FE</span></div>
+      <div class="ecard indb" id="e-asset" style="left:1110px;top:1060px;min-width:195px">
+        <div class="ehead">🖥️ Asset <span class="badge b-db" style="font-size:.6rem">DB</span></div>
         <div class="ebody">
-          <div class="field pk">🔑 id <span class="ftype">uuid PK</span></div>
+          <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
           <div class="field fk">🔗 tenantId <span class="ftype">FK→Tenant</span></div>
           <div class="field req">name <span class="ftype">String</span></div>
           <div class="field req">category <span class="ftype">Security|Telecom|IT|Infra</span></div>
@@ -427,10 +524,10 @@ code { background: var(--surface2); padding: 1px 6px; border-radius: 3px; font-s
       </div>
 
       <!-- INVENTORY -->
-      <div class="ecard fonly" id="e-inventory" style="left:1070px;top:960px;min-width:185px">
-        <div class="ehead">📦 InventoryItem <span class="badge b-fe" style="font-size:.6rem">FE</span></div>
+      <div class="ecard indb" id="e-inventory" style="left:1380px;top:1060px;min-width:195px">
+        <div class="ehead">📦 InventoryItem <span class="badge b-db" style="font-size:.6rem">DB</span></div>
         <div class="ebody">
-          <div class="field pk">🔑 id <span class="ftype">uuid PK</span></div>
+          <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
           <div class="field fk">🔗 tenantId <span class="ftype">FK→Tenant</span></div>
           <div class="field req">name / sku <span class="ftype">String</span></div>
           <div class="field req">category <span class="ftype">String</span></div>
@@ -443,37 +540,85 @@ code { background: var(--surface2); padding: 1px 6px; border-radius: 3px; font-s
       </div>
 
       <!-- ACTIVITY -->
-      <div class="ecard fonly" id="e-activity" style="left:1340px;top:960px;min-width:200px">
-        <div class="ehead">📌 Activity <span class="badge b-fe" style="font-size:.6rem">FE</span></div>
+      <div class="ecard indb" id="e-activity" style="left:1640px;top:1060px;min-width:210px">
+        <div class="ehead">📌 Activity <span class="badge b-db" style="font-size:.6rem">DB</span></div>
         <div class="ebody">
-          <div class="field pk">🔑 id <span class="ftype">uuid PK</span></div>
+          <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
           <div class="field fk">🔗 tenantId <span class="ftype">FK→Tenant</span></div>
-          <div class="field fk">🔗 createdBy <span class="ftype">FK→User | 'system'</span></div>
-          <div class="field req">type <span class="ftype">call|meeting|email|sms|note|task|workflow|stage-change|...</span></div>
-          <div class="field req">relatedToType <span class="ftype">contact|company|deal|task|invoice</span></div>
-          <div class="field fk">🔗 relatedToId <span class="ftype">polymorphic FK</span></div>
+          <div class="field fk">🔗 createdBy <span class="ftype">FK→User</span></div>
+          <div class="field req">type <span class="ftype">call|meeting|email|sms|note|task|...</span></div>
           <div class="field req">title <span class="ftype">String</span></div>
-          <div class="field">description <span class="ftype">String?</span></div>
+          <div class="field fk">🔗 contactId / dealId / taskId <span class="ftype">FK? (typed)</span></div>
           <div class="field">metadata <span class="ftype">JSON?</span></div>
           <div class="field req">createdAt <span class="ftype">DateTime</span></div>
         </div>
       </div>
 
+
+      <!-- ═══ DEAL ACTION (below deals area) ═══ -->
+
+      <!-- DEAL ACTION -->
+      <div class="ecard indb" id="e-dealaction" style="left:1400px;top:1340px;min-width:215px">
+        <div class="ehead">⚡ DealAction <span class="badge b-db" style="font-size:.6rem">DB</span></div>
+        <div class="ebody">
+          <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
+          <div class="field fk">🔗 tenantId <span class="ftype">FK→Tenant</span></div>
+          <div class="field fk">🔗 dealId <span class="ftype">FK→Deal</span></div>
+          <div class="field fk">🔗 performedById <span class="ftype">FK→User</span></div>
+          <div class="field req">actionType <span class="ftype">UPDATE_FIELD|ASSIGN_AGENT|CHANGE_STATUS|SEND_EMAIL|SEND_SMS|ADD_NOTE|CREATE_TASK|CHANGE_STAGE</span></div>
+          <div class="field">payload <span class="ftype">Json?</span></div>
+          <div class="field">note <span class="ftype">String?</span></div>
+          <div class="field req">performedAt <span class="ftype">DateTime</span></div>
+        </div>
+      </div>
+
       <!-- ═══ LAYER 4: MARKETING ═══ -->
 
-      <!-- CAMPAIGN -->
-      <div class="ecard indb" id="e-campaign" style="left:1640px;top:580px;min-width:200px">
-        <div class="ehead">📣 Campaign <span class="badge b-db" style="font-size:.6rem">DB</span></div>
+      <!-- TARGET AUDIENCE -->
+      <div class="ecard indb" id="e-targetaudience" style="left:2250px;top:680px;min-width:210px">
+        <div class="ehead">🎯 TargetAudience <span class="badge b-db" style="font-size:.6rem">DB</span></div>
         <div class="ebody">
           <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
           <div class="field fk">🔗 tenantId <span class="ftype">FK→Tenant</span></div>
           <div class="field req">name <span class="ftype">String</span></div>
-          <div class="field req">type <span class="ftype">EMAIL|SMS|Multi-Channel</span></div>
+          <div class="field">description <span class="ftype">String?</span></div>
+          <div class="field req">isActive <span class="ftype">Boolean</span></div>
+          <div class="field req">createdAt / updatedAt <span class="ftype">DateTime</span></div>
+          <div class="fdiv"></div>
+          <div class="field" style="color:#7c3aed;font-size:.66rem;font-weight:600">No junction table — contacts</div>
+          <div class="field" style="color:#7c3aed;font-size:.66rem;font-weight:600">resolved dynamically via conditions</div>
+        </div>
+      </div>
+
+      <!-- TARGET AUDIENCE CONDITION -->
+      <div class="ecard indb" id="e-taudiencecond" style="left:2250px;top:940px;min-width:220px">
+        <div class="ehead">🔍 TargetAudienceCondition <span class="badge b-db" style="font-size:.6rem">DB</span></div>
+        <div class="ebody">
+          <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
+          <div class="field fk">🔗 targetAudienceId <span class="ftype">FK→TargetAudience</span></div>
+          <div class="field req">field <span class="ftype">String (status|score|source|...)</span></div>
+          <div class="field req">operator <span class="ftype">equals|not_equals|contains|gte|lte|in|not_in</span></div>
+          <div class="field req">value <span class="ftype">String (cast at query time)</span></div>
+          <div class="field req">conditionOrder <span class="ftype">Int</span></div>
+          <div class="field req">createdAt <span class="ftype">DateTime</span></div>
+        </div>
+      </div>
+
+      <!-- CAMPAIGN -->
+      <div class="ecard indb" id="e-campaign" style="left:1920px;top:680px;min-width:215px">
+        <div class="ehead">📣 Campaign <span class="badge b-db" style="font-size:.6rem">DB</span></div>
+        <div class="ebody">
+          <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
+          <div class="field fk">🔗 tenantId <span class="ftype">FK→Tenant</span></div>
+          <div class="field fk">🔗 targetAudienceId <span class="ftype">FK→TargetAudience?</span></div>
+          <div class="field fk">🔗 emailTemplateId <span class="ftype">FK→Template?</span></div>
+          <div class="field fk">🔗 smsTemplateId <span class="ftype">FK→Template?</span></div>
+          <div class="field req">name <span class="ftype">String</span></div>
+          <div class="field req">type <span class="ftype">EMAIL|SMS|MULTI_CHANNEL</span></div>
           <div class="field req">status <span class="ftype">DRAFT|ACTIVE|PAUSED|COMPLETED</span></div>
           <div class="field">subject / body <span class="ftype">String?</span></div>
-          <div class="field">targetAudience <span class="ftype">String</span></div>
           <div class="field">sentCount / openedCount / clickedCount <span class="ftype">Int</span></div>
-          <div class="field">scheduledFor <span class="ftype">DateTime? [REC]</span></div>
+          <div class="field">scheduledFor <span class="ftype">DateTime?</span></div>
           <div class="field">sentAt <span class="ftype">DateTime?</span></div>
           <div class="field">engagement <span class="ftype">Float</span></div>
           <div class="field req">isArchived <span class="ftype">Boolean</span></div>
@@ -482,10 +627,10 @@ code { background: var(--surface2); padding: 1px 6px; border-radius: 3px; font-s
       </div>
 
       <!-- TEMPLATE -->
-      <div class="ecard fonly" id="e-template" style="left:1910px;top:580px;min-width:180px">
-        <div class="ehead">📝 Template <span class="badge b-fe" style="font-size:.6rem">FE</span></div>
+      <div class="ecard indb" id="e-template" style="left:1920px;top:1000px;min-width:190px">
+        <div class="ehead">📝 Template <span class="badge b-db" style="font-size:.6rem">DB</span></div>
         <div class="ebody">
-          <div class="field pk">🔑 id <span class="ftype">uuid PK</span></div>
+          <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
           <div class="field fk">🔗 tenantId <span class="ftype">FK→Tenant</span></div>
           <div class="field req">name <span class="ftype">String</span></div>
           <div class="field req">type <span class="ftype">Email|SMS</span></div>
@@ -496,10 +641,27 @@ code { background: var(--surface2); padding: 1px 6px; border-radius: 3px; font-s
         </div>
       </div>
 
+      <!-- CAMPAIGN METRICS -->
+      <div class="ecard indb" id="e-campaignmetrics" style="left:2250px;top:1200px;min-width:220px">
+        <div class="ehead">📊 CampaignMetrics <span class="badge b-db" style="font-size:.6rem">DB</span></div>
+        <div class="ebody">
+          <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
+          <div class="field fk">🔗 tenantId <span class="ftype">FK→Tenant</span></div>
+          <div class="field fk">🔗 campaignId <span class="ftype">FK→Campaign</span></div>
+          <div class="field req">sentCount / deliveredCount <span class="ftype">Int</span></div>
+          <div class="field req">openedCount / clickedCount <span class="ftype">Int</span></div>
+          <div class="field req">respondedCount / bouncedCount <span class="ftype">Int</span></div>
+          <div class="field req">openRate / clickRate / deliveryRate <span class="ftype">Float</span></div>
+          <div class="field req">responseRate / bounceRate <span class="ftype">Float</span></div>
+          <div class="field req">snapshotAt <span class="ftype">DateTime</span></div>
+        </div>
+      </div>
+
+
       <!-- ═══ LAYER 5: AUTOMATION ═══ -->
 
       <!-- WORKFLOW -->
-      <div class="ecard indb" id="e-workflow" style="left:1640px;top:960px;min-width:200px">
+      <div class="ecard indb" id="e-workflow" style="left:1640px;top:1340px;min-width:210px">
         <div class="ehead">⚡ Workflow <span class="badge b-db" style="font-size:.6rem">DB</span></div>
         <div class="ebody">
           <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
@@ -508,20 +670,18 @@ code { background: var(--surface2); padding: 1px 6px; border-radius: 3px; font-s
           <div class="field req">trigger <span class="ftype">String (e.g. deal.stage_changed)</span></div>
           <div class="field req">actions <span class="ftype">JSON WorkflowAction[]</span></div>
           <div class="field req">isActive <span class="ftype">Boolean</span></div>
-          <div class="field">category <span class="ftype">Security|Telecom|IT|General [FE]</span></div>
-          <div class="field">condition <span class="ftype">String? [FE]</span></div>
-          <div class="field">delay / delayUnit <span class="ftype">[FE]</span></div>
-          <div class="field">executionCount <span class="ftype">Int [FE]</span></div>
-          <div class="field req">isArchived <span class="ftype">Boolean [FE]</span></div>
+          <div class="field">category / condition <span class="ftype">String?</span></div>
+          <div class="field">delay / delayUnit <span class="ftype">String?</span></div>
+          <div class="field req">isArchived <span class="ftype">Boolean</span></div>
           <div class="field req">createdAt / updatedAt <span class="ftype">DateTime</span></div>
         </div>
       </div>
 
       <!-- WORKFLOW TRIGGER RECORD -->
-      <div class="ecard fonly" id="e-wftrigger" style="left:1640px;top:1290px;min-width:200px">
-        <div class="ehead">🔁 WorkflowTriggerRecord <span class="badge b-fe" style="font-size:.6rem">FE</span></div>
+      <div class="ecard indb" id="e-wftrigger" style="left:1640px;top:1620px;min-width:210px">
+        <div class="ehead">🔁 WorkflowTriggerRecord <span class="badge b-db" style="font-size:.6rem">DB</span></div>
         <div class="ebody">
-          <div class="field pk">🔑 id <span class="ftype">uuid PK</span></div>
+          <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
           <div class="field fk">🔗 tenantId <span class="ftype">FK→Tenant</span></div>
           <div class="field fk">🔗 workflowId <span class="ftype">FK→Workflow</span></div>
           <div class="field req">triggerType <span class="ftype">String e.g. contact.created</span></div>
@@ -532,10 +692,10 @@ code { background: var(--surface2); padding: 1px 6px; border-radius: 3px; font-s
       </div>
 
       <!-- WORKFLOW EXECUTION RUN -->
-      <div class="ecard fonly" id="e-wfrun" style="left:1640px;top:1540px;min-width:200px">
-        <div class="ehead">▶️ WorkflowExecutionRun <span class="badge b-fe" style="font-size:.6rem">FE</span></div>
+      <div class="ecard indb" id="e-wfrun" style="left:1640px;top:1880px;min-width:210px">
+        <div class="ehead">▶️ WorkflowExecutionRun <span class="badge b-db" style="font-size:.6rem">DB</span></div>
         <div class="ebody">
-          <div class="field pk">🔑 id <span class="ftype">uuid PK</span></div>
+          <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
           <div class="field fk">🔗 tenantId <span class="ftype">FK→Tenant</span></div>
           <div class="field fk">🔗 workflowId <span class="ftype">FK→Workflow</span></div>
           <div class="field fk">🔗 triggerId <span class="ftype">FK→WorkflowTriggerRecord</span></div>
@@ -547,10 +707,10 @@ code { background: var(--surface2); padding: 1px 6px; border-radius: 3px; font-s
       </div>
 
       <!-- WORKFLOW EXECUTION STEP -->
-      <div class="ecard fonly" id="e-wfstep" style="left:1920px;top:1540px;min-width:195px">
-        <div class="ehead">🔩 WorkflowExecutionStep <span class="badge b-fe" style="font-size:.6rem">FE</span></div>
+      <div class="ecard indb" id="e-wfstep" style="left:1920px;top:1880px;min-width:200px">
+        <div class="ehead">🔩 WorkflowExecutionStep <span class="badge b-db" style="font-size:.6rem">DB</span></div>
         <div class="ebody">
-          <div class="field pk">🔑 id <span class="ftype">uuid PK</span></div>
+          <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
           <div class="field fk">🔗 tenantId <span class="ftype">FK→Tenant</span></div>
           <div class="field fk">🔗 executionId <span class="ftype">FK→WorkflowExecutionRun</span></div>
           <div class="field req">stepIndex <span class="ftype">Int</span></div>
@@ -562,98 +722,183 @@ code { background: var(--surface2); padding: 1px 6px; border-radius: 3px; font-s
         </div>
       </div>
 
+      <!-- ═══ TENANT MANAGEMENT (below campaigns) ═══ -->
+
+      <!-- TENANT DOCUMENT -->
+      <div class="ecard indb" id="e-tenantdoc" style="left:560px;top:1340px;min-width:215px">
+        <div class="ehead">📄 TenantDocument <span class="badge b-db" style="font-size:.6rem">DB</span></div>
+        <div class="ebody">
+          <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
+          <div class="field fk">🔗 tenantId <span class="ftype">FK→Tenant</span></div>
+          <div class="field req">fileName <span class="ftype">String</span></div>
+          <div class="field req">documentType <span class="ftype">contract|business_permit|id_proof|other</span></div>
+          <div class="field req">filePath <span class="ftype">String (URL)</span></div>
+          <div class="field">fileSize <span class="ftype">Int? bytes</span></div>
+          <div class="field req">status <span class="ftype">pending|verified|rejected</span></div>
+          <div class="field req">uploadedAt <span class="ftype">DateTime</span></div>
+          <div class="field">verifiedById <span class="ftype">String? (SystemAdmin)</span></div>
+          <div class="field">verifiedAt <span class="ftype">DateTime?</span></div>
+        </div>
+      </div>
+
+      <!-- ENVIRONMENT -->
+      <div class="ecard indb" id="e-environment" style="left:850px;top:1340px;min-width:210px">
+        <div class="ehead">🌐 Environment <span class="badge b-db" style="font-size:.6rem">DB</span></div>
+        <div class="ebody">
+          <div class="field pk">🔑 id <span class="ftype">cuid PK</span></div>
+          <div class="field fk">🔗 tenantId <span class="ftype">FK→Tenant</span></div>
+          <div class="field req">envCode <span class="ftype">prod|staging|sandbox</span></div>
+          <div class="field req">type <span class="ftype">production|staging|sandbox</span></div>
+          <div class="field">cpuUsage / ramUsage / storageUsage <span class="ftype">Float? %</span></div>
+          <div class="field">uptimePct <span class="ftype">Float? %</span></div>
+          <div class="field req">isDefault <span class="ftype">Boolean</span></div>
+          <div class="field">lastCheckedAt <span class="ftype">DateTime?</span></div>
+          <div class="field req">createdAt / updatedAt <span class="ftype">DateTime</span></div>
+          <div class="fdiv"></div>
+          <div class="field" style="color:#7c3aed;font-size:.66rem;font-weight:600">unique: [tenantId, envCode]</div>
+        </div>
+      </div>
+
     </div><!-- /#erd-canvas -->
   </div><!-- /#erd-scroll -->
 </div><!-- /#p-visual -->
+
 
 <!-- ════════════════════════════════════════
      PANEL 2 — RELATIONSHIPS TABLE
 ════════════════════════════════════════ -->
 <div id="p-rel" class="panel content">
   <h2>Entity Relationships</h2>
-  <p class="sub">Complete FK mapping across all 18 entities. Every entity (except Tenant root) has a required tenantId for multi-tenant isolation.</p>
+  <p class="sub">Complete FK mapping across all 30 entities. Every tenant-scoped entity has a required tenantId for multi-tenant isolation. SystemAdmin and PricingPlan are platform-global (no tenantId).</p>
 
   <table>
     <thead>
       <tr><th>Parent</th><th>Child</th><th>Cardinality</th><th>Foreign Key Field</th><th>Status</th></tr>
     </thead>
     <tbody>
+      <!-- Platform / Billing -->
+      <tr><td class="ename">PricingPlan</td><td class="ename">PlanFeature</td><td class="reltype">1:N</td><td class="mono">PlanFeature.planId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">PricingPlan</td><td class="ename">Subscription</td><td class="reltype">1:N</td><td class="mono">Subscription.planId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">Tenant</td><td class="ename">Subscription</td><td class="reltype">1:N</td><td class="mono">Subscription.tenantId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">Tenant</td><td class="ename">PaymentMethod</td><td class="reltype">1:N</td><td class="mono">PaymentMethod.tenantId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">Subscription</td><td class="ename">Invoice</td><td class="reltype">1:N</td><td class="mono">Invoice.subscriptionId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">PaymentMethod</td><td class="ename">PaymentTransaction</td><td class="reltype">1:N</td><td class="mono">PaymentTransaction.paymentMethodId</td><td><span class="badge b-db">DB</span></td></tr>
+      <!-- Core -->
       <tr><td class="ename">Tenant</td><td class="ename">User</td><td class="reltype">1:N</td><td class="mono">User.tenantId</td><td><span class="badge b-db">DB</span></td></tr>
       <tr><td class="ename">Tenant</td><td class="ename">AuditLog</td><td class="reltype">1:N</td><td class="mono">AuditLog.tenantId</td><td><span class="badge b-db">DB</span></td></tr>
       <tr><td class="ename">User</td><td class="ename">AuditLog</td><td class="reltype">1:N</td><td class="mono">AuditLog.userId</td><td><span class="badge b-db">DB</span></td></tr>
-      <tr><td class="ename">Tenant</td><td class="ename">RoleDefinition</td><td class="reltype">1:N</td><td class="mono">RoleDefinition.tenantId</td><td><span class="badge b-fe">FE</span></td></tr>
-      <tr><td class="ename">Tenant</td><td class="ename">Organization</td><td class="reltype">1:N</td><td class="mono">Organization.tenantId</td><td><span class="badge b-fe">FE</span></td></tr>
-      <tr><td class="ename">User</td><td class="ename">Organization</td><td class="reltype">1:N</td><td class="mono">Organization.assignedUserId</td><td><span class="badge b-fe">FE</span></td></tr>
-      <tr><td class="ename">Organization</td><td class="ename">Contact</td><td class="reltype">1:N</td><td class="mono">Contact.organizationId</td><td><span class="badge b-fe">FE</span></td></tr>
+      <tr><td class="ename">Tenant</td><td class="ename">RoleDefinition</td><td class="reltype">1:N</td><td class="mono">RoleDefinition.tenantId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">RoleDefinition</td><td class="ename">RolePermission</td><td class="reltype">1:N</td><td class="mono">RolePermission.roleId</td><td><span class="badge b-db">DB</span></td></tr>
+      <!-- CRM -->
+      <tr><td class="ename">Tenant</td><td class="ename">Organization</td><td class="reltype">1:N</td><td class="mono">Organization.tenantId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">User</td><td class="ename">Organization</td><td class="reltype">1:N</td><td class="mono">Organization.assignedUserId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">Organization</td><td class="ename">Contact</td><td class="reltype">1:N</td><td class="mono">Contact.organizationId</td><td><span class="badge b-db">DB</span></td></tr>
       <tr><td class="ename">Tenant</td><td class="ename">Contact</td><td class="reltype">1:N</td><td class="mono">Contact.tenantId</td><td><span class="badge b-db">DB</span></td></tr>
-      <tr><td class="ename">User</td><td class="ename">Contact</td><td class="reltype">1:N</td><td class="mono">Contact.assignedUserId</td><td><span class="badge b-fe">FE</span></td></tr>
+      <tr><td class="ename">User</td><td class="ename">Contact</td><td class="reltype">1:N</td><td class="mono">Contact.assignedUserId</td><td><span class="badge b-db">DB</span></td></tr>
       <tr><td class="ename">Tenant</td><td class="ename">Pipeline</td><td class="reltype">1:N</td><td class="mono">Pipeline.tenantId</td><td><span class="badge b-db">DB</span></td></tr>
       <tr><td class="ename">Pipeline</td><td class="ename">Stage</td><td class="reltype">1:N</td><td class="mono">Stage.pipelineId</td><td><span class="badge b-db">DB</span></td></tr>
       <tr><td class="ename">Pipeline</td><td class="ename">Deal</td><td class="reltype">1:N</td><td class="mono">Deal.pipelineId</td><td><span class="badge b-db">DB</span></td></tr>
       <tr><td class="ename">Stage</td><td class="ename">Deal</td><td class="reltype">1:N</td><td class="mono">Deal.stageId</td><td><span class="badge b-db">DB</span></td></tr>
       <tr><td class="ename">Tenant</td><td class="ename">Deal</td><td class="reltype">1:N</td><td class="mono">Deal.tenantId</td><td><span class="badge b-db">DB</span></td></tr>
-      <tr><td class="ename">Contact</td><td class="ename">Deal</td><td class="reltype">N:M</td><td class="mono">Deal.contactIds[] (JSON array)</td><td><span class="badge b-fe">FE</span></td></tr>
-      <tr><td class="ename">Organization</td><td class="ename">Deal</td><td class="reltype">1:N</td><td class="mono">Deal.organizationId</td><td><span class="badge b-fe">FE</span></td></tr>
-      <tr><td class="ename">User</td><td class="ename">Deal</td><td class="reltype">1:N</td><td class="mono">Deal.assignedUserId</td><td><span class="badge b-fe">FE</span></td></tr>
-      <tr><td class="ename">Tenant</td><td class="ename">Task</td><td class="reltype">1:N</td><td class="mono">Task.tenantId</td><td><span class="badge b-fe">FE</span></td></tr>
-      <tr><td class="ename">Deal</td><td class="ename">Task</td><td class="reltype">1:N</td><td class="mono">Task.dealId</td><td><span class="badge b-fe">FE</span></td></tr>
-      <tr><td class="ename">User</td><td class="ename">Task</td><td class="reltype">1:N</td><td class="mono">Task.assignedUserId, Task.assignedBy</td><td><span class="badge b-fe">FE</span></td></tr>
-      <tr><td class="ename">Tenant</td><td class="ename">Invoice</td><td class="reltype">1:N</td><td class="mono">Invoice.tenantId</td><td><span class="badge b-fe">FE</span></td></tr>
-      <tr><td class="ename">Deal</td><td class="ename">Invoice</td><td class="reltype">1:N</td><td class="mono">Invoice.dealId</td><td><span class="badge b-fe">FE</span></td></tr>
-      <tr><td class="ename">Contact</td><td class="ename">Invoice</td><td class="reltype">1:N</td><td class="mono">Invoice.contactId</td><td><span class="badge b-fe">FE</span></td></tr>
-      <tr><td class="ename">Tenant</td><td class="ename">ServiceOrder</td><td class="reltype">1:N</td><td class="mono">ServiceOrder.tenantId</td><td><span class="badge b-fe">FE</span></td></tr>
-      <tr><td class="ename">User</td><td class="ename">ServiceOrder</td><td class="reltype">1:N</td><td class="mono">ServiceOrder.assignedTechnicianId</td><td><span class="badge b-fe">FE</span></td></tr>
-      <tr><td class="ename">Tenant</td><td class="ename">Asset</td><td class="reltype">1:N</td><td class="mono">Asset.tenantId</td><td><span class="badge b-fe">FE</span></td></tr>
-      <tr><td class="ename">Tenant</td><td class="ename">InventoryItem</td><td class="reltype">1:N</td><td class="mono">InventoryItem.tenantId</td><td><span class="badge b-fe">FE</span></td></tr>
+      <tr><td class="ename">Contact</td><td class="ename">Deal</td><td class="reltype">N:M</td><td class="mono">ContactDeal junction (multi-contact)</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">Organization</td><td class="ename">Deal</td><td class="reltype">1:N</td><td class="mono">Deal.organizationId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">User</td><td class="ename">Deal</td><td class="reltype">1:N</td><td class="mono">Deal.assignedUserId</td><td><span class="badge b-db">DB</span></td></tr>
+      <!-- Deal Actions -->
+      <tr><td class="ename">Tenant</td><td class="ename">DealAction</td><td class="reltype">1:N</td><td class="mono">DealAction.tenantId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">Deal</td><td class="ename">DealAction</td><td class="reltype">1:N</td><td class="mono">DealAction.dealId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">User</td><td class="ename">DealAction</td><td class="reltype">1:N</td><td class="mono">DealAction.performedById</td><td><span class="badge b-db">DB</span></td></tr>
+      <!-- Operations -->
+      <tr><td class="ename">Tenant</td><td class="ename">Task</td><td class="reltype">1:N</td><td class="mono">Task.tenantId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">Deal</td><td class="ename">Task</td><td class="reltype">1:N</td><td class="mono">Task.dealId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">User</td><td class="ename">Task</td><td class="reltype">1:N</td><td class="mono">Task.assignedUserId, Task.assignedBy</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">Tenant</td><td class="ename">Invoice</td><td class="reltype">1:N</td><td class="mono">Invoice.tenantId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">Deal</td><td class="ename">Invoice</td><td class="reltype">1:N</td><td class="mono">Invoice.dealId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">Contact</td><td class="ename">Invoice</td><td class="reltype">1:N</td><td class="mono">Invoice.contactId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">Tenant</td><td class="ename">ServiceOrder</td><td class="reltype">1:N</td><td class="mono">ServiceOrder.tenantId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">User</td><td class="ename">ServiceOrder</td><td class="reltype">1:N</td><td class="mono">ServiceOrder.assignedTechnicianId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">Tenant</td><td class="ename">Asset</td><td class="reltype">1:N</td><td class="mono">Asset.tenantId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">Tenant</td><td class="ename">InventoryItem</td><td class="reltype">1:N</td><td class="mono">InventoryItem.tenantId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">Tenant</td><td class="ename">Activity</td><td class="reltype">1:N</td><td class="mono">Activity.tenantId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">User</td><td class="ename">Activity</td><td class="reltype">1:N</td><td class="mono">Activity.createdBy</td><td><span class="badge b-db">DB</span></td></tr>
+      <!-- Marketing -->
+      <tr><td class="ename">Tenant</td><td class="ename">TargetAudience</td><td class="reltype">1:N</td><td class="mono">TargetAudience.tenantId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">TargetAudience</td><td class="ename">TargetAudienceCondition</td><td class="reltype">1:N</td><td class="mono">TargetAudienceCondition.targetAudienceId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">TargetAudience</td><td class="ename">Campaign</td><td class="reltype">1:N</td><td class="mono">Campaign.targetAudienceId</td><td><span class="badge b-db">DB</span></td></tr>
       <tr><td class="ename">Tenant</td><td class="ename">Campaign</td><td class="reltype">1:N</td><td class="mono">Campaign.tenantId</td><td><span class="badge b-db">DB</span></td></tr>
-      <tr><td class="ename">Tenant</td><td class="ename">Template</td><td class="reltype">1:N</td><td class="mono">Template.tenantId</td><td><span class="badge b-fe">FE</span></td></tr>
+      <tr><td class="ename">Template</td><td class="ename">Campaign</td><td class="reltype">1:N</td><td class="mono">Campaign.emailTemplateId / smsTemplateId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">Tenant</td><td class="ename">Template</td><td class="reltype">1:N</td><td class="mono">Template.tenantId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">Tenant</td><td class="ename">CampaignMetrics</td><td class="reltype">1:N</td><td class="mono">CampaignMetrics.tenantId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">Campaign</td><td class="ename">CampaignMetrics</td><td class="reltype">1:N</td><td class="mono">CampaignMetrics.campaignId</td><td><span class="badge b-db">DB</span></td></tr>
+      <!-- Automation -->
       <tr><td class="ename">Tenant</td><td class="ename">Workflow</td><td class="reltype">1:N</td><td class="mono">Workflow.tenantId</td><td><span class="badge b-db">DB</span></td></tr>
-      <tr><td class="ename">Workflow</td><td class="ename">WorkflowTriggerRecord</td><td class="reltype">1:N</td><td class="mono">WorkflowTriggerRecord.workflowId</td><td><span class="badge b-fe">FE</span></td></tr>
-      <tr><td class="ename">WorkflowTriggerRecord</td><td class="ename">WorkflowExecutionRun</td><td class="reltype">1:N</td><td class="mono">WorkflowExecutionRun.triggerId</td><td><span class="badge b-fe">FE</span></td></tr>
-      <tr><td class="ename">WorkflowExecutionRun</td><td class="ename">WorkflowExecutionStep</td><td class="reltype">1:N</td><td class="mono">WorkflowExecutionStep.executionId</td><td><span class="badge b-fe">FE</span></td></tr>
-      <tr><td class="ename">Tenant</td><td class="ename">Activity</td><td class="reltype">1:N</td><td class="mono">Activity.tenantId</td><td><span class="badge b-fe">FE</span></td></tr>
-      <tr><td class="ename">User</td><td class="ename">Activity</td><td class="reltype">1:N</td><td class="mono">Activity.createdBy</td><td><span class="badge b-fe">FE</span></td></tr>
-      <tr><td class="ename">Contact/Deal/Task/etc.</td><td class="ename">Activity</td><td class="reltype">N:1</td><td class="mono">Activity.relatedToType + relatedToId (polymorphic)</td><td><span class="badge b-fe">FE</span></td></tr>
+      <tr><td class="ename">Workflow</td><td class="ename">WorkflowTriggerRecord</td><td class="reltype">1:N</td><td class="mono">WorkflowTriggerRecord.workflowId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">WorkflowTriggerRecord</td><td class="ename">WorkflowExecutionRun</td><td class="reltype">1:N</td><td class="mono">WorkflowExecutionRun.triggerId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">WorkflowExecutionRun</td><td class="ename">WorkflowExecutionStep</td><td class="reltype">1:N</td><td class="mono">WorkflowExecutionStep.executionId</td><td><span class="badge b-db">DB</span></td></tr>
+      <!-- Tenant Mgmt -->
+      <tr><td class="ename">Tenant</td><td class="ename">TenantDocument</td><td class="reltype">1:N</td><td class="mono">TenantDocument.tenantId</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td class="ename">Tenant</td><td class="ename">Environment</td><td class="reltype">1:N</td><td class="mono">Environment.tenantId</td><td><span class="badge b-db">DB</span></td></tr>
     </tbody>
   </table>
 </div>
 
+
 <!-- ════════ PANEL 3 — BACKLOG ════════ -->
 <div id="p-backlog" class="panel content">
   <h2>Prisma Migration Backlog</h2>
-  <p class="sub">These entities exist in frontend localStorage but not in the Prisma DB. Must migrate before <code>USE_MOCK_DATA=false</code>.</p>
+  <p class="sub">✅ All 30 entities are now in the Prisma schema. Migration backlog is cleared — schema.prisma is the single source of truth. Run <code>prisma migrate dev</code> to apply all pending migrations.</p>
+
+  <div class="divider"></div>
+  <h3>Schema Status Summary</h3>
   <table>
-    <thead><tr><th>Entity</th><th>Priority</th><th>Blocked By / Reason</th><th>Est. Effort</th></tr></thead>
+    <thead><tr><th>Entity</th><th>Status</th><th>Notes</th></tr></thead>
     <tbody>
-      <tr><td class="ename">Organization</td><td><span class="ptag p-hi">HIGH</span></td><td>Contact.organizationId FK depends on it</td><td>2–3 hrs</td></tr>
-      <tr><td class="ename">Task</td><td><span class="ptag p-hi">HIGH</span></td><td>Core CRM — Deal → Task 1:N required</td><td>2 hrs</td></tr>
-      <tr><td class="ename">Activity</td><td><span class="ptag p-hi">HIGH</span></td><td>Unified timeline — polymorphic FK to 5 entity types</td><td>3 hrs</td></tr>
-      <tr><td class="ename">WorkflowTriggerRecord</td><td><span class="ptag p-hi">HIGH</span></td><td>Part of 3-level execution chain (Trigger→Run→Step)</td><td rowspan="3" style="vertical-align:middle">4 hrs (3 tables)</td></tr>
-      <tr><td class="ename">WorkflowExecutionRun</td><td><span class="ptag p-hi">HIGH</span></td><td>Part of execution chain</td></tr>
-      <tr><td class="ename">WorkflowExecutionStep</td><td><span class="ptag p-hi">HIGH</span></td><td>Part of execution chain</td></tr>
-      <tr><td class="ename">RoleDefinition</td><td><span class="ptag p-me">MED</span></td><td>Dynamic RBAC — role is currently a string on User</td><td>2 hrs</td></tr>
-      <tr><td class="ename">Invoice</td><td><span class="ptag p-me">MED</span></td><td>Billing integration. Can defer if PayMongo handles all</td><td>2 hrs</td></tr>
-      <tr><td class="ename">Template</td><td><span class="ptag p-me">MED</span></td><td>Campaign templates — Campaign model already in DB</td><td>1 hr</td></tr>
-      <tr><td class="ename">ServiceOrder</td><td><span class="ptag p-me">MED</span></td><td>Operations module for technician dispatch</td><td>2 hrs</td></tr>
-      <tr><td class="ename">Asset</td><td><span class="ptag p-lo">LOW</span></td><td>Asset tracking — not MVP</td><td>1.5 hrs</td></tr>
-      <tr><td class="ename">InventoryItem</td><td><span class="ptag p-lo">LOW</span></td><td>Inventory management — not MVP</td><td>1.5 hrs</td></tr>
+      <tr><td class="ename">Tenant</td><td><span class="badge b-db">DB ✅</span></td><td>Added industry, companySize, email, phone, address, approvedById, approvedAt</td></tr>
+      <tr><td class="ename">User</td><td><span class="badge b-db">DB ✅</span></td><td>In DB. UserRole junction added for RBAC</td></tr>
+      <tr><td class="ename">RoleDefinition</td><td><span class="badge b-db">DB ✅</span></td><td>Migrated to DB; <code>permissions String[]</code> removed — use RolePermission table</td></tr>
+      <tr><td class="ename">RolePermission</td><td><span class="badge b-db">DB ✅ NEW</span></td><td>Per-module CRUD flags — canView/canCreate/canEdit/canDelete</td></tr>
+      <tr><td class="ename">SystemAdmin</td><td><span class="badge b-db">DB ✅ NEW</span></td><td>Platform operator, no tenantId</td></tr>
+      <tr><td class="ename">PricingPlan</td><td><span class="badge b-db">DB ✅ NEW</span></td><td>Global plan catalog, managed by SystemAdmin</td></tr>
+      <tr><td class="ename">PlanFeature</td><td><span class="badge b-db">DB ✅ NEW</span></td><td>Child of PricingPlan</td></tr>
+      <tr><td class="ename">Subscription</td><td><span class="badge b-db">DB ✅ NEW</span></td><td>Billing source of truth per tenant</td></tr>
+      <tr><td class="ename">PaymentMethod</td><td><span class="badge b-db">DB ✅ NEW</span></td><td>Saved payment methods per tenant</td></tr>
+      <tr><td class="ename">Organization</td><td><span class="badge b-db">DB ✅</span></td><td>Was FE — now in DB</td></tr>
+      <tr><td class="ename">Contact</td><td><span class="badge b-db">DB ✅</span></td><td>Full DB support</td></tr>
+      <tr><td class="ename">Pipeline</td><td><span class="badge b-db">DB ✅</span></td><td>Added <code>type String?</code> field</td></tr>
+      <tr><td class="ename">Stage</td><td><span class="badge b-db">DB ✅</span></td><td>Full DB support</td></tr>
+      <tr><td class="ename">Deal</td><td><span class="badge b-db">DB ✅</span></td><td>Full DB support with ContactDeal junction</td></tr>
+      <tr><td class="ename">DealAction</td><td><span class="badge b-db">DB ✅ NEW</span></td><td>Manual user-initiated deal operations</td></tr>
+      <tr><td class="ename">Task</td><td><span class="badge b-db">DB ✅</span></td><td>Was FE — now in DB</td></tr>
+      <tr><td class="ename">Invoice</td><td><span class="badge b-db">DB ✅</span></td><td>Was FE — now in DB. Added subscriptionId FK</td></tr>
+      <tr><td class="ename">ServiceOrder</td><td><span class="badge b-db">DB ✅</span></td><td>Was FE — now in DB</td></tr>
+      <tr><td class="ename">Asset</td><td><span class="badge b-db">DB ✅</span></td><td>Was FE — now in DB</td></tr>
+      <tr><td class="ename">InventoryItem</td><td><span class="badge b-db">DB ✅</span></td><td>Was FE — now in DB</td></tr>
+      <tr><td class="ename">Activity</td><td><span class="badge b-db">DB ✅</span></td><td>Was FE — now in DB with typed FKs (no polymorphic)</td></tr>
+      <tr><td class="ename">AuditLog</td><td><span class="badge b-db">DB ✅</span></td><td>Added <code>category</code> field for auth|crm|billing|workflow|admin|system</td></tr>
+      <tr><td class="ename">TargetAudience</td><td><span class="badge b-db">DB ✅ NEW</span></td><td>No audience_contacts junction — dynamic filtering</td></tr>
+      <tr><td class="ename">TargetAudienceCondition</td><td><span class="badge b-db">DB ✅ NEW</span></td><td>Filter rules for dynamic audience resolution</td></tr>
+      <tr><td class="ename">Campaign</td><td><span class="badge b-db">DB ✅</span></td><td>Added targetAudienceId FK, emailTemplateId, smsTemplateId</td></tr>
+      <tr><td class="ename">CampaignMetrics</td><td><span class="badge b-db">DB ✅ NEW</span></td><td>Historical snapshots — openRate, clickRate, deliveryRate, etc.</td></tr>
+      <tr><td class="ename">Template</td><td><span class="badge b-db">DB ✅</span></td><td>Was FE — now in DB</td></tr>
+      <tr><td class="ename">Workflow</td><td><span class="badge b-db">DB ✅</span></td><td>Full DB support</td></tr>
+      <tr><td class="ename">WorkflowTriggerRecord</td><td><span class="badge b-db">DB ✅</span></td><td>Was FE — now in DB</td></tr>
+      <tr><td class="ename">WorkflowExecutionRun</td><td><span class="badge b-db">DB ✅</span></td><td>Was FE — now in DB</td></tr>
+      <tr><td class="ename">WorkflowExecutionStep</td><td><span class="badge b-db">DB ✅</span></td><td>Was FE — now in DB</td></tr>
+      <tr><td class="ename">TenantDocument</td><td><span class="badge b-db">DB ✅ NEW</span></td><td>Tenant onboarding files, verified by SystemAdmin</td></tr>
+      <tr><td class="ename">Environment</td><td><span class="badge b-db">DB ✅ NEW</span></td><td>Resource monitoring per tenant environment</td></tr>
     </tbody>
   </table>
   <div class="divider"></div>
-  <h3>Suggested Migration Order</h3>
-  <p class="sub">Sequence that avoids FK dependency conflicts:</p>
+  <h3>Next Steps</h3>
   <ol style="color:var(--muted);line-height:2;padding-left:20px;font-size:.85rem">
-    <li><strong style="color:var(--text)">Organization</strong> — independent, but Contact and Deal depend on it</li>
-    <li><strong style="color:var(--text)">RoleDefinition</strong> — independent, can run in parallel</li>
-    <li><strong style="color:var(--text)">Task</strong> — depends on Deal (already in DB)</li>
-    <li><strong style="color:var(--text)">Template</strong> — independent</li>
-    <li><strong style="color:var(--text)">Activity</strong> — polymorphic, after all target entities exist</li>
-    <li><strong style="color:var(--text)">WorkflowTriggerRecord → WorkflowExecutionRun → WorkflowExecutionStep</strong> — sequential chain</li>
-    <li><strong style="color:var(--text)">Invoice</strong> — depends on Deal + Contact</li>
-    <li><strong style="color:var(--text)">ServiceOrder</strong> — depends on User</li>
-    <li><strong style="color:var(--text)">Asset / InventoryItem</strong> — last (low priority)</li>
+    <li><strong style="color:var(--text)">Run <code>prisma migrate dev --name add-billing-rbac-campaigns</code></strong> — applies all new tables</li>
+    <li><strong style="color:var(--text)">Seed PricingPlan + PlanFeature</strong> — Free / Pro / Enterprise tiers</li>
+    <li><strong style="color:var(--text)">Seed SystemAdmin</strong> — first platform operator account</li>
+    <li><strong style="color:var(--text)">Migrate RoleDefinition.permissions String[] → RolePermission rows</strong> — one-time data migration</li>
+    <li><strong style="color:var(--text)">Update auth middleware</strong> — read canView/canCreate/canEdit/canDelete from RolePermission instead of String[]</li>
+    <li><strong style="color:var(--text)">Set USE_MOCK_DATA=false</strong> — all entities are now in DB</li>
   </ol>
 </div>
+
 
 <!-- ════════ PANEL 4 — RECOMMENDATIONS ════════ -->
 <div id="p-recs" class="panel content">
@@ -674,7 +919,7 @@ code { background: var(--surface2); padding: 1px 6px; border-radius: 3px; font-s
     <div class="rec hi">
       <div class="ptag p-hi" style="margin-bottom:10px">HIGH PRIORITY</div>
       <div class="rec-title">🔴 User.role String → UserRole junction table</div>
-      <div class="rec-why"><strong>Why:</strong> Current design prevents dynamic role creation, multi-role assignment, and granular permission changes without touching every User row. Client Admins can't create custom roles.<br><br><strong>Fix:</strong> User ←→ UserRole ←→ RoleDefinition</div>
+      <div class="rec-why"><strong>Why:</strong> Current design prevents dynamic role creation, multi-role assignment, and granular permission changes without touching every User row. Client Admins can't create custom roles.<br><br><strong>Fix:</strong> User ←→ UserRole ←→ RoleDefinition (already in schema)</div>
       <div class="code">model UserRole {
   id       String @id @default(cuid())
   userId   String
@@ -699,7 +944,7 @@ deletedBy     String?    // FK→User</div>
     <div class="rec me">
       <div class="ptag p-me" style="margin-bottom:10px">MEDIUM PRIORITY</div>
       <div class="rec-title">🟡 Deal.contactIds JSON array → ContactDeal junction table</div>
-      <div class="rec-why"><strong>Why:</strong> JSON arrays break FK constraints (no data integrity), can't be JOINed efficiently, and can't store relationship metadata (who added this contact? when? what role?).</div>
+      <div class="rec-why"><strong>Why:</strong> JSON arrays break FK constraints (no data integrity), can't be JOINed efficiently, and can't store relationship metadata (who added this contact? when? what role?).<br><strong>Status:</strong> ContactDeal is now in schema — migrate old deals.</div>
       <div class="code">model ContactDeal {
   id        String   @id @default(cuid())
   contactId String
@@ -707,7 +952,6 @@ deletedBy     String?    // FK→User</div>
   tenantId  String
   role      String?  // "Primary" | "Decision Maker"
   addedBy   String?  // FK→User
-  addedAt   DateTime @default(now())
   @@unique([contactId, dealId])
 }</div>
     </div>
@@ -724,7 +968,7 @@ ownershipHistory JSON?   // [{assignedTo, assignedBy, reason}]</div>
     <div class="rec me">
       <div class="ptag p-me" style="margin-bottom:10px">MEDIUM PRIORITY</div>
       <div class="rec-title">🟡 Tenant.subscriptionStatus separate from Tenant.status</div>
-      <div class="rec-why"><strong>Why:</strong> status = System Admin approval state. subscriptionStatus = PayMongo billing state. A tenant can be ACTIVE (approved) but PAST_DUE (payment failed). Conflating these blocks accurate PayMongo webhook handling.</div>
+      <div class="rec-why"><strong>Why:</strong> status = System Admin approval state. subscriptionStatus = PayMongo billing state. A tenant can be ACTIVE (approved) but PAST_DUE (payment failed). <strong>Status:</strong> Both fields are now in Tenant model.</div>
       <div class="code">status             TenantStatus        // SANDBOX|ACTIVE|SUSPENDED
 subscriptionStatus SubscriptionStatus  // TRIAL|ACTIVE|PAST_DUE|CANCELLED
 trialEndsAt        DateTime?
@@ -733,24 +977,24 @@ subscriptionEndsAt DateTime?</div>
 
     <div class="rec me">
       <div class="ptag p-me" style="margin-bottom:10px">MEDIUM PRIORITY</div>
-      <div class="rec-title">🟡 Add AuditLog.ipAddress + userAgent for security forensics</div>
-      <div class="rec-why"><strong>Why:</strong> Security incidents (unauthorized access, account takeover) require IP + User-Agent context to investigate. ~50 bytes per log. GDPR requires tracking who accessed data from where.</div>
-      <div class="code">ipAddress  String?  // req.ip
-userAgent  String?  // req.headers['user-agent']
-sessionId  String?  // trace session context</div>
+      <div class="rec-title">🟡 Add AuditLog.category for categorization</div>
+      <div class="rec-why"><strong>Why:</strong> Security incidents require filtering by category. Without it, searching auth events requires scanning all audit logs. <strong>Status:</strong> category field added (auth|crm|billing|workflow|admin|system).</div>
+      <div class="code">category  String  // auth|crm|billing|workflow|admin|system
+ipAddress String? // req.ip
+userAgent String? // req.headers['user-agent']</div>
     </div>
 
     <div class="rec lo">
       <div class="ptag p-lo" style="margin-bottom:10px">LOW PRIORITY</div>
       <div class="rec-title">🔵 Add Deal.closedAt timestamp</div>
-      <div class="rec-why"><strong>Why:</strong> updatedAt changes on every field edit. closedAt captures the exact moment a deal hit "Closed Won/Lost" — critical for sales velocity metrics (average time-to-close).</div>
+      <div class="rec-why"><strong>Why:</strong> updatedAt changes on every field edit. closedAt captures the exact moment a deal hit "Closed Won/Lost" — critical for sales velocity metrics. <strong>Status:</strong> closedAt is now in Deal model.</div>
       <div class="code">closedAt  DateTime?  // set when stage → Closed Won/Lost</div>
     </div>
 
     <div class="rec lo">
       <div class="ptag p-lo" style="margin-bottom:10px">LOW PRIORITY</div>
       <div class="rec-title">🔵 Add Campaign.scheduledFor for future scheduling</div>
-      <div class="rec-why"><strong>Why:</strong> Currently no way to schedule a campaign in advance. Add scheduledFor + cron job checking <code>status=SCHEDULED AND scheduledFor &lt;= now()</code>.</div>
+      <div class="rec-why"><strong>Why:</strong> Currently no way to schedule a campaign in advance. Add scheduledFor + cron job checking <code>status=SCHEDULED AND scheduledFor &lt;= now()</code>. <strong>Status:</strong> scheduledFor is in Campaign model.</div>
       <div class="code">scheduledFor  DateTime?  // null = send immediately
 sentAt        DateTime?  // actual send timestamp</div>
     </div>
@@ -758,56 +1002,83 @@ sentAt        DateTime?  // actual send timestamp</div>
     <div class="rec lo">
       <div class="ptag p-lo" style="margin-bottom:10px">LOW PRIORITY</div>
       <div class="rec-title">🔵 Add Stage.color for UI pipeline customization</div>
-      <div class="rec-why"><strong>Why:</strong> Stage colors are currently hardcoded in the frontend. Storing them in DB lets Client Admins customize pipeline colors per tenant without a deployment.</div>
+      <div class="rec-why"><strong>Why:</strong> Stage colors are currently hardcoded in the frontend. Storing them in DB lets Client Admins customize pipeline colors per tenant without a deployment. <strong>Status:</strong> color field is in Stage model.</div>
       <div class="code">color  String?  // hex e.g. "#6366f1"</div>
     </div>
 
   </div>
 </div>
 
+
 <!-- ════════ PANEL 5 — RBAC ════════ -->
 <div id="p-rbac" class="panel content">
   <h2>Role-Based Access Control (RBAC)</h2>
-  <p class="sub">5 built-in system roles + dynamic custom roles via RoleDefinition. Enforced at middleware layer using <code>DEFAULT_ROLE_PERMISSIONS</code> registry.</p>
+  <p class="sub">5 built-in system roles + dynamic custom roles via RoleDefinition. Permissions are now stored in the <code>RolePermission</code> table with per-module CRUD flags (canView/canCreate/canEdit/canDelete). Enforced at middleware layer using <code>DEFAULT_ROLE_PERMISSIONS</code> registry.</p>
+
   <table>
     <thead><tr><th>Role</th><th>Scope</th><th>Permissions Model</th><th>Created By</th></tr></thead>
     <tbody>
-      <tr><td class="ename">System Admin</td><td>Platform-wide (cross-tenant)</td><td>Bypass all RBAC — full Admin Portal access</td><td>Seed script only</td></tr>
-      <tr><td class="ename">Client Admin</td><td>Single tenant (full control)</td><td>Bypass tenant RBAC — full CRM Portal access</td><td>Auto on tenant provisioning</td></tr>
-      <tr><td class="ename">Sales Rep</td><td>Single tenant</td><td>contacts.*, deals.*, campaigns.view, workflows.view, reports.view, settings.view</td><td>Client Admin</td></tr>
-      <tr><td class="ename">Technician</td><td>Single tenant</td><td>contacts.view, deals.view (read-only)</td><td>Client Admin</td></tr>
-      <tr><td class="ename">Viewer</td><td>Single tenant</td><td>*.view — all modules read-only</td><td>Client Admin</td></tr>
+      <tr><td class="ename">System Admin</td><td>Platform-wide (cross-tenant)</td><td>Bypass all RBAC — full Admin Portal access. Manages PricingPlan, approves Tenants, verifies TenantDocuments.</td><td>Seed script only</td></tr>
+      <tr><td class="ename">Client Admin</td><td>Single tenant (full control)</td><td>Bypass tenant RBAC — full CRM Portal access. Manages RoleDefinition + RolePermission rows.</td><td>Auto on tenant provisioning</td></tr>
+      <tr><td class="ename">Sales Rep</td><td>Single tenant</td><td>contacts.* (all), deals.* (all), campaigns.canView, workflows.canView, reports.canView, settings.canView</td><td>Client Admin</td></tr>
+      <tr><td class="ename">Technician</td><td>Single tenant</td><td>contacts.canView, deals.canView — read-only CRM access</td><td>Client Admin</td></tr>
+      <tr><td class="ename">Viewer</td><td>Single tenant</td><td>*.canView — all modules read-only</td><td>Client Admin</td></tr>
     </tbody>
   </table>
+
   <div class="divider"></div>
-  <h3>Permission Keys</h3>
+  <h3>RolePermission Table — Per-Module CRUD Flags</h3>
+  <p class="sub">Each row in RolePermission maps a role to a module with four boolean flags. Unique constraint on [roleId, module] ensures one row per module per role.</p>
+  <div class="code">// RolePermission row example
+{
+  id:        "rp_cuid",
+  tenantId:  "tenant_cuid",
+  roleId:    "role_cuid",           // FK → RoleDefinition
+  module:    "contacts",            // e.g. contacts | deals | campaigns | billing | ...
+  canView:   true,
+  canCreate: true,
+  canEdit:   true,
+  canDelete: false
+}</div>
+
+  <div class="divider"></div>
+  <h3>Module Keys (map to RolePermission.module)</h3>
   <div class="perm-grid">
-    <div class="perm-box"><div class="perm-name">Contacts</div><div class="perm-list">contacts.view<br>contacts.create<br>contacts.edit<br>contacts.delete<br>contacts.export</div></div>
-    <div class="perm-box"><div class="perm-name">Deals</div><div class="perm-list">deals.view<br>deals.create<br>deals.edit<br>deals.delete<br>deals.reassign</div></div>
-    <div class="perm-box"><div class="perm-name">Campaigns</div><div class="perm-list">campaigns.view<br>campaigns.create<br>campaigns.edit<br>campaigns.send</div></div>
-    <div class="perm-box"><div class="perm-name">Workflows</div><div class="perm-list">workflows.view<br>workflows.create<br>workflows.edit<br>workflows.activate</div></div>
-    <div class="perm-box"><div class="perm-name">Users</div><div class="perm-list">users.view<br>users.create<br>users.edit<br>users.delete</div></div>
-    <div class="perm-box"><div class="perm-name">Reports</div><div class="perm-list">reports.view<br>reports.export</div></div>
-    <div class="perm-box"><div class="perm-name">Settings</div><div class="perm-list">settings.view<br>settings.edit</div></div>
-    <div class="perm-box"><div class="perm-name">Audit</div><div class="perm-list">audit.view<br>audit.export</div></div>
+    <div class="perm-box"><div class="perm-name">contacts</div><div class="perm-list">canView<br>canCreate<br>canEdit<br>canDelete</div></div>
+    <div class="perm-box"><div class="perm-name">deals</div><div class="perm-list">canView<br>canCreate<br>canEdit<br>canDelete</div></div>
+    <div class="perm-box"><div class="perm-name">campaigns</div><div class="perm-list">canView<br>canCreate<br>canEdit<br>canDelete</div></div>
+    <div class="perm-box"><div class="perm-name">workflows</div><div class="perm-list">canView<br>canCreate<br>canEdit<br>canDelete</div></div>
+    <div class="perm-box"><div class="perm-name">users</div><div class="perm-list">canView<br>canCreate<br>canEdit<br>canDelete</div></div>
+    <div class="perm-box"><div class="perm-name">reports</div><div class="perm-list">canView<br>canCreate<br>canEdit<br>canDelete</div></div>
+    <div class="perm-box"><div class="perm-name">settings</div><div class="perm-list">canView<br>canCreate<br>canEdit<br>canDelete</div></div>
+    <div class="perm-box"><div class="perm-name">billing</div><div class="perm-list">canView<br>canCreate<br>canEdit<br>canDelete</div></div>
+    <div class="perm-box"><div class="perm-name">audit</div><div class="perm-list">canView<br>canCreate<br>canEdit<br>canDelete</div></div>
+    <div class="perm-box"><div class="perm-name">organizations</div><div class="perm-list">canView<br>canCreate<br>canEdit<br>canDelete</div></div>
+    <div class="perm-box"><div class="perm-name">tasks</div><div class="perm-list">canView<br>canCreate<br>canEdit<br>canDelete</div></div>
+    <div class="perm-box"><div class="perm-name">service_orders</div><div class="perm-list">canView<br>canCreate<br>canEdit<br>canDelete</div></div>
   </div>
+
   <div class="divider"></div>
   <h3>Enforcement Pattern</h3>
-  <div class="code">// ❌ BAD
-if (user.role === 'Admin') { ... }
+  <div class="code">// ❌ BAD — hardcoded string array
+if (user.permissions.includes('contacts.create')) { ... }
 
-// ✅ GOOD — type-safe shared constants
-import { Role, Permission } from '@leadcrm/shared';
-if (user.role === Role.CLIENT_ADMIN) { ... }
+// ✅ GOOD — read from RolePermission table
+const perm = await prisma.rolePermission.findUnique({
+  where: { roleId_module: { roleId: user.roleId, module: 'contacts' } }
+});
+if (perm?.canCreate) { ... }
 
 // ✅ MIDDLEWARE — automatic on every route
-router.post('/contacts', rbac(Permission.CONTACTS_CREATE), controller.create);
+router.post('/contacts', rbac('contacts', 'canCreate'), controller.create);
+router.delete('/contacts/:id', rbac('contacts', 'canDelete'), controller.delete);
 
-// ✅ FRONTEND — hide UI elements
-{hasPermission(user, Permission.CONTACTS_DELETE) &amp;&amp; (
+// ✅ FRONTEND — hide UI elements by querying RolePermission
+{userCan('contacts', 'canDelete') &amp;&amp; (
   &lt;Button&gt;Delete&lt;/Button&gt;
 )}</div>
 </div>
+
 
 <!-- ════════ PANEL 6 — FLOW ════════ -->
 <div id="p-flow" class="panel content">
@@ -820,7 +1091,7 @@ router.post('/contacts', rbac(Permission.CONTACTS_CREATE), controller.create);
       <div class="step-body">
         <div class="step-title">Lead Capture</div>
         <div class="step-desc">Sales Rep creates Contact via ContactsPage or campaign response.<br>Default status = <code>WARM</code> · score = 75<br>Required: contactPerson, companyName, email OR phone</div>
-        <div class="step-tags"><span class="badge b-db">Contact (created)</span><span class="badge b-db">AuditLog: contact.created</span><span class="badge b-fe">Activity: contact-created</span></div>
+        <div class="step-tags"><span class="badge b-db">Contact (created)</span><span class="badge b-db">AuditLog: contact.created (category=crm)</span><span class="badge b-db">Activity: contact-created</span></div>
       </div>
     </div>
     <div class="connector-line"></div>
@@ -829,7 +1100,7 @@ router.post('/contacts', rbac(Permission.CONTACTS_CREATE), controller.create);
       <div class="step-body">
         <div class="step-title">Lead Qualification</div>
         <div class="step-desc">Sales Rep engages contact. Promotes status to <code>HOT</code> (score=95).<br>Workflow engine evaluates <code>contact.status_changed → HOT</code> trigger.<br>May auto-fire: "Send Welcome Email", "Create Follow-up Task".</div>
-        <div class="step-tags"><span class="badge b-db">Contact (status=HOT)</span><span class="badge b-db">Workflow triggered</span><span class="badge b-fe">Task (auto-created)</span></div>
+        <div class="step-tags"><span class="badge b-db">Contact (status=HOT)</span><span class="badge b-db">Workflow triggered</span><span class="badge b-db">Task (auto-created)</span></div>
       </div>
     </div>
     <div class="connector-line"></div>
@@ -837,17 +1108,17 @@ router.post('/contacts', rbac(Permission.CONTACTS_CREATE), controller.create);
       <div class="step-num" style="background:#7c3aed">3</div>
       <div class="step-body">
         <div class="step-title">Deal Creation</div>
-        <div class="step-desc">Sales Rep opens Pipeline → "Add New Deal".<br>Links to Contact, selects Pipeline (Sales Inquiries), Stage (Discovery), sets value + priority + expected close date.<br>Deal.history initialized with first entry: <code>{stageId, timestamp, userId}</code></div>
-        <div class="step-tags"><span class="badge b-db">Deal (created)</span><span class="badge b-db">Pipeline / Stage</span><span class="badge b-db">AuditLog: deal.created</span></div>
+        <div class="step-desc">Sales Rep opens Pipeline → "Add New Deal".<br>Links to Contact via ContactDeal junction, selects Pipeline (Sales Inquiries), Stage (Discovery), sets value + priority + expected close date.</div>
+        <div class="step-tags"><span class="badge b-db">Deal (created)</span><span class="badge b-db">ContactDeal (junction)</span><span class="badge b-db">Pipeline / Stage</span><span class="badge b-db">AuditLog: deal.created (category=crm)</span></div>
       </div>
     </div>
     <div class="connector-line"></div>
     <div class="flow-step">
       <div class="step-num" style="background:#7c3aed">4</div>
       <div class="step-body">
-        <div class="step-title">Stage Progression</div>
-        <div class="step-desc">Sales Rep drags deal card: Discovery → Assessment → Proposal → Negotiation.<br>Each move appends to <code>Deal.history[]</code>: <code>{stageId, previousStageId, timestamp, userId}</code><br>Workflow engine evaluates <code>deal.stage_changed</code> on every move.<br>Example: "Proposal" stage → auto-create Task "Prepare Proposal Document".</div>
-        <div class="step-tags"><span class="badge b-db">Deal.stageId updated</span><span class="badge b-db">Deal.history[] appended</span><span class="badge b-fe">WorkflowExecutionRun</span><span class="badge b-fe">Task (auto-created)</span></div>
+        <div class="step-title">Stage Progression + Deal Actions</div>
+        <div class="step-desc">Sales Rep drags deal card: Discovery → Assessment → Proposal → Negotiation.<br>Each move creates a DealStageHistory row and triggers DealAction (CHANGE_STAGE).<br>Manual actions (SEND_EMAIL, ADD_NOTE, ASSIGN_AGENT) create DealAction rows + Activity entries.</div>
+        <div class="step-tags"><span class="badge b-db">Deal.stageId updated</span><span class="badge b-db">DealStageHistory</span><span class="badge b-db">DealAction (CHANGE_STAGE)</span><span class="badge b-db">WorkflowExecutionRun</span></div>
       </div>
     </div>
     <div class="connector-line"></div>
@@ -857,8 +1128,8 @@ router.post('/contacts', rbac(Permission.CONTACTS_CREATE), controller.create);
           <div class="step-num" style="background:#3fb950">5A</div>
           <div class="step-body" style="border-color:rgba(63,185,80,.3)">
             <div class="step-title" style="color:var(--green)">Deal Won ✓</div>
-            <div class="step-desc">Deal moved to <code>Closed Won</code>.<br>Contact.status → <code>CLOSED</code>.<br><code>Deal.closedAt</code> stamped (recommended).<br>Sales Rep clicks "Convert to Invoice" → Invoice created linked to Deal.</div>
-            <div class="step-tags"><span class="badge b-db">Deal (stageId=ClosedWon)</span><span class="badge b-db">Contact (status=CLOSED)</span><span class="badge b-fe">Invoice (created)</span></div>
+            <div class="step-desc">Deal moved to <code>Closed Won</code>.<br>Contact.status → <code>CLOSED</code>.<br><code>Deal.closedAt</code> stamped.<br>Sales Rep clicks "Convert to Invoice" → Invoice created with subscriptionId if billing active.</div>
+            <div class="step-tags"><span class="badge b-db">Deal (stageId=ClosedWon)</span><span class="badge b-db">Contact (status=CLOSED)</span><span class="badge b-db">Invoice (created)</span></div>
           </div>
         </div>
       </div>
@@ -867,8 +1138,8 @@ router.post('/contacts', rbac(Permission.CONTACTS_CREATE), controller.create);
           <div class="step-num" style="background:#f85149">5B</div>
           <div class="step-body" style="border-color:rgba(248,81,73,.3)">
             <div class="step-title" style="color:var(--red)">Deal Lost ✗</div>
-            <div class="step-desc">Deal moved to <code>Closed Lost</code>.<br>Lost Reason modal required → <code>Deal.lostReason</code> stored.<br>Contact.status → <code>COLD</code> or <code>CANCELLED</code>.<br>Visible in History tab and Deal Details Modal.</div>
-            <div class="step-tags"><span class="badge b-db">Deal.lostReason</span><span class="badge b-db">Contact (status=COLD)</span><span class="badge b-db">AuditLog</span></div>
+            <div class="step-desc">Deal moved to <code>Closed Lost</code>.<br>Lost Reason modal required → <code>Deal.lostReason</code> stored.<br>Contact.status → <code>COLD</code> or <code>CANCELLED</code>.<br>DealAction (CHANGE_STATUS) created.</div>
+            <div class="step-tags"><span class="badge b-db">Deal.lostReason</span><span class="badge b-db">Contact (status=COLD)</span><span class="badge b-db">DealAction</span><span class="badge b-db">AuditLog (category=crm)</span></div>
           </div>
         </div>
       </div>
@@ -882,14 +1153,16 @@ router.post('/contacts', rbac(Permission.CONTACTS_CREATE), controller.create);
     <tbody>
       <tr><td><code>lead_created</code></td><td>Send welcome email via Gmail</td><td><span class="badge b-db">DB</span></td></tr>
       <tr><td><code>contact.status → HOT</code></td><td>Create "Follow Up" task, notify manager</td><td><span class="badge b-db">DB</span></td></tr>
-      <tr><td><code>deal.created</code></td><td>Add Discovery checklist tasks</td><td><span class="badge b-fe">FE</span></td></tr>
-      <tr><td><code>deal.stage → proposal</code></td><td>Create "Prepare Proposal" task</td><td><span class="badge b-fe">FE</span></td></tr>
-      <tr><td><code>deal.stage → negotiation</code></td><td>Notify Sales Manager via email</td><td><span class="badge b-fe">FE</span></td></tr>
-      <tr><td><code>deal.expected_close approaching</code></td><td>Send follow-up reminder email</td><td><span class="badge b-fe">FE</span></td></tr>
-      <tr><td><code>deal.closed_won</code></td><td>Trigger onboarding workflow</td><td><span class="badge b-fe">FE</span></td></tr>
+      <tr><td><code>deal.created</code></td><td>Add Discovery checklist tasks</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td><code>deal.stage → proposal</code></td><td>Create "Prepare Proposal" task</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td><code>deal.stage → negotiation</code></td><td>Notify Sales Manager via email</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td><code>deal.expected_close approaching</code></td><td>Send follow-up reminder email</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td><code>deal.closed_won</code></td><td>Trigger onboarding workflow</td><td><span class="badge b-db">DB</span></td></tr>
+      <tr><td><code>subscription.past_due</code></td><td>Notify billing admin, suspend features</td><td><span class="badge b-db">DB</span></td></tr>
     </tbody>
   </table>
 </div>
+
 
 <script>
 // ════════════════════════════════════════════════════════════════════════════
@@ -901,7 +1174,7 @@ function showTab(panelId, tab) {
   document.getElementById(panelId).classList.add('active');
   tab.classList.add('active');
   window.scrollTo({top:0,behavior:'smooth'});
-  if (panelId === 'p-visual') drawRelationships();
+  if (panelId === 'p-visual') { drawRelationships(); attachHoverHandlers(); }
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -916,6 +1189,7 @@ function applyZoom() {
   canvas.style.transform = `scale(${currentScale})`;
   canvas.style.transformOrigin = 'top left';
   drawRelationships();
+  attachHoverHandlers();
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -940,46 +1214,65 @@ scrollEl.addEventListener('mousemove', e => {
 // RELATIONSHIP LINES
 // ════════════════════════════════════════════════════════════════════════════
 const relations = [
+  // PLATFORM / BILLING
+  {from:'e-pricingplan',to:'e-planfeature',type:'1:N',color:'#3fb950'},
+  {from:'e-pricingplan',to:'e-subscription',type:'1:N',color:'#3fb950'},
+  {from:'e-tenant',to:'e-subscription',type:'1:N',color:'#3fb950'},
+  {from:'e-tenant',to:'e-paymentmethod',type:'1:N',color:'#3fb950'},
+  {from:'e-subscription',to:'e-invoice',type:'1:N',color:'#3fb950'},
   // CORE
   {from:'e-tenant',to:'e-user',type:'1:N',color:'#3fb950'},
   {from:'e-tenant',to:'e-audit',type:'1:N',color:'#3fb950'},
   {from:'e-user',to:'e-audit',type:'1:N',color:'#3fb950'},
-  {from:'e-tenant',to:'e-role',type:'1:N',color:'#d29922'},
+  {from:'e-tenant',to:'e-role',type:'1:N',color:'#3fb950'},
+  {from:'e-role',to:'e-rolepermission',type:'1:N',color:'#3fb950'},
   // CRM
-  {from:'e-tenant',to:'e-org',type:'1:N',color:'#d29922'},
-  {from:'e-user',to:'e-org',type:'1:N',color:'#d29922'},
-  {from:'e-org',to:'e-contact',type:'1:N',color:'#d29922'},
+  {from:'e-tenant',to:'e-org',type:'1:N',color:'#3fb950'},
+  {from:'e-user',to:'e-org',type:'1:N',color:'#3fb950'},
+  {from:'e-org',to:'e-contact',type:'1:N',color:'#3fb950'},
   {from:'e-tenant',to:'e-contact',type:'1:N',color:'#3fb950'},
-  {from:'e-user',to:'e-contact',type:'1:N',color:'#d29922'},
+  {from:'e-user',to:'e-contact',type:'1:N',color:'#3fb950'},
   {from:'e-tenant',to:'e-pipeline',type:'1:N',color:'#3fb950'},
   {from:'e-pipeline',to:'e-stage',type:'1:N',color:'#3fb950'},
   {from:'e-pipeline',to:'e-deal',type:'1:N',color:'#3fb950'},
   {from:'e-stage',to:'e-deal',type:'1:N',color:'#3fb950'},
   {from:'e-tenant',to:'e-deal',type:'1:N',color:'#3fb950'},
   {from:'e-contact',to:'e-deal',type:'N:M',color:'#7c3aed'},
-  {from:'e-org',to:'e-deal',type:'1:N',color:'#d29922'},
-  {from:'e-user',to:'e-deal',type:'1:N',color:'#d29922'},
+  {from:'e-org',to:'e-deal',type:'1:N',color:'#3fb950'},
+  {from:'e-user',to:'e-deal',type:'1:N',color:'#3fb950'},
+  // DEAL ACTIONS
+  {from:'e-deal',to:'e-dealaction',type:'1:N',color:'#3fb950'},
+  {from:'e-user',to:'e-dealaction',type:'1:N',color:'#3fb950'},
   // OPERATIONS
-  {from:'e-tenant',to:'e-task',type:'1:N',color:'#d29922'},
-  {from:'e-deal',to:'e-task',type:'1:N',color:'#d29922'},
-  {from:'e-user',to:'e-task',type:'1:N',color:'#d29922'},
-  {from:'e-tenant',to:'e-invoice',type:'1:N',color:'#d29922'},
-  {from:'e-deal',to:'e-invoice',type:'1:N',color:'#d29922'},
-  {from:'e-contact',to:'e-invoice',type:'1:N',color:'#d29922'},
-  {from:'e-tenant',to:'e-svcorder',type:'1:N',color:'#d29922'},
-  {from:'e-user',to:'e-svcorder',type:'1:N',color:'#d29922'},
-  {from:'e-tenant',to:'e-asset',type:'1:N',color:'#d29922'},
-  {from:'e-tenant',to:'e-inventory',type:'1:N',color:'#d29922'},
-  {from:'e-tenant',to:'e-activity',type:'1:N',color:'#d29922'},
-  {from:'e-user',to:'e-activity',type:'1:N',color:'#d29922'},
+  {from:'e-tenant',to:'e-task',type:'1:N',color:'#3fb950'},
+  {from:'e-deal',to:'e-task',type:'1:N',color:'#3fb950'},
+  {from:'e-user',to:'e-task',type:'1:N',color:'#3fb950'},
+  {from:'e-tenant',to:'e-invoice',type:'1:N',color:'#3fb950'},
+  {from:'e-deal',to:'e-invoice',type:'1:N',color:'#3fb950'},
+  {from:'e-contact',to:'e-invoice',type:'1:N',color:'#3fb950'},
+  {from:'e-tenant',to:'e-svcorder',type:'1:N',color:'#3fb950'},
+  {from:'e-user',to:'e-svcorder',type:'1:N',color:'#3fb950'},
+  {from:'e-tenant',to:'e-asset',type:'1:N',color:'#3fb950'},
+  {from:'e-tenant',to:'e-inventory',type:'1:N',color:'#3fb950'},
+  {from:'e-tenant',to:'e-activity',type:'1:N',color:'#3fb950'},
+  {from:'e-user',to:'e-activity',type:'1:N',color:'#3fb950'},
   // MARKETING
+  {from:'e-tenant',to:'e-targetaudience',type:'1:N',color:'#3fb950'},
+  {from:'e-targetaudience',to:'e-taudiencecond',type:'1:N',color:'#3fb950'},
+  {from:'e-targetaudience',to:'e-campaign',type:'1:N',color:'#3fb950'},
   {from:'e-tenant',to:'e-campaign',type:'1:N',color:'#3fb950'},
-  {from:'e-tenant',to:'e-template',type:'1:N',color:'#d29922'},
+  {from:'e-tenant',to:'e-template',type:'1:N',color:'#3fb950'},
+  {from:'e-template',to:'e-campaign',type:'1:N',color:'#7c3aed'},
+  {from:'e-tenant',to:'e-campaignmetrics',type:'1:N',color:'#3fb950'},
+  {from:'e-campaign',to:'e-campaignmetrics',type:'1:N',color:'#3fb950'},
   // AUTOMATION
   {from:'e-tenant',to:'e-workflow',type:'1:N',color:'#3fb950'},
-  {from:'e-workflow',to:'e-wftrigger',type:'1:N',color:'#d29922'},
-  {from:'e-wftrigger',to:'e-wfrun',type:'1:N',color:'#d29922'},
-  {from:'e-wfrun',to:'e-wfstep',type:'1:N',color:'#d29922'},
+  {from:'e-workflow',to:'e-wftrigger',type:'1:N',color:'#3fb950'},
+  {from:'e-wftrigger',to:'e-wfrun',type:'1:N',color:'#3fb950'},
+  {from:'e-wfrun',to:'e-wfstep',type:'1:N',color:'#3fb950'},
+  // TENANT MANAGEMENT
+  {from:'e-tenant',to:'e-tenantdoc',type:'1:N',color:'#3fb950'},
+  {from:'e-tenant',to:'e-environment',type:'1:N',color:'#3fb950'},
 ];
 
 function drawRelationships() {
@@ -987,7 +1280,7 @@ function drawRelationships() {
   if (!svg || !document.getElementById('p-visual').classList.contains('active')) return;
   svg.innerHTML = '';
 
-  relations.forEach(rel => {
+  relations.forEach((rel, idx) => {
     const from = document.getElementById(rel.from);
     const to = document.getElementById(rel.to);
     if (!from || !to) return;
@@ -1000,16 +1293,67 @@ function drawRelationships() {
     const y1 = (fromRect.bottom - canvasRect.top) / currentScale;
     const x2 = (toRect.left + toRect.width/2 - canvasRect.left) / currentScale;
     const y2 = (toRect.top - canvasRect.top) / currentScale;
+    const d  = `M ${x1} ${y1} Q ${x1} ${(y1+y2)/2}, ${x2} ${y2}`;
 
+    // Glow filter path (wide, blurred, hidden by default)
+    const glow = document.createElementNS('http://www.w3.org/2000/svg','path');
+    glow.setAttribute('d', d);
+    glow.setAttribute('stroke', rel.color);
+    glow.setAttribute('stroke-width', '8');
+    glow.setAttribute('fill', 'none');
+    glow.setAttribute('opacity', '0');
+    glow.setAttribute('filter', 'blur(4px)');
+    glow.setAttribute('data-rel-idx', idx);
+    glow.setAttribute('data-from', rel.from);
+    glow.setAttribute('data-to', rel.to);
+    glow.classList.add('rel-glow');
+    svg.appendChild(glow);
+
+    // Main visible path
     const path = document.createElementNS('http://www.w3.org/2000/svg','path');
-    const d = `M ${x1} ${y1} Q ${x1} ${(y1+y2)/2}, ${x2} ${y2}`;
     path.setAttribute('d', d);
     path.setAttribute('stroke', rel.color);
     path.setAttribute('stroke-width', rel.type === 'N:M' ? '2' : '1.5');
     if (rel.type === 'N:M') path.setAttribute('stroke-dasharray', '5,3');
     path.setAttribute('fill', 'none');
-    path.setAttribute('opacity', '0.4');
+    path.setAttribute('opacity', '0.35');
+    path.setAttribute('data-rel-idx', idx);
+    path.setAttribute('data-from', rel.from);
+    path.setAttribute('data-to', rel.to);
+    path.classList.add('rel-line');
     svg.appendChild(path);
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// HOVER GLOW — highlight all lines connected to a hovered card
+// ════════════════════════════════════════════════════════════════════════════
+function attachHoverHandlers() {
+  document.querySelectorAll('.ecard').forEach(card => {
+    card.addEventListener('mouseenter', () => {
+      const id = card.id;
+      // Dim all lines
+      document.querySelectorAll('.rel-line').forEach(p => p.setAttribute('opacity','0.08'));
+      // Highlight lines connected to this card
+      document.querySelectorAll(`.rel-line[data-from="${id}"], .rel-line[data-to="${id}"]`)
+        .forEach(p => {
+          p.setAttribute('opacity','1');
+          p.setAttribute('stroke-width', p.getAttribute('data-nm') === '1' ? '3' : '2.5');
+        });
+      // Show glow on connected lines
+      document.querySelectorAll(`.rel-glow[data-from="${id}"], .rel-glow[data-to="${id}"]`)
+        .forEach(p => p.setAttribute('opacity','0.55'));
+    });
+    card.addEventListener('mouseleave', () => {
+      // Restore all lines
+      document.querySelectorAll('.rel-line').forEach(p => {
+        p.setAttribute('opacity','0.35');
+        // Restore original stroke-width based on dash pattern
+        const isDashed = p.getAttribute('stroke-dasharray');
+        p.setAttribute('stroke-width', isDashed ? '2' : '1.5');
+      });
+      document.querySelectorAll('.rel-glow').forEach(p => p.setAttribute('opacity','0'));
+    });
   });
 }
 
@@ -1018,7 +1362,8 @@ function drawRelationships() {
 // ════════════════════════════════════════════════════════════════════════════
 window.addEventListener('load', () => {
   drawRelationships();
-  window.addEventListener('resize', drawRelationships);
+  attachHoverHandlers();
+  window.addEventListener('resize', () => { drawRelationships(); attachHoverHandlers(); });
   scrollEl.addEventListener('scroll', drawRelationships);
 });
 </script>

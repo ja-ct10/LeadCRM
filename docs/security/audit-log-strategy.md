@@ -1,90 +1,145 @@
 # Audit Log Strategy — LeadCRM
 
+> Last updated: June 27, 2026
+
 ## Principle
 
-Every data-mutating operation in LeadCRM generates an `AuditLog` entry. No exception. This provides:
-- Full traceability for compliance and accountability
-- "Who did what, when, to which record" for every change
-- Changeset records showing old → new values for critical fields
+Every data-mutating operation in LeadCRM generates an `AuditLog` entry. No exception.
+This provides full traceability — who did what, when, to which record, from where.
+
+---
+
+## AuditLog Model
+
+```prisma
+model AuditLog {
+  id         String   @id @default(cuid())
+  tenantId   String                          // tenant scope — REQUIRED
+  userId     String                          // FK → User
+  action     String                          // "contact.created" | "deal.stage_changed" | ...
+  entityType String                          // "Contact" | "Deal" | "User" | ...
+  entityId   String?
+  category   String   @default("crm")       // auth | crm | billing | workflow | admin | system
+  changeset  Json?                           // { before: {...}, after: {...} }
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
+  sessionId  String?
+  severity   String   @default("INFO")      // INFO | WARNING | CRITICAL
+  createdAt  DateTime @default(now())
+}
+```
+
+---
+
+## Category Values
+
+| Category | Used For |
+|---|---|
+| `auth` | Login, logout, failed login, MFA, password change, token revocation |
+| `crm` | Contact, Deal, Organization, Task mutations |
+| `billing` | Invoice, PaymentTransaction, Subscription, PaymentMethod changes |
+| `workflow` | Workflow CRUD, execution runs, trigger events |
+| `admin` | User, Role, RolePermission, TenantInvitation changes |
+| `system` | Tenant provisioning, plan changes, SystemAdmin actions |
+
+---
+
+## Severity Values
+
+| Severity | Examples |
+|---|---|
+| `INFO` | Normal CRUD operations — contact created, deal updated |
+| `WARNING` | Failed login attempts, permission denied events, archived records |
+| `CRITICAL` | Security events — account lockout, suspicious IP, bulk deletes, role changes |
 
 ---
 
 ## What Gets Logged
 
-### Auth Events
-| Action | Trigger |
+### Auth Events (category: auth)
+| Action | Severity |
 |---|---|
-| `Auth Login` | User successfully authenticates |
-| `Auth Logout` | User logs out |
-| `Auth MFA Update` | MFA enabled or disabled |
-| `Auth Failed Login` | Failed login attempt |
+| `user.login` | INFO |
+| `user.logout` | INFO |
+| `user.login_failed` | WARNING |
+| `user.mfa_updated` | WARNING |
+| `session.revoked` | WARNING |
 
-### Contact Events
-| Action | Trigger |
+### CRM Events (category: crm)
+| Action | Severity |
 |---|---|
-| `Contact Created` | New contact added |
-| `Contact Updated` | Any field changed (changeset recorded) |
-| `Contact Archived` | Contact soft-deleted |
-| `Contact Restored` | Archived contact restored |
+| `contact.created` | INFO |
+| `contact.updated` | INFO |
+| `contact.archived` | WARNING |
+| `contact.deleted` | WARNING |
+| `deal.created` | INFO |
+| `deal.updated` | INFO |
+| `deal.stage_changed` | INFO |
+| `deal.action_performed` | INFO |
+| `deal.archived` | WARNING |
+| `deal.lost` | INFO |
+| `deal.won` | INFO |
+| `task.created` | INFO |
+| `task.reassigned` | INFO |
+| `task.completed` | INFO |
 
-### Deal Events
-| Action | Trigger |
+### Billing Events (category: billing)
+| Action | Severity |
 |---|---|
-| `Deal Created` | New deal added to pipeline |
-| `Deal Updated` | Any field changed (changeset recorded) |
-| `Deal Stage Changed` | `stageId` changes — also writes `deal.history[]` entry |
-| `Deal Archived` | Deal soft-deleted |
-| `Deal Restored` | Archived deal restored |
+| `invoice.created` | INFO |
+| `invoice.updated` | INFO |
+| `payment.received` | INFO |
+| `payment.failed` | WARNING |
+| `subscription.created` | INFO |
+| `subscription.cancelled` | WARNING |
+| `payment_method.added` | INFO |
 
-### Task Events
-| Action | Trigger |
+### Workflow Events (category: workflow)
+| Action | Severity |
 |---|---|
-| `Task Created` | New task created (+ first `assignmentHistory` record) |
-| `Task Updated` | Status, title, or other fields changed |
-| `Task Reassigned` | `assignedUserId` changes (+ new `assignmentHistory` record) |
+| `workflow.created` | INFO |
+| `workflow.activated` | INFO |
+| `workflow.execution_failed` | WARNING |
 
-### User & Role Events
-| Action | Trigger |
+### Admin Events (category: admin)
+| Action | Severity |
 |---|---|
-| `User Created` | New user added to tenant |
-| `User Updated` | Role, status, or profile changed |
-| `Role Updated` | Role permissions changed |
+| `user.created` | INFO |
+| `user.role_changed` | WARNING |
+| `role.permissions_changed` | CRITICAL |
+| `invitation.sent` | INFO |
+| `invitation.revoked` | WARNING |
 
-### Workflow Events
-| Action | Trigger |
+### System Events (category: system)
+| Action | Severity |
 |---|---|
-| `Workflow Automation` | Workflow executed for a contact or deal |
-| `Workflow Created` | New automation workflow saved |
-| `Workflow Updated` | Trigger, conditions, or actions changed |
-
-### Pipeline Events
-| Action | Trigger |
-|---|---|
-| `Pipeline Archived` | Pipeline soft-deleted |
-
-### Billing Events
-| Action | Trigger |
-|---|---|
-| `Invoice Created` | New invoice generated |
-| `Payment Received` | PayMongo webhook confirms payment |
+| `tenant.approved` | INFO |
+| `tenant.suspended` | CRITICAL |
+| `plan.changed` | WARNING |
+| `tenant_document.verified` | INFO |
 
 ---
 
-## Log Entry Shape
+## Log Entry Shape (TypeScript)
 
 ```typescript
-interface AuditLog {
-  id:          string;   // cuid
-  tenantId:    string;   // tenant scope — REQUIRED
-  userId:      string;   // who performed the action
-  userEmail:   string;   // denormalized for display
-  action:      string;   // human-readable action name
-  entityType?: string;   // 'Deal' | 'Contact' | 'Task' | ...
-  entityId?:   string;   // ID of the affected record
-  details:     string;   // plain-English description
-  changeset?:  Record<string, { old: unknown; new: unknown }>;
-  ipAddress?:  string;   // request IP (backend only)
-  timestamp:   string;   // ISO 8601
+interface AuditLogEntry {
+  tenantId:   string;
+  userId:     string;
+  action:     string;
+  entityType: string;
+  entityId?:  string;
+  category:   'auth' | 'crm' | 'billing' | 'workflow' | 'admin' | 'system';
+  severity:   'INFO' | 'WARNING' | 'CRITICAL';
+  changeset?: {
+    before: Record<string, unknown>;
+    after:  Record<string, unknown>;
+  };
+  metadata?:  Record<string, unknown>;
+  ipAddress?: string;   // req.ip
+  userAgent?: string;   // req.headers['user-agent']
+  sessionId?: string;
 }
 ```
 
@@ -92,56 +147,50 @@ interface AuditLog {
 
 ## Changeset Format
 
-For updates, include the fields that changed:
+For updates, record only the fields that changed:
 
 ```json
 {
-  "action": "Deal Updated",
+  "action": "deal.stage_changed",
+  "category": "crm",
   "changeset": {
-    "stageId": {
-      "old": "stage_proposal",
-      "new": "stage_negotiation"
-    },
-    "value": {
-      "old": 85000,
-      "new": 90000
-    }
+    "before": { "stageId": "stage_proposal",    "stageName": "Proposal" },
+    "after":  { "stageId": "stage_negotiation", "stageName": "Negotiation" }
   }
 }
 ```
-
-Changeset is stored as `metadata` (JSON) in the Prisma `AuditLog` model.
 
 ---
 
 ## Implementation Pattern
 
-### Frontend (DataContext)
-```typescript
-// Every mutation calls addAuditLog:
-const updateDeal = (id: string, updates: Partial<Deal>) => {
-  // ... apply update ...
-  addAuditLog(
-    'Deal Updated',
-    `Updated pipeline stage to '${newStageName}' for deal '${deal.title}'.`,
-    id,
-    changeset
-  );
-};
-```
-
 ### Backend (Service layer)
 ```typescript
-// audit.service.ts records to DB:
+// audit.service.ts
 await auditService.log({
   tenantId:   req.user.tenantId,
   userId:     req.user.id,
-  action:     'Contact Created',
+  action:     'contact.created',
   entityType: 'Contact',
   entityId:   contact.id,
-  details:    `Created contact ${contact.firstName} ${contact.lastName}`,
+  category:   'crm',
+  severity:   'INFO',
   metadata:   { source: contact.source },
   ipAddress:  req.ip,
+  userAgent:  req.headers['user-agent'],
+  sessionId:  req.user.sessionId,
+});
+```
+
+### Frontend (DataContext — until USE_MOCK_DATA=false)
+```typescript
+addAuditLog({
+  action:     'deal.updated',
+  entityType: 'Deal',
+  entityId:   deal.id,
+  category:   'crm',
+  severity:   'INFO',
+  changeset:  { before: { stageId: old }, after: { stageId: newId } },
 });
 ```
 
@@ -149,42 +198,37 @@ await auditService.log({
 
 ## Audit Log Viewer
 
-Location: Client Profile → Audit tab
+Location: **Administration → Audit Logs**
 
-Displays:
-- Operator (user who performed the action)
-- Action name
-- Description
-- Changeset (expandable)
-- Timestamp
-- IP Address
+Filter by: category · severity · userId · entityType · date range
 
-Visible to: **Client Admin** only (`audit.view` permission required)
+Columns: User · Action · Category · Entity · Changeset (expandable) · IP Address · Timestamp
 
-Font recommendation for changeset display: **JetBrains Mono** for monospace readability.
+Visible to: **Client Admin** only (`audit.canView` in RolePermission)
 
 ---
 
 ## Retention Policy
 
-| Environment | Retention |
+| Plan | Retention |
 |---|---|
 | Sandbox | 30 days |
-| Production (Free) | 90 days |
-| Production (Pro) | 1 year |
-| Production (Enterprise) | Unlimited |
+| Free | 90 days |
+| Pro | 1 year |
+| Enterprise | Unlimited |
 
 ---
 
 ## What Does NOT Get Logged
 
 - Read operations (view, search, export preview)
-- Failed permission checks (these go to security logs, not audit logs)
-- System health checks
+- Failed permission checks (go to security/system logs)
+- Health check endpoints
 
 ---
 
 ## See Also
+- `backend/src/core/audit/audit.service.ts`
 - `frontend/src/store/DataContext.tsx` — `addAuditLog()` implementation
-- `backend/src/core/audit/audit.service.ts` — backend service
-- [permission-matrix.md](./permission-matrix.md)
+- `docs/security/permission-matrix.md`
+- `docs/database/erd.md` — AuditLog entity definition

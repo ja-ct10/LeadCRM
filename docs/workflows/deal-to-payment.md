@@ -1,8 +1,11 @@
 # Workflow: Deal → Payment
 
+> Last updated: June 27, 2026
+
 ## Overview
 
-Once a deal reaches `Closed Won`, the revenue collection workflow begins. This covers invoice generation, payment processing via PayMongo, and deal closure confirmation.
+Once a deal reaches `Closed Won`, the revenue collection workflow begins.
+Covers invoice generation, payment processing via PayMongo, and billing lifecycle management.
 
 ---
 
@@ -10,27 +13,31 @@ Once a deal reaches `Closed Won`, the revenue collection workflow begins. This c
 
 ```
 Deal: Closed Won
+  └→ Deal.closedAt stamped
       │
       ▼
-Convert to Invoice
-(Billing Module)
-      │
-      ▼
-Invoice: Draft
+Convert to Invoice (Billing Module)
+Invoice.status = Pending
+Invoice.paymentStatus = Unpaid
+Invoice optionally linked to Subscription (recurring billing)
       │
       ▼
 Invoice Sent to Customer
       │
-      ├── Customer pays → Invoice: Paid
-      │                        │
-      │                        ▼
-      │                   Contact Status: Closed
-      │                   Trigger: Onboarding Workflow
+      ├── Customer pays via PayMongo
+      │         │
+      │         ▼
+      │   PaymentTransaction created (status=paid)
+      │   Invoice.paymentStatus = Paid / Invoice.paidAt stamped
+      │   Contact.status → Closed
+      │   Trigger: Onboarding Workflow
       │
-      └── Payment overdue → Invoice: Overdue
-                                 │
-                                 ▼
-                            Follow-up Task Created
+      └── Payment overdue (dueDate passed, still Unpaid)
+                │
+                ▼
+          Invoice.paymentStatus = Overdue
+          DealAction (SEND_EMAIL) created
+          Follow-up Task auto-created via Workflow
 ```
 
 ---
@@ -39,10 +46,10 @@ Invoice Sent to Customer
 
 | Actor | Responsibility |
 |---|---|
-| Sales Rep | Confirms deal is Closed Won, initiates invoice conversion |
-| Client Admin | Manages billing settings, reviews invoices |
-| Billing Manager | Monitors payment status, handles overdue follow-ups |
-| PayMongo | Processes payment (third-party gateway) |
+| Sales Rep | Confirms Closed Won, initiates invoice conversion |
+| Client Admin | Manages billing settings, reviews invoices and subscriptions |
+| PayMongo | Processes payment — webhook fires on success/failure |
+| System (Workflow Engine) | Auto-creates follow-up tasks for overdue invoices |
 
 ---
 
@@ -50,61 +57,80 @@ Invoice Sent to Customer
 
 ### 1. Deal Confirmed Won
 - Deal stage = `Closed Won`
-- Deal Details Modal shows "Next Steps" section with "Convert to Invoice" button
-- Billing module must be enabled (`isBillingModuleEnabled = true` in settings)
+- `Deal.closedAt` stamped automatically
+- Deal Details Modal shows "Convert to Invoice" button
+- `AuditLog({ action: 'deal.won', category: 'crm' })` created
 
 ### 2. Invoice Creation
 - Sales Rep clicks "Convert to Invoice"
-- System navigates to Billing module
-- Invoice pre-populated with deal title, value, contact name, company
-- Invoice status: `Draft`
+- Invoice pre-populated from deal: title, value, contact, organization
+- `Invoice.subscriptionId` linked if tenant has an active `Subscription`
+- `Invoice.status = Pending`, `Invoice.paymentStatus = Unpaid`
+- `Invoice.invoiceNumber` auto-generated: `INV-YYYY-NNN` (tenant-scoped)
+- `AuditLog({ action: 'invoice.created', category: 'billing' })` created
 
-### 3. Invoice Sent
-- Client Admin or Sales Rep reviews draft and sends
-- Invoice status: `Sent`
-- Customer receives email notification (via Campaign/Email integration)
+### 3. Payment Method Selection
+- Client can pay via saved `PaymentMethod` (GCash, Maya, Credit Card, Bank Transfer)
+- Or use ad-hoc PayMongo payment link (`paymongoPaymentUrl`)
+- `PaymentTransaction` row created with `status = pending`
 
-### 4. Payment
-- Customer pays via PayMongo payment link
+### 4. Payment Confirmed
 - PayMongo webhook fires: `payment.paid`
-- Invoice status updated: `Paid`
-- `addAuditLog('Payment Received', ...)` fires
+- `PaymentTransaction.status = paid`, `paidAt` stamped
+- `Invoice.paymentStatus = Paid`, `Invoice.paidAt` stamped
+- `Contact.status → CLOSED`
+- `AuditLog({ action: 'payment.received', category: 'billing', severity: 'INFO' })`
+- Optional: trigger onboarding workflow
 
-### 5. Onboarding
-- On payment confirmed, Sales Rep or automation triggers onboarding workflow
-- Deal Details Modal "Start Onboarding" button → runs workflow
-- Contact status updated to `Closed`
+### 5. Recurring Billing (Subscription)
+- If `Invoice.subscriptionId` is set, `Subscription.nextBillingDate` is updated
+- Next invoice auto-generated on billing cycle (MONTHLY / QUARTERLY / ANNUAL)
+- `Tenant.subscriptionStatus` and `Tenant.plan` (denorm cache) updated from Subscription
 
-### 6. Overdue Handling
-- If payment not received by due date, invoice status: `Overdue`
-- Workflow automation creates follow-up task assigned to Sales Rep
-- Task: "Follow up on overdue invoice — [Company Name]"
+### 6. Failed Payment
+- PayMongo webhook fires: `payment.failed`
+- `PaymentTransaction.status = failed`, `failureReason` stored
+- `Invoice.paymentStatus` remains `Unpaid`
+- `AuditLog({ action: 'payment.failed', category: 'billing', severity: 'WARNING' })`
+- Notification sent to tenant billing contact
+
+### 7. Overdue Handling
+- Scheduled job checks: `paymentStatus = Unpaid AND dueDate < now()`
+- `Invoice.paymentStatus → Overdue`
+- `Subscription.status → PAST_DUE` (if subscription-linked)
+- `Tenant.subscriptionStatus → PAST_DUE` (denorm cache updated)
+- Workflow: auto-create task "Follow up on overdue invoice — [Company Name]"
 
 ---
 
 ## PayMongo Integration Points
 
-| Event | System Action |
+| Webhook Event | System Action |
 |---|---|
-| `payment.paid` | Invoice → Paid, audit log, optional workflow trigger |
-| `payment.failed` | Invoice → Failed, toast notification to Sales Rep |
-| `source.chargeable` | Charge source, create payment record |
+| `payment.paid` | PaymentTransaction → paid · Invoice → Paid · AuditLog |
+| `payment.failed` | PaymentTransaction → failed · Invoice stays Unpaid · AuditLog |
+| `source.chargeable` | Charge source, create PaymentTransaction |
 
-Integration file: `backend/src/integrations/paymongo/paymongo.webhooks.ts`
+Integration: `backend/src/integrations/paymongo/`
 
 ---
 
 ## Data Updated
 
-| Field | Value |
+| Model | What Changes |
 |---|---|
-| `Invoice.status` | Draft → Sent → Paid / Overdue / Failed |
-| `Contact.status` | → Closed (on payment) |
-| `Deal.stageId` | Remains Closed Won |
-| `AuditLog` | Every status transition |
+| `Deal` | `closedAt` stamped on Closed Won |
+| `Invoice` | `status`, `paymentStatus`, `paidAt` |
+| `PaymentTransaction` | Created per payment attempt |
+| `Subscription` | `nextBillingDate`, `status` on payment events |
+| `Tenant` | `subscriptionStatus` (denorm cache) on PAST_DUE / ACTIVE |
+| `Contact` | `status → CLOSED` on payment confirmed |
+| `AuditLog` | Every billing status transition (category: billing) |
 
 ---
 
 ## Related Docs
-- [lead-to-deal.md](./lead-to-deal.md)
-- [customer-lifecycle.md](./customer-lifecycle.md)
+- `docs/workflows/lead-to-deal.md`
+- `docs/workflows/customer-lifecycle.md`
+- `docs/database/erd.md` — Invoice, Subscription, PaymentMethod, PaymentTransaction
+- `docs/security/audit-log-strategy.md` — billing category events
