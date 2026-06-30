@@ -65,3 +65,30 @@ WorkflowExecutionRun + N×WorkflowExecutionStep + 1×Activity
 - TargetAudience has NO junction table — contacts resolved dynamically via conditions
 - Subscription is billing source of truth — Tenant.plan is denorm cache
 - AuditLog.category required: auth | crm | billing | workflow | admin | system
+
+## Auto-Activation Rules (skills + sub-agents)
+
+### Project Skills — activate automatically when task matches:
+| Trigger Keywords / Task Type | Skill to Activate |
+|---|---|
+| Any UI work: component, page, layout, modal, form, table, colors, spacing, animation | `leadcrm-design-system` then `frontend-patterns` |
+| Component structure, filters, charts, RBAC guards, dark mode, forms | `frontend-patterns` |
+| App Router, routing, dynamic imports, server/client boundary, env vars | `nextjs-patterns` |
+| Express route, controller, service, repository, middleware, Zod DTO, API | `backend-patterns` |
+| Multi-tenancy, plan limits, feature gating, domain events, subscription, billing | `saas-scalability` |
+| Auth, RBAC, tokens, sessions, tenant isolation, input validation, secrets | `security-review` |
+| PR completion, quality check, testing, build verification, Definition of Done | `verification-loop` |
+| Complex task planning, architecture decision, severity assessment, phased work | `workflow-process` |
+
+### Built-in Sub-Agents — use automatically when:
+| Situation | Sub-Agent |
+|---|---|
+| Starting work on unfamiliar area, investigating bugs across files, need to understand component interactions | `context-gatherer` (use ONCE at start, then work with results) |
+| Well-defined subtask that can run in parallel, large file rewrites, isolated work | `general-task-execution` |
+| User asks to create a new custom agent | `custom-agent-creator` |
+
+### Manual Steering — load with # in chat when needed:
+| Steering File | When to suggest loading |
+|---|---|
+| `#lessons-learned` | Debugging, reviewing past decisions, recalling pitfalls |
+| `#reference` | Setup, routing, build commands, file path lookup |
