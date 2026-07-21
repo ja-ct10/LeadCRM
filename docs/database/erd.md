@@ -1,41 +1,58 @@
 # Entity Relationship Diagram — LeadCRM
 
-> **Sources of truth:**
-> - DB schema: `backend/prisma/schema.prisma`
-> - Frontend types: `frontend/src/store/types/`
->
-> The Prisma schema represents the *current DB state*.
-> Frontend types represent the *target migrated state* (includes fields not yet in DB).
-> Fields marked `[DB]` exist in Prisma. Fields marked `[FE]` exist only in frontend localStorage phase.
+> **Source of truth:** `backend/prisma/schema.prisma`
+> All 30 entities are now in the Prisma schema. No frontend-only entities remain.
+> Last updated: June 27, 2026
 
 ---
 
 ## Full Entity Map
 
 ```
-Tenant (1)
+SystemAdmin (platform-global, no tenantId)
+
+PricingPlan (platform-global)
+  └──(n) PlanFeature
+  └──(n) Subscription
+
+Tenant (root)
+  │
+  ├──(n) Subscription ──── FK→PricingPlan
+  ├──(n) PaymentMethod
+  ├──(n) TenantDocument
+  ├──(n) Environment
   │
   ├──(n) User
-  │         └──(n) AuditLog
+  │         └──(n) UserRole ──── FK→RoleDefinition
+  │
+  ├──(n) RoleDefinition
+  │         └──(n) RolePermission  (module, canView/canCreate/canEdit/canDelete)
+  │
+  ├──(n) Session
+  ├──(n) TenantInvitation
   │
   ├──(n) Organization
-  │         │
-  │         └──(n) Contact ◄──────────────────────────────────────────────────┐
-  │                   │                                                        │
-  │                   └──(n) Deal ─────────────────────────────────────────── │
-  │                              │                                             │
-  │                              ├── history[]: StageHistoryEntry[]            │
-  │                              ├── activities[]: DealActivity[]              │
-  │                              ├── ownershipHistory[]: DealOwnershipRecord[] │
-  │                              ├──(n) Task                                   │
-  │                              │       └── assignmentHistory[]:              │
-  │                              │           TaskAssignmentRecord[]            │
-  │                              └──(n) Invoice                                │
-  │                                                                            │
-  ├──(n) Pipeline                                                              │
-  │         └──(n) Stage ──────────────────── Deal.stageId ───────────────────┘
+  │         └──(n) Contact ──────────────────────────────────────────┐
+  │                   │                                               │
+  │                   └──(n) ContactDeal (junction) ────── Deal ──────┤
+  │                                                          │        │
+  ├──(n) Pipeline                                            │        │
+  │         └──(n) Stage ──── Deal.stageId ──────────────────┘        │
+  │                                                                    │
+  ├──(n) Deal ────────────────────────────────────────────────────────┘
+  │         ├──(n) DealStageHistory
+  │         ├──(n) DealAction
+  │         ├──(n) Task
+  │         ├──(n) Activity
+  │         ├──(n) Invoice ──── FK→Subscription?
+  │         └──(n) ServiceOrder
   │
-  ├──(n) Campaign
+  ├──(n) TargetAudience
+  │         └──(n) TargetAudienceCondition
+  │         └──(n) Campaign ──── FK→Template (email + sms)
+  │                   ├──(n) CampaignContact
+  │                   ├──(n) CampaignMetrics
+  │                   └──(n) EmailDeliveryLog
   │
   ├──(n) Template
   │
@@ -44,577 +61,837 @@ Tenant (1)
   │                   └──(n) WorkflowExecutionRun
   │                             └──(n) WorkflowExecutionStep
   │
-  ├──(n) Activity (unified timeline — links to any entity)
-  │
-  ├──(n) ServiceOrder ──── assigned Technician (User)
+  ├──(n) Invoice ──── FK→PaymentTransaction
+  │                         └── FK→PaymentMethod
   │
   ├──(n) Asset
-  │
   ├──(n) InventoryItem
-  │
-  ├──(n) RoleDefinition ──── permissions: string[]
-  │
+  ├──(n) Notification
   └──(n) AuditLog
 ```
+
 
 ---
 
 ## Entity Definitions
 
+### SystemAdmin `[DB — platform-global]`
+```
+id           String   cuid PK
+email        String   unique
+firstName    String
+lastName     String
+passwordHash String
+isActive     Boolean  default true
+createdAt    DateTime
+updatedAt    DateTime
+```
+> No tenantId. LeadCRM platform operators only. Manages tenants, pricing, approvals.
+
+---
+
+### PricingPlan `[DB — platform-global]`
+```
+id             String   cuid PK
+name           String   unique  (e.g. "Free", "Pro", "Enterprise")
+planType       FREE | PRO | ENTERPRISE
+monthlyPrice   Float
+quarterlyPrice Float
+annualPrice    Float
+maxUsers       Int?
+maxContacts    Int?
+maxDeals       Int?
+storageLimit   Int?     MB
+isActive       Boolean
+createdAt      DateTime
+updatedAt      DateTime
+```
+
+### PlanFeature `[DB]`
+```
+id          String   cuid PK
+planId      String   FK→PricingPlan
+name        String   (e.g. "Workflow Automation", "Gmail Integration")
+description String?
+```
+
+---
+
 ### Tenant `[DB]`
 ```
-id              String   UUID / cuid (PK)
-name            String
-slug            String   (unique)
-status          SANDBOX | ACTIVE | SUSPENDED | CANCELLED
-plan            FREE | PRO | ENTERPRISE
-industry        String   [FE]
-size            String   [FE]
-email           String   [FE]
-phone           String   [FE]
-address         String   [FE]
-timezone        String?  [FE]
-currency        String?  [FE]
-domain          String?  [FE]
-approvalStep    basic | requirements | completed  [FE]
-environment     none | sandbox | production | both  [FE]
-adminNotes      String?  [FE]
-businessReqs    JSON?    [FE]  { requirements, documentName? }
-verificationDocs JSON?   [FE]  { businessPermit?, taxId?, validId?, uploadedAt }
-healthMetrics   JSON?    [FE]  { cpuUsage, memoryUsage, storageUsage, uptime, status, lastCheck }
+id                 String             cuid PK
+name               String
+slug               String             unique
+industry           String?
+companySize        String?            "1-10" | "11-50" | "51-200" | "200+"
+email              String?
+phone              String?
+address            String?
+status             SANDBOX | ACTIVE | SUSPENDED | CANCELLED | DELETED
+subscriptionStatus TRIAL | ACTIVE | PAST_DUE | CANCELLED | EXPIRED
+plan               FREE | PRO | ENTERPRISE  (denorm cache — source of truth = Subscription)
+trialEndsAt        DateTime?
+subscriptionEndsAt DateTime?
+maxUsers           Int?
+maxContacts        Int?
+maxDeals           Int?
+approvedById       String?            SystemAdmin.id
+approvedAt         DateTime?
+createdAt          DateTime
+updatedAt          DateTime
+```
+
+### Subscription `[DB]`
+```
+id              String             cuid PK
+tenantId        String             FK→Tenant
+planId          String             FK→PricingPlan
+billingCycle    MONTHLY | QUARTERLY | ANNUAL
+status          SubscriptionStatus
+amount          Float
+startDate       DateTime
+endDate         DateTime?
+nextBillingDate DateTime?
+cancelledAt     DateTime?
 createdAt       DateTime
 updatedAt       DateTime
 ```
+
+### PaymentMethod `[DB]`
+```
+id            String   cuid PK
+tenantId      String   FK→Tenant
+methodName    String   "GCash" | "Maya" | "Credit Card" | "Bank Transfer"
+accountName   String?
+accountNumber String?  masked e.g. "****1234"
+isDefault     Boolean
+isActive      Boolean
+createdAt     DateTime
+updatedAt     DateTime
+```
+
+### TenantDocument `[DB]`
+```
+id           String    cuid PK
+tenantId     String    FK→Tenant
+fileName     String
+documentType String    "contract" | "business_permit" | "id_proof" | "other"
+filePath     String    URL to object storage (NOT base64)
+fileSize     Int?      bytes
+status       String    "pending" | "verified" | "rejected"
+uploadedAt   DateTime
+verifiedById String?   SystemAdmin.id
+verifiedAt   DateTime?
+```
+
+### Environment `[DB]`
+```
+id            String    cuid PK
+tenantId      String    FK→Tenant
+envCode       String    "prod" | "staging" | "sandbox"
+type          String    "production" | "staging" | "sandbox"
+cpuUsage      Float?    percentage
+ramUsage      Float?    percentage
+storageUsage  Float?    percentage
+uptimePct     Float?    percentage
+isDefault     Boolean
+lastCheckedAt DateTime?
+createdAt     DateTime
+updatedAt     DateTime
+unique: [tenantId, envCode]
+```
+
 
 ---
 
 ### User `[DB]`
 ```
-id              String   UUID (PK)
-tenantId        String   (FK → Tenant) REQUIRED
+id           String     cuid PK
+tenantId     String     FK→Tenant  REQUIRED
+email        String     unique per tenant
+firstName    String
+lastName     String
+passwordHash String
+role         String     "Sales Rep" (legacy fallback — use UserRole for new code)
+status       ACTIVE | INACTIVE | PENDING
+createdAt    DateTime
+updatedAt    DateTime
+```
+
+### RoleDefinition `[DB]`
+```
+id           String   cuid PK
+tenantId     String   FK→Tenant  REQUIRED
+name         String   unique per tenant
+description  String?
+isSystemRole Boolean
+isArchived   Boolean
+createdAt    DateTime
+updatedAt    DateTime
+```
+> `permissions String[]` removed. Use `RolePermission` table instead.
+
+### RolePermission `[DB]`
+```
+id        String  cuid PK
+tenantId  String
+roleId    String  FK→RoleDefinition (cascade delete)
+module    String  "contacts" | "deals" | "campaigns" | "workflows" |
+                  "billing" | "reports" | "users" | "settings" |
+                  "audit" | "organizations" | "tasks" | "service_orders"
+canView   Boolean
+canCreate Boolean
+canEdit   Boolean
+canDelete Boolean
+unique: [roleId, module]
+```
+
+### UserRole `[DB]`
+```
+id       String  cuid PK
+userId   String  FK→User (cascade delete)
+roleId   String  FK→RoleDefinition (cascade delete)
+tenantId String  FK→Tenant
+unique: [userId, roleId, tenantId]
+```
+
+### Session `[DB]`
+```
+id           String    cuid PK
+userId       String    FK→User
+tenantId     String    FK→Tenant
+tokenHash    String    unique  SHA-256 of JWT — never plaintext
+userAgent    String?
+ipAddress    String?
+expiresAt    DateTime
+revokedAt    DateTime?
+lastActiveAt DateTime
+createdAt    DateTime
+```
+
+### TenantInvitation `[DB]`
+```
+id          String    cuid PK
+tenantId    String    FK→Tenant
+email       String
+roleId      String    FK→RoleDefinition
+token       String    unique
+invitedById String    FK→User
+expiresAt   DateTime
+acceptedAt  DateTime?
+revokedAt   DateTime?
+createdAt   DateTime
+```
+
+---
+
+### Organization `[DB]`
+```
+id             String    cuid PK
+tenantId       String    FK→Tenant  REQUIRED
+assignedUserId String?   FK→User
+name           String
+industry       String?
+size           String?   "1-10" | "11-50" | "51-200" | "200+"
+website        String?
+taxId          String?
+tags           String[]
+address        String?
+city           String?
+province       String?
+country        String    default "Philippines"
+isArchived     Boolean
+deletedAt      DateTime?
+deletedBy      String?
+createdAt      DateTime
+updatedAt      DateTime
+```
+
+### Contact `[DB]`
+```
+id              String        cuid PK
+tenantId        String        FK→Tenant  REQUIRED
+organizationId  String?       FK→Organization
+assignedUserId  String?       FK→User (current handler — can change)
+ownerId         String?       FK→User (original capturer — immutable)
 firstName       String
 lastName        String
-email           String   (unique per tenant)
-passwordHash    String
-phone           String?  [FE]
-org             String?  [FE]
-team            String?  [FE]
-role            Client Admin | Sales Rep | Viewer | Technician | System Admin
-status          active | pending | inactive
-lastLogin       DateTime? [FE]
-isArchived      Boolean   [FE]
+email           String?
+phone           String?
+company         String?
+jobTitle        String?
+linkedinUrl     String?
+status          HOT | WARM | COLD | CANCELLED | CLOSED
+score           Int           default 75
+source          String?
+notes           String?
+lastContactedAt DateTime?
+convertedAt     DateTime?
+doNotContact    Boolean
+isArchived      Boolean
+archiveReason   String?
+deletedAt       DateTime?
+deletedBy       String?
 createdAt       DateTime
 updatedAt       DateTime
 ```
 
----
-
-### Organization `[FE — not yet in DB]`
-```
-id              String   UUID (PK)
-tenantId        String   (FK → Tenant) REQUIRED
-name            String
-industry        String?
-size            String?
-website         String?
-taxId           String?
-assignedUserId  String?  (FK → User)
-tags            String[]
-address         String?
-city            String?
-province        String?
-country         String?
-postalCode      String?
-isArchived      Boolean
-createdAt       DateTime
-```
-**Migration note:** Add `Organization` model to Prisma before contacts are linked to companies.
-
----
-
-### Contact `[DB — partial]`
-```
-id              String   UUID (PK)
-tenantId        String   (FK → Tenant) REQUIRED
-organizationId  String?  (FK → Organization) [FE]
-companyName     String
-contactPerson   String
-jobTitle        String
-email           String
-phone           String
-firstName       String?  [FE]
-middleName      String?  [FE]
-lastName        String?  [FE]
-displayName     String?  [FE]
-preferredName   String?  [FE]
-secondaryEmail  String?  [FE]
-workEmail       String?  [FE]
-mobileNumber    String?  [FE]
-altPhone        String?  [FE]
-department      String?  [FE]
-website         String?  [FE]
-linkedin        String?  [FE]
-facebook        String?  [FE]
-gender          String?  [FE]
-dateOfBirth     String?  [FE]
-serviceRequired String
-leadSource      String
-estimatedValue  Float
-assignedUserId  String   (FK → User)
-assignedTeam    String?  [FE]
-ownerId         String?  (FK → User) [FE]
-expectedCloseDate DateTime
-status          Hot | Warm | Cold | Cancelled | Closed
-score           Int
-customerType    Individual | Organization  [FE]
-callStatus      String?  [FE]
-priority        Low | Medium | High | Critical  [FE]
-businessType    String?  [FE]
-companySize     String?  [FE]
-tags            String?  [FE]
-notes           String
-internalNotes   String?  [FE]
-customFields    JSON?    [FE]
-contactNumbers  JSON?    [FE]  [{ id, type, countryCode, number, notes }]
-country         String?  [FE]
-region          String?  [FE]
-province        String?  [FE]
-city            String?  [FE]
-barangay        String?  [FE]
-postalCode      String?  [FE]
-streetAddress   String?  [FE]
-isArchived      Boolean
-archivedAt      DateTime? [FE]
-archivedBy      String?   (FK → User) [FE]
-archiveReason   String?   [FE]
-createdAt       DateTime
-updatedAt       DateTime
-```
 
 ---
 
 ### Pipeline `[DB]`
 ```
-id          String   UUID (PK)
-tenantId    String   (FK → Tenant) REQUIRED
-name        String
-isArchived  Boolean  [FE]
-createdAt   DateTime
-updatedAt   DateTime
+id         String   cuid PK
+tenantId   String   FK→Tenant  REQUIRED
+name       String
+type       String?  "Sales" | "Service" | "Onboarding"
+isDefault  Boolean
+currency   String   default "PHP"
+isArchived Boolean
+createdAt  DateTime
+updatedAt  DateTime
 ```
-**Default pipelines:** Sales Inquiries · Technical Support · Project Implementation · After-Sales Concerns
-
----
 
 ### Stage `[DB]`
 ```
-id           String   UUID (PK)
-pipelineId   String   (FK → Pipeline)
-name         String
-order        Int
-probability  Int?     [FE]  0–100 — used for weighted revenue forecast
-createdAt    DateTime
+id          String   cuid PK
+pipelineId  String   FK→Pipeline
+name        String
+order       Int
+probability Int?     0–100 for revenue forecasting
+color       String?  hex e.g. "#3fb950"
+description String?
+isWon       Boolean  terminal — deal won
+isLost      Boolean  terminal — deal lost
+isDefault   Boolean  starting stage for new deals
+createdAt   DateTime
+```
+
+### Deal `[DB]`
+```
+id                String    cuid PK
+tenantId          String    FK→Tenant  REQUIRED
+pipelineId        String    FK→Pipeline
+stageId           String    FK→Stage
+contactId         String?   FK→Contact  (legacy singular — use ContactDeal for new code)
+organizationId    String?   FK→Organization
+assignedUserId    String?   FK→User (current handler)
+ownerId           String?   FK→User (original owner — immutable)
+title             String
+value             Float?
+currency          String    default "PHP"
+priority          LOW | MEDIUM | HIGH
+expectedCloseDate DateTime?
+closedAt          DateTime? stamped when stage isWon/isLost = true
+lostReason        String?
+description       String?
+leadSource        String?
+industry          String?
+tags              String?
+order             Int
+isArchived        Boolean
+archiveReason     String?
+deletedAt         DateTime?
+createdAt         DateTime
+updatedAt         DateTime
+```
+
+### ContactDeal `[DB]` — N:M junction
+```
+id        String   cuid PK
+contactId String   FK→Contact (cascade delete)
+dealId    String   FK→Deal    (cascade delete)
+tenantId  String   FK→Tenant
+role      String?  "Primary Contact" | "Decision Maker" | "Technical Evaluator"
+addedById String?  FK→User
+addedAt   DateTime
+unique: [contactId, dealId]
+```
+
+### DealStageHistory `[DB]`
+```
+id              String    cuid PK
+tenantId        String    FK→Tenant
+dealId          String    FK→Deal (cascade delete)
+previousStageId String?   FK→Stage
+newStageId      String    FK→Stage
+movedById       String    FK→User
+movedAt         DateTime
+timeInPrevStage Int?      minutes in previous stage
+note            String?
+```
+
+### DealAction `[DB]`
+```
+id            String         cuid PK
+tenantId      String         FK→Tenant
+dealId        String         FK→Deal (cascade delete)
+performedById String         FK→User
+actionType    DealActionType
+              UPDATE_FIELD | ASSIGN_AGENT | CHANGE_STATUS |
+              SEND_EMAIL | SEND_SMS | ADD_NOTE | CREATE_TASK | CHANGE_STAGE
+payload       Json?          e.g. { field: "status", from: "WARM", to: "HOT" }
+note          String?
+performedAt   DateTime
 ```
 
 ---
 
-### Deal `[DB — partial]`
+### Task `[DB]`
 ```
-id                  String   UUID (PK)
-tenantId            String   (FK → Tenant) REQUIRED
-pipelineId          String   (FK → Pipeline)
-stageId             String   (FK → Stage)
-contactId           String?  (FK → Contact) — legacy singular
-contactIds          String[] [FE]  all stakeholder contacts (replaces singular contactId)
-companyId           String?  (FK → Organization) [FE]
-organizationId      String?  (FK → Organization) [FE]
-title               String
-companyName         String
-contactPerson       String
-value               Float
-priority            Low | Medium | High
-expectedCloseDate   DateTime
-description         String
-assignedUserId      String   (FK → User)
-lostReason          String?
-leadSource          String?
-industry            String?
-location            String?
-campaign            String?
-customerType        String?
-tags                String?
-lastStageChangeDate DateTime? [FE]
-isArchived          Boolean
-archivedAt          DateTime? [FE]
-archivedBy          String?   [FE]
-archiveReason       String?   [FE]
-customFields        JSON?     [FE]
-history             JSON?     [FE]  StageHistoryEntry[]
-activities          JSON?     [FE]  DealActivity[]
-ownershipHistory    JSON?     [FE]  DealOwnershipRecord[]
-order               Int
-createdAt           DateTime
-updatedAt           DateTime
+id             String    cuid PK
+tenantId       String    FK→Tenant  REQUIRED
+dealId         String?   FK→Deal    (set null on delete)
+contactId      String?   FK→Contact (set null on delete)
+organizationId String?
+assignedUserId String    FK→User (current owner)
+assignedById   String?   FK→User (who assigned it)
+completedById  String?   FK→User
+title          String
+description    String?
+status         pending | in_progress | blocked | completed | cancelled
+priority       Low | Medium | High
+dueDate        DateTime
+reminderAt     DateTime?
+completedAt    DateTime?
+isArchived     Boolean
+createdAt      DateTime
+updatedAt      DateTime
 ```
 
-#### StageHistoryEntry (embedded JSON on Deal)
+### Activity `[DB]` — unified timeline
 ```
-stageId          String  (FK → Stage)
-previousStageId  String? (FK → Stage) — the stage before this move
-timestamp        String  ISO
-userId           String  (FK → User)
-note             String?
+id             String    cuid PK
+tenantId       String    FK→Tenant  REQUIRED
+createdById    String    FK→User
+type           call | meeting | email | sms | note | task |
+               workflow | stage_change | deal_action | file_upload
+title          String
+description    String?
+metadata       Json?
+contactId      String?   FK→Contact  (exactly one of these is non-null)
+dealId         String?   FK→Deal
+organizationId String?   FK→Organization
+taskId         String?   FK→Task
+invoiceId      String?   FK→Invoice
+createdAt      DateTime
 ```
 
-#### DealOwnershipRecord (embedded JSON on Deal)
+### ServiceOrder `[DB]`
 ```
-assignedTo    String  (FK → User)
-assignedBy    String  (FK → User) or 'system'
-assignedAt    String  ISO
-reason        String? e.g. "Territory Transfer"
+id                   String    cuid PK
+tenantId             String    FK→Tenant  REQUIRED
+assignedTechnicianId String?   FK→User
+contactId            String?   FK→Contact
+organizationId       String?   FK→Organization
+dealId               String?   FK→Deal
+invoiceId            String?
+title                String
+description          String?
+status               pending | in_progress | completed | cancelled
+scheduledDate        DateTime
+completedAt          DateTime?
+actualDurationMins   Int?
+photos               Json?     { before: [url], after: [url] } — object storage URLs
+signature            String?   URL to signed document
+notes                String?
+createdAt            DateTime
+updatedAt            DateTime
 ```
+
+### Asset `[DB]`
+```
+id             String    cuid PK
+tenantId       String    FK→Tenant  REQUIRED
+organizationId String?   FK→Organization
+name           String
+category       String    Security | Telecom | IT | Infrastructure
+serialNumber   String
+client         String
+status         Active | Maintenance | Retired | Faulty
+installDate    DateTime
+warrantyExpiry DateTime
+location       String
+createdAt      DateTime
+updatedAt      DateTime
+```
+
+### InventoryItem `[DB]`
+```
+id            String    cuid PK
+tenantId      String    FK→Tenant  REQUIRED
+name          String
+sku           String    unique per tenant
+category      String
+quantity      Int
+minQuantity   Int       reorder threshold
+unitPrice     Float
+supplier      String?
+lastRestocked DateTime?
+createdAt     DateTime
+updatedAt     DateTime
+```
+
+### Notification `[DB]`
+```
+id         String    cuid PK
+tenantId   String    FK→Tenant
+userId     String    FK→User
+type       String    deal_assigned | task_due | campaign_sent | workflow_failed | deal_action
+title      String
+body       String?
+entityType String?
+entityId   String?
+isRead     Boolean
+readAt     DateTime?
+createdAt  DateTime
+```
+
 
 ---
 
-### Task `[FE — not yet in DB]`
+### TargetAudience `[DB]`
 ```
-id                  String   UUID (PK)
-tenantId            String   (FK → Tenant) REQUIRED
-dealId              String?  (FK → Deal)
-title               String
-description         String
-status              pending | in-progress | blocked | completed | cancelled
-dueDate             DateTime
-assignedUserId      String   (FK → User)
-assignedBy          String?  (FK → User)
-priority            Low | Medium | High
-assignmentHistory   JSON?    TaskAssignmentRecord[]
-createdAt           DateTime
+id          String   cuid PK
+tenantId    String   FK→Tenant  REQUIRED
+name        String
+description String?
+isActive    Boolean
+createdAt   DateTime
+updatedAt   DateTime
 ```
+> No `audience_contacts` junction table — contacts resolved dynamically via conditions at query time.
 
-#### TaskAssignmentRecord (embedded JSON on Task)
+### TargetAudienceCondition `[DB]`
 ```
-assignedTo        String  (FK → User)
-assignedBy        String  (FK → User)
-assignedAt        String  ISO
-previousAssignee  String? (FK → User)
-reason            String?
+id               String   cuid PK
+targetAudienceId String   FK→TargetAudience (cascade delete)
+field            String   contact field: "status" | "score" | "source" | "tags" | ...
+operator         String   equals | not_equals | contains | gte | lte | in | not_in
+value            String   stored as string, cast at query time
+conditionOrder   Int
+createdAt        DateTime
 ```
-
----
-
-### Invoice `[FE — not yet in DB]`
-```
-id              String   UUID (PK)
-tenantId        String   (FK → Tenant) REQUIRED
-dealId          String?  (FK → Deal)
-contactId       String?  (FK → Contact)
-companyName     String
-plan            String
-amount          Float
-frequency       Monthly | Quarterly | Annual | One-time
-status          Active | Pending Renewal | Expired | Cancelled
-startDate       DateTime
-nextBillingDate DateTime
-paymentStatus   Paid | Unpaid | Overdue
-isArchived      Boolean
-createdAt       DateTime
-```
-
----
 
 ### Campaign `[DB]`
 ```
-id              String   UUID (PK)
-tenantId        String   (FK → Tenant) REQUIRED
-name            String
-description     String?
-type            Email | SMS | Multi-Channel
-status          active | completed | scheduled | paused | Draft
-targetAudience  String
-sentCount       Int
-openedCount     Int?
-clickedCount    Int?
-engagement      Float
-isArchived      Boolean
-createdAt       DateTime
-updatedAt       DateTime
+id               String         cuid PK
+tenantId         String         FK→Tenant  REQUIRED
+targetAudienceId String?        FK→TargetAudience (set null on delete)
+emailTemplateId  String?        FK→Template (type=Email)
+smsTemplateId    String?        FK→Template (type=SMS)
+name             String
+type             EMAIL | SMS | MULTI_CHANNEL
+status           DRAFT | ACTIVE | PAUSED | COMPLETED | SCHEDULED
+subject          String?
+body             String?        inline override when no template selected
+sentCount        Int
+openedCount      Int
+clickedCount     Int
+engagement       Float
+scheduledFor     DateTime?
+sentAt           DateTime?
+isArchived       Boolean
+createdAt        DateTime
+updatedAt        DateTime
 ```
 
----
-
-### Template `[FE — not yet in DB]`
+### CampaignContact `[DB]` — per-contact delivery tracking
 ```
-id          String   UUID (PK)
-tenantId    String   (FK → Tenant) REQUIRED
-name        String
-type        Email | SMS
-category    String
-subject     String?
-content     String
-isArchived  Boolean
+id           String    cuid PK
+tenantId     String    FK→Tenant
+campaignId   String    FK→Campaign (cascade delete)
+contactId    String    FK→Contact  (cascade delete)
+status       pending | sent | delivered | opened | clicked | bounced | unsubscribed
+sentAt       DateTime?
+deliveredAt  DateTime?
+openedAt     DateTime?
+clickedAt    DateTime?
+bouncedAt    DateTime?
+unsubscribed Boolean
+unique: [campaignId, contactId]
+```
+
+### CampaignMetrics `[DB]` — historical snapshots
+```
+id             String   cuid PK
+tenantId       String   FK→Tenant
+campaignId     String   FK→Campaign (cascade delete)
+sentCount      Int
+deliveredCount Int
+openedCount    Int
+clickedCount   Int
+respondedCount Int
+bouncedCount   Int
+openRate       Float
+clickRate      Float
+deliveryRate   Float
+responseRate   Float
+bounceRate     Float
+snapshotAt     DateTime
+```
+
+### Template `[DB]`
+```
+id         String   cuid PK
+tenantId   String   FK→Tenant  REQUIRED
+name       String
+type       String   "Email" | "SMS"
+category   String?
+subject    String?  email only
+content    String
+isArchived Boolean
+createdAt  DateTime
+updatedAt  DateTime
+```
+
+### EmailDeliveryLog `[DB]`
+```
+id             String    cuid PK
+tenantId       String    FK→Tenant
+campaignId     String?   FK→Campaign
+contactId      String?   FK→Contact
+fromEmail      String
+toEmail        String
+subject        String
+gmailMessageId String?   unique
+gmailThreadId  String?
+status         sent | delivered | opened | clicked | bounced | failed
+sentAt         DateTime?
+openedAt       DateTime?
+clickedAt      DateTime?
+bouncedAt      DateTime?
+errorMessage   String?
+createdAt      DateTime
 ```
 
 ---
 
 ### Workflow `[DB]`
 ```
-id              String   UUID (PK)
-tenantId        String   (FK → Tenant) REQUIRED
-name            String
-description     String?
-category        Security | Telecom | IT | General  [FE]
-trigger         String   e.g. 'contact.created', 'deal.stage_changed'
-condition       String?  [FE]
-action          String?  [FE]  (legacy single action)
-actions         JSON     WorkflowAction[]
-actionConfig    JSON?    [FE]
-delay           Int?     [FE]
-delayUnit       minutes | hours | days  [FE]
-status          active | paused
-executionCount  Int      [FE]
-isActive        Boolean  [DB]
-isArchived      Boolean  [FE]
+id          String   cuid PK
+tenantId    String   FK→Tenant  REQUIRED
+name        String
+description String?
+trigger     String   "deal.stage_changed" | "contact.created" | "task.overdue" | ...
+conditions  Json?    WorkflowCondition[] — never eval()'d
+actions     Json     WorkflowAction[]
+isActive    Boolean
+isArchived  Boolean
+createdAt   DateTime
+updatedAt   DateTime
+```
+
+### WorkflowTriggerRecord `[DB]`
+```
+id          String   cuid PK
+tenantId    String   FK→Tenant
+workflowId  String   FK→Workflow
+triggerType String
+entityType  String
+entityId    String
+triggeredAt DateTime
+payload     Json?
+```
+
+### WorkflowExecutionRun `[DB]`
+```
+id           String    cuid PK
+tenantId     String    FK→Tenant
+workflowId   String    FK→Workflow
+triggerId    String    FK→WorkflowTriggerRecord
+entityType   String
+entityId     String
+status       running | completed | failed | skipped
+startedAt    DateTime
+completedAt  DateTime?
+errorMessage String?
+```
+
+### WorkflowExecutionStep `[DB]`
+```
+id          String   cuid PK
+tenantId    String   FK→Tenant
+executionId String   FK→WorkflowExecutionRun (cascade delete)
+stepIndex   Int
+actionType  String   create_task | send_email | assign_owner | update_field | send_sms | change_status | ...
+status      success | failed | skipped
+output      Json?
+error       String?
+executedAt  DateTime
+```
+
+---
+
+### Invoice `[DB]`
+```
+id              String    cuid PK
+tenantId        String    FK→Tenant  REQUIRED
+subscriptionId  String?   FK→Subscription (set null on delete)
+dealId          String?   FK→Deal    (set null on delete)
+contactId       String?   FK→Contact (set null on delete)
+organizationId  String?
+invoiceNumber   String    INV-2024-001 (tenant-scoped)
+plan            String?
+amount          Float
+taxAmount       Float
+discountAmount  Float
+totalAmount     Float
+currency        String    default "PHP"
+frequency       Monthly | Quarterly | Annual | One-time
+status          Pending | Active | Expired | Cancelled
+paymentStatus   Unpaid | Paid | Overdue
+startDate       DateTime
+dueDate         DateTime?
+nextBillingDate DateTime?
+paidAt          DateTime?
+notes           String?
+isArchived      Boolean
 createdAt       DateTime
 updatedAt       DateTime
 ```
 
----
-
-### WorkflowTriggerRecord `[FE — not yet in DB]`
+### PaymentTransaction `[DB]`
 ```
-id           String   UUID (PK)
-tenantId     String   (FK → Tenant) REQUIRED
-workflowId   String   (FK → Workflow)
-triggerType  String   e.g. 'contact.created'
-entityType   String   e.g. 'Contact', 'Deal'
-entityId     String
-triggeredAt  DateTime
-payload      JSON
-```
-
----
-
-### WorkflowExecutionRun `[FE — not yet in DB]`
-```
-id            String   UUID (PK)
-tenantId      String   (FK → Tenant) REQUIRED
-workflowId    String   (FK → Workflow)
-workflowName  String
-triggerId     String   (FK → WorkflowTriggerRecord)
-entityType    String
-entityId      String
-status        running | completed | failed | skipped
-startedAt     DateTime
-completedAt   DateTime?
-```
-
----
-
-### WorkflowExecutionStep `[FE — not yet in DB]`
-```
-id           String   UUID (PK)
-tenantId     String   (FK → Tenant) REQUIRED
-executionId  String   (FK → WorkflowExecutionRun)
-stepIndex    Int
-actionType   String   e.g. 'create_task', 'send_email', 'assign_owner'
-status       success | failed | skipped
-output       JSON?    what was created (taskId, emailId, etc.)
-error        String?
-executedAt   DateTime
-```
-
----
-
-### Activity `[FE — not yet in DB]`
-The unified event timeline for all business objects.
-```
-id            String   UUID (PK)
-tenantId      String   (FK → Tenant) REQUIRED
-type          call | meeting | email | sms | whatsapp | note | task |
-              workflow | stage-change | file-upload | deal-created | contact-created
-relatedToType contact | company | deal | task | invoice
-relatedToId   String   (FK → the related entity)
-title         String
-description   String?
-createdBy     String   (FK → User) or 'system' for automations
-metadata      JSON?
-createdAt     DateTime
-```
-
----
-
-### ServiceOrder `[FE — not yet in DB]`
-```
-id                    String   UUID (PK)
-tenantId              String   (FK → Tenant) REQUIRED
-title                 String
-description           String
-clientName            String
-address               String
-status                pending | in-progress | completed
-assignedTechnicianId  String   (FK → User)
-scheduledDate         DateTime
-photos                JSON?    { before: string[], after: string[] }
-signature             String?
-notes                 String?
-createdAt             DateTime
-```
-
----
-
-### Asset `[FE — not yet in DB]`
-```
-id              String   UUID (PK)
-tenantId        String   (FK → Tenant) REQUIRED
-name            String
-category        Security | Telecom | IT | Infrastructure
-serialNumber    String
-client          String
-status          Active | Maintenance | Retired | Faulty
-installDate     DateTime
-warrantyExpiry  DateTime
-location        String
-```
-
----
-
-### InventoryItem `[FE — not yet in DB]`
-```
-id             String   UUID (PK)
-tenantId       String   (FK → Tenant) REQUIRED
-name           String
-sku            String
-category       String
-quantity       Int
-minQuantity    Int
-unitPrice      Float
-supplier       String
-lastRestocked  DateTime
-```
-
----
-
-### RoleDefinition `[FE — not yet in DB]`
-```
-id            String   UUID (PK)
-tenantId      String   (FK → Tenant) REQUIRED
-name          String
-description   String
-isSystemRole  Boolean
-userCount     Int      (derived — count of Users with this role)
-permissions   String[] e.g. ['contacts.create', 'deals.edit']
-updatedAt     DateTime
-isArchived    Boolean
+id                 String    cuid PK
+tenantId           String    FK→Tenant
+invoiceId          String    FK→Invoice
+paymentMethodId    String?   FK→PaymentMethod (set null on delete)
+amount             Float
+currency           String    default "PHP"
+status             pending | paid | failed | refunded
+transactionRef     String?
+paymongoPaymentId  String?   unique
+paymongoPaymentUrl String?
+paymentMethod      String?   card | gcash | maya | bank_transfer (denorm display)
+paidAt             DateTime?
+failureReason      String?
+metadata           Json?
+createdAt          DateTime
 ```
 
 ---
 
 ### AuditLog `[DB]`
 ```
-id            String   UUID (PK)
-tenantId      String   (FK → Tenant) REQUIRED
-userId        String   (FK → User)
-userEmail     String   [FE]
-action        String   e.g. 'contact.created', 'deal.stage_changed'
-entityType    String   e.g. 'Contact', 'Deal'
-entityId      String?
-details       String   [FE]
-metadata      JSON?    [DB]
-changeset     JSON?    [FE]  { field: { old, new } }
-ipAddress     String?  [FE]
-operatorRole  String?  [FE]
-rowId         String?  [FE]  (matches entityId — explicit)
-timestamp     DateTime [FE]
-createdAt     DateTime [DB]
+id         String   cuid PK
+tenantId   String   FK→Tenant  REQUIRED
+userId     String   FK→User
+action     String   "contact.created" | "deal.stage_changed" | "user.login" | ...
+entityType String   "Contact" | "Deal" | "User" | ...
+entityId   String?
+category   String   auth | crm | billing | workflow | admin | system
+changeset  Json?    { before: { status: "WARM" }, after: { status: "HOT" } }
+metadata   Json?
+ipAddress  String?
+userAgent  String?
+sessionId  String?
+severity   INFO | WARNING | CRITICAL
+createdAt  DateTime
 ```
+
 
 ---
 
 ## Relationship Summary
 
-| Relationship | Cardinality | FK Field |
-|---|---|---|
-| Tenant → User | 1:N | `User.tenantId` |
-| Tenant → Organization | 1:N | `Organization.tenantId` |
-| Tenant → Contact | 1:N | `Contact.tenantId` |
-| Organization → Contact | 1:N | `Contact.organizationId` |
-| Tenant → Pipeline | 1:N | `Pipeline.tenantId` |
-| Pipeline → Stage | 1:N | `Stage.pipelineId` |
-| Pipeline → Deal | 1:N | `Deal.pipelineId` |
-| Stage → Deal | 1:N | `Deal.stageId` |
-| Contact → Deal | 1:N | `Deal.contactIds[]` (array) |
-| Deal → Task | 1:N | `Task.dealId` |
-| Deal → Invoice | 1:N | `Invoice.dealId` |
-| Tenant → Campaign | 1:N | `Campaign.tenantId` |
-| Tenant → Template | 1:N | `Template.tenantId` |
-| Tenant → Workflow | 1:N | `Workflow.tenantId` |
-| Workflow → WorkflowTriggerRecord | 1:N | `WorkflowTriggerRecord.workflowId` |
-| WorkflowTriggerRecord → WorkflowExecutionRun | 1:N | `WorkflowExecutionRun.triggerId` |
-| WorkflowExecutionRun → WorkflowExecutionStep | 1:N | `WorkflowExecutionStep.executionId` |
-| Tenant → Activity | 1:N | `Activity.tenantId` |
-| Tenant → ServiceOrder | 1:N | `ServiceOrder.tenantId` |
-| Tenant → Asset | 1:N | `Asset.tenantId` |
-| Tenant → InventoryItem | 1:N | `InventoryItem.tenantId` |
-| Tenant → RoleDefinition | 1:N | `RoleDefinition.tenantId` |
-| Tenant → AuditLog | 1:N | `AuditLog.tenantId` |
-| User → AuditLog | 1:N | `AuditLog.userId` |
+| Parent | Child | Cardinality | FK Field |
+|---|---|---|---|
+| PricingPlan | PlanFeature | 1:N | `PlanFeature.planId` |
+| PricingPlan | Subscription | 1:N | `Subscription.planId` |
+| Tenant | Subscription | 1:N | `Subscription.tenantId` |
+| Tenant | PaymentMethod | 1:N | `PaymentMethod.tenantId` |
+| Tenant | TenantDocument | 1:N | `TenantDocument.tenantId` |
+| Tenant | Environment | 1:N | `Environment.tenantId` |
+| Tenant | User | 1:N | `User.tenantId` |
+| Tenant | RoleDefinition | 1:N | `RoleDefinition.tenantId` |
+| Tenant | Session | 1:N | `Session.tenantId` |
+| Tenant | TenantInvitation | 1:N | `TenantInvitation.tenantId` |
+| Tenant | Organization | 1:N | `Organization.tenantId` |
+| Tenant | Contact | 1:N | `Contact.tenantId` |
+| Tenant | Pipeline | 1:N | `Pipeline.tenantId` |
+| Tenant | Deal | 1:N | `Deal.tenantId` |
+| Tenant | Task | 1:N | `Task.tenantId` |
+| Tenant | Activity | 1:N | `Activity.tenantId` |
+| Tenant | Campaign | 1:N | `Campaign.tenantId` |
+| Tenant | TargetAudience | 1:N | `TargetAudience.tenantId` |
+| Tenant | Template | 1:N | `Template.tenantId` |
+| Tenant | Workflow | 1:N | `Workflow.tenantId` |
+| Tenant | Invoice | 1:N | `Invoice.tenantId` |
+| Tenant | ServiceOrder | 1:N | `ServiceOrder.tenantId` |
+| Tenant | Asset | 1:N | `Asset.tenantId` |
+| Tenant | InventoryItem | 1:N | `InventoryItem.tenantId` |
+| Tenant | Notification | 1:N | `Notification.tenantId` |
+| Tenant | AuditLog | 1:N | `AuditLog.tenantId` |
+| RoleDefinition | RolePermission | 1:N | `RolePermission.roleId` |
+| RoleDefinition | UserRole | 1:N | `UserRole.roleId` |
+| User | UserRole | 1:N | `UserRole.userId` |
+| User | AuditLog | 1:N | `AuditLog.userId` |
+| User | Activity | 1:N | `Activity.createdById` |
+| User | DealAction | 1:N | `DealAction.performedById` |
+| Organization | Contact | 1:N | `Contact.organizationId` |
+| Organization | Deal | 1:N | `Deal.organizationId` |
+| Pipeline | Stage | 1:N | `Stage.pipelineId` |
+| Pipeline | Deal | 1:N | `Deal.pipelineId` |
+| Stage | Deal | 1:N | `Deal.stageId` |
+| Contact | Deal | N:M | `ContactDeal` junction |
+| Deal | DealStageHistory | 1:N | `DealStageHistory.dealId` |
+| Deal | DealAction | 1:N | `DealAction.dealId` |
+| Deal | Task | 1:N | `Task.dealId` |
+| Deal | Activity | 1:N | `Activity.dealId` |
+| Deal | Invoice | 1:N | `Invoice.dealId` |
+| Deal | ServiceOrder | 1:N | `ServiceOrder.dealId` |
+| Subscription | Invoice | 1:N | `Invoice.subscriptionId` |
+| PaymentMethod | PaymentTransaction | 1:N | `PaymentTransaction.paymentMethodId` |
+| Invoice | PaymentTransaction | 1:N | `PaymentTransaction.invoiceId` |
+| TargetAudience | TargetAudienceCondition | 1:N | `TargetAudienceCondition.targetAudienceId` |
+| TargetAudience | Campaign | 1:N | `Campaign.targetAudienceId` |
+| Template | Campaign (email) | 1:N | `Campaign.emailTemplateId` |
+| Template | Campaign (sms) | 1:N | `Campaign.smsTemplateId` |
+| Campaign | CampaignContact | 1:N | `CampaignContact.campaignId` |
+| Campaign | CampaignMetrics | 1:N | `CampaignMetrics.campaignId` |
+| Campaign | EmailDeliveryLog | 1:N | `EmailDeliveryLog.campaignId` |
+| Workflow | WorkflowTriggerRecord | 1:N | `WorkflowTriggerRecord.workflowId` |
+| WorkflowTriggerRecord | WorkflowExecutionRun | 1:N | `WorkflowExecutionRun.triggerId` |
+| WorkflowExecutionRun | WorkflowExecutionStep | 1:N | `WorkflowExecutionStep.executionId` |
 
 ---
 
 ## Tenant Isolation Rule
 
-Every table has `tenantId` as a **required, indexed** field. The repository layer enforces it on every query:
+Every tenant-scoped table has `tenantId` as a **required, indexed** field. Enforced at three layers:
 
 ```typescript
-// Every query is tenant-scoped — no exceptions
+// 1. Repository layer — every query is tenant-scoped
 prisma.contact.findMany({ where: { tenantId: req.user.tenantId } })
 
-// tenantId source: JWT only — never from request body
+// 2. Middleware — tenantId sourced from JWT, never from request body
 const contact = await repo.create(dto, req.user.tenantId);
+
+// 3. Response — 404 (not 403) when tenantId mismatch to avoid revealing other tenants
+if (!contact) throw new AppError('Contact not found', 404);
 ```
 
 ---
 
-## ID Convention
+## Workflow Execution Rule (Three Records Per Execution)
 
-All entity IDs use **UUID v4** (`crypto.randomUUID()`) in the frontend localStorage phase.
-The Prisma schema currently uses `cuid()` as the default — both are globally unique.
+Every automated workflow execution MUST create exactly three record types:
 
-**Frontend utility (single source):**
-```typescript
-import { uuid } from '@/lib/utils';
-// uuid() = crypto.randomUUID() — no external package
 ```
-
-**Migration target:** All IDs will be UUID v4 (`gen_random_uuid()` in PostgreSQL) once the real API is wired.
-
----
-
-## Prisma Schema Migration Backlog
-
-These frontend entities do not yet have Prisma models. They need to be added before `USE_MOCK_DATA=false`:
-
-| Entity | Priority | Blocked By |
-|---|---|---|
-| `Organization` | High | Contact.organizationId FK dependency |
-| `Task` | High | Core CRM operation |
-| `Activity` | High | Required for unified timeline |
-| `WorkflowTriggerRecord` | High | 3-level execution visibility |
-| `WorkflowExecutionRun` | High | 3-level execution visibility |
-| `WorkflowExecutionStep` | High | 3-level execution visibility |
-| `Invoice` | Medium | Billing integration |
-| `Template` | Medium | Campaign email/SMS templates |
-| `ServiceOrder` | Medium | Operations module |
-| `Asset` | Low | Asset tracking module |
-| `InventoryItem` | Low | Inventory module |
-| `RoleDefinition` | Medium | RBAC permission system |
+WorkflowExecutionRun   (status: running → completed/failed)
+WorkflowExecutionStep  (one per action — status: success/failed/skipped)
+Activity               (type: 'workflow', linked to the entity)
+```
 
 ---
 
 ## See Also
-- `backend/prisma/schema.prisma` — Prisma DB schema (current DB state)
-- `frontend/src/store/types/` — Frontend type definitions (full target state)
-- [permission-matrix.md](../security/permission-matrix.md)
-- [audit-log-strategy.md](../security/audit-log-strategy.md)
-- [customer-lifecycle.md](../workflows/customer-lifecycle.md)
+- `backend/prisma/schema.prisma` — Prisma DB schema (single source of truth)
+- `docs/database/erd.html` — Interactive visual ERD
+- `docs/database/ERD-SUMMARY.md` — Entity group overview and change log
+- `docs/security/permission-matrix.md` — RBAC role × module matrix
+- `docs/security/audit-log-strategy.md` — Audit log categories and patterns
+- `docs/workflows/customer-lifecycle.md` — Full customer journey
+- `docs/workflows/lead-to-deal.md` — Lead capture to deal creation
+- `docs/workflows/deal-to-payment.md` — Deal won to payment collected

@@ -1,263 +1,203 @@
 # LeadCRM ERD — Summary & Recommendations
 
-**Generated:** June 25, 2026  
-**Interactive HTML ERD:** `docs/database/erd.html` (open in browser)
+**Last Updated:** June 27, 2026
+**Interactive HTML ERD:** `docs/database/erd.html` (open in browser — hover cards to highlight connectors)
 
 ---
 
 ## 📊 Overview
 
-**Total Entities:** 18  
-**In Prisma Schema (DB):** 8 entities  
-**Frontend Only (needs migration):** 10 entities  
-**Recommended Additions:** 3 structural improvements  
+**Total Entities:** 30
+**All entities in Prisma schema (DB):** 30 ✅
+**Frontend-only entities remaining:** 0
+**Migration backlog:** Cleared
 
 ---
 
-## ✅ What's Working Well
+## ✅ Entity Groups
 
-1. **Multi-tenancy is correctly enforced** — every entity has `tenantId` FK
-2. **Core CRM flow is solid** — Tenant → User → Contact → Pipeline → Deal chain works
-3. **Audit logging exists** — AuditLog captures all state changes
-4. **Workflow foundation is in place** — Workflow model exists in DB
+### Platform / Global (no tenantId)
+| Entity | Purpose |
+|---|---|
+| `SystemAdmin` | Cross-tenant LeadCRM operators — manages tenants, pricing, approvals |
+| `PricingPlan` | Global plan catalog (Free / Pro / Enterprise) |
+| `PlanFeature` | Feature list per pricing plan |
+
+### Tenant Root
+| Entity | Purpose |
+|---|---|
+| `Tenant` | Root of all multi-tenant data — has industry, email, phone, approvedById |
+| `Subscription` | Billing source of truth — plan, billingCycle, status, amount |
+| `PaymentMethod` | Saved payment methods per tenant |
+| `TenantDocument` | Onboarding files (contracts, permits) — verified by SystemAdmin |
+| `Environment` | Tenant resource monitoring — CPU, RAM, storage, uptime |
+
+### Auth / RBAC
+| Entity | Purpose |
+|---|---|
+| `User` | Tenant users with role string (legacy) + UserRole junction |
+| `UserRole` | Many-to-many User ↔ RoleDefinition junction |
+| `RoleDefinition` | Role names per tenant — permissions moved to RolePermission |
+| `RolePermission` | Per-module CRUD flags: canView / canCreate / canEdit / canDelete |
+| `Session` | JWT token revocation via SHA-256 hash |
+| `TenantInvitation` | Email invite tokens for onboarding new users |
+
+### CRM
+| Entity | Purpose |
+|---|---|
+| `Organization` | Company/account linked to contacts and deals |
+| `Contact` | Lead or customer — HOT / WARM / COLD / CANCELLED / CLOSED |
+| `Pipeline` | Sales or service pipeline (has `type` field) |
+| `Stage` | Ordered stages within a pipeline with probability and color |
+| `Deal` | Opportunity in a pipeline stage |
+| `ContactDeal` | N:M junction — one deal can have many contacts with roles |
+| `DealStageHistory` | Full audit trail of stage moves with previousStageId |
+| `DealAction` | Manual user-initiated deal operations (ASSIGN_AGENT, SEND_EMAIL, etc.) |
+
+### Operations
+| Entity | Purpose |
+|---|---|
+| `Task` | Action items linked to deals, contacts, or organizations |
+| `Activity` | Unified timeline events for all entities |
+| `ServiceOrder` | Field technician dispatch — photos, signatures, scheduling |
+| `Asset` | Physical assets tracked per organization |
+| `InventoryItem` | Stock items with quantity, min thresholds, and reorder tracking |
+| `Notification` | In-app notifications per user |
+
+### Marketing
+| Entity | Purpose |
+|---|---|
+| `TargetAudience` | Campaign audience defined by filter conditions (no junction table) |
+| `TargetAudienceCondition` | Filter rules: field + operator + value (queried dynamically) |
+| `Campaign` | Email / SMS / Multi-Channel campaigns linked to audience + templates |
+| `CampaignContact` | Per-contact delivery tracking |
+| `CampaignMetrics` | Historical metric snapshots (openRate, clickRate, bounceRate, etc.) |
+| `Template` | Email or SMS content templates |
+| `EmailDeliveryLog` | Gmail delivery tracking per message |
+
+### Automation
+| Entity | Purpose |
+|---|---|
+| `Workflow` | Trigger → Conditions → Actions automation rules |
+| `WorkflowTriggerRecord` | Logged trigger event per entity |
+| `WorkflowExecutionRun` | One execution run per trigger |
+| `WorkflowExecutionStep` | One step per action in the run |
+
+### Billing
+| Entity | Purpose |
+|---|---|
+| `Invoice` | Billing document linked to deal, contact, or subscription |
+| `PaymentTransaction` | Individual payment attempt with PayMongo integration |
+
+### System
+| Entity | Purpose |
+|---|---|
+| `AuditLog` | All mutations logged with category (auth/crm/billing/workflow/admin/system) |
 
 ---
 
-## 🔴 Critical Recommendations
+## 🔴 Schema Changes from Previous Version
 
-### 1. **Add Composite Indexes on tenantId + Query Fields** (HIGH PRIORITY)
-**Why:** Every query filters by `tenantId`. Without indexes, PostgreSQL does full table scans at scale.
+### New models (12 added)
+1. `SystemAdmin` — platform operators, no tenantId
+2. `PricingPlan` — global plan catalog with monthly/quarterly/annual pricing
+3. `PlanFeature` — features list per plan
+4. `Subscription` — billing lifecycle source of truth
+5. `PaymentMethod` — saved payment methods per tenant
+6. `RolePermission` — replaces `permissions String[]` on RoleDefinition
+7. `DealAction` — manual deal operations (UPDATE_FIELD, ASSIGN_AGENT, CHANGE_STATUS, SEND_EMAIL, SEND_SMS, ADD_NOTE, CREATE_TASK, CHANGE_STAGE)
+8. `TargetAudience` — campaign audience segmentation
+9. `TargetAudienceCondition` — filter rules for dynamic contact resolution
+10. `CampaignMetrics` — historical metric snapshots
+11. `TenantDocument` — tenant onboarding document uploads
+12. `Environment` — tenant environment resource monitoring
 
-**Impact:** Query performance degrades from O(n) to O(log n). Critical for `Contact`, `Deal`, `AuditLog`.
+### Modified models
+- `Tenant` — added `industry`, `companySize`, `email`, `phone`, `address`, `approvedById`, `approvedAt`
+- `RoleDefinition` — removed `permissions String[]` → use `RolePermission` table
+- `Campaign` — replaced `targetAudience String?` with `targetAudienceId FK`, added `emailTemplateId` + `smsTemplateId`
+- `Pipeline` — added `type String?`
+- `Invoice` — added `subscriptionId FK`
+- `PaymentTransaction` — added `paymentMethodId FK`, `transactionRef`
+- `AuditLog` — added `category` field (auth | crm | billing | workflow | admin | system)
 
-**Fix:**
-```prisma
-model Contact {
-  // ... existing fields
-  @@index([tenantId, createdAt])
-  @@index([tenantId, status])
-  @@index([tenantId, email])
-  @@index([tenantId, assignedUserId])
-}
+---
+
+## � RBAC Summary
+
+**5 System Roles:**
+- **System Admin** — platform-wide access (Admin Portal), no tenantId
+- **Client Admin** — full tenant access (CRM Portal), bypasses RBAC checks
+- **Sales Rep** — contacts/deals full CRUD, campaigns/workflows read-only
+- **Technician** — contacts and deals read-only, service orders CRUD
+- **Viewer** — all modules read-only
+
+**Permission model:** `RolePermission` table — one row per module per role with `canView`, `canCreate`, `canEdit`, `canDelete` booleans. Unique constraint on `[roleId, module]`.
+
+```typescript
+// Middleware enforcement:
+router.post('/contacts', rbac('contacts', 'canCreate'), controller.create);
+
+// Frontend guard:
+{userCan('contacts', 'canDelete') && <Button>Delete</Button>}
 ```
 
-Apply same pattern to: `Deal`, `AuditLog`, `Campaign`, `Workflow`, `User`.
-
 ---
 
-### 2. **Separate User.role String → UserRole Junction Table** (HIGH PRIORITY)
-**Why:** Current schema stores role as a string. This prevents:
-- Dynamic role creation by Client Admins
-- Multi-role assignment (e.g., user is both Sales Rep AND Technician)
-- Permission changes without updating every User record
-
-**Fix:** Create many-to-many relationship:
-```
-User ←→ UserRole ←→ RoleDefinition
-```
-
-**Benefit:** Client Admins can create custom roles via UI. Single source of truth for permissions.
-
----
-
-### 3. **Add Soft Delete Fields Instead of Just isArchived** (HIGH PRIORITY)
-**Why:** `isArchived` conflates user-initiated hiding with data deletion (GDPR compliance).
-
-**Better pattern:**
-```prisma
-isArchived    Boolean   @default(false)  // user hides from UI (reversible)
-deletedAt     DateTime?                  // hard delete timestamp (GDPR)
-deletedBy     String?                    // FK→User (audit who deleted)
-archiveReason String?                    // why was it archived/deleted
-```
-
-**Benefit:** GDPR "right to be forgotten" compliance + complete audit trail.
-
----
-
-### 4. **Change Deal.contactIds JSON Array → ContactDeal Junction Table** (MEDIUM PRIORITY)
-**Why:** Storing FKs as JSON arrays prevents:
-- Foreign key constraints (data integrity)
-- Efficient JOINs (can't query "all deals for contact X")
-- Relationship metadata (when was contact added? by whom? what role?)
-
-**Fix:**
-```prisma
-model ContactDeal {
-  id         String   @id @default(cuid())
-  contactId  String
-  dealId     String
-  tenantId   String
-  role       String?  // "Primary Contact" | "Decision Maker" | "Influencer"
-  addedBy    String?  // FK→User
-  addedAt    DateTime @default(now())
-  contact    Contact  @relation(fields: [contactId], references: [id])
-  deal       Deal     @relation(fields: [dealId], references: [id])
-  @@unique([contactId, dealId])
-}
-```
-
----
-
-### 5. **Add Contact.ownerId Separate from assignedUserId** (MEDIUM PRIORITY)
-**Why:** 
-- `assignedUserId` = who's working on this lead right now (can change)
-- `ownerId` = who originally captured this lead (never changes)
-
-**Use case:** Sales Rep A captures lead → reassigned to Rep B → Rep B closes deal → **who gets commission credit?**
-
-Without `ownerId`, you can't track lead source attribution.
-
-**Fix:**
-```prisma
-assignedUserId   String?  // current handler (can change)
-ownerId          String   // original capturer (immutable)
-ownershipHistory JSON?    // [{assignedTo, assignedBy, assignedAt, reason}]
-```
-
----
-
-### 6. **Add Tenant.subscriptionStatus Separate from Tenant.status** (MEDIUM PRIORITY)
-**Why:** `Tenant.status` conflates approval state with billing state.
-
-**Current problem:** A tenant can be `ACTIVE` (approved by System Admin) but have an overdue payment.
-
-**Better:**
-```prisma
-status             TenantStatus         // SANDBOX | ACTIVE | SUSPENDED (approval)
-subscriptionStatus SubscriptionStatus  // TRIAL | ACTIVE | PAST_DUE | CANCELLED (billing)
-trialEndsAt        DateTime?
-subscriptionEndsAt DateTime?
-```
-
-**Benefit:** System Admin controls access, PayMongo webhooks control billing — clear separation of concerns.
-
----
-
-### 7. **Add AuditLog.ipAddress and .userAgent for Security** (MEDIUM PRIORITY)
-**Why:** Security incidents require context:
-- Detect anomalous login locations
-- Identify bot vs. human activity
-- GDPR compliance (track who accessed what from where)
-
-**Fix:**
-```prisma
-ipAddress  String?  // req.ip
-userAgent  String?  // req.headers['user-agent']
-sessionId  String?  // track session context
-```
-
-**Storage cost:** ~50 bytes per log. Worth it for forensics.
-
----
-
-## 🟡 Medium Priority Improvements
-
-| Improvement | Why | Effort |
-|---|---|---|
-| Add `Stage.color` field | Let Client Admins customize pipeline colors per tenant | 10 min |
-| Add `Campaign.scheduledFor` | Allow scheduling campaigns in advance | 30 min |
-| Add `Deal.closedAt` timestamp | Separate from `updatedAt` — critical for sales velocity metrics | 10 min |
-| Add `Contact.leadScore` algorithm | Auto-calculate score based on engagement, not just status | 2 hours |
-
----
-
-## 📋 Migration Backlog (Frontend → DB)
-
-These entities exist in `frontend/src/store/types/` but not in Prisma schema. Must migrate before `USE_MOCK_DATA=false`.
-
-| Entity | Priority | Blocked By | Effort |
-|---|---|---|---|
-| **Organization** | HIGH | Contact.organizationId FK | 2–3 hours |
-| **Task** | HIGH | Deal → Task 1:N required | 2 hours |
-| **Activity** | HIGH | Unified timeline (polymorphic FK) | 3 hours |
-| **WorkflowTriggerRecord** | HIGH | 3-level execution chain visibility | 4 hours (3 tables) |
-| **WorkflowExecutionRun** | HIGH | Same as above | — |
-| **WorkflowExecutionStep** | HIGH | Same as above | — |
-| **RoleDefinition** | MEDIUM | RBAC dynamic roles | 2 hours |
-| **Invoice** | MEDIUM | Can defer if PayMongo handles all billing | 2 hours |
-| **Template** | MEDIUM | Campaign email/SMS templates | 1 hour |
-| **ServiceOrder** | MEDIUM | Operations module | 2 hours |
-| **Asset** | LOW | Not MVP | 1.5 hours |
-| **InventoryItem** | LOW | Not MVP | 1.5 hours |
-
-**Total effort for HIGH priority migrations:** ~13 hours
-
----
-
-## 🔄 Lead → Deal Flow (Current State)
+## � Lead → Deal → Invoice Flow
 
 ```
 1. Lead Capture
    └→ Contact created (status=WARM, score=75)
-   └→ AuditLog: contact.created
+   └→ AuditLog: contact.created (category=crm)
+   └→ Activity: contact-created
 
 2. Lead Qualification
    └→ Sales Rep promotes to status=HOT (score=95)
-   └→ Workflow may trigger: "Welcome Email", "Schedule Follow-up Task"
+   └→ Workflow may trigger: "Welcome Email", "Create Follow-up Task"
 
 3. Deal Creation
-   └→ Deal linked to Contact, Pipeline (Sales Inquiries), Stage (Discovery)
-   └→ Deal.history initialized: [{stageId, timestamp}]
+   └→ Deal linked to Contact via ContactDeal junction
+   └→ Pipeline (Sales Inquiries), Stage (Discovery)
+   └→ AuditLog: deal.created (category=crm)
 
-4. Stage Progression
-   └→ Drag deal across stages: Discovery → Assessment → Proposal → Negotiation
-   └→ Each move appends: {stageId, previousStageId, timestamp, userId}
-   └→ Workflow engine evaluates deal.stage_changed triggers
+4. Stage Progression + Deal Actions
+   └→ Drag deal across stages
+   └→ DealStageHistory row created per move (previousStageId recorded)
+   └→ DealAction (CHANGE_STAGE) created for manual moves
+   └→ Manual actions (SEND_EMAIL, ADD_NOTE, ASSIGN_AGENT) → DealAction + Activity
 
 5A. Deal Won
-   └→ Deal.stageId = "Closed Won"
+   └→ Deal.closedAt stamped
    └→ Contact.status = CLOSED
-   └→ Sales Rep clicks "Convert to Invoice" → Invoice record created
-   └→ Optional: trigger onboarding workflow
+   └→ Invoice created with subscriptionId if billing active
 
 5B. Deal Lost
-   └→ Deal.stageId = "Closed Lost"
-   └→ Lost Reason modal (required) → Deal.lostReason
-   └→ Contact.status = COLD or CANCELLED
+   └→ Lost Reason modal → Deal.lostReason
+   └→ Contact.status = COLD / CANCELLED
+   └→ DealAction (CHANGE_STATUS) created
 ```
 
 ---
 
-## 🔐 RBAC Summary
+## 📋 Next Steps
 
-**5 System Roles:**
-- **System Admin** — platform-wide access (Admin Portal)
-- **Client Admin** — full tenant access (CRM Portal)
-- **Sales Rep** — contacts.*, deals.*, campaigns.view, workflows.view
-- **Technician** — contacts.view, deals.view (read-only)
-- **Viewer** — *.view (all modules read-only)
-
-**Permission enforcement:**
-- Middleware: `rbac.middleware.ts` checks `DEFAULT_ROLE_PERMISSIONS`
-- Frontend: `hasPermission(user, Permission.CONTACTS_CREATE)`
-- Shared: `@leadcrm/shared` — canonical permission registry
-
-**Dynamic custom roles:** Requires `RoleDefinition` + `UserRole` junction table migration.
+1. **`npx prisma migrate dev --name schema-v2-billing-rbac-campaigns`** — apply all new tables
+2. **Seed `PricingPlan` + `PlanFeature`** — Free / Pro / Enterprise tiers
+3. **Seed `SystemAdmin`** — first platform operator account
+4. **Data migration** — `RoleDefinition.permissions String[]` → `RolePermission` rows (one-time)
+5. **Update auth middleware** — read `canView/canCreate/canEdit/canDelete` from `RolePermission`
+6. **Set `USE_MOCK_DATA=false`** — all 30 entities are now in DB
 
 ---
 
-## 🎯 Next Steps
+## � Related Docs
 
-1. **Open `docs/database/erd.html` in browser** — interactive diagram with 6 tabs
-2. **Review Recommendations tab** — 10 improvements with code examples
-3. **Prioritize HIGH priority fixes** — indexes, UserRole junction, soft delete
-4. **Plan migration sprint** — Organization + Task + Activity (13 hours total)
-5. **Update Prisma schema** — apply recommendations incrementally
-6. **Run `npm run db:migrate`** — generate and apply migrations
-7. **Update seeders** — ensure all new fields have default values
-
----
-
-## 📚 Related Docs
-
-- `docs/database/erd.html` — **Interactive HTML ERD (open this first!)**
-- `docs/database/erd.md` — Text version of ERD
-- `backend/prisma/schema.prisma` — Current DB schema (source of truth)
+- `docs/database/erd.html` — **Interactive HTML ERD (open this first — hover cards to highlight connectors!)**
+- `docs/database/erd.md` — Text version of ERD with full field listings
+- `backend/prisma/schema.prisma` — Prisma schema (single source of truth)
 - `docs/ARCHITECTURE.md` — System architecture overview
 - `docs/security/permission-matrix.md` — RBAC role × module matrix
+- `docs/security/audit-log-strategy.md` — Audit log strategy with category field
 - `docs/workflows/lead-to-deal.md` — Lead lifecycle workflow
-
----
-
-**Questions? Open the HTML ERD and explore the tabs. All 18 entities, relationships, and recommendations are documented there.**
+- `docs/workflows/deal-to-payment.md` — Deal won to payment collected

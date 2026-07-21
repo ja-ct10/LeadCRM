@@ -3,6 +3,8 @@
 ## Status
 Backend is scaffolded. Contacts endpoints are wired. All other modules have stub controllers returning empty arrays, ready for implementation.
 
+**Schema v2** — 30 entities in Prisma DB. Run `npx prisma migrate dev` in `backend/` to apply all migrations.
+
 ## Base URL
 ```
 http://localhost:4000/api/v1
@@ -14,7 +16,9 @@ All `/api/v1/*` routes require a JWT Bearer token (issued on login).
 Authorization: Bearer <token>
 ```
 
-Token payload: `{ userId, tenantId, role, email }`
+Token payload: `{ userId, tenantId, role, roleId, email }`
+
+> `roleId` is used by the backend to resolve `RolePermission` rows for RBAC checks.
 
 ## Standard Response Envelope
 ```typescript
@@ -78,7 +82,11 @@ All require: `Authorization: Bearer <token>`
 | `POST` | `/crm/deals` | Create deal |
 | `PUT` | `/crm/deals/:id` | Update deal |
 | `PATCH` | `/crm/deals/:id/stage` | Move deal to new stage |
+| `GET` | `/crm/deals/:id/actions` | List DealActions for a deal |
+| `POST` | `/crm/deals/:id/actions` | Perform a DealAction (ASSIGN_AGENT, SEND_EMAIL, ADD_NOTE, etc.) |
+| `GET` | `/crm/deals/:id/stage-history` | List DealStageHistory entries |
 | `GET` | `/crm/pipelines` | List pipelines |
+| `GET` | `/crm/pipelines/:id/stages` | List stages for a pipeline |
 
 ---
 
@@ -91,6 +99,12 @@ All require: `Authorization: Bearer <token>`
 | `PUT` | `/marketing/campaigns/:id` | Update campaign |
 | `POST` | `/marketing/campaigns/:id/send` | Send campaign |
 | `DELETE` | `/marketing/campaigns/:id` | Delete campaign |
+| `GET` | `/marketing/campaigns/:id/metrics` | CampaignMetrics snapshots |
+| `GET` | `/marketing/target-audiences` | List TargetAudiences |
+| `POST` | `/marketing/target-audiences` | Create TargetAudience + conditions |
+| `GET` | `/marketing/target-audiences/:id/preview` | Preview resolved contacts (dynamic query) |
+| `GET` | `/marketing/templates` | List templates (Email + SMS) |
+| `POST` | `/marketing/templates` | Create template |
 
 ---
 
@@ -119,26 +133,79 @@ All require: `Authorization: Bearer <token>`
 
 ## Administration Endpoints (`/api/v1/administration/`) — Stub
 
-| Method | Path | Description | Permission |
+### Users
+| Method | Path | Description | RolePermission flag |
 |---|---|---|---|
-| `GET` | `/administration/users` | List users | `users.view` |
-| `POST` | `/administration/users` | Create user | `users.manage` |
-| `PUT` | `/administration/users/:id` | Update user | `users.manage` |
-| `PATCH` | `/administration/users/:id/status` | Activate/deactivate | `users.manage` |
-| `GET` | `/administration/roles` | List roles | `roles.manage` |
-| `POST` | `/administration/roles` | Create role | `roles.manage` |
-| `GET` | `/administration/permissions` | List all permissions | `settings.view` |
-| `GET` | `/administration/audit` | Audit log (paginated) | `audit.view` |
+| `GET` | `/administration/users` | List users | `users.canView` |
+| `POST` | `/administration/users` | Create user + send invitation | `users.canCreate` |
+| `PUT` | `/administration/users/:id` | Update user profile / role | `users.canEdit` |
+| `DELETE` | `/administration/users/:id` | Deactivate user | `users.canDelete` |
+| `PATCH` | `/administration/users/:id/status` | Activate / deactivate | `users.canEdit` |
+| `POST` | `/administration/users/invite` | Send TenantInvitation | `users.canCreate` |
+
+### Roles & Permissions
+| Method | Path | Description | RolePermission flag |
+|---|---|---|---|
+| `GET` | `/administration/roles` | List RoleDefinitions | `users.canView` |
+| `POST` | `/administration/roles` | Create RoleDefinition | `users.canCreate` |
+| `PUT` | `/administration/roles/:id` | Update role name/description | `users.canEdit` |
+| `DELETE` | `/administration/roles/:id` | Archive role | `users.canDelete` |
+| `GET` | `/administration/roles/:id/permissions` | List RolePermission rows for a role | `users.canView` |
+| `PUT` | `/administration/roles/:id/permissions` | Bulk upsert RolePermission rows | `users.canEdit` |
+| `PATCH` | `/administration/roles/:id/permissions/:module` | Update single module flags | `users.canEdit` |
+
+**RolePermission upsert body:**
+```json
+{
+  "permissions": [
+    { "module": "contacts",  "canView": true,  "canCreate": true,  "canEdit": true,  "canDelete": false },
+    { "module": "deals",     "canView": true,  "canCreate": true,  "canEdit": true,  "canDelete": false },
+    { "module": "campaigns", "canView": true,  "canCreate": false, "canEdit": false, "canDelete": false }
+  ]
+}
+```
+
+### Audit Log
+| Method | Path | Description | RolePermission flag |
+|---|---|---|---|
+| `GET` | `/administration/audit` | Audit log — paginated, filterable | `audit.canView` |
+
+**Query params for GET /audit:**
+- `?category=crm` — filter by category (auth/crm/billing/workflow/admin/system)
+- `?severity=WARNING` — filter by severity (INFO/WARNING/CRITICAL)
+- `?userId=xxx` — filter by user
+- `?entityType=Deal` — filter by entity type
+- `?from=2026-01-01&to=2026-06-27` — date range
+- `?page=1&limit=50`
 
 ---
 
 ## Billing Endpoints (`/api/v1/billing/`) — Stub
 
+### Invoices
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/billing/account` | Get account + subscription |
-| `POST` | `/billing/upgrade` | Upgrade plan |
-| `GET` | `/billing/invoices` | List invoices |
+| `GET` | `/billing/invoices` | List invoices (paginated) |
+| `GET` | `/billing/invoices/:id` | Invoice details + transactions |
+| `POST` | `/billing/invoices` | Create invoice |
+| `PUT` | `/billing/invoices/:id` | Update invoice |
+| `POST` | `/billing/invoices/:id/send` | Send invoice to customer |
+
+### Subscriptions
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/billing/subscription` | Active subscription for current tenant |
+| `POST` | `/billing/subscription` | Create subscription |
+| `PATCH` | `/billing/subscription/cancel` | Cancel subscription |
+| `POST` | `/billing/upgrade` | Upgrade to a new PricingPlan |
+
+### Payment Methods
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/billing/payment-methods` | List saved PaymentMethods |
+| `POST` | `/billing/payment-methods` | Add PaymentMethod |
+| `PATCH` | `/billing/payment-methods/:id/default` | Set as default |
+| `DELETE` | `/billing/payment-methods/:id` | Remove PaymentMethod |
 
 ---
 
@@ -154,18 +221,46 @@ All require: `Authorization: Bearer <token>`
 
 ## System Admin Endpoints (`/api/v1/admin/`) — System Admin only
 
+### Tenant Management
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/admin/tenants` | List all tenants |
-| `GET` | `/admin/tenants/:id` | Tenant details |
-| `POST` | `/admin/tenants/:id/approve` | Approve application |
+| `GET` | `/admin/tenants` | List all tenants (paginated) |
+| `GET` | `/admin/tenants/:id` | Tenant details + subscription + documents |
+| `POST` | `/admin/tenants/:id/approve` | Approve tenant application |
 | `POST` | `/admin/tenants/:id/reject` | Reject application |
-| `PATCH` | `/admin/tenants/:id/activate` | Activate tenant |
-| `PATCH` | `/admin/tenants/:id/deactivate` | Deactivate tenant |
-| `GET` | `/admin/billing` | All invoices (cross-tenant) |
+| `PATCH` | `/admin/tenants/:id/suspend` | Suspend tenant |
+| `PATCH` | `/admin/tenants/:id/activate` | Reactivate tenant |
+
+### Tenant Documents
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/admin/tenants/:id/documents` | List TenantDocuments |
+| `PATCH` | `/admin/tenants/:id/documents/:docId/verify` | Verify a document |
+| `PATCH` | `/admin/tenants/:id/documents/:docId/reject` | Reject a document |
+
+### Pricing Plans
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/admin/plans` | List PricingPlans + features |
+| `POST` | `/admin/plans` | Create PricingPlan |
+| `PUT` | `/admin/plans/:id` | Update PricingPlan pricing/limits |
+| `DELETE` | `/admin/plans/:id` | Deactivate PricingPlan |
+| `POST` | `/admin/plans/:id/features` | Add PlanFeature |
+| `DELETE` | `/admin/plans/:id/features/:featureId` | Remove PlanFeature |
+
+### Cross-Tenant Billing
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/admin/billing` | All invoices across tenants |
 | `GET` | `/admin/billing/metrics` | Platform billing metrics |
-| `GET` | `/admin/plans` | Pricing plans |
-| `PUT` | `/admin/plans/:id` | Update pricing plan |
+| `GET` | `/admin/billing/overdue` | All overdue invoices |
+
+### Environments
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/admin/tenants/:id/environments` | List tenant environments |
+| `POST` | `/admin/tenants/:id/environments` | Create environment |
+| `PATCH` | `/admin/tenants/:id/environments/:envId` | Update metrics snapshot |
 
 ---
 
@@ -188,13 +283,21 @@ Every query must include `WHERE tenantId = :tenantId` unless the caller has the 
 
 ## RBAC
 
-Permission checks follow the `module.action` format. `Client Admin` bypasses all permission checks for their own tenant. `System Admin` is cross-tenant and bypasses all checks.
+Permissions are stored in the `RolePermission` table — one row per module per role with
+`canView`, `canCreate`, `canEdit`, `canDelete` boolean flags.
+
+`Client Admin` bypasses all checks for their own tenant.
+`System Admin` is cross-tenant and bypasses all checks.
 
 ```typescript
-// Bad — hardcoded string
-if (user.role === 'Admin') { ... }
+// Middleware usage — reads from RolePermission table
+router.post('/contacts',    rbac('contacts', 'canCreate'), controller.create);
+router.put('/contacts/:id', rbac('contacts', 'canEdit'),   controller.update);
+router.delete('/contacts/:id', rbac('contacts', 'canDelete'), controller.remove);
 
-// Good — uses shared constants
-import { Permission, Role } from '@leadcrm/shared';
-hasPermission(user, Permission.CONTACTS_CREATE);
+// rbac() resolves: prisma.rolePermission.findUnique({ where: { roleId_module: { roleId, module } } })
+// Returns 403 if flag is false or row doesn't exist
 ```
+
+Permission modules: `contacts` · `deals` · `organizations` · `campaigns` · `workflows` ·
+`tasks` · `service_orders` · `reports` · `billing` · `users` · `settings` · `audit`
