@@ -1176,26 +1176,30 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
   }
 
   return (
-    <div className="h-full flex flex-col space-y-6 relative overflow-hidden">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-1 tracking-tight">Pipeline Management</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Track deals and tickets across multiple pipelines</p>
+    <div className="h-full flex flex-col space-y-4 relative overflow-hidden">
+      {/* 1. Header Section - Compact Enterprise Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+        <div className="flex items-baseline gap-2.5 flex-wrap">
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Pipeline Management</h1>
+          <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">
+            — Track deals and stage velocity across sales pipelines
+          </span>
         </div>
-        <div className="flex items-center gap-3 w-full sm:w-auto">
+        
+        <div className="flex items-center gap-2 flex-wrap w-full md:w-auto justify-start md:justify-end">
           <button 
             type="button"
             onClick={toggleAutomatedOnly}
-            className={`flex items-center gap-2 border px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            className={`flex items-center gap-1.5 h-9 px-3 text-xs font-medium rounded-md border transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 ${
               isAutomatedOnly 
-                ? 'bg-blue-500/10 text-blue-400 border-blue-500/20 shadow-[0_0_15px_rgba(59,130,246,0.15)] ring-1 ring-blue-500/20' 
-                : 'bg-white dark:bg-white/[0.02] border-gray-200 dark:border-white/[0.05] text-slate-500 hover:text-slate-700 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-white/[0.04]'
+                ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800/60 shadow-xs' 
+                : 'bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
             }`}
             title={isAutomatedOnly ? "Automated workflow rules decide deal movements. Drag-and-drop is locked." : "Drag-and-drop is fully unlocked. Actions can be done manually."}
           >
-            <Shield size={16} className={isAutomatedOnly ? "text-blue-400 animate-pulse" : "text-gray-400"} />
+            <Shield size={14} className={isAutomatedOnly ? "text-blue-500" : "text-slate-400"} />
             <span>Automation Mode:</span> 
-            <span className={`font-semibold ${isAutomatedOnly ? 'text-blue-400' : 'text-slate-700 dark:text-slate-300'}`}>
+            <span className={`font-semibold ${isAutomatedOnly ? 'text-blue-600 dark:text-blue-400' : 'text-slate-700 dark:text-slate-300'}`}>
               {isAutomatedOnly ? 'Active (Workflows)' : 'Off (Manual)'}
             </span>
           </button>
@@ -1203,11 +1207,13 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
           {canManagePipelines && (
             <button 
               onClick={() => setIsManagePipelinesModalOpen(true)}
-              className="flex items-center gap-2 bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] text-slate-700 dark:text-slate-300 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-white/[0.04] hover:text-slate-900 dark:hover:text-white transition-colors"
+              className="flex items-center gap-1.5 h-9 px-3 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
             >
-              <Settings size={16} /> Manage Pipelines
+              <Settings size={14} className="text-slate-500" />
+              <span>Manage Pipelines</span>
             </button>
           )}
+
           {canCreateDeal && (
             <button 
               onClick={() => {
@@ -1216,13 +1222,15 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                 setDealValueTouched(false);
                 setIsModalOpen(true);
               }}
-              className="flex items-center gap-2 bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/20"
+              className="flex items-center gap-1.5 h-9 px-3 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors shadow-xs cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
             >
-              <Plus size={16} /> Add Deal/Ticket
+              <Plus size={15} />
+              <span>Add Deal/Ticket</span>
             </button>
           )}
         </div>
       </div>
+
 
       {/* Revenue Forecast Bar */}
       <ForecastBar deals={deals} pipelines={pipelines} />
@@ -1436,34 +1444,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
               </button>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
-              className={`flex items-center gap-2 px-4 py-2 border rounded-xl text-xs font-semibold transition-all hover:bg-slate-50 dark:hover:bg-white/[0.02] ${
-                isFilterPanelOpen || getActiveFiltersCount() > 0
-                  ? 'border-blue-500/30 text-blue-500 dark:text-blue-400 bg-blue-500/[0.03]'
-                  : 'border-slate-200 dark:border-white/[0.05] text-slate-700 dark:text-slate-300'
-              }`}
-            >
-              <SlidersHorizontal size={13} />
-              <span>Advanced Filters</span>
-              {getActiveFiltersCount() > 0 && (
-                <span className="ml-1 bg-blue-500 text-white font-bold text-[10px] w-4.5 h-4.5 rounded-full flex items-center justify-center animate-pulse shrink-0">
-                  {getActiveFiltersCount()}
-                </span>
-              )}
-            </button>
 
-            {getActiveFiltersCount() > 0 && (
-              <button
-                type="button"
-                onClick={handleClearAllFilters}
-                className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 font-semibold"
-              >
-                <RotateCcw size={11} />
-                <span>Reset</span>
-              </button>
-            )}
           </div>
 
           {/* Core Pipeline Search query */}
@@ -1516,358 +1497,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
             </div>
           </div>
         </div>
-          {/* Flow Container for Active Chips and sliding panel */}
-          {getActiveFiltersCount() > 0 && (
-            <div className="flex flex-wrap items-center gap-2 pt-4">
-              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 mr-1 uppercase tracking-wider">Active Filters:</span>
-              
-              {searchQuery && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-300">
-                  <Search size={12} className="text-slate-400" />
-                  "{searchQuery}"
-                  <button onClick={() => setSearchQuery('')} className="hover:text-red-500 dark:hover:text-red-400 ml-0.5"><X size={12} /></button>
-                </span>
-              )}
-              
-              {filterStatus !== 'all' && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 text-xs font-medium text-blue-700 dark:text-blue-400">
-                   Status: {filterStatus}
-                   <button onClick={() => setFilterStatus('all')} className="hover:text-red-500 dark:hover:text-red-400 ml-0.5"><X size={12} /></button>
-                </span>
-              )}
 
-              {filterStages.map(stageId => {
-                const s = activePipeline?.stages.find((st: any) => st.id === stageId);
-                return s ? (
-                  <span key={stageId} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 text-xs font-medium text-indigo-700 dark:text-indigo-400">
-                    Stage: {s.name}
-                    <button onClick={() => setFilterStages(filterStages.filter(x => x !== stageId))} className="hover:text-red-500 dark:hover:text-red-400 ml-0.5"><X size={12} /></button>
-                  </span>
-                ) : null;
-              })}
-
-              {filterStaff.map(uid => {
-                const u = users.find(x => x.id === uid);
-                return (
-                  <span key={uid} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-50 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/20 text-xs font-medium text-purple-700 dark:text-purple-400">
-                    <User size={12} className="text-purple-400" />
-                    {u ? u.firstName : 'Unassigned'}
-                    <button onClick={() => setFilterStaff(filterStaff.filter(x => x !== uid))} className="hover:text-red-500 dark:hover:text-red-400 ml-0.5"><X size={12} /></button>
-                  </span>
-                );
-              })}
-
-              {filterPriority.map(p => (
-                <span key={p} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20 text-xs font-medium text-orange-700 dark:text-orange-400">
-                  Priority: {p}
-                  <button onClick={() => setFilterPriority(filterPriority.filter(x => x !== p))} className="hover:text-red-500 dark:hover:text-red-400 ml-0.5"><X size={12} /></button>
-                </span>
-              ))}
-              
-              {filterCustomerType !== 'all' && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-50 dark:bg-cyan-500/10 border border-cyan-200 dark:border-cyan-500/20 text-xs font-medium text-cyan-700 dark:text-cyan-400">
-                  Type: {filterCustomerType}
-                  <button onClick={() => setFilterCustomerType('all')} className="hover:text-red-500 dark:hover:text-red-400 ml-0.5"><X size={12} /></button>
-                </span>
-              )}
-            </div>
-          )}
-
-          {/* Collapsible Sliding Funnel Filters Section */}
-          {isFilterPanelOpen && (
-          <div className="border-t border-slate-100 dark:border-white/5 pt-4 mt-1 space-y-4 animate-in slide-in-from-top-3 duration-250 ease-out">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              
-              {/* Filter Row 1: Deal Sales Status */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Deal Sales Status</label>
-                <div className="grid grid-cols-4 gap-1.5 bg-slate-50 dark:bg-white/[0.02] p-1 rounded-xl border border-slate-200/50 dark:border-white/[0.05]">
-                  {['all', 'open', 'won', 'lost'].map((st) => (
-                    <button
-                      key={st}
-                      type="button"
-                      onClick={() => setFilterStatus(st)}
-                      className={`py-1 rounded-lg text-[10px] font-bold uppercase tracking-wide transition-all ${
-                        filterStatus === st
-                          ? 'bg-white dark:bg-slate-950 text-blue-500 dark:text-blue-400 shadow-sm border border-slate-200/40 dark:border-white/[0.05]'
-                          : 'text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-350'
-                      }`}
-                    >
-                      {st}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Filter Row 2: Selected Pipeline Stage */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Pipeline Stages</label>
-                <div className="flex flex-wrap gap-1">
-                  {activePipeline?.stages.map((stage: any) => {
-                    const isSelected = filterStages.includes(stage.id);
-                    return (
-                      <button
-                        key={stage.id}
-                        type="button"
-                        onClick={() => {
-                          setFilterStages(prev => 
-                            isSelected ? prev.filter(x => x !== stage.id) : [...prev, stage.id]
-                          );
-                        }}
-                        className={`px-2.5 py-1 text-[10px] font-semibold rounded-lg transition-all border ${
-                          isSelected
-                            ? 'bg-blue-500/10 text-blue-500 dark:text-blue-400 border-blue-500/25'
-                            : 'bg-transparent border-slate-200 dark:border-white/[0.03] text-slate-500 hover:text-slate-800 dark:text-slate-400'
-                        }`}
-                      >
-                        {stage.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Filter Row 3: Assigned Rep */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Assigned Agent</label>
-                <div className="flex flex-wrap gap-1">
-                  {users.filter(u => u.role === 'Sales Rep' || u.role === 'Client Admin').map((u) => {
-                    const isSelected = filterStaff.includes(u.id);
-                    return (
-                      <button
-                        key={u.id}
-                        type="button"
-                        onClick={() => {
-                          setFilterStaff(prev => 
-                            isSelected ? prev.filter(x => x !== u.id) : [...prev, u.id]
-                          );
-                        }}
-                        className={`px-2 py-0.5 text-[10px] font-semibold rounded-lg transition-all border ${
-                          isSelected
-                            ? 'bg-purple-500/10 text-purple-500 dark:text-purple-400 border-purple-500/20'
-                            : 'bg-transparent border-slate-200 dark:border-white/[0.03] text-slate-500'
-                        }`}
-                      >
-                        {u.firstName}
-                      </button>
-                    );
-                  })}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const isSelected = filterStaff.includes('unassigned');
-                      setFilterStaff(prev => 
-                        isSelected ? prev.filter(x => x !== 'unassigned') : [...prev, 'unassigned']
-                      );
-                    }}
-                    className={`px-2 py-0.5 text-[10px] font-semibold rounded-lg transition-all border ${
-                      filterStaff.includes('unassigned')
-                        ? 'bg-orange-500/10 text-orange-500 border-orange-500/20'
-                        : 'bg-transparent border-slate-200 dark:border-white/[0.03] text-slate-500'
-                    }`}
-                  >
-                    Unassigned
-                  </button>
-                </div>
-              </div>
-
-              {/* Filter Row 4: Deal Priority Level */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Deal Priority</label>
-                <div className="flex gap-1.5">
-                  {['Low', 'Medium', 'High'].map((p) => {
-                    const isSelected = filterPriority.includes(p);
-                    return (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => {
-                          setFilterPriority(prev => 
-                            isSelected ? prev.filter(x => x !== p) : [...prev, p]
-                          );
-                        }}
-                        className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all border ${
-                          isSelected
-                            ? p === 'High' ? 'bg-red-500/10 text-red-500 border-red-500/25' : p === 'Medium' ? 'bg-orange-500/10 text-orange-500 border-orange-500/25' : 'bg-blue-500/10 text-blue-505 border-blue-500/25'
-                            : 'bg-transparent border-slate-200 dark:border-white/[0.03] text-slate-400'
-                        }`}
-                      >
-                        {p}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Filter Location */}
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-bold uppercase text-slate-400">Location/Region</label>
-                  <select value={filterLocationOp} onChange={e => setFilterLocationOp(e.target.value)} className="bg-transparent border-none text-[10px] font-bold text-slate-400">
-                    <option value="contains" className="bg-gray-100 dark:bg-slate-950">Contains</option>
-                    <option value="equals" className="bg-gray-100 dark:bg-slate-950">Equals</option>
-                    <option value="notequals" className="bg-gray-100 dark:bg-slate-950">Not Equals</option>
-                    <option value="starts" className="bg-gray-100 dark:bg-slate-950">Starts With</option>
-                    <option value="ends" className="bg-gray-100 dark:bg-slate-950">Ends With</option>
-                  </select>
-                </div>
-                <input
-                  type="text"
-                  value={filterLocation}
-                  onChange={e => setFilterLocation(e.target.value)}
-                  placeholder="e.g. California"
-                  className="w-full bg-slate-50 dark:bg-white/[0.01] border border-slate-200/50 dark:border-white/[0.05] rounded-xl px-2.5 py-1.5 text-xs text-slate-905 focus:outline-none focus:border-slate-300 dark:focus:border-white/[0.1] text-slate-900 dark:text-white"
-                />
-              </div>
-
-              {/* Filter Contact Source */}
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-bold uppercase text-slate-400">Contact Source</label>
-                  <select value={filterLeadSourceOp} onChange={e => setFilterLeadSourceOp(e.target.value)} className="bg-transparent border-none text-[10px] font-bold text-slate-400">
-                    <option value="contains" className="bg-gray-100 dark:bg-slate-950">Contains</option>
-                    <option value="equals" className="bg-gray-100 dark:bg-slate-950">Equals</option>
-                    <option value="notequals" className="bg-gray-100 dark:bg-slate-950">Not Equals</option>
-                    <option value="starts" className="bg-gray-100 dark:bg-slate-950">Starts With</option>
-                    <option value="ends" className="bg-gray-100 dark:bg-slate-950">Ends With</option>
-                  </select>
-                </div>
-                <input
-                  type="text"
-                  value={filterLeadSource}
-                  onChange={e => setFilterLeadSource(e.target.value)}
-                  placeholder="e.g. Website, Referral"
-                  className="w-full bg-slate-50 dark:bg-white/[0.01] border border-slate-200/50 dark:border-white/[0.05] rounded-xl px-2.5 py-1.5 text-xs text-slate-905 focus:outline-none text-slate-900 dark:text-white"
-                />
-              </div>
-
-              {/* Filter Industry */}
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-bold uppercase text-slate-400">Industry</label>
-                  <select value={filterIndustryOp} onChange={e => setFilterIndustryOp(e.target.value)} className="bg-transparent border-none text-[10px] font-bold text-slate-400">
-                    <option value="contains" className="bg-gray-100 dark:bg-slate-950">Contains</option>
-                    <option value="equals" className="bg-gray-100 dark:bg-slate-950">Equals</option>
-                    <option value="notequals" className="bg-gray-100 dark:bg-slate-950">Not Equals</option>
-                    <option value="starts" className="bg-gray-100 dark:bg-slate-950">Starts With</option>
-                    <option value="ends" className="bg-gray-100 dark:bg-slate-950">Ends With</option>
-                  </select>
-                </div>
-                <input
-                  type="text"
-                  value={filterIndustry}
-                  onChange={e => setFilterIndustry(e.target.value)}
-                  placeholder="e.g. Healthcare, Tech"
-                  className="w-full bg-slate-50 dark:bg-white/[0.01] border border-slate-200/50 dark:border-white/[0.05] rounded-xl px-2.5 py-1.5 text-xs text-slate-905 focus:outline-none text-slate-900 dark:text-white"
-                />
-              </div>
-
-              {/* Filter Campaign */}
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-bold uppercase text-slate-400">Campaign</label>
-                  <select value={filterCampaignOp} onChange={e => setFilterCampaignOp(e.target.value)} className="bg-transparent border-none text-[10px] font-bold text-slate-400">
-                    <option value="contains" className="bg-gray-100 dark:bg-slate-950">Contains</option>
-                    <option value="equals" className="bg-gray-100 dark:bg-slate-950">Equals</option>
-                    <option value="starts" className="bg-gray-100 dark:bg-slate-950">Starts With</option>
-                    <option value="ends" className="bg-gray-100 dark:bg-slate-950">Ends With</option>
-                  </select>
-                </div>
-                <input
-                  type="text"
-                  value={filterCampaign}
-                  onChange={e => setFilterCampaign(e.target.value)}
-                  placeholder="e.g. Summer Promo"
-                  className="w-full bg-slate-50 dark:bg-white/[0.01] border border-slate-200/50 dark:border-white/[0.05] rounded-xl px-2.5 py-1.5 text-xs text-slate-905 focus:outline-none text-slate-900 dark:text-white"
-                />
-              </div>
-
-              {/* Filter Customer Type */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Customer Type</label>
-                <select
-                  value={filterCustomerType}
-                  onChange={e => setFilterCustomerType(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200/50 dark:border-white/[0.05] rounded-xl px-2.5 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none"
-                >
-                  <option value="all">Any Type</option>
-                  <option value="new">New Business</option>
-                  <option value="existing">Existing Customer</option>
-                </select>
-              </div>
-
-              {/* Filter Organization (Company Name) */}
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-bold uppercase text-slate-400">Organization Company</label>
-                  <select value={filterOrganizationOp} onChange={e => setFilterOrganizationOp(e.target.value)} className="bg-transparent border-none text-[10px] font-bold text-slate-400">
-                    <option value="contains" className="bg-gray-100 dark:bg-slate-950">Contains</option>
-                    <option value="equals" className="bg-gray-100 dark:bg-slate-950">Equals</option>
-                    <option value="starts" className="bg-gray-100 dark:bg-slate-950">Starts With</option>
-                  </select>
-                </div>
-                <input
-                  type="text"
-                  value={filterOrganization}
-                  onChange={e => setFilterOrganization(e.target.value)}
-                  placeholder="e.g. Acme Corp"
-                  className="w-full bg-slate-50 dark:bg-white/[0.01] border border-slate-200/50 dark:border-white/[0.05] rounded-xl px-2.5 py-1.5 text-xs text-slate-905 focus:outline-none text-slate-900 dark:text-white"
-                />
-              </div>
-
-              {/* Filter Date Created (Operations before, after, equals, between) */}
-              <div className="space-y-1 col-span-1 md:col-span-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-bold uppercase text-slate-400">Date Created</label>
-                  <select value={filterDateCreatedOp} onChange={e => setFilterDateCreatedOp(e.target.value)} className="bg-transparent border-none text-[10px] font-bold text-slate-400">
-                    <option value="any" className="bg-gray-100 dark:bg-slate-950">Any Date</option>
-                    <option value="equals" className="bg-gray-100 dark:bg-slate-950">On Date</option>
-                    <option value="before" className="bg-gray-100 dark:bg-slate-950">Before Date</option>
-                    <option value="after" className="bg-gray-100 dark:bg-slate-950">After Date</option>
-                    <option value="between" className="bg-gray-100 dark:bg-slate-950">Between Dates</option>
-                  </select>
-                </div>
-                {filterDateCreatedOp !== 'any' && (
-                  <div className="flex gap-2 anime-in duration-150">
-                    <input
-                      type="date"
-                      value={filterDateCreatedStart}
-                      onChange={e => setFilterDateCreatedStart(e.target.value)}
-                      className="flex-1 bg-slate-50 dark:bg-white/[0.01] border border-slate-200/50 dark:border-white/[0.05] rounded-xl px-2 py-1 text-xs text-slate-900 dark:text-white focus:outline-none"
-                    />
-                    {filterDateCreatedOp === 'between' && (
-                      <input
-                        type="date"
-                        value={filterDateCreatedEnd}
-                        onChange={e => setFilterDateCreatedEnd(e.target.value)}
-                        className="flex-1 bg-slate-50 dark:bg-white/[0.01] border border-slate-200/50 dark:border-white/[0.05] rounded-xl px-2 py-1 text-xs text-slate-900 dark:text-white focus:outline-none"
-                      />
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Filter Tags */}
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-bold uppercase text-slate-400">Tags/Custom Labels</label>
-                  <select value={filterTagsOp} onChange={e => setFilterTagsOp(e.target.value)} className="bg-transparent border-none text-[10px] font-bold text-slate-400">
-                    <option value="contains" className="bg-gray-100 dark:bg-slate-950">Contains</option>
-                    <option value="equals" className="bg-gray-100 dark:bg-slate-950">Equals</option>
-                  </select>
-                </div>
-                <input
-                  type="text"
-                  value={filterTags}
-                  onChange={e => setFilterTags(e.target.value)}
-                  placeholder="e.g. VIP, Q2"
-                  className="w-full bg-slate-50 dark:bg-white/[0.01] border border-slate-200/50 dark:border-white/[0.05] rounded-xl px-2.5 py-1.5 text-xs text-slate-905 focus:outline-none text-slate-900 dark:text-white"
-                />
-              </div>
-
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Pipeline Velocity & Bottleneck Diagnostics Panel */}
