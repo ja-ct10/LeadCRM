@@ -146,10 +146,14 @@ export const ClientProfileTabs = ({
   };
 
   // Note handler
-  const handleSaveNotes = () => {
-    updateContact(contact.id, { notes: contactNotes, internalNotes: internalNotes });
-    toast.success('Successfully committed notes changes!');
-    addActivityLog(`Wrote and saved updated profile internal notes.`, 'user_action');
+  const handleSaveNotes = async () => {
+    try {
+      await updateContact(contact.id, { notes: contactNotes, internalNotes: internalNotes });
+      toast.success('Successfully committed notes changes!');
+      addActivityLog(`Wrote and saved updated profile internal notes.`, 'user_action');
+    } catch (error: any) {
+      toast.error(error.message || "Failed to update notes");
+    }
   };
 
   // Email simulation

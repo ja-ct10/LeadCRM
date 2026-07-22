@@ -54,6 +54,31 @@ import {
 import { evaluateWorkflowCondition } from "@/features/tenant/automation/workflows/services/workflow-condition-evaluator";
 import { uuid } from "@/lib/utils";
 
+// ── Real-API integration ─────────────────────────────────────────────────────
+import { USE_MOCK_DATA } from "@/lib/config";
+import { contactsService } from "@/features/tenant/crm/contacts/services/contacts.service";
+import { organizationsService } from "@/features/tenant/crm/contacts/services/organizations.service";
+import { pipelineService } from "@/features/tenant/crm/pipeline/services/pipeline.service";
+import {
+  toBackendCreateContact,
+  toBackendUpdateContact,
+  toFrontendContact,
+} from "@/lib/api/adapters/contact.adapter";
+import {
+  toBackendCreateOrg,
+  toBackendUpdateOrg,
+  toFrontendOrg,
+} from "@/lib/api/adapters/organization.adapter";
+import {
+  toBackendCreateDeal,
+  toBackendUpdateDeal,
+  toFrontendDeal,
+} from "@/lib/api/adapters/deal.adapter";
+import {
+  toFrontendPipeline, toBackendCreatePipeline, toBackendUpdatePipeline,
+} from "@/lib/api/adapters/pipeline.adapter";
+// ─────────────────────────────────────────────────────────────────────────────
+
 interface DataContextType {
   organizations: Organization[];
   contacts: Contact[];
@@ -83,20 +108,20 @@ interface DataContextType {
   auditLogs: AuditLog[];
   addContact: (
     contact: Omit<Contact, "id" | "tenantId" | "createdAt" | "score">,
-  ) => void;
-  updateContact: (id: string, updates: Partial<Contact>) => void;
-  deleteContact: (id: string) => void;
+  ) => Promise<void>;
+  updateContact: (id: string, updates: Partial<Contact>) => Promise<void>;
+  deleteContact: (id: string) => Promise<void>;
   addOrganization: (
     org: Omit<Organization, "id" | "tenantId" | "createdAt">,
-  ) => string | null;
-  updateOrganization: (id: string, updates: Partial<Organization>) => void;
-  deleteOrganization: (id: string) => void;
-  addDeal: (deal: Omit<Deal, "id" | "tenantId" | "createdAt">) => void;
-  updateDeal: (id: string, updates: Partial<Deal>) => void;
-  deleteDeal: (id: string) => void;
-  addPipeline: (pipeline: Omit<Pipeline, "id" | "tenantId">) => void;
-  updatePipeline: (id: string, updates: Partial<Pipeline>) => void;
-  deletePipeline: (id: string) => void;
+  ) => Promise<string | null>;
+  updateOrganization: (id: string, updates: Partial<Organization>) => Promise<void>;
+  deleteOrganization: (id: string) => Promise<void>;
+  addDeal: (deal: Omit<Deal, "id" | "tenantId" | "createdAt">) => Promise<void>;
+  updateDeal: (id: string, updates: Partial<Deal>) => Promise<void>;
+  deleteDeal: (id: string) => Promise<void>;
+  addPipeline: (pipeline: Omit<Pipeline, "id" | "tenantId">) => Promise<void>;
+  updatePipeline: (id: string, updates: Partial<Pipeline>) => Promise<void>;
+  deletePipeline: (id: string) => Promise<void>;
   addTask: (task: Omit<Task, "id" | "tenantId" | "createdAt">) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
   updateServiceOrder: (id: string, updates: Partial<ServiceOrder>) => void;
@@ -287,7 +312,99 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const loadData = () => {
+  const loadData = async () => {
+    // ── REAL-API MODE ──────────────────────────────────────────────────────────
+    // When USE_MOCK_DATA is false, fetch Contacts/Orgs/Deals/Pipelines from the
+    // backend database. All other modules still fall through to localStorage.
+    if (!USE_MOCK_DATA) {
+      try {
+        const [contactsRes, orgsRes, dealsRes, pipelinesRes] = await Promise.all([
+          contactsService.getAll({ limit: 500 }),
+          organizationsService.getAll({ limit: 500 }),
+          pipelineService.getDeals(),
+          pipelineService.getPipelines(),
+        ]);
+
+        const apiContacts = (contactsRes?.data ?? []).map(toFrontendContact);
+        const apiOrgs     = (orgsRes?.data ?? []).map(toFrontendOrg);
+        const apiDeals    = (dealsRes?.data ?? []).map(toFrontendDeal);
+        const apiPipelines = Array.isArray((pipelinesRes as any)?.data)
+          ? ((pipelinesRes as any).data as any[]).map(toFrontendPipeline)
+          : ((pipelinesRes as any)?.data ? [(pipelinesRes as any).data].map(toFrontendPipeline) : []);
+
+        if (user?.role === "System Admin") {
+          setContacts(apiContacts as Contact[]);
+          setOrganizations(apiOrgs as Organization[]);
+          setDeals(apiDeals as Deal[]);
+          setPipelines(apiPipelines as Pipeline[]);
+        } else if (tenant) {
+          setContacts((apiContacts as Contact[]).filter((c: any) => !c.isArchived));
+          setOrganizations((apiOrgs as Organization[]).filter((o: any) => !o.isArchived));
+          setDeals((apiDeals as Deal[]).filter((d: any) => !d.isArchived));
+          setPipelines((apiPipelines as Pipeline[]).filter((p: any) => !p.isArchived));
+        }
+      } catch (err) {
+        console.error('[DataContext] Failed to load CRM data from API:', err);
+      }
+
+      // Still load localStorage-only modules below
+      const w   = safeParse("leadcrm_workflows", MOCK_WORKFLOWS);
+      const c   = safeParse("leadcrm_campaigns", MOCK_CAMPAIGNS);
+      const tpl = safeParse("leadcrm_templates", MOCK_TEMPLATES);
+      const r   = safeParse("leadcrm_roles", MOCK_ROLES);
+      const perm = safeParse("leadcrm_permissions", MOCK_PERMISSIONS);
+      const u   = safeParse("leadcrm_users", MOCK_USERS);
+      const tsk = safeParse("leadcrm_tasks", MOCK_TASKS ?? []);
+      const execs = safeParse("leadcrm_workflow_executions", MOCK_WORKFLOW_EXECUTIONS ?? []);
+      const pending = safeParse("leadcrm_pending_actions", [] as PendingAction[]);
+      const so  = safeParse("leadcrm_service_orders", MOCK_SERVICE_ORDERS ?? []);
+      const ast = safeParse("leadcrm_assets", MOCK_ASSETS ?? []);
+      const inv = safeParse("leadcrm_inventory", MOCK_INVENTORY ?? []);
+      const logs = safeParse("leadcrm_audit_logs", [] as AuditLog[]);
+      const serviceEnabled  = safeParse("leadcrm_service_enabled", false);
+      const assetEnabled    = safeParse("leadcrm_asset_enabled", false);
+      const billingEnabled  = safeParse("leadcrm_billing_enabled", false);
+      const activityData    = safeParse("leadcrm_activities", [] as Activity[]);
+      const execRuns  = safeParse("leadcrm_workflow_execution_runs", [] as WorkflowExecutionRun[]);
+      const execSteps = safeParse("leadcrm_workflow_execution_steps", [] as WorkflowExecutionStep[]);
+      const invoiceData = safeParse("leadcrm_invoices", MOCK_INVOICES);
+      const t = safeParse("leadcrm_tenants", MOCK_TENANTS);
+
+      setIsServiceModuleEnabled(serviceEnabled);
+      setIsAssetModuleEnabled(assetEnabled);
+      setIsBillingModuleEnabled(billingEnabled);
+
+      if (user?.role === "System Admin") {
+        setAuditLogs(logs); setWorkflows(w); setCampaigns(c); setTemplates(tpl);
+        setRoles(r); setPermissions(perm); setUsers(u); setTenants(t);
+        setTasks(tsk); setWorkflowExecutions(execs); setServiceOrders(so);
+        setAssets(ast as Asset[]); setInventoryItems(inv); setActivities(activityData);
+        setWorkflowExecutionRuns(execRuns); setWorkflowExecutionSteps(execSteps);
+        setInvoices(invoiceData);
+      } else if (tenant) {
+        setAuditLogs(logs.filter((log: any) => !log.tenantId || log.tenantId === tenant.id));
+        setWorkflows(w.filter((x: any) => x.tenantId === tenant.id));
+        setCampaigns(c.filter((x: any) => x.tenantId === tenant.id));
+        setTemplates(tpl.filter((x: any) => x.tenantId === tenant.id));
+        setRoles(r.filter((x: any) => x.tenantId === tenant.id));
+        setPermissions(perm);
+        setUsers(u.filter((x: any) => x.tenantId === tenant.id));
+        setTenants(t.filter((x: any) => x.id === tenant.id));
+        setTasks(tsk.filter((x: any) => x.tenantId === tenant.id));
+        setWorkflowExecutions(execs.filter((x: any) => x.tenantId === tenant.id));
+        setPendingActions(pending.filter((x: any) => x.tenantId === tenant.id));
+        setServiceOrders(so.filter((x: any) => x.tenantId === tenant.id));
+        setAssets((ast as Asset[]).filter((x: any) => x.tenantId === tenant.id));
+        setInventoryItems(inv.filter((x: any) => x.tenantId === tenant.id));
+        setActivities(activityData.filter((x: any) => x.tenantId === tenant.id));
+        setWorkflowExecutionRuns(execRuns.filter((x: any) => x.tenantId === tenant.id));
+        setWorkflowExecutionSteps(execSteps.filter((x: any) => x.tenantId === tenant.id));
+        setInvoices(invoiceData.filter((x: any) => x.tenantId === tenant.id && !x.isArchived));
+      }
+      return; // Exit — mock path below is skipped in real mode
+    }
+    // ── MOCK / LOCALSTORAGE MODE (unchanged below) ─────────────────────────────
+
     let orgs = safeParse<Organization[] | null>("leadcrm_organizations", null);
     let l = safeParse("leadcrm_leads", MOCK_LEADS);
 
@@ -919,8 +1036,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
     saveAndSet("leadcrm_workflows", newWorkflows, setWorkflows);
   };
 
-  const addOrganization = (orgData: any) => {
+  const addOrganization = async (orgData: any): Promise<string | null> => {
     if (!tenant) return null;
+
+    if (!USE_MOCK_DATA) {
+      try {
+        const dto = toBackendCreateOrg(orgData) as any;
+        const res = await organizationsService.create(dto);
+        const org = toFrontendOrg((res as any).data ?? res) as Organization;
+        setOrganizations((prev) => [org, ...prev]);
+        addAuditLog("Created Organization", `Organization "${org.name}" was added.`);
+        return org.id;
+      } catch (err: any) {
+        throw new Error(err?.message ?? 'Failed to create organization');
+      }
+    }
+
     const newOrg = {
       ...orgData,
       id: uuid(),
@@ -929,43 +1060,80 @@ export function DataProvider({ children }: { children: ReactNode }) {
     };
     const newOrgs = [...organizations, newOrg];
     saveAndSet("leadcrm_organizations", newOrgs, setOrganizations);
-    addAuditLog(
-      "Created Organization",
-      `Organization "${newOrg.name}" was added.`,
-    );
+    addAuditLog("Created Organization", `Organization "${newOrg.name}" was added.`);
     return newOrg.id;
   };
 
-  const updateOrganization = (id: string, updates: any) => {
+  const updateOrganization = async (id: string, updates: any): Promise<void> => {
+    if (!USE_MOCK_DATA) {
+      try {
+        const dto = toBackendUpdateOrg(updates) as any;
+        const res = await organizationsService.update(id, dto);
+        const org = toFrontendOrg((res as any).data ?? res) as Organization;
+        setOrganizations((prev) => prev.map((o) => (o.id === id ? org : o)));
+        addAuditLog("Updated Organization", `Organization "${org.name}" was updated.`);
+      } catch (err: any) {
+        throw new Error(err?.message ?? 'Failed to update organization');
+      }
+      return;
+    }
+
     const updated = organizations.map((o) =>
       o.id === id ? { ...o, ...updates } : o,
     );
     saveAndSet("leadcrm_organizations", updated, setOrganizations);
     const org = organizations.find((o) => o.id === id);
     if (org) {
-      addAuditLog(
-        "Updated Organization",
-        `Organization "${org.name}" was updated.`,
-      );
+      addAuditLog("Updated Organization", `Organization "${org.name}" was updated.`);
     }
   };
 
-  const deleteOrganization = (id: string) => {
+  const deleteOrganization = async (id: string): Promise<void> => {
+    if (!USE_MOCK_DATA) {
+      try {
+        await organizationsService.archive(id);
+        setOrganizations((prev) =>
+          prev.map((o) => (o.id === id ? { ...o, isArchived: true } : o)),
+        );
+        addAuditLog("Organization Archived", `Archived organization id '${id}'.`);
+      } catch (err: any) {
+        throw new Error(err?.message ?? 'Failed to archive organization');
+      }
+      return;
+    }
+
     const original = organizations.find((o) => o.id === id);
     const arr = organizations.map((o) =>
       o.id === id ? { ...o, isArchived: true } : o,
     );
     saveAndSet("leadcrm_organizations", arr, setOrganizations);
     if (original) {
-      addAuditLog(
-        "Organization Archived",
-        `Archived corporate client profile '${original.name}'.`,
-      );
+      addAuditLog("Organization Archived", `Archived corporate client profile '${original.name}'.`);
     }
   };
 
-  const addContact = (leadData: any) => {
+
+  const addContact = async (leadData: any): Promise<void> => {
     if (!tenant) return;
+
+    if (!USE_MOCK_DATA) {
+      try {
+        const dto = toBackendCreateContact(leadData) as any;
+        const res = await contactsService.create(dto);
+        const contact = toFrontendContact((res as any).data ?? res) as Contact;
+        setContacts((prev) => [contact, ...prev]);
+        addAuditLog(
+          "Contact Created",
+          `Added contact '${contact.contactPerson}' (${contact.companyName}) with status '${contact.status}'.`,
+          contact.id,
+        );
+        runWorkflows("lead_created", { contact });
+      } catch (err: any) {
+        throw new Error(err?.message ?? 'Failed to create contact');
+      }
+      return;
+    }
+
     const newLead: Contact = {
       ...leadData,
       id: uuid(),
@@ -983,7 +1151,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
     runWorkflows("lead_created", { contact: newLead });
   };
 
-  const updateContact = (id: string, updates: Partial<Contact>) => {
+  const updateContact = async (id: string, updates: Partial<Contact>): Promise<void> => {
+    if (!USE_MOCK_DATA) {
+      try {
+        const dto = toBackendUpdateContact(updates as Record<string, any>) as any;
+        const res = await contactsService.update(id, dto);
+        const contact = toFrontendContact((res as any).data ?? res) as Contact;
+        setContacts((prev) => prev.map((l) => (l.id === id ? contact : l)));
+        addAuditLog("Contact Updated", `Updated contact '${contact.contactPerson}'.`, id);
+      } catch (err: any) {
+        throw new Error(err?.message ?? 'Failed to update contact');
+      }
+      return;
+    }
+
     const original = contacts.find((l) => l.id === id);
     const newLeads = contacts.map((l) => {
       if (l.id === id) {
@@ -997,7 +1178,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (original) {
       const changes: string[] = [];
       const changeset: Record<string, { old: any; new: any }> = {};
-
       Object.keys(updates).forEach((k) => {
         const key = k as keyof Contact;
         if (updates[key] !== undefined && updates[key] !== original[key]) {
@@ -1007,23 +1187,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
           };
         }
       });
-
-      if (updates.status && updates.status !== original.status) {
+      if (updates.status && updates.status !== original.status)
         changes.push(`status to '${updates.status}'`);
-      }
-      if (updates.companyName && updates.companyName !== original.companyName) {
+      if (updates.companyName && updates.companyName !== original.companyName)
         changes.push(`company name to '${updates.companyName}'`);
-      }
-      if (
-        updates.estimatedValue &&
-        updates.estimatedValue !== original.estimatedValue
-      ) {
-        changes.push(`value to  ${updates.estimatedValue}`);
-      }
-      if (
-        updates.assignedUserId &&
-        updates.assignedUserId !== original.assignedUserId
-      ) {
+      if (updates.estimatedValue && updates.estimatedValue !== original.estimatedValue)
+        changes.push(`value to PHP ${updates.estimatedValue}`);
+      if (updates.assignedUserId && updates.assignedUserId !== original.assignedUserId) {
         const assignedUser = users.find((u) => u.id === updates.assignedUserId);
         changes.push(
           `assigned user to '${assignedUser ? `${assignedUser.firstName} ${assignedUser.lastName}` : updates.assignedUserId}'`,
@@ -1037,7 +1207,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const deleteContact = (id: string) => {
+  const deleteContact = async (id: string): Promise<void> => {
+    if (!USE_MOCK_DATA) {
+      try {
+        await contactsService.archive(id);
+        setContacts((prev) =>
+          prev.map((l) => (l.id === id ? { ...l, isArchived: true } : l)),
+        );
+        addAuditLog("Contact Archived", `Archived contact id '${id}'.`);
+      } catch (err: any) {
+        throw new Error(err?.message ?? 'Failed to archive contact');
+      }
+      return;
+    }
+
     const original = contacts.find((l) => l.id === id);
     const newLeads = contacts.map((l) =>
       l.id === id ? { ...l, isArchived: true } : l,
@@ -1051,8 +1234,36 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const addDeal = (dealData: any) => {
+
+  const addDeal = async (dealData: any): Promise<void> => {
     if (!tenant) return;
+
+    if (!USE_MOCK_DATA) {
+      try {
+        const dto = toBackendCreateDeal(dealData) as any;
+        const res = await pipelineService.createDeal(dto);
+        const deal = toFrontendDeal((res as any).data ?? res) as Deal;
+        setDeals((prev) => [deal, ...prev]);
+        addAuditLog(
+          "Deal Created",
+          `Added a new deal '${deal.title}' (PHP ${deal.value.toLocaleString()}) for client '${deal.companyName}'.`,
+          deal.id,
+        );
+        addActivity({
+          type: 'deal-created',
+          relatedToType: 'deal',
+          relatedToId: deal.id,
+          title: `Deal created: ${deal.title}`,
+          createdBy: user?.id || 'system',
+          createdAt: new Date().toISOString(),
+        });
+        runWorkflows("deal_created", { deal });
+      } catch (err: any) {
+        throw new Error(err?.message ?? 'Failed to create deal');
+      }
+      return;
+    }
+
     // Normalise: always maintain contactIds array, backfill from legacy contactId
     const contactIds: string[] = dealData.contactIds
       ? dealData.contactIds
@@ -1088,7 +1299,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     saveAndSet("leadcrm_deals", newDeals, setDeals);
     addAuditLog(
       "Deal Created",
-      `Added a new deal '${newDeal.title}' ( ${newDeal.value.toLocaleString()}) for client '${newDeal.companyName}'.`,
+      `Added a new deal '${newDeal.title}' (PHP ${newDeal.value.toLocaleString()}) for client '${newDeal.companyName}'.`,
       newDeal.id,
     );
     addActivity({
@@ -1102,7 +1313,36 @@ export function DataProvider({ children }: { children: ReactNode }) {
     runWorkflows("deal_created", { deal: newDeal });
   };
 
-  const updateDeal = (id: string, updates: Partial<Deal>) => {
+  const updateDeal = async (id: string, updates: Partial<Deal>): Promise<void> => {
+    if (!USE_MOCK_DATA) {
+      try {
+        const dto = toBackendUpdateDeal(updates as Record<string, any>) as any;
+        const res = await pipelineService.updateDeal(id, dto);
+        const deal = toFrontendDeal((res as any).data ?? res) as Deal;
+        setDeals((prev) => prev.map((d) => (d.id === id ? deal : d)));
+        
+        if (updates.stageId) {
+          const pLine = pipelines.find((p) => p.id === updates.pipelineId || p.id === deal.pipelineId);
+          const newName = pLine?.stages.find((s) => s.id === updates.stageId)?.name || updates.stageId;
+          addAuditLog("Deal Updated", `Updated pipeline stage to '${newName}' for deal '${deal.title}'.`, id);
+          addActivity({
+            type: 'stage-change',
+            relatedToType: 'deal',
+            relatedToId: deal.id,
+            title: `Deal moved to new stage`,
+            createdBy: user?.id || 'system',
+            createdAt: new Date().toISOString(),
+            metadata: { newStageId: updates.stageId },
+          });
+        } else {
+           addAuditLog("Deal Updated", `Modified deal details for '${deal.title}'.`, id);
+        }
+      } catch (err: any) {
+        throw new Error(err?.message ?? 'Failed to update deal');
+      }
+      return;
+    }
+
     const original = deals.find((d) => d.id === id);
     const newDeals = deals.map((d) => {
       if (d.id === id) {
@@ -1181,7 +1421,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         changes.push(`pipeline stage from '${oldName}' to '${newName}'`);
       }
       if (updates.value && updates.value !== original.value) {
-        changes.push(`revenue value to  ${updates.value.toLocaleString()}`);
+        changes.push(`revenue value to PHP ${updates.value.toLocaleString()}`);
       }
       if (updates.priority && updates.priority !== original.priority) {
         changes.push(`priority to '${updates.priority}'`);
@@ -1203,7 +1443,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const deleteDeal = (id: string) => {
+  const deleteDeal = async (id: string): Promise<void> => {
+    if (!USE_MOCK_DATA) {
+      try {
+        await pipelineService.archiveDeal(id);
+        setDeals((prev) =>
+          prev.map((d) => (d.id === id ? { ...d, isArchived: true } : d)),
+        );
+        addAuditLog("Deal Archived", `Archived deal id '${id}'.`);
+      } catch (err: any) {
+        throw new Error(err?.message ?? 'Failed to archive deal');
+      }
+      return;
+    }
+
     const original = deals.find((d) => d.id === id);
     const newDeals = deals.map((d) =>
       d.id === id ? { ...d, isArchived: true } : d,
@@ -1228,8 +1481,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
     saveAndSet("leadcrm_deals", newDeals, setDeals);
   };
 
-  const addPipeline = (pipelineData: Omit<Pipeline, "id" | "tenantId">) => {
+  const addPipeline = async (pipelineData: Omit<Pipeline, "id" | "tenantId">): Promise<void> => {
     if (!tenant) return;
+
+    if (!USE_MOCK_DATA) {
+      try {
+        const dto = toBackendCreatePipeline(pipelineData) as any;
+        const res = await pipelineService.createPipeline(dto);
+        const pipeline = toFrontendPipeline((res as any).data ?? res) as Pipeline;
+        setPipelines((prev) => [pipeline, ...prev]);
+        addAuditLog("Pipeline Created", `Created pipeline '${pipeline.name}'.`);
+      } catch (err: any) {
+        throw new Error(err?.message ?? 'Failed to create pipeline');
+      }
+      return;
+    }
+
     const newPipeline: Pipeline = {
       ...pipelineData,
       id: uuid(),
@@ -1239,14 +1506,40 @@ export function DataProvider({ children }: { children: ReactNode }) {
     saveAndSet("leadcrm_pipelines", newPipelines, setPipelines);
   };
 
-  const updatePipeline = (id: string, updates: Partial<Pipeline>) => {
+  const updatePipeline = async (id: string, updates: Partial<Pipeline>): Promise<void> => {
+    if (!USE_MOCK_DATA) {
+      try {
+        const dto = toBackendUpdatePipeline(updates) as any;
+        const res = await pipelineService.updatePipeline(id, dto);
+        const pipeline = toFrontendPipeline((res as any).data ?? res) as Pipeline;
+        setPipelines((prev) => prev.map((p) => (p.id === id ? pipeline : p)));
+        addAuditLog("Pipeline Updated", `Updated pipeline '${pipeline.name}'.`);
+      } catch (err: any) {
+        throw new Error(err?.message ?? 'Failed to update pipeline');
+      }
+      return;
+    }
+
     const newPipelines = pipelines.map((p) =>
       p.id === id ? { ...p, ...updates } : p,
     );
     saveAndSet("leadcrm_pipelines", newPipelines, setPipelines);
   };
 
-  const deletePipeline = (id: string) => {
+  const deletePipeline = async (id: string): Promise<void> => {
+    if (!USE_MOCK_DATA) {
+      try {
+        await pipelineService.archivePipeline(id);
+        setPipelines((prev) =>
+          prev.map((p) => (p.id === id ? { ...p, isArchived: true } : p)),
+        );
+        addAuditLog("Pipeline Archived", `Archived pipeline id '${id}'.`);
+      } catch (err: any) {
+        throw new Error(err?.message ?? 'Failed to archive pipeline');
+      }
+      return;
+    }
+
     const original = pipelines.find((p) => p.id === id);
     const newPipelines = pipelines.map((p) =>
       p.id === id ? { ...p, isArchived: true } : p,

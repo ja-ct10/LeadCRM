@@ -12,6 +12,7 @@ import DealFilters from '../ui/deal-filters';
 import type { Deal, Task } from '@/store/types';
 import { usePagination } from '@/shared/hooks/usePagination';
 import { Pagination } from '@/shared/components/ui/pagination';
+import { toast } from 'sonner';
 
 function formatCurrency(value: number): string {
   return '₱' + Math.round(value).toLocaleString('en-PH');
@@ -116,11 +117,33 @@ export default function DealsPage() {
           isAutomatedOnly={false}
           isBillingModuleEnabled={isBillingModuleEnabled}
           onClose={() => setSelectedDeal(null)}
-          onUpdateDeal={(id, updates) => updateDeal(id, updates)}
-          onDeleteDeal={(deal: Deal) => { deleteDeal(deal.id); setSelectedDeal(null); }}
+          onUpdateDeal={async (id, updates) => {
+            try {
+              await updateDeal(id, updates);
+              toast.success("Deal updated successfully");
+            } catch (error: any) {
+              toast.error(error.message || "Failed to update deal");
+            }
+          }}
+          onDeleteDeal={async (deal: Deal) => {
+            try {
+              await deleteDeal(deal.id);
+              setSelectedDeal(null);
+              toast.success("Deal deleted successfully");
+            } catch (error: any) {
+              toast.error(error.message || "Failed to delete deal");
+            }
+          }}
           onAddTask={(taskData) => addTask(taskData)}
           onUpdateTask={(id, updates) => updateTask(id, updates)}
-          onMarkLost={(deal: Deal) => updateDeal(deal.id, { stageId: 'stage_lost' })}
+          onMarkLost={async (deal: Deal) => {
+            try {
+              await updateDeal(deal.id, { stageId: 'stage_lost' });
+              toast.success("Deal marked as lost");
+            } catch (error: any) {
+              toast.error(error.message || "Failed to update deal");
+            }
+          }}
           onNavigate={handleNavigate}
         />
       )}

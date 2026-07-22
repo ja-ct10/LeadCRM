@@ -24,4 +24,16 @@ export const pipelineService = {
 
   reorderDeals: (deals: Array<{ id: string; order: number; stageId: string }>): Promise<void> =>
     apiClient.patch<void>('/crm/deals/reorder', { deals }),
+
+  createPipeline: (data: any): Promise<ApiResponse<Pipeline>> =>
+    apiClient.post<ApiResponse<Pipeline>>('/crm/pipelines', data),
+
+  updatePipeline: (id: string, data: any): Promise<ApiResponse<Pipeline>> =>
+    apiClient.put<ApiResponse<Pipeline>>(`/crm/pipelines/${id}`, data),
+
+  deletePipeline: (id: string): Promise<void> =>
+    apiClient.delete<void>(`/crm/pipelines/${id}`),
+
+  archivePipeline: (id: string): Promise<void> =>
+    apiClient.patch<void>(`/crm/pipelines/${id}/archive`),
 };

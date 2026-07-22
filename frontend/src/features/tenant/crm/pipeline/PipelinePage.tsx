@@ -872,7 +872,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
   const canEditDeal = (deal: Deal) => canEditAllDeals || (canEditOwnDeals && deal.assignedUserId === user?.id);
   const canDeleteDeal = (deal: Deal) => canDeleteAllDeals || (canDeleteOwnDeals && deal.assignedUserId === user?.id);
 
-  const handleAddDeal = (e: React.FormEvent) => {
+  const handleAddDeal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canCreateDeal) return;
 
@@ -885,25 +885,29 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
       return;
     }
 
-    addDeal({ 
-      ...newDeal, 
-      pipelineId: activePipelineId,
-      order: deals.filter(d => d.pipelineId === activePipelineId && d.stageId === newDeal.stageId).length
-    } as any);
-    setIsModalOpen(false);
-    setNewDeal({ 
-      title: '', companyName: '', contactPerson: '', value: 0, priority: 'Medium', expectedCloseDate: '', description: '', assignedUserId: '', stageId: '',
-      leadSource: '', industry: '', location: '', campaign: '', customerType: 'New Customer', tags: ''
-    });
-    setDealTitleTouched(false);
-    setDealValueTouched(false);
+    try {
+      await addDeal({ 
+        ...newDeal, 
+        pipelineId: activePipelineId,
+        order: deals.filter(d => d.pipelineId === activePipelineId && d.stageId === newDeal.stageId).length
+      } as any);
+      toast.success("Deal created successfully");
+      setIsModalOpen(false);
+      setNewDeal({ 
+        title: '', companyName: '', contactPerson: '', value: 0, priority: 'Medium', expectedCloseDate: '', description: '', assignedUserId: '', stageId: '',
+        leadSource: '', industry: '', location: '', campaign: '', customerType: 'New Customer', tags: ''
+      });
+      setDealTitleTouched(false);
+      setDealValueTouched(false);
+    } catch (error: any) {
+      toast.error(error.message || "Failed to create deal");
+    }
   };
 
-  const handleAddPipeline = (e: React.FormEvent) => {
+  const handleAddPipeline = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPipelineName.trim()) return;
     
-    const newPipelineId = uuid();
     // Create a pipeline with default stages
     const defaultStages: Stage[] = [
       { id: uuid(), name: 'Contact', order: 0 },
@@ -914,13 +918,14 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
       { id: uuid(), name: 'Closed Lost', order: 5 },
     ];
     
-    addPipeline({ name: newPipelineName, stages: defaultStages });
-    setIsPipelineModalOpen(false);
-    setNewPipelineName('');
-    
-    // We can't directly set activePipelineId to newPipelineId because addPipeline generates the ID internally.
-    // Wait, I can generate it here and pass it, or just let it be. Actually, `addPipeline` in DataContext ignores the ID we pass if it's Omit<Pipeline, 'id'>.
-    // Let's just leave it, they can click the tab.
+    try {
+      await addPipeline({ name: newPipelineName, stages: defaultStages });
+      setIsPipelineModalOpen(false);
+      setNewPipelineName('');
+      toast.success("Pipeline created successfully");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to create pipeline");
+    }
   };
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -980,7 +985,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
         const targetStage = activePipeline?.stages.find(s => s.id === targetStageId);
         // Skip immediate move to 'Closed Lost' to avoid flickering/premature state change
         if (targetStage?.name !== 'Closed Lost') {
-          updateDeal(String(activeId), updates);
+          updateDeal(String(activeId), updates).catch(console.error);
         }
       }
     } else if (overDeal) {
@@ -993,7 +998,9 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
           } else if (swimlaneBy === 'client' && activeDeal.companyName !== overDeal.companyName) {
             updates.companyName = overDeal.companyName;
           }
-          updateDeal(String(activeId), updates);
+          if (Object.keys(updates).length > 0) {
+            updateDeal(String(activeId), updates).catch(console.error);
+          }
         }
       }
     }
@@ -1028,7 +1035,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
         pipelineId: targetPipeline.id,
         stageId: targetPipeline.stages[0].id,
         order: deals.filter(d => d.pipelineId === targetPipeline.id && d.stageId === targetPipeline.stages[0].id).length
-      });
+      }).catch(console.error);
       setActivePipelineId(targetPipeline.id);
       return;
     }
@@ -1057,7 +1064,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
       }
 
       if (Object.keys(updates).length > 0) {
-        updateDeal(String(activeId), updates);
+        updateDeal(String(activeId), updates).catch(console.error);
       }
       return;
     }
@@ -1096,7 +1103,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
         }
         
         if (Object.keys(updates).length > 0) {
-          updateDeal(String(activeId), updates);
+          updateDeal(String(activeId), updates).catch(console.error);
         }
       } else {
         // Dropped on a deal in a different stage
@@ -1114,20 +1121,30 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
     }
   };
 
-  const handleSaveLostReason = () => {
+  const handleSaveLostReason = async () => {
     if (dealBeingLost) {
-      updateDeal(dealBeingLost.id, { lostReason });
-      setIsLostReasonModalOpen(false);
-      setDealBeingLost(null);
-      setLostReason('');
+      try {
+        await updateDeal(dealBeingLost.id, { lostReason });
+        setIsLostReasonModalOpen(false);
+        setDealBeingLost(null);
+        setLostReason('');
+        toast.success("Deal updated successfully");
+      } catch (error: any) {
+        toast.error(error.message || "Failed to update deal");
+      }
     }
   };
 
-  const handleUpdatePipeline = (e: React.FormEvent) => {
+  const handleUpdatePipeline = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingPipeline) return;
-    updatePipeline(editingPipeline.id, editingPipeline);
-    setEditingPipeline(null);
+    try {
+      await updatePipeline(editingPipeline.id, editingPipeline);
+      setEditingPipeline(null);
+      toast.success("Pipeline updated successfully");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to update pipeline");
+    }
   };
 
   const handleDeletePipeline = (id: string) => {
@@ -1139,25 +1156,33 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
     setIsDeletePipelineModalOpen(true);
   };
 
-  const handleConfirmDeletePipeline = () => {
+  const handleConfirmDeletePipeline = async () => {
     if (pipelineToDeleteId) {
-      deletePipeline(pipelineToDeleteId);
-      if (activePipelineId === pipelineToDeleteId) {
-        setActivePipelineId(pipelines.find(p => p.id !== pipelineToDeleteId)?.id || '');
+      try {
+        await deletePipeline(pipelineToDeleteId);
+        if (activePipelineId === pipelineToDeleteId) {
+          setActivePipelineId(pipelines.find(p => p.id !== pipelineToDeleteId)?.id || '');
+        }
+        setIsDeletePipelineModalOpen(false);
+        setPipelineToDeleteId(null);
+        toast.success('Pipeline archived successfully.');
+      } catch (error: any) {
+        toast.error(error.message || "Failed to archive pipeline");
       }
-      setIsDeletePipelineModalOpen(false);
-      setPipelineToDeleteId(null);
-      toast.success('Pipeline archived successfully.');
     }
   };
 
-  const handleConfirmArchiveDeal = () => {
+  const handleConfirmArchiveDeal = async () => {
     if (dealToDelete) {
-      deleteDeal(dealToDelete.id);
-      setSelectedDealId(null);
-      setIsDeleteDealModalOpen(false);
-      setDealToDelete(null);
-      toast.success('Deal archived successfully.');
+      try {
+        await deleteDeal(dealToDelete.id);
+        setSelectedDealId(null);
+        setIsDeleteDealModalOpen(false);
+        setDealToDelete(null);
+        toast.success('Deal archived successfully.');
+      } catch (error: any) {
+        toast.error(error.message || "Failed to archive deal");
+      }
     }
   };
 

@@ -199,55 +199,71 @@ export default function ContactsPage() {
     } as any);
   };
 
-  const handleSaveForm = (data: Partial<Contact>) => {
-    if (editingLead) {
-      updateContact(editingLead.id, data);
-      toast.success("Profile updated successfully");
-      // Update viewing contact if it's the same one
-      if (viewingLead?.id === editingLead.id) {
-        setViewingLead({ ...viewingLead, ...data });
+  const handleSaveForm = async (data: Partial<Contact>) => {
+    try {
+      if (editingLead) {
+        await updateContact(editingLead.id, data);
+        toast.success("Profile updated successfully");
+        // Update viewing contact if it's the same one
+        if (viewingLead?.id === editingLead.id) {
+          setViewingLead({ ...viewingLead, ...data });
+        }
+      } else {
+        const contactPerson =
+          `${data.firstName || ""} ${data.lastName || ""}`.trim();
+        const newLeadParams: Omit<
+          Contact,
+          "id" | "tenantId" | "createdAt" | "score"
+        > = {
+          ...data,
+          customerType: data.customerType || "Individual",
+          companyName: data.companyName || "",
+          contactPerson: contactPerson || "Unnamed Lead",
+          jobTitle: data.jobTitle || "",
+          email: data.email || "",
+          phone: data.phone || "",
+          serviceRequired: data.serviceRequired || "",
+          leadSource: data.leadSource || "Added Manually",
+          estimatedValue: data.estimatedValue || 0,
+          assignedUserId: data.assignedUserId || "",
+          expectedCloseDate: data.expectedCloseDate || "",
+          notes: data.notes || "",
+          status: data.status || "Cold",
+        };
+        await addContact(newLeadParams);
+        toast.success("Profile created successfully");
       }
-    } else {
-      const contactPerson =
-        `${data.firstName || ""} ${data.lastName || ""}`.trim();
-      const newLeadParams: Omit<
-        Contact,
-        "id" | "tenantId" | "createdAt" | "score"
-      > = {
-        ...data,
-        customerType: data.customerType || "Individual",
-        companyName: data.companyName || "",
-        contactPerson: contactPerson || "Unnamed Lead",
-        jobTitle: data.jobTitle || "",
-        email: data.email || "",
-        phone: data.phone || "",
-        serviceRequired: data.serviceRequired || "",
-        leadSource: data.leadSource || "Added Manually",
-        estimatedValue: data.estimatedValue || 0,
-        assignedUserId: data.assignedUserId || "",
-        expectedCloseDate: data.expectedCloseDate || "",
-        notes: data.notes || "",
-        status: data.status || "Cold",
-      };
-      addContact(newLeadParams);
-      toast.success("Profile created successfully");
+      setIsFormOpen(false);
+    } catch (error: any) {
+      toast.error(error.message || "Failed to save profile");
     }
-    setIsFormOpen(false);
   };
 
-  const handleArchive = (contact: Contact) => {
-    deleteContact(contact.id);
-    toast.success("Profile archived successfully");
+  const handleArchive = async (contact: Contact) => {
+    try {
+      await deleteContact(contact.id);
+      toast.success("Profile archived successfully");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to archive profile");
+    }
   };
 
-  const handleRestore = (contact: Contact) => {
-    restoreRecord("Contact", contact.id);
-    toast.success("Profile restored successfully");
+  const handleRestore = async (contact: Contact) => {
+    try {
+      await restoreRecord("Contact", contact.id);
+      toast.success("Profile restored successfully");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to restore profile");
+    }
   };
 
-  const handleArchiveOrg = (org: any) => {
-    deleteOrganization(org.id);
-    toast.success("Organization archived successfully");
+  const handleArchiveOrg = async (org: any) => {
+    try {
+      await deleteOrganization(org.id);
+      toast.success("Organization archived successfully");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to archive organization");
+    }
   };
 
   const handleRestoreOrg = (org: any) => {
@@ -416,13 +432,17 @@ export default function ContactsPage() {
           onClose={() => setDetailSheetClient(null)}
           client={detailSheetClient.client}
           clientType={detailSheetClient.type}
-          onArchive={(id, type) => {
-            if (type === 'individual') {
-              deleteContact(id);
-              toast.success("Profile archived successfully");
-            } else {
-              deleteOrganization(id);
-              toast.success("Organization archived successfully");
+          onArchive={async (id, type) => {
+            try {
+              if (type === 'individual') {
+                await deleteContact(id);
+                toast.success("Profile archived successfully");
+              } else {
+                await deleteOrganization(id);
+                toast.success("Organization archived successfully");
+              }
+            } catch (error: any) {
+              toast.error(error.message || "Failed to archive");
             }
           }}
         />

@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect } from "react";
 import { Contact, Organization } from "@/store/types";
@@ -117,7 +117,7 @@ export function AddContactForm({ initialData, onSave, onCancel }: AddContactForm
     }
   }, [initialData, initialData?.organizationId]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const newErrors: Record<string, string> = {};
     const isOrg = formData.customerType === "Organization";
@@ -136,11 +136,11 @@ export function AddContactForm({ initialData, onSave, onCancel }: AddContactForm
     let finalOrgId = formData.organizationId;
     if (isOrg) {
       if (formData.organizationId === "NEW_TEMP") {
-        const createdId = addOrganization({ name: formData.companyName || "", industry: formData.businessType || "", size: formData.companySize || "", website: formData.orgWebsite || "", taxId: formData.taxId || "" });
+        const createdId = await addOrganization({ name: formData.companyName || "", industry: formData.businessType || "", size: formData.companySize || "", website: formData.orgWebsite || "", taxId: formData.taxId || "" });
         if (createdId) { finalOrgId = createdId; toast.success(`Organization "${formData.companyName}" successfully created`); }
         else { toast.error("Failed to create organization record"); return; }
       } else if (formData.organizationId) {
-        updateOrganization(formData.organizationId, { industry: formData.businessType || "", size: formData.companySize || "", website: formData.orgWebsite || "", taxId: formData.taxId || "" });
+        await updateOrganization(formData.organizationId, { industry: formData.businessType || "", size: formData.companySize || "", website: formData.orgWebsite || "", taxId: formData.taxId || "" });
       }
     } else { finalOrgId = ""; }
     const contactPerson = `${formData.firstName || ""} ${formData.lastName || ""}`.trim();
