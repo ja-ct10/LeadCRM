@@ -43,3 +43,54 @@ export async function logout(req: Request, res: Response): Promise<void> {
 export async function me(req: Request, res: Response): Promise<void> {
   res.json({ success: true, data: { user: req.user } });
 }
+
+export async function seedDemo(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { PrismaClient } = require('@prisma/client');
+    const bcrypt = require('bcryptjs');
+    const prisma = new PrismaClient();
+
+    const tenant = await prisma.tenant.upsert({
+      where: { slug: 'demo-corp' },
+      update: {},
+      create: {
+        name: 'Demo Corp Solutions',
+        slug: 'demo-corp',
+        status: 'ACTIVE',
+        subscriptionStatus: 'ACTIVE',
+        plan: 'ENTERPRISE',
+      },
+    });
+
+    const passwordHash = await bcrypt.hash('123456', 10);
+
+    const user = await prisma.user.upsert({
+      where: { email: 'admin@democorp.com' },
+      update: {
+        passwordHash,
+        tenantId: tenant.id,
+        status: 'ACTIVE',
+      },
+      create: {
+        tenantId: tenant.id,
+        email: 'admin@democorp.com',
+        firstName: 'Alice',
+        lastName: 'Admin',
+        passwordHash,
+        role: 'Client Admin',
+        status: 'ACTIVE',
+      },
+    });
+
+    res.json({
+      success: true,
+      message: 'Demo user successfully seeded!',
+      credentials: {
+        email: 'admin@democorp.com',
+        password: '123456'
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+}
