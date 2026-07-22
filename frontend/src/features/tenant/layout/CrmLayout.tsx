@@ -50,15 +50,6 @@ export default function CrmLayout({ children }: LayoutProps) {
         </div>
       </main>
 
-      <button
-        onClick={() => setNotesOpen(true)}
-        className="fixed bottom-6 right-6 p-3.5 bg-blue-500 hover:bg-blue-600 text-white rounded-full shadow-2xl z-40 transition-all hover:scale-110 active:scale-95 flex items-center justify-center cursor-pointer group border border-blue-400/40"
-        title="Quick Scratchpad Notes"
-        id="floating-notes-toggle"
-      >
-        <StickyNote size={20} className="group-hover:rotate-12 transition-transform" />
-      </button>
-
       <NotesSidePanel isOpen={notesOpen} onClose={() => setNotesOpen(false)} />
     </div>
   );

@@ -242,51 +242,97 @@ export default function ContactsPage() {
   }
 
   return (
-    <div className="w-full max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 space-y-6">
-      {/* Header & Filters */}
-      <div className="flex flex-col xl:flex-row xl:items-start justify-between gap-4">
-        <div className="shrink-0 mb-2 xl:mb-0">
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
-            Client Profiles
-          </h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Manage all your customers, prospects, and organization clients in
-            one place.
+    <div className="w-full space-y-4">
+      {/* 1. Standardized Header Row */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1 border-b border-slate-200 dark:border-slate-800">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">
+              Client Profiles
+            </h1>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+              {filteredLeads.length} total
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Manage all your customer profiles, active leads, and corporate accounts in one place.
           </p>
         </div>
 
-        <div className="flex-1 w-full justify-end">
-          <ClientFilters
-            searchTerm={searchTerm}
-            setSearchTerm={setSearchTerm}
-            customerTypeFilter={customerTypeFilter}
-            setCustomerTypeFilter={setCustomerTypeFilter}
-            selectedStatuses={selectedStatuses}
-            setSelectedStatuses={setSelectedStatuses}
-            selectedOwners={selectedOwners}
-            setSelectedOwners={setSelectedOwners}
-            selectedSources={selectedSources}
-            setSelectedSources={setSelectedSources}
-            usersList={users || []}
-            currentUserEmail={user?.email || ""}
-            smartView={smartView}
-            setSmartView={setSmartView}
-            actions={
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={handleAddNew}
-                  className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-blue-700 active:scale-95 transition-all shadow-md shadow-blue-500/20"
-                >
-                  <Plus size={18} /> Add Profile
-                </button>
-              </div>
-            }
-          />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleAddNew}
+            className="flex items-center gap-1.5 h-9 px-3 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 cursor-pointer"
+          >
+            <Plus size={15} />
+            <span>Add Profile</span>
+          </button>
         </div>
       </div>
 
+      {/* 2. Overview Operational KPI Strip */}
+      <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-lg p-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 text-xs">
+        <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
+          <span className="text-slate-500 dark:text-slate-400 font-medium">Total Profiles</span>
+          <div className="flex items-baseline gap-1.5 mt-1">
+            <span className="text-base font-bold text-slate-900 dark:text-white">{contacts.filter(c => !c.isArchived).length}</span>
+            <span className="text-[11px] text-slate-500">records</span>
+          </div>
+        </div>
+
+        <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
+          <span className="text-slate-500 dark:text-slate-400 font-medium">Active Leads</span>
+          <div className="flex items-baseline gap-1.5 mt-1">
+            <span className="text-base font-bold text-slate-900 dark:text-white">{contacts.filter(c => ['Hot', 'Warm', 'Cold'].includes(c.status) && !c.isArchived).length}</span>
+            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">In funnel</span>
+          </div>
+        </div>
+
+        <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
+          <span className="text-slate-500 dark:text-slate-400 font-medium">Converted Customers</span>
+          <div className="flex items-baseline gap-1 mt-1">
+            <span className="text-base font-bold text-slate-900 dark:text-white">{contacts.filter(c => c.status === 'Closed' && !c.isArchived).length}</span>
+            <span className="text-[11px] text-slate-500">closed</span>
+          </div>
+        </div>
+
+        <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
+          <span className="text-slate-500 dark:text-slate-400 font-medium">Individuals</span>
+          <div className="flex items-baseline gap-1 mt-1">
+            <span className="text-base font-bold text-slate-900 dark:text-white">{contacts.filter(c => (c.customerType === 'Individual' || (!c.customerType && !c.companyName)) && !c.isArchived).length}</span>
+            <span className="text-[11px] text-slate-500">accounts</span>
+          </div>
+        </div>
+
+        <div className="flex flex-col justify-between">
+          <span className="text-slate-500 dark:text-slate-400 font-medium">Organizations</span>
+          <div className="flex items-baseline gap-1.5 mt-1">
+            <span className="text-base font-bold text-purple-600 dark:text-purple-400">{contacts.filter(c => (c.customerType === 'Organization' || c.companyName) && !c.isArchived).length}</span>
+            <span className="text-[11px] text-slate-500">corporate</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Toolbar & Filters */}
+      <ClientFilters
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+        customerTypeFilter={customerTypeFilter}
+        setCustomerTypeFilter={setCustomerTypeFilter}
+        selectedStatuses={selectedStatuses}
+        setSelectedStatuses={setSelectedStatuses}
+        selectedOwners={selectedOwners}
+        setSelectedOwners={setSelectedOwners}
+        selectedSources={selectedSources}
+        setSelectedSources={setSelectedSources}
+        usersList={users || []}
+        currentUserEmail={user?.email || ""}
+        smartView={smartView}
+        setSmartView={setSmartView}
+      />
+
       {/* Table */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-white/10 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
         <ClientTable
           data={filteredLeads}
           viewMode={smartView === "Organization Customers" ? "organizations" : "contacts"}
@@ -302,6 +348,7 @@ export default function ContactsPage() {
           showArchived={smartView === "Archived"}
         />
       </div>
+
 
       {/* Forms and Sheets */}
       {isFormOpen && (

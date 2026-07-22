@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/store/AuthContext';
@@ -195,37 +195,41 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-wrap justify-between items-start gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Dashboard</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Welcome back, {user.firstName}. Here's what's happening today.
-          </p>
+    <div className="space-y-4">
+      {/* 1. Header Section - Compact Enterprise Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+        <div className="flex items-baseline gap-2.5 flex-wrap">
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Dashboard</h1>
+          <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">
+            — Welcome back, {user.firstName}. Here's your workspace overview for today
+          </span>
         </div>
-        <button onClick={handleRefresh} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.08] text-slate-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition-colors shadow-sm">
-          <RefreshCw size={14} /> Sync Metrics
+        <button 
+          onClick={handleRefresh} 
+          className="flex items-center gap-1.5 h-9 px-3 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-xs cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+        >
+          <RefreshCw size={14} className="text-slate-500" />
+          <span>Sync Metrics</span>
         </button>
       </div>
 
-      {/* ── Stat Cards ─────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+      {/* ── Stat Cards Operational Strip ───────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {statCards.map(({ label, value, icon: Icon, color, trend, up }) => {
           const c = colorMap[color] || colorMap.blue;
           return (
-            <div key={label} className="bg-white dark:bg-white/[0.02] p-5 rounded-2xl border border-gray-200 dark:border-white/[0.06] shadow-sm hover:shadow-md dark:hover:bg-white/[0.04] transition-all group flex flex-col gap-3">
+            <div key={label} className="bg-white dark:bg-slate-900 p-3.5 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs hover:border-slate-300 dark:hover:border-slate-700 transition-colors flex flex-col gap-2">
               <div className="flex items-start justify-between">
-                <div className={`p-2.5 rounded-xl ${c.bg} ${c.text} shadow-sm group-hover:shadow-lg group-hover:${c.glow} transition-shadow`}>
-                  <Icon size={18} />
+                <div className={`p-2 rounded-md ${c.bg} ${c.text}`}>
+                  <Icon size={16} />
                 </div>
-                <span className={`text-[11px] font-semibold flex items-center gap-0.5 ${up ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}`}>
-                  {up ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}{trend}
+                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${up ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'}`}>
+                  {trend}
                 </span>
               </div>
               <div>
-                <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-0.5">{label}</p>
-                <p className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight leading-none">{value}</p>
+                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">{label}</span>
+                <span className="text-base font-bold text-slate-900 dark:text-white tracking-tight mt-0.5 block">{value}</span>
               </div>
             </div>
           );
@@ -233,6 +237,7 @@ export default function Dashboard() {
       </div>
 
       {/* ── Middle row: Revenue Trend + Action Center ─────── */}
+
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* Area Chart */}
         <div className="lg:col-span-8 bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.06] shadow-sm flex flex-col min-h-[320px]">

@@ -17,24 +17,24 @@ export default function Topbar({ onOpenSidebar, onOpenNotes }: TopbarProps) {
   const { theme, toggleTheme, isDark } = useTheme();
 
   return (
-    <header className="h-16 bg-slate-50/80 dark:bg-slate-950/80 backdrop-blur-xl border-b border-slate-200/60 dark:border-white/[0.05] flex items-center justify-between px-4 lg:px-8 shrink-0 sticky top-0 z-30 transition-colors duration-300">
+    <header className="h-14 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 lg:px-6 shrink-0 sticky top-0 z-30 transition-colors duration-200">
       <div className="flex items-center gap-4 flex-1">
         <button
-          className="lg:hidden text-gray-400 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-white/[0.05] p-2 rounded-lg transition-colors"
+          className="lg:hidden text-slate-500 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-slate-800 p-2 rounded-md transition-colors cursor-pointer"
           onClick={onOpenSidebar}
         >
-          <Menu size={20} />
+          <Menu size={18} />
         </button>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         {user?.tenantId !== 'system' && (
-          <div className="hidden sm:flex items-center gap-2 bg-gray-50 dark:bg-white/[0.02] px-3 py-1.5 rounded-full border border-gray-200 dark:border-white/[0.08]">
-            <span className="text-xs font-medium text-gray-500 dark:text-slate-500">Role:</span>
+          <div className="hidden sm:flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700">
+            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Role:</span>
             <select
               value={user?.role}
               onChange={(e) => switchRole(e.target.value)}
-              className="bg-transparent text-xs font-medium text-gray-700 dark:text-slate-300 focus:outline-none cursor-pointer"
+              className="bg-transparent text-xs font-medium text-slate-900 dark:text-white focus:outline-none cursor-pointer"
             >
               {roles.map(r => (
                 <option key={r.id} value={r.name} className="dark:bg-slate-900">{r.name}</option>
@@ -45,31 +45,32 @@ export default function Topbar({ onOpenSidebar, onOpenNotes }: TopbarProps) {
 
         {user?.role === 'System Admin' && (
           <button onClick={resetDemoData}
-            className="text-xs bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 px-3 py-1.5 rounded-full hover:bg-red-100 dark:hover:bg-red-500/20 transition-colors font-medium border border-red-200 dark:border-red-500/30 cursor-pointer">
+            className="text-xs bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 px-2.5 py-1 rounded-md hover:bg-rose-100 dark:hover:bg-rose-900/60 transition-colors font-medium border border-rose-200 dark:border-rose-800/60 cursor-pointer">
             Reset Demo
           </button>
         )}
 
         <button onClick={toggleTheme}
-          className="relative p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors rounded-full hover:bg-gray-100 dark:hover:bg-white/[0.05]"
+          className="relative p-2 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
           title={`Switch to ${theme === 'Light' ? 'Dark' : 'Light'} Mode`}
           id="header-theme-toggle">
-          {isDark ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5" />}
+          {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
         </button>
 
         <button onClick={onOpenNotes}
-          className="relative p-2 text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 transition-colors rounded-full hover:bg-blue-500/10"
+          className="relative p-2 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors rounded-md hover:bg-blue-50 dark:hover:bg-blue-950/40 cursor-pointer"
           title="Open Scratchpad Notes"
           id="header-notes-toggle">
-          <StickyNote className="w-5 h-5" />
-          <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-amber-500 rounded-full border-2 border-slate-100 dark:border-slate-900 animate-bounce" />
+          <StickyNote className="w-4 h-4" />
+          <span className="absolute top-1 right-1 w-2 h-2 bg-amber-500 rounded-full animate-bounce" />
         </button>
 
-        <button className="relative p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors rounded-full hover:bg-gray-100 dark:hover:bg-white/[0.05]">
-          <Bell size={18} />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-blue-500 rounded-full border-2 border-slate-50 dark:border-slate-950" />
+        <button className="relative p-2 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
+          <Bell size={16} />
+          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-blue-600 rounded-full" />
         </button>
       </div>
     </header>
+
   );
 }

@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useData } from '@/store/DataContext';
@@ -400,21 +400,18 @@ export default function AuditLogsPage() {
   }, [filteredLogs, selectedLogId]);
 
   return (
-    <div className="space-y-6">
-      {/* Top Title Bar */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-gray-200 dark:border-white/[0.05] pb-4">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-2 tracking-tight">
-            <Activity className="text-blue-500" size={24} />
-            <span>Audit Trail & Activity Log</span>
-          </h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Real-time track record of user mutations, state transitions, security changes, and system operations.
-          </p>
+    <div className="space-y-4">
+      {/* 1. Header Section - Compact Enterprise Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+        <div className="flex items-baseline gap-2.5 flex-wrap">
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Audit Trail & Activity Log</h1>
+          <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">
+            — Track user mutations, state transitions, security changes, and system operations
+          </span>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           {/* Real-time Toggle Switch */}
-          <div className="flex items-center gap-2.5 px-3 py-1.5 bg-slate-100/50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-xl">
+          <div className="flex items-center gap-2 px-2.5 py-1 bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-md">
             <div className="relative flex items-center">
               <button
                 onClick={() => {
@@ -466,7 +463,7 @@ export default function AuditLogsPage() {
 
           <button
             onClick={handleExportCSV}
-            className="flex items-center gap-2 px-4 py-2 border border-gray-200 dark:border-white/[0.08] rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-white/[0.03] transition-all text-slate-700 dark:text-slate-300 active:scale-95 cursor-pointer"
+            className="flex items-center gap-1.5 h-9 px-3 border border-slate-300 dark:border-slate-700 rounded-md text-xs font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-slate-700 dark:text-slate-200 cursor-pointer shadow-xs"
           >
             <Download size={14} />
             <span>Export CSV</span>
@@ -475,7 +472,7 @@ export default function AuditLogsPage() {
           {(user?.role === 'System Admin' || user?.role === 'Client Admin') && (
             <button
               onClick={handleClearLogs}
-              className="flex items-center gap-2 px-4 py-2 bg-red-500/10 dark:bg-red-500/5 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/20 rounded-xl text-sm font-medium transition-all active:scale-95 cursor-pointer"
+              className="flex items-center gap-1.5 h-9 px-3 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60 rounded-md text-xs font-medium transition-colors cursor-pointer shadow-xs"
               title="Purge operations log entries"
             >
               <Trash2 size={14} />
@@ -487,7 +484,7 @@ export default function AuditLogsPage() {
 
       {/* Metrics Cards Banner */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white dark:bg-white/[0.02] p-5 rounded-2xl border border-gray-200 dark:border-white/[0.05] shadow-sm">
+        <div className="bg-white dark:bg-slate-900 p-3.5 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs">
           <p className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider">Total Recorded Logs</p>
           <div className="flex items-baseline gap-2 mt-2">
             <span className="text-2.5xl font-bold text-slate-900 dark:text-white">{metrics.total}</span>
@@ -495,7 +492,7 @@ export default function AuditLogsPage() {
           </div>
         </div>
 
-        <div className="bg-white dark:bg-white/[0.02] p-5 rounded-2xl border border-gray-200 dark:border-white/[0.05] shadow-sm">
+        <div className="bg-white dark:bg-slate-900 p-3.5 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs">
           <p className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider">Events (Last 24 Hours)</p>
           <div className="flex items-baseline gap-2 mt-2">
             <span className="text-2.5xl font-bold text-blue-600 dark:text-blue-400">{metrics.last24h}</span>
@@ -503,7 +500,7 @@ export default function AuditLogsPage() {
           </div>
         </div>
 
-        <div className="bg-white dark:bg-white/[0.02] p-5 rounded-2xl border border-gray-200 dark:border-white/[0.05] shadow-sm">
+        <div className="bg-white dark:bg-slate-900 p-3.5 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs">
           <p className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider">Primary Change Agent</p>
           <div className="flex items-baseline gap-2 mt-2">
             <span className="text-2.5xl font-bold text-slate-900 dark:text-white capitalize truncate max-w-[150px]" title={metrics.topActor}>
@@ -513,7 +510,7 @@ export default function AuditLogsPage() {
           </div>
         </div>
 
-        <div className="bg-white dark:bg-white/[0.02] p-5 rounded-2xl border border-gray-200 dark:border-white/[0.05] shadow-sm">
+        <div className="bg-white dark:bg-slate-900 p-3.5 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs">
           <p className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider">Most Frequent Activity</p>
           <div className="flex items-baseline gap-2 mt-2">
             <span className="text-lg font-bold text-slate-950 dark:text-slate-200 truncate max-w-[200px]" title={metrics.topAction}>
@@ -524,7 +521,7 @@ export default function AuditLogsPage() {
       </div>
 
       {/* Activity Visualizer Panel (Recharts) */}
-      <div className="bg-white dark:bg-white/[0.02] p-5 rounded-2xl border border-gray-200 dark:border-white/[0.05] shadow-sm space-y-4">
+      <div className="bg-white dark:bg-slate-900 p-3.5 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 dark:border-white/[0.03] pb-3">
           <div className="flex items-center gap-2">
             <div className="p-1.5 bg-blue-500/10 text-blue-500 rounded-lg">

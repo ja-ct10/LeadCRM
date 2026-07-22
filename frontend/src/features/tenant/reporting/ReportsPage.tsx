@@ -69,26 +69,30 @@ export default function ReportsPage() {
   const COLORS = ['#0A6EFF', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-8">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-1 tracking-tight">Analytics & Reports</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Gain insights into your sales performance.</p>
+    <div className="space-y-4">
+      {/* 1. Header Section - Compact Enterprise Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+        <div className="flex items-baseline gap-2.5 flex-wrap">
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Analytics & Reports</h1>
+          <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">
+            — Gain insights into sales performance, lead attribution, and team velocity
+          </span>
         </div>
-        <button className="flex items-center gap-2 bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] text-slate-700 dark:text-slate-300 px-4 py-2.5 rounded-full text-sm font-medium hover:bg-gray-50 dark:hover:bg-white/[0.04] hover:text-slate-900 dark:hover:text-white transition-colors shadow-sm">
-          <Download size={16} /> Export CSV
+        <button className="flex items-center gap-1.5 h-9 px-3 text-xs font-medium bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-xs cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+          <Download size={14} className="text-slate-500" />
+          <span>Export CSV</span>
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Revenue Trend */}
-        <div className="bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl shadow-lg">
-          <div className="flex items-center justify-between mb-6">
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs">
+          <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Revenue Trend</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Last 6 Months</p>
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Revenue Trend</h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Last 6 Months</p>
             </div>
-            <div className="p-2.5 bg-blue-500/10 rounded-xl text-blue-400 border border-blue-500/20 shadow-[0_0_10px_rgba(59,130,246,0.1)]"><TrendingUp size={20} /></div>
+            <div className="p-2 bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400 rounded-md border border-blue-200 dark:border-blue-800/60"><TrendingUp size={16} /></div>
           </div>
           <div className="h-72 relative w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
@@ -100,34 +104,35 @@ export default function ReportsPage() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                <XAxis dataKey="name" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} dy={10} />
-                <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value: number) => `$${value / 1000}k`} dx={-10} />
+                <XAxis dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} dy={10} />
+                <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(value: number) => `₱${value / 1000}k`} dx={-10} />
                 <Tooltip 
-                  contentStyle={{ backgroundColor: '#030712', borderColor: 'rgba(255,255,255,0.1)', color: '#f8fafc', borderRadius: '12px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)' }}
+                  contentStyle={{ backgroundColor: '#0f172a', borderColor: 'rgba(255,255,255,0.1)', color: '#f8fafc', borderRadius: '8px', fontSize: '12px' }}
                   itemStyle={{ color: '#f8fafc', fontWeight: 500 }}
                 />
-                <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#0A6EFF" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" activeDot={{ r: 6, fill: '#0A6EFF', stroke: '#030712', strokeWidth: 2 }} />
+                <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#0A6EFF" strokeWidth={2} fillOpacity={1} fill="url(#colorRevenue)" activeDot={{ r: 5, fill: '#0A6EFF', stroke: '#0f172a', strokeWidth: 2 }} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
         {/* Pipeline Value */}
-        <div className="bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl shadow-lg">
-          <div className="flex items-center justify-between mb-6">
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs">
+          <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Pipeline Value</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">By Stage</p>
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Pipeline Value</h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">By Stage</p>
+
             </div>
           </div>
           <div className="h-72 relative w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               <BarChart data={pipelineData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                <XAxis dataKey="name" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} dy={10} />
-                <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value: number) => `$${value / 1000}k`} dx={-10} />
+                <XAxis dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} dy={10} />
+                <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(value: number) => `₱${value / 1000}k`} dx={-10} />
                 <Tooltip 
-                  contentStyle={{ backgroundColor: '#030712', borderColor: 'rgba(255,255,255,0.1)', color: '#f8fafc', borderRadius: '12px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)' }}
+                  contentStyle={{ backgroundColor: '#0f172a', borderColor: 'rgba(255,255,255,0.1)', color: '#f8fafc', borderRadius: '8px', fontSize: '12px' }}
                   cursor={{ fill: 'rgba(255,255,255,0.02)' }}
                 />
                 <Bar dataKey="value" name="Value" fill="#10B981" radius={[6, 6, 0, 0]} barSize={28} />
@@ -137,11 +142,11 @@ export default function ReportsPage() {
         </div>
 
         {/* Contact Status */}
-        <div className="bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl shadow-lg">
-          <div className="flex items-center justify-between mb-6">
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs">
+          <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Contact Status</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Current Distribution</p>
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Contact Status</h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Current Distribution</p>
             </div>
           </div>
           <div className="h-72 flex items-center justify-center relative w-full min-w-0">
@@ -165,7 +170,7 @@ export default function ReportsPage() {
                     ))}
                   </Pie>
                   <Tooltip 
-                    contentStyle={{ backgroundColor: '#030712', borderColor: 'rgba(255,255,255,0.1)', color: '#f8fafc', borderRadius: '12px', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)' }}
+                    contentStyle={{ backgroundColor: '#0f172a', borderColor: 'rgba(255,255,255,0.1)', color: '#f8fafc', borderRadius: '8px', fontSize: '12px' }}
                     itemStyle={{ fontWeight: 500 }}
                   />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }} />
@@ -178,28 +183,28 @@ export default function ReportsPage() {
         </div>
 
         {/* Team Leaderboard */}
-        <div className="bg-white dark:bg-white/[0.02] rounded-2xl border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl shadow-lg overflow-hidden flex flex-col">
-          <div className="p-6 border-b border-gray-200 dark:border-white/[0.05] flex items-center justify-between">
+        <div className="bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden flex flex-col">
+          <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Team Leaderboard</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Top performers this month</p>
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Team Leaderboard</h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Top performers this month</p>
             </div>
-            <div className="p-2.5 bg-yellow-500/10 rounded-xl text-yellow-500 border border-yellow-500/20 shadow-[0_0_10px_rgba(234,179,8,0.1)]"><Trophy size={20} /></div>
+            <div className="p-2 bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400 rounded-md border border-amber-200 dark:border-amber-800/60"><Trophy size={16} /></div>
           </div>
           <div className="flex-1 overflow-auto">
             <table className="w-full text-left text-sm text-slate-700 dark:text-slate-300">
-              <thead className="bg-white dark:bg-white/[0.02] text-slate-500 dark:text-slate-400">
+              <thead className="bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400">
                 <tr>
-                  <th className="px-6 py-4 font-medium">Sales Rep</th>
-                  <th className="px-6 py-4 font-medium">Deals Won</th>
-                  <th className="px-6 py-4 font-medium text-right">Revenue</th>
+                  <th className="px-4 py-3 font-medium">Sales Rep</th>
+                  <th className="px-4 py-3 font-medium">Deals Won</th>
+                  <th className="px-4 py-3 font-medium text-right">Revenue</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/[0.05]">
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                 {userPerformance.length > 0 ? (
                   userPerformance.map((u, i) => (
-                    <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-white/[0.02] transition-colors">
-                      <td className="px-6 py-4">
+                    <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                      <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shadow-inner ${
                             i === 0 ? 'bg-gradient-to-br from-yellow-500/30 to-yellow-600/10 text-yellow-400 border border-yellow-500/20' :
@@ -212,19 +217,19 @@ export default function ReportsPage() {
                           <span className="font-medium text-slate-900 dark:text-white">{u.firstName} {u.lastName}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <span className="bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.05] text-slate-700 dark:text-slate-300 px-2.5 py-1 rounded-full text-xs font-medium">
+                      <td className="px-4 py-3">
+                        <span className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 px-2.5 py-1 rounded-full text-xs font-medium">
                           {u.dealsWon}
                         </span>
                       </td>
-                      <td className="px-6 py-4 font-medium text-green-400 text-right">
-                        ${u.revenue.toLocaleString()}
+                      <td className="px-4 py-3 font-medium text-green-400 text-right">
+                        ₱{u.revenue.toLocaleString()}
                       </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={3} className="px-6 py-8 text-center text-slate-500">No performance data available</td>
+                    <td colSpan={3} className="px-4 py-6 text-center text-slate-500">No performance data available</td>
                   </tr>
                 )}
               </tbody>
@@ -236,10 +241,10 @@ export default function ReportsPage() {
 
       {/* Lead Source Attribution */}
       {leadSourceData.length > 0 && (
-        <div className="bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-2xl p-6">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-4 shadow-xs">
           <div className="mb-4">
-            <h3 className="text-base font-bold text-slate-900 dark:text-white">Lead Source Attribution</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Won deal revenue by lead source</p>
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Lead Source Attribution</h3>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Won deal revenue by lead source</p>
           </div>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={leadSourceData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
@@ -255,7 +260,7 @@ export default function ReportsPage() {
           </ResponsiveContainer>
           <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
             {leadSourceData.slice(0, 4).map(src => (
-              <div key={src.name} className="bg-slate-50 dark:bg-white/[0.02] rounded-xl p-3 border border-slate-100 dark:border-white/[0.04]">
+              <div key={src.name} className="bg-slate-50 dark:bg-slate-800/50 rounded-md p-3 border border-slate-200 dark:border-slate-700">
                 <p className="text-[10px] text-slate-400 uppercase tracking-wide truncate">{src.name}</p>
                 <p className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">
                   ₱{src.wonValue.toLocaleString('en-PH')}

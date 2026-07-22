@@ -144,105 +144,107 @@ export default function TaskBoard() {
   ];
 
   return (
-    <div className="h-full flex flex-col space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-3">
-            <ListTodo className="text-blue-500" />
-            Task Management
-          </h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">Organize priorities, target due dates, and track your system milestones.</p>
+    <div className="space-y-4">
+      {/* 1. Header Section - Compact Enterprise Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+        <div className="flex items-baseline gap-2.5 flex-wrap">
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Task Management</h1>
+          <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">
+            — Organize priorities, target due dates, and track team execution
+          </span>
         </div>
-        <div className="flex items-center gap-3 bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] p-1 rounded-xl">
-          <button 
-            onClick={() => setView('kanban')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${view === 'kanban' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
-          >
-            <Kanban size={16} />
-            Board Layout
-          </button>
-          <button 
-            onClick={() => setView('list')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${view === 'list' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
-          >
-            <ListTodo size={16} />
-            Detailed List
-          </button>
-          <button
-            onClick={() => setView('workload')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${view === 'workload' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
-          >
-            <Users size={16} />
-            Workload
-          </button>
-        </div>
-      </div>
 
-      {/* Toolbar / Filters */}
-      <div className="flex gap-4 items-center justify-between bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 rounded-2xl shadow-sm relative z-10 w-full overflow-x-auto">
-        <div className="flex-1 w-full relative flex items-center bg-slate-50 dark:bg-slate-900/50 hover:bg-white dark:hover:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl transition-all duration-200 focus-within:bg-white dark:focus-within:bg-slate-900 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/80 shadow-sm max-w-sm">
-          <div className="pl-3.5 flex items-center gap-2 shrink-0 py-2.5">
-            <Search size={15} className="text-slate-400 dark:text-slate-500" />
-          </div>
-          <input
-            type="text"
-            placeholder="Search tasks..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-1.5 pr-10 py-2 text-sm bg-transparent text-slate-800 dark:text-slate-200 focus:outline-none placeholder-slate-400 dark:placeholder-slate-500"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+        <div className="flex items-center gap-2 flex-wrap w-full md:w-auto justify-start md:justify-end">
+          {/* Segment View Switcher */}
+          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-md">
+            <button 
+              onClick={() => setView('kanban')}
+              className={`flex items-center gap-1.5 h-7 px-2.5 rounded text-xs font-medium transition-colors cursor-pointer ${view === 'kanban' ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'}`}
             >
-              <X size={14} />
+              <Kanban size={13} />
+              <span>Board</span>
             </button>
-          )}
-        </div>
-        
-        <div className="flex items-center gap-2 shrink-0 pr-2">
-           <TrelloFilter
-             searchTerm={searchQuery}
-             setSearchTerm={setSearchQuery}
-             members={memberOptions}
-             selectedMembers={selectedOwners}
-             setSelectedMembers={setSelectedOwners}
-             statuses={statusOptions}
-             selectedStatuses={selectedStatuses}
-             setSelectedStatuses={setSelectedStatuses}
-             labelsTitle="Priority Levels"
-             labels={priorityOptions}
-             selectedLabels={selectedPriorities}
-             setSelectedLabels={setSelectedPriorities}
-           />
-        </div>
-
-        {/* Create CTA and Avatar List */}
-        <div className="flex items-center justify-end gap-4 shrink-0 border-l border-slate-200 dark:border-slate-800 pl-4">
-          <div className="hidden sm:flex -space-x-2">
-            {users.slice(0, 4).map((u, i) => (
-              <div key={i} className="w-8 h-8 rounded-full border-2 border-slate-200 dark:border-[#030712] bg-blue-500/20 flex items-center justify-center text-[10px] font-bold text-blue-500" title={`${u.firstName} ${u.lastName}`}>
-                {u.firstName[0]}{u.lastName[0]}
-              </div>
-            ))}
-            {users.length > 4 && (
-              <div className="w-8 h-8 rounded-full border-2 border-slate-200 dark:border-[#030712] bg-gray-50 dark:bg-white/[0.05] flex items-center justify-center text-[10px] font-bold text-slate-500">
-                +{users.length - 4}
-              </div>
-            )}
+            <button 
+              onClick={() => setView('list')}
+              className={`flex items-center gap-1.5 h-7 px-2.5 rounded text-xs font-medium transition-colors cursor-pointer ${view === 'list' ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'}`}
+            >
+              <ListTodo size={13} />
+              <span>List</span>
+            </button>
+            <button 
+              onClick={() => setView('workload')}
+              className={`flex items-center gap-1.5 h-7 px-2.5 rounded text-xs font-medium transition-colors cursor-pointer ${view === 'workload' ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'}`}
+            >
+              <Users size={13} />
+              <span>Workload</span>
+            </button>
           </div>
 
           <button 
             onClick={() => handleOpenAddModal()}
-            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-blue-500/20"
+            className="flex items-center gap-1.5 h-9 px-3 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 cursor-pointer"
           >
-            <Plus size={18} />
-            New Task
+            <Plus size={15} />
+            <span>New Task</span>
           </button>
         </div>
       </div>
+
+      {/* Toolbar / Search & Filter */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 py-1">
+        <div className="flex items-center gap-2 w-full sm:w-auto flex-1 max-w-xl">
+          {/* Search Bar */}
+          <div className="relative flex-1 max-w-xs sm:max-w-sm">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+              <Search size={14} />
+            </div>
+            <input
+              type="text"
+              placeholder="Search tasks..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full h-9 pl-9 pr-8 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-600 text-slate-900 dark:text-white placeholder:text-slate-400 transition-colors"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          <TrelloFilter
+            searchTerm={searchQuery}
+            setSearchTerm={setSearchQuery}
+            members={memberOptions}
+            selectedMembers={selectedOwners}
+            setSelectedMembers={setSelectedOwners}
+            statuses={statusOptions}
+            selectedStatuses={selectedStatuses}
+            setSelectedStatuses={setSelectedStatuses}
+            labelsTitle="Priority Levels"
+            labels={priorityOptions}
+            selectedLabels={selectedPriorities}
+            setSelectedLabels={setSelectedPriorities}
+          />
+        </div>
+
+        <div className="hidden sm:flex items-center -space-x-1.5">
+          {users.slice(0, 4).map((u, i) => (
+            <div key={i} className="w-7 h-7 rounded-full border-2 border-white dark:border-slate-900 bg-blue-100 dark:bg-blue-950/60 flex items-center justify-center text-[10px] font-semibold text-blue-700 dark:text-blue-400" title={`${u.firstName} ${u.lastName}`}>
+              {u.firstName[0]}{u.lastName[0]}
+            </div>
+          ))}
+          {users.length > 4 && (
+            <div className="w-7 h-7 rounded-full border-2 border-white dark:border-slate-900 bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[10px] font-semibold text-slate-600 dark:text-slate-400">
+              +{users.length - 4}
+            </div>
+          )}
+        </div>
+      </div>
+
 
       {/* Kanban Board View */}
       {view === 'kanban' && (

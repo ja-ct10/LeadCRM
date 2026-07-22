@@ -327,81 +327,77 @@ export default function CampaignsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2">
+    <div className="w-full space-y-4">
+
+      {/* 1. Standardized Header Row */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1 border-b border-slate-200 dark:border-slate-800">
         <div>
-          <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-1 tracking-tight">Campaigns</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Manage your marketing and sales campaigns</p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">
+              Campaigns
+            </h1>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+              {filteredCampaigns.length} total
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Manage your marketing campaigns, sequence automation, and lead generation analytics.
+          </p>
         </div>
-        {canCreateCampaign && (
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 bg-[#0A6EFF] text-slate-900 dark:text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-600 transition-colors shadow-[0_0_15px_rgba(10,110,255,0.2)]"
-          >
-            <Plus size={16} /> Create Campaign
-          </button>
-        )}
+
+        <div className="flex items-center gap-2">
+          {canCreateCampaign && (
+            <button 
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center gap-1.5 h-9 px-3 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 cursor-pointer"
+            >
+              <Plus size={15} />
+              <span>Create Campaign</span>
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white dark:bg-white/[0.02] rounded-xl p-5 shadow-lg border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl relative overflow-hidden group">
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-          <div className="flex justify-between items-start mb-4 relative">
-            <h3 className="text-sm font-medium text-slate-500 dark:text-slate-400">Active Campaigns</h3>
-            <div className="p-2 bg-blue-500/10 rounded-lg border border-blue-500/20">
-              <BarChart2 size={18} className="text-blue-400" />
-            </div>
-          </div>
-          <div className="flex items-end justify-between relative">
-            <div className="text-3xl font-bold text-slate-900 dark:text-white">3</div>
-            <div className="flex items-center gap-1 text-xs font-medium text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-md border border-emerald-500/20">
-              <TrendingUp size={12} /> +2
-            </div>
+      {/* 2. Overview Operational KPI Strip */}
+      <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-lg p-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 text-xs">
+        <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
+          <span className="text-slate-500 dark:text-slate-400 font-medium">Active Campaigns</span>
+          <div className="flex items-baseline gap-1.5 mt-1">
+            <span className="text-base font-bold text-slate-900 dark:text-white">{campaigns.filter(c => c.status === 'active' && !c.isArchived).length}</span>
+            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">+2 active</span>
           </div>
         </div>
-        <div className="bg-white dark:bg-white/[0.02] rounded-xl p-5 shadow-lg border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl relative overflow-hidden group">
-          <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-          <div className="flex justify-between items-start mb-4 relative">
-            <h3 className="text-sm font-medium text-slate-500 dark:text-slate-400">Total Sent</h3>
-            <div className="p-2 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
-              <Send size={18} className="text-emerald-400" />
-            </div>
-          </div>
-          <div className="flex items-end justify-between relative">
-            <div className="text-3xl font-bold text-slate-900 dark:text-white">12,480</div>
-            <div className="flex items-center gap-1 text-xs font-medium text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-md border border-emerald-500/20">
-              <TrendingUp size={12} /> +18%
-            </div>
+
+        <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
+          <span className="text-slate-500 dark:text-slate-400 font-medium">Total Messages Sent</span>
+          <div className="flex items-baseline gap-1.5 mt-1">
+            <span className="text-base font-bold text-slate-900 dark:text-white">12,480</span>
+            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">+18%</span>
           </div>
         </div>
-        <div className="bg-white dark:bg-white/[0.02] rounded-xl p-5 shadow-lg border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl relative overflow-hidden group">
-          <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-          <div className="flex justify-between items-start mb-4 relative">
-            <h3 className="text-sm font-medium text-slate-500 dark:text-slate-400">Leads Generated</h3>
-            <div className="p-2 bg-purple-500/10 rounded-lg border border-purple-500/20">
-              <Users size={18} className="text-purple-400" />
-            </div>
-          </div>
-          <div className="flex items-end justify-between relative">
-            <div className="text-3xl font-bold text-slate-900 dark:text-white">1,248</div>
-            <div className="flex items-center gap-1 text-xs font-medium text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-md border border-emerald-500/20">
-              <TrendingUp size={12} /> +12%
-            </div>
+
+        <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
+          <span className="text-slate-500 dark:text-slate-400 font-medium">Leads Generated</span>
+          <div className="flex items-baseline gap-1.5 mt-1">
+            <span className="text-base font-bold text-slate-900 dark:text-white">1,248</span>
+            <span className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold">+12%</span>
           </div>
         </div>
-        <div className="bg-white dark:bg-white/[0.02] rounded-xl p-5 shadow-lg border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl relative overflow-hidden group">
-          <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-          <div className="flex justify-between items-start mb-4 relative">
-            <h3 className="text-sm font-medium text-slate-500 dark:text-slate-400">Closed Customers</h3>
-            <div className="p-2 bg-orange-500/10 rounded-lg border border-orange-500/20">
-              <Trophy size={18} className="text-orange-400" />
-            </div>
+
+        <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
+          <span className="text-slate-500 dark:text-slate-400 font-medium">Closed Customers</span>
+          <div className="flex items-baseline gap-1 mt-1">
+            <span className="text-base font-bold text-slate-900 dark:text-white">42</span>
+            <span className="text-[11px] text-slate-500">converted</span>
           </div>
-          <div className="flex items-end justify-between relative">
-            <div className="text-3xl font-bold text-slate-900 dark:text-white">42</div>
-            <div className="flex items-center gap-1 text-xs font-medium text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-md border border-emerald-500/20">
-              <TrendingUp size={12} /> +5%
+        </div>
+
+        <div className="flex flex-col justify-between">
+          <span className="text-slate-500 dark:text-slate-400 font-medium">Avg Open Rate</span>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-base font-bold text-slate-900 dark:text-white">44.8%</span>
+            <div className="w-12 bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
+              <div className="bg-emerald-500 h-full w-[44.8%]"></div>
             </div>
           </div>
         </div>

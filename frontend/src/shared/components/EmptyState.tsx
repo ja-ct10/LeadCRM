@@ -380,30 +380,30 @@ export default function EmptyState({
 
   return (
     <motion.div 
-      initial={{ opacity: 0, y: 15 }}
+      initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
-      className="flex flex-col items-center justify-center text-center p-8 sm:p-12 max-w-lg mx-auto bg-white dark:bg-white/[0.015] border border-gray-200 dark:border-white/[0.04] rounded-2xl shadow-xl backdrop-blur-xl"
+      transition={{ duration: 0.3 }}
+      className="flex flex-col items-center justify-center text-center p-6 sm:p-8 max-w-lg mx-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs"
     >
       {/* Decorative illustration */}
       {renderIllustration()}
 
       {/* Structured Text Content */}
-      <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2 tracking-tight">
+      <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-1.5 tracking-tight">
         {title}
       </h3>
-      <p className="text-sm text-slate-500 dark:text-slate-400 mb-8 max-w-sm leading-relaxed">
+      <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 max-w-sm leading-relaxed">
         {description}
       </p>
 
       {/* Call to Actions */}
-      <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 w-full sm:w-auto">
         {onAction && actionLabel && (
           <button
             onClick={onAction}
-            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#0A6EFF] text-slate-900 dark:text-white px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-600 transition-colors shadow-[0_4px_20px_rgba(10,110,255,0.25)] border border-blue-500/10 cursor-pointer"
+            className="w-full sm:w-auto h-9 px-4 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
           >
-            <Plus size={16} />
+            <Plus size={14} />
             <span>{actionLabel}</span>
           </button>
         )}
@@ -411,7 +411,7 @@ export default function EmptyState({
         {onSecondaryAction && secondaryActionLabel && (
           <button
             onClick={onSecondaryAction}
-            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-gray-50 dark:bg-white/[0.04] border border-gray-250 dark:border-white/[0.08] text-slate-700 dark:text-slate-300 px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-gray-150 dark:hover:bg-white/[0.08] hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
+            className="w-full sm:w-auto h-9 px-4 text-xs font-medium bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center justify-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
           >
             <span>{secondaryActionLabel}</span>
           </button>
@@ -420,3 +420,4 @@ export default function EmptyState({
     </motion.div>
   );
 }
+

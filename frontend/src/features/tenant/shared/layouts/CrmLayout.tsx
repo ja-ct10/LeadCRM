@@ -10,7 +10,7 @@ import {
   LayoutDashboard, Users, Briefcase, 
   Workflow, Mail, LogOut, Menu, X, Shield, Bell, Wrench,
   Package, Receipt, Building2, CreditCard, Activity, ListTodo, Layers,
-  Sun, Moon, StickyNote, Check, User
+  Sun, Moon, StickyNote, Check, User, PanelLeftClose, PanelLeft
 } from 'lucide-react';
 import CommandPalette from '@/shared/components/CommandPalette';
 import NotesSidePanel from '@/shared/components/NotesSidePanel';
@@ -36,10 +36,26 @@ export default function Layout({ children }: LayoutProps) {
   const { resetDemoData, isServiceModuleEnabled, isAssetModuleEnabled, isBillingModuleEnabled, roles } = useData();
   const userPermissions = usePermissions();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [theme, setTheme] = useState<'Light' | 'Dark'>('Dark');
   const [notesOpen, setNotesOpen] = useState(false);
   const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    const savedCollapse = localStorage.getItem('sidebar_collapsed');
+    if (savedCollapse !== null) {
+      setIsCollapsed(savedCollapse === 'true');
+    }
+  }, []);
+
+  const toggleDesktopSidebar = () => {
+    setIsCollapsed(prev => {
+      const nextVal = !prev;
+      localStorage.setItem('sidebar_collapsed', String(nextVal));
+      return nextVal;
+    });
+  };
 
   useEffect(() => {
     const syncTheme = () => {
@@ -129,14 +145,15 @@ export default function Layout({ children }: LayoutProps) {
 
       {/* Sidebar */}
       <aside className={`
-        fixed lg:static inset-y-0 left-0 z-50 w-64 bg-slate-100/40 dark:bg-slate-900/40 backdrop-blur-md border-r border-slate-200/60 dark:border-white/[0.05]
-        transform transition-transform duration-300 ease-in-out flex flex-col shadow-xl lg:shadow-none
+        fixed lg:static inset-y-0 left-0 z-50 bg-slate-100/40 dark:bg-slate-900/40 backdrop-blur-md border-r border-slate-200/60 dark:border-white/[0.05]
+        transform transition-all duration-300 ease-in-out flex flex-col shadow-xl lg:shadow-none
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+        ${isCollapsed ? 'lg:w-20' : 'lg:w-64'} w-64
       `}>
         {/* Logo/Header */}
-        <div className="border-b border-gray-200 dark:border-white/[0.08] p-6 shrink-0 flex items-center justify-between">
+        <div className={`border-b border-gray-200 dark:border-white/[0.08] p-4 shrink-0 flex items-center ${isCollapsed ? 'lg:justify-center' : 'justify-between'}`}>
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white bg-opacity-95 ring-1 ring-blue-500/20 overflow-hidden shrink-0">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white bg-opacity-95 ring-1 ring-blue-500/20 overflow-hidden shrink-0 shadow-xs">
               <img 
                 src="/leadcrm_logo.png" 
                 alt="LeadCRM Logo" 
@@ -144,19 +161,30 @@ export default function Layout({ children }: LayoutProps) {
                 referrerPolicy="no-referrer"
               />
             </div>
-            <div>
-              <h1 className="text-lg font-semibold tracking-tight text-gray-900 dark:text-white">
+            {!isCollapsed && (
+              <h1 className="text-lg font-semibold tracking-tight text-gray-900 dark:text-white truncate">
                 LeadCRM
               </h1>
-            </div>
+            )}
           </div>
-          <button className="lg:hidden text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors p-1.5 rounded-lg" onClick={() => setSidebarOpen(false)}>
+
+          {/* Desktop Sidebar Toggle Button */}
+          <button 
+            onClick={toggleDesktopSidebar}
+            className="hidden lg:flex text-slate-400 hover:text-slate-900 dark:hover:text-white p-1.5 rounded-lg hover:bg-slate-200/50 dark:hover:bg-white/[0.05] transition-colors cursor-pointer"
+            title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+          >
+            {isCollapsed ? <PanelLeft size={18} /> : <PanelLeftClose size={18} />}
+          </button>
+
+          {/* Mobile Close Button */}
+          <button className="lg:hidden text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors p-1.5 rounded-lg cursor-pointer" onClick={() => setSidebarOpen(false)}>
             <X size={18} />
           </button>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 flex flex-col gap-1 p-4 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 flex flex-col gap-1 p-3 overflow-y-auto custom-scrollbar">
           {filteredNav.map((item) => {
             const Icon = item.icon;
             const isActive = currentPath === item.path;
@@ -165,26 +193,35 @@ export default function Layout({ children }: LayoutProps) {
               <button
                 key={item.path + item.name}
                 onClick={() => { navigate(item.path); setSidebarOpen(false); }}
+                title={isCollapsed ? item.name : undefined}
                 className={`
-                  w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors
+                  w-full flex items-center rounded-lg text-sm font-medium transition-all cursor-pointer group relative
+                  ${isCollapsed ? 'lg:justify-center lg:px-0 lg:py-3 px-4 py-3 gap-3' : 'px-4 py-3 gap-3'}
                   ${isActive 
-                    ? "bg-blue-500/10 text-blue-500 ring-1 ring-blue-500/20"
+                    ? "bg-blue-500/10 text-blue-500 ring-1 ring-blue-500/20 font-semibold"
                     : "text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/[0.05] hover:text-gray-900 dark:hover:text-white"}
                 `}
               >
                 <Icon className="h-5 w-5 shrink-0" />
-                <span className="truncate w-full text-left">{item.name}</span>
+                <span className={`truncate w-full text-left ${isCollapsed ? 'lg:hidden' : 'block'}`}>{item.name}</span>
+                
+                {/* Tooltip on desktop when collapsed */}
+                {isCollapsed && (
+                  <div className="hidden lg:group-hover:flex absolute left-full ml-3 px-2.5 py-1 bg-slate-900 dark:bg-slate-800 text-white text-xs font-semibold rounded-md shadow-xl whitespace-nowrap z-50 border border-slate-700 pointer-events-none items-center">
+                    {item.name}
+                  </div>
+                )}
               </button>
             );
           })}
         </nav>
 
         {/* User Info & Logout */}
-        <div className="shrink-0 border-t border-gray-200 dark:border-white/[0.08] p-4 relative" id="account-dropdown-container">
+        <div className="shrink-0 border-t border-gray-200 dark:border-white/[0.08] p-3 relative" id="account-dropdown-container">
           
           {/* Custom Dropdown Menu (Popup) */}
           {isAccountDropdownOpen && (
-            <div className="absolute bottom-full left-4 right-4 mb-2 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.08] rounded-xl shadow-lg z-50 overflow-hidden text-sm flex flex-col py-2 animate-in fade-in slide-in-from-bottom-2 duration-200">
+            <div className={`absolute bottom-full mb-2 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.08] rounded-xl shadow-lg z-50 overflow-hidden text-sm flex flex-col py-2 animate-in fade-in slide-in-from-bottom-2 duration-200 ${isCollapsed ? 'left-2 w-64' : 'left-4 right-4'}`}>
               
               {/* Header profile block */}
               <div className="px-4 py-3 flex flex-col items-start bg-slate-50/50 dark:bg-white/[0.02]">
@@ -298,10 +335,11 @@ export default function Layout({ children }: LayoutProps) {
             </div>
           )}
 
-          {/* Active Profile Trigger Bar (matches Part B of Image 1) */}
+          {/* Active Profile Trigger Bar */}
           <div 
             onClick={() => setIsAccountDropdownOpen(!isAccountDropdownOpen)}
-            className="flex items-center gap-3 rounded-xl hover:bg-gray-100 dark:hover:bg-white/[0.04] p-2 transition-all select-none cursor-pointer border border-transparent active:scale-[0.98]"
+            className={`flex items-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/[0.04] p-2 transition-all select-none cursor-pointer border border-transparent active:scale-[0.98] ${isCollapsed ? 'lg:justify-center' : 'gap-3'}`}
+            title={isCollapsed ? `${user?.firstName} ${user?.lastName} (${user?.email})` : undefined}
           >
             {/* Round Avatar Circle */}
             <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-slate-800 dark:text-slate-200 font-extrabold text-xs shrink-0 shadow-xs border border-slate-300/40 dark:border-white/[0.04]">
@@ -309,14 +347,16 @@ export default function Layout({ children }: LayoutProps) {
             </div>
 
             {/* Profile Text Info on Right */}
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                {user?.firstName} {user?.lastName}
-              </p>
-              <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-                {user?.email}
-              </p>
-            </div>
+            {!isCollapsed && (
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                  {user?.firstName} {user?.lastName}
+                </p>
+                <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                  {user?.email}
+                </p>
+              </div>
+            )}
           </div>
 
         </div>
@@ -326,12 +366,23 @@ export default function Layout({ children }: LayoutProps) {
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-50 dark:bg-transparent relative">
         {/* Topbar */}
         <header className="h-16 bg-slate-50/80 dark:bg-slate-950/80 backdrop-blur-xl border-b border-slate-200/60 dark:border-white/[0.05] flex items-center justify-between px-4 lg:px-8 shrink-0 sticky top-0 z-30 transition-colors duration-300">
-          <div className="flex items-center gap-4 flex-1">
+          <div className="flex items-center gap-3 flex-1">
+            {/* Mobile Menu Button */}
             <button 
-              className="lg:hidden text-gray-400 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-white/[0.05] p-2 rounded-lg transition-colors"
+              className="lg:hidden text-gray-400 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-white/[0.05] p-2 rounded-lg transition-colors cursor-pointer"
               onClick={() => setSidebarOpen(true)}
+              title="Open Mobile Navigation"
             >
               <Menu size={20} />
+            </button>
+
+            {/* Desktop Navigation Toggle Button */}
+            <button
+              onClick={toggleDesktopSidebar}
+              className="hidden lg:flex text-slate-500 hover:text-slate-900 dark:hover:text-white bg-slate-200/50 dark:bg-white/[0.05] p-2 rounded-lg transition-colors cursor-pointer"
+              title={isCollapsed ? "Expand Navigation Sidebar" : "Collapse Navigation Sidebar"}
+            >
+              {isCollapsed ? <PanelLeft size={18} /> : <PanelLeftClose size={18} />}
             </button>
           </div>
 
@@ -411,16 +462,6 @@ export default function Layout({ children }: LayoutProps) {
           {children}
         </div>
       </main>
-
-      {/* Floating Sticky Note Trigger */}
-      <button
-        onClick={() => setNotesOpen(true)}
-        className="fixed bottom-6 right-6 p-3.5 bg-blue-500 hover:bg-blue-600 text-white rounded-full shadow-2xl z-40 transition-all hover:scale-110 active:scale-95 flex items-center justify-center cursor-pointer group border border-blue-400/40"
-        title="Quick Scratchpad Notes"
-        id="floating-notes-toggle"
-      >
-        <StickyNote size={20} className="group-hover:rotate-12 transition-transform" />
-      </button>
 
       {/* Quick Scratchpad Side Panel */}
       <NotesSidePanel isOpen={notesOpen} onClose={() => setNotesOpen(false)} />

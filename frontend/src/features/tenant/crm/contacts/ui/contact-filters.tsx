@@ -78,28 +78,56 @@ export function ClientFilters({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col md:flex-row gap-4 items-start justify-end w-full">
-        {/* Target Trello Filter Dropdown & Chips */}
-        <div className="flex items-center flex-wrap gap-3">
+      <div className="flex flex-col sm:flex-row gap-2.5 items-center justify-between w-full">
+        {/* Left: Search input & Filter popover paired */}
+        <div className="flex items-center gap-2 w-full sm:w-auto flex-1 max-w-xl">
+          <div className="relative flex-1 max-w-xs sm:max-w-sm">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+              <Search size={14} />
+            </div>
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search contacts by name, email, company..."
+              className="w-full h-9 pl-9 pr-8 text-xs font-medium text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-md shadow-xs placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                title="Clear search"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          <div className="shrink-0">
+            <TrelloFilter
+              searchTerm=""
+              setSearchTerm={() => {}}
+              views={viewOptions}
+              selectedView={smartView}
+              setSelectedView={setSmartView}
+              members={memberOptions}
+              selectedMembers={selectedOwners}
+              setSelectedMembers={setSelectedOwners}
+              currentUserEmail={currentUserEmail}
+              statuses={statusOptions}
+              selectedStatuses={selectedStatuses}
+              setSelectedStatuses={setSelectedStatuses}
+              labelsTitle="Lead Source"
+              labels={sourceOptions}
+              selectedLabels={selectedSources}
+              setSelectedLabels={setSelectedSources}
+            />
+          </div>
+        </div>
+
+        {/* Right: Primary Action Buttons */}
+        <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
           {actions}
-          <TrelloFilter
-            searchTerm={searchTerm}
-            setSearchTerm={setSearchTerm}
-            views={viewOptions}
-            selectedView={smartView}
-            setSelectedView={setSmartView}
-            members={memberOptions}
-            selectedMembers={selectedOwners}
-            setSelectedMembers={setSelectedOwners}
-            currentUserEmail={currentUserEmail}
-            statuses={statusOptions}
-            selectedStatuses={selectedStatuses}
-            setSelectedStatuses={setSelectedStatuses}
-            labelsTitle="Lead Source"
-            labels={sourceOptions}
-            selectedLabels={selectedSources}
-            setSelectedLabels={setSelectedSources}
-          />
         </div>
       </div>
       

@@ -339,7 +339,7 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
               
               {/* Form trigger / Edit state */}
               {isAdding ? (
-                <form onSubmit={handleSave} className="p-4 bg-gray-50/50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.06] rounded-2xl space-y-4">
+                <form onSubmit={handleSave} className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg space-y-4 shadow-xs">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-blue-500 flex items-center gap-1.5">
                       <Sparkles size={13} /> {editingId ? 'Edit Note details' : 'Compose Scratchpad Note'}
@@ -373,7 +373,7 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
                       value={title}
                       onChange={e => setTitle(e.target.value)}
                       placeholder="Note Heading (e.g. Call logs with John)"
-                      className="w-full text-sm font-semibold bg-white dark:bg-slate-950 border border-gray-200 dark:border-white/[0.08] rounded-xl px-3 py-2 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
+                      className="w-full h-9 text-xs font-medium bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-md px-3 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                     />
                   </div>
 
@@ -385,7 +385,7 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
                       rows={4}
                       required
                       placeholder="Jot down customer specifications, billing details or meeting notes details..."
-                      className="w-full text-xs font-normal bg-white dark:bg-slate-950 border border-gray-200 dark:border-white/[0.08] rounded-xl px-3 py-2 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-blue-500 resize-none"
+                      className="w-full text-xs font-normal bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-md px-3 py-2 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 resize-none"
                     />
                   </div>
 
@@ -397,7 +397,7 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
                       <select
                         value={category}
                         onChange={e => setCategory(e.target.value as QuickNote['category'])}
-                        className="w-full text-xs bg-white dark:bg-slate-950 border border-gray-200 dark:border-white/[0.08] rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-none"
+                        className="w-full h-9 text-xs bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-md px-2.5 text-slate-700 dark:text-slate-300 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       >
                         <option value="Thought" className="dark:bg-slate-950">Fleeting Thought</option>
                         <option value="Customer" className="dark:bg-slate-950">Customer Detail</option>
@@ -433,7 +433,7 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
                   </div>
 
                   {/* Connect to CRM Records */}
-                  <div className="p-3 bg-white dark:bg-white/[0.02] border border-gray-100 dark:border-white/[0.04] rounded-xl space-y-2">
+                  <div className="p-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg space-y-2">
                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide">
                       Link CRM Entity (Optional)
                     </label>
@@ -466,7 +466,7 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
                       <select
                         value={selectedEntityId}
                         onChange={e => setSelectedEntityId(e.target.value)}
-                        className="w-full text-xs bg-white dark:bg-slate-950 border border-gray-200 dark:border-white/[0.08] rounded-lg p-1.5 focus:outline-none text-slate-700 dark:text-slate-300"
+                        className="w-full h-9 text-xs bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-md px-2 text-slate-700 dark:text-slate-300 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       >
                         {contacts.map(l => (
                           <option key={l.id} value={l.id} className="dark:bg-slate-950">
@@ -481,7 +481,7 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
                       <select
                         value={selectedEntityId}
                         onChange={e => setSelectedEntityId(e.target.value)}
-                        className="w-full text-xs bg-white dark:bg-slate-950 border border-gray-200 dark:border-white/[0.08] rounded-lg p-1.5 focus:outline-none text-slate-700 dark:text-slate-300"
+                        className="w-full h-9 text-xs bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-md px-2 text-slate-700 dark:text-slate-300 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       >
                         {deals.map(d => (
                           <option key={d.id} value={d.id} className="dark:bg-slate-950">
@@ -498,13 +498,13 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
                     <button
                       type="button"
                       onClick={resetForm}
-                      className="px-3 py-1.5 border border-gray-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 rounded-lg text-xs hover:bg-gray-100 dark:hover:bg-slate-850 transition-colors"
+                      className="px-3 h-9 flex items-center border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400 rounded-md text-xs font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-1.5 bg-blue-500 text-white rounded-lg text-xs font-semibold hover:bg-blue-600 shadow-sm transition-colors flex items-center gap-1.5"
+                      className="px-4 h-9 flex items-center gap-1.5 bg-blue-600 text-white rounded-md text-xs font-medium hover:bg-blue-700 shadow-xs transition-colors"
                     >
                       <Check size={13} /> {editingId ? 'Save Edits' : 'Save Note'}
                     </button>
@@ -513,7 +513,7 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
               ) : (
                 <button
                   onClick={() => setIsAdding(true)}
-                  className="w-full py-2.5 border border-dashed border-gray-300 dark:border-white/[0.1] hover:border-blue-500 bg-gray-50/20 hover:bg-blue-500/5 text-slate-600 dark:text-slate-300 hover:text-blue-500 rounded-xl text-xs font-medium flex items-center justify-center gap-2 transition-all duration-150"
+                  className="w-full h-10 border border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-500 bg-slate-50 hover:bg-blue-50 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-md text-xs font-medium flex items-center justify-center gap-2 transition-all duration-150"
                 >
                   <Plus size={15} /> Create a Fleeting Note or Scratchpad Log
                 </button>
@@ -529,7 +529,7 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
                     placeholder="Search scratchpad notes..."
-                    className="w-full text-xs bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.08] rounded-full pl-9 pr-4 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
+                    className="w-full h-9 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-md pl-9 pr-4 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                   />
                   {searchQuery && (
                     <button 
@@ -549,10 +549,10 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
                       <button
                         key={tab}
                         onClick={() => setActiveCategory(tab)}
-                        className={`px-3 py-1 rounded-full whitespace-nowrap transition-all ${
+                        className={`px-3 py-1 rounded-md whitespace-nowrap transition-all ${
                           isActive 
-                            ? 'bg-blue-500 text-white font-semibold shadow-sm' 
-                            : 'bg-gray-100 dark:bg-white/[0.03] hover:bg-gray-200 dark:hover:bg-white/[0.06]'
+                            ? 'bg-blue-600 text-white font-semibold shadow-xs' 
+                            : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'
                         }`}
                       >
                         {tab === 'All' ? 'All' : tab === 'Pinned' ? '📌 Pinned' : tab}
@@ -574,7 +574,7 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95 }}
-                        className={`p-4 rounded-2xl border transition-all relative group flex flex-col justify-between ${preset.bg} ${preset.border}`}
+                        className={`p-4 rounded-lg border transition-all relative group flex flex-col justify-between shadow-xs ${preset.bg} ${preset.border}`}
                       >
                         {/* Header within card */}
                         <div className="flex items-start justify-between gap-2 mb-2">

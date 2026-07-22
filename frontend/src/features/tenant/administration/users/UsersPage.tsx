@@ -1768,32 +1768,26 @@ export default function UsersPage() {
     <div className="p-4 sm:p-8 max-w-7xl mx-auto space-y-8 font-sans">
       {renderRoleModal()}
 
-      {/* Page Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-[#0A6EFF] font-semibold text-sm uppercase tracking-wider mb-1">
-            <UserCog size={16} />
-            <span>Identity & Access Directory</span>
-          </div>
-          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-            Team Workspace Directory
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-xl">
-            Audit user roles, allocate security permissions, filter departments,
-            and manage global team credentials securely.
-          </p>
+      {/* 1. Header Section - Compact Enterprise Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+        <div className="flex items-baseline gap-2.5 flex-wrap">
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Team & Access Directory</h1>
+          <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">
+            — Manage user accounts, assign roles, and audit security permissions
+          </span>
         </div>
         <div className="flex flex-wrap gap-2 w-full md:w-auto">
           <button
             type="button"
             onClick={() => setIsPermissionsOpen(true)}
-            className="flex items-center justify-center gap-2 bg-slate-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] hover:bg-gray-150 dark:hover:bg-white/[0.08] text-slate-700 dark:text-slate-300 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all cursor-pointer"
+            className="flex items-center justify-center gap-1.5 h-9 px-3 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-md text-xs font-medium transition-colors cursor-pointer shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
           >
-            <ShieldCheck size={16} className="text-emerald-500" />
+            <ShieldCheck size={14} className="text-emerald-600 dark:text-emerald-400" />
             <span>Role Guide</span>
           </button>
         </div>
       </div>
+
 
       {/* Main Tabs Selector */}
       <div className="flex items-center gap-2 border-b border-gray-200 dark:border-slate-800">
@@ -1811,7 +1805,7 @@ export default function UsersPage() {
           {activeMainTab === "Members" && (
             <motion.div
               layoutId="activeUsersMainTab"
-              className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0066FF] shadow-[0_0_8px_rgba(10,110,255,0.5)]"
+              className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600"
             />
           )}
         </button>
@@ -1829,7 +1823,7 @@ export default function UsersPage() {
           {activeMainTab === "Roles & Permissions" && (
             <motion.div
               layoutId="activeUsersMainTab"
-              className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0066FF] shadow-[0_0_8px_rgba(10,110,255,0.5)]"
+              className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600"
             />
           )}
         </button>
@@ -1846,8 +1840,8 @@ export default function UsersPage() {
             className="space-y-8"
           >
             {/* Filters & Control Station */}
-            <div className="flex flex-col lg:flex-row gap-4 justify-between items-stretch lg:items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl shadow-sm relative z-10">
-              <div className="flex-1 w-full lg:max-w-xl relative flex items-center bg-slate-50 dark:bg-slate-900/50 hover:bg-white dark:hover:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl transition-all duration-200 focus-within:bg-white dark:focus-within:bg-slate-900 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/80 shadow-sm">
+            <div className="flex flex-col lg:flex-row gap-3 justify-between items-stretch lg:items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 rounded-lg shadow-xs relative z-10">
+              <div className="flex-1 w-full lg:max-w-xl relative flex items-center bg-slate-50 dark:bg-slate-800/50 hover:bg-white dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md transition-all duration-200 focus-within:bg-white dark:focus-within:bg-slate-900 focus-within:ring-2 focus-within:ring-blue-600/30 focus-within:border-blue-500 shadow-xs">
                 <div className="pl-3.5 flex items-center gap-2 shrink-0 py-2.5">
                   <Search
                     size={15}

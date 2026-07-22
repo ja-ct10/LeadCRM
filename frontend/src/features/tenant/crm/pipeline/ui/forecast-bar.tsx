@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { TrendingUp } from 'lucide-react';
 import type { Deal, Pipeline } from '@/store/types';
 
 interface ForecastBarProps {
@@ -14,7 +13,7 @@ function formatCurrency(value: number): string {
 }
 
 export default function ForecastBar({ deals, pipelines }: ForecastBarProps) {
-  const { stageMap, forecast, totalOpen } = useMemo(() => {
+  const { forecast, totalOpen, totalPipelineValue } = useMemo(() => {
     // Build stage probability map from all pipelines
     const stageMap: Record<string, number> = {};
     pipelines.forEach(p => p.stages.forEach(s => {
@@ -31,32 +30,46 @@ export default function ForecastBar({ deals, pipelines }: ForecastBarProps) {
       sum + d.value * ((stageMap[d.stageId] ?? 0) / 100), 0,
     );
 
-    return { stageMap, forecast, totalOpen: openDeals.length };
+    const totalPipelineValue = openDeals.reduce((sum, d) => sum + d.value, 0);
+
+    return { forecast, totalOpen: openDeals.length, totalPipelineValue };
   }, [deals, pipelines]);
 
   const wonDeals = deals.filter(d => d.stageId.toLowerCase().includes('won') && !d.isArchived);
   const wonTotal = wonDeals.reduce((sum, d) => sum + d.value, 0);
 
   return (
-    <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-slate-50 dark:bg-white/[0.02] rounded-xl border border-slate-200 dark:border-white/[0.06]">
-      <TrendingUp className="w-4 h-4 text-emerald-500 shrink-0" />
-
-      <div className="flex flex-wrap gap-6">
-        <div>
-          <p className="text-[10px] text-slate-400 uppercase tracking-wide font-bold">Open Deals</p>
-          <p className="text-sm font-bold text-slate-900 dark:text-white">{totalOpen}</p>
+    <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-lg p-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+      <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
+        <span className="text-slate-500 dark:text-slate-400 font-medium">Active Open Deals</span>
+        <div className="flex items-baseline gap-1.5 mt-1">
+          <span className="text-base font-bold text-slate-900 dark:text-white">{totalOpen}</span>
+          <span className="text-[11px] text-slate-500">deals</span>
         </div>
+      </div>
 
-        <div>
-          <p className="text-[10px] text-slate-400 uppercase tracking-wide font-bold">Weighted Forecast</p>
-          <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(forecast)}</p>
+      <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
+        <span className="text-slate-500 dark:text-slate-400 font-medium">Total Open Value</span>
+        <div className="flex items-baseline gap-1 mt-1">
+          <span className="text-base font-bold text-slate-900 dark:text-white">{formatCurrency(totalPipelineValue)}</span>
         </div>
+      </div>
 
-        <div>
-          <p className="text-[10px] text-slate-400 uppercase tracking-wide font-bold">Won Revenue</p>
-          <p className="text-sm font-bold text-blue-600 dark:text-blue-400">{formatCurrency(wonTotal)}</p>
+      <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
+        <span className="text-slate-500 dark:text-slate-400 font-medium">Weighted Forecast</span>
+        <div className="flex items-baseline gap-1 mt-1">
+          <span className="text-base font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(forecast)}</span>
+        </div>
+      </div>
+
+      <div className="flex flex-col justify-between">
+        <span className="text-slate-500 dark:text-slate-400 font-medium">Closed Won Revenue</span>
+        <div className="flex items-baseline gap-1 mt-1">
+          <span className="text-base font-bold text-blue-600 dark:text-blue-400">{formatCurrency(wonTotal)}</span>
         </div>
       </div>
     </div>
   );
 }
+
+

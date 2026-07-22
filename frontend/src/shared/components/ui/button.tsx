@@ -1,29 +1,29 @@
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
-import { cn } from "@/src/lib/utils"
+import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 disabled:pointer-events-none disabled:opacity-50 cursor-pointer [&_svg]:pointer-events-none [&_svg]:size-3.5 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
         default:
-          "bg-blue-600 text-white shadow hover:bg-blue-700",
+          "bg-blue-600 text-white shadow-xs hover:bg-blue-700",
         destructive:
-          "bg-red-500 text-white shadow-sm hover:bg-red-600",
+          "bg-rose-600 text-white shadow-xs hover:bg-rose-700",
         outline:
-          "border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-transparent shadow-sm hover:bg-gray-50 dark:hover:bg-white/[0.04] text-slate-700 dark:text-slate-300",
+          "border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xs hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200",
         secondary:
-          "bg-slate-100 dark:bg-white/[0.05] text-slate-700 dark:text-slate-300 shadow-sm hover:bg-slate-200 dark:hover:bg-white/[0.08]",
+          "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700",
         ghost:
-          "hover:bg-slate-100 dark:hover:bg-white/[0.04] text-slate-700 dark:text-slate-300",
+          "hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200",
         link: "text-blue-600 dark:text-blue-400 underline-offset-4 hover:underline",
       },
       size: {
-        default: "h-9 px-4 py-2",
-        sm: "h-8 rounded-md px-3 text-xs",
-        lg: "h-10 rounded-md px-8",
+        default: "h-9 px-3 py-1.5",
+        sm: "h-8 rounded-md px-2.5 text-xs",
+        lg: "h-10 rounded-md px-4 text-sm",
         icon: "h-9 w-9",
       },
     },
@@ -55,3 +55,4 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 Button.displayName = "Button"
 
 export { Button, buttonVariants }
+

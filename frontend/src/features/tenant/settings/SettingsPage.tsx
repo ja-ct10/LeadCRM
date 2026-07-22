@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect } from "react";
 import { useData } from "@/store/DataContext";
@@ -1874,20 +1874,18 @@ export default function SettingsPage() {
 
   return (
     <div className="p-6 lg:p-8 space-y-8 max-w-[1600px] mx-auto font-sans">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
-            Settings
-          </h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">
-            Manage your organization preferences and system configuration.
-          </p>
+      {/* 1. Header Section - Compact Enterprise Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+        <div className="flex items-baseline gap-2.5 flex-wrap">
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Settings & Workspace Preferences</h1>
+          <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">
+            — Manage organization parameters, security roles, appearance, and archived records
+          </span>
         </div>
       </div>
 
       {/* Main Tabs */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 dark:border-slate-800">
+      <div className="flex flex-wrap items-center gap-1 border-b border-slate-200 dark:border-slate-800">
         {[
           { id: "Organization", icon: Building2 },
           { id: "Appearance", icon: Palette },
@@ -1904,9 +1902,9 @@ export default function SettingsPage() {
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id as MainTab)}
-              className={`flex items-center gap-2 px-6 py-4 text-sm font-semibold transition-all relative cursor-pointer ${
+              className={`flex items-center gap-1.5 px-4 py-3 text-xs font-medium transition-colors relative cursor-pointer ${
                 activeTab === tab.id
-                  ? "text-blue-500 text-slate-900 dark:text-blue-400"
+                  ? "text-blue-600 dark:text-blue-400"
                   : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
               }`}
             >
@@ -1915,7 +1913,7 @@ export default function SettingsPage() {
               {activeTab === tab.id && (
                 <motion.div
                   layoutId="activeTab"
-                  className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]"
+                  className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600"
                 />
               )}
             </button>
