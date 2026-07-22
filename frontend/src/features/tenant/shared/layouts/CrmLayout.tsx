@@ -145,14 +145,17 @@ export default function Layout({ children }: LayoutProps) {
 
       {/* Sidebar */}
       <aside className={`
-        fixed lg:static inset-y-0 left-0 z-50 bg-slate-100/40 dark:bg-slate-900/40 backdrop-blur-md border-r border-slate-200/60 dark:border-white/[0.05]
+        fixed lg:sticky lg:top-0 lg:h-screen inset-y-0 left-0 z-50 bg-slate-100/40 dark:bg-slate-900/40 backdrop-blur-md border-r border-slate-200/60 dark:border-white/[0.05]
         transform transition-all duration-300 ease-in-out flex flex-col shadow-xl lg:shadow-none
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
         ${isCollapsed ? 'lg:w-20' : 'lg:w-64'} w-64
       `}>
         {/* Logo/Header */}
         <div className={`border-b border-gray-200 dark:border-white/[0.08] p-4 shrink-0 flex items-center ${isCollapsed ? 'lg:justify-center' : 'justify-between'}`}>
-          <div className="flex items-center gap-3">
+          <div 
+            className="flex items-center gap-3 cursor-pointer"
+            onClick={() => navigate('dashboard')}
+          >
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white bg-opacity-95 ring-1 ring-blue-500/20 overflow-hidden shrink-0 shadow-xs">
               <img 
                 src="/leadcrm_logo.png" 
@@ -368,21 +371,8 @@ export default function Layout({ children }: LayoutProps) {
         <header className="h-16 bg-slate-50/80 dark:bg-slate-950/80 backdrop-blur-xl border-b border-slate-200/60 dark:border-white/[0.05] flex items-center justify-between px-4 lg:px-8 shrink-0 sticky top-0 z-30 transition-colors duration-300">
           <div className="flex items-center gap-3 flex-1">
             {/* Mobile Menu Button */}
-            <button 
-              className="lg:hidden text-gray-400 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-white/[0.05] p-2 rounded-lg transition-colors cursor-pointer"
-              onClick={() => setSidebarOpen(true)}
-              title="Open Mobile Navigation"
-            >
+            <button className="lg:hidden text-gray-400 hover:text-gray-900 dark:hover:text-white p-2 transition-colors cursor-pointer" onClick={() => setSidebarOpen(true)}>
               <Menu size={20} />
-            </button>
-
-            {/* Desktop Navigation Toggle Button */}
-            <button
-              onClick={toggleDesktopSidebar}
-              className="hidden lg:flex text-slate-500 hover:text-slate-900 dark:hover:text-white bg-slate-200/50 dark:bg-white/[0.05] p-2 rounded-lg transition-colors cursor-pointer"
-              title={isCollapsed ? "Expand Navigation Sidebar" : "Collapse Navigation Sidebar"}
-            >
-              {isCollapsed ? <PanelLeft size={18} /> : <PanelLeftClose size={18} />}
             </button>
           </div>
 
