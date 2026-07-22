@@ -1,6 +1,8 @@
 'use client';
 
 import React from 'react';
+import { usePagination } from '@/shared/hooks/usePagination';
+import { Pagination } from '@/shared/components/ui/pagination';
 import { useData } from '@/store/DataContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from '@/shared/components/charts/ChartComponents';
 import { Download, TrendingUp, Trophy } from 'lucide-react';
@@ -64,7 +66,23 @@ export default function ReportsPage() {
       dealsWon: userWonDeals.length,
       revenue
     };
-  }).sort((a, b) => b.revenue - a.revenue).slice(0, 5); // Top 5
+  }).sort((a, b) => b.revenue - a.revenue);
+
+  const {
+    currentPage,
+    pageSize,
+    totalPages,
+    totalItems,
+    paginateItems,
+    goToPage,
+    setPageSize,
+  } = usePagination({
+    totalItems: userPerformance.length,
+    initialPageSize: 10,
+    resetDeps: [],
+  });
+
+  const paginatedPerformance = paginateItems(userPerformance);
 
   const COLORS = ['#0A6EFF', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
 
@@ -201,8 +219,8 @@ export default function ReportsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                {userPerformance.length > 0 ? (
-                  userPerformance.map((u, i) => (
+                {paginatedPerformance.length > 0 ? (
+                  paginatedPerformance.map((u, i) => (
                     <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
@@ -234,6 +252,18 @@ export default function ReportsPage() {
                 )}
               </tbody>
             </table>
+          </div>
+          <div className="p-4 border-t border-slate-200 dark:border-slate-800">
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              pageSize={pageSize}
+              totalItems={totalItems}
+              pageSizeOptions={[5, 10, 25, 50]}
+              onPageChange={goToPage}
+              onPageSizeChange={setPageSize}
+              isLoading={false}
+            />
           </div>
         </div>
       </div>

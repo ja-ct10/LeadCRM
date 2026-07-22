@@ -10,6 +10,8 @@ import { useDealsPage } from '../hooks/use-deals-page';
 import DealsTable from '../ui/deals-table';
 import DealFilters from '../ui/deal-filters';
 import type { Deal, Task } from '@/store/types';
+import { usePagination } from '@/shared/hooks/usePagination';
+import { Pagination } from '@/shared/components/ui/pagination';
 
 function formatCurrency(value: number): string {
   return '₱' + Math.round(value).toLocaleString('en-PH');
@@ -27,6 +29,21 @@ export default function DealsPage() {
     stageNameMap, stageProbabilityMap, pipelineNameMap,
     forecastTotal, pipelines,
   } = useDealsPage();
+
+  const {
+    currentPage,
+    pageSize,
+    totalPages,
+    totalItems,
+    goToPage,
+    setPageSize,
+    paginateItems,
+  } = usePagination({
+    totalItems: deals.length,
+    initialPageSize: 25,
+    pageSizeOptions: [10, 25, 50, 100],
+    resetDeps: [filters],
+  });
 
   const selectedPipeline = selectedDeal
     ? (pipelines.find(p => p.id === selectedDeal.pipelineId) ?? pipelines[0])
@@ -66,11 +83,23 @@ export default function DealsPage() {
 
       <div className="bg-white dark:bg-slate-900/40 rounded-xl border border-slate-200 dark:border-white/[0.06] p-4">
         <DealsTable
-          deals={deals}
+          deals={paginateItems(deals)}
           stageNameMap={stageNameMap}
           stageProbabilityMap={stageProbabilityMap}
           pipelineNameMap={pipelineNameMap}
           onRowClick={setSelectedDeal}
+        />
+      </div>
+
+      <div className="mt-4">
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={totalItems}
+          pageSizeOptions={[10, 25, 50, 100]}
+          onPageChange={goToPage}
+          onPageSizeChange={setPageSize}
         />
       </div>
 

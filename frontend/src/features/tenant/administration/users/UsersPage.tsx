@@ -47,6 +47,8 @@ import { TrelloFilter } from "@/shared/components/TrelloFilter";
 import { useData } from "@/store/DataContext";
 import { useAuth } from "@/store/AuthContext";
 import { RoleDefinition } from "@/store/types";
+import { usePagination } from '@/shared/hooks/usePagination';
+import { Pagination } from '@/shared/components/ui/pagination';
 
 // Initial state matching existing database style
 const INITIAL_USERS = [
@@ -1765,6 +1767,23 @@ export default function UsersPage() {
     return matchesSearch && matchesRole && matchesStatus;
   });
 
+  const {
+    currentPage,
+    totalPages,
+    pageSize,
+    totalItems,
+    paginateItems,
+    goToPage,
+    setPageSize,
+  } = usePagination({
+    totalItems: filteredUsers.length,
+    initialPageSize: 25,
+    pageSizeOptions: [10, 25, 50, 100],
+    resetDeps: [searchQuery, roleFilter, statusFilter],
+  });
+
+  const paginatedUsers = paginateItems(filteredUsers);
+
   return (
     <div className="p-4 sm:p-8 max-w-7xl mx-auto space-y-8 font-sans">
       {renderRoleModal()}
@@ -1979,7 +1998,7 @@ export default function UsersPage() {
                   </thead>
                   <tbody className="divide-y divide-gray-150 dark:divide-white/[0.04]">
                     <AnimatePresence mode="popLayout">
-                      {filteredUsers.map((user, idx) => (
+                      {paginatedUsers.map((user, idx) => (
                         <motion.tr
                           key={user.id}
                           initial={{ opacity: 0, y: 10 }}
@@ -2189,6 +2208,19 @@ export default function UsersPage() {
                 </table>
               </div>
             </div>
+            {filteredUsers.length > 0 && (
+              <div className="mt-4">
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  pageSize={pageSize}
+                  totalItems={totalItems}
+                  pageSizeOptions={[10, 25, 50, 100]}
+                  onPageChange={goToPage}
+                  onPageSizeChange={setPageSize}
+                />
+              </div>
+            )}
           </motion.div>
         ) : (
           <motion.div

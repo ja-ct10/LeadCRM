@@ -11,6 +11,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import WorkloadView from './ui/workload-view';
 import { useData } from '@/store/DataContext';
 import { Task, TaskStatus } from '@/store/types';
+import { usePagination } from '@/shared/hooks/usePagination';
+import { Pagination } from '@/shared/components/ui/pagination';
 import { TrelloFilter, FilterOption } from '@/shared/components/TrelloFilter';
 
 export default function TaskBoard() {
@@ -46,6 +48,22 @@ export default function TaskBoard() {
     const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(t.status);
     return matchesSearch && matchesPriority && matchesOwner && matchesStatus;
   });
+
+  const {
+    currentPage,
+    pageSize,
+    totalPages,
+    totalItems,
+    paginateItems,
+    goToPage,
+    setPageSize,
+  } = usePagination({
+    totalItems: filteredTasks.length,
+    initialPageSize: 25,
+    resetDeps: [searchQuery, selectedPriorities, selectedOwners, selectedStatuses],
+  });
+
+  const paginatedListTasks = paginateItems(filteredTasks);
 
   const getTasksByStatus = (status: string) => filteredTasks.filter(t => t.status === status);
 
@@ -359,8 +377,8 @@ export default function TaskBoard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {filteredTasks.length > 0 ? (
-                  filteredTasks.map((task) => (
+                {paginatedListTasks.length > 0 ? (
+                  paginatedListTasks.map((task) => (
                     <tr key={task.id} className="hover:bg-slate-50 dark:hover:bg-slate-950/30 transition-colors group">
                       <td className="px-6 py-4 text-center">
                         <button 
@@ -426,6 +444,18 @@ export default function TaskBoard() {
                 )}
               </tbody>
             </table>
+          </div>
+          <div className="p-4 border-t border-slate-200 dark:border-slate-800">
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              pageSize={pageSize}
+              totalItems={totalItems}
+              pageSizeOptions={[10, 25, 50, 100]}
+              onPageChange={goToPage}
+              onPageSizeChange={setPageSize}
+              isLoading={false}
+            />
           </div>
         </div>
       )}

@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { useData } from '@/store/DataContext';
 import type { ActivityType } from '@/store/types';
+import { usePagination } from '@/shared/hooks/usePagination';
+import { Pagination } from '@/shared/components/ui/pagination';
 
 // ─── Icon map per activity type ──────────────────────────────────────────────
 
@@ -88,9 +90,16 @@ export default function ActivityTimeline({
     );
   }
 
+  const pagination = usePagination({
+    totalItems: filtered.length,
+    initialPageSize: 10,
+    pageSizeOptions: [10, 25, 50],
+  });
+  const paginatedActivities = pagination.paginateItems(filtered);
+
   return (
     <div className="space-y-3">
-      {filtered.map((activity, index) => {
+      {paginatedActivities.map((activity, index) => {
         const Icon = ACTIVITY_ICONS[activity.type] ?? Zap;
         const colorClass = ACTIVITY_COLORS[activity.type] ?? 'text-slate-500 bg-slate-100';
         const isWorkflow = activity.type === 'workflow';
@@ -131,6 +140,18 @@ export default function ActivityTimeline({
           </div>
         );
       })}
+
+      {filtered.length > 0 && (
+        <Pagination
+          currentPage={pagination.currentPage}
+          totalPages={pagination.totalPages}
+          pageSize={pagination.pageSize}
+          totalItems={pagination.totalItems}
+          pageSizeOptions={[10, 25, 50]}
+          onPageChange={pagination.goToPage}
+          onPageSizeChange={pagination.setPageSize}
+        />
+      )}
     </div>
   );
 }

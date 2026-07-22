@@ -3,6 +3,8 @@
 import React from 'react';
 import { Calendar, CheckCircle2, DollarSign, FileText, Briefcase, UserCheck, MessageSquare, AlertCircle, Clock, ShieldCheck } from 'lucide-react';
 import { Contact, Deal, Task, Invoice } from '@/store/types';
+import { usePagination } from '@/shared/hooks/usePagination';
+import { Pagination } from '@/shared/components/ui/pagination';
 
 export interface TimelineEvent {
   id: string;
@@ -133,6 +135,13 @@ export const CustomerJourneyTimeline: React.FC<CustomerJourneyTimelineProps> = (
     );
   }
 
+  const pagination = usePagination({
+    totalItems: sortedEvents.length,
+    initialPageSize: 10,
+    pageSizeOptions: [10, 25, 50],
+  });
+  const paginatedEvents = pagination.paginateItems(sortedEvents);
+
   return (
     <div className="space-y-4 py-2">
       <div className="flex items-center justify-between">
@@ -144,7 +153,7 @@ export const CustomerJourneyTimeline: React.FC<CustomerJourneyTimelineProps> = (
       </div>
 
       <div className="relative border-l-2 border-slate-200 dark:border-white/10 ml-4 pl-6 space-y-6">
-        {sortedEvents.map(evt => {
+        {paginatedEvents.map(evt => {
           const evtDate = new Date(evt.timestamp);
           const formattedDate = isNaN(evtDate.getTime()) ? evt.timestamp : evtDate.toLocaleDateString('en-US', {
             year: 'numeric',
@@ -206,6 +215,18 @@ export const CustomerJourneyTimeline: React.FC<CustomerJourneyTimelineProps> = (
           );
         })}
       </div>
+
+      {sortedEvents.length > 0 && (
+        <Pagination
+          currentPage={pagination.currentPage}
+          totalPages={pagination.totalPages}
+          pageSize={pagination.pageSize}
+          totalItems={pagination.totalItems}
+          pageSizeOptions={[10, 25, 50]}
+          onPageChange={pagination.goToPage}
+          onPageSizeChange={pagination.setPageSize}
+        />
+      )}
     </div>
   );
 };

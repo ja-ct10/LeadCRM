@@ -1,5 +1,7 @@
-﻿import React from 'react';
+import React from 'react';
 import { CheckCircle } from 'lucide-react';
+import { usePagination } from '@/shared/hooks/usePagination';
+import { Pagination } from '@/shared/components/ui/pagination';
 
 interface TimelineEvent {
   id: string;
@@ -32,6 +34,13 @@ export function ContactActivitiesTab({
   onSetLogNotes,
   onLogInteraction,
 }: ContactActivitiesTabProps) {
+  const pagination = usePagination({
+    totalItems: timelineEvents.length,
+    initialPageSize: 10,
+    pageSizeOptions: [10, 25, 50],
+  });
+  const paginatedEvents = pagination.paginateItems(timelineEvents);
+
   return (
     <div className="space-y-6 text-left animate-in fade-in duration-100">
       {/* Quick log form */}
@@ -80,7 +89,7 @@ export function ContactActivitiesTab({
 
       {/* Vertical timeline */}
       <div className="relative border-l border-gray-200 dark:border-white/5 pl-5 ml-2.5 space-y-5">
-        {timelineEvents.map((evt, i) => (
+        {paginatedEvents.map((evt, i) => (
           <div key={evt.id || i} className="relative animate-in fade-in duration-200">
             <div className={`absolute -left-[27px] top-0.5 w-3.5 h-3.5 rounded-full border-2 bg-white dark:bg-slate-950 ${EVENT_BORDER_COLOR[evt.type] ?? 'border-slate-500'}`} />
             <div className="text-xs">
@@ -93,6 +102,18 @@ export function ContactActivitiesTab({
           </div>
         ))}
       </div>
+
+      {timelineEvents.length > 0 && (
+        <Pagination
+          currentPage={pagination.currentPage}
+          totalPages={pagination.totalPages}
+          pageSize={pagination.pageSize}
+          totalItems={pagination.totalItems}
+          pageSizeOptions={[10, 25, 50]}
+          onPageChange={pagination.goToPage}
+          onPageSizeChange={pagination.setPageSize}
+        />
+      )}
     </div>
   );
 }

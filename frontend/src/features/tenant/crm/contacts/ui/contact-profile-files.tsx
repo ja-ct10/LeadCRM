@@ -4,6 +4,8 @@ import { uuid } from '@/lib/utils';
 import React, { useState } from 'react';
 import { Upload, FileText, Download, Trash2, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
+import { usePagination } from '@/shared/hooks/usePagination';
+import { Pagination } from '@/shared/components/ui/pagination';
 
 export interface Attachment {
   id: string;
@@ -60,6 +62,13 @@ export const ClientProfileFiles = ({ leadId, initialAttachments = [], currentUse
     toast.error(`Removed attachment '${name}'`);
   };
 
+  const pagination = usePagination({
+    totalItems: attachments.length,
+    initialPageSize: 10,
+    pageSizeOptions: [10, 25, 50],
+  });
+  const paginatedAttachments = pagination.paginateItems(attachments);
+
   return (
     <div className="space-y-4" id="client-profile-files">
       <div 
@@ -101,7 +110,7 @@ export const ClientProfileFiles = ({ leadId, initialAttachments = [], currentUse
       </div>
 
       <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
-        {attachments.map(file => (
+        {paginatedAttachments.map(file => (
           <div key={file.id} className="flex items-center justify-between p-3.5 bg-white dark:bg-white/[0.02] border border-gray-150 dark:border-white/[0.04] rounded-xl text-xs hover:border-gray-250 dark:hover:border-white/10 transition-all">
             <div className="flex items-center gap-3 truncate min-w-0">
               <div className="p-2 bg-blue-50 dark:bg-blue-500/10 text-blue-500 rounded-lg shrink-0">
@@ -139,6 +148,18 @@ export const ClientProfileFiles = ({ leadId, initialAttachments = [], currentUse
           </div>
         )}
       </div>
+
+      {attachments.length > 0 && (
+        <Pagination
+          currentPage={pagination.currentPage}
+          totalPages={pagination.totalPages}
+          pageSize={pagination.pageSize}
+          totalItems={pagination.totalItems}
+          pageSizeOptions={[10, 25, 50]}
+          onPageChange={pagination.goToPage}
+          onPageSizeChange={pagination.setPageSize}
+        />
+      )}
     </div>
   );
 };

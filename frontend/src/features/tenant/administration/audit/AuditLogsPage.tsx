@@ -25,6 +25,9 @@ const LIVE_SIMULATED_EVENTS = [
   { action: 'Tenant Settings', details: 'Client Admin modified tenant interface personalization parameters with custom color metrics.' }
 ];
 
+import { usePagination } from '@/shared/hooks/usePagination';
+import { Pagination } from '@/shared/components/ui/pagination';
+
 export default function AuditLogsPage() {
   const { auditLogs, users, addAuditLog } = useData();
   const { user } = useAuth();
@@ -157,6 +160,23 @@ export default function AuditLogsPage() {
       return matchesSearch && matchesCategory && matchesDate;
     });
   }, [auditLogs, search, selectedCategory, selectedDateRange]);
+
+  const {
+    currentPage,
+    totalPages,
+    pageSize,
+    totalItems,
+    paginateItems,
+    goToPage,
+    setPageSize,
+  } = usePagination({
+    totalItems: filteredLogs.length,
+    initialPageSize: 25,
+    pageSizeOptions: [10, 25, 50, 100],
+    resetDeps: [search, selectedCategory, selectedDateRange],
+  });
+
+  const paginatedLogs = paginateItems(filteredLogs);
 
   // Trend Chart Data (Chronological buckets over time)
   const trendData = useMemo(() => {
@@ -777,7 +797,7 @@ export default function AuditLogsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-white/[0.04] text-[11px] text-slate-700 dark:text-slate-300">
-                    {filteredLogs.map((log) => {
+                    {paginatedLogs.map((log) => {
                       const isSelected = selectedLogId === log.id;
                       return (
                         <tr 
@@ -833,16 +853,28 @@ export default function AuditLogsPage() {
               </div>
             )}
           </div>
+          {filteredLogs.length > 0 && (
+            <div className="mt-4">
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                pageSize={pageSize}
+                totalItems={totalItems}
+                pageSizeOptions={[10, 25, 50, 100]}
+                onPageChange={goToPage}
+                onPageSizeChange={setPageSize}
+              />
+            </div>
+          )}
         </div>
 
-        {/* Audit Inspector side rail */}
-        <div className="lg:col-span-4">
+        {/* Selected Log Inspector */}
+        <div className="lg:col-span-4 h-full">
           <div className="bg-white dark:bg-white/[0.02] p-5 rounded-2xl border border-gray-200 dark:border-white/[0.05] shadow-sm sticky top-24 space-y-4 font-mono">
             <div className="flex items-center gap-2 pb-2 border-b border-gray-100 dark:border-white/[0.03]">
               <FileText className="text-blue-500" size={16} />
               <h3 className="font-semibold text-sm text-slate-900 dark:text-white">Audit Log Inspector</h3>
             </div>
-
             {selectedLog ? (
               <div className="space-y-4 text-xs animate-fade-in">
                 <div className="space-y-1">

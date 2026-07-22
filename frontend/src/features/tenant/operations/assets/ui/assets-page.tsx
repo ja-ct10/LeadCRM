@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { TrelloFilter } from '@/shared/components/TrelloFilter';
+import { usePagination } from '@/shared/hooks/usePagination';
+import { Pagination } from '@/shared/components/ui/pagination';
 
 interface Asset {
   id: string;
@@ -94,6 +96,23 @@ export default function AssetsPage() {
     const matchesStatus = filterStatuses.length === 0 || filterStatuses.includes(asset.status);
     return matchesSearch && matchesCategory && matchesStatus;
   });
+
+  const {
+    currentPage,
+    totalPages,
+    pageSize,
+    totalItems,
+    paginateItems,
+    goToPage,
+    setPageSize,
+  } = usePagination({
+    totalItems: filteredAssets.length,
+    initialPageSize: 25,
+    pageSizeOptions: [10, 25, 50, 100],
+    resetDeps: [searchQuery, filterCategories, filterStatuses],
+  });
+
+  const paginatedAssets = paginateItems(filteredAssets);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -201,7 +220,7 @@ export default function AssetsPage() {
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               <AnimatePresence mode="popLayout">
-                {filteredAssets.map((asset) => (
+                {paginatedAssets.map((asset) => (
                   <motion.tr 
                     key={asset.id}
                     layout
@@ -269,6 +288,20 @@ export default function AssetsPage() {
           </table>
         </div>
       </div>
+      
+      {filteredAssets.length > 0 && (
+        <div className="mt-4">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            pageSize={pageSize}
+            totalItems={totalItems}
+            pageSizeOptions={[10, 25, 50, 100]}
+            onPageChange={goToPage}
+            onPageSizeChange={setPageSize}
+          />
+        </div>
+      )}
 
       {/* Maintenance Alert */}
       <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-lg flex items-start gap-3">

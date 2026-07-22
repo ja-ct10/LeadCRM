@@ -1,6 +1,8 @@
 'use client';
 import React, { useState } from 'react';
 import { Search, Eye, Download, CreditCard, Building2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { usePagination } from '@/shared/hooks/usePagination';
+import { Pagination } from '@/shared/components/ui/pagination';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { ModalCloseButton } from '@/shared/components/ui/ModalCloseButton';
@@ -35,6 +37,22 @@ export default function AdminBillingPage() {
     const q = searchQuery.toLowerCase();
     return inv.client.toLowerCase().includes(q) || inv.plan.toLowerCase().includes(q) || inv.id.toLowerCase().includes(q);
   });
+
+  const {
+    currentPage,
+    pageSize,
+    totalPages,
+    totalItems,
+    paginateItems,
+    goToPage,
+    setPageSize,
+  } = usePagination({
+    totalItems: filteredInvoices.length,
+    initialPageSize: 25,
+    resetDeps: [searchQuery],
+  });
+
+  const paginatedInvoices = paginateItems(filteredInvoices);
 
   const handleDownload = (id: string) => toast.success(`Downloading invoice ${id}…`);
 
@@ -80,7 +98,7 @@ export default function AdminBillingPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {filteredInvoices.map((inv) => (
+              {paginatedInvoices.map((inv) => (
                 <tr key={inv.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                   <td className="px-6 py-4 font-mono text-xs">{inv.id}</td>
                   <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">{inv.client}</td>
@@ -102,19 +120,23 @@ export default function AdminBillingPage() {
                   </td>
                 </tr>
               ))}
-              {filteredInvoices.length === 0 && (
+              {paginatedInvoices.length === 0 && (
                 <tr><td colSpan={8} className="px-6 py-12 text-center text-slate-500">No invoices found matching your search.</td></tr>
               )}
             </tbody>
           </table>
         </div>
-        <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-sm text-slate-500">
-          <span>Showing {filteredInvoices.length} of {MOCK_INVOICES.length} invoices</span>
-          <div className="flex items-center gap-2">
-            <button className="p-1 rounded border border-slate-200 dark:border-slate-700 text-slate-400 disabled:opacity-50" disabled><ChevronLeft size={16} /></button>
-            <span>Page 1 of 1</span>
-            <button className="p-1 rounded border border-slate-200 dark:border-slate-700 text-slate-400 disabled:opacity-50" disabled><ChevronRight size={16} /></button>
-          </div>
+        <div className="p-4 border-t border-slate-200 dark:border-slate-800">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            pageSize={pageSize}
+            totalItems={totalItems}
+            pageSizeOptions={[10, 25, 50, 100]}
+            onPageChange={goToPage}
+            onPageSizeChange={setPageSize}
+            isLoading={false}
+          />
         </div>
       </div>
 

@@ -36,6 +36,9 @@ function paymentDot(status: Invoice['paymentStatus']): string {
   return status === 'Paid' ? 'bg-emerald-500' : status === 'Overdue' ? 'bg-red-500' : 'bg-slate-500';
 }
 
+import { usePagination } from '@/shared/hooks/usePagination';
+import { Pagination } from '@/shared/components/ui/pagination';
+
 // --- Component ----------------------------------------------------------------
 
 export default function BillingPage() {
@@ -67,6 +70,23 @@ export default function BillingPage() {
     const matchStatus = filterStatus === 'All' || inv.status === filterStatus;
     return matchSearch && matchStatus;
   });
+
+  const {
+    currentPage,
+    totalPages,
+    pageSize,
+    totalItems,
+    paginateItems,
+    goToPage,
+    setPageSize,
+  } = usePagination({
+    totalItems: filtered.length,
+    initialPageSize: 25,
+    pageSizeOptions: [10, 25, 50, 100],
+    resetDeps: [searchQuery, filterStatus],
+  });
+
+  const paginatedInvoices = paginateItems(filtered);
 
   // Derived stats from real data
   const mrr = invoices
@@ -165,13 +185,13 @@ export default function BillingPage() {
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-white/[0.04]">
               <AnimatePresence mode="popLayout">
-                {filtered.length === 0 ? (
+                {paginatedInvoices.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="px-6 py-12 text-center text-slate-400 dark:text-slate-500 text-sm">
                       No contracts found.
                     </td>
                   </tr>
-                ) : filtered.map(inv => (
+                ) : paginatedInvoices.map(inv => (
                   <motion.tr
                     key={inv.id}
                     layout
@@ -232,6 +252,20 @@ export default function BillingPage() {
           </table>
         </div>
       </div>
+      
+      {filtered.length > 0 && (
+        <div className="mt-4">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            pageSize={pageSize}
+            totalItems={totalItems}
+            pageSizeOptions={[10, 25, 50, 100]}
+            onPageChange={goToPage}
+            onPageSizeChange={setPageSize}
+          />
+        </div>
+      )}
 
       {/* Renewal alert — only show if there are pending renewals */}
       {renewalCount > 0 && (

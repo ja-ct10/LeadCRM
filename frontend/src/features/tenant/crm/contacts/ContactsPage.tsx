@@ -11,6 +11,8 @@ import { ContactFormSheet } from "./ui/contact-form";
 import { UnifiedDetailView } from "./ui/contact-detail-view";
 import { ClientDetailSheet } from "./ui/contact-detail-sheet";
 import { toast } from "sonner";
+import { usePagination } from '@/shared/hooks/usePagination';
+import { Pagination } from '@/shared/components/ui/pagination';
 
 export default function ContactsPage() {
   const {
@@ -147,6 +149,21 @@ export default function ContactsPage() {
     user?.id,
     smartView,
   ]);
+
+  const {
+    currentPage,
+    pageSize,
+    totalPages,
+    totalItems,
+    goToPage,
+    setPageSize,
+    paginateItems,
+  } = usePagination({
+    totalItems: filteredLeads.length,
+    initialPageSize: 25,
+    pageSizeOptions: [10, 25, 50, 100],
+    resetDeps: [searchTerm, customerTypeFilter, selectedStatuses, selectedOwners, selectedSources, smartView],
+  });
 
   // Handlers
   const handleAddNew = () => {
@@ -355,7 +372,7 @@ export default function ContactsPage() {
       {/* Table */}
       <div className="bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
         <ClientTable
-          data={filteredLeads}
+          data={paginateItems(filteredLeads)}
           viewMode={smartView === "Organization Customers" ? "organizations" : "contacts"}
           organizations={organizations}
           onEdit={handleEdit}
@@ -367,6 +384,18 @@ export default function ContactsPage() {
           onQuickView={(contact, tab) => handleView(contact, tab || 'overview')}
           onQuickViewOrg={(org, tab) => handleViewOrg(org, tab || 'overview')}
           showArchived={smartView === "Archived"}
+        />
+      </div>
+
+      <div className="mt-4">
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={totalItems}
+          pageSizeOptions={[10, 25, 50, 100]}
+          onPageChange={goToPage}
+          onPageSizeChange={setPageSize}
         />
       </div>
 

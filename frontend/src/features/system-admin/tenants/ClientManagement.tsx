@@ -4,6 +4,8 @@ import {
   Search, Eye, UserX, UserCheck, CheckCircle, ChevronDown,
   ChevronLeft, ChevronRight
 } from 'lucide-react';
+import { usePagination } from '@/shared/hooks/usePagination';
+import { Pagination } from '@/shared/components/ui/pagination';
 import { useData } from '@/store/DataContext';
 import { Tenant } from '@/store/types';
 import { useTenants } from './hooks/use-tenants';
@@ -26,6 +28,21 @@ export default function ClientManagement() {
 
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
 
+  const {
+    currentPage,
+    pageSize,
+    totalPages,
+    totalItems,
+    paginateItems,
+    goToPage,
+    setPageSize,
+  } = usePagination({
+    totalItems: filteredTenants.length,
+    initialPageSize: 25,
+    resetDeps: [searchQuery, statusFilter, planFilter],
+  });
+
+  const paginatedTenants = paginateItems(filteredTenants);
   return (
     <div className="space-y-6">
       <div>
@@ -90,7 +107,7 @@ export default function ClientManagement() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {filteredTenants.length > 0 ? filteredTenants.map((t) => {
+              {paginatedTenants.length > 0 ? paginatedTenants.map((t) => {
                 const tStatus = t.status === 'suspended' ? 'inactive' : t.status;
                 const tPlan = (t as any).plan || 'Basic';
                 return (
@@ -137,13 +154,17 @@ export default function ClientManagement() {
             </tbody>
           </table>
         </div>
-        <div className="p-4 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between text-sm text-slate-500">
-          <span>Showing {filteredTenants.length} of {tenants.length} clients</span>
-          <div className="flex items-center gap-2">
-            <button className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50" disabled><ChevronLeft size={16} /></button>
-            <span>Page 1 of 1</span>
-            <button className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50" disabled><ChevronRight size={16} /></button>
-          </div>
+        <div className="p-4 border-t border-slate-200 dark:border-slate-700">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            pageSize={pageSize}
+            totalItems={totalItems}
+            pageSizeOptions={[10, 25, 50, 100]}
+            onPageChange={goToPage}
+            onPageSizeChange={setPageSize}
+            isLoading={false}
+          />
         </div>
       </div>
 

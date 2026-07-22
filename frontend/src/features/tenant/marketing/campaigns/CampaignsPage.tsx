@@ -8,6 +8,8 @@ import { Plus, Send, X, Mail, MessageSquare, Megaphone, BarChart2, Eye, MousePoi
 import EmptyState from '@/shared/components/EmptyState';
 import { TrelloFilter } from '@/shared/components/TrelloFilter';
 import { CampaignReportView } from './ui/campaign-report-view';
+import { usePagination } from '@/shared/hooks/usePagination';
+import { Pagination } from '@/shared/components/ui/pagination';
 
 const reportData = [
   { name: 'Day 1', opens: 400, clicks: 240 },
@@ -315,6 +317,21 @@ export default function CampaignsPage() {
     return matchesSearch && matchesStatus && matchesType;
   });
 
+  const {
+    currentPage,
+    pageSize,
+    totalPages,
+    totalItems,
+    goToPage,
+    setPageSize,
+    paginateItems,
+  } = usePagination({
+    totalItems: filteredCampaigns.length,
+    initialPageSize: 25,
+    pageSizeOptions: [10, 25, 50, 100],
+    resetDeps: [searchTerm, statusFilter, typeFilter, activeTab],
+  });
+
   if (selectedCampaignForReport) {
     return (
       <CampaignReportView
@@ -503,7 +520,7 @@ export default function CampaignsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/[0.05]">
-                    {filteredCampaigns.length > 0 ? filteredCampaigns.map(camp => (
+                    {filteredCampaigns.length > 0 ? paginateItems(filteredCampaigns).map(camp => (
                       <tr key={camp.id} className="hover:bg-white dark:bg-white/[0.02] transition-colors group">
                         <td className="px-6 py-4">
                           <div className="font-medium text-slate-900 dark:text-white">{camp.name}</div>
@@ -616,6 +633,18 @@ export default function CampaignsPage() {
                   </tbody>
                 </table>
               </div>
+            </div>
+
+            <div className="mt-4">
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                pageSize={pageSize}
+                totalItems={totalItems}
+                pageSizeOptions={[10, 25, 50, 100]}
+                onPageChange={goToPage}
+                onPageSizeChange={setPageSize}
+              />
             </div>
           </div>
         )

@@ -10,6 +10,8 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { useData } from '@/store/DataContext';
 import { TrelloFilter } from '@/shared/components/TrelloFilter';
+import { usePagination } from '@/shared/hooks/usePagination';
+import { Pagination } from '@/shared/components/ui/pagination';
 
 export default function InventoryPage() {
   const { inventoryItems } = useData();
@@ -27,6 +29,23 @@ export default function InventoryPage() {
     const matchesStock = filterStockStatuses.length === 0 || filterStockStatuses.includes(stockLabel);
     return matchesSearch && matchesCategory && matchesStock;
   });
+
+  const {
+    currentPage,
+    totalPages,
+    pageSize,
+    totalItems,
+    paginateItems,
+    goToPage,
+    setPageSize,
+  } = usePagination({
+    totalItems: filteredItems.length,
+    initialPageSize: 25,
+    pageSizeOptions: [10, 25, 50, 100],
+    resetDeps: [searchQuery, filterCategories, filterStockStatuses],
+  });
+
+  const paginatedItems = paginateItems(filteredItems);
 
   const getStockStatus = (quantity: number, minQuantity: number) => {
     if (quantity <= 0) return { label: 'Out of Stock', color: 'bg-red-500/10 text-red-400 border-red-500/20' };
@@ -131,7 +150,7 @@ export default function InventoryPage() {
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               <AnimatePresence mode="popLayout">
-                {filteredItems.map((item) => {
+                {paginatedItems.map((item) => {
                   const status = getStockStatus(item.quantity, item.minQuantity);
                   return (
                     <motion.tr 
@@ -193,6 +212,20 @@ export default function InventoryPage() {
           </table>
         </div>
       </div>
+      
+      {filteredItems.length > 0 && (
+        <div className="mt-4">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            pageSize={pageSize}
+            totalItems={totalItems}
+            pageSizeOptions={[10, 25, 50, 100]}
+            onPageChange={goToPage}
+            onPageSizeChange={setPageSize}
+          />
+        </div>
+      )}
 
       {/* Inventory Insights */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

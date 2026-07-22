@@ -9,6 +9,8 @@ import { useCompanies } from '../hooks/use-companies';
 import CompaniesTable from '../ui/companies-table';
 import CompanyFilters from '../ui/company-filters';
 import CompanyForm from '../ui/company-form';
+import { usePagination } from '@/shared/hooks/usePagination';
+import { Pagination } from '@/shared/components/ui/pagination';
 
 export default function CompaniesPage() {
   const canCreate = useHasPermission('contacts.create');
@@ -21,6 +23,21 @@ export default function CompaniesPage() {
     handleCreate, handleUpdate, handleDelete,
     handleOpenCreate, handleOpenEdit, handleCloseForm,
   } = useCompanies();
+
+  const {
+    currentPage,
+    pageSize,
+    totalPages,
+    totalItems,
+    goToPage,
+    setPageSize,
+    paginateItems,
+  } = usePagination({
+    totalItems: companies.length,
+    initialPageSize: 25,
+    pageSizeOptions: [10, 25, 50, 100],
+    resetDeps: [filters],
+  });
 
   const handleSubmit = (data: any) => {
     if (editTarget) {
@@ -57,11 +74,23 @@ export default function CompaniesPage() {
       {/* Table */}
       <div className="bg-white dark:bg-slate-900/40 rounded-xl border border-slate-200 dark:border-white/[0.06] p-4">
         <CompaniesTable
-          companies={companies}
+          companies={paginateItems(companies)}
           onEdit={handleOpenEdit}
           onDelete={handleDelete}
           canEdit={canEdit}
           canDelete={canDelete}
+        />
+      </div>
+
+      <div className="mt-4">
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={totalItems}
+          pageSizeOptions={[10, 25, 50, 100]}
+          onPageChange={goToPage}
+          onPageSizeChange={setPageSize}
         />
       </div>
 

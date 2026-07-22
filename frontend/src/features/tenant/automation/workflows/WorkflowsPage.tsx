@@ -3,6 +3,8 @@
 import { uuid } from '@/lib/utils';
 
 import React, { useState, useMemo } from 'react';
+import { usePagination } from '@/shared/hooks/usePagination';
+import { Pagination } from '@/shared/components/ui/pagination';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
 import {
@@ -209,6 +211,22 @@ export default function WorkflowsPage() {
       return 0;
     });
   }, [workflows, wfSearchTerm, wfStatusFilter, wfCategoryFilter, wfTriggerFilter, sortBy]);
+
+  const {
+    currentPage,
+    pageSize,
+    totalPages,
+    totalItems,
+    paginateItems,
+    goToPage,
+    setPageSize,
+  } = usePagination({
+    totalItems: filteredAndSortedWorkflows.length,
+    initialPageSize: 25,
+    resetDeps: [wfSearchTerm, wfStatusFilter, wfCategoryFilter, wfTriggerFilter, sortBy],
+  });
+
+  const paginatedWorkflows = paginateItems(filteredAndSortedWorkflows);
 
   const activeWorkflowsCount = useMemo(() => workflows.filter(w => w.status === 'active' && !w.isArchived).length, [workflows]);
   const totalExecutionsCount = useMemo(() => workflows.reduce((acc, wf) => acc + (wf.executionCount || 0), 0), [workflows]);
@@ -627,7 +645,7 @@ export default function WorkflowsPage() {
       ) : densityMode === 'comfortable' ? (
         /* Comfortable Card View Grid */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-          {filteredAndSortedWorkflows.map(wf => (
+          {paginatedWorkflows.map(wf => (
             <div 
               key={wf.id} 
               className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-4 flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 transition-all shadow-xs group relative"
@@ -791,7 +809,7 @@ export default function WorkflowsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {filteredAndSortedWorkflows.map(wf => (
+              {paginatedWorkflows.map(wf => (
                 <tr key={wf.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                   <td className="py-2.5 px-4 font-semibold text-slate-900 dark:text-white">
                     {wf.name}
@@ -844,6 +862,21 @@ export default function WorkflowsPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {filteredAndSortedWorkflows.length > 0 && (
+        <div className="mt-4">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            pageSize={pageSize}
+            totalItems={totalItems}
+            pageSizeOptions={[10, 25, 50, 100]}
+            onPageChange={goToPage}
+            onPageSizeChange={setPageSize}
+            isLoading={false}
+          />
         </div>
       )}
 

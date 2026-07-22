@@ -1,6 +1,8 @@
 'use client';
 import React, { useState } from 'react';
 import { Search, Database, CheckCircle2, AlertTriangle, XCircle, Cpu, HardDrive, Activity } from 'lucide-react';
+import { usePagination } from '@/shared/hooks/usePagination';
+import { Pagination } from '@/shared/components/ui/pagination';
 import { useData } from '@/store/DataContext';
 import { motion } from 'motion/react';
 
@@ -29,6 +31,22 @@ export default function EnvironmentsPage() {
     if (searchQuery && !t.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   });
+
+  const {
+    currentPage,
+    pageSize,
+    totalPages,
+    totalItems,
+    paginateItems,
+    goToPage,
+    setPageSize,
+  } = usePagination({
+    totalItems: filteredEnvData.length,
+    initialPageSize: 25,
+    resetDeps: [searchQuery, envFilter, statusFilter],
+  });
+
+  const paginatedEnvData = paginateItems(filteredEnvData);
 
   const healthyCount  = envData.filter((t) => t.healthMetrics?.status === 'healthy').length;
   const warningCount  = envData.filter((t) => t.healthMetrics?.status === 'warning').length;
@@ -83,7 +101,7 @@ export default function EnvironmentsPage() {
 
       {/* Environment grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredEnvData.map((env, i) => (
+        {paginatedEnvData.map((env, i) => (
           <div key={`${env.id}-${env.displayEnv}-${i}`}
             className="bg-white dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col">
             <div className="p-5 border-b border-slate-100 dark:border-slate-800/50">
@@ -117,9 +135,17 @@ export default function EnvironmentsPage() {
         ))}
       </div>
 
-      <div className="bg-slate-50 dark:bg-slate-800/30 rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex justify-between items-center text-sm text-slate-500">
-        <span>Monitoring {filteredEnvData.length} client environments</span>
-        <span>Last updated: {new Date().toLocaleTimeString()}</span>
+      <div className="bg-white dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={totalItems}
+          pageSizeOptions={[10, 25, 50, 100]}
+          onPageChange={goToPage}
+          onPageSizeChange={setPageSize}
+          isLoading={false}
+        />
       </div>
     </div>
   );

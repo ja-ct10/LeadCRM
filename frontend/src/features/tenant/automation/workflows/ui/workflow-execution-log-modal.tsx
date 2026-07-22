@@ -2,6 +2,8 @@ import React from 'react';
 import { History, Clock, FileText } from 'lucide-react';
 import { Workflow, WorkflowExecution } from '@/store/types';
 import { ModalCloseButton } from '@/shared/components/ui/ModalCloseButton';
+import { usePagination } from '@/shared/hooks/usePagination';
+import { Pagination } from '@/shared/components/ui/pagination';
 
 interface WorkflowExecutionLogModalProps {
   workflowId: string;
@@ -18,6 +20,13 @@ export function WorkflowExecutionLogModal({
 }: WorkflowExecutionLogModalProps) {
   const workflowName = workflows.find(w => w.id === workflowId)?.name ?? 'Unknown Workflow';
   const relevantExecutions = executions.filter(ex => ex.workflowId === workflowId);
+
+  const pagination = usePagination({
+    totalItems: relevantExecutions.length,
+    initialPageSize: 10,
+    pageSizeOptions: [10, 25, 50],
+  });
+  const paginatedExecutions = pagination.paginateItems(relevantExecutions);
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -37,7 +46,7 @@ export function WorkflowExecutionLogModal({
 
         <div className="p-6 max-h-[60vh] overflow-y-auto space-y-4">
           {relevantExecutions.length > 0 ? (
-            relevantExecutions.map(ex => (
+            paginatedExecutions.map(ex => (
               <div
                 key={ex.id}
                 className="bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-xl p-4 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors"
@@ -76,6 +85,20 @@ export function WorkflowExecutionLogModal({
             </div>
           )}
         </div>
+
+        {relevantExecutions.length > 0 && (
+          <div className="px-6 border-t border-gray-200 dark:border-white/[0.05]">
+            <Pagination
+              currentPage={pagination.currentPage}
+              totalPages={pagination.totalPages}
+              pageSize={pagination.pageSize}
+              totalItems={pagination.totalItems}
+              pageSizeOptions={[10, 25, 50]}
+              onPageChange={pagination.goToPage}
+              onPageSizeChange={pagination.setPageSize}
+            />
+          </div>
+        )}
 
         <div className="p-6 border-t border-gray-200 dark:border-white/[0.05] bg-gray-50 dark:bg-slate-950 flex justify-end">
           <button

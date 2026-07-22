@@ -9,6 +9,8 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { useData } from '@/store/DataContext';
 import { TrelloFilter } from '@/shared/components/TrelloFilter';
+import { usePagination } from '@/shared/hooks/usePagination';
+import { Pagination } from '@/shared/components/ui/pagination';
 
 export default function ServiceOrdersPage() {
   const { serviceOrders } = useData();
@@ -22,6 +24,21 @@ export default function ServiceOrdersPage() {
       order.title.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = filterStatuses.length === 0 || filterStatuses.some(s => order.status.toLowerCase() === s.toLowerCase());
     return matchesSearch && matchesStatus;
+  });
+
+  const {
+    currentPage,
+    pageSize,
+    totalPages,
+    totalItems,
+    goToPage,
+    setPageSize,
+    paginateItems,
+  } = usePagination({
+    totalItems: filteredOrders.length,
+    initialPageSize: 25,
+    pageSizeOptions: [10, 25, 50, 100],
+    resetDeps: [searchQuery, filterStatuses],
   });
 
   const getStatusColor = (status: string) => {
@@ -112,7 +129,7 @@ export default function ServiceOrdersPage() {
             </thead>
             <tbody className="divide-y divide-white/[0.05]">
               <AnimatePresence mode="popLayout">
-                {filteredOrders.map((order) => (
+                {paginateItems(filteredOrders).map((order) => (
                   <motion.tr 
                     key={order.id}
                     layout
@@ -177,6 +194,20 @@ export default function ServiceOrdersPage() {
             </tbody>
           </table>
         </div>
+
+        {filteredOrders.length > 0 && (
+          <div className="p-4 border-t border-gray-200 dark:border-white/[0.05]">
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              pageSize={pageSize}
+              totalItems={totalItems}
+              pageSizeOptions={[10, 25, 50, 100]}
+              onPageChange={goToPage}
+              onPageSizeChange={setPageSize}
+            />
+          </div>
+        )}
         
         {filteredOrders.length === 0 && (
           <div className="p-12 text-center">
