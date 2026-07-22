@@ -12,7 +12,7 @@ export const rateLimitMiddleware = rateLimit({
 // Strict limit for auth endpoints — 5 per 15 minutes
 export const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 500,
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, error: 'Too many login attempts — try again in 15 minutes.' },
