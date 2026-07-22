@@ -62,7 +62,7 @@ export async function seedDemo(req: Request, res: Response, next: NextFunction):
       },
     });
 
-    const passwordHash = await bcrypt.hash('123456', 10);
+    const passwordHash = await bcrypt.hash('admin123', 10);
 
     const user = await prisma.user.upsert({
       where: { email: 'admin@democorp.com' },
@@ -87,7 +87,7 @@ export async function seedDemo(req: Request, res: Response, next: NextFunction):
       message: 'Demo user successfully seeded!',
       credentials: {
         email: 'admin@democorp.com',
-        password: '123456'
+        password: 'admin123'
       }
     });
   } catch (err) {
