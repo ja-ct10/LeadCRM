@@ -383,6 +383,7 @@ For detailed architectural specifications and guidelines, consult the files in [
 | [`docs/database/erd.md`](./docs/database/erd.md) | Database Schema v2 Mermaid ERD & entity descriptions |
 | [`docs/security/permission-matrix.md`](./docs/security/permission-matrix.md) | Exhaustive RBAC permission matrix and role specifications |
 | [`docs/setup/local-dev.md`](./docs/setup/local-dev.md) | Advanced local development, debugging, and setup guide |
+| [`docs/setup/deployment.md`](./docs/setup/deployment.md) | Full production deployment guide (Vercel + Railway / Render + PostgreSQL) |
 | [`docs/setup/environment-variables.md`](./docs/setup/environment-variables.md) | Full environment variable reference table |
 
 ---

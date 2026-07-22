@@ -366,4 +366,5 @@ infrastructure/
 | [database/erd.md](./database/erd.md) | Entity relationships, Prisma model map, migration path |
 | **setup/** | |
 | [setup/local-dev.md](./setup/local-dev.md) | Local development setup guide |
+| [setup/deployment.md](./setup/deployment.md) | Production deployment guide (Vercel + Railway / Render + PostgreSQL) |
 | [setup/environment-variables.md](./setup/environment-variables.md) | All environment variables reference |
