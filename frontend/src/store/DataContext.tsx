@@ -303,15 +303,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // Ensure any missing seed items or updateStatus fields are merged
       const parsedLeads = l || [];
       const leadMap = new Map(parsedLeads.map((x: any) => [x.id, x]));
-      l = MOCK_LEADS.map((ml) => {
-        const existing = leadMap.get(ml.id);
-        if (!existing) return ml;
-        return {
-          ...ml,
-          ...existing,
-          updateStatus: existing.updateStatus || ml.updateStatus,
-        };
+      const mergedLeadsList = [...parsedLeads];
+      
+      MOCK_LEADS.forEach((ml) => {
+        if (!leadMap.has(ml.id)) {
+          mergedLeadsList.push(ml);
+        } else {
+          const idx = mergedLeadsList.findIndex((x: any) => x.id === ml.id);
+          if (idx !== -1) {
+            mergedLeadsList[idx] = {
+              ...ml,
+              ...mergedLeadsList[idx],
+              updateStatus: mergedLeadsList[idx].updateStatus || ml.updateStatus,
+            };
+          }
+        }
       });
+      l = mergedLeadsList;
     }
 
     // MIGRATION: Auto-extract Organizations from Leads if not done yet
