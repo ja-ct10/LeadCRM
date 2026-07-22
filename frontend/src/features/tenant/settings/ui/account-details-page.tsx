@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/store/AuthContext';
 import { Shield, Monitor, CreditCard, Package, Zap, Receipt, Calendar, CheckCircle2, Download, Eye, CreditCard as CreditCardIcon, Plus, FileText, Mail, X, ChevronDown } from 'lucide-react';
+import { BackButton } from '@/shared/components/ui/BackButton';
 
 export default function AccountDetailsPage() {
   const { tenant } = useAuth();
@@ -381,6 +382,9 @@ export default function AccountDetailsPage() {
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
+      <div className="mb-4">
+        <BackButton label="Back to Settings" href="/settings" />
+      </div>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Account Management</h1>

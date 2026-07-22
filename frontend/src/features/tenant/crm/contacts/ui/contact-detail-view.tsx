@@ -2,16 +2,17 @@
 
 import React from 'react';
 import { Contact, Organization, User as UserType, Deal, Task, Campaign } from '@/store/types';
+import { useData } from '@/store/DataContext';
 import { ClientProfileTabs } from './contact-profile-tabs';
-import { CompanyProfileTabs } from './company-profile-tabs';
+import { CompanyProfileTabs, ExtendedOrg } from './company-profile-tabs';
 import { ShieldCheck, TrendingUp } from 'lucide-react';
 import { getCRMStatusStyles } from '@/lib/utils';
-
-
+import { BackButton } from '@/shared/components/ui/BackButton';
 
 interface UnifiedDetailViewProps {
   type: 'individual' | 'organization';
   selectedItem: Contact | (Organization & { contacts?: Contact[] });
+  initialTab?: string;
   users: UserType[];
   deals: Deal[];
   tasks: Task[];
@@ -31,6 +32,7 @@ interface UnifiedDetailViewProps {
 export const UnifiedDetailView = ({
   type,
   selectedItem,
+  initialTab = 'overview',
   users,
   deals,
   tasks,
@@ -46,29 +48,83 @@ export const UnifiedDetailView = ({
   setSelectedOrgName
 }: UnifiedDetailViewProps) => {
 
+  const { contacts = [] } = useData({ includeArchived: true });
+
+  // Robust organization entity normalization regardless of whether selectedItem is a Contact or an Organization
+  const normalizedOrg: ExtendedOrg = React.useMemo(() => {
+    const isContactObj = 'companyName' in selectedItem || 'contactPerson' in selectedItem;
+    const itemAsContact = selectedItem as Contact;
+    const itemAsOrg = selectedItem as Organization;
+
+    const name = (isContactObj ? itemAsContact.companyName : itemAsOrg.name) || 'Organization';
+    const id = isContactObj ? (itemAsContact.organizationId || itemAsContact.id) : itemAsOrg.id;
+
+    // Find all contacts in dataset matching this organization
+    const orgContacts = contacts.filter(c => 
+      !c.isArchived && (
+        (id && c.organizationId === id) ||
+        (c.companyName && name && c.companyName.toLowerCase().trim() === name.toLowerCase().trim())
+      )
+    );
+
+    return {
+      id: id || 'org_demo',
+      tenantId: selectedItem.tenantId || 'tenant_demo',
+      name: name,
+      industry: (selectedItem as any).industry || 'Technology & B2B Solutions',
+      size: (selectedItem as any).size || '250+ Employees',
+      website: (selectedItem as any).website || 'N/A',
+      taxId: (selectedItem as any).taxId || 'N/A',
+      createdAt: (selectedItem as any).createdAt || new Date().toISOString(),
+      contacts: orgContacts.length > 0 ? orgContacts : (isContactObj ? [itemAsContact] : []),
+      address: (selectedItem as any).address || [ (selectedItem as any).streetAddress, (selectedItem as any).city, (selectedItem as any).province ].filter(Boolean).join(', ') || 'Metropolitan Manila',
+      status: (selectedItem as any).status || 'Customer',
+      leadSource: (selectedItem as any).leadSource || 'Website Portal',
+      estimatedValue: (selectedItem as any).estimatedValue || 0,
+      repId: (selectedItem as any).assignedUserId || 'user_1',
+    };
+  }, [selectedItem, contacts]);
+
   // Dynamic Mappings for Status and Connected Deals
   const mappedStatus = type === 'individual' 
     ? (selectedItem as Contact).status 
-    : 'Contact';
+    : normalizedOrg.status;
 
   const mappedDeals = React.useMemo(() => {
     if (type === 'individual') {
       const contact = selectedItem as Contact;
       return deals.filter(d => 
-        (d.companyName && contact.companyName && d.companyName.toLowerCase().trim() === contact.companyName.toLowerCase().trim()) || 
-        (d.contactPerson && contact.contactPerson && d.contactPerson.toLowerCase().trim() === contact.contactPerson.toLowerCase().trim())
+        !d.isArchived && (
+          d.contactId === contact.id ||
+          d.contactIds?.includes(contact.id) ||
+          (d.companyName && contact.companyName && d.companyName.toLowerCase().trim() === contact.companyName.toLowerCase().trim()) || 
+          (d.contactPerson && contact.contactPerson && d.contactPerson.toLowerCase().trim() === contact.contactPerson.toLowerCase().trim())
+        )
       );
     } else {
-      const org = selectedItem as any;
-      return deals.filter(d => 
-        (d.companyName && org.name && d.companyName.toLowerCase().trim() === org.name.toLowerCase().trim()) ||
-        org.contacts.some(c => c.contactPerson && d.contactPerson && c.contactPerson.toLowerCase().trim() === d.contactPerson.toLowerCase().trim())
-      );
+      const orgName = normalizedOrg.name.toLowerCase().trim();
+      const orgContactIds = new Set(normalizedOrg.contacts.map(c => c.id));
+      const orgContactPersons = new Set(normalizedOrg.contacts.map(c => c.contactPerson?.toLowerCase().trim()).filter(Boolean));
+
+      return deals.filter(d => {
+        if (d.isArchived) return false;
+        if (d.companyId && normalizedOrg.id && d.companyId === normalizedOrg.id) return true;
+        if (d.companyName && d.companyName.toLowerCase().trim() === orgName) return true;
+        if (d.contactId && orgContactIds.has(d.contactId)) return true;
+        if (d.contactIds && d.contactIds.some(cid => orgContactIds.has(cid))) return true;
+        if (d.contactPerson && orgContactPersons.has(d.contactPerson.toLowerCase().trim())) return true;
+        return false;
+      });
     }
-  }, [type, selectedItem, deals]);
+  }, [type, selectedItem, deals, normalizedOrg]);
 
   return (
     <div className="space-y-6" id="unified-detail-view-root">
+      {/* Top Header Navigation */}
+      <div className="flex items-center justify-between pb-2 border-b border-slate-200/60 dark:border-white/10">
+        <BackButton label="Back to Contacts" onClick={onClose} variant="default" />
+      </div>
+
       {/* Dynamic Summary Bar displaying Mapped Status and Deals count */}
       <div className="bg-slate-50 dark:bg-white/[0.01] border border-gray-200 dark:border-white/[0.04] p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs">
         <div className="flex items-center gap-2.5">
@@ -99,6 +155,7 @@ export const UnifiedDetailView = ({
       {type === 'individual' ? (
         <ClientProfileTabs
           selectedContact={selectedItem as Contact}
+          initialTab={initialTab as any}
           users={users}
           deals={deals}
           tasks={tasks}
@@ -112,7 +169,8 @@ export const UnifiedDetailView = ({
         />
       ) : (
         <CompanyProfileTabs
-          selectedOrg={{ ...(selectedItem as Organization), contacts: [], address: '', status: 'Contact', leadSource: '' } as any}
+          selectedOrg={normalizedOrg}
+          initialTab={initialTab as any}
           users={users}
           deals={deals}
           tasks={tasks}

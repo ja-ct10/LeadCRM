@@ -291,16 +291,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
     let orgs = safeParse<Organization[] | null>("leadcrm_organizations", null);
     let l = safeParse("leadcrm_leads", MOCK_LEADS);
 
-    // Force refresh leads to apply new fields only once
-    if (!localStorage.getItem("leadcrm_migrated_v3")) {
+    // Force refresh leads & deals seed data v7
+    if (!localStorage.getItem("leadcrm_migrated_v7")) {
       l = MOCK_LEADS;
       localStorage.setItem("leadcrm_leads", JSON.stringify(l));
+      localStorage.setItem("leadcrm_deals", JSON.stringify(MOCK_DEALS));
       orgs = null;
       localStorage.removeItem("leadcrm_organizations");
-      localStorage.setItem("leadcrm_migrated_v3", "true");
+      localStorage.setItem("leadcrm_migrated_v7", "true");
+    } else {
+      // Ensure any missing seed items or updateStatus fields are merged
+      const parsedLeads = l || [];
+      const leadMap = new Map(parsedLeads.map((x: any) => [x.id, x]));
+      l = MOCK_LEADS.map((ml) => {
+        const existing = leadMap.get(ml.id);
+        if (!existing) return ml;
+        return {
+          ...ml,
+          ...existing,
+          updateStatus: existing.updateStatus || ml.updateStatus,
+        };
+      });
     }
 
-    // MI·RATION: Auto-extract Organizations from Leads if not done yet
+    // MIGRATION: Auto-extract Organizations from Leads if not done yet
     if (!orgs && l && l.length > 0) {
       orgs = [];
       const orgMap: Record<string, string> = {}; // Name to ID
@@ -334,7 +348,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
       orgs = [];
     }
 
-    const d = safeParse("leadcrm_deals", MOCK_DEALS).map((deal: any) => {
+    const parsedDeals = safeParse("leadcrm_deals", MOCK_DEALS);
+    const existingDealIds = new Set(parsedDeals.map((x: any) => x.id));
+    const mergedDealsList = [...parsedDeals];
+    MOCK_DEALS.forEach((md) => {
+      if (!existingDealIds.has(md.id)) {
+        mergedDealsList.push(md);
+      }
+    });
+
+    const d = mergedDealsList.map((deal: any) => {
       // Migration: backfill contactIds from legacy contactId
       if (!deal.contactIds && deal.contactId) {
         return { ...deal, contactIds: [deal.contactId] };

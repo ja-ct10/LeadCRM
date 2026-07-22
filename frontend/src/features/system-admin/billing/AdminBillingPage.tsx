@@ -1,8 +1,9 @@
 'use client';
 import React, { useState } from 'react';
-import { Search, Eye, Download, CreditCard, Building2, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Search, Eye, Download, CreditCard, Building2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
+import { ModalCloseButton } from '@/shared/components/ui/ModalCloseButton';
 
 const MOCK_INVOICES = [
   { id: 'INV-2026-001', client: 'Acme Corporation',    plan: 'Enterprise', amount: 199, date: '2026-03-15', method: 'Credit Card',   status: 'paid' },
@@ -128,7 +129,7 @@ export default function AdminBillingPage() {
                   <h3 className="text-lg font-bold text-slate-900 dark:text-white">Invoice Details</h3>
                   <p className="text-sm text-slate-500 mt-0.5">Complete information for {selectedInvoice.id}</p>
                 </div>
-                <button onClick={() => setSelectedInvoice(null)} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg transition-colors"><X size={20} /></button>
+                <ModalCloseButton onClose={() => setSelectedInvoice(null)} ariaLabel="Close invoice details modal" size={20} />
               </div>
               <div className="p-6">
                 <div className="flex justify-between items-start mb-6">

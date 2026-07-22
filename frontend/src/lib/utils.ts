@@ -56,3 +56,61 @@ export function getCRMStatusStripColor(status: string): string {
       return 'bg-sky-500';
   }
 }
+
+export function getConnectedDealsForContact(contact: any, deals: any[]): any[] {
+  if (!contact || !deals || deals.length === 0) return [];
+  const contactCompName = contact.companyName?.toLowerCase().trim() || '';
+  const fullName = `${contact.firstName || ''} ${contact.lastName || ''}`.trim().toLowerCase();
+  const personName = (contact.contactPerson || '').toLowerCase().trim();
+
+  return deals.filter(d => {
+    if (d.isArchived) return false;
+    if (d.contactId && d.contactId === contact.id) return true;
+    if (d.contactIds && d.contactIds.includes(contact.id)) return true;
+    if (contact.organizationId && d.companyId && d.companyId === contact.organizationId) return true;
+    if (contactCompName !== '' && d.companyName && d.companyName.toLowerCase().trim() === contactCompName) return true;
+    if (personName !== '' && d.contactPerson && d.contactPerson.toLowerCase().trim() === personName) return true;
+    if (fullName !== '' && d.contactPerson && d.contactPerson.toLowerCase().trim() === fullName) return true;
+    return false;
+  });
+}
+
+export function getConnectedDealsForOrg(
+  org: { id?: string; name?: string; contacts?: any[] },
+  deals: any[],
+  allContacts: any[] = []
+): any[] {
+  if (!org || !deals || deals.length === 0) return [];
+  const orgId = org.id;
+  const orgName = org.name?.toLowerCase().trim() || '';
+
+  // Collect all contacts belonging to or matching this organization
+  const orgContacts = org.contacts && org.contacts.length > 0
+    ? org.contacts
+    : allContacts.filter(c => 
+        !c.isArchived && (
+          (orgId && c.organizationId === orgId) ||
+          (orgName !== '' && c.companyName && c.companyName.toLowerCase().trim() === orgName)
+        )
+      );
+
+  const contactIdsSet = new Set<string>();
+  const contactNamesSet = new Set<string>();
+
+  orgContacts.forEach(c => {
+    if (c.id) contactIdsSet.add(c.id);
+    if (c.contactPerson) contactNamesSet.add(c.contactPerson.toLowerCase().trim());
+    const fullName = `${c.firstName || ''} ${c.lastName || ''}`.trim().toLowerCase();
+    if (fullName !== '') contactNamesSet.add(fullName);
+  });
+
+  return deals.filter(d => {
+    if (d.isArchived) return false;
+    if (orgId && d.companyId && d.companyId === orgId) return true;
+    if (orgName !== '' && d.companyName && d.companyName.toLowerCase().trim() === orgName) return true;
+    if (d.contactId && contactIdsSet.has(d.contactId)) return true;
+    if (d.contactIds && d.contactIds.some(cid => contactIdsSet.has(cid))) return true;
+    if (d.contactPerson && contactNamesSet.has(d.contactPerson.toLowerCase().trim())) return true;
+    return false;
+  });
+}

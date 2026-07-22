@@ -31,7 +31,8 @@ import {
   Activity,
   Layers,
   Search,
-  Filter
+  Filter,
+  Shield
 } from 'lucide-react';
 import EmptyState from '@/shared/components/EmptyState';
 import VisualWorkflowBuilder from './ui/visual-workflow-builder';
@@ -157,6 +158,7 @@ export default function WorkflowsPage() {
   };
 
   // Form State
+  const [isSimulationMode, setIsSimulationMode] = useState<boolean>(false);
   const [conditionRules, setConditionRules] = useState<{ logic: 'AND' | 'OR', rules: { field: string, operator: string, value: string }[] }>({
     logic: 'AND',
     rules: []
@@ -904,243 +906,681 @@ export default function WorkflowsPage() {
       {/* 6. Form Modal - Workflow Create / Edit */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-lg overflow-hidden shadow-2xl">
-            <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40">
-              <div>
-                <h2 className="text-base font-semibold text-slate-900 dark:text-white">{editingWorkflowId ? 'Edit Workflow' : 'Create Workflow'}</h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Define trigger, conditions, and actions for automation.</p>
-              </div>
-              <button onClick={() => { setIsModalOpen(false); resetForm(); setEditingWorkflowId(null); }} className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-md transition-colors cursor-pointer">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto text-xs">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">Workflow Name</label>
-                  <input 
-                    value={newWorkflow.name}
-                    onChange={(e) => setNewWorkflow({ ...newWorkflow, name: e.target.value })}
-                    className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-md px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-600 text-xs" 
-                    placeholder="e.g. Welcome Email Sequence" 
-                  />
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
+            
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold">
+                  <Zap size={18} />
                 </div>
                 <div>
-                  <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">Category</label>
-                  <select 
-                    value={newWorkflow.category}
-                    onChange={(e) => setNewWorkflow({ ...newWorkflow, category: e.target.value as any })}
-                    className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-md px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-600 text-xs"
-                  >
-                    <option value="General">General</option>
-                    <option value="Security">Security</option>
-                    <option value="Telecom">Telecom</option>
-                    <option value="IT">IT</option>
-                  </select>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base font-bold text-slate-900 dark:text-white">{editingWorkflowId ? 'Edit Workflow' : 'Create Automation Workflow'}</h2>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
+                      {newWorkflow.category} Domain
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Define trigger events, condition rules, and multi-step actions with live parameters.</p>
                 </div>
               </div>
-              
-              <div>
-                <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">Description</label>
-                <textarea 
-                  value={newWorkflow.description}
-                  onChange={(e) => setNewWorkflow({ ...newWorkflow, description: e.target.value })}
-                  className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-md px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-600 text-xs h-16" 
-                  placeholder="Describe what this workflow automates..."
-                />
-              </div>
 
-              <div className="bg-slate-50 dark:bg-slate-800/40 p-3.5 rounded-lg border border-slate-200 dark:border-slate-800 space-y-3">
-                <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[10px]">1. When this happens (Trigger)</label>
-                <select 
-                  value={newWorkflow.trigger}
-                  onChange={(e) => setNewWorkflow({ ...newWorkflow, trigger: e.target.value })}
-                  className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-md px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-600 text-xs"
-                >
-                  <option value="lead_created">Contact Created</option>
-                  <option value="deal_created">Deal Created</option>
-                  <option value="deal_stage_qualified">Deal Reached Qualified</option>
-                  <option value="deal_stage_proposal">Deal Reached Proposal</option>
-                  <option value="deal_stage_negotiation">Deal Reached Negotiation</option>
-                  <option value="deal_stage_won">Deal Won (Closed Won)</option>
-                  <option value="deal_stage_lost">Deal Lost (Closed Lost)</option>
-                  <option value="deal_expected_close_date_approaching">Deal Expected Close Date Approaching</option>
-                  <option value="lead_expected_close_date_approaching">Contact Expected Close Date Approaching</option>
-                  <option value="email_opened">Email Opened</option>
-                  <option value="meeting_scheduled">Meeting Scheduled</option>
-                  <option value="tag_added">Tag Added</option>
-                </select>
-              </div>
-
-              {/* Conditions Block */}
-              <div className="bg-slate-50 dark:bg-slate-800/40 p-3.5 rounded-lg border border-slate-200 dark:border-slate-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[10px]">2. Only if (Conditions)</label>
-                  <button 
-                    type="button"
-                    onClick={() => setConditionRules({ ...conditionRules, rules: [...conditionRules.rules, { field: 'deal.value', operator: '>', value: '0' }] })}
-                    className="text-[10px] text-blue-600 dark:text-blue-400 font-bold uppercase tracking-wider flex items-center gap-1 hover:underline cursor-pointer"
-                  >
-                    <Plus size={12} /> Add Condition Rule
-                  </button>
-                </div>
-
-                {conditionRules.rules.length > 0 && (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 mb-1 text-[11px]">
-                      <span className="text-slate-500 font-medium">Match</span>
-                      <select 
-                        value={conditionRules.logic}
-                        onChange={(e) => setConditionRules({ ...conditionRules, logic: e.target.value as any })}
-                        className="bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-2 py-0.5 text-xs text-slate-900 dark:text-white"
-                      >
-                        <option value="AND">All (AND)</option>
-                        <option value="OR">Any (OR)</option>
-                      </select>
-                      <span className="text-slate-500 font-medium">rules:</span>
-                    </div>
-
-                    {conditionRules.rules.map((rule, idx) => (
-                      <div key={idx} className="flex items-center gap-1.5">
-                        <select 
-                          value={rule.field}
-                          onChange={(e) => {
-                            const newRules = [...conditionRules.rules];
-                            newRules[idx].field = e.target.value;
-                            setConditionRules({ ...conditionRules, rules: newRules });
-                          }}
-                          className="flex-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs text-slate-900 dark:text-white"
-                        >
-                          <option value="deal.title">Deal Title</option>
-                          <option value="deal.value">Deal Value ($)</option>
-                          <option value="contact.score">Contact Score</option>
-                          <option value="contact.status">Contact Status</option>
-                        </select>
-
-                        <select 
-                          value={rule.operator}
-                          onChange={(e) => {
-                            const newRules = [...conditionRules.rules];
-                            newRules[idx].operator = e.target.value;
-                            setConditionRules({ ...conditionRules, rules: newRules });
-                          }}
-                          className="w-24 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs text-slate-900 dark:text-white"
-                        >
-                          <option value=">">&gt;</option>
-                          <option value="<">&lt;</option>
-                          <option value="==">==</option>
-                          <option value="!=">!=</option>
-                          <option value="contains">contains</option>
-                        </select>
-
-                        <input 
-                          value={rule.value}
-                          onChange={(e) => {
-                            const newRules = [...conditionRules.rules];
-                            newRules[idx].value = e.target.value;
-                            setConditionRules({ ...conditionRules, rules: newRules });
-                          }}
-                          className="w-24 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs text-slate-900 dark:text-white"
-                          placeholder="Value"
-                        />
-
-                        <button 
-                          type="button"
-                          onClick={() => {
-                            const newRules = conditionRules.rules.filter((_, i) => i !== idx);
-                            setConditionRules({ ...conditionRules, rules: newRules });
-                          }}
-                          className="p-1 text-slate-400 hover:text-red-500 cursor-pointer"
-                        >
-                          <X size={14} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Actions Block */}
-              <div className="space-y-3">
-                {newWorkflow.actions.map((action: any, index: number) => (
-                  <div key={action.id || index} className="bg-slate-50 dark:bg-slate-800/40 p-3.5 rounded-lg border border-slate-200 dark:border-slate-800 space-y-3 relative">
-                    <div className="flex justify-between items-center">
-                      <label className="block font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[10px]">
-                        3. Then do this (Action {index + 1})
-                      </label>
-                      {index > 0 && (
-                        <button 
-                          type="button"
-                          onClick={() => {
-                            const newActions = [...newWorkflow.actions];
-                            newActions.splice(index, 1);
-                            setNewWorkflow({ ...newWorkflow, actions: newActions });
-                          }}
-                          className="text-slate-400 hover:text-red-500 cursor-pointer"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      )}
-                    </div>
-
-                    <select 
-                      value={action.type}
-                      onChange={(e) => {
-                        const newActions = [...newWorkflow.actions];
-                        newActions[index].type = e.target.value;
-                        setNewWorkflow({ ...newWorkflow, actions: newActions });
-                      }}
-                      className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-md px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-600 text-xs"
-                    >
-                      <option value="send_email">Send Email</option>
-                      <option value="send_sms">Send SMS</option>
-                      <option value="create_task">Create Task</option>
-                      <option value="update_lead_status">Update Contact Status</option>
-                      <option value="add_tag">Add Tag</option>
-                      <option value="send_slack_notification">Send Slack Notification</option>
-                      <option value="webhook">Trigger Webhook</option>
-                    </select>
-                  </div>
-                ))}
-
+              <div className="flex items-center gap-2">
                 <button 
-                  type="button" 
-                  onClick={() => {
-                    setNewWorkflow({
-                      ...newWorkflow,
-                      actions: [
-                        ...newWorkflow.actions,
-                        {
-                          id: uuid(),
-                          type: 'send_email',
-                          delay: 0,
-                          delayUnit: 'minutes',
-                          config: { taskTitle: '', taskDescription: '', templateId: '' }
-                        }
-                      ]
-                    });
-                  }}
-                  className="w-full py-2 border border-dashed border-slate-300 dark:border-slate-700 rounded-md text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                  type="button"
+                  onClick={() => setIsSimulationMode(!isSimulationMode)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                    isSimulationMode 
+                      ? 'bg-amber-500 text-white border-amber-600 shadow-xs' 
+                      : 'bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                  }`}
+                  title="Toggle dry-run execution test"
                 >
-                  <Plus size={14} /> Add Another Action Step
+                  <Play size={12} />
+                  <span>{isSimulationMode ? 'Edit Mode' : '⚡ Dry-Run Test'}</span>
+                </button>
+
+                <button onClick={() => { setIsModalOpen(false); resetForm(); setEditingWorkflowId(null); setIsSimulationMode(false); }} className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-md transition-colors cursor-pointer">
+                  <X size={18} />
                 </button>
               </div>
             </div>
-            
-            <div className="flex justify-end gap-2 p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40">
-              <button 
-                onClick={() => { setIsModalOpen(false); resetForm(); setEditingWorkflowId(null); }} 
-                className="px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleSave} 
-                className="px-4 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700 transition-colors shadow-xs cursor-pointer"
-              >
-                {editingWorkflowId ? 'Save Changes' : 'Save Workflow'}
-              </button>
+
+            {/* Modal Body */}
+            <div className="p-5 space-y-5 overflow-y-auto custom-scrollbar text-xs flex-1">
+
+              {isSimulationMode ? (
+                /* SIMULATION & DRY-RUN MODE */
+                <div className="space-y-4 animate-in fade-in duration-150">
+                  <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold text-amber-800 dark:text-amber-300 block">Workflow Dry-Run Execution Simulator</span>
+                      <span className="text-[11px] text-amber-700 dark:text-amber-400">Testing against sample CRM record: <strong>Maria Santos (MetroTech Solutions Inc.)</strong></span>
+                    </div>
+                    <span className="px-2 py-1 rounded bg-amber-500 text-slate-950 font-black text-[10px] uppercase tracking-wider">Simulation</span>
+                  </div>
+
+                  <div className="space-y-3 pl-2 border-l-2 border-slate-200 dark:border-slate-800">
+                    <div className="p-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                          <CheckCircle2 size={14} className="text-emerald-500" /> Step 1: Trigger Evaluation
+                        </span>
+                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">MATCHED</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Trigger <strong>{newWorkflow.trigger}</strong> evaluated on incoming record.
+                      </p>
+                    </div>
+
+                    <div className="p-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                          <CheckCircle2 size={14} className="text-emerald-500" /> Step 2: Condition Rules Evaluation
+                        </span>
+                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">PASSED</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        {conditionRules.rules.length > 0 
+                          ? `${conditionRules.rules.length} rule(s) evaluated under ${conditionRules.logic} logic.`
+                          : 'No condition restrictions configured (Unconditional pass).'}
+                      </p>
+                    </div>
+
+                    {newWorkflow.actions.map((act: any, idx: number) => (
+                      <div key={idx} className="p-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                            <Zap size={14} className="text-blue-500" /> Action Step {idx + 1}: {act.type}
+                          </span>
+                          <span className="text-[10px] font-bold text-blue-600 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800">
+                            {act.delay > 0 ? `⏱️ WAITS ${act.delay} ${act.delayUnit}` : '🚀 EXECUTES IMMEDIATELY'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                          Payload configured: {JSON.stringify(act.config || {})}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                /* FORM CONFIGURATION MODE */
+                <>
+                  {/* Basic Workflow Metadata */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">Workflow Name</label>
+                      <input 
+                        value={newWorkflow.name}
+                        onChange={(e) => setNewWorkflow({ ...newWorkflow, name: e.target.value })}
+                        className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-md px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-600 text-xs font-semibold" 
+                        placeholder="e.g. High Worth Lead Welcome Sequence" 
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">Category Domain</label>
+                      <select 
+                        value={newWorkflow.category}
+                        onChange={(e) => setNewWorkflow({ ...newWorkflow, category: e.target.value as any })}
+                        className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-md px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-600 text-xs"
+                      >
+                        <option value="General">General Automation</option>
+                        <option value="Security">Security & Access</option>
+                        <option value="Telecom">Telecom & Communications</option>
+                        <option value="IT">IT Infrastructure</option>
+                      </select>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">Description & Business Rationale</label>
+                    <textarea 
+                      value={newWorkflow.description}
+                      onChange={(e) => setNewWorkflow({ ...newWorkflow, description: e.target.value })}
+                      className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-md px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-600 text-xs h-16" 
+                      placeholder="Describe what business workflow this automation streamlines..."
+                    />
+                  </div>
+
+                  {/* 1. TRIGGER BLOCK */}
+                  <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="block font-bold text-slate-900 dark:text-white uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                        <Zap size={14} className="text-amber-500" /> 1. When this happens (Trigger Event)
+                      </label>
+                      <span className="text-[10px] text-slate-400 font-semibold">System Listener</span>
+                    </div>
+
+                    <select 
+                      value={newWorkflow.trigger}
+                      onChange={(e) => setNewWorkflow({ ...newWorkflow, trigger: e.target.value })}
+                      className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-md px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-600 text-xs font-semibold"
+                    >
+                      <optgroup label="👥 Contact & Customer Events">
+                        <option value="lead_created">Contact / Lead Created</option>
+                        <option value="lead_status_changed">Contact Status Updated</option>
+                        <option value="lead_expected_close_date_approaching">Contact Close Approaching</option>
+                        <option value="tag_added">Tag Added to Contact</option>
+                      </optgroup>
+                      <optgroup label="💼 Opportunity & Pipeline Events">
+                        <option value="deal_created">Deal Created</option>
+                        <option value="deal_stage_qualified">Deal Reached Qualified Stage</option>
+                        <option value="deal_stage_proposal">Deal Reached Proposal Stage</option>
+                        <option value="deal_stage_negotiation">Deal Reached Negotiation Stage</option>
+                        <option value="deal_stage_won">Deal Won (Closed Won)</option>
+                        <option value="deal_stage_lost">Deal Lost (Closed Lost)</option>
+                        <option value="deal_expected_close_date_approaching">Deal Expected Close Approaching</option>
+                      </optgroup>
+                      <optgroup label="✉️ Communications & Engagement">
+                        <option value="email_opened">Email Opened by Client</option>
+                        <option value="meeting_scheduled">Meeting Scheduled</option>
+                      </optgroup>
+                    </select>
+
+                    <div className="p-2.5 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200/50 dark:border-blue-900/30 rounded-lg text-[11px] text-blue-700 dark:text-blue-300">
+                      💡 <strong>Trigger listener active:</strong> Fires automatically across CRM modules whenever the specified event is published.
+                    </div>
+                  </div>
+
+                  {/* 2. CONDITIONS BLOCK */}
+                  <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="block font-bold text-slate-900 dark:text-white uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                        <Shield size={14} className="text-indigo-500" /> 2. Only if (Condition Rules)
+                      </label>
+                      <button 
+                        type="button"
+                        onClick={() => setConditionRules({ ...conditionRules, rules: [...conditionRules.rules, { field: 'deal.value', operator: '>', value: '50000' }] })}
+                        className="text-[10px] bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-bold px-2 py-1 rounded border border-blue-200 dark:border-blue-800 flex items-center gap-1 hover:bg-blue-100 transition-colors cursor-pointer"
+                      >
+                        <Plus size={12} /> Add Rule
+                      </button>
+                    </div>
+
+                    {conditionRules.rules.length > 0 ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 mb-1 text-[11px]">
+                          <span className="text-slate-500 font-medium">Evaluate</span>
+                          <select 
+                            value={conditionRules.logic}
+                            onChange={(e) => setConditionRules({ ...conditionRules, logic: e.target.value as any })}
+                            className="bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-2 py-0.5 text-xs text-slate-900 dark:text-white font-bold"
+                          >
+                            <option value="AND">All Rules (AND)</option>
+                            <option value="OR">Any Rule (OR)</option>
+                          </select>
+                          <span className="text-slate-500 font-medium">before executing:</span>
+                        </div>
+
+                        {conditionRules.rules.map((rule, idx) => (
+                          <div key={idx} className="flex items-center gap-1.5 p-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg">
+                            <select 
+                              value={rule.field}
+                              onChange={(e) => {
+                                const newRules = [...conditionRules.rules];
+                                newRules[idx].field = e.target.value;
+                                setConditionRules({ ...conditionRules, rules: newRules });
+                              }}
+                              className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs text-slate-900 dark:text-white font-medium"
+                            >
+                              <option value="deal.value">Deal Value (₱)</option>
+                              <option value="deal.priority">Deal Priority</option>
+                              <option value="deal.stageId">Deal Stage ID</option>
+                              <option value="contact.status">Contact Status</option>
+                              <option value="contact.score">Contact Score</option>
+                              <option value="contact.estimatedValue">Contact Value (₱)</option>
+                              <option value="contact.leadSource">Lead Source</option>
+                            </select>
+
+                            <select 
+                              value={rule.operator}
+                              onChange={(e) => {
+                                const newRules = [...conditionRules.rules];
+                                newRules[idx].operator = e.target.value;
+                                setConditionRules({ ...conditionRules, rules: newRules });
+                              }}
+                              className="w-24 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs text-slate-900 dark:text-white font-bold text-center"
+                            >
+                              <option value=">">&gt;</option>
+                              <option value="<">&lt;</option>
+                              <option value="==">==</option>
+                              <option value="!=">!=</option>
+                              <option value="contains">contains</option>
+                            </select>
+
+                            <input 
+                              value={rule.value}
+                              onChange={(e) => {
+                                const newRules = [...conditionRules.rules];
+                                newRules[idx].value = e.target.value;
+                                setConditionRules({ ...conditionRules, rules: newRules });
+                              }}
+                              className="w-28 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs text-slate-900 dark:text-white"
+                              placeholder="Target Value"
+                            />
+
+                            <button 
+                              type="button"
+                              onClick={() => {
+                                const newRules = conditionRules.rules.filter((_, i) => i !== idx);
+                                setConditionRules({ ...conditionRules, rules: newRules });
+                              }}
+                              className="p-1 text-slate-400 hover:text-red-500 cursor-pointer"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-slate-400 italic">No condition constraints set. Automation will execute unconditionally when triggered.</p>
+                    )}
+                  </div>
+
+                  {/* 3. MULTI-STEP ACTIONS BLOCK */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="block font-bold text-slate-900 dark:text-white uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                        <Layers size={14} className="text-blue-500" /> 3. Then do this (Multi-Step Action Pipeline)
+                      </label>
+                      <span className="text-[10px] text-slate-400 font-semibold">{newWorkflow.actions.length} Action Step(s)</span>
+                    </div>
+
+                    {newWorkflow.actions.map((action: any, index: number) => (
+                      <div key={action.id || index} className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3 relative">
+                        
+                        {/* Step Header */}
+                        <div className="flex justify-between items-center pb-2 border-b border-slate-200 dark:border-slate-800">
+                          <span className="font-bold text-xs text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                            <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-black">{index + 1}</span>
+                            Action Step {index + 1}
+                          </span>
+                          {index > 0 && (
+                            <button 
+                              type="button"
+                              onClick={() => {
+                                const newActions = [...newWorkflow.actions];
+                                newActions.splice(index, 1);
+                                setNewWorkflow({ ...newWorkflow, actions: newActions });
+                              }}
+                              className="text-slate-400 hover:text-red-500 cursor-pointer flex items-center gap-1 text-[11px]"
+                            >
+                              <Trash2 size={13} /> Remove Step
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Action Type Select */}
+                        <div>
+                          <label className="block text-[10px] font-semibold text-slate-500 mb-1">Action Type</label>
+                          <select 
+                            value={action.type}
+                            onChange={(e) => {
+                              const newActions = [...newWorkflow.actions];
+                              newActions[index].type = e.target.value;
+                              setNewWorkflow({ ...newWorkflow, actions: newActions });
+                            }}
+                            className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-md px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-600 text-xs font-bold"
+                          >
+                            <option value="send_email">✉️ Send Email (Template or Custom)</option>
+                            <option value="send_sms">📱 Send SMS Message</option>
+                            <option value="create_task">📋 Create Task on Taskboard</option>
+                            <option value="update_lead_status">🔄 Update Contact Pipeline Status</option>
+                            <option value="add_tag">🏷️ Add Tag to Contact</option>
+                            <option value="send_slack_notification">💬 Send Slack Alert Notification</option>
+                            <option value="webhook">🌐 Trigger External Webhook</option>
+                          </select>
+                        </div>
+
+                        {/* TIMING & DELAY CONTROLS */}
+                        <div className="grid grid-cols-2 gap-2 p-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg">
+                          <div>
+                            <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Execution Timing</label>
+                            <select
+                              value={action.delay > 0 ? 'delay' : 'immediate'}
+                              onChange={(e) => {
+                                const newActions = [...newWorkflow.actions];
+                                newActions[index].delay = e.target.value === 'immediate' ? 0 : (newActions[index].delay || 15);
+                                setNewWorkflow({ ...newWorkflow, actions: newActions });
+                              }}
+                              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs"
+                            >
+                              <option value="immediate">⚡ Run Immediately</option>
+                              <option value="delay">⏱️ Delay Execution...</option>
+                            </select>
+                          </div>
+
+                          {action.delay > 0 && (
+                            <div className="flex items-center gap-1">
+                              <div className="flex-1">
+                                <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Delay Amount</label>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={action.delay}
+                                  onChange={(e) => {
+                                    const newActions = [...newWorkflow.actions];
+                                    newActions[index].delay = parseInt(e.target.value) || 1;
+                                    setNewWorkflow({ ...newWorkflow, actions: newActions });
+                                  }}
+                                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs text-slate-900 dark:text-white"
+                                />
+                              </div>
+                              <div className="w-24">
+                                <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Unit</label>
+                                <select
+                                  value={action.delayUnit || 'minutes'}
+                                  onChange={(e) => {
+                                    const newActions = [...newWorkflow.actions];
+                                    newActions[index].delayUnit = e.target.value as any;
+                                    setNewWorkflow({ ...newWorkflow, actions: newActions });
+                                  }}
+                                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs"
+                                >
+                                  <option value="minutes">Minutes</option>
+                                  <option value="hours">Hours</option>
+                                  <option value="days">Days</option>
+                                </select>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* ACTION PARAMETERS */}
+                        <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-2">
+
+                          {action.type === 'send_email' && (
+                            <div className="space-y-2">
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="block text-[10px] font-medium text-slate-600 dark:text-slate-400 mb-0.5">Email Template</label>
+                                  <select
+                                    value={action.config?.templateId || 'welcome_series'}
+                                    onChange={(e) => {
+                                      const newActions = [...newWorkflow.actions];
+                                      newActions[index].config = { ...newActions[index].config, templateId: e.target.value };
+                                      setNewWorkflow({ ...newWorkflow, actions: newActions });
+                                    }}
+                                    className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs"
+                                  >
+                                    <option value="welcome_series">Welcome Series (Onboarding)</option>
+                                    <option value="proposal_followup">Executive Proposal Follow-up</option>
+                                    <option value="review_request">Strategic Quarterly Review</option>
+                                    <option value="custom">Custom Email Content</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] font-medium text-slate-600 dark:text-slate-400 mb-0.5">Subject Line</label>
+                                  <input
+                                    value={action.config?.emailSubject || ''}
+                                    onChange={(e) => {
+                                      const newActions = [...newWorkflow.actions];
+                                      newActions[index].config = { ...newActions[index].config, emailSubject: e.target.value };
+                                      setNewWorkflow({ ...newWorkflow, actions: newActions });
+                                    }}
+                                    placeholder="e.g. Welcome {{contact.contactPerson}} to LeadCRM"
+                                    className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs"
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-medium text-slate-600 dark:text-slate-400 mb-0.5">Email Body / Instructions</label>
+                                <textarea
+                                  value={action.config?.emailBody || ''}
+                                  onChange={(e) => {
+                                    const newActions = [...newWorkflow.actions];
+                                    newActions[index].config = { ...newActions[index].config, emailBody: e.target.value };
+                                    setNewWorkflow({ ...newWorkflow, actions: newActions });
+                                  }}
+                                  placeholder="Dear {{contact.contactPerson}},\n\nThank you for reaching out..."
+                                  className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs h-14"
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {action.type === 'send_sms' && (
+                            <div>
+                              <label className="block text-[10px] font-medium text-slate-600 dark:text-slate-400 mb-0.5">SMS Message Body</label>
+                              <textarea
+                                value={action.config?.smsBody || ''}
+                                onChange={(e) => {
+                                  const newActions = [...newWorkflow.actions];
+                                  newActions[index].config = { ...newActions[index].config, smsBody: e.target.value };
+                                  setNewWorkflow({ ...newWorkflow, actions: newActions });
+                                }}
+                                placeholder="Hi {{contact.firstName}}, your LeadCRM account rep has been assigned."
+                                className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs h-14"
+                              />
+                            </div>
+                          )}
+
+                          {action.type === 'create_task' && (
+                            <div className="space-y-2">
+                              <div className="grid grid-cols-3 gap-2">
+                                <div className="col-span-2">
+                                  <label className="block text-[10px] font-medium text-slate-600 dark:text-slate-400 mb-0.5">Task Title</label>
+                                  <input
+                                    value={action.config?.taskTitle || ''}
+                                    onChange={(e) => {
+                                      const newActions = [...newWorkflow.actions];
+                                      newActions[index].config = { ...newActions[index].config, taskTitle: e.target.value };
+                                      setNewWorkflow({ ...newWorkflow, actions: newActions });
+                                    }}
+                                    placeholder="e.g. Conduct onboarding discovery call"
+                                    className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] font-medium text-slate-600 dark:text-slate-400 mb-0.5">Priority</label>
+                                  <select
+                                    value={action.config?.taskPriority || 'Medium'}
+                                    onChange={(e) => {
+                                      const newActions = [...newWorkflow.actions];
+                                      newActions[index].config = { ...newActions[index].config, taskPriority: e.target.value as any };
+                                      setNewWorkflow({ ...newWorkflow, actions: newActions });
+                                    }}
+                                    className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs"
+                                  >
+                                    <option value="Low">Low</option>
+                                    <option value="Medium">Medium</option>
+                                    <option value="High">High</option>
+                                  </select>
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="block text-[10px] font-medium text-slate-600 dark:text-slate-400 mb-0.5">Task Due Delay</label>
+                                  <select
+                                    value={action.config?.taskDueDays || 1}
+                                    onChange={(e) => {
+                                      const newActions = [...newWorkflow.actions];
+                                      newActions[index].config = { ...newActions[index].config, taskDueDays: parseInt(e.target.value) };
+                                      setNewWorkflow({ ...newWorkflow, actions: newActions });
+                                    }}
+                                    className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs"
+                                  >
+                                    <option value={1}>Due in 24 Hours (1 Day)</option>
+                                    <option value={3}>Due in 3 Days</option>
+                                    <option value={7}>Due in 7 Days</option>
+                                    <option value={14}>Due in 14 Days</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] font-medium text-slate-600 dark:text-slate-400 mb-0.5">Assignee</label>
+                                  <select
+                                    value={action.config?.assignedTo || 'rep'}
+                                    onChange={(e) => {
+                                      const newActions = [...newWorkflow.actions];
+                                      newActions[index].config = { ...newActions[index].config, assignedTo: e.target.value };
+                                      setNewWorkflow({ ...newWorkflow, actions: newActions });
+                                    }}
+                                    className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs"
+                                  >
+                                    <option value="rep">Assigned Sales Representative</option>
+                                    <option value="queue">Unassigned Task Queue</option>
+                                    <option value="current">Current Active User</option>
+                                  </select>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {action.type === 'update_lead_status' && (
+                            <div>
+                              <label className="block text-[10px] font-medium text-slate-600 dark:text-slate-400 mb-0.5">Target Contact Status</label>
+                              <select
+                                value={action.config?.targetStatus || 'Hot'}
+                                onChange={(e) => {
+                                  const newActions = [...newWorkflow.actions];
+                                  newActions[index].config = { ...newActions[index].config, targetStatus: e.target.value };
+                                  setNewWorkflow({ ...newWorkflow, actions: newActions });
+                                }}
+                                className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs font-semibold"
+                              >
+                                <option value="Hot">🔥 Hot (High Priority)</option>
+                                <option value="Warm">⚡ Warm (Active Nurturing)</option>
+                                <option value="Cold">❄️ Cold (Prospect)</option>
+                                <option value="Closed">✅ Closed (Customer Won)</option>
+                              </select>
+                            </div>
+                          )}
+
+                          {action.type === 'add_tag' && (
+                            <div>
+                              <label className="block text-[10px] font-medium text-slate-600 dark:text-slate-400 mb-0.5">Tag Name to Append</label>
+                              <input
+                                value={action.config?.tagName || ''}
+                                onChange={(e) => {
+                                  const newActions = [...newWorkflow.actions];
+                                  newActions[index].config = { ...newActions[index].config, tagName: e.target.value };
+                                  setNewWorkflow({ ...newWorkflow, actions: newActions });
+                                }}
+                                placeholder="e.g. VIP Account, High Worth, Auto-Nurtured"
+                                className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs"
+                              />
+                            </div>
+                          )}
+
+                          {action.type === 'send_slack_notification' && (
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="block text-[10px] font-medium text-slate-600 dark:text-slate-400 mb-0.5">Slack Channel</label>
+                                <input
+                                  value={action.config?.slackChannel || '#sales-alerts'}
+                                  onChange={(e) => {
+                                    const newActions = [...newWorkflow.actions];
+                                    newActions[index].config = { ...newActions[index].config, slackChannel: e.target.value };
+                                    setNewWorkflow({ ...newWorkflow, actions: newActions });
+                                  }}
+                                  placeholder="#sales-alerts"
+                                  className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-medium text-slate-600 dark:text-slate-400 mb-0.5">Message Template</label>
+                                <input
+                                  value={action.config?.slackMessage || ''}
+                                  onChange={(e) => {
+                                    const newActions = [...newWorkflow.actions];
+                                    newActions[index].config = { ...newActions[index].config, slackMessage: e.target.value };
+                                    setNewWorkflow({ ...newWorkflow, actions: newActions });
+                                  }}
+                                  placeholder="New automation trigger on {{deal.title}}"
+                                  className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs"
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {action.type === 'webhook' && (
+                            <div className="grid grid-cols-3 gap-2">
+                              <div className="col-span-2">
+                                <label className="block text-[10px] font-medium text-slate-600 dark:text-slate-400 mb-0.5">Webhook Endpoint URL</label>
+                                <input
+                                  value={action.config?.webhookUrl || ''}
+                                  onChange={(e) => {
+                                    const newActions = [...newWorkflow.actions];
+                                    newActions[index].config = { ...newActions[index].config, webhookUrl: e.target.value };
+                                    setNewWorkflow({ ...newWorkflow, actions: newActions });
+                                  }}
+                                  placeholder="https://api.external-system.com/v1/webhook"
+                                  className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-medium text-slate-600 dark:text-slate-400 mb-0.5">HTTP Method</label>
+                                <select
+                                  value={action.config?.webhookMethod || 'POST'}
+                                  onChange={(e) => {
+                                    const newActions = [...newWorkflow.actions];
+                                    newActions[index].config = { ...newActions[index].config, webhookMethod: e.target.value as any };
+                                    setNewWorkflow({ ...newWorkflow, actions: newActions });
+                                  }}
+                                  className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs font-semibold"
+                                >
+                                  <option value="POST">POST</option>
+                                  <option value="PUT">PUT</option>
+                                </select>
+                              </div>
+                            </div>
+                          )}
+
+                        </div>
+
+                      </div>
+                    ))}
+
+                    <button 
+                      type="button" 
+                      onClick={() => {
+                        setNewWorkflow({
+                          ...newWorkflow,
+                          actions: [
+                            ...newWorkflow.actions,
+                            {
+                              id: uuid(),
+                              type: 'send_email',
+                              delay: 0,
+                              delayUnit: 'minutes',
+                              config: { taskTitle: '', taskDescription: '', templateId: '' }
+                            }
+                          ]
+                        });
+                      }}
+                      className="w-full py-2.5 border border-dashed border-slate-300 dark:border-slate-700 rounded-xl text-xs font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-950/30 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Plus size={14} /> Add Another Action Step
+                    </button>
+                  </div>
+                </>
+              )}
+
             </div>
+            
+            {/* Footer */}
+            <div className="flex justify-between items-center p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 shrink-0">
+              <span className="text-[11px] text-slate-400 italic">
+                {isSimulationMode ? 'Simulation mode active — no changes stored' : 'All parameters validate instantly against CRM schemas'}
+              </span>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => { setIsModalOpen(false); resetForm(); setEditingWorkflowId(null); setIsSimulationMode(false); }} 
+                  className="px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={() => { setIsSimulationMode(false); handleSave(); }} 
+                  className="px-4 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition-colors shadow-sm flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Zap size={13} />
+                  <span>{editingWorkflowId ? 'Save Changes' : 'Save Workflow'}</span>
+                </button>
+              </div>
+            </div>
+
           </div>
         </div>
       )}

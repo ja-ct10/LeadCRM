@@ -187,8 +187,8 @@ export function ClientDetailSheet({
                       <div key={deal.id} className="p-4 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
                         <div className="flex justify-between items-start mb-2">
                           <h4 className="font-bold text-sm">{deal.title}</h4>
-                          <span className="text-xs font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded-full">
-                            ${deal.value?.toLocaleString()}
+                          <span className="text-xs font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded-full whitespace-nowrap">
+                            ₱{deal.value?.toLocaleString('en-PH')}
                           </span>
                         </div>
                         <div className="text-xs text-slate-500 space-y-1">

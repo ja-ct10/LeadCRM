@@ -7,11 +7,13 @@ import {
   Clock, Plus, CheckCircle, MessageSquare, Send, Bell, Shield, Layers, HelpCircle, Briefcase, Activity, Edit, Users, Globe
 } from 'lucide-react';
 import { Contact, Organization, User as UserType, Deal, Task, Campaign } from '@/store/types';
+import { useData } from '@/store/DataContext';
 import { ContactActivitiesTab } from './tabs/contact-activities-tab';
 import { ContactEmailTab } from './tabs/contact-email-tab';
 import { ContactSmsTab } from './tabs/contact-sms-tab';
+import { DealDetailsModal } from '@/features/tenant/crm/pipeline/ui/deal-details-modal';
 import { toast } from 'sonner';
-import { getCRMStatusStyles, getCRMStatusStripColor } from '@/lib/utils';
+import { getCRMStatusStyles, getCRMStatusStripColor, getConnectedDealsForOrg } from '@/lib/utils';
 
 
 
@@ -19,6 +21,7 @@ export type ExtendedOrg = Organization & { contacts: Contact[]; address?: string
 
 interface Props {
   selectedOrg: ExtendedOrg;
+  initialTab?: OrgTabType;
   users: UserType[];
   deals: Deal[];
   tasks: Task[];
@@ -47,6 +50,7 @@ export type OrgTabType =
 
 export const CompanyProfileTabs = ({
   selectedOrg,
+  initialTab = 'overview',
   users,
   deals,
   tasks,
@@ -61,7 +65,13 @@ export const CompanyProfileTabs = ({
   setSelectedContact,
   setSelectedOrgName
 }: Props) => {
-  const [activeTab, setActiveTab ] = useState<OrgTabType>('overview');
+  const [activeTab, setActiveTab ] = useState<OrgTabType>(initialTab);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
 
   // Interactive local states for persistence
   const [timelineEvents, setTimelineEvents] = useState<any[]>([]);
@@ -230,11 +240,43 @@ export const CompanyProfileTabs = ({
     addActivityLog(`Executed global parameter sync: website, industry, size coordinates.`, 'system');
   };
 
-  // Connected Deals
-  const connectedDeals = deals.filter(d => 
-    d.companyName?.toLowerCase().trim() === selectedOrg.name.toLowerCase().trim() ||
-    selectedOrg.contacts.some(c => c.contactPerson && d.contactPerson && c.contactPerson.toLowerCase().trim() === d.contactPerson.toLowerCase().trim())
-  );
+  const { contacts: allContacts = [], pipelines = [], updateDeal, deleteDeal, isBillingModuleEnabled = false } = useData();
+  const [selectedDealModal, setSelectedDealModal] = useState<Deal | null>(null);
+
+  const orgContacts = selectedOrg?.contacts || [];
+
+  // Connected Deals — authoritative SSOT helper
+  const connectedDeals = React.useMemo(() => {
+    return getConnectedDealsForOrg(selectedOrg, deals, allContacts);
+  }, [selectedOrg, deals, allContacts]);
+
+  // Deal summary stats — derived with enterprise KPI metrics
+  const activeDealsList = connectedDeals.filter(d => !['stage_won','stage_lost'].some(s => d.stageId.includes(s.replace('stage_',''))));
+  const wonDealsList    = connectedDeals.filter(d => d.stageId.toLowerCase().includes('won'));
+  const lostDealsList   = connectedDeals.filter(d => d.stageId.toLowerCase().includes('lost'));
+
+  const pipelineValue = activeDealsList.reduce((sum, d) => sum + (d.value || 0), 0);
+  const totalValue    = connectedDeals.reduce((sum, d) => sum + (d.value || 0), 0);
+  const avgDealSize   = connectedDeals.length > 0 ? Math.round(totalValue / connectedDeals.length) : 0;
+  const closedCount   = wonDealsList.length + lostDealsList.length;
+  const winRate       = closedCount > 0 ? Math.round((wonDealsList.length / closedCount) * 100) : (wonDealsList.length > 0 ? 100 : 0);
+
+  const dealStats = {
+    total:         connectedDeals.length,
+    active:        activeDealsList.length,
+    won:           wonDealsList.length,
+    lost:          lostDealsList.length,
+    pipelineValue,
+    totalValue,
+    avgDealSize,
+    winRate,
+  };
+
+  const getStageName = (pipelineId: string, stageId: string): string => {
+    const pipeline = pipelines.find(p => p.id === pipelineId);
+    if (!pipeline) return stageId;
+    return pipeline.stages.find(s => s.id === stageId)?.name ?? stageId;
+  };
 
   // Connected Tasks
   const connectedTasks = tasks.filter(t => t.title?.includes(selectedOrg.name));
@@ -247,25 +289,25 @@ export const CompanyProfileTabs = ({
       <div className="w-full md:w-72 shrink-0 space-y-6">
         <div className="bg-white dark:bg-white/[0.02] border border-gray-150 dark:border-white/[0.04] rounded-2xl p-5 text-center shadow-sm relative overflow-hidden">
           {/* Glowing border highlight strip */}
-          <div className={`absolute top-0 left-0 right-0 h-1.5 animate-pulse ${getCRMStatusStripColor(selectedOrg.status)}`} />
+          <div className={`absolute top-0 left-0 right-0 h-1.5 animate-pulse ${getCRMStatusStripColor(selectedOrg?.status || 'Customer')}`} />
 
           <div className="w-16 h-16 mx-auto mt-2 rounded-full bg-gradient-to-tr from-orange-400 to-amber-500 text-white font-extrabold flex items-center justify-center text-2xl uppercase shadow-md shadow-amber-500/10">
-            {selectedOrg.name.charAt(0)}
+            {(selectedOrg?.name || 'O').charAt(0)}
           </div>
           
           <h3 className="text-base font-bold text-slate-900 dark:text-white mt-3 flex items-center justify-center gap-1.5">
-            {selectedOrg.name}
+            {selectedOrg?.name || 'Organization'}
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            🏢 {selectedOrg.industry} • Corporate Account
+            🏢 {selectedOrg?.industry || 'General'} • Corporate Account
           </p>
           
           <div className="mt-4 flex flex-wrap justify-center gap-1">
-            <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${getCRMStatusStyles(selectedOrg.status)}`}>
-              {selectedOrg.status} Account
+            <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${getCRMStatusStyles(selectedOrg?.status || 'Customer')}`}>
+              {selectedOrg?.status || 'Customer'} Account
             </span>
             <span className="text-[10px] font-bold bg-blue-500/10 text-blue-400 px-2.5 py-0.5 rounded-full border border-blue-500/10">
-              {selectedOrg.leadSource || 'Website Portal'}
+              {selectedOrg?.leadSource || 'Website Portal'}
             </span>
           </div>
 
@@ -282,8 +324,8 @@ export const CompanyProfileTabs = ({
             <div className="flex items-center gap-2.5 text-xs">
               <Globe size={13} className="text-slate-400 shrink-0" />
               <span className="truncate text-slate-705 dark:text-slate-300 font-medium">
-                {selectedOrg.website !== 'N/A' ? (
-                  <a href={selectedOrg.website?.startsWith('http') ? selectedOrg.website : `https://${selectedOrg.website}`} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">
+                {selectedOrg?.website && selectedOrg.website !== 'N/A' ? (
+                  <a href={selectedOrg.website.startsWith('http') ? selectedOrg.website : `https://${selectedOrg.website}`} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">
                     {selectedOrg.website}
                   </a>
                 ) : 'No website synced'}
@@ -291,12 +333,12 @@ export const CompanyProfileTabs = ({
             </div>
             <div className="flex items-center gap-2.5 text-xs">
               <Users size={13} className="text-slate-400 shrink-0" />
-              <span className="text-slate-705 dark:text-slate-300 font-bold">{selectedOrg.contacts.length} Associated Contacts</span>
+              <span className="text-slate-705 dark:text-slate-300 font-bold">{orgContacts.length} Associated Contacts</span>
             </div>
             <div className="flex items-center gap-2.5 text-xs">
               <MapPin size={13} className="text-slate-400 shrink-0" />
-              <span className="text-slate-705 dark:text-slate-300 font-medium truncate" title={selectedOrg.address !== 'N/A' ? selectedOrg.address : 'HQ'}>
-                {selectedOrg.address !== 'N/A' ? selectedOrg.address : 'Unverified Address'}
+              <span className="text-slate-705 dark:text-slate-300 font-medium truncate" title={selectedOrg?.address && selectedOrg.address !== 'N/A' ? selectedOrg.address : 'HQ'}>
+                {selectedOrg?.address && selectedOrg.address !== 'N/A' ? selectedOrg.address : 'Unverified Address'}
               </span>
             </div>
           </div>
@@ -616,42 +658,137 @@ export const CompanyProfileTabs = ({
             </div>
           )}
 
-          {/* TAB 8: ASSOCIATED DEALS PIPELINE */}
+          {/* TAB 8: ASSOCIATED DEALS PIPELINE — Enterprise Deals Table */}
           {activeTab === 'deals' && (
-            <div className="space-y-4 text-left animate-in fade-in duration-100">
-              <div className="flex justify-between items-center border-b border-gray-200 dark:border-white/5 pb-1.5">
-                <h4 className="font-bold text-slate-900 dark:text-white text-xs uppercase tracking-wider">Enterprise Deal Rollups</h4>
-                <span className="text-[10px] font-bold bg-emerald-500/10 text-emerald-400 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
-                  {connectedDeals.length} active pipelines
+            <div className="space-y-5 text-left animate-in fade-in duration-100">
+              
+              {/* Deal Summary Bar */}
+              {connectedDeals.length > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-6 gap-2.5">
+                  {[
+                    { label: 'Total Deals',     value: dealStats.total,                                        color: 'bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-300' },
+                    { label: 'Active',          value: dealStats.active,                                       color: 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400' },
+                    { label: 'Pipeline Value',  value: `₱${dealStats.pipelineValue.toLocaleString()}`,         color: 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400' },
+                    { label: 'Won Deals',       value: dealStats.won,                                          color: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' },
+                    { label: 'Win Rate',        value: `${dealStats.winRate}%`,                                color: 'bg-teal-50 dark:bg-teal-500/10 text-teal-700 dark:text-teal-400' },
+                    { label: 'Avg Deal Size',   value: `₱${dealStats.avgDealSize.toLocaleString()}`,           color: 'bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400' },
+                  ].map(stat => (
+                    <div key={stat.label} className={`rounded-xl p-3 border border-transparent ${stat.color} text-center`}>
+                      <p className="text-[10px] font-bold uppercase tracking-wider opacity-70">{stat.label}</p>
+                      <p className="text-sm sm:text-base font-extrabold mt-0.5">{stat.value}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex justify-between items-center border-b border-gray-200 dark:border-white/5 pb-2">
+                <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">Enterprise B2B Opportunities</h4>
+                <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                  {connectedDeals.length} opportunity record{connectedDeals.length !== 1 ? 's' : ''}
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 gap-2.5">
-                {connectedDeals.map(d => (
-                  <div key={d.id} className="p-4 bg-white dark:bg-white/[0.01] border border-gray-150 dark:border-white/[0.03] rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div className="space-y-1">
-                      <span className="font-bold text-slate-900 dark:text-white block text-sm">{d.title}</span>
-                      <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-500 font-semibold">
-                        <span>Contact Rep Contact: {d.contactPerson || 'General'}</span>
-                        <span>•</span>
-                        <span className="text-slate-400">Owner User ID: {d.assignedUserId || 'System'}</span>
-                      </div>
-                    </div>
+              {connectedDeals.length > 0 ? (
+                <div className="overflow-x-auto border border-gray-200 dark:border-white/5 rounded-xl bg-white dark:bg-white/[0.01]">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-gray-200 dark:border-white/5 bg-slate-50/70 dark:bg-white/[0.02]">
+                        <th className="py-2.5 px-3 font-semibold text-slate-600 dark:text-slate-300">Deal</th>
+                        <th className="py-2.5 px-3 font-semibold text-slate-600 dark:text-slate-300 text-right">Value</th>
+                        <th className="py-2.5 px-3 font-semibold text-slate-600 dark:text-slate-300">Stage & Pipeline</th>
+                        <th className="py-2.5 px-3 font-semibold text-slate-600 dark:text-slate-300">Assigned Agent</th>
+                        <th className="py-2.5 px-3 font-semibold text-slate-600 dark:text-slate-300">Priority</th>
+                        <th className="py-2.5 px-3 font-semibold text-slate-600 dark:text-slate-300">Expected Close</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+                      {connectedDeals.map(deal => {
+                        const stageName = getStageName(deal.pipelineId, deal.stageId);
+                        const isWon     = stageName === 'Closed Won'  || deal.stageId.toLowerCase().includes('won');
+                        const isLost    = stageName === 'Closed Lost' || deal.stageId.toLowerCase().includes('lost');
+                        const isOverdue = deal.expectedCloseDate && new Date(deal.expectedCloseDate) < new Date() && !isWon && !isLost;
+                        const agent     = users.find(u => u.id === deal.assignedUserId);
+                        const agentName = agent ? `${agent.firstName} ${agent.lastName}` : (deal.assignedUserId || 'System');
 
-                    <div className="text-right flex items-center justify-between sm:justify-end gap-3 shrink-0 border-t sm:border-t-0 border-gray-100 dark:border-white/5 pt-2 sm:pt-0">
-                      <div>
-                        <div className="text-sm font-black text-slate-950 dark:text-slate-100">${d.value.toLocaleString()}</div>
-                        <span className="text-[9px] uppercase font-bold text-blue-500 tracking-wider block mt-0.5">{d.priority} Priority</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {connectedDeals.length === 0 && (
-                  <div className="p-8 text-center text-slate-500 border border-dashed border-gray-200 dark:border-white/5 rounded-2xl">
-                    No active B2B opportunities initiated for this account yet.
-                  </div>
-                )}
-              </div>
+                        return (
+                          <tr key={deal.id} 
+                            onClick={() => setSelectedDealModal(deal)}
+                            className="hover:bg-slate-50/80 dark:hover:bg-white/[0.02] transition-colors cursor-pointer group"
+                            title="Click to view & edit complete opportunity details"
+                          >
+                            {/* 1. Deal Column (Enriched with Title + Subtext) */}
+                            <td className="py-3 px-3 min-w-[200px]">
+                              <p className="font-bold text-slate-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{deal.title}</p>
+                              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                                Rep: {deal.contactPerson || 'General Contact'} {deal.leadSource ? `• ${deal.leadSource}` : ''}
+                              </p>
+                            </td>
+
+                            {/* 2. Value Column (Positioned immediately next to Deal) */}
+                            <td className="py-3 px-3 text-right font-black text-slate-900 dark:text-slate-100 whitespace-nowrap">
+                              {typeof deal.value === 'number' && deal.value > 0 ? (
+                                <span className="inline-flex flex-col items-end">
+                                  <span>₱{deal.value.toLocaleString('en-PH')}</span>
+                                  <span className="text-[9px] font-semibold text-indigo-500 dark:text-indigo-400">PHP</span>
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">—</span>
+                              )}
+                            </td>
+
+                            {/* 3. Stage & Pipeline */}
+                            <td className="py-3 px-3 whitespace-nowrap">
+                              <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                                isWon  ? 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20' :
+                                isLost ? 'bg-red-100   dark:bg-red-500/10   text-red-700   dark:text-red-400   border border-red-500/20'     :
+                                         'bg-blue-100  dark:bg-blue-500/10  text-blue-700  dark:text-blue-400 border border-blue-500/20'
+                              }`}>
+                                {stageName}
+                              </span>
+                            </td>
+
+                            {/* 4. Assigned Agent */}
+                            <td className="py-3 px-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                              <span className="font-medium">{agentName}</span>
+                            </td>
+
+                            {/* 5. Priority */}
+                            <td className="py-3 px-3 whitespace-nowrap">
+                              <span className={`font-semibold text-[10px] ${
+                                deal.priority === 'High' ? 'text-red-500' : deal.priority === 'Medium' ? 'text-amber-500' : 'text-slate-400'
+                              }`}>
+                                {deal.priority}
+                              </span>
+                            </td>
+
+                            {/* 6. Expected Close Date */}
+                            <td className="py-3 px-3 whitespace-nowrap">
+                              <span className={`font-medium ${isOverdue ? 'text-red-500 font-bold' : 'text-slate-600 dark:text-slate-400'}`}>
+                                {deal.expectedCloseDate || '—'}
+                                {isOverdue && ' ⚠'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                /* Actionable Empty State */
+                <div className="py-12 text-center border border-dashed border-gray-200 dark:border-white/10 rounded-xl bg-slate-50/50 dark:bg-white/[0.01]">
+                  <Briefcase className="w-10 h-10 mx-auto text-slate-400 opacity-40 mb-2" />
+                  <h5 className="font-bold text-sm text-slate-700 dark:text-slate-200">No deals found</h5>
+                  <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">This account has no associated B2B opportunities yet.</p>
+                  <button 
+                    onClick={() => toast.info('Initiate new B2B opportunity from the Deals page or Pipeline module.')}
+                    className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-colors"
+                  >
+                    <Plus size={14} />
+                    Create Deal
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

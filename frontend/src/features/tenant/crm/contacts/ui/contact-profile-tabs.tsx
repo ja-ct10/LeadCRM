@@ -12,11 +12,15 @@ import { ClientProfileFiles } from './contact-profile-files';
 import { ContactActivitiesTab } from './tabs/contact-activities-tab';
 import { ContactEmailTab } from './tabs/contact-email-tab';
 import { ContactSmsTab } from './tabs/contact-sms-tab';
+import { DealDetailsModal } from '@/features/tenant/crm/pipeline/ui/deal-details-modal';
+import { CustomerJourneyTimeline } from './customer-journey-timeline';
+import { ActionableEmptyState } from '@/shared/components/actionable-empty-state';
 import { toast } from 'sonner';
-import { getCRMStatusStyles, getCRMStatusStripColor } from '@/lib/utils';
+import { getCRMStatusStyles, getCRMStatusStripColor, getConnectedDealsForContact } from '@/lib/utils';
 
 interface Props {
   selectedContact: Contact;
+  initialTab?: TabType;
   users: UserType[];
   deals: Deal[];
   tasks: Task[];
@@ -44,6 +48,7 @@ export type TabType =
 
 export const ClientProfileTabs = ({
   selectedContact: contact,
+  initialTab = 'overview',
   users,
   deals,
   tasks,
@@ -55,8 +60,15 @@ export const ClientProfileTabs = ({
   onClose,
   onEditClick
 }: Props) => {
-  const [activeTab, setActiveTab] = useState<TabType>('overview');
-  const { pipelines } = useData();
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
+  const { pipelines = [], updateDeal, deleteDeal, isBillingModuleEnabled = false } = useData();
+  const [selectedDealModal, setSelectedDealModal] = useState<Deal | null>(null);
 
   // Interactive local states for persistence
   const [timelineEvents, setTimelineEvents] = useState<any[]>([]);
@@ -201,27 +213,31 @@ export const ClientProfileTabs = ({
   // Dynamic tags parsed
   const parsedTags = contact.tags ? contact.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
 
-  // Connected Deals — check contactIds array first (new), then legacy contactId, then string match
-  const connectedDeals = deals.filter(d => {
-    if (d.isArchived) return false;
-    // New: contactIds array (Phase 2 migration)
-    if (d.contactIds && d.contactIds.length > 0) return d.contactIds.includes(contact.id);
-    // Legacy: single contactId FK
-    if (d.contactId) return d.contactId === contact.id;
-    // Legacy fallback: string match for deals created before contactId was populated
-    return (
-      d.companyName?.toLowerCase() === contact.companyName?.toLowerCase() ||
-      d.contactPerson?.toLowerCase() === contact.contactPerson?.toLowerCase()
-    );
-  });
+  // Connected Deals — authoritative SSOT helper
+  const connectedDeals = React.useMemo(() => {
+    return getConnectedDealsForContact(contact, deals);
+  }, [contact, deals]);
 
-  // Deal summary stats — derived, no extra fetching
+  // Deal summary stats — derived with enterprise KPI metrics
+  const activeDealsList = connectedDeals.filter(d => !['stage_won','stage_lost'].some(s => d.stageId.includes(s.replace('stage_',''))));
+  const wonDealsList    = connectedDeals.filter(d => d.stageId.toLowerCase().includes('won'));
+  const lostDealsList   = connectedDeals.filter(d => d.stageId.toLowerCase().includes('lost'));
+
+  const pipelineValue = activeDealsList.reduce((sum, d) => sum + (d.value || 0), 0);
+  const totalValue    = connectedDeals.reduce((sum, d) => sum + (d.value || 0), 0);
+  const avgDealSize   = connectedDeals.length > 0 ? Math.round(totalValue / connectedDeals.length) : 0;
+  const closedCount   = wonDealsList.length + lostDealsList.length;
+  const winRate       = closedCount > 0 ? Math.round((wonDealsList.length / closedCount) * 100) : (wonDealsList.length > 0 ? 100 : 0);
+
   const dealStats = {
-    total:      connectedDeals.length,
-    active:     connectedDeals.filter(d => !['stage_won','stage_lost'].some(s => d.stageId.includes(s.replace('stage_','')))).length,
-    won:        connectedDeals.filter(d => d.stageId.toLowerCase().includes('won')).length,
-    lost:       connectedDeals.filter(d => d.stageId.toLowerCase().includes('lost')).length,
-    totalValue: connectedDeals.reduce((sum, d) => sum + (d.value || 0), 0),
+    total:         connectedDeals.length,
+    active:        activeDealsList.length,
+    won:           wonDealsList.length,
+    lost:          lostDealsList.length,
+    pipelineValue,
+    totalValue,
+    avgDealSize,
+    winRate,
   };
 
   // Helper: get real stage name from pipeline data
@@ -258,6 +274,17 @@ export const ClientProfileTabs = ({
           </p>
           
           <div className="mt-4 flex flex-wrap justify-center gap-1">
+            {(() => {
+              const isHealthy = (connectedDeals.some(d => d.stageId !== 'stage_lost') || (contact.status === 'Hot' || contact.status === 'Warm')) && !connectedTasks.some(t => t.status === 'pending' && new Date(t.dueDate).getTime() < Date.now());
+              const isAtRisk = connectedTasks.some(t => t.status === 'pending' && new Date(t.dueDate).getTime() < Date.now());
+              const healthText = isAtRisk ? '🟡 At Risk' : isHealthy ? '🟢 Healthy' : '🔴 Inactive';
+              const healthCls = isAtRisk ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border-amber-200' : isHealthy ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 border-emerald-200' : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 border-red-200';
+              return (
+                <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${healthCls}`}>
+                  {healthText}
+                </span>
+              );
+            })()}
             <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${getCRMStatusStyles(contact.status)}`}>
               {contact.status} Status
             </span>
@@ -308,6 +335,7 @@ export const ClientProfileTabs = ({
 
       {/* Right Details Tabs view */}
       <div className="flex-1 flex flex-col bg-white dark:bg-slate-950 border border-gray-150 dark:border-white/[0.04] rounded-2xl p-5 shadow-sm min-w-0">
+
         {/* Scrollable horizontal tabs row */}
         <div className="flex gap-1.5 border-b border-gray-200 dark:border-white/5 pb-2.5 overflow-x-auto scrollbar-none shrink-0 mb-6" id="details-tabs-bar">
           {(['overview', 'activities', 'notes', 'emails', 'sms', 'tasks', 'deals', 'pipelines', 'campaigns', 'files', 'audit'] as TabType[]).map((tab) => (
@@ -465,16 +493,25 @@ export const ClientProfileTabs = ({
             </div>
           )}
 
-          {/* TAB 2: ACTIVITIES TIMELINE */}
+          {/* TAB 2: ACTIVITIES & CUSTOMER JOURNEY TIMELINE */}
           {activeTab === 'activities' && (
-            <ContactActivitiesTab
-              timelineEvents={timelineEvents}
-              logType={logType}
-              logNotes={logNotes}
-              onSetLogType={setLogType}
-              onSetLogNotes={setLogNotes}
-              onLogInteraction={handleLogInteraction}
-            />
+            <div className="space-y-6">
+              <CustomerJourneyTimeline
+                contact={contact}
+                deals={deals}
+                tasks={tasks}
+                onSelectDeal={(d) => setSelectedDealModal(d)}
+              />
+
+              <ContactActivitiesTab
+                timelineEvents={timelineEvents}
+                logType={logType}
+                logNotes={logNotes}
+                onSetLogType={setLogType}
+                onSetLogNotes={setLogNotes}
+                onLogInteraction={handleLogInteraction}
+              />
+            </div>
           )}
 
           {/* TAB 3: NOTES AND RICH INTERNAL PERSISTENCE */}
@@ -623,87 +660,137 @@ export const ClientProfileTabs = ({
             </div>
           )}
 
-          {/* TAB 7: DEALS — with summary bar + real stage data */}
+          {/* TAB 7: DEALS — Enterprise Deals Table with Value column & KPI bar */}
           {activeTab === 'deals' && (
-            <div className="space-y-4 text-left animate-in fade-in duration-100">
+            <div className="space-y-5 text-left animate-in fade-in duration-100">
 
               {/* Deal Summary Bar */}
               {connectedDeals.length > 0 && (
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-6 gap-2.5">
                   {[
-                    { label: 'Total',       value: dealStats.total,      color: 'bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-300' },
-                    { label: 'Active',      value: dealStats.active,     color: 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400' },
-                    { label: 'Won',         value: dealStats.won,        color: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' },
-                    { label: 'Lost',        value: dealStats.lost,       color: 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400' },
-                    { label: 'Total Value', value: `$${dealStats.totalValue.toLocaleString()}`, color: 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400' },
+                    { label: 'Total Deals',     value: dealStats.total,                                        color: 'bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-300' },
+                    { label: 'Active',          value: dealStats.active,                                       color: 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400' },
+                    { label: 'Pipeline Value',  value: `₱${dealStats.pipelineValue.toLocaleString()}`,         color: 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400' },
+                    { label: 'Won Deals',       value: dealStats.won,                                          color: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' },
+                    { label: 'Win Rate',        value: `${dealStats.winRate}%`,                                color: 'bg-teal-50 dark:bg-teal-500/10 text-teal-700 dark:text-teal-400' },
+                    { label: 'Avg Deal Size',   value: `₱${dealStats.avgDealSize.toLocaleString()}`,           color: 'bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400' },
                   ].map(stat => (
                     <div key={stat.label} className={`rounded-xl p-3 border border-transparent ${stat.color} text-center`}>
                       <p className="text-[10px] font-bold uppercase tracking-wider opacity-70">{stat.label}</p>
-                      <p className="text-base font-bold mt-0.5">{stat.value}</p>
+                      <p className="text-sm sm:text-base font-extrabold mt-0.5">{stat.value}</p>
                     </div>
                   ))}
                 </div>
               )}
 
-              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Revenue Opportunities</h4>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {connectedDeals.map(deal => {
-                  const stageName = getStageName(deal.pipelineId, deal.stageId);
-                  const isWon  = stageName === 'Closed Won'  || deal.stageId.toLowerCase().includes('won');
-                  const isLost = stageName === 'Closed Lost' || deal.stageId.toLowerCase().includes('lost');
-                  const isOverdue = deal.expectedCloseDate && new Date(deal.expectedCloseDate) < new Date() && !isWon && !isLost;
-
-                  return (
-                    <div key={deal.id} className={`bg-white dark:bg-white/5 border rounded-xl p-4 space-y-3 relative overflow-hidden ${
-                      isWon  ? 'border-emerald-200 dark:border-emerald-500/20' :
-                      isLost ? 'border-red-200   dark:border-red-500/20'     :
-                               'border-gray-200  dark:border-white/5'
-                    }`}>
-                      <div className="flex justify-between items-start">
-                        <div className="truncate pr-3">
-                          <h5 className="font-bold text-xs text-slate-900 dark:text-white truncate">{deal.title}</h5>
-                          <p className="text-[10px] text-slate-500 mt-0.5 truncate">{deal.companyName}</p>
-                        </div>
-                        <span className="text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/10 px-2 py-0.5 rounded shrink-0">
-                          ${deal.value?.toLocaleString()}
-                        </span>
-                      </div>
-
-                      <div className="space-y-1 text-[10px] text-slate-500">
-                        <div className="flex items-center justify-between">
-                          <span>Stage</span>
-                          <span className={`font-bold px-1.5 py-0.5 rounded text-[10px] ${
-                            isWon  ? 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' :
-                            isLost ? 'bg-red-100   dark:bg-red-500/10   text-red-700   dark:text-red-400'     :
-                                     'bg-blue-100  dark:bg-blue-500/10  text-blue-700  dark:text-blue-400'
-                          }`}>
-                            {stageName}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span>Priority</span>
-                          <strong className={`${deal.priority === 'High' ? 'text-red-500' : deal.priority === 'Medium' ? 'text-orange-500' : 'text-slate-400'}`}>
-                            {deal.priority}
-                          </strong>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span>Close Date</span>
-                          <strong className={isOverdue ? 'text-red-500' : 'text-slate-400'}>
-                            {deal.expectedCloseDate || 'N/A'}
-                            {isOverdue && ' ⚠'}
-                          </strong>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-                {connectedDeals.length === 0 && (
-                  <div className="py-8 text-center text-slate-500 italic text-xs col-span-2 border border-dotted border-gray-200 dark:border-white/5 rounded-xl">
-                    No deals linked to this contact yet.
-                  </div>
-                )}
+              <div className="flex justify-between items-center border-b border-gray-200 dark:border-white/5 pb-2">
+                <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">Revenue Opportunities</h4>
+                <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                  {connectedDeals.length} linked record{connectedDeals.length !== 1 ? 's' : ''}
+                </span>
               </div>
+
+              {connectedDeals.length > 0 ? (
+                <div className="overflow-x-auto border border-gray-200 dark:border-white/5 rounded-xl bg-white dark:bg-white/[0.01]">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-gray-200 dark:border-white/5 bg-slate-50/70 dark:bg-white/[0.02]">
+                        <th className="py-2.5 px-3 font-semibold text-slate-600 dark:text-slate-300">Deal</th>
+                        <th className="py-2.5 px-3 font-semibold text-slate-600 dark:text-slate-300 text-right">Value</th>
+                        <th className="py-2.5 px-3 font-semibold text-slate-600 dark:text-slate-300">Stage & Pipeline</th>
+                        <th className="py-2.5 px-3 font-semibold text-slate-600 dark:text-slate-300">Assigned Agent</th>
+                        <th className="py-2.5 px-3 font-semibold text-slate-600 dark:text-slate-300">Priority</th>
+                        <th className="py-2.5 px-3 font-semibold text-slate-600 dark:text-slate-300">Expected Close</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+                      {connectedDeals.map(deal => {
+                        const stageName = getStageName(deal.pipelineId, deal.stageId);
+                        const isWon     = stageName === 'Closed Won'  || deal.stageId.toLowerCase().includes('won');
+                        const isLost    = stageName === 'Closed Lost' || deal.stageId.toLowerCase().includes('lost');
+                        const isOverdue = deal.expectedCloseDate && new Date(deal.expectedCloseDate) < new Date() && !isWon && !isLost;
+                        const agent     = users.find(u => u.id === deal.assignedUserId);
+                        const agentName = agent ? `${agent.firstName} ${agent.lastName}` : (deal.assignedUserId || 'Unassigned');
+
+                        return (
+                          <tr key={deal.id} 
+                            onClick={() => setSelectedDealModal(deal)}
+                            className="hover:bg-slate-50/80 dark:hover:bg-white/[0.02] transition-colors cursor-pointer group"
+                            title="Click to view & edit complete deal details"
+                          >
+                            {/* 1. Deal Column (Enriched with Title + Subtext) */}
+                            <td className="py-3 px-3 min-w-[200px]">
+                              <p className="font-bold text-slate-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{deal.title}</p>
+                              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                                {deal.companyName} {deal.leadSource ? `• ${deal.leadSource}` : ''}
+                              </p>
+                            </td>
+
+                            {/* 2. Value Column (Positioned immediately next to Deal) */}
+                            <td className="py-3 px-3 text-right font-black text-slate-900 dark:text-slate-100 whitespace-nowrap">
+                              {typeof deal.value === 'number' && deal.value > 0 ? (
+                                <span className="inline-flex flex-col items-end">
+                                  <span>₱{deal.value.toLocaleString('en-PH')}</span>
+                                  <span className="text-[9px] font-semibold text-indigo-500 dark:text-indigo-400">PHP</span>
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">—</span>
+                              )}
+                            </td>
+
+                            {/* 3. Stage & Pipeline */}
+                            <td className="py-3 px-3 whitespace-nowrap">
+                              <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                                isWon  ? 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20' :
+                                isLost ? 'bg-red-100   dark:bg-red-500/10   text-red-700   dark:text-red-400   border border-red-500/20'     :
+                                         'bg-blue-100  dark:bg-blue-500/10  text-blue-700  dark:text-blue-400 border border-blue-500/20'
+                              }`}>
+                                {stageName}
+                              </span>
+                            </td>
+
+                            {/* 4. Assigned Agent */}
+                            <td className="py-3 px-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                              <span className="font-medium">{agentName}</span>
+                            </td>
+
+                            {/* 5. Priority */}
+                            <td className="py-3 px-3 whitespace-nowrap">
+                              <span className={`font-semibold text-[10px] ${
+                                deal.priority === 'High' ? 'text-red-500' : deal.priority === 'Medium' ? 'text-amber-500' : 'text-slate-400'
+                              }`}>
+                                {deal.priority}
+                              </span>
+                            </td>
+
+                            {/* 6. Expected Close Date */}
+                            <td className="py-3 px-3 whitespace-nowrap">
+                              <span className={`font-medium ${isOverdue ? 'text-red-500 font-bold' : 'text-slate-600 dark:text-slate-400'}`}>
+                                {deal.expectedCloseDate || '—'}
+                                {isOverdue && ' ⚠'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                /* Actionable Empty State */
+                <div className="py-12 text-center border border-dashed border-gray-200 dark:border-white/10 rounded-xl bg-slate-50/50 dark:bg-white/[0.01]">
+                  <Briefcase className="w-10 h-10 mx-auto text-slate-400 opacity-40 mb-2" />
+                  <h5 className="font-bold text-sm text-slate-700 dark:text-slate-200">No deals found</h5>
+                  <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">This client has no associated opportunities yet.</p>
+                  <button 
+                    onClick={() => toast.info('Initiate new deal creation from the Deals page or Pipeline module.')}
+                    className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-colors"
+                  >
+                    <Plus size={14} />
+                    Create Deal
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

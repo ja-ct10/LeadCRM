@@ -43,6 +43,7 @@ export default function ContactsPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Contact | undefined>();
   const [viewingLead, setViewingLead] = useState<Contact | undefined>();
+  const [activeDetailTab, setActiveDetailTab] = useState<string>("overview");
   const [detailSheetClient, setDetailSheetClient] = useState<{ client: Contact | Organization, type: 'individual' | 'organization' } | null>(null);
 
   // Filter Data
@@ -158,8 +159,27 @@ export default function ContactsPage() {
     setIsFormOpen(true);
   };
 
-  const handleView = (contact: Contact) => {
+  const handleView = (contact: Contact, tab: string = "overview") => {
+    setActiveDetailTab(tab);
     setViewingLead(contact);
+  };
+
+  const handleViewOrg = (org: Organization, tab: string = "overview") => {
+    setActiveDetailTab(tab);
+    setViewingLead({
+      id: org.id,
+      tenantId: org.tenantId,
+      companyName: org.name,
+      contactPerson: org.name,
+      customerType: "Organization",
+      status: "Active",
+      organizationId: org.id,
+      industry: org.industry,
+      size: org.size,
+      website: org.website,
+      taxId: org.taxId,
+      address: org.address,
+    } as any);
   };
 
   const handleSaveForm = (data: Partial<Contact>) => {
@@ -227,6 +247,7 @@ export default function ContactsPage() {
             : "individual"
         }
         selectedItem={viewingLead}
+        initialTab={activeDetailTab}
         users={users}
         deals={deals}
         tasks={tasks}
@@ -343,8 +364,8 @@ export default function ContactsPage() {
           onRestore={handleRestore}
           onArchiveOrg={handleArchiveOrg}
           onRestoreOrg={handleRestoreOrg}
-          onQuickView={(contact) => setDetailSheetClient({ client: contact, type: 'individual' })}
-          onQuickViewOrg={(org) => setDetailSheetClient({ client: org, type: 'organization' })}
+          onQuickView={(contact, tab) => handleView(contact, tab || 'overview')}
+          onQuickViewOrg={(org, tab) => handleViewOrg(org, tab || 'overview')}
           showArchived={smartView === "Archived"}
         />
       </div>

@@ -4,7 +4,9 @@ import React, { useState, useRef } from 'react';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
 import { ServiceOrder } from '@/store/types';
-import { MapPin, Calendar, CheckCircle2, Camera, X, Check } from 'lucide-react';
+import { MapPin, Calendar, CheckCircle2, Camera, Check } from 'lucide-react';
+import { BackButton } from '@/shared/components/ui/BackButton';
+import { ModalCloseButton } from '@/shared/components/ui/ModalCloseButton';
 
 export default function TechnicianDashboard() {
   const { serviceOrders, updateServiceOrder } = useData();
@@ -163,11 +165,12 @@ export default function TechnicianDashboard() {
       {selectedOrder && (
         <div className="fixed inset-0 z-50 flex flex-col bg-gray-50 dark:bg-slate-950">
           {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-white/5 bg-white dark:bg-slate-950">
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white truncate pr-4">{selectedOrder.title}</h2>
-            <button onClick={closeOrder} className="p-2 bg-gray-100 dark:bg-white/5 rounded-full text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
-              <X size={20} />
-            </button>
+          <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-white/5 bg-white dark:bg-slate-950">
+            <div className="flex items-center gap-3 truncate pr-4">
+              <BackButton label="Back to Jobs" onClick={closeOrder} />
+              <h2 className="text-lg font-bold text-slate-900 dark:text-white truncate">{selectedOrder.title}</h2>
+            </div>
+            <ModalCloseButton onClose={closeOrder} ariaLabel="Close order detail" size={20} />
           </div>
 
           {/* Tabs */}

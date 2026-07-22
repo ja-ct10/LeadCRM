@@ -1,8 +1,8 @@
 'use client';
 
 import React, { ReactNode, useEffect } from 'react';
-import { X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
+import { ModalCloseButton } from '@/shared/components/ui/ModalCloseButton';
 
 interface SlidingDrawerProps {
   isOpen: boolean;
@@ -84,15 +84,7 @@ export function SlidingDrawer({
                 )}
               </div>
               
-              <button
-                id="sliding-drawer-close"
-                type="button"
-                onClick={onClose}
-                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all duration-150 focus:ring-2 focus:ring-blue-500/20 outline-none"
-                aria-label="Close drawer"
-              >
-                <X size={20} />
-              </button>
+              <ModalCloseButton onClose={onClose} ariaLabel="Close drawer" size={20} />
             </div>
 
             {/* Scrollable Drawer Body Content */}

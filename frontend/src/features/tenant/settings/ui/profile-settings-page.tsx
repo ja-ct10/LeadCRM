@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState } from "react";
 import { useAuth } from "@/store/AuthContext";
@@ -27,6 +27,7 @@ import {
   Moon,
 } from "lucide-react";
 import { toast } from "sonner";
+import { BackButton } from "@/shared/components/ui/BackButton";
 
 interface ProfileSettingsPageProps {
   navigate: (path: string) => void;
@@ -219,13 +220,7 @@ export default function ProfileSettingsPage({
     <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
       {/* Top Header Navigation */}
       <div className="flex items-center gap-4">
-        <button
-          onClick={() => navigate("dashboard")}
-          className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 hover:bg-gray-100 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-lg text-sm font-semibold transition-all cursor-pointer select-none"
-        >
-          <ArrowLeft size={16} />
-          <span>Back</span>
-        </button>
+        <BackButton label="Back to Settings" onClick={() => navigate("settings")} />
         <div>
           <h1 className="text-xl font-bold text-slate-900 dark:text-white">
             Profile Settings

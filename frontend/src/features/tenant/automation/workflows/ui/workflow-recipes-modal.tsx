@@ -1,6 +1,7 @@
 import { uuid } from '@/lib/utils';
 import React from 'react';
-import { X, Zap, Plus } from 'lucide-react';
+import { Zap, Plus } from 'lucide-react';
+import { ModalCloseButton } from '@/shared/components/ui/ModalCloseButton';
 
 interface WorkflowAction {
   id: string;
@@ -130,12 +131,7 @@ export function WorkflowRecipesModal({ onClose, onAddWorkflow }: WorkflowRecipes
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:bg-white/5 rounded-lg transition-colors"
-          >
-            <X size={20} />
-          </button>
+          <ModalCloseButton onClose={onClose} ariaLabel="Close recipe modal" size={20} />
         </div>
 
         <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto">

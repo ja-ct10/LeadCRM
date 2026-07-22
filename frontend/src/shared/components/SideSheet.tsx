@@ -1,8 +1,8 @@
 'use client';
 
 import React, { ReactNode, useEffect } from 'react';
-import { X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
+import { ModalCloseButton } from '@/shared/components/ui/ModalCloseButton';
 
 interface SideSheetProps {
   isOpen: boolean;
@@ -49,12 +49,7 @@ export function SideSheet({ isOpen, onClose, title, subtitle, children, width = 
                 <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">{title}</h2>
                 {subtitle && <p className="text-sm text-slate-500 mt-1">{subtitle}</p>}
               </div>
-              <button
-                onClick={onClose}
-                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-white/10 rounded-full transition-colors"
-              >
-                <X size={20} />
-              </button>
+              <ModalCloseButton onClose={onClose} ariaLabel="Close sheet" size={20} />
             </div>
             
             {/* Body Container */}

@@ -1,8 +1,9 @@
 'use client';
 import { uuid } from '@/lib/utils';
 import React, { useState } from 'react';
-import { CheckCircle2, Server, Users, Plus, Trash2, Loader2, X } from 'lucide-react';
+import { CheckCircle2, Server, Users, Plus, Trash2, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { ModalCloseButton } from '@/shared/components/ui/ModalCloseButton';
 
 const DEFAULT_PLANS = [
   {
@@ -133,7 +134,7 @@ export default function PricingPage() {
               className="bg-white dark:bg-slate-950 w-full max-w-md h-full shadow-2xl flex flex-col border-l border-slate-200 dark:border-slate-700">
               <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
                 <h3 className="text-lg font-bold text-slate-900 dark:text-white">Edit {editingPlan.name} Plan</h3>
-                <button onClick={() => setEditingPlan(null)} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"><X size={20} /></button>
+                <ModalCloseButton onClose={() => setEditingPlan(null)} ariaLabel="Close edit plan drawer" size={20} />
               </div>
               <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
                 <Field label="Plan Name">

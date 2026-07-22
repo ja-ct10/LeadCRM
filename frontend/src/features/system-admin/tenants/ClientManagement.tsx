@@ -2,13 +2,14 @@
 import React, { useState } from 'react';
 import {
   Search, Eye, UserX, UserCheck, CheckCircle, ChevronDown,
-  ChevronLeft, ChevronRight, X
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { useData } from '@/store/DataContext';
 import { Tenant } from '@/store/types';
 import { useTenants } from './hooks/use-tenants';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
+import { ModalCloseButton } from '@/shared/components/ui/ModalCloseButton';
 
 /**
  * System Admin — Client Management page.
@@ -161,7 +162,7 @@ function TenantDetailModal({ tenant, onClose, onApprove }: { tenant: Tenant; onC
         className="bg-white dark:bg-slate-950 rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
           <h3 className="text-lg font-bold text-slate-900 dark:text-white">Client Details</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"><X size={20} /></button>
+          <ModalCloseButton onClose={onClose} ariaLabel="Close tenant details modal" size={20} />
         </div>
         <div className="p-6 grid grid-cols-2 gap-6">
           <InfoBlock title="Company Information" fields={[['Name', tenant.name], ['Industry', tenant.industry], ['Size', tenant.size]]} />

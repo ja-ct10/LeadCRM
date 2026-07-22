@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import {
   ArrowLeft, Send, Eye, MousePointerClick, MessageSquare, X, Sparkles,
 } from 'lucide-react';
@@ -7,6 +7,7 @@ import {
   Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell,
 } from '@/shared/components/charts/ChartComponents';
 import { Campaign } from '@/store/types';
+import { BackButton } from '@/shared/components/ui/BackButton';
 
 // ··· Static chart data ························································
 
@@ -108,12 +109,7 @@ export function CampaignReportView({
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
-        <button
-          onClick={onBack}
-          className="p-2 bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-white/[0.05] transition-colors"
-        >
-          <ArrowLeft size={20} />
-        </button>
+        <BackButton label="Back to Campaigns" onClick={onBack} />
         <div>
           <h2 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
             {campaign.name} Report

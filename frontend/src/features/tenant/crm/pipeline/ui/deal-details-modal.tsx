@@ -3,7 +3,7 @@ import { uuid } from '@/lib/utils';
 
 import React, { useState, useMemo } from 'react';
 import {
-  X, Building, User, Calendar, Tag, ChevronRight, Shield, AlertCircle,
+  Building, User, Calendar, Tag, ChevronRight, Shield, AlertCircle,
   CheckCircle2, MessageSquare, PhoneCall, Mail, Users, ArrowRight,
   Receipt, Rocket, Plus, Clock, CheckCircle, AlertTriangle, Trash2, Zap,
 } from 'lucide-react';
@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Deal, Pipeline, User as UserType, Task, TaskStatus } from '@/store/types';
 import { useData } from '@/store/DataContext';
 import { toast } from 'sonner';
+import { ModalCloseButton } from '@/shared/components/ui/ModalCloseButton';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -255,12 +256,7 @@ export function DealDetailsModal({
               <p className="text-sm text-slate-500 dark:text-slate-400">{deal.companyName}</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg transition-colors"
-          >
-            <X size={20} />
-          </button>
+          <ModalCloseButton onClose={onClose} ariaLabel="Close deal details drawer" size={20} />
         </div>
 
         {/* Tabs */}
@@ -368,7 +364,7 @@ export function DealDetailsModal({
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Value ($)</label>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Value (₱)</label>
                       <input required type="number" value={editFields.value} onChange={e => setEditFields({ ...editFields, value: Number(e.target.value) })}
                         className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
                     </div>

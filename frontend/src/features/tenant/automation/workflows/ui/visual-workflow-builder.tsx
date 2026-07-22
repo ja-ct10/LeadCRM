@@ -3,13 +3,15 @@ import { uuid } from '@/lib/utils';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
-  Zap, Plus, Trash2, Check, Play, Settings, X, ArrowRight, Info,
+  Zap, Plus, Trash2, Check, Play, Settings, ArrowRight, Info,
   Compass, Maximize2, Minimize2, Move, HelpCircle, FileText, Sparkles, 
   RefreshCw, Database, AlertCircle, ChevronRight, Mail, MessageSquare, 
   CheckSquare, Activity, Tag, Slack, Globe, ArrowDown, Settings2, BarChart2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
+import { BackButton } from '@/shared/components/ui/BackButton';
+import { ModalCloseButton } from '@/shared/components/ui/ModalCloseButton';
 
 // Define Prop Interfaces
 interface VisualWorkflowBuilderProps {
@@ -875,16 +877,20 @@ export default function VisualWorkflowBuilder({
         
         {/* TOP BAR / COMMAND MODULE */}
         <div className="bg-white dark:bg-slate-950 border-b border-gray-200 dark:border-white/[0.08] px-6 py-4 flex items-center justify-between z-10">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-tr from-blue-500 to-indigo-600 rounded-xl text-white shadow-[0_0_15px_rgba(10,110,255,0.3)] flex items-center justify-center animate-spin-slow">
-              <Compass className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">Workspace Automation Canvas</h3>
-                <span className="text-[10px] bg-indigo-500/10 text-indigo-400 font-semibold px-2 py-0.5 rounded-full border border-indigo-500/20">Node-Editor</span>
+          <div className="flex items-center gap-4">
+            <BackButton label="Back to Workflows" onClick={onClose} variant="subtle" />
+            
+            <div className="flex items-center gap-3 border-l border-slate-200 dark:border-white/10 pl-4">
+              <div className="p-2 bg-gradient-to-tr from-blue-500 to-indigo-600 rounded-xl text-white shadow-[0_0_15px_rgba(10,110,255,0.3)] flex items-center justify-center animate-spin-slow">
+                <Compass className="w-5 h-5" />
               </div>
-              <p className="text-xs text-slate-500">Intuitively link events, cross-entity triggers, filter variables, and actions visually</p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">Workspace Automation Canvas</h3>
+                  <span className="text-[10px] bg-indigo-500/10 text-indigo-400 font-semibold px-2 py-0.5 rounded-full border border-indigo-500/20">Node-Editor</span>
+                </div>
+                <p className="text-xs text-slate-500">Intuitively link events, cross-entity triggers, filter variables, and actions visually</p>
+              </div>
             </div>
           </div>
 
@@ -901,13 +907,7 @@ export default function VisualWorkflowBuilder({
             >
               <Check className="w-4 h-4" /> Save Visual Flow
             </button>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-white/[0.06] rounded-lg text-slate-400 hover:text-white transition-colors"
-              title="Close builder"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <ModalCloseButton onClose={onClose} ariaLabel="Close builder" size={20} />
           </div>
         </div>
 

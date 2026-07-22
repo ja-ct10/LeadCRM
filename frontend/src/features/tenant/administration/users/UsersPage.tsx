@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { ModalCloseButton } from "@/shared/components/ui/ModalCloseButton";
 import {
   Plus,
   Search,
@@ -2354,12 +2355,7 @@ export default function UsersPage() {
                     onboarding protocols.
                   </p>
                 </div>
-                <button
-                  onClick={() => setIsAddModalOpen(false)}
-                  className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors cursor-pointer"
-                >
-                  <X size={20} />
-                </button>
+                <ModalCloseButton onClose={() => setIsAddModalOpen(false)} ariaLabel="Close add user modal" size={20} />
               </div>
 
               <form
@@ -2547,15 +2543,14 @@ export default function UsersPage() {
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={() => {
+                <ModalCloseButton
+                  onClose={() => {
                     setIsEditModalOpen(false);
                     setSelectedUser(null);
                   }}
-                  className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors cursor-pointer p-1.5 hover:bg-slate-100 dark:hover:bg-white/[0.05] rounded-xl"
-                >
-                  <X size={20} />
-                </button>
+                  ariaLabel="Close edit user modal"
+                  size={20}
+                />
               </div>
 
               {/* Grid Contents */}

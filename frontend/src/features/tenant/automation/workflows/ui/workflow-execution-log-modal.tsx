@@ -1,6 +1,7 @@
 import React from 'react';
-import { X, History, Clock, FileText } from 'lucide-react';
+import { History, Clock, FileText } from 'lucide-react';
 import { Workflow, WorkflowExecution } from '@/store/types';
+import { ModalCloseButton } from '@/shared/components/ui/ModalCloseButton';
 
 interface WorkflowExecutionLogModalProps {
   workflowId: string;
@@ -31,12 +32,7 @@ export function WorkflowExecutionLogModal({
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{workflowName}</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:bg-white/5 rounded-lg transition-colors"
-          >
-            <X size={20} />
-          </button>
+          <ModalCloseButton onClose={onClose} ariaLabel="Close execution log modal" size={20} />
         </div>
 
         <div className="p-6 max-h-[60vh] overflow-y-auto space-y-4">
