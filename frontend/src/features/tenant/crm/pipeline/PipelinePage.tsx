@@ -327,6 +327,12 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
   const { user, tenant } = useAuth();
   const [activePipelineId, setActivePipelineId] = useState(pipelines[0]?.id || '');
   
+  React.useEffect(() => {
+    if (!activePipelineId && pipelines.length > 0) {
+      setActivePipelineId(pipelines[0].id);
+    }
+  }, [pipelines, activePipelineId]);
+  
   // Modern Deal Views & Advanced Funnel Filtering System
   const [viewMode, setViewMode] = useState<'kanban' | 'table' | 'list'>(() => {
     return (localStorage.getItem('pipeline_view_mode') as any) || 'kanban';
@@ -1186,19 +1192,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
     }
   };
 
-  if (!activePipeline) {
-    return (
-      <div className="h-full flex flex-col pt-12 items-center">
-        <EmptyState
-          type="pipelines"
-          title="No Pipelines Created Yet"
-          description="Build your first sales pipeline to start tracking deals, managing stages, and forecasting revenue visually."
-          actionLabel="Create Pipeline"
-          onAction={() => setIsManagePipelinesModalOpen(true)}
-        />
-      </div>
-    );
-  }
+
 
   return (
     <div className="h-full flex flex-col space-y-4 relative overflow-hidden">
@@ -1239,10 +1233,10 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
             </button>
           )}
 
-          {canCreateDeal && (
+          {canCreateDeal && activePipeline && (
             <button 
               onClick={() => {
-                setNewDeal({ ...newDeal, stageId: activePipeline.stages[0].id });
+                setNewDeal({ ...newDeal, stageId: activePipeline?.stages?.[0]?.id || '' });
                 setDealTitleTouched(false);
                 setDealValueTouched(false);
                 setIsModalOpen(true);
@@ -1539,7 +1533,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
           {swimlaneBy === 'none' ? (
             <div className="flex-1 overflow-x-auto pb-4 custom-scrollbar">
               <div className="flex gap-6 h-full min-w-max items-start">
-                {activePipeline.stages.map((stage: any) => {
+                {(activePipeline?.stages || []).map((stage: any) => {
                   const stageDeals = pipelineDeals.filter(d => d.stageId === stage.id);
                   const stageValue = stageDeals.reduce((acc, d) => acc + d.value, 0);
                   
@@ -1831,7 +1825,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
         {selectedDeal && (
           <DealDetailsModal
             deal={selectedDeal}
-            pipeline={activePipeline}
+            pipeline={activePipeline!}
             users={users}
             tasks={tasks}
             currentUserId={user?.id || 'system'}
@@ -1936,7 +1930,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                     <div>
                       <label className="block text-sm text-slate-500 dark:text-slate-400 mb-1.5">Stage</label>
                       <select value={newDeal.stageId} onChange={e => setNewDeal({...newDeal, stageId: e.target.value})} className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] focus:bg-white/[0.04] transition-all">
-                        {(activePipeline.stages as any[]).map((s: any) => <option key={s.id} value={s.id} className="bg-gray-50 dark:bg-slate-950">{s.name}</option>)}
+                        {(activePipeline?.stages as any[] || []).map((s: any) => <option key={s.id} value={s.id} className="bg-gray-50 dark:bg-slate-950">{s.name}</option>)}
                       </select>
                     </div>
                     <div>
