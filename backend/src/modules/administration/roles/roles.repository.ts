@@ -1,4 +1,4 @@
-﻿import prisma from '../../../config/database.config';
+import prisma from '../../../config/database.config';
 
 export async function findAllRoles(tenantId: string) {
   return prisma.roleDefinition.findMany({
@@ -18,8 +18,9 @@ export async function findRoleById(id: string, tenantId: string) {
 export async function createRole(tenantId: string, data: {
   name: string; description?: string; permissions: string[];
 }) {
+  const { permissions, ...restData } = data;
   return prisma.roleDefinition.create({
-    data: { ...data, tenantId, isSystemRole: false },
+    data: { ...restData, tenantId, isSystemRole: false },
   });
 }
 
@@ -30,7 +31,9 @@ export async function updateRole(id: string, tenantId: string, data: {
   if (!existing) return null;
   // System roles cannot be modified by tenant admins
   if (existing.isSystemRole) return null;
-  return prisma.roleDefinition.update({ where: { id }, data });
+  
+  const { permissions, ...restData } = data;
+  return prisma.roleDefinition.update({ where: { id }, data: restData });
 }
 
 export async function archiveRole(id: string, tenantId: string) {
