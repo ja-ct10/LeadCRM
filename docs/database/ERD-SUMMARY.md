@@ -1,6 +1,6 @@
 # LeadCRM ERD — Summary & Recommendations
 
-**Last Updated:** June 27, 2026
+**Last Updated:** July 22, 2026
 **Interactive HTML ERD:** `docs/database/erd.html` (open in browser — hover cards to highlight connectors)
 
 ---

@@ -2,7 +2,7 @@
 
 > **Source of truth:** `backend/prisma/schema.prisma`
 > All 30 entities are now in the Prisma schema. No frontend-only entities remain.
-> Last updated: June 27, 2026
+> Last updated: July 22, 2026
 
 ---
 
