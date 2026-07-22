@@ -2,9 +2,16 @@
 
 ## Prerequisites
 - Node.js 20+
-- PostgreSQL 16+ (currently using 18)
+- PostgreSQL 16+
 - npm 9+
 - Git
+
+## Step 0 — Clone the repository
+
+```bash
+git clone https://github.com/reymarkjpanes/OWN-CRM-1.git
+cd OWN-CRM-1
+```
 
 ## Step 1 — Install dependencies
 

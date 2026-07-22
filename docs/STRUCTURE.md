@@ -69,10 +69,10 @@ frontend/
 │   │   │   ├── crm/
 │   │   │   │   ├── contacts/     ← ui/ hooks/ services/ schemas/ types/ constants/ index.ts
 │   │   │   │   │   └── ui/
-│   │   │   │   │       ├── contact-profile-tabs.tsx   ← Deals tab: summary bar (Total/Active/
-│   │   │   │   │       │                                Won/Lost/Value), contactIds-first matching,
-│   │   │   │   │       │                                real pipeline stage tracker
+│   │   │   │   │       ├── contact-profile-tabs.tsx   ← Deals tab: summary bar, contactIds-first matching, real stage tracker
 │   │   │   │   │       ├── contact-detail-sheet.tsx
+│   │   │   │   │       ├── contact-detail-view.tsx
+│   │   │   │   │       ├── customer-journey-timeline.tsx ← Customer timeline progression
 │   │   │   │   │       ├── contact-form.tsx
 │   │   │   │   │       └── tabs/
 │   │   │   │   ├── companies/
@@ -84,11 +84,7 @@ frontend/
 │   │   │   │       ├── services/
 │   │   │   │       │   └── pipeline.service.ts
 │   │   │   │       └── ui/
-│   │   │   │           └── deal-details-modal.tsx  ← Reusable Deal Details drawer
-│   │   │   │                                          7 tabs: Overview · Activities · Tasks ·
-│   │   │   │                                          Emails · Files · History · Automation
-│   │   │   │                                          Tasks: inline create + assign, overdue badge
-│   │   │   │                                          History: From→To stage trail with user+timestamp
+│   │   │   │           └── deal-details-modal.tsx  ← Reusable Deal Details drawer (7 tabs with ModalCloseButton)
 │   │   │   ├── marketing/
 │   │   │   │   ├── campaigns/
 │   │   │   │   ├── email/
@@ -98,9 +94,9 @@ frontend/
 │   │   │   ├── operations/
 │   │   │   │   ├── service-orders/
 │   │   │   │   ├── tasks/
-│   │   │   │   │   ├── TaskBoard.tsx        ← 5-status task board (Pending/In Progress/
-│   │   │   │   │   │                          Blocked/Completed/Cancelled)
+│   │   │   │   │   ├── TaskBoard.tsx        ← 5-status task board
 │   │   │   │   │   └── ui/
+│   │   │   │   │       ├── task-details-drawer.tsx ← Reusable task detail view
 │   │   │   │   │       └── technician-dashboard.tsx
 │   │   │   │   ├── assets/
 │   │   │   │   └── inventory/
@@ -123,11 +119,13 @@ frontend/
 │   │
 │   ├── shared/                   ← Reusable UI (used by both portals)
 │   │   ├── components/
-│   │   │   ├── ui/               ← ShadCN primitives (Button, Input, Badge, etc.)
+│   │   │   ├── ui/               ← BackButton.tsx, ModalCloseButton.tsx, PageHeader.tsx, ShadCN primitives
 │   │   │   ├── charts/           ← ChartComponents.tsx (ONLY chart import source)
 │   │   │   ├── TrelloFilter.tsx  ← ONLY filter component to use
-│   │   │   ├── SideSheet.tsx
-│   │   │   ├── SlidingDrawer.tsx
+│   │   │   ├── SideSheet.tsx     ← Side sheet container with ModalCloseButton
+│   │   │   ├── SlidingDrawer.tsx ← Animated drawer container with ModalCloseButton
+│   │   │   ├── user-profile-drawer.tsx ← Reusable user profile info drawer
+│   │   │   ├── actionable-empty-state.tsx ← Standard empty state layout
 │   │   │   ├── EmptyState.tsx
 │   │   │   ├── GlobalLoader.tsx
 │   │   │   ├── CommandPalette.tsx
