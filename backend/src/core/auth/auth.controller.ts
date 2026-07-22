@@ -65,10 +65,14 @@ export async function seedDemo(req: Request, res: Response, next: NextFunction):
     const passwordHash = await bcrypt.hash('admin123', 10);
 
     const user = await prisma.user.upsert({
-      where: { email: 'admin@democorp.com' },
+      where: { 
+        tenantId_email: {
+          tenantId: tenant.id,
+          email: 'admin@democorp.com'
+        }
+      },
       update: {
         passwordHash,
-        tenantId: tenant.id,
         status: 'ACTIVE',
       },
       create: {
