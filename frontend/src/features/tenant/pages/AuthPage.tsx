@@ -1,12 +1,30 @@
-﻿'use client';
+'use client';
 
 import React, { useState } from 'react';
 import { useAuth } from '@/store/AuthContext';
 import { ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { z } from 'zod';
+
+const loginSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+});
+
+const guestSchema = z.object({
+  firstName: z.string().min(1, 'First name is required'),
+  lastName: z.string().min(1, 'Last name is required'),
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+  confirmPassword: z.string()
+}).refine(data => data.password === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ["confirmPassword"],
+});
+
 export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'register', onNavigate: (path: string) => void }) {
-  const { login, registerTenant } = useAuth();
+  const { login, registerTenant, registerGuestAccount } = useAuth();
   const [email, setEmail] = useState('admin@democorp.com');
   const [password, setPassword] = useState('admin123');
   const [error, setError] = useState('');
@@ -17,12 +35,14 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
   const [showRegOTP, setShowRegOTP] = useState(false);
 
   // Registration state
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(0); // 0 is Role Selection
+  const [registrationType, setRegistrationType] = useState<'client' | 'guest' | null>(null);
   const [tenantData, setTenantData] = useState({ companyName: '', industry: 'IT Solutions', size: '1-10', businessEmail: '', phone: '', address: '' });
   const [businessReqs, setBusinessReqs] = useState({ requirements: '', documentName: '' });
   const [verificationDocs, setVerificationDocs] = useState({ businessPermit: '', taxId: '', validId: '' });
   const [adminData, setAdminData] = useState({ firstName: '', lastName: '', email: '', password: '', confirmPassword: '' });
-  const [botCheck, setBotCheck] = useState({ answer: '', expected: '' });
+  const [guestData, setGuestData] = useState({ firstName: '', lastName: '', email: '', password: '', confirmPassword: '' });
+  const [botCheck, setBotCheck] = useState({ answer: '', expected: '', question: '' });
 
   React.useEffect(() => {
     const num1 = Math.floor(Math.random() * 10) + 1;
@@ -32,6 +52,13 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    try {
+      loginSchema.parse({ email, password });
+    } catch (err: any) {
+      setError(err.errors?.[0]?.message || 'Validation failed');
+      return;
+    }
+
     if (!showOTP) {
       setShowOTP(true);
       setError('');
@@ -49,31 +76,45 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
     }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (adminData.password !== adminData.confirmPassword) {
-      setError('Passwords do not match');
-      return;
-    }
-    if (botCheck.answer !== botCheck.expected) {
-      setError('Bot check failed. Please try again.');
-      return;
-    }
-    
-    if (!showRegOTP) {
-      setShowRegOTP(true);
-      setError('');
-      return;
-    }
-    
-    if (otp !== '123456') {
-      setError('Invalid OTP. Use 123456 for demo.');
-      return;
-    }
+    if (registrationType === 'client') {
+      if (adminData.password !== adminData.confirmPassword) {
+        setError('Passwords do not match');
+        return;
+      }
+      if (botCheck.answer !== botCheck.expected) {
+        setError('Bot check failed. Please try again.');
+        return;
+      }
+      
+      if (!showRegOTP) {
+        setShowRegOTP(true);
+        setError('');
+        return;
+      }
+      
+      if (otp !== '123456') {
+        setError('Invalid OTP. Use 123456 for demo.');
+        return;
+      }
 
-    registerTenant({...tenantData, businessReqs, verificationDocs: { ...verificationDocs, uploadedAt: new Date().toISOString() }}, adminData);
-    toast.success('Registration successful! Setup/Onboarding info has been sent to your email. Please wait for System Admin approval.');
-    onNavigate('login');
+      await registerTenant({...tenantData, businessReqs, verificationDocs: { ...verificationDocs, uploadedAt: new Date().toISOString() }}, adminData);
+      toast.success('Registration successful! Setup/Onboarding info has been sent to your email. Please wait for System Admin approval.');
+      onNavigate('login');
+    } else {
+      // Guest Registration
+      try {
+        guestSchema.parse(guestData);
+      } catch (err: any) {
+        setError(err.errors?.[0]?.message || 'Validation failed');
+        return;
+      }
+      
+      await registerGuestAccount(guestData);
+      toast.success('Guest Sandbox created successfully!');
+      onNavigate('login');
+    }
   };
 
   if (mode === 'login') {
@@ -188,15 +229,19 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
         </button>
         
         <div className="mb-8">
-          <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white mb-2">Create your account</h2>
-          <div className="flex items-center gap-3">
-            <p className="text-slate-500 dark:text-slate-400">Step {step} of 5</p>
-            <div className="flex gap-1">
-              {[1, 2, 3, 4, 5].map(i => (
-                <div key={i} className={`h-1.5 w-8 rounded-full ${i <= step ? 'bg-[#0A6EFF]' : 'bg-white dark:bg-slate-800'}`}></div>
-              ))}
+          <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white mb-2">
+            {step === 0 ? 'Choose Account Type' : 'Create your account'}
+          </h2>
+          {step > 0 && registrationType === 'client' && (
+            <div className="flex items-center gap-3">
+              <p className="text-slate-500 dark:text-slate-400">Step {step} of 5</p>
+              <div className="flex gap-1">
+                {[1, 2, 3, 4, 5].map(i => (
+                  <div key={i} className={`h-1.5 w-8 rounded-full ${i <= step ? 'bg-[#0A6EFF]' : 'bg-white dark:bg-slate-800'}`}></div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {error && (
@@ -206,8 +251,67 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
           </div>
         )}
 
-        <form onSubmit={step === 5 ? handleRegister : (e) => { e.preventDefault(); setStep(step + 1); }}>
-          {step === 1 && (
+        <form onSubmit={(e) => {
+          e.preventDefault();
+          if (step === 0) {
+            setStep(1);
+          } else if (registrationType === 'client' && step < 5) {
+            setStep(step + 1);
+          } else {
+            handleRegister(e);
+          }
+        }}>
+          {step === 0 && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => setRegistrationType('client')}
+                  className={`p-6 rounded-xl border-2 text-left transition-all ${registrationType === 'client' ? 'border-[#0A6EFF] bg-blue-500/10' : 'border-slate-200 dark:border-slate-800 hover:border-blue-400/50'}`}
+                >
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Client Admin</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Full tenant setup with document verification and approval flow.</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRegistrationType('guest')}
+                  className={`p-6 rounded-xl border-2 text-left transition-all ${registrationType === 'guest' ? 'border-[#0A6EFF] bg-blue-500/10' : 'border-slate-200 dark:border-slate-800 hover:border-blue-400/50'}`}
+                >
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Guest Demo</h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Instant access to a seeded sandbox environment for testing.</p>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === 1 && registrationType === 'guest' && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">First Name</label>
+                  <input required value={guestData.firstName} onChange={e => setGuestData({...guestData, firstName: e.target.value})} className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors" placeholder="John" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Last Name</label>
+                  <input required value={guestData.lastName} onChange={e => setGuestData({...guestData, lastName: e.target.value})} className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors" placeholder="Doe" />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Email</label>
+                  <input type="email" required value={guestData.email} onChange={e => setGuestData({...guestData, email: e.target.value})} className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors" placeholder="guest@example.com" />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Password</label>
+                  <input type="password" required value={guestData.password} onChange={e => setGuestData({...guestData, password: e.target.value})} className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors" />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Confirm Password</label>
+                  <input type="password" required value={guestData.confirmPassword} onChange={e => setGuestData({...guestData, confirmPassword: e.target.value})} className="w-full bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-700 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-colors" />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {step === 1 && registrationType === 'client' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
               <div className="flex items-center gap-3 border-b border-slate-800/50 pb-4">
                 <div className="w-8 h-8 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center font-bold text-sm">1</div>
@@ -244,7 +348,7 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
             </div>
           )}
 
-          {step === 2 && (
+          {step === 2 && registrationType === 'client' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
               <div className="flex items-center gap-3 border-b border-slate-800/50 pb-4">
                 <div className="w-8 h-8 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center font-bold text-sm">2</div>
@@ -299,7 +403,7 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
             </div>
           )}
 
-          {step === 3 && (
+          {step === 3 && registrationType === 'client' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
               <div className="flex items-center gap-3 border-b border-slate-800/50 pb-4">
                 <div className="w-8 h-8 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center font-bold text-sm">3</div>
@@ -359,7 +463,7 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
             </div>
           )}
 
-          {step === 4 && (
+          {step === 4 && registrationType === 'client' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
               <div className="flex items-center gap-3 border-b border-slate-800/50 pb-4">
                 <div className="w-8 h-8 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center font-bold text-sm">4</div>
@@ -390,7 +494,7 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
             </div>
           )}
 
-          {step === 5 && (
+          {step === 5 && registrationType === 'client' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
               <div className="flex items-center gap-3 border-b border-slate-800/50 pb-4">
                 <div className="w-8 h-8 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center font-bold text-sm">5</div>
@@ -458,11 +562,15 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
           )}
 
           <div className="flex justify-between mt-10 pt-6 border-t border-slate-800/50">
-            {step > 1 && !showRegOTP ? (
+            {step > 0 && !showRegOTP ? (
               <button type="button" onClick={() => setStep(step - 1)} className="px-5 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white dark:hover:bg-slate-800 rounded-lg transition-colors">Back</button>
             ) : <div></div>}
-            <button type="submit" className="px-6 py-2.5 bg-[#0A6EFF] text-slate-900 dark:text-white rounded-lg text-sm font-medium hover:bg-blue-600 transition-colors shadow-[0_0_15px_rgba(10,110,255,0.2)]">
-              {step === 5 ? (showRegOTP ? 'Verify & Complete' : 'Send OTP & Complete') : 'Next Step'}
+            <button 
+              type="submit" 
+              disabled={step === 0 && !registrationType}
+              className={`px-6 py-2.5 rounded-lg text-sm font-medium transition-colors shadow-[0_0_15px_rgba(10,110,255,0.2)] ${step === 0 && !registrationType ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-[#0A6EFF] text-slate-900 dark:text-white hover:bg-blue-600'}`}
+            >
+              {step === 0 ? 'Next' : (registrationType === 'guest' ? 'Create Sandbox' : (step === 5 ? (showRegOTP ? 'Verify & Complete' : 'Send OTP & Complete') : 'Next Step'))}
             </button>
           </div>
         </form>

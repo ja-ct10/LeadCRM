@@ -317,6 +317,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     // When USE_MOCK_DATA is false, fetch Contacts/Orgs/Deals/Pipelines from the
     // backend database. All other modules still fall through to localStorage.
     if (!USE_MOCK_DATA) {
+      if (!user) return; // Wait until the user is authenticated
+
       try {
         const [contactsRes, orgsRes, dealsRes, pipelinesRes] = await Promise.all([
           contactsService.getAll({ limit: 500 }),

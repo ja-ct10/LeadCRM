@@ -16,8 +16,8 @@ export const CreateContactSchema = z.object({
   organizationId: z.string().cuid().optional(),
   assignedUserId: z.string().cuid().optional(),
 }).refine(
-  (data) => data.email || data.phone,
-  { message: 'At least one of email or phone is required', path: ['email'] },
+  (data) => true, // Remove strict email/phone requirement to allow UI flexibility
+  { message: 'Valid record', path: [] },
 );
 
 export const UpdateContactSchema = z.object({

@@ -94,3 +94,128 @@ export async function registerUser(dto: RegisterDto) {
 
   return { id: user.id, email: user.email, role: user.role };
 }
+
+import { ClientAdminRegisterDto, GuestRegisterDto } from './auth.dto';
+
+export async function registerClientAdmin(dto: ClientAdminRegisterDto) {
+  const existingUser = await prisma.user.findFirst({
+    where: { email: dto.email },
+  });
+
+  if (existingUser) throw new ConflictError('A user with this email already exists');
+
+  const passwordHash = await hashPassword(dto.password);
+
+  // Generate a unique slug for the tenant
+  const slug = dto.companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Math.random().toString(36).substring(2, 6);
+
+  // We use a transaction to ensure everything is created together
+  const result = await prisma.$transaction(async (tx) => {
+    // 1. Create Tenant
+    const tenant = await tx.tenant.create({
+      data: {
+        name: dto.companyName,
+        slug,
+        industry: dto.industry,
+        companySize: dto.companySize,
+        status: 'ACTIVE',
+        subscriptionStatus: 'TRIAL',
+        plan: 'FREE',
+      },
+    });
+
+    // 2. Create User
+    const user = await tx.user.create({
+      data: {
+        tenantId: tenant.id,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        email: dto.email,
+        passwordHash,
+        role: 'Client Admin',
+        status: 'ACTIVE',
+      },
+    });
+
+    // 3. Create Organization
+    const organization = await tx.organization.create({
+      data: {
+        tenantId: tenant.id,
+        name: dto.companyName,
+        industry: dto.industry,
+        size: dto.companySize,
+        country: dto.country,
+      },
+    });
+
+    return { tenant, user, organization };
+  });
+
+  return { id: result.user.id, email: result.user.email, role: result.user.role, tenantId: result.tenant.id };
+}
+
+export async function registerGuest(dto: GuestRegisterDto) {
+  const existingUser = await prisma.user.findFirst({
+    where: { email: dto.email },
+  });
+
+  if (existingUser) throw new ConflictError('A user with this email already exists');
+
+  const passwordHash = await hashPassword(dto.password);
+  
+  // Guest gets their own sandbox tenant
+  const slug = 'sandbox-' + Math.random().toString(36).substring(2, 10);
+
+  const result = await prisma.$transaction(async (tx) => {
+    const tenant = await tx.tenant.create({
+      data: {
+        name: 'Demo Sandbox',
+        slug,
+        status: 'SANDBOX',
+        subscriptionStatus: 'TRIAL',
+        plan: 'FREE',
+      },
+    });
+
+    const user = await tx.user.create({
+      data: {
+        tenantId: tenant.id,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        email: dto.email,
+        passwordHash,
+        role: 'Guest',
+        status: 'ACTIVE',
+      },
+    });
+
+    const organization = await tx.organization.create({
+      data: {
+        tenantId: tenant.id,
+        name: 'Demo Sandbox Org',
+      },
+    });
+
+    // Seed some basic data for the guest
+    const pipeline = await tx.pipeline.create({
+      data: {
+        tenantId: tenant.id,
+        name: 'Sales Pipeline',
+        isDefault: true,
+        stages: {
+          create: [
+            { name: 'Lead', order: 1, isDefault: true },
+            { name: 'Contacted', order: 2 },
+            { name: 'Qualified', order: 3 },
+            { name: 'Won', order: 4, isWon: true },
+            { name: 'Lost', order: 5, isLost: true },
+          ]
+        }
+      }
+    });
+
+    return { tenant, user };
+  });
+
+  return { id: result.user.id, email: result.user.email, role: result.user.role, tenantId: result.tenant.id };
+}

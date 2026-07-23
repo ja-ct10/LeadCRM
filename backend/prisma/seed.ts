@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { seedSystemAdmin } from '../src/database/seeders/admin.seed';
 import { seedDefaultPipelines } from '../src/database/seeders/pipelines.seed';
+import { seedDemoAccounts } from '../src/database/seeders/demo.seed';
 
 const prisma = new PrismaClient();
 
@@ -14,6 +15,9 @@ async function main() {
   if (systemTenant) {
     await seedDefaultPipelines(systemTenant.id);
   }
+  
+  // 3. Demo accounts
+  await seedDemoAccounts();
 
   console.log('[Seed] Complete.');
 }

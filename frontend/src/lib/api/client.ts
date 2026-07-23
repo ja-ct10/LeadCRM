@@ -5,6 +5,8 @@
 // Sends credentials (HttpOnly cookies) on every request.
 // Falls back gracefully when backend is unreachable.
 
+import { getSession } from 'next-auth/react';
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
 
 async function request<T>(
@@ -12,12 +14,20 @@ async function request<T>(
   path: string,
   body?: unknown,
 ): Promise<T> {
+  const session = await getSession();
+  const token = (session as any)?.accessToken;
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const res = await fetch(`${API_URL}${path}`, {
     method,
-    credentials: 'include', // sends HttpOnly cookie on every request
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
 

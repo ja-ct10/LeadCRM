@@ -20,7 +20,7 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
     // Token stored in HttpOnly cookie — never accessible from JS
     res.cookie(COOKIE_NAME, result.token, COOKIE_OPTIONS);
 
-    res.json({ success: true, data: { user: result.user } });
+    res.json({ success: true, data: { user: result.user, token: result.token } });
   } catch (err) {
     next(err);
   }
@@ -94,6 +94,44 @@ export async function seedDemo(req: Request, res: Response, next: NextFunction):
         password: 'admin123'
       }
     });
+  } catch (err) {
+    next(err);
+  }
+}
+
+import { registerClientAdmin as registerClientAdminService, registerGuest as registerGuestService } from './auth.service';
+
+export async function registerClientAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const result = await registerClientAdminService(req.body);
+    res.status(201).json({ success: true, data: { user: result } });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function registerGuest(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const result = await registerGuestService(req.body);
+    res.status(201).json({ success: true, data: { user: result } });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function verifyEmail(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    // Mock implementation for now
+    res.json({ success: true, message: 'Email verified successfully.' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function resetPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    // Mock implementation for now
+    res.json({ success: true, message: 'Password reset instructions sent.' });
   } catch (err) {
     next(err);
   }

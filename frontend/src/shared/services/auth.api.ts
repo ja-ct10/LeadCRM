@@ -28,4 +28,10 @@ export const authApi = {
 
   me: () =>
     apiClient.get<AuthResponse>('/auth/me'),
+
+  registerClientAdmin: (payload: any) =>
+    apiClient.post<AuthResponse>('/auth/register/client-admin', payload),
+
+  registerGuest: (payload: any) =>
+    apiClient.post<AuthResponse>('/auth/register/guest', payload),
 };

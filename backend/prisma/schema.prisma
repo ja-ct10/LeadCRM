@@ -264,6 +264,7 @@ model User {
   // New code should read role from UserRole junction; this is the legacy fallback.
   role         String     @default("Sales Rep")
   status       UserStatus @default(ACTIVE)
+  emailVerified DateTime?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -1219,4 +1220,30 @@ model EmailDeliveryLog {
   @@index([tenantId, contactId])
   @@index([tenantId, campaignId])
   @@index([gmailMessageId])
+}
+
+// ─────────────────────────────────────────────
+// VERIFICATION TOKEN (Email Verification)
+// ─────────────────────────────────────────────
+model VerificationToken {
+  id         String   @id @default(cuid())
+  identifier String
+  token      String   @unique
+  expires    DateTime
+  createdAt  DateTime @default(now())
+
+  @@unique([identifier, token])
+}
+
+// ─────────────────────────────────────────────
+// PASSWORD RESET TOKEN
+// ─────────────────────────────────────────────
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique
+  expires   DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([email, token])
 }
