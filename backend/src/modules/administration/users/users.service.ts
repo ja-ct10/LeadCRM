@@ -1,7 +1,8 @@
-﻿import prisma from '../../../config/database.config';
+import { randomBytes } from 'crypto';
+import prisma from '../../../config/database.config';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { revokeAllUserSessions } from '../../../core/auth/session.service';
-import { NotFoundError, ConflictError, ForbiddenError } from '../../../shared/errors/http-error';
+import { NotFoundError, ConflictError, ForbiddenError, ValidationError } from '../../../shared/errors/http-error';
 import { hashPassword } from '../../../shared/helpers/crypto';
 import { getPaginationParams, paginate } from '../../../shared/helpers/pagination';
 import { Role } from '../../../shared/constants/roles';
@@ -12,7 +13,7 @@ const SAFE_USER_SELECT = {
   // passwordHash is NEVER selected
 };
 
-export async function getUsers(tenantId: string, query: Record<string, unknown>) {
+export async function getAll(tenantId: string, query: Record<string, unknown>) {
   const { page, limit } = getPaginationParams(query);
   const skip = (page - 1) * limit;
   const where = {
@@ -34,23 +35,24 @@ export async function getUsers(tenantId: string, query: Record<string, unknown>)
   return paginate(data, total, { page, limit });
 }
 
-export async function getUserById(id: string, tenantId: string) {
+export async function getById(id: string, tenantId: string) {
   const user = await prisma.user.findFirst({ where: { id, tenantId }, select: SAFE_USER_SELECT });
   if (!user) throw new NotFoundError('User');
   return user;
 }
 
-export async function createUser(tenantId: string, actorId: string, dto: {
-  firstName: string; lastName: string; email: string; password: string; role?: string;
+export async function create(tenantId: string, actorId: string, dto: {
+  firstName: string; lastName: string; email: string; password?: string; role?: string;
 }) {
-  // role must never be System Admin via this endpoint
   if (dto.role === Role.SYSTEM_ADMIN) {
     throw new ForbiddenError('Cannot assign System Admin role via tenant user management');
   }
   const existing = await prisma.user.findFirst({ where: { email: dto.email, tenantId } });
   if (existing) throw new ConflictError('A user with this email already exists in this tenant');
 
-  const passwordHash = await hashPassword(dto.password);
+  // Use a secure random password if none is provided, requiring the user to reset it later
+  const secureRandomPassword = dto.password || randomBytes(32).toString('hex');
+  const passwordHash = await hashPassword(secureRandomPassword);
   const user = await prisma.user.create({
     data: { tenantId, firstName: dto.firstName, lastName: dto.lastName, email: dto.email, passwordHash, role: dto.role ?? Role.SALES_REP },
     select: SAFE_USER_SELECT,
@@ -59,28 +61,77 @@ export async function createUser(tenantId: string, actorId: string, dto: {
   return user;
 }
 
-export async function updateUser(id: string, tenantId: string, actorId: string, dto: {
-  firstName?: string; lastName?: string; role?: string;
+export async function update(id: string, tenantId: string, actorId: string, dto: {
+  firstName?: string; lastName?: string; role?: string; status?: string;
 }) {
-  // role must never be System Admin via this endpoint
   if (dto.role === Role.SYSTEM_ADMIN) {
     throw new ForbiddenError('Cannot assign System Admin role via tenant user management');
   }
+  if (dto.status && !['ACTIVE', 'INACTIVE', 'PENDING'].includes(dto.status)) {
+    throw new ValidationError('Invalid status value provided');
+  }
+  
   const existing = await prisma.user.findFirst({ where: { id, tenantId } });
   if (!existing) throw new NotFoundError('User');
+
+  // Prevent modifying another tenant's system admin if somehow they got here
+  if (existing.role === Role.SYSTEM_ADMIN) {
+    throw new ForbiddenError('Cannot modify System Admin users');
+  }
 
   const user = await prisma.user.update({ where: { id }, data: dto, select: SAFE_USER_SELECT });
   await writeAuditLog({ tenantId, userId: actorId, action: 'user.updated', entityType: 'User', entityId: id, after: dto as Record<string, unknown> });
   return user;
 }
 
-export async function deactivateUser(id: string, tenantId: string, actorId: string) {
+export async function archive(id: string, tenantId: string, actorId: string) {
   const existing = await prisma.user.findFirst({ where: { id, tenantId } });
   if (!existing) throw new NotFoundError('User');
-  if (id === actorId) throw new ForbiddenError('Cannot deactivate your own account');
+  if (id === actorId) throw new ForbiddenError('Cannot archive your own account');
 
   await prisma.user.update({ where: { id }, data: { status: 'INACTIVE' } });
-  // Revoke all active sessions — user loses access immediately
   await revokeAllUserSessions(id);
-  await writeAuditLog({ tenantId, userId: actorId, action: 'user.deactivated', entityType: 'User', entityId: id, after: { status: 'INACTIVE' }, severity: 'WARNING' });
+  await writeAuditLog({ tenantId, userId: actorId, action: 'user.archived', entityType: 'User', entityId: id, after: { status: 'INACTIVE' }, severity: 'WARNING' });
+}
+
+export async function restore(id: string, tenantId: string, actorId: string) {
+  const existing = await prisma.user.findFirst({ where: { id, tenantId } });
+  if (!existing) throw new NotFoundError('User');
+
+  await prisma.user.update({ where: { id }, data: { status: 'ACTIVE' } });
+  await writeAuditLog({ tenantId, userId: actorId, action: 'user.restored', entityType: 'User', entityId: id, after: { status: 'ACTIVE' }, severity: 'INFO' });
+}
+
+export async function deleteRecord(id: string, tenantId: string, actorId: string) {
+  const existing = await prisma.user.findFirst({ where: { id, tenantId } });
+  if (!existing) throw new NotFoundError('User');
+  if (id === actorId) throw new ForbiddenError('Cannot delete your own account');
+  if (existing.role === Role.SYSTEM_ADMIN) throw new ForbiddenError('Cannot delete System Admin users');
+
+  await prisma.user.delete({ where: { id } });
+  await writeAuditLog({ tenantId, userId: actorId, action: 'user.deleted', entityType: 'User', entityId: id, severity: 'CRITICAL' });
+}
+
+export async function bulkUpdate(ids: string[], tenantId: string, actorId: string, dto: Record<string, any>) {
+  if (dto.role === Role.SYSTEM_ADMIN) throw new ForbiddenError('Cannot assign System Admin role');
+  if (dto.status && !['ACTIVE', 'INACTIVE', 'PENDING'].includes(dto.status)) {
+    throw new ValidationError('Invalid status value provided');
+  }
+  
+  await prisma.user.updateMany({
+    // Prevent bulk updating System Admins
+    where: { id: { in: ids }, tenantId, role: { not: Role.SYSTEM_ADMIN } },
+    data: dto
+  });
+  await writeAuditLog({ tenantId, userId: actorId, action: 'user.bulk_updated', entityType: 'User', after: { ids, updates: dto }, severity: 'WARNING' });
+}
+
+export async function bulkDelete(ids: string[], tenantId: string, actorId: string) {
+  if (ids.includes(actorId)) throw new ForbiddenError('Cannot delete your own account in a bulk operation');
+  
+  await prisma.user.deleteMany({
+    // Prevent bulk deleting System Admins
+    where: { id: { in: ids }, tenantId, role: { not: Role.SYSTEM_ADMIN } }
+  });
+  await writeAuditLog({ tenantId, userId: actorId, action: 'user.bulk_deleted', entityType: 'User', after: { ids }, severity: 'CRITICAL' });
 }

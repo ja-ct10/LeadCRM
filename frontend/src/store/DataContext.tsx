@@ -55,6 +55,8 @@ import { evaluateWorkflowCondition } from "@/features/tenant/automation/workflow
 import { uuid } from "@/lib/utils";
 
 // ── Real-API integration ─────────────────────────────────────────────────────
+import { toast } from 'sonner';
+import { usersService } from "@/features/tenant/administration/users/services/users.service";
 import { USE_MOCK_DATA } from "@/lib/config";
 import { contactsService } from "@/features/tenant/crm/contacts/services/contacts.service";
 import { organizationsService } from "@/features/tenant/crm/contacts/services/organizations.service";
@@ -1811,7 +1813,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const addUser = (userData: any) => {
+  const addUser = async (userData: any) => {
     if (!tenant) return;
     const nameParts = (userData.name || "").trim().split(/\s+/);
     const firstName = userData.firstName || nameParts[0] || "New";
@@ -1831,6 +1833,26 @@ export function DataProvider({ children }: { children: ReactNode }) {
       phone: userData.phone || "",
     };
 
+    // Optimistic Update
+    setUsers((prev) => [...prev, newUser]);
+
+    if (!USE_MOCK_DATA) {
+      try {
+        const res = await usersService.create(newUser);
+        if (res.data) {
+          setUsers((prev) => prev.map((u) => (u.id === newUser.id ? res.data! : u)));
+          addAuditLog(
+            "User Registered",
+            `Registered new team member: '${firstName} ${lastName}'.`,
+          );
+        }
+      } catch (err: any) {
+        toast.error("Failed to register user: " + (err.message || "Unknown error"));
+        setUsers((prev) => prev.filter((u) => u.id !== newUser.id));
+      }
+      return;
+    }
+
     const allUsers = JSON.parse(
       localStorage.getItem("leadcrm_users") || JSON.stringify(MOCK_USERS),
     );
@@ -1839,19 +1861,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
       newUser,
     ];
     localStorage.setItem("leadcrm_users", JSON.stringify(updatedUsers));
-
-    setUsers(updatedUsers.filter((u: any) => u.tenantId === tenant.id));
     addAuditLog(
       "User Registered",
       `Registered new team member: '${firstName} ${lastName}'.`,
     );
   };
 
-  const updateUser = (id: string, updates: Partial<any>) => {
-    const allUsers = JSON.parse(
-      localStorage.getItem("leadcrm_users") || JSON.stringify(MOCK_USERS),
-    );
-    const original = allUsers.find((u: any) => u.id === id);
+  const updateUser = async (id: string, updates: Partial<any>) => {
+    const original = users.find((u) => u.id === id);
     if (!original) return;
 
     let firstName = updates.firstName || original.firstName;
@@ -1869,16 +1886,33 @@ export function DataProvider({ children }: { children: ReactNode }) {
       lastName,
     };
 
+    // Optimistic UI Update
+    setUsers((prev) => prev.map((u) => (u.id === id ? updatedUser : u)));
+
+    if (!USE_MOCK_DATA) {
+      try {
+        const res = await usersService.update(id, updatedUser);
+        if (res.data) {
+          setUsers((prev) => prev.map((u) => (u.id === id ? res.data! : u)));
+          addAuditLog(
+            "User Updated",
+            `Updated profile/role details for team member: '${firstName} ${lastName}'.`,
+          );
+        }
+      } catch (err: any) {
+        toast.error("Failed to update user: " + (err.message || "Unknown error"));
+        setUsers((prev) => prev.map((u) => (u.id === id ? original : u)));
+      }
+      return;
+    }
+
+    const allUsers = JSON.parse(
+      localStorage.getItem("leadcrm_users") || JSON.stringify(MOCK_USERS),
+    );
     const updatedUsers = allUsers.map((u: any) =>
       u.id === id ? updatedUser : u,
     );
     localStorage.setItem("leadcrm_users", JSON.stringify(updatedUsers));
-
-    if (tenant) {
-      setUsers(updatedUsers.filter((u: any) => u.tenantId === tenant.id));
-    } else {
-      setUsers(updatedUsers);
-    }
 
     addAuditLog(
       "User Updated",
@@ -1893,23 +1927,38 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const deleteUser = (id: string) => {
+  const deleteUser = async (id: string) => {
+    const original = users.find((u) => u.id === id);
+    if (!original) return;
+
+    // Optimistic UI Update
+    setUsers((prev) =>
+      prev.map((u) =>
+        u.id === id ? { ...u, status: "inactive", isArchived: true } : u,
+      ),
+    );
+
+    if (!USE_MOCK_DATA) {
+      try {
+        await usersService.archive(id);
+        addAuditLog(
+          "User Archived",
+          `Deactivated and archived team member account: '${original.firstName} ${original.lastName}'.`,
+        );
+      } catch (err: any) {
+        toast.error("Failed to archive user: " + (err.message || "Unknown error"));
+        setUsers((prev) => prev.map((u) => (u.id === id ? original : u)));
+      }
+      return;
+    }
+
     const allUsers = JSON.parse(
       localStorage.getItem("leadcrm_users") || JSON.stringify(MOCK_USERS),
     );
-    const original = allUsers.find((u: any) => u.id === id);
-    if (!original) return;
-
     const updatedUsers = allUsers.map((u: any) =>
-      u.id === id ? { ...u, status: "Inactive", isArchived: true } : u,
+      u.id === id ? { ...u, status: "inactive", isArchived: true } : u,
     );
     localStorage.setItem("leadcrm_users", JSON.stringify(updatedUsers));
-
-    if (tenant) {
-      setUsers(updatedUsers.filter((u: any) => u.tenantId === tenant.id));
-    } else {
-      setUsers(updatedUsers);
-    }
 
     addAuditLog(
       "User Archived",

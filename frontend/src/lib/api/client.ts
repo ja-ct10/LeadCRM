@@ -13,6 +13,7 @@ async function request<T>(
   method: string,
   path: string,
   body?: unknown,
+  params?: Record<string, unknown>
 ): Promise<T> {
   const session = await getSession();
   const token = (session as any)?.accessToken;
@@ -25,7 +26,21 @@ async function request<T>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_URL}${path}`, {
+  let finalPath = path;
+  if (params && Object.keys(params).length > 0) {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        searchParams.append(key, String(value));
+      }
+    });
+    const qs = searchParams.toString();
+    if (qs) {
+      finalPath += `?${qs}`;
+    }
+  }
+
+  const res = await fetch(`${API_URL}${finalPath}`, {
     method,
     headers,
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
@@ -40,7 +55,7 @@ async function request<T>(
 }
 
 export const apiClient = {
-  get:    <T>(path: string)                  => request<T>('GET',    path),
+  get:    <T>(path: string, config?: { params?: Record<string, unknown> }) => request<T>('GET',    path, undefined, config?.params),
   post:   <T>(path: string, body: unknown)   => request<T>('POST',   path, body),
   put:    <T>(path: string, body: unknown)   => request<T>('PUT',    path, body),
   patch:  <T>(path: string, body?: unknown)  => request<T>('PATCH',  path, body),

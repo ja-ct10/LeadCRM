@@ -1,4 +1,4 @@
-﻿import { Router } from 'express';
+import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { tenantMiddleware } from '../middleware/tenant.middleware';
 import { authorize } from '../middleware/rbac.middleware';
@@ -13,11 +13,15 @@ router.use(authMiddleware);
 router.use(tenantMiddleware);
 
 // ── Users ─────────────────────────────────────────────
-router.get(   '/users',                authorize('users.view'),   userController.getUsers);
-router.get(   '/users/:id',            authorize('users.view'),   userController.getUserById);
-router.post(  '/users',                authorize('users.manage'), userController.createUser);
-router.put(   '/users/:id',            authorize('users.manage'), userController.updateUser);
-router.patch( '/users/:id/deactivate', authorize('users.manage'), userController.deactivateUser);
+router.get(   '/users',                  authorize('users.view'),   userController.getAll);
+router.get(   '/users/:id',              authorize('users.view'),   userController.getById);
+router.post(  '/users',                  authorize('users.manage'), userController.create);
+router.put(   '/users/:id',              authorize('users.manage'), userController.update);
+router.delete('/users/:id',              authorize('users.manage'), userController.deleteRecord);
+router.patch( '/users/:id/archive',      authorize('users.manage'), userController.archive);
+router.patch( '/users/:id/restore',      authorize('users.manage'), userController.restore);
+router.post(  '/users/bulk-update',      authorize('users.manage'), userController.bulkUpdate);
+router.post(  '/users/bulk-delete',      authorize('users.manage'), userController.bulkDelete);
 
 // ── Roles (RoleDefinition) ────────────────────────────
 router.get(   '/roles',                authorize('roles.manage'), roleController.getRoles);

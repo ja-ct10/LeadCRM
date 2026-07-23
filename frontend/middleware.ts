@@ -12,6 +12,11 @@ export default withAuth(
         return NextResponse.redirect(new URL("/login", req.url));
       }
     }
+    
+    // Prevent authenticated users from accessing guest routes
+    if (token && (path.startsWith("/login") || path.startsWith("/register"))) {
+      return NextResponse.redirect(new URL("/dashboard", req.url));
+    }
 
     return NextResponse.next();
   },

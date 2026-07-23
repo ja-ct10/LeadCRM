@@ -180,6 +180,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           lastName: adminData.lastName,
           email: adminData.email,
           password: adminData.password,
+          acceptTerms: true,
         });
         return true;
       } catch (err) {
@@ -232,7 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, tenant, isLoading, login, logout, registerTenant, switchRole, updateProfile }}>
+    <AuthContext.Provider value={{ user, tenant, isLoading, login, logout, registerTenant, registerGuestAccount, switchRole, updateProfile }}>
       {children}
     </AuthContext.Provider>
   );

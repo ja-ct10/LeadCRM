@@ -99,9 +99,17 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
         return;
       }
 
-      await registerTenant({...tenantData, businessReqs, verificationDocs: { ...verificationDocs, uploadedAt: new Date().toISOString() }}, adminData);
-      toast.success('Registration successful! Setup/Onboarding info has been sent to your email. Please wait for System Admin approval.');
-      onNavigate('login');
+      try {
+        const success = await registerTenant({...tenantData, businessReqs, verificationDocs: { ...verificationDocs, uploadedAt: new Date().toISOString() }}, adminData);
+        if (success) {
+          toast.success('Registration successful! Setup/Onboarding info has been sent to your email. Please wait for System Admin approval.');
+          onNavigate('login');
+        } else {
+          setError('Registration failed. Please try again or contact support.');
+        }
+      } catch (err: any) {
+        setError(err.message || 'An error occurred during registration.');
+      }
     } else {
       // Guest Registration
       try {
@@ -111,9 +119,17 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
         return;
       }
       
-      await registerGuestAccount(guestData);
-      toast.success('Guest Sandbox created successfully!');
-      onNavigate('login');
+      try {
+        const success = await registerGuestAccount(guestData);
+        if (success) {
+          toast.success('Guest Sandbox created successfully!');
+          onNavigate('login');
+        } else {
+          setError('Registration failed. Please try again or contact support.');
+        }
+      } catch (err: any) {
+        setError(err.message || 'An error occurred during registration.');
+      }
     }
   };
 

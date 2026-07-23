@@ -1,34 +1,64 @@
-﻿import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import * as service from './users.service';
 
-export async function getUsers(req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function getAll(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    res.json({ success: true, ...await service.getUsers(req.user!.tenantId, req.query as Record<string, unknown>) });
+    res.json({ success: true, ...await service.getAll(req.user!.tenantId, req.query as Record<string, unknown>) });
   } catch (err) { next(err); }
 }
 
-export async function getUserById(req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function getById(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    res.json({ success: true, data: await service.getUserById(String(req.params.id), req.user!.tenantId) });
+    res.json({ success: true, data: await service.getById(String(req.params.id), req.user!.tenantId) });
   } catch (err) { next(err); }
 }
 
-export async function createUser(req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function create(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const user = await service.createUser(req.user!.tenantId, req.user!.userId, req.body);
+    const user = await service.create(req.user!.tenantId, req.user!.userId, req.body);
     res.status(201).json({ success: true, data: user });
   } catch (err) { next(err); }
 }
 
-export async function updateUser(req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function update(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    res.json({ success: true, data: await service.updateUser(String(req.params.id), req.user!.tenantId, req.user!.userId, req.body) });
+    res.json({ success: true, data: await service.update(String(req.params.id), req.user!.tenantId, req.user!.userId, req.body) });
   } catch (err) { next(err); }
 }
 
-export async function deactivateUser(req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function archive(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    await service.deactivateUser(String(req.params.id), req.user!.tenantId, req.user!.userId);
+    await service.archive(String(req.params.id), req.user!.tenantId, req.user!.userId);
+    res.status(204).send();
+  } catch (err) { next(err); }
+}
+
+export async function restore(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    await service.restore(String(req.params.id), req.user!.tenantId, req.user!.userId);
+    res.status(204).send();
+  } catch (err) { next(err); }
+}
+
+export async function deleteRecord(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    await service.deleteRecord(String(req.params.id), req.user!.tenantId, req.user!.userId);
+    res.status(204).send();
+  } catch (err) { next(err); }
+}
+
+export async function bulkUpdate(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { ids, ...dto } = req.body;
+    await service.bulkUpdate(ids, req.user!.tenantId, req.user!.userId, dto);
+    res.status(204).send();
+  } catch (err) { next(err); }
+}
+
+export async function bulkDelete(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { ids } = req.body;
+    await service.bulkDelete(ids, req.user!.tenantId, req.user!.userId);
     res.status(204).send();
   } catch (err) { next(err); }
 }
