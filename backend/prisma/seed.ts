@@ -1,23 +1,16 @@
 import { PrismaClient } from '@prisma/client';
-import { seedSystemAdmin } from '../src/database/seeders/admin.seed';
-import { seedDefaultPipelines } from '../src/database/seeders/pipelines.seed';
-import { seedDemoAccounts } from '../src/database/seeders/demo.seed';
+import { seedSystemAdmin, generateTenants } from '../src/database/seeders/tenant-generator';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('[Seed] Starting database seed...');
+  console.log('[Seed] Starting complete database seed...');
 
-  // 1. System Admin tenant + user
-  const systemTenant = await seedSystemAdmin();
+  // 1. System Admin
+  await seedSystemAdmin();
 
-  // 2. Default pipelines for system tenant (useful for demos)
-  if (systemTenant) {
-    await seedDefaultPipelines(systemTenant.id);
-  }
-  
-  // 3. Demo accounts
-  await seedDemoAccounts();
+  // 2. Realistic Multi-Tenant Data
+  await generateTenants(10);
 
   console.log('[Seed] Complete.');
 }
