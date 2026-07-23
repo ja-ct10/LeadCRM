@@ -498,6 +498,8 @@ model Contact {
   score           Int           @default(75)
   source          String?
   notes           String?
+  productInterest String?
+  address         String?
   lastContactedAt DateTime?
   convertedAt     DateTime?
   doNotContact    Boolean       @default(false)

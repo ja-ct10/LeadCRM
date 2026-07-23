@@ -1,0 +1,3 @@
+- [ ] All checklists passed
+- [ ] Documentation updated
+- [ ] ADR recorded if applicable

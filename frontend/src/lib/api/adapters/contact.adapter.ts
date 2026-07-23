@@ -81,6 +81,8 @@ export function toBackendCreateContact(data: Record<string, any>): Record<string
     doNotContact: !!data.doNotContact,
     organizationId: data.organizationId || undefined,
     assignedUserId: data.assignedUserId || undefined,
+    productInterest: data.productInterest || data.serviceRequired || undefined,
+    address: data.address || undefined,
   };
 }
 
@@ -117,6 +119,8 @@ export function toBackendUpdateContact(data: Record<string, any>): Record<string
   if (data.doNotContact !== undefined) result.doNotContact = !!data.doNotContact;
   if (data.organizationId !== undefined) result.organizationId = data.organizationId || undefined;
   if (data.assignedUserId !== undefined) result.assignedUserId = data.assignedUserId || undefined;
+  if (data.productInterest !== undefined || data.serviceRequired !== undefined) result.productInterest = data.productInterest || data.serviceRequired || undefined;
+  if (data.address !== undefined) result.address = data.address || undefined;
 
   return result;
 }
@@ -146,7 +150,7 @@ export function toFrontendContact(backendContact: any): Record<string, any> {
     jobTitle: backendContact.jobTitle || '',
     email: backendContact.email || '',
     phone: backendContact.phone || '',
-    serviceRequired: '', // Frontend only, reset or default
+    serviceRequired: backendContact.productInterest || '', 
     leadSource: backendContact.source || '',
     estimatedValue: 0, // Frontend only
     assignedUserId: backendContact.assignedUserId || '',
@@ -157,7 +161,7 @@ export function toFrontendContact(backendContact: any): Record<string, any> {
     createdAt: backendContact.createdAt || new Date().toISOString(),
     isArchived: !!backendContact.isArchived,
     customerType: backendContact.organizationId ? 'Organization' : 'Individual',
-    address: '', // Add sensible default if not in backend
+    address: backendContact.address || '', 
     // Populate nested fields optionally if needed
     organization: backendContact.organization || undefined,
     assignedUser: backendContact.assignedUser || undefined,

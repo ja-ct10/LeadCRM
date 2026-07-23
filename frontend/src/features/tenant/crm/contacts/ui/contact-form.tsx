@@ -57,6 +57,7 @@ export function AddContactForm({ initialData, onSave, onCancel }: AddContactForm
   const [followUpDate, setFollowUpDate] = useState("");
   const [selectedProduct, setSelectedProduct] = useState<string>("");
   const [customProduct, setCustomProduct] = useState<string>("");
+  const [isProductDropdownOpen, setIsProductDropdownOpen] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formData, setFormData] = useState<Partial<Contact>>({
     firstName: "", lastName: "", email: "", phone: "",
@@ -299,19 +300,44 @@ export function AddContactForm({ initialData, onSave, onCancel }: AddContactForm
             <FieldWrap label="Product Interest">
               <div className="space-y-2">
                 <div className="relative">
-                  <select className={selectCls} value={selectedProduct}
-                    onChange={(e) => setSelectedProduct(e.target.value)}>
-                    <option value="">Select product...</option>
-                    {PRODUCTS.map((p) => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                  <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
+                  <div
+                    className={`${inputCls} flex items-center justify-between cursor-pointer select-none`}
+                    onClick={() => setIsProductDropdownOpen(!isProductDropdownOpen)}
+                  >
+                    <span className={selectedProduct ? "text-slate-900 dark:text-white" : "text-slate-400"}>
+                      {selectedProduct || "Select product..."}
+                    </span>
+                    <ChevronDown size={14} className={`text-slate-400 transition-transform ${isProductDropdownOpen ? "rotate-180" : ""}`} />
+                  </div>
+                  
+                  {isProductDropdownOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setIsProductDropdownOpen(false)} />
+                      <div className="absolute z-50 w-full mt-1.5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-white/[0.08] rounded-xl shadow-xl shadow-blue-900/5 dark:shadow-black/40 py-1 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 max-h-60 overflow-y-auto">
+                        {PRODUCTS.map((p) => (
+                          <div
+                            key={p}
+                            className={`px-3.5 py-2.5 text-sm cursor-pointer transition-colors ${selectedProduct === p ? "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium" : "text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.04]"}`}
+                            onClick={() => {
+                              setSelectedProduct(p);
+                              setIsProductDropdownOpen(false);
+                            }}
+                          >
+                            {p}
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
                 {selectedProduct === "Others" && (
-                  <input type="text" autoFocus
-                    className="w-full bg-white dark:bg-white/[0.04] border border-blue-400 dark:border-blue-500/60 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                    placeholder="Specify product or service"
-                    value={customProduct}
-                    onChange={(e) => setCustomProduct(e.target.value)} />
+                  <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+                    <input type="text" autoFocus
+                      className="w-full bg-white dark:bg-white/[0.04] border border-blue-400 dark:border-blue-500/60 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all shadow-sm shadow-blue-500/10"
+                      placeholder="Specify product or service"
+                      value={customProduct}
+                      onChange={(e) => setCustomProduct(e.target.value)} />
+                  </div>
                 )}
               </div>
             </FieldWrap>
@@ -389,10 +415,16 @@ export function AddContactForm({ initialData, onSave, onCancel }: AddContactForm
             <div className="relative">
               <MapPin className="absolute left-3.5 top-3 text-slate-400" size={14} />
               <textarea rows={3}
-                className="w-full pl-9 pr-4 bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all resize-none"
+                className="w-full pl-9 pr-4 bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all resize-none overflow-hidden"
                 placeholder="123 Main St, Apt 4B, City, State, Zip Code"
                 value={formData.address || ""}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })} />
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                onInput={(e) => {
+                  const target = e.target as HTMLTextAreaElement;
+                  target.style.height = 'auto';
+                  target.style.height = `${target.scrollHeight + 2}px`;
+                }}
+              />
             </div>
           </FieldWrap>
         </div>

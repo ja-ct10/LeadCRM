@@ -8,6 +8,6 @@
   },
   "then": {
     "type": "askAgent",
-    "prompt": "Run the full LeadCRM quality gate. Work through each gate in sequence and report results:\n\n**Gate 1 — TypeScript**\nRun: check recently modified .ts/.tsx files for type errors, missing return types, any `any` usage.\n\n**Gate 2 — Code Quality**\nScan for: console.log statements, unused imports, direct mutations, missing RBAC guards on create/edit/delete UI.\n\n**Gate 3 — SaaS Safety**\nCheck: tenantId on new records, addAuditLog calls on mutations, DataContext used for all data ops.\n\n**Gate 4 — Security**\nCheck: no hardcoded secrets, no dangerouslySetInnerHTML without sanitization, no cross-tenant access paths.\n\n**Gate 5 — UI Quality**\nCheck: dark mode classes on all new elements, TrelloFilter used (not raw select), charts from ChartComponents.tsx only.\n\nReport each gate as PASS or FAIL with specific issues. If all pass — confirm the task is ready to commit."
+    "prompt": "Run the full LeadCRM quality gate. Read `.agent/checklists/production-ready.md` and related `.agent/checklists/` files. Work through each gate in sequence (TypeScript, Code Quality, SaaS Safety, Security, UI Quality) using the universal standards defined in `.agent/`. Report each gate as PASS or FAIL with specific issues. If all pass — confirm the task is ready to commit."
   }
 }

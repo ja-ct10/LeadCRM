@@ -1,10 +1,10 @@
-﻿{
+{
   "name": "Session Wrap",
   "version": "1.1.0",
   "description": "End of session: summarize and capture lessons.",
   "when": { "type": "agentStop" },
   "then": {
     "type": "askAgent",
-    "prompt": "The agent session just ended. Review what was accomplished in this session and ask yourself: was there anything non-obvious discovered? Any gotcha, pattern, naming convention, or architectural decision that a future developer should know about?\n\nIf yes — suggest adding it to `.kiro/steering/lessons-learned.md` using this format:\n```markdown\n### [Pattern Name]\nBrief description of what was learned and why it matters.\nCode example if helpful.\n```\n\nIf nothing new was learned that isn't already documented, simply say \"Nothing new to capture this session.\" Keep the response under 10 lines total."
+    "prompt": "Before concluding the task: 1) Run tests if applicable. 2) Update `.agent/memory/project-overview.md` and related docs if architecture changed. 3) Write an ADR in `.agent/adr/` if a major decision was made. 4) Ensure `.agent/` checks passed. 5) Present a final summary of completed work.\n\nAlso, consider if there was anything non-obvious discovered? Any gotcha, pattern, naming convention, or architectural decision that a future developer should know about?\n\nIf yes — suggest adding it to `.kiro/steering/lessons-learned.md` using this format:\n```markdown\n### [Pattern Name]\nBrief description of what was learned and why it matters.\nCode example if helpful.\n```\n\nIf nothing new was learned that isn't already documented, simply say \"Nothing new to capture this session.\" Keep the response under 10 lines total."
   }
 }

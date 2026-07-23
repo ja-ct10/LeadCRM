@@ -1,0 +1,3 @@
+- [ ] REST/GraphQL standards
+- [ ] DTO validation
+- [ ] Error handling

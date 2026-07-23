@@ -8,6 +8,6 @@
   },
   "then": {
     "type": "askAgent",
-    "prompt": "Before starting this task: 1) Print the AgentOS activation header (agents used, skills active, severity, task type). 2) Run Phase 0 — read the relevant files, map dependencies, identify risks. 3) Classify severity: LOW | MEDIUM | HIGH | CRITICAL. 4) If HIGH or CRITICAL — write an Architecture Decision block with at least two options before writing any code. Then proceed with implementation."
+    "prompt": "Before starting this task: 1) Print the AgentOS activation header. 2) Read `.agent/memory/project-overview.md` and `.agent/README.md`. 3) Run Phase 0 — read the relevant files, map dependencies, identify risks. 4) Classify severity. 5) If HIGH or CRITICAL — write an Architecture Decision block before writing any code. Proceed with implementation following `.agent/` standards."
   }
 }

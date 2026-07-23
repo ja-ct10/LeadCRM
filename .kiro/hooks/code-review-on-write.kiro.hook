@@ -1,10 +1,10 @@
-﻿{
+{
   "name": "code-review-on-write",
   "version": "1.2.0",
   "description": "Quick review after user-initiated write operations. Checks for common security issues, error handling gaps, and LeadCRM rule violations. NOTE: This hook fires postToolUse:write. The askAgent response must NOT write files — only report findings as text to avoid a circular trigger loop.",
   "when": { "type": "postToolUse", "toolTypes": ["write"] },
   "then": {
     "type": "askAgent",
-    "prompt": "A file was just written or modified. Review ONLY — do NOT write or edit any files in this response (that would re-trigger this hook). Check the changed file for: 1) Security issues: missing RBAC guard on create/edit/delete UI, missing tenantId on new records, hardcoded secrets. 2) Error handling: silent catch blocks, missing toast.error(). 3) Code quality: any type usage, console.log, direct state mutation. 4) LeadCRM rules: addAuditLog missing on mutations, DataContext bypassed with direct localStorage, framer-motion used instead of motion/react, recharts imported directly instead of ChartComponents.tsx. Report findings as a short bullet list only. If nothing is wrong, say 'No issues found.' in one line."
+    "prompt": "A file was just written or modified. Review ONLY — do NOT write or edit any files in this response. Based on the file path, read the appropriate workflow from `.agent/workflows/` (e.g. `frontend-change.md`, `backend-change.md`, `database-change.md`) and run its checklist. Report findings as a short bullet list only. If nothing is wrong, say 'No issues found.' in one line."
   }
 }
