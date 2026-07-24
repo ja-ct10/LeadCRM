@@ -29,7 +29,8 @@ interface EditFields {
   stageId: string;
   leadSource: string;
   industry: string;
-  location: string;
+  address: string;
+  productInterests: string;
   campaign: string;
   customerType: string;
   tags: string;
@@ -92,7 +93,8 @@ function buildEditFields(deal: Deal): EditFields {
     stageId: deal.stageId || '',
     leadSource: deal.leadSource || '',
     industry: deal.industry || '',
-    location: deal.location || '',
+    address: deal.address || '',
+    productInterests: deal.productInterests ? deal.productInterests.join(', ') : '',
     campaign: deal.campaign || '',
     customerType: deal.customerType || 'New Customer',
     tags: deal.tags || '',
@@ -171,6 +173,7 @@ export function DealDetailsModal({
     e.preventDefault();
     onUpdateDeal(deal.id, {
       ...editFields,
+      productInterests: editFields.productInterests ? editFields.productInterests.split(',').map(s => s.trim()).filter(Boolean) : [],
       priority: editFields.priority as Deal['priority'],
     });
     setIsEditing(false);
@@ -414,8 +417,13 @@ export function DealDetailsModal({
                         className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Location</label>
-                      <input type="text" value={editFields.location} onChange={e => setEditFields({ ...editFields, location: e.target.value })}
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Product Interests (comma separated)</label>
+                      <input type="text" value={editFields.productInterests} onChange={e => setEditFields({ ...editFields, productInterests: e.target.value })}
+                        className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Address</label>
+                      <input type="text" value={editFields.address} onChange={e => setEditFields({ ...editFields, address: e.target.value })}
                         className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
                     </div>
                     <div>
@@ -478,7 +486,8 @@ export function DealDetailsModal({
                         value: <span className="bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded text-xs font-medium">{currentStageName}</span> },
                       { icon: <span>🌐</span>, label: 'Contact Source', value: deal.leadSource || '—' },
                       { icon: <span>🏭</span>, label: 'Industry',       value: deal.industry    || '—' },
-                      { icon: <span>📍</span>, label: 'Location',       value: deal.location    || '—' },
+                      { icon: <span>📌</span>, label: 'Product Interests', value: deal.productInterests?.length ? deal.productInterests.join(', ') : '—' },
+                      { icon: <span>📍</span>, label: 'Address',        value: deal.address     || '—' },
                       { icon: <span>📣</span>, label: 'Campaign',       value: deal.campaign    || '—' },
                       { icon: <span>👥</span>, label: 'Customer Type',  value: deal.customerType || 'New Customer' },
                     ].map(row => (

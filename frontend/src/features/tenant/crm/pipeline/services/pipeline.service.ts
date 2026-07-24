@@ -19,6 +19,9 @@ export const pipelineService = {
   updateDeal: (id: string, data: Partial<Deal>): Promise<ApiResponse<Deal>> =>
     apiClient.put<ApiResponse<Deal>>(`/crm/deals/${id}`, data),
 
+  moveDealStage: (id: string, data: { stageId: string; note?: string; lostReason?: string; handoff?: any }): Promise<ApiResponse<Deal>> =>
+    apiClient.patch<ApiResponse<Deal>>(`/crm/deals/${id}/stage`, data),
+
   archiveDeal: (id: string): Promise<void> =>
     apiClient.patch<void>(`/crm/deals/${id}/archive`),
 

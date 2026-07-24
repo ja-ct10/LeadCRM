@@ -67,7 +67,7 @@ export async function updateContact(
 }
 
 export async function archiveContact(id: string, tenantId: string, userId: string) {
-  const contact = await repo.archiveContact(id, tenantId);
+  const contact = await repo.archiveContact(id, tenantId, userId);
   if (!contact) throw new NotFoundError('Contact');
 
   await writeAuditLog({

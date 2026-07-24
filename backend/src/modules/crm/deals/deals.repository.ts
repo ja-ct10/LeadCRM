@@ -1,4 +1,4 @@
-﻿import prisma from '../../../config/database.config';
+import prisma from '../../../config/database.config';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
 import { CreateDealDto, UpdateDealDto } from './deals.dto';
 
@@ -91,8 +91,12 @@ export async function moveDealStage(
   newStageId: string,
   movedById: string,
   note?: string,
+  handoff?: { assignOwnerId?: string; kickoffDate?: string; notes?: string; createServiceOrder?: boolean }
 ) {
-  const deal = await prisma.deal.findFirst({ where: { id, tenantId }, include: { stage: true } });
+  const deal = await prisma.deal.findFirst({
+    where: { id, tenantId },
+    include: { stage: true, organization: true, contactDeals: true }
+  });
   if (!deal) return null;
 
   const newStage = await prisma.stage.findFirst({ where: { id: newStageId } });
@@ -101,19 +105,87 @@ export async function moveDealStage(
   const now = new Date();
   const timeInPrevStage = Math.floor((now.getTime() - deal.updatedAt.getTime()) / (1000 * 60));
 
-  const updatedDeal = await prisma.deal.update({
-    where: { id },
-    data: {
-      stageId: newStageId,
-      ...(newStage.isWon || newStage.isLost ? { closedAt: now } : {}),
-    },
+  // Perform everything in a single transaction
+  const result = await prisma.$transaction(async (tx) => {
+    // 1. Update the Deal Stage
+    const updatedDeal = await tx.deal.update({
+      where: { id },
+      data: {
+        stageId: newStageId,
+        ...(newStage.isWon || newStage.isLost ? { closedAt: now } : {}),
+      },
+    });
+
+    // 2. Create Stage History
+    const stageHistory = await tx.dealStageHistory.create({
+      data: { tenantId, dealId: id, previousStageId: deal.stageId, newStageId, movedById, movedAt: now, timeInPrevStage, note },
+    });
+
+    // 3. Post-Sale Handoff Logic (if Won)
+    if (newStage.isWon) {
+      const activeProducts = deal.productInterests || [];
+
+      // Update Organization
+      if (deal.organizationId) {
+        const org = deal.organization!;
+        const updatedProducts = Array.from(new Set([...(org.activeProducts || []), ...activeProducts]));
+        await tx.organization.update({
+          where: { id: deal.organizationId },
+          data: {
+            customerType: 'Active Customer',
+            customerSince: org.customerSince || now,
+            activeProducts: updatedProducts,
+          },
+        });
+        
+        // System Activity
+        await tx.activity.create({
+          data: {
+            tenantId, createdById: movedById,
+            type: 'stage_change', title: `Converted to Active Customer via Deal: ${deal.title}`,
+            organizationId: deal.organizationId, dealId: deal.id,
+          }
+        });
+      }
+
+      // Update Contacts
+      if (deal.contactDeals.length > 0) {
+        for (const cd of deal.contactDeals) {
+          const contact = await tx.contact.findUnique({ where: { id: cd.contactId } });
+          if (contact) {
+            const updatedContactProducts = Array.from(new Set([...(contact.activeProducts || []), ...activeProducts]));
+            await tx.contact.update({
+              where: { id: cd.contactId },
+              data: {
+                customerType: 'Active Customer',
+                customerSince: contact.customerSince || now,
+                activeProducts: updatedContactProducts,
+              },
+            });
+          }
+        }
+      }
+
+      // Create Onboarding Project / Service Order if requested
+      if (handoff?.createServiceOrder) {
+        await tx.serviceOrder.create({
+          data: {
+            tenantId, dealId: deal.id,
+            organizationId: deal.organizationId,
+            assignedTechnicianId: handoff.assignOwnerId || movedById,
+            title: `Onboarding: ${deal.title}`,
+            description: handoff.notes || `Post-sale onboarding for Deal: ${deal.title}`,
+            status: 'pending',
+            scheduledDate: handoff.kickoffDate ? new Date(handoff.kickoffDate) : now,
+          }
+        });
+      }
+    }
+
+    return { deal: updatedDeal, stageHistory };
   });
 
-  const stageHistory = await prisma.dealStageHistory.create({
-    data: { tenantId, dealId: id, previousStageId: deal.stageId, newStageId, movedById, movedAt: now, timeInPrevStage, note },
-  });
-
-  return { deal: updatedDeal, stageHistory };
+  return result;
 }
 
 export async function archiveDeal(id: string, tenantId: string, archiveReason?: string) {

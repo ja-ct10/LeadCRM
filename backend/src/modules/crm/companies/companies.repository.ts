@@ -1,4 +1,4 @@
-﻿import prisma from '../../../config/database.config';
+import prisma from '../../../config/database.config';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
 import { CreateCompanyDto, UpdateCompanyDto } from './companies.dto';
 
@@ -58,8 +58,8 @@ export async function updateCompany(id: string, tenantId: string, dto: UpdateCom
   return prisma.organization.update({ where: { id }, data: dto });
 }
 
-export async function archiveCompany(id: string, tenantId: string) {
+export async function archiveCompany(id: string, tenantId: string, userId: string) {
   const existing = await prisma.organization.findFirst({ where: { id, tenantId } });
   if (!existing) return null;
-  return prisma.organization.update({ where: { id }, data: { isArchived: true } });
+  return prisma.organization.update({ where: { id }, data: { isArchived: true, deletedAt: new Date(), deletedBy: userId } });
 }

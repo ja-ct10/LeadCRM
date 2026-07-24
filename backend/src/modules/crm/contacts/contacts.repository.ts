@@ -85,12 +85,16 @@ export async function updateContact(id: string, tenantId: string, dto: UpdateCon
   });
 }
 
-export async function archiveContact(id: string, tenantId: string) {
+export async function archiveContact(id: string, tenantId: string, userId: string) {
   const existing = await prisma.contact.findFirst({ where: { id, tenantId } });
   if (!existing) return null;
 
   return prisma.contact.update({
     where: { id },
-    data: { isArchived: true },
+    data: { 
+      isArchived: true,
+      deletedAt: new Date(),
+      deletedBy: userId,
+    },
   });
 }

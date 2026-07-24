@@ -61,6 +61,7 @@ import { USE_MOCK_DATA } from "@/lib/config";
 import { contactsService } from "@/features/tenant/crm/contacts/services/contacts.service";
 import { organizationsService } from "@/features/tenant/crm/contacts/services/organizations.service";
 import { pipelineService } from "@/features/tenant/crm/pipeline/services/pipeline.service";
+import { activitiesService } from "@/features/tenant/crm/activities/services/activities.service";
 import {
   toBackendCreateContact,
   toBackendUpdateContact,
@@ -120,6 +121,7 @@ interface DataContextType {
   deleteOrganization: (id: string) => Promise<void>;
   addDeal: (deal: Omit<Deal, "id" | "tenantId" | "createdAt">) => Promise<void>;
   updateDeal: (id: string, updates: Partial<Deal>) => Promise<void>;
+  moveDealStage: (id: string, stageId: string, note?: string, lostReason?: string, handoff?: any) => Promise<void>;
   deleteDeal: (id: string) => Promise<void>;
   addPipeline: (pipeline: Omit<Pipeline, "id" | "tenantId">) => Promise<void>;
   updatePipeline: (id: string, updates: Partial<Pipeline>) => Promise<void>;
@@ -322,11 +324,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (!user) return; // Wait until the user is authenticated
 
       try {
-        const [contactsRes, orgsRes, dealsRes, pipelinesRes] = await Promise.all([
+        const [contactsRes, orgsRes, dealsRes, pipelinesRes, activitiesRes] = await Promise.all([
           contactsService.getAll({ limit: 500 }),
           organizationsService.getAll({ limit: 500 }),
           pipelineService.getDeals(),
           pipelineService.getPipelines(),
+          activitiesService.getAll({ limit: 1000 }),
         ]);
 
         const apiContacts = (contactsRes?.data ?? []).map(toFrontendContact);
@@ -335,17 +338,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const apiPipelines = Array.isArray((pipelinesRes as any)?.data)
           ? ((pipelinesRes as any).data as any[]).map(toFrontendPipeline)
           : ((pipelinesRes as any)?.data ? [(pipelinesRes as any).data].map(toFrontendPipeline) : []);
+        const apiActivities = activitiesRes?.data ?? [];
 
         if (user?.role === "System Admin") {
           setContacts(apiContacts as Contact[]);
           setOrganizations(apiOrgs as Organization[]);
           setDeals(apiDeals as Deal[]);
           setPipelines(apiPipelines as Pipeline[]);
+          setActivities(apiActivities as Activity[]);
         } else if (tenant) {
           setContacts((apiContacts as Contact[]).filter((c: any) => !c.isArchived));
           setOrganizations((apiOrgs as Organization[]).filter((o: any) => !o.isArchived));
           setDeals((apiDeals as Deal[]).filter((d: any) => !d.isArchived));
           setPipelines((apiPipelines as Pipeline[]).filter((p: any) => !p.isArchived));
+          setActivities(apiActivities as Activity[]);
         }
       } catch (err) {
         console.error('[DataContext] Failed to load CRM data from API:', err);
@@ -382,7 +388,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setAuditLogs(logs); setWorkflows(w); setCampaigns(c); setTemplates(tpl);
         setRoles(r); setPermissions(perm); setUsers(u); setTenants(t);
         setTasks(tsk); setWorkflowExecutions(execs); setServiceOrders(so);
-        setAssets(ast as Asset[]); setInventoryItems(inv); setActivities(activityData);
+        setAssets(ast as Asset[]); setInventoryItems(inv);
         setWorkflowExecutionRuns(execRuns); setWorkflowExecutionSteps(execSteps);
         setInvoices(invoiceData);
       } else if (tenant) {
@@ -400,7 +406,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setServiceOrders(so.filter((x: any) => x.tenantId === tenant.id));
         setAssets((ast as Asset[]).filter((x: any) => x.tenantId === tenant.id));
         setInventoryItems(inv.filter((x: any) => x.tenantId === tenant.id));
-        setActivities(activityData.filter((x: any) => x.tenantId === tenant.id));
         setWorkflowExecutionRuns(execRuns.filter((x: any) => x.tenantId === tenant.id));
         setWorkflowExecutionSteps(execSteps.filter((x: any) => x.tenantId === tenant.id));
         setInvoices(invoiceData.filter((x: any) => x.tenantId === tenant.id && !x.isArchived));
@@ -1097,7 +1102,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       try {
         await organizationsService.archive(id);
         setOrganizations((prev) =>
-          prev.map((o) => (o.id === id ? { ...o, isArchived: true } : o)),
+          prev.map((o) => (o.id === id ? { ...o, isArchived: true, archivedAt: new Date().toISOString(), archivedBy: user?.id } : o)),
         );
         addAuditLog("Organization Archived", `Archived organization id '${id}'.`);
       } catch (err: any) {
@@ -1108,7 +1113,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     const original = organizations.find((o) => o.id === id);
     const arr = organizations.map((o) =>
-      o.id === id ? { ...o, isArchived: true } : o,
+      o.id === id ? { ...o, isArchived: true, archivedAt: new Date().toISOString(), archivedBy: user?.id } : o,
     );
     saveAndSet("leadcrm_organizations", arr, setOrganizations);
     if (original) {
@@ -1216,7 +1221,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       try {
         await contactsService.archive(id);
         setContacts((prev) =>
-          prev.map((l) => (l.id === id ? { ...l, isArchived: true } : l)),
+          prev.map((l) => (l.id === id ? { ...l, isArchived: true, archivedAt: new Date().toISOString(), archivedBy: user?.id } : l)),
         );
         addAuditLog("Contact Archived", `Archived contact id '${id}'.`);
       } catch (err: any) {
@@ -1227,7 +1232,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     const original = contacts.find((l) => l.id === id);
     const newLeads = contacts.map((l) =>
-      l.id === id ? { ...l, isArchived: true } : l,
+      l.id === id ? { ...l, isArchived: true, archivedAt: new Date().toISOString(), archivedBy: user?.id } : l,
     );
     saveAndSet("leadcrm_leads", newLeads, setContacts);
     if (original) {
@@ -1444,6 +1449,71 @@ export function DataProvider({ children }: { children: ReactNode }) {
           ? `Updated ${changes.join(", ")} for deal '${original.title}'.`
           : `Modified deal details for '${original.title}'.`;
       addAuditLog("Deal Updated", details, id, changeset);
+    }
+  };
+
+  const moveDealStage = async (id: string, stageId: string, note?: string, lostReason?: string, handoff?: any): Promise<void> => {
+    if (!USE_MOCK_DATA) {
+      try {
+        const res = await pipelineService.moveDealStage(id, { stageId, note, lostReason, handoff });
+        const deal = toFrontendDeal((res as any).data ?? res) as Deal;
+        setDeals((prev) => prev.map((d) => (d.id === id ? deal : d)));
+
+        const pLine = pipelines.find((p) => p.id === deal.pipelineId);
+        const newName = pLine?.stages.find((s) => s.id === stageId)?.name || stageId;
+        addAuditLog("Deal Stage Changed", `Moved deal '${deal.title}' to stage '${newName}'.`, id);
+        addActivity({
+          type: 'stage-change',
+          relatedToType: 'deal',
+          relatedToId: deal.id,
+          title: `Deal moved to new stage`,
+          createdBy: user?.id || 'system',
+          createdAt: new Date().toISOString(),
+          metadata: { newStageId: stageId },
+        });
+      } catch (err) {
+        console.error("Failed to move deal stage", err);
+        throw err;
+      }
+    } else {
+      const original = deals.find((d) => d.id === id);
+      if (!original) return;
+      
+      const newDeals = deals.map((d) => {
+        if (d.id === id) {
+          const updated = {
+            ...d,
+            stageId,
+            lastStageChangeDate: new Date().toISOString(),
+            history: [
+              ...(d.history || []),
+              {
+                stageId,
+                previousStageId: d.stageId,
+                timestamp: new Date().toISOString(),
+                userId: user?.id || "system",
+                note,
+              },
+            ],
+          };
+          
+          addActivity({
+            type: 'stage-change',
+            relatedToType: 'deal',
+            relatedToId: d.id,
+            title: `Deal moved to new stage`,
+            createdBy: user?.id || 'system',
+            createdAt: new Date().toISOString(),
+            metadata: { previousStageId: d.stageId, newStageId: stageId },
+          });
+          
+          return updated;
+        }
+        return d;
+      });
+      
+      saveAndSet("leadcrm_deals", newDeals, setDeals);
+      addAuditLog("Deal Stage Changed", `Moved deal '${original.title}' to stage '${stageId}'.`, id);
     }
   };
 
@@ -2148,14 +2218,27 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const addActivity = (activityData: Omit<Activity, 'id' | 'tenantId'>) => {
+  const addActivity = async (activityData: Omit<Activity, 'id' | 'tenantId'>) => {
     const currentTenantId = tenant?.id || user?.tenantId || '';
     if (!currentTenantId) return;
+
+    if (!USE_MOCK_DATA) {
+      try {
+        const res = await activitiesService.create(activityData as any);
+        if (res.data) {
+          setActivities((prev) => [res.data as Activity, ...prev]);
+        }
+      } catch (error) {
+        console.error('Failed to create activity via API', error);
+      }
+      return;
+    }
 
     const newActivity: Activity = {
       ...activityData,
       id: uuid(),
       tenantId: currentTenantId,
+      createdAt: new Date().toISOString(),
     };
 
     const allActivities = JSON.parse(
@@ -2365,6 +2448,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         deleteContact,
         addDeal,
         updateDeal,
+        moveDealStage,
         deleteDeal,
         addPipeline,
         updatePipeline,

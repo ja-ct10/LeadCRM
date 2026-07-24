@@ -280,24 +280,29 @@ SYSTEM_ADMIN_PASSWORD="admin123_secure_password"
 **Frontend (`frontend/.env.local`):**
 ```bash
 # Create frontend/.env.local
-echo "NEXT_PUBLIC_API_URL=http://localhost:4000" > frontend/.env.local
-echo "NEXT_PUBLIC_USE_MOCK_DATA=true" >> frontend/.env.local
+echo "NEXT_PUBLIC_API_URL=http://localhost:4000/api/v1" > frontend/.env.local
+echo "NEXT_PUBLIC_USE_MOCK_DATA=false" >> frontend/.env.local
 ```
 
 > [!NOTE]
-> Set `NEXT_PUBLIC_USE_MOCK_DATA=true` to run the frontend independently using localStorage data (no backend required). Set to `false` to connect to the Express API.
+> Set `NEXT_PUBLIC_USE_MOCK_DATA=false` to connect to the Express API and use the PostgreSQL database (Recommended for full-stack). Set to `true` to run the frontend independently using localStorage data (no backend required).
 
 #### 4. Initialize Database & Run Seed
 ```bash
 cd backend
 
-# Generate Prisma Client
+# Generate Prisma Client (builds the ORM based on your schema)
 npx prisma generate
 
-# Execute migrations to build 30 schema tables
-npx prisma migrate dev --name init
+# Sync the database schema (creates all required tables in PostgreSQL)
+npx prisma db push
 
-# Seed database with default admin user, roles, and pipeline stages
+# Seed the database with real demo data!
+# This command automatically populates the database with:
+# - A System Admin account
+# - A default Tenant (LeadCRM Demo)
+# - Mock Users (Client Admin, Sales Rep, Viewer)
+# - Realistic CRM data: Organizations, Contacts, Pipelines, Deals, and Tasks
 npm run db:seed
 
 cd ..

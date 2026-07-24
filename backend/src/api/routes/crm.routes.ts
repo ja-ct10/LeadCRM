@@ -1,4 +1,4 @@
-﻿import { Router } from 'express';
+import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { tenantMiddleware } from '../middleware/tenant.middleware';
 import { authorize } from '../middleware/rbac.middleware';
@@ -59,5 +59,15 @@ router.post(   '/stages',                    authorize('deals.create'),  validat
 router.put(    '/stages/:id',                authorize('deals.edit'),    validate(UpdateStageSchema),    pipelineController.updateStage);
 router.delete( '/stages/:id',                authorize('deals.delete'),  pipelineController.deleteStage);
 router.patch(  '/pipelines/:id/stages/reorder', authorize('deals.edit'), validate(ReorderStagesSchema),  pipelineController.reorderStages);
+
+// ── Activities ─────────────────────────────────────────
+import * as activityController from '../../modules/crm/activities/activities.controller';
+import { CreateActivitySchema, UpdateActivitySchema } from '../../modules/crm/activities/activities.dto';
+
+router.get(    '/activities',            authorize('contacts.view'),   activityController.getActivities);
+router.get(    '/activities/:id',        authorize('contacts.view'),   activityController.getActivity);
+router.post(   '/activities',            authorize('contacts.create'), validate(CreateActivitySchema), activityController.createActivity);
+router.put(    '/activities/:id',        authorize('contacts.edit'),   validate(UpdateActivitySchema), activityController.updateActivity);
+router.delete( '/activities/:id',        authorize('contacts.delete'), activityController.deleteActivity);
 
 export default router;

@@ -73,7 +73,7 @@ export function toBackendCreateContact(data: Record<string, any>): Record<string
     phone: data.phone || undefined,
     company: data.companyName || undefined,
     jobTitle: data.jobTitle || undefined,
-    linkedinUrl: data.linkedinUrl || undefined,
+    linkedinUrl: data.linkedin || undefined,
     status: toBackendStatus(data.status),
     score: typeof data.score === 'number' ? data.score : undefined,
     source: data.leadSource || undefined,
@@ -81,7 +81,7 @@ export function toBackendCreateContact(data: Record<string, any>): Record<string
     doNotContact: !!data.doNotContact,
     organizationId: data.organizationId || undefined,
     assignedUserId: data.assignedUserId || undefined,
-    productInterest: data.productInterest || data.serviceRequired || undefined,
+    productInterest: data.productInterest || undefined,
     address: data.address || undefined,
   };
 }
@@ -111,7 +111,7 @@ export function toBackendUpdateContact(data: Record<string, any>): Record<string
   if (data.phone !== undefined) result.phone = data.phone || undefined;
   if (data.companyName !== undefined) result.company = data.companyName || undefined;
   if (data.jobTitle !== undefined) result.jobTitle = data.jobTitle || undefined;
-  if (data.linkedinUrl !== undefined) result.linkedinUrl = data.linkedinUrl || undefined;
+  if (data.linkedin !== undefined) result.linkedinUrl = data.linkedin || undefined;
   if (data.status !== undefined) result.status = toBackendStatus(data.status);
   if (data.score !== undefined) result.score = data.score;
   if (data.leadSource !== undefined) result.source = data.leadSource || undefined;
@@ -119,7 +119,7 @@ export function toBackendUpdateContact(data: Record<string, any>): Record<string
   if (data.doNotContact !== undefined) result.doNotContact = !!data.doNotContact;
   if (data.organizationId !== undefined) result.organizationId = data.organizationId || undefined;
   if (data.assignedUserId !== undefined) result.assignedUserId = data.assignedUserId || undefined;
-  if (data.productInterest !== undefined || data.serviceRequired !== undefined) result.productInterest = data.productInterest || data.serviceRequired || undefined;
+  if (data.productInterest !== undefined) result.productInterest = data.productInterest || undefined;
   if (data.address !== undefined) result.address = data.address || undefined;
 
   return result;
@@ -150,7 +150,7 @@ export function toFrontendContact(backendContact: any): Record<string, any> {
     jobTitle: backendContact.jobTitle || '',
     email: backendContact.email || '',
     phone: backendContact.phone || '',
-    serviceRequired: backendContact.productInterest || '', 
+    productInterest: backendContact.productInterest || '', 
     leadSource: backendContact.source || '',
     estimatedValue: 0, // Frontend only
     assignedUserId: backendContact.assignedUserId || '',
@@ -160,6 +160,9 @@ export function toFrontendContact(backendContact: any): Record<string, any> {
     score: typeof backendContact.score === 'number' ? backendContact.score : 0,
     createdAt: backendContact.createdAt || new Date().toISOString(),
     isArchived: !!backendContact.isArchived,
+    archivedAt: backendContact.deletedAt || undefined,
+    archivedBy: backendContact.deletedBy || undefined,
+    linkedin: backendContact.linkedinUrl || '',
     customerType: backendContact.organizationId ? 'Organization' : 'Individual',
     address: backendContact.address || '', 
     // Populate nested fields optionally if needed

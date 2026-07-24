@@ -577,7 +577,7 @@ export default function VisualWorkflowBuilder({
                 <option value="contact.daysUntilClose">Days remaining to Target Close</option>
                 <option value="contact.status">Contact Status (Warm/Hot/Cold)</option>
                 <option value="contact.leadSource">Acquisition Contact Source</option>
-                <option value="contact.serviceRequired">Service Required</option>
+                <option value="contact.productInterest">Product Interest</option>
                 <option value="contact.companyName">SaaS Company Name</option>
                 <option value="contact.contactPerson">Contact Name</option>
                 <option value="contact.email">Contact email address</option>

@@ -79,7 +79,10 @@ export async function update(id: string, tenantId: string, actorId: string, dto:
     throw new ForbiddenError('Cannot modify System Admin users');
   }
 
-  const user = await prisma.user.update({ where: { id }, data: dto, select: SAFE_USER_SELECT });
+  const updateData: any = { ...dto };
+  if (dto.status) updateData.status = dto.status as any; // Cast as enum
+
+  const user = await prisma.user.update({ where: { id }, data: updateData, select: SAFE_USER_SELECT });
   await writeAuditLog({ tenantId, userId: actorId, action: 'user.updated', entityType: 'User', entityId: id, after: dto as Record<string, unknown> });
   return user;
 }

@@ -48,7 +48,8 @@ export interface Deal {
   lastStageChangeDate?: string; // ISO — updated whenever stageId changes
   leadSource?: string;
   industry?: string;
-  location?: string;
+  address?: string;
+  productInterests?: string[];
   campaign?: string;
   customerType?: 'New Business' | 'Existing Customer' | string;
   tags?: string;

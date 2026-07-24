@@ -1,4 +1,4 @@
-﻿import { z } from 'zod';
+import { z } from 'zod';
 
 export const CreateCompanySchema = z.object({
   name:           z.string().min(1).max(255),
@@ -12,6 +12,12 @@ export const CreateCompanySchema = z.object({
   province:       z.string().optional(),
   country:        z.string().default('Philippines'),
   assignedUserId: z.string().cuid().optional(),
+  notes:          z.string().optional(),
+  internalNotes:  z.string().optional(),
+  productInterests: z.array(z.string()).optional(),
+  customerType:   z.enum(['Prospect', 'Active Customer', 'Inactive Customer', 'Former Customer']).optional(),
+  customerSince:  z.string().datetime().optional(),
+  activeProducts: z.array(z.string()).optional(),
 });
 
 export const UpdateCompanySchema = CreateCompanySchema.partial();

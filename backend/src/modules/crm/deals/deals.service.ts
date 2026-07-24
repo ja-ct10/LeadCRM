@@ -1,4 +1,4 @@
-﻿import prisma from '../../../config/database.config';
+import prisma from '../../../config/database.config';
 import * as repo from './deals.repository';
 import { writeAuditLog, buildChangeset } from '../../../core/audit/audit.service';
 import { NotFoundError, ValidationError } from '../../../shared/errors/http-error';
@@ -64,7 +64,7 @@ export async function moveDealStage(id: string, tenantId: string, userId: string
     throw new ValidationError('Lost reason is required when closing a deal as lost');
   }
 
-  const result = await repo.moveDealStage(id, tenantId, dto.stageId, userId, dto.note);
+  const result = await repo.moveDealStage(id, tenantId, dto.stageId, userId, dto.note, dto.handoff);
   if (!result) throw new NotFoundError('Deal');
 
   if (dto.lostReason) {

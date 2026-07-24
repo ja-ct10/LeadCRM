@@ -170,6 +170,10 @@ export function ClientDetailSheet({
                     ].filter(Boolean).join(', ') || '--'}
                   </div>
                 </div>
+                <div>
+                  <span className="text-slate-500 block text-xs mb-1">Product Interest</span>
+                  <div className="font-medium">{(client as any).productInterest || '--'}</div>
+                </div>
               </div>
             </div>
 

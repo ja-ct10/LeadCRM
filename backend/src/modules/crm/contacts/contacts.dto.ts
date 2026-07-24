@@ -15,8 +15,11 @@ export const CreateContactSchema = z.object({
   doNotContact:   z.boolean().default(false),
   organizationId: z.string().cuid().optional(),
   assignedUserId: z.string().cuid().optional(),
-  productInterest: z.string().optional(),
+  productInterests: z.array(z.string()).optional(),
   address:        z.string().optional(),
+  customerType:   z.enum(['Prospect', 'Active Customer', 'Inactive Customer', 'Former Customer']).optional(),
+  customerSince:  z.string().datetime().optional(),
+  activeProducts: z.array(z.string()).optional(),
 }).refine(
   (data) => true, // Remove strict email/phone requirement to allow UI flexibility
   { message: 'Valid record', path: [] },
@@ -37,8 +40,11 @@ export const UpdateContactSchema = z.object({
   doNotContact:   z.boolean().optional(),
   organizationId: z.string().cuid().optional(),
   assignedUserId: z.string().cuid().optional(),
-  productInterest: z.string().optional(),
+  productInterests: z.array(z.string()).optional(),
   address:        z.string().optional(),
+  customerType:   z.enum(['Prospect', 'Active Customer', 'Inactive Customer', 'Former Customer']).optional(),
+  customerSince:  z.string().datetime().optional(),
+  activeProducts: z.array(z.string()).optional(),
 });
 
 export type CreateContactDto = z.infer<typeof CreateContactSchema>;

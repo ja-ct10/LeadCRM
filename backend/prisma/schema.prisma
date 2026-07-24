@@ -455,7 +455,13 @@ model Organization {
   size           String?   // "1-10" | "11-50" | "51-200" | "200+"
   website        String?
   taxId          String?
+  notes          String?   @db.Text
+  internalNotes  String?   @db.Text
   tags           String[]
+  productInterests String[]
+  activeProducts String[]
+  customerType   String    @default("Prospect") // Prospect | Active Customer | Inactive Customer | Former Customer
+  customerSince  DateTime?
   address        String?
   city           String?
   province       String?
@@ -498,7 +504,10 @@ model Contact {
   score           Int           @default(75)
   source          String?
   notes           String?
-  productInterest String?
+  productInterests String[]
+  activeProducts  String[]
+  customerType    String        @default("Prospect") // Prospect | Active Customer | Inactive Customer | Former Customer
+  customerSince   DateTime?
   address         String?
   lastContactedAt DateTime?
   convertedAt     DateTime?
@@ -596,6 +605,8 @@ model Deal {
   description       String?
   leadSource        String?
   industry          String?
+  productInterests  String[]
+  address           String?
   tags              String?
   order             Int       @default(0)
   isArchived        Boolean   @default(false)

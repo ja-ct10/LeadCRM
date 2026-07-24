@@ -271,7 +271,7 @@ export function ClientTable({ data, viewMode, onEdit, onView, organizations, onE
                   ) : '-'}
                 </td>
                 <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-400">
-                  {contact.productInterest || '-'}
+                  {contact.productInterests?.length ? contact.productInterests.join(', ') : '-'}
                 </td>
                 <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-400">
                   {contact.leadSource || '-'}
@@ -334,8 +334,8 @@ export function ClientTable({ data, viewMode, onEdit, onView, organizations, onE
                   {contact.status}
                 </span>
               </td>
-              <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-400 max-w-[150px] truncate" title={contact.updateStatus}>
-                {contact.updateStatus || '-'}
+              <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-400 max-w-[150px] truncate" title={contact.notes}>
+                {contact.notes || '-'}
               </td>
               <td className="px-4 py-3 text-right">
                 <div className="flex items-center justify-end gap-1">

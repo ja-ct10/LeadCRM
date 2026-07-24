@@ -1,4 +1,4 @@
-﻿import { z } from 'zod';
+import { z } from 'zod';
 
 export const CreateDealSchema = z.object({
   pipelineId:        z.string().cuid(),
@@ -13,14 +13,25 @@ export const CreateDealSchema = z.object({
   organizationId:    z.string().cuid().optional(),
   assignedUserId:    z.string().cuid().optional(),
   contactIds:        z.array(z.string().cuid()).optional(),
+  industry:          z.string().optional(),
+  address:           z.string().optional(),
+  productInterests:  z.array(z.string()).optional(),
 });
 
 export const UpdateDealSchema = CreateDealSchema.partial();
+
+export const DealHandoffSchema = z.object({
+  assignOwnerId: z.string().cuid().optional(),
+  kickoffDate: z.string().datetime().optional(),
+  notes: z.string().optional(),
+  createServiceOrder: z.boolean().default(false),
+});
 
 export const MoveDealStageSchema = z.object({
   stageId:    z.string().cuid(),
   note:       z.string().optional(),
   lostReason: z.string().optional(),
+  handoff:    DealHandoffSchema.optional(),
 });
 
 export type CreateDealDto   = z.infer<typeof CreateDealSchema>;

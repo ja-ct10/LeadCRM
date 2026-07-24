@@ -89,7 +89,7 @@ export function AddContactForm({ initialData, onSave, onCancel }: AddContactForm
   useEffect(() => {
     if (initialData) {
       const org = organizationsRef.current.find((o) => o.id === initialData.organizationId);
-      const prod = initialData.productInterest || "";
+      const prod = initialData.productInterests?.[0] || "";
       let sp = "", cp = "";
       if (prod) {
         const matched = PRODUCTS.find((p) => p.toLowerCase() === prod.toLowerCase());
@@ -150,12 +150,14 @@ export function AddContactForm({ initialData, onSave, onCancel }: AddContactForm
       customerType: formData.customerType || "Individual",
       organizationId: isOrg ? finalOrgId : "",
       companyName: isOrg ? formData.companyName || "" : "",
-      jobTitle: isOrg ? formData.jobTitle || "" : "",
       businessType: isOrg ? formData.businessType : "",
       companySize: isOrg ? formData.companySize : "",
       orgWebsite: isOrg ? formData.orgWebsite : "",
       taxId: isOrg ? formData.taxId : "",
-      contactPerson, productInterest: finalProduct,
+      contactPerson, productInterests: finalProduct ? [finalProduct] : [],
+      jobTitle: formData.jobTitle || "",
+      linkedin: formData.linkedin || "",
+      notes: formData.notes || "",
     };
     if (scheduleFollowUp && followUpDate) {
       addTask({ title: `Follow up with ${contactPerson}`, description: `Follow-up reminder set during contact form submission for ${contactPerson}.`, status: "pending", dueDate: followUpDate, assignedUserId: user?.id || "system", priority: "Medium" as "Low" | "Medium" | "High" });
@@ -273,6 +275,16 @@ export function AddContactForm({ initialData, onSave, onCancel }: AddContactForm
                   value={getPhoneNumber()}
                   onChange={(e) => setPhone(getPhoneCode(), e.target.value)} />
               </div>
+            </FieldWrap>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <FieldWrap label="Job Title">
+              <input className={inputCls} placeholder="e.g. CEO, Sales Manager"
+                value={formData.jobTitle || ""} onChange={(e) => setFormData({ ...formData, jobTitle: e.target.value })} />
+            </FieldWrap>
+            <FieldWrap label="LinkedIn URL">
+              <input type="url" className={inputCls} placeholder="https://linkedin.com/in/..."
+                value={formData.linkedin || ""} onChange={(e) => setFormData({ ...formData, linkedin: e.target.value })} />
             </FieldWrap>
           </div>
         </div>
@@ -426,6 +438,14 @@ export function AddContactForm({ initialData, onSave, onCancel }: AddContactForm
                 }}
               />
             </div>
+          </FieldWrap>
+          <FieldWrap label="Update">
+            <textarea rows={3}
+              className="w-full px-3.5 bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all resize-none"
+              placeholder="Add an update status or notes..."
+              value={formData.notes || ""}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+            />
           </FieldWrap>
         </div>
 

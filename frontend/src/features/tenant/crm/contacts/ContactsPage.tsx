@@ -222,7 +222,7 @@ export default function ContactsPage() {
           jobTitle: data.jobTitle || "",
           email: data.email || "",
           phone: data.phone || "",
-          serviceRequired: data.serviceRequired || "",
+          productInterests: data.productInterests || [],
           leadSource: data.leadSource || "Added Manually",
           estimatedValue: data.estimatedValue || 0,
           assignedUserId: data.assignedUserId || "",

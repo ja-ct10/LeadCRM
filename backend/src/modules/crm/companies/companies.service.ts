@@ -1,4 +1,4 @@
-﻿import * as repo from './companies.repository';
+import * as repo from './companies.repository';
 import { writeAuditLog, buildChangeset } from '../../../core/audit/audit.service';
 import { NotFoundError } from '../../../shared/errors/http-error';
 import { CreateCompanyDto, UpdateCompanyDto } from './companies.dto';
@@ -47,7 +47,7 @@ export async function updateCompany(
 }
 
 export async function archiveCompany(id: string, tenantId: string, userId: string) {
-  const company = await repo.archiveCompany(id, tenantId);
+  const company = await repo.archiveCompany(id, tenantId, userId);
   if (!company) throw new NotFoundError('Company');
   await writeAuditLog({
     tenantId, userId,

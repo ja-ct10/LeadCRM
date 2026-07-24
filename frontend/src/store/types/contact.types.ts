@@ -5,11 +5,17 @@ export interface Organization {
   tenantId: string;
   name: string;
   industry?: string;
+  productInterests?: string[];
   size?: string;
   website?: string;
   taxId?: string;
   assignedUserId?: string;
   tags?: string[];
+  notes?: string;
+  internalNotes?: string;
+  customerType?: 'Prospect' | 'Active Customer' | 'Inactive Customer' | 'Former Customer';
+  customerSince?: string;
+  activeProducts?: string[];
   createdAt: string;
   isArchived?: boolean;
   // Location fields
@@ -29,7 +35,6 @@ export interface Contact {
   jobTitle: string;
   email: string;
   phone: string;
-  serviceRequired: string;
   leadSource: string;
   estimatedValue: number;
   assignedUserId: string;
@@ -42,12 +47,15 @@ export interface Contact {
   archivedAt?: string;
   archivedBy?: string;
   archiveReason?: string;
-  customerType?: 'Individual' | 'Organization';
+  customerType?: 'Prospect' | 'Active Customer' | 'Inactive Customer' | 'Former Customer';
+  customerSince?: string;
+  activeProducts?: string[];
   callStatus?: string;
   updateStatus?: string;
   contactNumbers?: { id: string; type: 'Telephone' | 'Mobile'; countryCode?: string; number: string; notes?: string }[];
-  productInterest?: string;
+  productInterests?: string[];
   address?: string;
+  doNotContact?: boolean;
   // Enriched fields
   firstName?: string;
   middleName?: string;

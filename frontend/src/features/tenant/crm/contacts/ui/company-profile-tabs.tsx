@@ -65,6 +65,17 @@ export const CompanyProfileTabs = ({
   setSelectedContact,
   setSelectedOrgName
 }: Props) => {
+  const { 
+    contacts: allContacts = [], 
+    pipelines = [], 
+    updateDeal, 
+    deleteDeal, 
+    isBillingModuleEnabled = false,
+    activities,
+    addActivity,
+    updateOrganization
+  } = useData();
+
   const [activeTab, setActiveTab ] = useState<OrgTabType>(initialTab);
 
   useEffect(() => {
@@ -75,8 +86,8 @@ export const CompanyProfileTabs = ({
 
   // Interactive local states for persistence
   const [timelineEvents, setTimelineEvents] = useState<any[]>([]);
-  const [companyNotes, setCompanyNotes] = useState('');
-  const [internalNotes, setInternalNotes] = useState('');
+  const [companyNotes, setCompanyNotes] = useState(selectedOrg.notes || '');
+  const [internalNotes, setInternalNotes] = useState(selectedOrg.internalNotes || '');
   
   // Simulated communications state
   const [emailSubject, setEmailSubject] = useState('');
@@ -112,24 +123,8 @@ export const CompanyProfileTabs = ({
 
   // Load activities of this company
   useEffect(() => {
-    const defaultActivities = [
-      { id: 'e1', type: 'system', text: `Registered corporate directory node for ${selectedOrg.name} under ${selectedOrg.industry} industry sector.`, time: '5 days ago', user: 'System CRM Parser' },
-      { id: 'e2', type: 'system', text: `Rollup pipeline calculation established: $${(selectedOrg.estimatedValue ?? 0).toLocaleString()} across ${selectedOrg.contacts.length} representative personnel.`, time: 'Just now', user: 'System CRM Parser' },
-      { id: 'e3', type: 'system', text: selectedOrg.repId ? `Mapped primary CRM staff handler.` : 'Registered as unassigned corporate portfolio.', time: '5 days ago', user: 'System CRM Parser' }
-    ];
-
-    const savedActivities = localStorage.getItem(`crm_activities_org_${selectedOrg.name}`);
-    if (savedActivities) {
-      setTimelineEvents(JSON.parse(savedActivities));
-    } else {
-      setTimelineEvents(defaultActivities);
-    }
-
-    // Load notes
-    const savedNotes = localStorage.getItem(`crm_notes_org_${selectedOrg.name}`);
-    const savedInternalNotes = localStorage.getItem(`crm_internal_notes_org_${selectedOrg.name}`);
-    setCompanyNotes(savedNotes || `No corporate history captured for ${selectedOrg.name} yet.`);
-    setInternalNotes(savedInternalNotes || `Confidential security logs for ${selectedOrg.name}.`);
+    setCompanyNotes(selectedOrg.notes || '');
+    setInternalNotes(selectedOrg.internalNotes || '');
 
     // Reset cascades
     setCascadeWeb(selectedOrg.website !== 'N/A' ? selectedOrg.website : '');
@@ -140,21 +135,30 @@ export const CompanyProfileTabs = ({
 
   }, [selectedOrg]);
 
+  const orgActivities = activities
+    .filter(a => (a as any).organizationId === selectedOrg.id || (a.relatedToType === 'company' && a.relatedToId === selectedOrg.id))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .map(a => ({
+      id: a.id,
+      type: a.type,
+      text: a.title || a.description || (a as any).notes || a.type,
+      time: new Date(a.createdAt).toLocaleDateString(),
+      user: users.find(u => u.id === (a.createdBy || (a as any).userId))?.firstName || (a.createdBy === 'system' ? 'System' : 'Admin')
+    }));
+
   const saveActivities = (updatedList: any[]) => {
-    setTimelineEvents(updatedList);
-    localStorage.setItem(`crm_activities_org_${selectedOrg.name}`, JSON.stringify(updatedList));
+    // Legacy function, no longer used directly as activities are saved to DB
   };
 
   const addActivityLog = (text: string, type: string = 'system') => {
-    const newLog = {
-      id: uuid(),
-      type,
-      text,
-      time: 'Just now',
-      user: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'CRM Staff'
-    };
-    const updated = [newLog, ...timelineEvents];
-    saveActivities(updated);
+    addActivity({
+      type: type as any,
+      title: text,
+      relatedToType: 'company',
+      relatedToId: selectedOrg.id,
+      createdBy: currentUser?.id || 'system',
+      createdAt: new Date().toISOString(),
+    });
   };
 
   const handleLogInteraction = (e: React.FormEvent) => {
@@ -166,8 +170,7 @@ export const CompanyProfileTabs = ({
   };
 
   const handleSaveNotes = () => {
-    localStorage.setItem(`crm_notes_org_${selectedOrg.name}`, companyNotes);
-    localStorage.setItem(`crm_internal_notes_org_${selectedOrg.name}`, internalNotes);
+    updateOrganization(selectedOrg.id, { notes: companyNotes, internalNotes: internalNotes });
     toast.success('Successfully updated corporate records!');
     addActivityLog(`Modified central organization internal dossiers.`, 'user_action');
   };
@@ -240,7 +243,6 @@ export const CompanyProfileTabs = ({
     addActivityLog(`Executed global parameter sync: website, industry, size coordinates.`, 'system');
   };
 
-  const { contacts: allContacts = [], pipelines = [], updateDeal, deleteDeal, isBillingModuleEnabled = false } = useData();
   const [selectedDealModal, setSelectedDealModal] = useState<Deal | null>(null);
 
   const orgContacts = selectedOrg?.contacts || [];
@@ -401,6 +403,14 @@ export const CompanyProfileTabs = ({
                       <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedOrg.industry}</span>
                     </div>
                     <div>
+                      <span className="text-slate-400 text-[10px] block">Product Interests</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">
+                        {selectedOrg.productInterests && selectedOrg.productInterests.length > 0
+                          ? selectedOrg.productInterests.join(', ') 
+                          : '—'}
+                      </span>
+                    </div>
+                    <div>
                       <span className="text-slate-400 text-[10px] block">Account Size Bracket</span>
                       <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedOrg.size}</span>
                     </div>
@@ -498,7 +508,7 @@ export const CompanyProfileTabs = ({
           {/* TAB 3: ACTIVITIES TIMELINE */}
           {activeTab === 'activities' && (
             <ContactActivitiesTab
-              timelineEvents={timelineEvents}
+              timelineEvents={orgActivities}
               logType={logType}
               logNotes={logNotes}
               onSetLogType={setLogType}

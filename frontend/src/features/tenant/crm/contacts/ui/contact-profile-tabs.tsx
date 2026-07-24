@@ -394,6 +394,12 @@ export const ClientProfileTabs = ({
                       <span className="text-slate-400 text-[10px] block">Customer Type</span>
                       <span className="font-semibold text-slate-800 dark:text-[#a0c5f5]">{contact.customerType || 'Individual'}</span>
                     </div>
+                    <div>
+                      <span className="text-slate-400 text-[10px] block">Product Interests</span>
+                      <span className="font-semibold text-slate-800 dark:text-[#a0c5f5]">
+                        {contact.productInterests && contact.productInterests.length > 0 ? contact.productInterests.join(', ') : '—'}
+                      </span>
+                    </div>
                   </div>
                 </div>
 

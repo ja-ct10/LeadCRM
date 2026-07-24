@@ -39,6 +39,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { Deal, Stage, Pipeline } from '@/store/types';
 import { motion, AnimatePresence } from 'motion/react';
 import { DealDetailsModal } from './ui/deal-details-modal';
+import { HandoffModal } from './ui/handoff-modal';
 import { 
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell
 } from '@/shared/components/charts/ChartComponents';
@@ -311,6 +312,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
     pipelines, 
     deals, 
     updateDeal, 
+    moveDealStage,
     addDeal, 
     addPipeline, 
     updatePipeline, 
@@ -363,8 +365,11 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
   const [filterIndustry, setFilterIndustry] = useState<string>('');
   const [filterIndustryOp, setFilterIndustryOp] = useState<string>('contains');
 
-  const [filterLocation, setFilterLocation] = useState<string>('');
-  const [filterLocationOp, setFilterLocationOp] = useState<string>('contains');
+  const [filterAddress, setFilterAddress] = useState<string>('');
+  const [filterAddressOp, setFilterAddressOp] = useState<string>('contains');
+
+  const [filterProductInterests, setFilterProductInterests] = useState<string>('');
+  const [filterProductInterestsOp, setFilterProductInterestsOp] = useState<string>('contains');
 
   const [filterCampaign, setFilterCampaign] = useState<string>('');
   const [filterCampaignOp, setFilterCampaignOp] = useState<string>('contains');
@@ -394,7 +399,8 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
     if (filterDateCreatedStart !== '' || filterDateCreatedEnd !== '') count++;
     if (filterDateUpdatedStart !== '' || filterDateUpdatedEnd !== '') count++;
     if (filterIndustry.trim() !== '') count++;
-    if (filterLocation.trim() !== '') count++;
+    if (filterAddress.trim() !== '') count++;
+    if (filterProductInterests.trim() !== '') count++;
     if (filterCampaign.trim() !== '') count++;
     if (filterCustomerType !== 'all') count++;
     if (filterOrganization.trim() !== '') count++;
@@ -417,8 +423,10 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
     setFilterDateUpdatedOp('any');
     setFilterIndustry('');
     setFilterIndustryOp('contains');
-    setFilterLocation('');
-    setFilterLocationOp('contains');
+    setFilterAddress('');
+    setFilterAddressOp('contains');
+    setFilterProductInterests('');
+    setFilterProductInterestsOp('contains');
     setFilterCampaign('');
     setFilterCampaignOp('contains');
     setFilterCustomerType('all');
@@ -534,10 +542,13 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
   const [isDeletePipelineModalOpen, setIsDeletePipelineModalOpen] = useState(false);
   const [isLostReasonModalOpen, setIsLostReasonModalOpen] = useState(false);
   const [dealBeingLost, setDealBeingLost] = useState<Deal | null>(null);
+  const [isHandoffModalOpen, setIsHandoffModalOpen] = useState(false);
+  const [dealBeingWon, setDealBeingWon] = useState<Deal | null>(null);
+  const [targetWonStageId, setTargetWonStageId] = useState<string | null>(null);
   const [lostReason, setLostReason] = useState('');
   const [newDeal, setNewDeal] = useState({
     title: '', companyName: '', contactPerson: '', value: 0, priority: 'Medium', expectedCloseDate: '', description: '', assignedUserId: '', stageId: '',
-    leadSource: '', industry: '', location: '', campaign: '', customerType: 'New Customer', tags: ''
+    leadSource: '', industry: '', address: '', productInterests: '', campaign: '', customerType: 'New Customer', tags: ''
   });
   const [dealTitleTouched, setDealTitleTouched] = useState(false);
   const [dealValueTouched, setDealValueTouched] = useState(false);
@@ -664,9 +675,17 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
       result = result.filter(d => matchStringFilter(d.industry, filterIndustry, filterIndustryOp));
     }
 
-    // 9. Location (Operation Aware)
-    if (filterLocation.trim()) {
-      result = result.filter(d => matchStringFilter(d.location, filterLocation, filterLocationOp));
+    // 9. Address (Operation Aware)
+    if (filterAddress.trim()) {
+      result = result.filter(d => matchStringFilter(d.address, filterAddress, filterAddressOp));
+    }
+
+    // 9.5. Product Interests (Operation Aware)
+    if (filterProductInterests.trim()) {
+      result = result.filter(d => {
+        if (!d.productInterests || !Array.isArray(d.productInterests)) return false;
+        return d.productInterests.some(pi => matchStringFilter(pi, filterProductInterests, filterProductInterestsOp));
+      });
     }
 
     // 10. Campaign (Operation Aware)
@@ -716,8 +735,10 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
     filterDateUpdatedOp,
     filterIndustry, 
     filterIndustryOp,
-    filterLocation, 
-    filterLocationOp,
+    filterAddress, 
+    filterAddressOp,
+    filterProductInterests,
+    filterProductInterestsOp,
     filterCampaign, 
     filterCampaignOp,
     filterCustomerType, 
@@ -894,6 +915,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
     try {
       await addDeal({ 
         ...newDeal, 
+        productInterests: newDeal.productInterests ? newDeal.productInterests.split(',').map(s => s.trim()).filter(Boolean) : [],
         pipelineId: activePipelineId,
         order: deals.filter(d => d.pipelineId === activePipelineId && d.stageId === newDeal.stageId).length
       } as any);
@@ -901,7 +923,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
       setIsModalOpen(false);
       setNewDeal({ 
         title: '', companyName: '', contactPerson: '', value: 0, priority: 'Medium', expectedCloseDate: '', description: '', assignedUserId: '', stageId: '',
-        leadSource: '', industry: '', location: '', campaign: '', customerType: 'New Customer', tags: ''
+        leadSource: '', industry: '', address: '', productInterests: '', campaign: '', customerType: 'New Customer', tags: ''
       });
       setDealTitleTouched(false);
       setDealValueTouched(false);
@@ -1054,6 +1076,15 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
         setDealBeingLost(activeDeal);
         setIsLostReasonModalOpen(true);
         setLostReason('');
+        return;
+      }
+      
+      // Special case: Closed Won prompt (Handoff)
+      if (overStage.name === 'Closed Won' || overStage.isWon) {
+        setDealBeingWon(activeDeal);
+        setTargetWonStageId(overStage.id);
+        setIsHandoffModalOpen(true);
+        return;
       }
       
       const updates: Partial<Deal> = {};
@@ -1119,6 +1150,13 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
           setLostReason('');
         }
         
+        if (overStage?.name === 'Closed Won' || overStage?.isWon) {
+          setDealBeingWon(activeDeal);
+          setTargetWonStageId(overStage.id);
+          setIsHandoffModalOpen(true);
+          return;
+        }
+        
         updates.stageId = overStageId;
         updates.order = overDeal.order;
         
@@ -1139,6 +1177,23 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
         toast.error(error.message || "Failed to update deal");
       }
     }
+  };
+
+  const handleConfirmHandoff = async (payload: { handoff: any }) => {
+    if (dealBeingWon && targetWonStageId) {
+      try {
+        await moveDealStage(dealBeingWon.id, targetWonStageId, undefined, undefined, payload.handoff);
+        toast.success(`Deal won! ${dealBeingWon.companyName || dealBeingWon.title} is now a customer.`);
+        if (payload.handoff.createServiceOrder) {
+          toast.success('Service Order created for onboarding.');
+        }
+      } catch (error) {
+        toast.error('Failed to move deal to won stage');
+      }
+    }
+    setIsHandoffModalOpen(false);
+    setDealBeingWon(null);
+    setTargetWonStageId(null);
   };
 
   const handleUpdatePipeline = async (e: React.FormEvent) => {
@@ -1842,6 +1897,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
             onMarkLost={(d) => { setDealBeingLost(d); setLostReason(''); setIsLostReasonModalOpen(true); }}
             onNavigate={navigate}
             tenantId={tenant?.id || ''}
+            moveDealStage={(dealId, stageId) => moveDealStage(dealId, stageId)}
           />
         )}
       </AnimatePresence>
@@ -1960,8 +2016,12 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                       <input value={newDeal.industry} onChange={e => setNewDeal({...newDeal, industry: e.target.value})} className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] focus:bg-white/[0.04] transition-all" placeholder="e.g. SaaS, Fintech, Healthcare" />
                     </div>
                     <div>
-                      <label className="block text-sm text-slate-500 dark:text-slate-400 mb-1.5">Location</label>
-                      <input value={newDeal.location} onChange={e => setNewDeal({...newDeal, location: e.target.value})} className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] focus:bg-white/[0.04] transition-all" placeholder="e.g. California, US / Berlin, DE" />
+                      <label className="block text-sm text-slate-500 dark:text-slate-400 mb-1.5">Product Interests (comma separated)</label>
+                      <input value={newDeal.productInterests} onChange={e => setNewDeal({...newDeal, productInterests: e.target.value})} className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] focus:bg-white/[0.04] transition-all" placeholder="e.g. CRM Enterprise, Marketing Pro" />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-slate-500 dark:text-slate-400 mb-1.5">Address</label>
+                      <input value={newDeal.address} onChange={e => setNewDeal({...newDeal, address: e.target.value})} className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] focus:bg-white/[0.04] transition-all" placeholder="e.g. California, US / Berlin, DE" />
                     </div>
                     <div>
                       <label className="block text-sm text-slate-500 dark:text-slate-400 mb-1.5">Campaign</label>
@@ -2141,6 +2201,22 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
           </motion.div>
         </div>
       )}
+
+      {/* Handoff Modal */}
+      {dealBeingWon && (
+        <HandoffModal
+          isOpen={isHandoffModalOpen}
+          onClose={() => {
+            setIsHandoffModalOpen(false);
+            setDealBeingWon(null);
+            setTargetWonStageId(null);
+          }}
+          onConfirm={handleConfirmHandoff}
+          deal={dealBeingWon}
+          users={users}
+        />
+      )}
+
     </div>
   );
 }
