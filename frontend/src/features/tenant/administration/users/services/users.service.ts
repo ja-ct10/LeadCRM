@@ -68,5 +68,5 @@ export const usersService = {
     apiClient.put<ApiResponse<RoleDefinition>>(`/administration/roles/${id}`, data),
 
   deleteRole: (id: string): Promise<void> =>
-    apiClient.delete<void>(`/administration/roles/${id}`),
+    apiClient.patch<void>(`/administration/roles/${id}/archive`),
 };

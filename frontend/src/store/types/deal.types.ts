@@ -14,6 +14,8 @@ export interface Stage {
   name: string;
   order: number;
   probability?: number; // 0–100, used for weighted revenue forecast
+  isWon?: boolean;
+  isLost?: boolean;
 }
 
 export interface Pipeline {

@@ -47,7 +47,8 @@ export interface Contact {
   archivedAt?: string;
   archivedBy?: string;
   archiveReason?: string;
-  customerType?: 'Prospect' | 'Active Customer' | 'Inactive Customer' | 'Former Customer';
+  type?: 'Individual' | 'Organization';
+  customerType?: 'Individual' | 'Organization';
   customerSince?: string;
   activeProducts?: string[];
   callStatus?: string;

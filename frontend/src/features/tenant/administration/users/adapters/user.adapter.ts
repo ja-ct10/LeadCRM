@@ -8,6 +8,12 @@ export interface UserDTO {
   email: string;
   role: string;
   status: 'ACTIVE' | 'INACTIVE' | 'PENDING';
+  phone?: string | null;
+  jobTitle?: string | null;
+  department?: string | null;
+  avatarUrl?: string | null;
+  timeZone?: string | null;
+  lastLoginAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -17,6 +23,11 @@ export interface CreateUserDTO {
   lastName: string;
   email: string;
   role?: string;
+  phone?: string;
+  jobTitle?: string;
+  department?: string;
+  avatarUrl?: string;
+  timeZone?: string;
 }
 
 export interface UpdateUserDTO {
@@ -24,6 +35,11 @@ export interface UpdateUserDTO {
   lastName?: string;
   role?: string;
   status?: string;
+  phone?: string;
+  jobTitle?: string;
+  department?: string;
+  avatarUrl?: string;
+  timeZone?: string;
 }
 
 export const userAdapter = {
@@ -35,7 +51,12 @@ export const userAdapter = {
     role: dto.role,
     status: (dto.status.toLowerCase() as 'active' | 'inactive' | 'pending'),
     tenantId: dto.tenantId,
-    // Other fields in User model that might be missing can be handled here
+    phone: dto.phone || undefined,
+    jobTitle: dto.jobTitle || undefined,
+    department: dto.department || undefined,
+    avatarUrl: dto.avatarUrl || undefined,
+    timeZone: dto.timeZone || undefined,
+    lastLoginAt: dto.lastLoginAt || undefined,
   }),
   
   toModels: (dtos: UserDTO[]): User[] => dtos.map(userAdapter.toModel),
@@ -45,6 +66,11 @@ export const userAdapter = {
     lastName: user.lastName || '',
     email: user.email || '',
     role: user.role,
+    phone: user.phone,
+    jobTitle: user.jobTitle,
+    department: user.department,
+    avatarUrl: user.avatarUrl,
+    timeZone: user.timeZone,
   }),
   
   toUpdateDTO: (user: Partial<User>): UpdateUserDTO => ({
@@ -52,5 +78,10 @@ export const userAdapter = {
     lastName: user.lastName,
     role: user.role,
     status: user.status,
+    phone: user.phone,
+    jobTitle: user.jobTitle,
+    department: user.department,
+    avatarUrl: user.avatarUrl,
+    timeZone: user.timeZone,
   }),
 };

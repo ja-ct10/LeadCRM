@@ -28,11 +28,16 @@ export interface User {
   lastName: string;
   email: string;
   phone?: string;
-  org?: string;
-  team?: string;
+  jobTitle?: string;
+  department?: string;
+  avatarUrl?: string;
+  timeZone?: string;
+  org?: string; // keeping org for legacy compatibility temporarily if used elsewhere
+  team?: string; // keeping team for legacy compatibility temporarily
   role: Role;
   status: 'active' | 'pending' | 'inactive';
   lastLogin?: string;
+  lastLoginAt?: string;
   isArchived?: boolean;
 }
 

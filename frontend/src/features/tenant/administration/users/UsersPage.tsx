@@ -51,80 +51,6 @@ import { usePagination } from '@/shared/hooks/usePagination';
 import { Pagination } from '@/shared/components/ui/pagination';
 
 // Initial state matching existing database style
-const INITIAL_USERS = [
-  {
-    id: "usr_1",
-    initials: "AJ",
-    name: "Alice Johnson",
-    email: "alice@company.com",
-    phone: "+1 234-567-8901",
-    role: "Administrator",
-    roleColor: "bg-rose-500",
-    org: "Camxian Technologies",
-    lastLogin: "2026-06-14",
-    status: "Active",
-  },
-  {
-    id: "usr_2",
-    initials: "BS",
-    name: "Bob Smith",
-    email: "bob@company.com",
-    phone: "+1 234-567-8902",
-    role: "Sales Manager",
-    roleColor: "bg-blue-500",
-    org: "Camxian Technologies",
-    lastLogin: "2026-06-13",
-    status: "Active",
-  },
-  {
-    id: "usr_3",
-    initials: "CW",
-    name: "Carol White",
-    email: "carol@company.com",
-    phone: "+1 234-567-8903",
-    role: "Sales Representative",
-    roleColor: "bg-slate-800 dark:bg-slate-300 dark:text-slate-900",
-    org: "Camxian Technologies",
-    lastLogin: "2026-06-12",
-    status: "Active",
-  },
-  {
-    id: "usr_4",
-    initials: "DB",
-    name: "David Brown",
-    email: "david@company.com",
-    phone: "+1 234-567-8904",
-    role: "Support Agent",
-    roleColor: "bg-emerald-500",
-    org: "Camxian Technologies",
-    lastLogin: "2026-06-15",
-    status: "Active",
-  },
-  {
-    id: "usr_5",
-    initials: "ED",
-    name: "Eve Davis",
-    email: "eve@company.com",
-    phone: "+1 234-567-8905",
-    role: "Viewer",
-    roleColor: "bg-amber-500",
-    org: "Camxian Technologies",
-    lastLogin: "2026-05-28",
-    status: "Inactive",
-  },
-  {
-    id: "usr_6",
-    initials: "FM",
-    name: "Frank Martinez",
-    email: "frank@company.com",
-    phone: "+1 234-567-8906",
-    role: "Marketing Manager",
-    roleColor: "bg-purple-500",
-    org: "Camxian Technologies",
-    lastLogin: "2026-06-15",
-    status: "Active",
-  },
-];
 
 const ROLES_GUIDE = [
   {
@@ -274,11 +200,13 @@ export default function UsersPage() {
   const [selectedUser, setSelectedUser] = useState<any | null>(null);
 
   // Form states for creating/editing users
-  const [formName, setFormName] = useState("");
+  const [formFirstName, setFormFirstName] = useState("");
+  const [formLastName, setFormLastName] = useState("");
   const [formEmail, setFormEmail] = useState("");
   const [formPhone, setFormPhone] = useState("");
   const [formRole, setFormRole] = useState("Sales Rep");
-  const [formOrg, setFormOrg] = useState("Camxian Technologies");
+  const [formJobTitle, setFormJobTitle] = useState("");
+  const [formDepartment, setFormDepartment] = useState("");
   const [formStatus, setFormStatus] = useState("Active");
 
   // Timeline local filtering states
@@ -1632,63 +1560,83 @@ export default function UsersPage() {
   };
 
   // Open modas with prefilled data or reset
-  const handleEditClick = (user: (typeof INITIAL_USERS)[0]) => {
+  // Open modas with prefilled data or reset
+  const handleEditClick = (user: any) => {
     setSelectedUser(user);
-    setFormName(user.name);
+    setFormFirstName(user.firstName || "");
+    setFormLastName(user.lastName || "");
     setFormEmail(user.email);
     setFormPhone(user.phone || "");
     setFormRole(user.role);
-    setFormOrg(user.org);
+    setFormJobTitle(user.jobTitle || "");
+    setFormDepartment(user.department || "");
     setFormStatus(user.status);
     setIsEditModalOpen(true);
   };
 
   const handleAddClick = () => {
-    setFormName("");
+    setFormFirstName("");
+    setFormLastName("");
     setFormEmail("");
     setFormPhone("");
     setFormRole("Sales Rep");
+    setFormJobTitle("");
+    setFormDepartment("");
+    setFormStatus("Active");
+    setIsAddModalOpen(true);
   };
 
-  const handleUpdateUserSubmit = (e: React.FormEvent) => {
+  const handleUpdateUserSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formName.trim() || !formEmail.trim()) {
-      toast.error("Name and Email are required.");
+    if (!formFirstName.trim() || !formLastName.trim() || !formEmail.trim()) {
+      toast.error("First Name, Last Name and Email are required.");
       return;
     }
 
     if (selectedUser) {
-      updateUser(selectedUser.id, {
-        name: formName,
-        email: formEmail,
-        phone: formPhone,
-        role: formRole,
-        org: formOrg,
-        status: formStatus === "Active" ? "active" : "inactive",
-      });
-      toast.success(`User settings updated: ${formName}`);
-      setIsEditModalOpen(false);
-      setSelectedUser(null);
+      try {
+        await updateUser(selectedUser.id, {
+          firstName: formFirstName,
+          lastName: formLastName,
+          email: formEmail,
+          phone: formPhone,
+          role: formRole,
+          jobTitle: formJobTitle,
+          department: formDepartment,
+          status: formStatus === "Active" ? "active" : "inactive",
+        });
+        toast.success(`User settings updated: ${formFirstName} ${formLastName}`);
+        setIsEditModalOpen(false);
+        setSelectedUser(null);
+      } catch (err: any) {
+        // UI error handling logic
+      }
     }
   };
 
-  const handleCreateUserSubmit = (e: React.FormEvent) => {
+  const handleCreateUserSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formName.trim() || !formEmail.trim()) {
-      toast.error("Name and Email are required.");
+    if (!formFirstName.trim() || !formLastName.trim() || !formEmail.trim()) {
+      toast.error("First Name, Last Name and Email are required.");
       return;
     }
 
-    addUser({
-      name: formName,
-      email: formEmail,
-      phone: formPhone || "+63 912-345-6789",
-      role: formRole,
-      org: formOrg || "Camxian Technologies",
-      status: formStatus === "Active" ? "active" : "inactive",
-    });
-    toast.success(`Welcome aboard! New user cataloged: ${formName}`);
-    setIsAddModalOpen(false);
+    try {
+      await addUser({
+        firstName: formFirstName,
+        lastName: formLastName,
+        email: formEmail,
+        phone: formPhone,
+        role: formRole,
+        jobTitle: formJobTitle,
+        department: formDepartment,
+        status: formStatus === "Active" ? "active" : "inactive",
+      });
+      toast.success(`Welcome aboard! New user cataloged: ${formFirstName} ${formLastName}`);
+      setIsAddModalOpen(false);
+    } catch (err: any) {
+      // Error handled by DataContext
+    }
   };
 
   const handleDeleteUser = (id: string, name: string) => {
@@ -1901,33 +1849,14 @@ export default function UsersPage() {
                   selectedStatuses={statusFilter}
                   setSelectedStatuses={setStatusFilter}
                   labelsTitle="Role"
-                  labels={[
-                    {
-                      id: "Client Admin",
-                      label: "Client Admin",
-                      color: "bg-rose-500",
-                    },
-                    {
-                      id: "Sales Rep",
-                      label: "Sales Rep",
-                      color: "bg-blue-500",
-                    },
-                    {
-                      id: "Technician",
-                      label: "Technician",
-                      color: "bg-emerald-500",
-                    },
-                    {
-                      id: "Viewer",
-                      label: "Viewer",
-                      color: "bg-amber-500",
-                    },
-                    {
-                      id: "Guest",
-                      label: "Guest",
-                      color: "bg-slate-500",
-                    },
-                  ]}
+                  labels={roles.map(r => {
+                    let color = "bg-slate-500";
+                    if (r.name.includes("Admin")) color = "bg-rose-500";
+                    else if (r.name.includes("Manager")) color = "bg-blue-500";
+                    else if (r.name.includes("Agent") || r.name.includes("Tech")) color = "bg-emerald-500";
+                    else if (r.name.includes("Viewer")) color = "bg-amber-500";
+                    return { id: r.name, label: r.name, color };
+                  })}
                   selectedLabels={roleFilter}
                   setSelectedLabels={setRoleFilter}
                 />
@@ -2394,19 +2323,34 @@ export default function UsersPage() {
                 onSubmit={handleCreateUserSubmit}
                 className="p-6 space-y-4 max-h-[70vh] overflow-y-auto"
               >
-                {/* Row: Name */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">
-                    Member Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formName}
-                    onChange={(e) => setFormName(e.target.value)}
-                    placeholder="e.g. Alice Jenkins"
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-white/[0.06] text-slate-900 dark:text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
-                  />
+                {/* Grid: First Name & Last Name */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">
+                      First Name *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formFirstName}
+                      onChange={(e) => setFormFirstName(e.target.value)}
+                      placeholder="e.g. Alice"
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-white/[0.06] text-slate-900 dark:text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">
+                      Last Name *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formLastName}
+                      onChange={(e) => setFormLastName(e.target.value)}
+                      placeholder="e.g. Jenkins"
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-white/[0.06] text-slate-900 dark:text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
                 </div>
 
                 {/* Grid: Email & Phone */}
@@ -2426,7 +2370,7 @@ export default function UsersPage() {
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">
-                      Contact Link / Phone
+                      Phone Number
                     </label>
                     <input
                       type="text"
@@ -2438,47 +2382,56 @@ export default function UsersPage() {
                   </div>
                 </div>
 
-                {/* Row: Org & Role */}
+                {/* Grid: Job Title & Department */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">
-                      Organization
+                      Job Title
                     </label>
                     <input
                       type="text"
-                      value={formOrg}
-                      onChange={(e) => setFormOrg(e.target.value)}
-                      placeholder="e.g. Camxian Tech"
+                      value={formJobTitle}
+                      onChange={(e) => setFormJobTitle(e.target.value)}
+                      placeholder="e.g. Sales Executive"
                       className="w-full bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-white/[0.06] text-slate-900 dark:text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">
-                      Initial Role Security Profile
+                      Department
                     </label>
-                    <div className="relative">
-                      <select
-                        value={formRole}
-                        onChange={(e) => setFormRole(e.target.value)}
-                        className="w-full appearance-none bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-white/[0.06] text-slate-900 dark:text-white rounded-xl px-4 py-3 pr-10 text-sm focus:outline-none focus:border-blue-500 cursor-pointer [&>option]:text-slate-900 [&>option]:bg-white dark:[&>option]:text-white dark:[&>option]:bg-slate-800"
-                      >
-                        <option value="Administrator">
-                          Administrator (High clearance)
-                        </option>
-                        <option value="Sales Manager">Sales Manager</option>
-                        <option value="Sales Rep">
-                          Sales Rep
-                        </option>
-                        <option value="Support Agent">Support Agent</option>
-                        <option value="Marketing Manager">
-                          Marketing Manager
-                        </option>
-                        <option value="Viewer">
-                          Viewer (Read access only)
-                        </option>
-                      </select>
-                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                    </div>
+                    <input
+                      type="text"
+                      value={formDepartment}
+                      onChange={(e) => setFormDepartment(e.target.value)}
+                      placeholder="e.g. Sales"
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-white/[0.06] text-slate-900 dark:text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Row: Role */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide mb-2">
+                    Initial Role Security Profile
+                  </label>
+                  <div className="relative">
+                          <select
+                            value={formRole}
+                            onChange={(e) => setFormRole(e.target.value)}
+                            className="w-full appearance-none bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-white/[0.06] text-slate-900 dark:text-white rounded-xl px-4 py-3 pr-10 text-sm focus:outline-none focus:border-blue-500 cursor-pointer [&>option]:text-slate-900 [&>option]:bg-white dark:[&>option]:text-white dark:[&>option]:bg-slate-800"
+                          >
+                            {roles.length === 0 ? (
+                              <option value="">No Roles Available</option>
+                            ) : (
+                              roles.map((r) => (
+                                <option key={r.id} value={r.name}>
+                                  {r.name}
+                                </option>
+                              ))
+                            )}
+                          </select>
+                          <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                   </div>
                 </div>
 
@@ -2596,17 +2549,31 @@ export default function UsersPage() {
                       </h3>
 
                       {/* Full name input */}
-                      <div>
-                        <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1.5">
-                          Member Full Name *
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          value={formName}
-                          onChange={(e) => setFormName(e.target.value)}
-                          className="w-full bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-white/[0.06] text-slate-900 dark:text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500 transition-all focus:ring-1 focus:ring-blue-500/20"
-                        />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1.5">
+                            First Name *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={formFirstName}
+                            onChange={(e) => setFormFirstName(e.target.value)}
+                            className="w-full bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-white/[0.06] text-slate-900 dark:text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500 transition-all focus:ring-1 focus:ring-blue-500/20"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1.5">
+                            Last Name *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={formLastName}
+                            onChange={(e) => setFormLastName(e.target.value)}
+                            className="w-full bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-white/[0.06] text-slate-900 dark:text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500 transition-all focus:ring-1 focus:ring-blue-500/20"
+                          />
+                        </div>
                       </div>
 
                       {/* Grid linkers */}
@@ -2636,19 +2603,31 @@ export default function UsersPage() {
                         </div>
                       </div>
 
-                      {/* Options selectors */}
+                      {/* Job Title & Department */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                           <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1.5">
-                            Allocated Organization
+                            Job Title
                           </label>
                           <input
                             type="text"
-                            value={formOrg}
-                            onChange={(e) => setFormOrg(e.target.value)}
+                            value={formJobTitle}
+                            onChange={(e) => setFormJobTitle(e.target.value)}
                             className="w-full bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-white/[0.06] text-slate-900 dark:text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500 transition-all focus:ring-1 focus:ring-blue-500/20"
                           />
                         </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1.5">
+                            Department
+                          </label>
+                          <input
+                            type="text"
+                            value={formDepartment}
+                            onChange={(e) => setFormDepartment(e.target.value)}
+                            className="w-full bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-white/[0.06] text-slate-900 dark:text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500 transition-all focus:ring-1 focus:ring-blue-500/20"
+                          />
+                        </div>
+                      </div>
                         <div>
                           <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1.5">
                             Access Authorization Role
@@ -2659,24 +2638,15 @@ export default function UsersPage() {
                               onChange={(e) => setFormRole(e.target.value)}
                               className="w-full appearance-none bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-white/[0.06] text-slate-900 dark:text-white rounded-xl px-4 py-2.5 pr-10 text-sm focus:outline-none focus:border-blue-500 cursor-pointer [&>option]:text-slate-900 [&>option]:bg-white dark:[&>option]:text-white dark:[&>option]:bg-slate-800"
                             >
-                              <option value="Administrator">
-                                Administrator (High clearance)
-                              </option>
-                              <option value="Sales Manager">
-                                Sales Manager
-                              </option>
-                              <option value="Sales Rep">
-                                Sales Rep
-                              </option>
-                              <option value="Support Agent">
-                                Support Agent
-                              </option>
-                              <option value="Marketing Manager">
-                                Marketing Manager
-                              </option>
-                              <option value="Viewer">
-                                Viewer (Read access only)
-                              </option>
+                              {roles.length === 0 ? (
+                                <option value="">No Roles Available</option>
+                              ) : (
+                                roles.map((r) => (
+                                  <option key={r.id} value={r.name}>
+                                    {r.name}
+                                  </option>
+                                ))
+                              )}
                             </select>
                             <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                           </div>

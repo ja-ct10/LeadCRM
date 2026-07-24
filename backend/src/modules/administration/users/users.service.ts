@@ -10,6 +10,7 @@ import { Role } from '../../../shared/constants/roles';
 const SAFE_USER_SELECT = {
   id: true, tenantId: true, firstName: true, lastName: true,
   email: true, role: true, status: true, createdAt: true, updatedAt: true,
+  phone: true, jobTitle: true, department: true, avatarUrl: true, timeZone: true, lastLoginAt: true,
   // passwordHash is NEVER selected
 };
 
@@ -42,7 +43,7 @@ export async function getById(id: string, tenantId: string) {
 }
 
 export async function create(tenantId: string, actorId: string, dto: {
-  firstName: string; lastName: string; email: string; password?: string; role?: string;
+  firstName: string; lastName: string; email: string; password?: string; role?: string; phone?: string; jobTitle?: string; department?: string; avatarUrl?: string; timeZone?: string;
 }) {
   if (dto.role === Role.SYSTEM_ADMIN) {
     throw new ForbiddenError('Cannot assign System Admin role via tenant user management');
@@ -54,7 +55,10 @@ export async function create(tenantId: string, actorId: string, dto: {
   const secureRandomPassword = dto.password || randomBytes(32).toString('hex');
   const passwordHash = await hashPassword(secureRandomPassword);
   const user = await prisma.user.create({
-    data: { tenantId, firstName: dto.firstName, lastName: dto.lastName, email: dto.email, passwordHash, role: dto.role ?? Role.SALES_REP },
+    data: { 
+      tenantId, firstName: dto.firstName, lastName: dto.lastName, email: dto.email, passwordHash, role: dto.role ?? Role.SALES_REP,
+      phone: dto.phone, jobTitle: dto.jobTitle, department: dto.department, avatarUrl: dto.avatarUrl, timeZone: dto.timeZone
+    },
     select: SAFE_USER_SELECT,
   });
   await writeAuditLog({ tenantId, userId: actorId, action: 'user.created', entityType: 'User', entityId: user.id, after: { email: dto.email, role: user.role } });
@@ -62,7 +66,7 @@ export async function create(tenantId: string, actorId: string, dto: {
 }
 
 export async function update(id: string, tenantId: string, actorId: string, dto: {
-  firstName?: string; lastName?: string; role?: string; status?: string;
+  firstName?: string; lastName?: string; role?: string; status?: string; phone?: string; jobTitle?: string; department?: string; avatarUrl?: string; timeZone?: string;
 }) {
   if (dto.role === Role.SYSTEM_ADMIN) {
     throw new ForbiddenError('Cannot assign System Admin role via tenant user management');

@@ -55,6 +55,7 @@ export interface DealDetailsModalProps {
   onMarkLost: (deal: Deal) => void;
   onNavigate: (page: string) => void;
   tenantId: string;
+  moveDealStage?: (dealId: string, stageId: string) => Promise<void>;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

@@ -260,6 +260,12 @@ model User {
   firstName    String
   lastName     String
   passwordHash String
+  phone        String?
+  jobTitle     String?
+  department   String?
+  avatarUrl    String?
+  timeZone     String?
+  lastLoginAt  DateTime?
   // role kept as String for JWT compatibility during UserRole migration.
   // New code should read role from UserRole junction; this is the legacy fallback.
   role         String     @default("Sales Rep")

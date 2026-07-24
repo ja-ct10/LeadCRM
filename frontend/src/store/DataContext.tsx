@@ -324,12 +324,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (!user) return; // Wait until the user is authenticated
 
       try {
-        const [contactsRes, orgsRes, dealsRes, pipelinesRes, activitiesRes] = await Promise.all([
+        const [contactsRes, orgsRes, dealsRes, pipelinesRes, activitiesRes, usersRes, rolesRes] = await Promise.all([
           contactsService.getAll({ limit: 500 }),
           organizationsService.getAll({ limit: 500 }),
           pipelineService.getDeals(),
           pipelineService.getPipelines(),
           activitiesService.getAll({ limit: 1000 }),
+          usersService.getAll({ limit: 500 }),
+          usersService.getRoles(),
         ]);
 
         const apiContacts = (contactsRes?.data ?? []).map(toFrontendContact);
@@ -339,6 +341,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
           ? ((pipelinesRes as any).data as any[]).map(toFrontendPipeline)
           : ((pipelinesRes as any)?.data ? [(pipelinesRes as any).data].map(toFrontendPipeline) : []);
         const apiActivities = activitiesRes?.data ?? [];
+        const apiUsers = usersRes?.data ?? [];
+        const apiRoles = rolesRes?.data ?? [];
 
         if (user?.role === "System Admin") {
           setContacts(apiContacts as Contact[]);
@@ -346,12 +350,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
           setDeals(apiDeals as Deal[]);
           setPipelines(apiPipelines as Pipeline[]);
           setActivities(apiActivities as Activity[]);
+          setUsers(apiUsers as any[]);
+          setRoles(apiRoles as any[]);
         } else if (tenant) {
           setContacts((apiContacts as Contact[]).filter((c: any) => !c.isArchived));
           setOrganizations((apiOrgs as Organization[]).filter((o: any) => !o.isArchived));
           setDeals((apiDeals as Deal[]).filter((d: any) => !d.isArchived));
           setPipelines((apiPipelines as Pipeline[]).filter((p: any) => !p.isArchived));
           setActivities(apiActivities as Activity[]);
+          setUsers((apiUsers as any[]).filter((u: any) => !u.isArchived));
+          setRoles((apiRoles as any[]).filter((r: any) => !r.isArchived));
         }
       } catch (err) {
         console.error('[DataContext] Failed to load CRM data from API:', err);
@@ -1837,7 +1845,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const addRole = (roleData: any) => {
+  const addRole = async (roleData: any) => {
     if (!tenant) return;
     const newRole: RoleDefinition = {
       ...roleData,
@@ -1845,6 +1853,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
       tenantId: tenant.id,
       updatedAt: new Date().toLocaleString(),
     };
+
+    setRoles((prev) => [...prev, newRole]);
+
+    if (!USE_MOCK_DATA) {
+      try {
+        const res = await usersService.createRole(newRole);
+        if (res.data) {
+          setRoles((prev) => prev.map((r) => (r.id === newRole.id ? res.data! : r)));
+          addAuditLog("Role Created", `Created custom user access level group description: '${newRole.name}'.`);
+        }
+      } catch (err: any) {
+        toast.error("Failed to create role: " + (err.message || "Unknown error"));
+        setRoles((prev) => prev.filter((r) => r.id !== newRole.id));
+      }
+      return;
+    }
+
     const newRoles = [...roles, newRole];
     saveAndSet("leadcrm_roles", newRoles, setRoles);
     addAuditLog(
@@ -1853,34 +1878,67 @@ export function DataProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const updateRole = (id: string, updates: Partial<RoleDefinition>) => {
+  const updateRole = async (id: string, updates: Partial<RoleDefinition>) => {
     const original = roles.find((r) => r.id === id);
+    if (!original) return;
+
+    setRoles((prev) =>
+      prev.map((r) =>
+        r.id === id ? { ...r, ...updates, updatedAt: new Date().toLocaleString() } : r
+      )
+    );
+
+    if (!USE_MOCK_DATA) {
+      try {
+        const res = await usersService.updateRole(id, updates);
+        if (res.data) {
+          setRoles((prev) => prev.map((r) => (r.id === id ? res.data! : r)));
+          addAuditLog("Role Updated", `Updated permissions or configuration for access level role: '${original.name}'.`);
+        }
+      } catch (err: any) {
+        toast.error("Failed to update role: " + (err.message || "Unknown error"));
+        setRoles((prev) => prev.map((r) => (r.id === id ? original : r)));
+      }
+      return;
+    }
+
     const newRoles = roles.map((r) =>
       r.id === id
         ? { ...r, ...updates, updatedAt: new Date().toLocaleString() }
         : r,
     );
     saveAndSet("leadcrm_roles", newRoles, setRoles);
-    if (original) {
-      addAuditLog(
-        "Role Updated",
-        `Updated permissions or configuration for access level role: '${original.name}'.`,
-      );
-    }
+    addAuditLog(
+      "Role Updated",
+      `Updated permissions or configuration for access level role: '${original.name}'.`,
+    );
   };
 
-  const deleteRole = (id: string) => {
+  const deleteRole = async (id: string) => {
     const original = roles.find((r) => r.id === id);
+    if (!original) return;
+
+    setRoles((prev) => prev.map((r) => (r.id === id ? { ...r, isArchived: true } : r)));
+
+    if (!USE_MOCK_DATA) {
+      try {
+        await usersService.deleteRole(id);
+        addAuditLog("Role Archived", `Archived custom user access level group: '${original.name}'.`);
+      } catch (err: any) {
+        toast.error("Failed to archive role: " + (err.message || "Unknown error"));
+        setRoles((prev) => prev.map((r) => (r.id === id ? original : r)));
+      }
+      return;
+    }
+
     const newRoles = roles.map((r) =>
       r.id === id ? { ...r, isArchived: true } : r,
     );
     saveAndSet("leadcrm_roles", newRoles, setRoles);
-    if (original) {
-      addAuditLog(
-        "Role Archived",
-        `Archived custom user access level group: '${original.name}'.`,
-      );
-    }
+    addAuditLog(
+      "Role Archived",
+      `Archived custom user access level group: '${original.name}'.`,
+    );
   };
 
   const addUser = async (userData: any) => {
