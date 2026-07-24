@@ -432,10 +432,10 @@ npm run build
 **LeadCRM** is developed as an academic capstone project at **STI College Global City**.
 
 ### Core Development Team
-- **Reymark J. Panes** — *Lead Systems Architect & Full-Stack Engineer*
-- **Mica Pauline P. Calingo** — *Full-Stack Developer & Business Analyst*
-- **Nicolette Lei Marc T. Cuison** — *Frontend Developer & Quality Assurance*
-- **Julie Ann C. Tiron** — *Frontend Developer & UX Designer*
+- **Reymark J. Panes** — * Core Developer, Systems Architect & Full-Stack Engineer*
+- **Mica Pauline P. Calingo** — *Backend Developer*
+- **Nicolette Lei Marc T. Cuison** — *Frontend Developer*
+- **Julie Ann C. Tiron** — *Backend Developer*
 
 ### Capstone Adviser
 - **Prof. Dexter B. Oseña** — *Capstone Project Adviser, STI College Global City*
