@@ -1943,10 +1943,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const addUser = async (userData: any) => {
     if (!tenant) return;
-    const nameParts = (userData.name || "").trim().split(/\s+/);
-    const firstName = userData.firstName || nameParts[0] || "New";
-    const lastName =
-      userData.lastName || nameParts.slice(1).join(" ") || "User";
+    const firstName = userData.firstName || "New";
+    const lastName = userData.lastName || "User";
 
     const newUser: User = {
       id:
@@ -1957,8 +1955,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       lastName,
       email: userData.email || "",
       role: userData.role || "Sales Rep",
-      status: userData.status || "Active",
+      status: userData.status || "active",
       phone: userData.phone || "",
+      jobTitle: userData.jobTitle || "",
+      department: userData.department || "",
     };
 
     // Optimistic Update
@@ -2001,10 +2001,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     let firstName = updates.firstName || original.firstName;
     let lastName = updates.lastName || original.lastName;
+    // Legacy support just in case
     if (updates.name) {
       const nameParts = updates.name.trim().split(/\s+/);
-      firstName = nameParts[0] || "";
-      lastName = nameParts.slice(1).join(" ") || "";
+      firstName = updates.firstName || nameParts[0] || original.firstName;
+      lastName = updates.lastName || nameParts.slice(1).join(" ") || original.lastName;
     }
 
     const updatedUser = {

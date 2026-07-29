@@ -2628,28 +2628,28 @@ export default function UsersPage() {
                           />
                         </div>
                       </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1.5">
-                            Access Authorization Role
-                          </label>
-                          <div className="relative">
-                            <select
-                              value={formRole}
-                              onChange={(e) => setFormRole(e.target.value)}
-                              className="w-full appearance-none bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-white/[0.06] text-slate-900 dark:text-white rounded-xl px-4 py-2.5 pr-10 text-sm focus:outline-none focus:border-blue-500 cursor-pointer [&>option]:text-slate-900 [&>option]:bg-white dark:[&>option]:text-white dark:[&>option]:bg-slate-800"
-                            >
-                              {roles.length === 0 ? (
-                                <option value="">No Roles Available</option>
-                              ) : (
-                                roles.map((r) => (
-                                  <option key={r.id} value={r.name}>
-                                    {r.name}
-                                  </option>
-                                ))
-                              )}
-                            </select>
-                            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                          </div>
+                      {/* Access Authorization Role */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1.5">
+                          Access Authorization Role
+                        </label>
+                        <div className="relative">
+                          <select
+                            value={formRole}
+                            onChange={(e) => setFormRole(e.target.value)}
+                            className="w-full appearance-none bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-white/[0.06] text-slate-900 dark:text-white rounded-xl px-4 py-2.5 pr-10 text-sm focus:outline-none focus:border-blue-500 cursor-pointer [&>option]:text-slate-900 [&>option]:bg-white dark:[&>option]:text-white dark:[&>option]:bg-slate-800"
+                          >
+                            {roles.length === 0 ? (
+                              <option value="">No Roles Available</option>
+                            ) : (
+                              roles.map((r) => (
+                                <option key={r.id} value={r.name}>
+                                  {r.name}
+                                </option>
+                              ))
+                            )}
+                          </select>
+                          <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                         </div>
                       </div>
 
@@ -2699,7 +2699,7 @@ export default function UsersPage() {
                           <button
                             type="button"
                             onClick={() =>
-                              handleTriggerPasswordReset(formEmail, formName)
+                              handleTriggerPasswordReset(formEmail, `${formFirstName} ${formLastName}`)
                             }
                             className="flex items-center justify-center gap-1.5 border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/[0.05] text-slate-700 dark:text-slate-300 py-2 px-3 rounded-xl text-xs font-bold select-none transition-all cursor-pointer"
                           >
@@ -2709,7 +2709,7 @@ export default function UsersPage() {
                           <button
                             type="button"
                             onClick={() =>
-                              handleResendInvitation(formEmail, formName)
+                              handleResendInvitation(formEmail, `${formFirstName} ${formLastName}`)
                             }
                             className="flex items-center justify-center gap-1.5 border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/[0.05] text-slate-700 dark:text-slate-300 py-2 px-3 rounded-xl text-xs font-bold select-none transition-all cursor-pointer"
                           >
