@@ -1,13 +1,13 @@
 {
   "name": "Activate AgentOS on Every Task",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "enabled": true,
-  "description": "Before any spec task begins, prints the activation header and runs a context scan.",
+  "description": "Before any spec task begins, runs a context scan and Phase 0 analysis.",
   "when": {
     "type": "preTaskExecution"
   },
   "then": {
     "type": "askAgent",
-    "prompt": "Before starting this task: 1) Print the AgentOS activation header. 2) Read `.agent/memory/project-overview.md` and `.agent/README.md`. 3) Run Phase 0 — read the relevant files, map dependencies, identify risks. 4) Classify severity. 5) If HIGH or CRITICAL — write an Architecture Decision block before writing any code. Proceed with implementation following `.agent/` standards."
+    "prompt": "Before starting this task:\n1) UNDERSTAND FIRST — read every file you intend to change. For each: identify its purpose, who calls it, what interface it exposes, and what breaks if it changes.\n2) Print activation header: active skills, severity classification, task type.\n3) Run Phase 0 — map dependencies, identify risks, list downstream consumers.\n4) Classify severity: LOW | MEDIUM | HIGH | CRITICAL.\n5) If HIGH or CRITICAL — write an Architecture Decision block before writing any code.\n6) Proceed with implementation following .kiro/steering/ standards."
   }
 }

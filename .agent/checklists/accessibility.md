@@ -1,3 +1,0 @@
-- [ ] Keyboard navigation
-- [ ] ARIA labels
-- [ ] Focus states

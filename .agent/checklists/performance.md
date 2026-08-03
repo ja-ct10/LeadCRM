@@ -1,4 +1,0 @@
-- [ ] Unnecessary re-renders
-- [ ] Bundle size
-- [ ] Lazy loading
-- [ ] Memoization

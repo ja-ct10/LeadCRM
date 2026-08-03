@@ -1,4 +1,0 @@
-- [ ] SOLID principles
-- [ ] DRY
-- [ ] KISS
-- [ ] YAGNI

@@ -1,3 +1,0 @@
-- [ ] Indexes
-- [ ] Relations
-- [ ] Nullable constraints

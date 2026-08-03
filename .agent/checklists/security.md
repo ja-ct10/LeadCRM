@@ -1,4 +1,0 @@
-- [ ] Input validation
-- [ ] Auth & Authorization
-- [ ] XSS/CSRF prevention
-- [ ] SQL injection prevention

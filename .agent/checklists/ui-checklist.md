@@ -1,5 +1,0 @@
-- [ ] WCAG compliance
-- [ ] Color contrast
-- [ ] Typography
-- [ ] Spacing consistency
-- [ ] Responsive layouts
