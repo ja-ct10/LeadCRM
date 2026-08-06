@@ -9,6 +9,10 @@ import router from './api/routes/index';
 
 const app = express();
 
+// ── Trust Render/proxy headers ────────────────────────
+// Required for rate limiting behind Render's load balancer
+app.set('trust proxy', 1);
+
 // ── Security Headers (must be first) ─────────────────
 app.use(helmet());
 app.use(helmet.hsts({ maxAge: 31536000, includeSubDomains: true }));
