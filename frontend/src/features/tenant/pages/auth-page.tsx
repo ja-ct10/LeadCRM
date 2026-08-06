@@ -1,8 +1,8 @@
 ﻿'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/store/AuthContext';
-import { ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { z } from 'zod';
@@ -22,6 +22,68 @@ const guestSchema = z.object({
   message: "Passwords don't match",
   path: ["confirmPassword"],
 });
+
+const RESEND_COOLDOWN = 30;
+
+interface ResendOtpButtonProps {
+  email: string;
+  password: string;
+  onResend: () => Promise<unknown>;
+}
+
+function ResendOtpButton({ email, password, onResend }: ResendOtpButtonProps): React.ReactElement {
+  const [countdown, setCountdown] = useState(RESEND_COOLDOWN);
+  const [isSending, setIsSending] = useState(false);
+  const [canResend, setCanResend] = useState(false);
+
+  useEffect(() => {
+    if (countdown <= 0) {
+      setCanResend(true);
+      return;
+    }
+    const timer = setTimeout(() => setCountdown((prev) => prev - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [countdown]);
+
+  const handleResend = useCallback(async () => {
+    if (!canResend || isSending) return;
+    setIsSending(true);
+    try {
+      await onResend();
+      toast.success(`New code sent to ${email}`);
+      setCountdown(RESEND_COOLDOWN);
+      setCanResend(false);
+    } catch {
+      toast.error('Failed to resend code. Please try again.');
+    } finally {
+      setIsSending(false);
+    }
+  }, [canResend, isSending, onResend, email]);
+
+  return (
+    <div className="flex items-center justify-center gap-1.5 text-sm">
+      <span className="text-slate-500 dark:text-slate-400">Didn&apos;t receive it?</span>
+      {canResend ? (
+        <button
+          type="button"
+          onClick={handleResend}
+          disabled={isSending}
+          className="flex items-center gap-1 text-[#0A6EFF] hover:text-blue-400 font-medium transition-colors disabled:opacity-50 cursor-pointer"
+        >
+          {isSending ? (
+            <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Sending...</>
+          ) : (
+            <><RefreshCw className="w-3.5 h-3.5" /> Resend code</>
+          )}
+        </button>
+      ) : (
+        <span className="text-slate-400 dark:text-slate-500 tabular-nums">
+          Resend in <span className="text-slate-600 dark:text-slate-300 font-semibold">{countdown}s</span>
+        </span>
+      )}
+    </div>
+  );
+}
 
 export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'register', onNavigate: (path: string) => void }) {
   const { login, verifyOtp, registerTenant, registerGuestAccount, requestPasswordReset, confirmPasswordReset } = useAuth();
@@ -423,6 +485,8 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
                     autoFocus
                   />
                 </div>
+                {/* Resend OTP */}
+                <ResendOtpButton email={email} password={password} onResend={async () => { await login(email, password); }} />
                 <button type="submit" className="w-full bg-[#0A6EFF] text-white rounded-lg py-2.5 font-medium hover:bg-blue-600 transition-colors mt-4 shadow-[0_0_15px_rgba(10,110,255,0.2)]">
                   Verify & Sign In
                 </button>
