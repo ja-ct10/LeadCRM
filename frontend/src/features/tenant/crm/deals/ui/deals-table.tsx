@@ -1,16 +1,19 @@
 'use client';
 
-import React from 'react';
-import { Briefcase } from 'lucide-react';
-import type { Deal } from '@/store/types';
+import React, { useState } from 'react';
+import { Briefcase, ChevronDown } from 'lucide-react';
+import type { Deal, Stage } from '@/store/types';
 import { DEAL_PRIORITY_COLORS } from '../constants/deal.constants';
+import { toast } from 'sonner';
 
 interface DealsTableProps {
   deals: Deal[];
   stageNameMap: Record<string, string>;
   stageProbabilityMap: Record<string, number>;
   pipelineNameMap: Record<string, string>;
+  pipelineStagesMap?: Record<string, Stage[]>;  // pipelineId → stages
   onRowClick: (deal: Deal) => void;
+  onStageChange?: (dealId: string, stageId: string) => Promise<void>;
 }
 
 function formatCurrency(value: number): string {
@@ -23,8 +26,9 @@ function formatDate(dateStr?: string): string {
 }
 
 export default function DealsTable({
-  deals, stageNameMap, stageProbabilityMap, pipelineNameMap, onRowClick,
+  deals, stageNameMap, stageProbabilityMap, pipelineNameMap, pipelineStagesMap, onRowClick, onStageChange,
 }: DealsTableProps) {
+  const [changingStageId, setChangingStageId] = useState<string | null>(null);
   if (deals.length === 0) {
     return (
       <div className="text-center py-16 text-slate-400 dark:text-slate-500">
@@ -83,11 +87,57 @@ export default function DealsTable({
                   {pipelineNameMap[deal.pipelineId] ?? '—'}
                 </td>
 
-                {/* 4. Stage Column */}
+                {/* 4. Stage Column — inline change control (UX-5) */}
                 <td className="py-3 pr-4 whitespace-nowrap">
-                  <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200/50 dark:border-blue-500/20">
-                    {stageNameMap[deal.stageId] ?? deal.stageId}
-                  </span>
+                  {onStageChange && pipelineStagesMap && pipelineStagesMap[deal.pipelineId] ? (
+                    <div className="relative inline-block">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setChangingStageId(changingStageId === deal.id ? null : deal.id); }}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200/50 dark:border-blue-500/20 hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors"
+                        aria-label={`Change stage for ${deal.title}`}
+                      >
+                        {stageNameMap[deal.stageId] ?? deal.stageId}
+                        <ChevronDown size={12} />
+                      </button>
+                      {changingStageId === deal.id && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setChangingStageId(null); }} />
+                          <div className="absolute z-50 top-full left-0 mt-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-white/[0.08] rounded-lg shadow-xl py-1 min-w-[160px] max-h-48 overflow-y-auto">
+                            {pipelineStagesMap[deal.pipelineId].map(stage => (
+                              <button
+                                key={stage.id}
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  if (stage.id === deal.stageId) { setChangingStageId(null); return; }
+                                  try {
+                                    await onStageChange(deal.id, stage.id);
+                                    toast.success(`Moved to "${stage.name}"`);
+                                  } catch (err: unknown) {
+                                    toast.error(err instanceof Error ? err.message : 'Failed to change stage');
+                                  }
+                                  setChangingStageId(null);
+                                }}
+                                className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                                  stage.id === deal.stageId
+                                    ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 font-semibold'
+                                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.04]'
+                                }`}
+                              >
+                                <span className="flex items-center gap-2">
+                                  {stage.color && <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: stage.color }} />}
+                                  {stage.name}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200/50 dark:border-blue-500/20">
+                      {stageNameMap[deal.stageId] ?? deal.stageId}
+                    </span>
+                  )}
                 </td>
 
                 {/* 5. Probability Column */}

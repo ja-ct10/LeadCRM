@@ -1,5 +1,12 @@
 ﻿import { Request, Response, NextFunction } from 'express';
 import * as service from './pipeline.service';
+import { PIPELINE_TEMPLATES } from './pipeline.templates';
+
+export async function getPipelineTemplates(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    res.json({ success: true, data: PIPELINE_TEMPLATES });
+  } catch (err) { next(err); }
+}
 
 export async function getPipelines(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -63,5 +70,11 @@ export async function deleteStage(req: Request, res: Response, next: NextFunctio
 export async function reorderStages(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     res.json({ success: true, data: await service.reorderStages(String(req.params.id), req.user!.tenantId, req.user!.userId, req.body) });
+  } catch (err) { next(err); }
+}
+
+export async function reorderDeals(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    res.json({ success: true, data: await service.reorderDeals(String(req.params.id), req.user!.tenantId, req.user!.userId, req.body) });
   } catch (err) { next(err); }
 }

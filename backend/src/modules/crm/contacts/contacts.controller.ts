@@ -62,3 +62,13 @@ export async function archiveContact(req: Request, res: Response, next: NextFunc
     next(err);
   }
 }
+
+export async function convertContact(req: Request, res: Response, next: NextFunction) {
+  try {
+    const id = String(req.params.id);
+    const result = await service.convertContact(id, req.user!.tenantId, req.user!.userId, req.body);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+}

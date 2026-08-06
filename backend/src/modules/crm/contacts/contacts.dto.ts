@@ -51,3 +51,19 @@ export const UpdateContactSchema = z.object({
 
 export type CreateContactDto = z.infer<typeof CreateContactSchema>;
 export type UpdateContactDto = z.infer<typeof UpdateContactSchema>;
+
+// ── Convert Contact (Lead → Contact + Account + optional Deal) ────────
+export const ConvertContactSchema = z.object({
+  organizationId:  z.string().min(1).optional(), // link to existing org
+  organizationName: z.string().min(1).optional(), // or create a new one
+  createDeal:      z.boolean().default(false),
+  dealTitle:       z.string().min(1).max(255).optional(),
+  dealValue:       z.number().positive().optional(),
+  dealPipelineId:  z.string().min(1).optional(),
+  dealPriority:    z.enum(['LOW', 'MEDIUM', 'HIGH']).default('MEDIUM'),
+}).refine(
+  (data) => data.organizationId || data.organizationName,
+  { message: 'Either organizationId or organizationName is required', path: ['organizationId'] },
+);
+
+export type ConvertContactDto = z.infer<typeof ConvertContactSchema>;

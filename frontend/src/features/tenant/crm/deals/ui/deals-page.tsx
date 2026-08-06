@@ -88,7 +88,11 @@ export default function DealsPage() {
           stageNameMap={stageNameMap}
           stageProbabilityMap={stageProbabilityMap}
           pipelineNameMap={pipelineNameMap}
+          pipelineStagesMap={Object.fromEntries(pipelines.map(p => [p.id, p.stages]))}
           onRowClick={setSelectedDeal}
+          onStageChange={async (dealId, stageId) => {
+            await moveDealStage(dealId, stageId);
+          }}
         />
       </div>
 

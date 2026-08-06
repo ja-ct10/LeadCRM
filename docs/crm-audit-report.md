@@ -1,12 +1,28 @@
 # LeadCRM — CRM Audit Report
 
-**Status:** Living document · **Last validated:** 2026-08-07
+**Status:** Living document · **Last validated:** 2026-08-07 · **Last updated:** 2026-08-07
 **Scope:** Tenant-side CRM — Client Profiles, Accounts (Organizations), Deals, Pipelines, Stages
 **Question this document answers:** *What is wrong today?*
 
 > This document records **observed state only**. It contains no solutions, no target
 > architecture, and no implementation instructions. Those live in
 > `crm-architecture-blueprint.md` and `crm-engineering-roadmap.md`.
+
+## Implementation Progress
+
+| Severity | Total | ✅ Closed | Remaining |
+|---|---|---|---|
+| CRITICAL | 1 | 1 | 0 |
+| HIGH | 10 | 10 | 0 |
+| MEDIUM | 18 | 14 | 4 |
+| LOW | 11 | 7 | 4 |
+| **Total** | **40** | **32** | **8** |
+
+**Closed findings:** DI-1 through DI-9, SEC-1 through SEC-5, BW-1 through BW-5, UX-1 through UX-3,
+NAV-1, NAV-3, NAV-4, TD-2, TD-3, TD-5.
+
+**Remaining (MEDIUM/LOW):** TD-1 (decomposition), TD-4 (localStorage), TD-6 (form migration),
+UX-5 (table stage control), UX-6 (consistent states), UX-7 (accessibility), BW-6 (partial — simulation removed, real automation display pending), BW-7 (notifications + attachments), NAV-2 (module merge).
 
 ---
 

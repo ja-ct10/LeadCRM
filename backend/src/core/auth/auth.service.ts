@@ -208,11 +208,11 @@ export async function registerGuest(dto: GuestRegisterDto) {
         isDefault: true,
         stages: {
           create: [
-            { name: 'Lead', order: 1, isDefault: true },
-            { name: 'Contacted', order: 2 },
-            { name: 'Qualified', order: 3 },
-            { name: 'Won', order: 4, isWon: true },
-            { name: 'Lost', order: 5, isLost: true },
+            { name: 'Lead', order: 1, isDefault: true, tenantId: tenant.id },
+            { name: 'Contacted', order: 2, tenantId: tenant.id },
+            { name: 'Qualified', order: 3, tenantId: tenant.id },
+            { name: 'Won', order: 4, isWon: true, tenantId: tenant.id },
+            { name: 'Lost', order: 5, isLost: true, tenantId: tenant.id },
           ]
         }
       }

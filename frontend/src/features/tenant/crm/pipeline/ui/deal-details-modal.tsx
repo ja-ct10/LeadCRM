@@ -98,7 +98,7 @@ function buildEditFields(deal: Deal): EditFields {
     productInterests: deal.productInterests ? deal.productInterests.join(', ') : '',
     campaign: deal.campaign || '',
     customerType: deal.customerType || 'New Customer',
-    tags: deal.tags || '',
+    tags: Array.isArray(deal.tags) ? deal.tags.join(', ') : '',
   };
 }
 
@@ -175,10 +175,11 @@ export function DealDetailsModal({
     // Destructure stageId out — the edit form has no stage selector, so spreading
     // it would send the current (possibly stale or mock) stageId to the backend.
     // Stage changes must go through moveDealStage exclusively.
-    const { stageId: _stageId, ...editableFields } = editFields;
+    const { stageId: _stageId, tags: tagsStr, ...editableFields } = editFields;
     onUpdateDeal(deal.id, {
       ...editableFields,
       productInterests: editFields.productInterests ? editFields.productInterests.split(',').map(s => s.trim()).filter(Boolean) : [],
+      tags: tagsStr ? tagsStr.split(',').map(s => s.trim()).filter(Boolean) : [],
       priority: editFields.priority as Deal['priority'],
     });
     setIsEditing(false);
@@ -501,12 +502,12 @@ export function DealDetailsModal({
                         <span className="text-slate-900 dark:text-white font-medium text-right max-w-[55%] truncate">{row.value}</span>
                       </div>
                     ))}
-                    {deal.tags && (
+                    {deal.tags && deal.tags.length > 0 && (
                       <div className="flex flex-col gap-1.5 pt-2 border-t border-slate-100 dark:border-white/[0.03]">
                         <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Tags</span>
                         <div className="flex flex-wrap gap-1">
-                          {deal.tags.split(',').map(t => t.trim() && (
-                            <span key={t} className="bg-slate-100 dark:bg-white/[0.05] text-slate-600 dark:text-slate-400 text-[10px] font-bold px-2 py-0.5 rounded-md">{t.trim()}</span>
+                          {deal.tags.filter(Boolean).map(t => (
+                            <span key={t} className="bg-slate-100 dark:bg-white/[0.05] text-slate-600 dark:text-slate-400 text-[10px] font-bold px-2 py-0.5 rounded-md">{t}</span>
                           ))}
                         </div>
                       </div>

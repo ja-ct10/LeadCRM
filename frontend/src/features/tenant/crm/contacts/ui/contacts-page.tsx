@@ -69,18 +69,18 @@ export default function ContactsPage() {
         if (smartView === "Customers" && l.status !== "Closed") return false;
         if (
           smartView === "Individual Customers" &&
-          l.customerType !== "Individual"
+          l.recordType !== "Individual"
         )
           return false;
         if (
           smartView === "Organization Customers" &&
-          l.customerType !== "Organization"
+          l.recordType !== "Organization"
         )
           return false;
 
         // CustomerType category filter
         const type =
-          l.customerType ||
+          l.recordType ||
           (l.organizationId || l.companyName ? "Organization" : "Individual");
         if (customerTypeFilter !== "All" && type !== customerTypeFilter)
           return false;
@@ -189,7 +189,7 @@ export default function ContactsPage() {
       tenantId: org.tenantId,
       companyName: org.name,
       contactPerson: org.name,
-      customerType: "Organization",
+      recordType: "Organization",
       status: "Active",
       organizationId: org.id,
       industry: org.industry,
@@ -217,7 +217,7 @@ export default function ContactsPage() {
           "id" | "tenantId" | "createdAt" | "score"
         > = {
           ...data,
-          customerType: data.customerType || "Individual",
+          recordType: data.recordType || "Individual",
           companyName: data.companyName || "",
           contactPerson: contactPerson || "Unnamed Lead",
           jobTitle: data.jobTitle || "",
@@ -276,7 +276,7 @@ export default function ContactsPage() {
     return (
       <UnifiedDetailView
         type={
-          viewingLead.customerType === "Organization"
+          viewingLead.recordType === "Organization"
             ? "organization"
             : "individual"
         }
@@ -361,7 +361,7 @@ export default function ContactsPage() {
         <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
           <span className="text-slate-500 dark:text-slate-400 font-medium">Individuals</span>
           <div className="flex items-baseline gap-1 mt-1">
-            <span className="text-base font-bold text-slate-900 dark:text-white">{contacts.filter(c => (c.customerType === 'Individual' || (!c.customerType && !c.companyName)) && !c.isArchived).length}</span>
+            <span className="text-base font-bold text-slate-900 dark:text-white">{contacts.filter(c => (c.recordType === 'Individual' || (!c.recordType && !c.companyName)) && !c.isArchived).length}</span>
             <span className="text-[11px] text-slate-500">accounts</span>
           </div>
         </div>
@@ -369,7 +369,7 @@ export default function ContactsPage() {
         <div className="flex flex-col justify-between">
           <span className="text-slate-500 dark:text-slate-400 font-medium">Organizations</span>
           <div className="flex items-baseline gap-1.5 mt-1">
-            <span className="text-base font-bold text-purple-600 dark:text-purple-400">{contacts.filter(c => (c.customerType === 'Organization' || c.companyName) && !c.isArchived).length}</span>
+            <span className="text-base font-bold text-purple-600 dark:text-purple-400">{contacts.filter(c => (c.recordType === 'Organization' || c.companyName) && !c.isArchived).length}</span>
             <span className="text-[11px] text-slate-500">corporate</span>
           </div>
         </div>

@@ -83,3 +83,16 @@ export async function reorderStages(pipelineId: string, tenantId: string, stageI
 
   return findPipelineById(pipelineId, tenantId);
 }
+
+export async function reorderDeals(pipelineId: string, tenantId: string, dealIds: string[]) {
+  const pipeline = await prisma.pipeline.findFirst({ where: { id: pipelineId, tenantId } });
+  if (!pipeline) return null;
+
+  await prisma.$transaction(
+    dealIds.map((dealId, index) =>
+      prisma.deal.update({ where: { id: dealId }, data: { order: index } }),
+    ),
+  );
+
+  return { reordered: dealIds.length };
+}

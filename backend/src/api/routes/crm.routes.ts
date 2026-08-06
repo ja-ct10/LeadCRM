@@ -11,12 +11,12 @@ import * as dealController     from '../../modules/crm/deals/deals.controller';
 import * as pipelineController from '../../modules/crm/pipeline/pipeline.controller';
 
 // Schemas
-import { CreateContactSchema, UpdateContactSchema }   from '../../modules/crm/contacts/contacts.dto';
+import { CreateContactSchema, UpdateContactSchema, ConvertContactSchema }   from '../../modules/crm/contacts/contacts.dto';
 import { CreateCompanySchema, UpdateCompanySchema }   from '../../modules/crm/companies/companies.dto';
 import { CreateDealSchema, UpdateDealSchema, MoveDealStageSchema } from '../../modules/crm/deals/deals.dto';
 import {
   CreatePipelineSchema, UpdatePipelineSchema,
-  CreateStageSchema, UpdateStageSchema, ReorderStagesSchema,
+  CreateStageSchema, UpdateStageSchema, ReorderStagesSchema, ReorderDealsSchema,
 } from '../../modules/crm/pipeline/pipeline.dto';
 
 const router = Router();
@@ -31,13 +31,15 @@ router.get(    '/contacts/:id',        authorize('contacts.view'),   contactCont
 router.post(   '/contacts',            authorize('contacts.create'), validate(CreateContactSchema), contactController.createContact);
 router.put(    '/contacts/:id',        authorize('contacts.edit'),   validate(UpdateContactSchema), contactController.updateContact);
 router.patch(  '/contacts/:id/archive',authorize('contacts.delete'), contactController.archiveContact);
+router.post(   '/contacts/:id/convert',authorize('contacts.edit'),   validate(ConvertContactSchema), contactController.convertContact);
 
-// ── Companies (Organizations) ─────────────────────────
-router.get(    '/companies',            authorize('contacts.view'),   companyController.getCompanies);
-router.get(    '/companies/:id',        authorize('contacts.view'),   companyController.getCompanyById);
-router.post(   '/companies',            authorize('contacts.create'), validate(CreateCompanySchema), companyController.createCompany);
-router.put(    '/companies/:id',        authorize('contacts.edit'),   validate(UpdateCompanySchema), companyController.updateCompany);
-router.patch(  '/companies/:id/archive',authorize('contacts.delete'), companyController.archiveCompany);
+// ── Companies (Organizations → Accounts) ─────────────────────
+// SEC-3 fix: accounts now have their own permission surface instead of borrowing contacts.*
+router.get(    '/companies',            authorize('accounts.view'),   companyController.getCompanies);
+router.get(    '/companies/:id',        authorize('accounts.view'),   companyController.getCompanyById);
+router.post(   '/companies',            authorize('accounts.create'), validate(CreateCompanySchema), companyController.createCompany);
+router.put(    '/companies/:id',        authorize('accounts.edit'),   validate(UpdateCompanySchema), companyController.updateCompany);
+router.patch(  '/companies/:id/archive',authorize('accounts.delete'), companyController.archiveCompany);
 
 // ── Deals ─────────────────────────────────────────────
 router.get(    '/deals',               authorize('deals.view'),   dealController.getDeals);
@@ -48,6 +50,7 @@ router.patch(  '/deals/:id/stage',     authorize('deals.edit'),   validate(MoveD
 router.patch(  '/deals/:id/archive',   authorize('deals.delete'), dealController.archiveDeal);
 
 // ── Pipelines ─────────────────────────────────────────
+router.get(    '/pipeline-templates',        authorize('deals.view'),    pipelineController.getPipelineTemplates);
 router.get(    '/pipelines',                 authorize('deals.view'),    pipelineController.getPipelines);
 router.get(    '/pipelines/:id',             authorize('deals.view'),    pipelineController.getPipelineById);
 router.post(   '/pipelines',                 authorize('deals.create'),  validate(CreatePipelineSchema), pipelineController.createPipeline);
@@ -60,6 +63,7 @@ router.post(   '/stages',                    authorize('deals.create'),  validat
 router.put(    '/stages/:id',                authorize('deals.edit'),    validate(UpdateStageSchema),    pipelineController.updateStage);
 router.delete( '/stages/:id',                authorize('deals.delete'),  pipelineController.deleteStage);
 router.patch(  '/pipelines/:id/stages/reorder', authorize('deals.edit'), validate(ReorderStagesSchema),  pipelineController.reorderStages);
+router.patch(  '/pipelines/:id/deals/reorder',  authorize('deals.edit'), validate(ReorderDealsSchema),   pipelineController.reorderDeals);
 
 // ── Activities ─────────────────────────────────────────
 import * as activityController from '../../modules/crm/activities/activities.controller';

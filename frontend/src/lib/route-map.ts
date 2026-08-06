@@ -6,8 +6,12 @@
 export const PATHNAME_TO_PATH: Record<string, string> = {
   '/dashboard':                    'dashboard',
   '/crm/contacts':                 'contacts',
+  '/crm/leads':                    'leads',
   '/crm/customers':                'customers',
-  '/crm/pipeline':                 'pipeline',
+  '/crm/accounts':                 'accounts',
+  '/crm/companies':                'accounts',  // legacy redirect — same module
+  '/crm/deals':                    'deals',
+  '/crm/pipeline':                 'pipeline',  // legacy — redirects to deals board view
   '/automation/workflows':         'workflows',
   '/marketing/campaigns':          'campaigns',
   '/reporting':                    'reports',
@@ -30,6 +34,33 @@ export const PATHNAME_TO_PATH: Record<string, string> = {
   '/admin/environments':           'admin-environments',
 };
 
-export const PATH_TO_PATHNAME: Record<string, string> = Object.fromEntries(
-  Object.entries(PATHNAME_TO_PATH).map(([k, v]) => [v, k])
-);
+// Reverse map — canonical pathname for each path (first match wins)
+export const PATH_TO_PATHNAME: Record<string, string> = {
+  'dashboard':           '/dashboard',
+  'contacts':            '/crm/contacts',
+  'leads':               '/crm/leads',
+  'customers':           '/crm/customers',
+  'accounts':            '/crm/accounts',
+  'deals':               '/crm/deals',
+  'pipeline':            '/crm/pipeline',
+  'workflows':           '/automation/workflows',
+  'campaigns':           '/marketing/campaigns',
+  'reports':             '/reporting',
+  'users':               '/administration/users',
+  'settings':            '/settings',
+  'account-details':     '/settings/account',
+  'profile-settings':    '/settings/profile',
+  'service-orders':      '/operations/service-orders',
+  'technician-jobs':     '/operations/tasks',
+  'assets':              '/operations/assets',
+  'inventory':           '/operations/inventory',
+  'billing':             '/billing',
+  'client-billing':      '/billing/client',
+  'audit-log':           '/administration/audit',
+  'tasks':               '/operations/taskboard',
+  'admin-dashboard':     '/admin/dashboard',
+  'admin-clients':       '/admin/clients',
+  'admin-pricing':       '/admin/pricing',
+  'admin-billing':       '/admin/billing',
+  'admin-environments':  '/admin/environments',
+};

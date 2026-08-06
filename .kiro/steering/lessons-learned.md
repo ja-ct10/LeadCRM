@@ -240,7 +240,8 @@ Seeder fields like `probability`, `contactIds`, `createdById`, `entity`, `detail
 ### Duplicate Email Accounts Across Tenants Break findFirst Login
 `loginUser` uses `prisma.user.findFirst({ where: { email } })` — if the same email exists in multiple tenants (e.g. registered twice), it picks whichever row was inserted first. The picked row may have a different password hash. Fix: always query with both `email` AND `tenantId`, or enforce global email uniqueness. For password resets, same issue applies.
 
-### Prisma Enum Values Are UPPER_SNAKE_CASE
+### Prisma Nested Create Requires tenantId on Child When Child Has Its Own Tenant Relation
+When a child model (e.g. `Stage`) gains its own `tenantId` + `@relation(fields: [tenantId], references: [id])`, all nested `stages: { create: [...] }` calls through the parent must include `tenantId` on each child object. Prisma's `UncheckedCreateWithout*Input` type enforces this at compile time. The IDE TS server may show stale errors after `prisma generate` — restart it with "TypeScript: Restart TS Server". The CLI `npx tsc --noEmit` is authoritative.
 Prisma enums must match the schema exactly. `CampaignType` uses `EMAIL` not `'Email'`, `CampaignStatus` uses `ACTIVE/DRAFT/COMPLETED` not `'Active'`. TypeScript will catch this at compile time — always check the enum definition in `schema.prisma` or `node_modules/.prisma/client/index.d.ts` before seeding.
 
 ### Activity Has No relatedToType/relatedToId Fields
@@ -252,6 +253,9 @@ The field is `assignedTechnicianId` (references `User.id`). Also: `scheduledDate
 ### Contact.customerType — FE Type and Prisma Column Disagree (corrected 2026-08-07)
 **Superseded guidance.** An earlier version of this entry said to filter customers on
 `Contact.status === 'Closed'`. That is wrong and is tracked as audit finding **BW-2**.
+
+### Separating Record Kind from Customer Standing Cascades Widely
+Changing `customerType` from `'Individual' | 'Organization'` to `'Prospect' | 'Active Customer' | ...` touched 48 callsites across 5 files because the old union was used for conditional field visibility throughout the contact form and table. The fix is adding a new `recordType` field and migrating all "is this an Individual or Organization?" checks to it. When splitting an overloaded field, grep the entire frontend for both the old field name AND its literal values before changing the type — the blast radius is always larger than expected.
 
 The actual state: `Contact.customerType` in `schema.prisma` is
 `String @default("Prospect")` documented as `Prospect | Active Customer | Inactive Customer | Former Customer`
@@ -311,6 +315,9 @@ found" and `Get-ChildItem` confirmed it is gone. The search index served a cache
 When a file edit fails with "not found" despite search hits, confirm with
 `Get-ChildItem` before assuming a path error.
 
+### Use `prisma migrate deploy` for Pre-Written Migrations
+`prisma migrate dev` detects schema drift against the DB and prompts to create a NEW migration — even when you already have hand-written migration files on disk. It's designed for authoring migrations interactively. For applying existing migration files (like our 4 CRM migrations), always use `prisma migrate deploy` which applies pending migrations in order without drift checks or name prompts. Also: if `migrate dev` encounters a previously failed migration, resolve it first with `prisma migrate resolve --rolled-back "<migration_name>"` then delete the bad folder.
+
 ### Sequence CRM Work: Governed Write Paths Before Any Analytics Feature
 Fixing DI-1 (board writes through the governed stage-change path) retroactively activates
 stage history, velocity analytics, the deal timeline, workflow triggers, and forecast
@@ -358,6 +365,9 @@ onUpdateDeal(deal.id, { ...editableFields });
 
 ### DragOver Must Not Call the Backend
 `onDragOver` fires on every pixel of cursor movement during a drag. Calling `updateDeal` inside it creates an API call storm and causes race conditions. All persistence must happen exclusively in `onDragEnd`. Use `onDragOver` only for local visual state (drag overlay, column highlighting).
+
+### "Dead Code" That Is Actually Imported — Verify Before Deleting
+`crm-layout.tsx` was reported as dead code (nothing imports its *nav array*), but the file itself was imported by `app/(tenant)/layout.tsx` as the layout shell. Deleting it broke the build immediately. The lesson: "unused nav array inside a file" ≠ "unused file". Always run `tsc --noEmit` or grep for the file path before deleting, even when an audit says it's dead. The file's *internal* duplication was the defect — the file itself had a live consumer.
 
 ### The Real "Invalid cuid" Source — Deal ID Itself, Not the Payload
 After multiple rounds of patching payload fields, the error persisted because the **deal `id` in the URL** was the invalid value — not any field in the request body. Seeded records with IDs like `rey-deal-1` exist in Postgres but Prisma's `findFirst({ where: { id } })` validates the ID format before querying, throwing "Invalid cuid" even for a simple lookup. Patching the frontend adapter never helps when the root is a bad primary key in the database. Always check the request URL in the network tab first — the path param is validated too.

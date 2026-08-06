@@ -57,6 +57,18 @@ enum ContactStatus {
   CLOSED
 }
 
+// System-owned lifecycle position — never manually editable via status controls.
+// REQ131: ContactStatus (above) is human-owned and never changed by automation.
+// This enum is the system-owned complement.
+enum ContactLifecycleStage {
+  LEAD            // captured, not yet qualified
+  QUALIFIED       // qualified, ready for opportunity
+  CONTACT         // known person, active relationship
+  CUSTOMER        // has at least one won deal
+  CHURNED         // former customer, no active deals
+  DISQUALIFIED    // dead — will not proceed
+}
+
 enum Priority {
   LOW
   MEDIUM
@@ -507,6 +519,8 @@ model Contact {
   jobTitle        String?
   linkedinUrl     String?
   status          ContactStatus @default(WARM)
+  lifecycleStage  ContactLifecycleStage @default(LEAD) // system-owned — changed by conversion, won-deal handoff, explicit disqualify
+  recordType      String?       // "Individual" | "Organization" — drives conditional field visibility (REQ134)
   score           Int           @default(75)
   source          String?
   notes           String?
@@ -517,6 +531,8 @@ model Contact {
   address         String?
   lastContactedAt DateTime?
   convertedAt     DateTime?
+  qualifiedAt     DateTime?     // timestamp when lifecycle moved to QUALIFIED
+  disqualifiedReason String?    // required when lifecycle is set to DISQUALIFIED
   doNotContact    Boolean       @default(false)
   isArchived      Boolean       @default(false)
   archiveReason   String?
@@ -541,6 +557,7 @@ model Contact {
   deals Deal[]
 
   @@index([tenantId, status])
+  @@index([tenantId, lifecycleStage])
   @@index([tenantId, assignedUserId])
   @@index([tenantId, createdAt])
   @@index([tenantId, isArchived])
@@ -551,15 +568,16 @@ model Contact {
 // PIPELINE & STAGE
 // ─────────────────────────────────────────────
 model Pipeline {
-  id         String   @id @default(uuid())
-  tenantId   String
-  name       String
-  type       String?  // e.g. "Sales" | "Service" | "Onboarding"
-  isDefault  Boolean  @default(false)
-  currency   String?  @default("PHP")
-  isArchived Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  type        String?  // e.g. "Sales" | "Service" | "Onboarding"
+  templateKey String?  // identifies seeded templates for upgrades (e.g. "sales-inquiries")
+  isDefault   Boolean  @default(false)
+  currency    String?  @default("PHP")
+  isArchived  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   tenant Tenant  @relation(fields: [tenantId], references: [id])
   stages Stage[]
@@ -569,18 +587,20 @@ model Pipeline {
 }
 
 model Stage {
-  id          String   @id @default(uuid())
-  pipelineId  String
-  tenantId    String   // defence-in-depth: derived from Pipeline.tenantId at creation, never independently editable
-  name        String
-  order       Int
-  probability Int?     // 0-100 for revenue forecasting
-  color       String?  // hex e.g. "#3fb950"
-  description String?
-  isWon       Boolean  @default(false) // terminal: deal won
-  isLost      Boolean  @default(false) // terminal: deal lost
-  isDefault   Boolean  @default(false) // starting stage for new deals
-  createdAt   DateTime @default(now())
+  id              String   @id @default(uuid())
+  pipelineId      String
+  tenantId        String   // defence-in-depth: derived from Pipeline.tenantId at creation, never independently editable
+  name            String
+  order           Int
+  probability     Int?     // 0-100 for revenue forecasting
+  color           String?  // hex e.g. "#3fb950"
+  description     String?
+  isWon           Boolean  @default(false) // terminal: deal won
+  isLost          Boolean  @default(false) // terminal: deal lost
+  isDefault       Boolean  @default(false) // starting stage for new deals
+  requiredFields  String[] // Deal fields required before entry (REQ089) e.g. ["organizationId", "value"]
+  rottenAfterDays Int?     // days after which a deal in this stage is flagged stale
+  createdAt       DateTime @default(now())
 
   pipeline               Pipeline           @relation(fields: [pipelineId], references: [id])
   tenant                 Tenant             @relation(fields: [tenantId], references: [id])
@@ -616,7 +636,7 @@ model Deal {
   industry          String?
   productInterests  String[]
   address           String?
-  tags              String?
+  tags              String[]  // normalized to array — consistent with Contact.tags and Organization.tags
   order             Int       @default(0)
   isArchived        Boolean   @default(false)
   archiveReason     String?

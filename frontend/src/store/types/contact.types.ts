@@ -41,6 +41,8 @@ export interface Contact {
   expectedCloseDate: string;
   notes: string;
   status: 'Hot' | 'Warm' | 'Cold' | 'Cancelled' | 'Closed';
+  lifecycleStage?: 'LEAD' | 'QUALIFIED' | 'CONTACT' | 'CUSTOMER' | 'CHURNED' | 'DISQUALIFIED';
+  recordType?: 'Individual' | 'Organization';
   score: number;
   createdAt: string;
   isArchived?: boolean;
@@ -48,9 +50,11 @@ export interface Contact {
   archivedBy?: string;
   archiveReason?: string;
   type?: 'Individual' | 'Organization';
-  customerType?: 'Individual' | 'Organization';
+  customerType?: 'Prospect' | 'Active Customer' | 'Inactive Customer' | 'Former Customer';
   customerSince?: string;
   activeProducts?: string[];
+  qualifiedAt?: string;
+  disqualifiedReason?: string;
   callStatus?: string;
   updateStatus?: string;
   contactNumbers?: { id: string; type: 'Telephone' | 'Mobile'; countryCode?: string; number: string; notes?: string }[];

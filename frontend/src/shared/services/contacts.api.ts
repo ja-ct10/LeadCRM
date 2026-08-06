@@ -47,4 +47,15 @@ export const contactsApi = {
 
   archive: (id: string) =>
     apiClient.patch<{ success: boolean }>(`/crm/contacts/${id}/archive`),
+
+  convert: (id: string, data: {
+    organizationId?: string;
+    organizationName?: string;
+    createDeal?: boolean;
+    dealTitle?: string;
+    dealValue?: number;
+    dealPipelineId?: string;
+    dealPriority?: 'LOW' | 'MEDIUM' | 'HIGH';
+  }) =>
+    apiClient.post<{ success: boolean; data: { contact: Contact; organization: unknown; deal: unknown } }>(`/crm/contacts/${id}/convert`, data),
 };

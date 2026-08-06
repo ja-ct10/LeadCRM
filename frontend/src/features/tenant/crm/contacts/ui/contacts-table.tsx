@@ -232,7 +232,7 @@ export function ClientTable({ data, viewMode, onEdit, onView, organizations, onE
                   {new Date(contact.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric'})}
                 </td>
                 <td className="px-4 py-3 cursor-pointer" onClick={() => onView(contact)}>
-                  {contact.customerType === 'Organization' ? (
+                  {contact.recordType === 'Organization' ? (
                     <div className="flex flex-col gap-0.5">
                       <span className="text-sm font-medium text-slate-800 dark:text-slate-200">{contact.companyName || '-'}</span>
                       {(contact.businessType || contact.orgWebsite) && (

@@ -1,7 +1,7 @@
 ﻿import * as repo from './pipeline.repository';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { NotFoundError, ValidationError } from '../../../shared/errors/http-error';
-import { CreatePipelineDto, UpdatePipelineDto, CreateStageDto, UpdateStageDto, ReorderStagesDto } from './pipeline.dto';
+import { CreatePipelineDto, UpdatePipelineDto, CreateStageDto, UpdateStageDto, ReorderStagesDto, ReorderDealsDto } from './pipeline.dto';
 
 export async function getPipelines(tenantId: string) {
   return repo.findAllPipelines(tenantId);
@@ -72,4 +72,10 @@ export async function reorderStages(pipelineId: string, tenantId: string, userId
   if (!pipeline) throw new NotFoundError('Pipeline');
   await writeAuditLog({ tenantId, userId, action: 'stages.reordered', entityType: 'Pipeline', entityId: pipelineId, after: { stageIds: dto.stageIds } });
   return pipeline;
+}
+
+export async function reorderDeals(pipelineId: string, tenantId: string, userId: string, dto: ReorderDealsDto) {
+  const result = await repo.reorderDeals(pipelineId, tenantId, dto.dealIds);
+  if (!result) throw new NotFoundError('Pipeline');
+  return result;
 }

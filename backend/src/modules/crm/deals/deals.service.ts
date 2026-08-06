@@ -67,6 +67,25 @@ export async function moveDealStage(id: string, tenantId: string, userId: string
     throw new ValidationError('Lost reason is required when closing a deal as lost');
   }
 
+  // BW-5 / REQ089: Enforce stage entry requirements before allowing transition
+  if (newStage.requiredFields && newStage.requiredFields.length > 0) {
+    const deal = await prisma.deal.findFirst({ where: { id, tenantId } });
+    if (!deal) throw new NotFoundError('Deal');
+
+    const missingFields: string[] = [];
+    for (const field of newStage.requiredFields) {
+      const value = (deal as Record<string, unknown>)[field];
+      if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) {
+        missingFields.push(field);
+      }
+    }
+    if (missingFields.length > 0) {
+      throw new ValidationError(
+        `Cannot advance to "${newStage.name}": missing required fields — ${missingFields.join(', ')}`
+      );
+    }
+  }
+
   const result = await repo.moveDealStage(id, tenantId, dto.stageId, userId, dto.note, dto.handoff);
   if (!result) throw new NotFoundError('Deal');
 

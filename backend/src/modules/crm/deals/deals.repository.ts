@@ -159,7 +159,7 @@ export async function moveDealStage(
         });
       }
 
-      // Update Contacts
+      // Update Contacts — set customerType AND lifecycleStage
       if (deal.contactDeals.length > 0) {
         for (const cd of deal.contactDeals) {
           const contact = await tx.contact.findUnique({ where: { id: cd.contactId } });
@@ -169,6 +169,7 @@ export async function moveDealStage(
               where: { id: cd.contactId },
               data: {
                 customerType: 'Active Customer',
+                lifecycleStage: 'CUSTOMER',
                 customerSince: contact.customerSince || now,
                 activeProducts: updatedContactProducts,
               },

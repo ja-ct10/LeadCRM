@@ -14,8 +14,12 @@ export interface Stage {
   name: string;
   order: number;
   probability?: number; // 0–100, used for weighted revenue forecast
+  color?: string;       // hex e.g. "#3fb950" — rendered on board columns
   isWon?: boolean;
   isLost?: boolean;
+  isDefault?: boolean;
+  requiredFields?: string[];  // deal fields required before entry (REQ089)
+  rottenAfterDays?: number;   // days before a deal in this stage is flagged stale
 }
 
 export interface Pipeline {
@@ -54,7 +58,7 @@ export interface Deal {
   productInterests?: string[];
   campaign?: string;
   customerType?: 'New Business' | 'Existing Customer' | string;
-  tags?: string;
+  tags?: string[];
   isArchived?: boolean;
   archivedAt?: string;
   archivedBy?: string;

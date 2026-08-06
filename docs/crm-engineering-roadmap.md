@@ -116,7 +116,7 @@ two superseded documents as archival. No code.
 - [ ] **Product sign-off on AD-4** (does the five-stage ceiling include won/lost?)
 - [ ] Roadmap reviewed for consistency against the existing architecture
 
-**Complexity.** S · **Status.** Documents complete; two sign-offs open.
+**Complexity.** S · **Status.** ✅ Complete — documents delivered, superseded notices applied.
 
 ---
 

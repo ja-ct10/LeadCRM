@@ -253,11 +253,16 @@ const DroppableStage = ({ stage, children, stageValue, count, isDraggingAny, isA
       }`}
     >
       <div className="p-4 flex justify-between items-start">
-        <div>
-          <h3 className="font-semibold text-slate-900 dark:text-white text-base group-hover:text-blue-400 transition-colors">{stage.name}</h3>
-          {stageValue > 0 && (
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">${stageValue.toLocaleString()}</p>
+        <div className="flex items-center gap-2">
+          {stage.color && (
+            <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: stage.color }} aria-hidden="true" />
           )}
+          <div>
+            <h3 className="font-semibold text-slate-900 dark:text-white text-base group-hover:text-blue-400 transition-colors">{stage.name}</h3>
+            {stageValue > 0 && (
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">₱{stageValue.toLocaleString()}</p>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-1.5">
           {isAutomatedOnly && (
@@ -482,54 +487,9 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
     localStorage.setItem('is_automated_pipeline_only', String(newValue));
   };
 
-  const handleTriggerStageAutomation = (targetStage: any) => {
-    if (!selectedDeal) return;
-    setIsTransitioning(true);
-    
-    let sequences: string[] = ['Initiating sales automations...'];
-    if (selectedDeal.stageId === 'stage_1' || selectedDeal.stageId.endsWith('_1')) {
-      sequences = ['Scanning contact qualification flags...', 'Verifying prospect contact data...', 'Running corporate credit check...', 'Contact is Verified & Pre-Qualified!'];
-    } else if (selectedDeal.stageId === 'stage_2' || selectedDeal.stageId.endsWith('_2')) {
-      sequences = ['Structuring quote parameters...', 'Generating professional proposal PDF...', 'Routing proposal to buyer contact...', 'Proposal Dispatched with Quote!'];
-    } else if (selectedDeal.stageId === 'stage_3' || selectedDeal.stageId.endsWith('_3')) {
-      sequences = ['Drafting mutual agreements...', 'Performing compliance reviews...', 'Validating electronic signature anchors...', 'Mutual Contract Finalized!'];
-    } else if (selectedDeal.stageId === 'stage_4' || selectedDeal.stageId.endsWith('_4')) {
-      sequences = ['Processing final billing terms...', 'Confirming transaction deposit receipt...', 'Creating active product subscription...', 'Onboarding Workflows Instantiated!'];
-    } else {
-      sequences = ['Connecting sales integration hooks...', 'Checking stage business logic...', 'Advancing Deal Stage...'];
-    }
-
-    let i = 0;
-    setAutomationStatus(sequences[0]);
-    const interval = setInterval(() => {
-      i++;
-      if (i < sequences.length) {
-        setAutomationStatus(sequences[i]);
-      } else {
-        clearInterval(interval);
-        
-        // Finalize transaction
-        const oldStageName = activePipeline?.stages.find(s => s.id === selectedDeal.stageId)?.name || 'Previous';
-        const automationNote = {
-          id: uuid(),
-          type: 'note' as const,
-          description: `?? AUTOMATION TRIGGER: Stage advanced automatically from "${oldStageName}" to "${targetStage.name}" after satisfying all digital workflows.`,
-          timestamp: new Date().toISOString(),
-          userId: 'system'
-        };
-        
-        const updatedActivities = [...(selectedDeal.activities || []), automationNote];
-        
-        updateDeal(selectedDeal.id, { 
-          stageId: targetStage.id,
-          activities: updatedActivities
-        });
-        
-        setIsTransitioning(false);
-        setAutomationStatus('');
-      }
-    }, 450);
-  };
+  // BW-6: handleTriggerStageAutomation removed — was simulated automation with hardcoded
+  // strings and setInterval(450ms). Real automation runs through the workflow engine.
+  // The isTransitioning state is kept for future real async operations.
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPipelineModalOpen, setIsPipelineModalOpen] = useState(false);
@@ -712,7 +672,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
 
     // 13. Tags / labels (Operation Aware)
     if (filterTags.trim()) {
-      result = result.filter(d => matchStringFilter(d.tags, filterTags, filterTagsOp));
+      result = result.filter(d => matchStringFilter(d.tags?.join(', '), filterTags, filterTagsOp));
     }
 
     // 14. Priority
@@ -1036,6 +996,18 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
       
       // DI-1 fix: ALL stage changes route through moveDealStage — never updateDeal
       if (activeDeal.stageId !== targetStageId) {
+        // Client-side requiredFields pre-check (REQ089) — immediate feedback before API call
+        if (overStage.requiredFields && overStage.requiredFields.length > 0) {
+          const missing = overStage.requiredFields.filter(field => {
+            const val = (activeDeal as unknown as Record<string, unknown>)[field];
+            return val === null || val === undefined || val === '' || (Array.isArray(val) && val.length === 0);
+          });
+          if (missing.length > 0) {
+            toast.error(`Cannot move to "${overStage.name}": missing ${missing.join(', ')}`);
+            return;
+          }
+        }
+
         moveDealStage(String(activeId), String(targetStageId)).catch((err: unknown) => {
           toast.error(err instanceof Error ? err.message : 'Failed to move deal');
         });
@@ -1109,6 +1081,18 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
         }
 
         // DI-1 fix: route through moveDealStage for cross-stage drops
+        // Client-side requiredFields pre-check (REQ089)
+        if (overStage?.requiredFields && overStage.requiredFields.length > 0) {
+          const missing = overStage.requiredFields.filter(field => {
+            const val = (activeDeal as unknown as Record<string, unknown>)[field];
+            return val === null || val === undefined || val === '' || (Array.isArray(val) && val.length === 0);
+          });
+          if (missing.length > 0) {
+            toast.error(`Cannot move to "${overStage.name}": missing ${missing.join(', ')}`);
+            return;
+          }
+        }
+
         moveDealStage(String(activeId), overStageId).catch((err: unknown) => {
           toast.error(err instanceof Error ? err.message : 'Failed to move deal');
         });
@@ -2217,3 +2201,4 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
     </div>
   );
 }
+

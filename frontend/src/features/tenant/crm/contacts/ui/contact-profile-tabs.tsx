@@ -272,7 +272,7 @@ export const ClientProfileTabs = ({
             {contact.displayName || contact.contactPerson}
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            {contact.customerType === 'Individual' 
+            {contact.recordType === 'Individual' 
               ? '🏡 Residential Customer' 
               : `${contact.jobTitle || 'Customer Client'} • ${contact.companyName}`}
           </p>
@@ -315,7 +315,7 @@ export const ClientProfileTabs = ({
               <Phone size={13} className="text-slate-400" />
               <span className="text-slate-700 dark:text-slate-300 font-medium">{contact.phone || 'No phone number'}</span>
             </div>
-            {contact.customerType !== 'Individual' && contact.companyName && (
+            {contact.recordType !== 'Individual' && contact.companyName && (
               <div className="flex items-center gap-2.5 text-xs">
                 <Building size={13} className="text-slate-400" />
                 <span className="text-slate-700 dark:text-slate-300 font-medium truncate">{contact.companyName}</span>

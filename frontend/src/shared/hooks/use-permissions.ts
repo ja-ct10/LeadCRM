@@ -19,6 +19,10 @@ export const PERMISSION_BRIDGE: Record<PermissionKey, string[]> = {
   'contacts.edit':       ['p4', 'p4_own'],
   'contacts.delete':     ['p5', 'p5_own'],
   'contacts.export':     ['p6'],
+  'accounts.view':       ['p2', 'p2_own'],  // initially mirrors contacts access for backward compat
+  'accounts.create':     ['p3'],
+  'accounts.edit':       ['p4', 'p4_own'],
+  'accounts.delete':     ['p5', 'p5_own'],
   'deals.view':          ['p7', 'p7_own'],
   'deals.create':        ['p8'],
   'deals.edit':          ['p9', 'p9_own'],

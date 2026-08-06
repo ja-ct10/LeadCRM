@@ -16,7 +16,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shar
 import { toast } from 'sonner';
 
 /**
- * Customers Page — shows only contacts who are Active Customers (customerType = 'Active Customer' or status = 'CLOSED').
+ * Customers Page — shows only contacts with customerType = 'Active Customer'.
+ * Set by the won-deal handoff. Status is human-owned and independent (REQ131).
  * Reuses the existing contacts table and detail sheet — no duplication.
  */
 export default function CustomersPage() {
@@ -30,10 +31,11 @@ export default function CustomersPage() {
   const [editingContact, setEditingContact] = useState<Contact | undefined>();
   const [detailSheetClient, setDetailSheetClient] = useState<Contact | null>(null);
 
-  // Filter: only closed/converted customers (status = 'Closed')
+  // BW-2 fix: filter on customerType (set by won-deal handoff), NOT status
+  // REQ131: status is human-owned and unrelated to customer standing
   const customers = useMemo(() => {
     return contacts.filter(c => {
-      const isCustomer = c.status === 'Closed';
+      const isCustomer = c.customerType === 'Active Customer';
       if (!isCustomer) return false;
       if (!searchTerm) return true;
       const q = searchTerm.toLowerCase();

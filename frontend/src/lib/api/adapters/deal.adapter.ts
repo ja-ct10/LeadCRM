@@ -183,7 +183,8 @@ export function toFrontendDeal(backendDeal: any): any {
     location: undefined,
     campaign: undefined,
     customerType: undefined,
-    tags: Array.isArray(backendDeal.tags) ? backendDeal.tags.join(', ') : (backendDeal.tags || undefined),
+    // Tags are String[] on both sides now (DI-6)
+    tags: Array.isArray(backendDeal.tags) ? backendDeal.tags : (backendDeal.tags ? [backendDeal.tags] : []),
     isArchived: !!backendDeal.isArchived,
     history: history,
     activities: [],

@@ -9,6 +9,12 @@ export const Permission = {
   CONTACTS_DELETE: 'contacts.delete',
   CONTACTS_EXPORT: 'contacts.export',
 
+  // Accounts (Organizations) — SEC-3: dedicated permission surface
+  ACCOUNTS_VIEW: 'accounts.view',
+  ACCOUNTS_CREATE: 'accounts.create',
+  ACCOUNTS_EDIT: 'accounts.edit',
+  ACCOUNTS_DELETE: 'accounts.delete',
+
   // Deals / Pipeline
   DEALS_VIEW: 'deals.view',
   DEALS_CREATE: 'deals.create',

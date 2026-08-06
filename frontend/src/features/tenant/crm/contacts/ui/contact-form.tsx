@@ -61,14 +61,14 @@ export function AddContactForm({ initialData, onSave, onCancel }: AddContactForm
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formData, setFormData] = useState<Partial<Contact>>({
     firstName: "", lastName: "", email: "", phone: "",
-    customerType: "Individual", jobTitle: "", organizationId: "",
+    recordType: "Individual", jobTitle: "", organizationId: "",
     status: "Cold", leadSource: "Organic", companyName: "",
     businessType: "", companySize: "", orgWebsite: "", taxId: "", priority: "Medium",
   });
 
   const validateField = (fieldName: string, value: string) => {
     let errorMessage = "";
-    const isIndividual = formData.customerType === "Individual";
+    const isIndividual = formData.recordType === "Individual";
     if (fieldName === "firstName" && isIndividual && !value.trim()) errorMessage = "First Name is required";
     else if (fieldName === "lastName" && isIndividual && !value.trim()) errorMessage = "Last Name is required";
     else if (fieldName === "followUpDate" && scheduleFollowUp && !value.trim()) errorMessage = "Follow-up date is required";
@@ -99,7 +99,7 @@ export function AddContactForm({ initialData, onSave, onCancel }: AddContactForm
       setCustomProduct(cp);
       setFormData({
         ...initialData,
-        customerType: initialData.customerType || (initialData.organizationId || initialData.companyName ? "Organization" : "Individual"),
+        recordType: initialData.recordType || (initialData.organizationId || initialData.companyName ? "Organization" : "Individual"),
         companyName: org ? org.name : initialData.companyName || "",
         businessType: org ? org.industry : "",
         companySize: org ? org.size : "",
@@ -111,7 +111,7 @@ export function AddContactForm({ initialData, onSave, onCancel }: AddContactForm
       setSelectedProduct(""); setCustomProduct("");
       setFormData({
         firstName: "", lastName: "", email: "", phone: "",
-        customerType: "Individual", jobTitle: "", organizationId: "",
+        recordType: "Individual", jobTitle: "", organizationId: "",
         status: "Cold", leadSource: "Organic", companyName: "",
         businessType: "", companySize: "", orgWebsite: "", taxId: "", priority: "Medium",
       });
@@ -121,7 +121,7 @@ export function AddContactForm({ initialData, onSave, onCancel }: AddContactForm
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const newErrors: Record<string, string> = {};
-    const isOrg = formData.customerType === "Organization";
+    const isOrg = formData.recordType === "Organization";
     if (!isOrg && !formData.firstName?.trim()) newErrors.firstName = "First Name is required";
     if (isOrg && !formData.organizationId && !formData.companyName?.trim()) {
       newErrors.companyName = "Organization selection or name is required";
@@ -147,7 +147,7 @@ export function AddContactForm({ initialData, onSave, onCancel }: AddContactForm
     const contactPerson = `${formData.firstName || ""} ${formData.lastName || ""}`.trim();
     const updated = {
       ...formData,
-      customerType: formData.customerType || "Individual",
+      recordType: formData.recordType || "Individual",
       organizationId: isOrg ? finalOrgId : "",
       companyName: isOrg ? formData.companyName || "" : "",
       businessType: isOrg ? formData.businessType : "",
@@ -169,7 +169,7 @@ export function AddContactForm({ initialData, onSave, onCancel }: AddContactForm
   // ··· Shared field classes ···················································
   const inputCls = "w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none transition-all focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500";
   const selectCls = "w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl pl-3.5 pr-8 py-2.5 text-sm text-slate-900 dark:text-white outline-none appearance-none cursor-pointer focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all [&>option]:bg-white dark:[&>option]:bg-slate-900";
-  const sectionNum = (n: number) => formData.customerType === "Organization" ? n : n - 1;
+  const sectionNum = (n: number) => formData.recordType === "Organization" ? n : n - 1;
 
   // Phone helpers
   const getPhoneCode = () => { const p = formData.phone || ""; const m = COUNTRY_CODES.find((c) => p.startsWith(c.code)); return m ? m.code : "+63"; };
@@ -188,9 +188,9 @@ export function AddContactForm({ initialData, onSave, onCancel }: AddContactForm
           <div className="flex gap-2">
             {[{ val: "Individual", Icon: User }, { val: "Organization", Icon: Building }].map(({ val, Icon }) => (
               <button key={val} type="button"
-                onClick={() => setFormData({ ...formData, customerType: val as any, ...(val === "Individual" ? { companyName: "" } : {}) })}
+                onClick={() => setFormData({ ...formData, recordType: val as "Individual" | "Organization", ...(val === "Individual" ? { companyName: "" } : {}) })}
                 className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all border ${
-                  formData.customerType === val
+                  formData.recordType === val
                     ? "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20"
                     : "bg-white dark:bg-white/[0.03] border-gray-200 dark:border-white/[0.08] text-slate-500 dark:text-slate-400 hover:border-blue-400 hover:text-blue-500"
                 }`}
@@ -198,14 +198,14 @@ export function AddContactForm({ initialData, onSave, onCancel }: AddContactForm
             ))}
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-3 leading-relaxed">
-            {formData.customerType === "Organization"
+            {formData.recordType === "Organization"
               ? "Track the corporate entity. A primary contact person will be linked below."
               : "A personal account for homeowners or individual clients."}
           </p>
         </div>
 
         {/* Section 1: Organization Details (org only) */}
-        {formData.customerType === "Organization" && (
+        {formData.recordType === "Organization" && (
           <div className="space-y-4 animate-in fade-in duration-200">
             <SectionHeader num={1} title="Organization Details" />
             <div className="space-y-1.5">
@@ -233,32 +233,32 @@ export function AddContactForm({ initialData, onSave, onCancel }: AddContactForm
         {/* Section: Basic Info / Contact Person */}
         <div className="space-y-4">
           <SectionHeader
-            num={formData.customerType === "Organization" ? 2 : 1}
-            title={formData.customerType === "Organization" ? "Organization Contact Person" : "Basic Information"}
+            num={formData.recordType === "Organization" ? 2 : 1}
+            title={formData.recordType === "Organization" ? "Organization Contact Person" : "Basic Information"}
           />
           <div className="grid grid-cols-2 gap-4">
-            <FieldWrap label={`First Name${formData.customerType !== "Organization" ? " *" : ""}`} error={errors.firstName}>
-              <input required={formData.customerType !== "Organization"} className={`${inputCls}${errors.firstName ? " !border-red-500 focus:!ring-red-500/20" : ""}`}
+            <FieldWrap label={`First Name${formData.recordType !== "Organization" ? " *" : ""}`} error={errors.firstName}>
+              <input required={formData.recordType !== "Organization"} className={`${inputCls}${errors.firstName ? " !border-red-500 focus:!ring-red-500/20" : ""}`}
                 placeholder="Enter first name" value={formData.firstName || ""}
                 onChange={(e) => { setFormData({ ...formData, firstName: e.target.value }); validateField("firstName", e.target.value); }}
                 onBlur={(e) => validateField("firstName", e.target.value)} />
             </FieldWrap>
-            <FieldWrap label={`Last Name${formData.customerType !== "Organization" ? " *" : ""}`} error={errors.lastName}>
-              <input required={formData.customerType !== "Organization"} className={`${inputCls}${errors.lastName ? " !border-red-500 focus:!ring-red-500/20" : ""}`}
+            <FieldWrap label={`Last Name${formData.recordType !== "Organization" ? " *" : ""}`} error={errors.lastName}>
+              <input required={formData.recordType !== "Organization"} className={`${inputCls}${errors.lastName ? " !border-red-500 focus:!ring-red-500/20" : ""}`}
                 placeholder="Enter last name" value={formData.lastName || ""}
                 onChange={(e) => { setFormData({ ...formData, lastName: e.target.value }); validateField("lastName", e.target.value); }}
                 onBlur={(e) => validateField("lastName", e.target.value)} />
             </FieldWrap>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <FieldWrap label={formData.customerType === "Organization" ? "Company Email" : "Email"}>
+            <FieldWrap label={formData.recordType === "Organization" ? "Company Email" : "Email"}>
               <div className="relative">
                 <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                 <input type="email" className={`${inputCls} pl-9`} placeholder="email@example.com"
                   value={formData.email || ""} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
               </div>
             </FieldWrap>
-            <FieldWrap label={formData.customerType === "Organization" ? "Company Phone" : "Phone"}>
+            <FieldWrap label={formData.recordType === "Organization" ? "Company Phone" : "Phone"}>
               <div className="flex bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 overflow-hidden text-sm transition-all">
                 <div className="relative border-r border-gray-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.03] flex items-center shrink-0 w-[90px]">
                   <select value={getPhoneCode()}
@@ -292,7 +292,7 @@ export function AddContactForm({ initialData, onSave, onCancel }: AddContactForm
         {/* Section: Status & Interest */}
         <div className="space-y-4">
           <SectionHeader
-            num={formData.customerType === "Organization" ? 3 : 2}
+            num={formData.recordType === "Organization" ? 3 : 2}
             title="Status & Interest"
           />
           <div className="grid grid-cols-2 gap-4">
@@ -396,7 +396,7 @@ export function AddContactForm({ initialData, onSave, onCancel }: AddContactForm
         {/* Section: Additional Information */}
         <div className="space-y-4">
           <SectionHeader
-            num={formData.customerType === "Organization" ? 4 : 3}
+            num={formData.recordType === "Organization" ? 4 : 3}
             title="Additional Information"
           />
           <div className="grid grid-cols-2 gap-4">

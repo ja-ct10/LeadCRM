@@ -63,12 +63,12 @@ async function main() {
       isDefault: true,
       stages: {
         create: [
-          { name: 'Lead',          order: 1, probability: 10, isDefault: true, color: '#64748b' },
-          { name: 'Qualified',     order: 2, probability: 30, color: '#3b82f6' },
-          { name: 'Proposal Sent', order: 3, probability: 50, color: '#f59e0b' },
-          { name: 'Negotiation',   order: 4, probability: 75, color: '#8b5cf6' },
-          { name: 'Closed Won',    order: 5, probability: 100, isWon: true,  color: '#10b981' },
-          { name: 'Closed Lost',   order: 6, probability: 0,   isLost: true, color: '#ef4444' },
+          { name: 'Lead',          order: 1, probability: 10, isDefault: true, color: '#64748b', tenantId: TENANT_ID },
+          { name: 'Qualified',     order: 2, probability: 30, color: '#3b82f6', tenantId: TENANT_ID },
+          { name: 'Proposal Sent', order: 3, probability: 50, color: '#f59e0b', tenantId: TENANT_ID },
+          { name: 'Negotiation',   order: 4, probability: 75, color: '#8b5cf6', tenantId: TENANT_ID },
+          { name: 'Closed Won',    order: 5, probability: 100, isWon: true,  color: '#10b981', tenantId: TENANT_ID },
+          { name: 'Closed Lost',   order: 6, probability: 0,   isLost: true, color: '#ef4444', tenantId: TENANT_ID },
         ],
       },
     },
