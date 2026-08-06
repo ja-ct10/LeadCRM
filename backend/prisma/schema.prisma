@@ -178,6 +178,7 @@ model Tenant {
   organizations      Organization[]
   contacts           Contact[]
   pipelines          Pipeline[]
+  stages             Stage[]
   deals              Deal[]
   dealActions        DealAction[]
   contactDeals       ContactDeal[]
@@ -570,6 +571,7 @@ model Pipeline {
 model Stage {
   id          String   @id @default(uuid())
   pipelineId  String
+  tenantId    String   // defence-in-depth: derived from Pipeline.tenantId at creation, never independently editable
   name        String
   order       Int
   probability Int?     // 0-100 for revenue forecasting
@@ -581,11 +583,13 @@ model Stage {
   createdAt   DateTime @default(now())
 
   pipeline               Pipeline           @relation(fields: [pipelineId], references: [id])
+  tenant                 Tenant             @relation(fields: [tenantId], references: [id])
   deals                  Deal[]
   dealStageHistoriesNew  DealStageHistory[] @relation("NewStage")
   dealStageHistoriesPrev DealStageHistory[] @relation("PreviousStage")
 
   @@index([pipelineId, order])
+  @@index([tenantId, pipelineId])
 }
 
 // ─────────────────────────────────────────────

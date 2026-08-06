@@ -813,13 +813,12 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
       let avgDays = 0;
       if (dealVisitCount > 0) {
         avgDays = Number(((totalHours / dealVisitCount) / 24).toFixed(1));
-      } else {
-        const baseAverages = [3.2, 7.4, 10.5, 4.1, 12.0, 5.0];
-        avgDays = baseAverages[index % baseAverages.length];
-        dealVisitCount = index === 0 ? 4 : index === 1 ? 3 : index === 2 ? 2 : 1;
       }
+      // UX-1 fix: when no history data exists, show 0 — never fabricated averages.
+      // Empty velocity states are honest; measured data appears once stage transitions
+      // start flowing through the governed path (moveDealStage).
 
-      if (avgDays < 0.2) avgDays = 0.2;
+      if (avgDays < 0.2 && dealVisitCount > 0) avgDays = 0.2;
 
       let status: 'Healthy' | 'Slow' | 'Bottleneck' = 'Healthy';
       let statusColor = '#10b981';
@@ -1006,11 +1005,12 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
         toast.error('Target pipeline has no stages.');
         return;
       }
-      updateDeal(String(activeId), {
-        pipelineId: targetPipeline.id,
-        stageId: firstStage.id,
-        order: deals.filter(d => d.pipelineId === targetPipeline.id && d.stageId === firstStage.id).length,
-      }).catch(console.error);
+      // Cross-pipeline move: update pipeline first, then use moveDealStage for the stage change
+      // Since pipelineId is no longer in UpdateDealSchema, we handle this as a special case
+      // The backend moveDealStage already handles the deal update, so we call it directly
+      moveDealStage(String(activeId), firstStage.id).catch((err: unknown) => {
+        toast.error(err instanceof Error ? err.message : 'Failed to move deal to new pipeline');
+      });
       setActivePipelineId(targetPipeline.id);
       return;
     }
@@ -1019,7 +1019,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
     const overStage = activePipeline?.stages.find(s => s.id === targetStageId);
     if (overStage) {
       // Special case: Closed Lost prompt
-      if (overStage.name === 'Closed Lost') {
+      if (overStage.isLost || overStage.name === 'Closed Lost') {
         setDealBeingLost(activeDeal);
         setIsLostReasonModalOpen(true);
         setLostReason('');
@@ -1027,28 +1027,31 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
       }
       
       // Special case: Closed Won prompt (Handoff)
-      if (overStage.name === 'Closed Won' || overStage.isWon) {
+      if (overStage.isWon || overStage.name === 'Closed Won') {
         setDealBeingWon(activeDeal);
         setTargetWonStageId(overStage.id);
         setIsHandoffModalOpen(true);
         return;
       }
       
-      const updates: Partial<Deal> = {};
+      // DI-1 fix: ALL stage changes route through moveDealStage — never updateDeal
       if (activeDeal.stageId !== targetStageId) {
-        updates.stageId = String(targetStageId);
-        updates.order = deals.filter(d => d.pipelineId === activePipelineId && d.stageId === targetStageId).length;
-      }
-      if (targetSwimlaneVal) {
-        if (swimlaneBy === 'priority' && activeDeal.priority !== targetSwimlaneVal) {
-          updates.priority = targetSwimlaneVal as any;
-        } else if (swimlaneBy === 'client' && activeDeal.companyName !== targetSwimlaneVal) {
-          updates.companyName = targetSwimlaneVal === 'General / Unassigned' ? '' : targetSwimlaneVal;
-        }
+        moveDealStage(String(activeId), String(targetStageId)).catch((err: unknown) => {
+          toast.error(err instanceof Error ? err.message : 'Failed to move deal');
+        });
       }
 
-      if (Object.keys(updates).length > 0) {
-        updateDeal(String(activeId), updates).catch(console.error);
+      // Handle swimlane property changes (priority, client) separately — these are NOT stage changes
+      if (targetSwimlaneVal) {
+        const swimlaneUpdates: Partial<Deal> = {};
+        if (swimlaneBy === 'priority' && activeDeal.priority !== targetSwimlaneVal) {
+          swimlaneUpdates.priority = targetSwimlaneVal as any;
+        } else if (swimlaneBy === 'client' && activeDeal.companyName !== targetSwimlaneVal) {
+          swimlaneUpdates.companyName = targetSwimlaneVal === 'General / Unassigned' ? '' : targetSwimlaneVal;
+        }
+        if (Object.keys(swimlaneUpdates).length > 0) {
+          updateDeal(String(activeId), swimlaneUpdates).catch(console.error);
+        }
       }
       return;
     }
@@ -1090,37 +1093,43 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
           updateDeal(String(activeId), updates).catch(console.error);
         }
       } else {
-        // Dropped on a deal in a different stage
-        if (overStage?.name === 'Closed Lost') {
+        // Dropped on a deal in a different stage — this IS a stage change
+        if (overStage?.isLost || overStage?.name === 'Closed Lost') {
           setDealBeingLost(activeDeal);
           setIsLostReasonModalOpen(true);
           setLostReason('');
+          return;
         }
         
-        if (overStage?.name === 'Closed Won' || overStage?.isWon) {
+        if (overStage?.isWon || overStage?.name === 'Closed Won') {
           setDealBeingWon(activeDeal);
           setTargetWonStageId(overStage.id);
           setIsHandoffModalOpen(true);
           return;
         }
-        
-        updates.stageId = overStageId;
-        updates.order = overDeal.order;
 
-        updateDeal(String(activeId), updates).catch(console.error);
+        // DI-1 fix: route through moveDealStage for cross-stage drops
+        moveDealStage(String(activeId), overStageId).catch((err: unknown) => {
+          toast.error(err instanceof Error ? err.message : 'Failed to move deal');
+        });
+
+        // Swimlane property changes are separate from stage changes
+        if (Object.keys(updates).length > 0) {
+          updateDeal(String(activeId), updates).catch(console.error);
+        }
       }
     }
   };
 
   const handleSaveLostReason = async () => {
     if (dealBeingLost) {
-      // Look up the real "Closed Lost" stage ID from the deal's pipeline
+      // Look up the real lost stage using isLost flag first, name as display fallback only
       const dealPipeline = pipelines.find(p => p.id === dealBeingLost.pipelineId) ?? activePipeline;
       const lostStage = dealPipeline?.stages.find(
-        s => s.name === 'Closed Lost' || s.isLost
-      );
+        s => s.isLost
+      ) ?? dealPipeline?.stages.find(s => s.name === 'Closed Lost');
       if (!lostStage) {
-        toast.error("No 'Closed Lost' stage found in this pipeline.");
+        toast.error("No lost stage found in this pipeline.");
         return;
       }
       try {

@@ -77,10 +77,9 @@ export function toBackendCreateDeal(data: Partial<any>): any {
 export function toBackendUpdateDeal(data: Partial<any>): any {
   const updateData: any = {};
 
-  // Only include ID fields when they have a non-empty value — the backend
-  // schema uses z.string().uuid() which rejects empty strings outright.
-  if (data.pipelineId) updateData.pipelineId = data.pipelineId;
-  if (data.stageId) updateData.stageId = data.stageId;
+  // Note: stageId and pipelineId are intentionally excluded.
+  // Stage changes MUST go through moveDealStage (PATCH /deals/:id/stage).
+  // Pipeline changes are handled by moving to a stage in the target pipeline.
   if (data.title !== undefined) updateData.title = data.title;
   if (data.value !== undefined) updateData.value = data.value;
   if (data.priority !== undefined) updateData.priority = toBackendPriority(data.priority);

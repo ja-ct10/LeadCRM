@@ -14,20 +14,22 @@ function formatCurrency(value: number): string {
 
 export default function ForecastBar({ deals, pipelines }: ForecastBarProps) {
   const { forecast, totalOpen, totalPipelineValue } = useMemo(() => {
-    // Build stage probability map from all pipelines
-    const stageMap: Record<string, number> = {};
+    // Build stage probability map and terminal flags from all pipelines
+    const stageMap: Record<string, { probability: number; isWon: boolean; isLost: boolean }> = {};
     pipelines.forEach(p => p.stages.forEach(s => {
-      stageMap[s.id] = s.probability ?? 0;
+      stageMap[s.id] = { probability: s.probability ?? 0, isWon: !!s.isWon, isLost: !!s.isLost };
     }));
 
-    const openDeals = deals.filter(d =>
-      !d.isArchived &&
-      !d.stageId.toLowerCase().includes('won') &&
-      !d.stageId.toLowerCase().includes('lost'),
-    );
+    // UX-2 fix: use flags, never name substrings, to determine terminal status
+    const openDeals = deals.filter(d => {
+      if (d.isArchived) return false;
+      const stageInfo = stageMap[d.stageId];
+      if (!stageInfo) return true; // unknown stage — treat as open
+      return !stageInfo.isWon && !stageInfo.isLost;
+    });
 
     const forecast = openDeals.reduce((sum, d) =>
-      sum + d.value * ((stageMap[d.stageId] ?? 0) / 100), 0,
+      sum + d.value * ((stageMap[d.stageId]?.probability ?? 0) / 100), 0,
     );
 
     const totalPipelineValue = openDeals.reduce((sum, d) => sum + d.value, 0);
@@ -35,7 +37,15 @@ export default function ForecastBar({ deals, pipelines }: ForecastBarProps) {
     return { forecast, totalOpen: openDeals.length, totalPipelineValue };
   }, [deals, pipelines]);
 
-  const wonDeals = deals.filter(d => d.stageId.toLowerCase().includes('won') && !d.isArchived);
+  // UX-2 fix: won detection by flag, not name
+  const wonDeals = useMemo(() => {
+    const stageFlags: Record<string, boolean> = {};
+    pipelines.forEach(p => p.stages.forEach(s => {
+      if (s.isWon) stageFlags[s.id] = true;
+    }));
+    return deals.filter(d => !d.isArchived && stageFlags[d.stageId]);
+  }, [deals, pipelines]);
+
   const wonTotal = wonDeals.reduce((sum, d) => sum + d.value, 0);
 
   return (

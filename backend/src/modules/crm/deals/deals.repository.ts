@@ -99,19 +99,28 @@ export async function moveDealStage(
   });
   if (!deal) return null;
 
-  const newStage = await prisma.stage.findFirst({ where: { id: newStageId } });
+  // SEC-1 fix: stage is already tenant-scoped in the service layer, but double-check
+  const newStage = await prisma.stage.findFirst({ where: { id: newStageId, tenantId } });
   if (!newStage) return null;
 
   const now = new Date();
-  const timeInPrevStage = Math.floor((now.getTime() - deal.updatedAt.getTime()) / (1000 * 60));
+
+  // DI-4 fix: compute timeInPrevStage from last DealStageHistory.movedAt, not deal.updatedAt
+  const lastHistory = await prisma.dealStageHistory.findFirst({
+    where: { dealId: id, tenantId },
+    orderBy: { movedAt: 'desc' },
+  });
+  const referenceTime = lastHistory ? lastHistory.movedAt : deal.createdAt;
+  const timeInPrevStage = Math.floor((now.getTime() - referenceTime.getTime()) / (1000 * 60));
 
   // Perform everything in a single transaction
   const result = await prisma.$transaction(async (tx) => {
-    // 1. Update the Deal Stage
+    // 1. Update the Deal Stage (and pipelineId if moving cross-pipeline)
     const updatedDeal = await tx.deal.update({
       where: { id },
       data: {
         stageId: newStageId,
+        pipelineId: newStage.pipelineId, // always sync pipelineId with the stage's pipeline
         ...(newStage.isWon || newStage.isLost ? { closedAt: now } : {}),
       },
     });
@@ -121,7 +130,18 @@ export async function moveDealStage(
       data: { tenantId, dealId: id, previousStageId: deal.stageId, newStageId, movedById, movedAt: now, timeInPrevStage, note },
     });
 
-    // 3. Post-Sale Handoff Logic (if Won)
+    // 3. DI-3 fix: Create Activity UNCONDITIONALLY for every stage change
+    await tx.activity.create({
+      data: {
+        tenantId, createdById: movedById,
+        type: 'stage_change',
+        title: `Deal moved from "${deal.stage.name}" to "${newStage.name}"`,
+        dealId: deal.id,
+        organizationId: deal.organizationId || undefined,
+      }
+    });
+
+    // 4. Post-Sale Handoff Logic (if Won)
     if (newStage.isWon) {
       const activeProducts = deal.productInterests || [];
 
@@ -136,15 +156,6 @@ export async function moveDealStage(
             customerSince: org.customerSince || now,
             activeProducts: updatedProducts,
           },
-        });
-        
-        // System Activity
-        await tx.activity.create({
-          data: {
-            tenantId, createdById: movedById,
-            type: 'stage_change', title: `Converted to Active Customer via Deal: ${deal.title}`,
-            organizationId: deal.organizationId, dealId: deal.id,
-          }
         });
       }
 

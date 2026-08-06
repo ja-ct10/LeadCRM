@@ -22,7 +22,10 @@ export const CreateDealSchema = z.object({
   productInterests:  z.array(z.string()).optional(),
 });
 
-export const UpdateDealSchema = CreateDealSchema.partial();
+// DI-2 fix: stageId is explicitly excluded from updates.
+// Stage changes MUST go through PATCH /deals/:id/stage (moveDealStage) to ensure
+// history, audit, activity, and workflow triggers fire on every transition.
+export const UpdateDealSchema = CreateDealSchema.omit({ stageId: true, pipelineId: true }).partial();
 
 export const DealHandoffSchema = z.object({
   assignOwnerId:      id().optional(),

@@ -249,8 +249,74 @@ The `Activity` model uses direct FK columns (`contactId`, `dealId`, `organizatio
 ### ServiceOrder Uses assignedTechnicianId, Not assignedUserId
 The field is `assignedTechnicianId` (references `User.id`). Also: `scheduledDate` not `scheduledAt`, no `type`/`priority`/`estimatedHours` fields on the model.
 
-### Contact.customerType vs Organization.customerType Are Different Unions
-`Contact.customerType` is `'Individual' | 'Organization'` (classification type), while `Organization.customerType` is `'Prospect' | 'Active Customer' | 'Inactive Customer' | 'Former Customer'` (relationship status). They share the same field name but have completely different value sets. When filtering "customers", use `Contact.status === 'Closed'` — not `customerType === 'Active Customer'` which only exists on `Organization`.
+### Contact.customerType — FE Type and Prisma Column Disagree (corrected 2026-08-07)
+**Superseded guidance.** An earlier version of this entry said to filter customers on
+`Contact.status === 'Closed'`. That is wrong and is tracked as audit finding **BW-2**.
+
+The actual state: `Contact.customerType` in `schema.prisma` is
+`String @default("Prospect")` documented as `Prospect | Active Customer | Inactive Customer | Former Customer`
+— the **same** value set as `Organization.customerType`. Only the *frontend* `Contact` type
+declares it as `'Individual' | 'Organization'`, and the frontend also carries a separate
+`type` field with those same two values. So the FE type is the outlier, not the column.
+
+Consequences:
+- The won-deal handoff writes `customerType = 'Active Customer'` on both Contact and Organization, and never touches `status`.
+- Filtering customers on `status === 'Closed'` therefore returns nothing after a won deal.
+- Filter on `customerType`, not `status`. See `docs/crm-audit-report.md` BW-2/BW-3.
+
+### Relationship Status Is Human-Owned — REQ131 Manual Status Lock
+`docs/requirementsplan.md` REQ131 forbids deal or pipeline progression from ever
+automatically changing a Client Profile's relationship status, and names the locked set as
+Hot / Warm / Cold / Cancelled / Closed. Two consequences that are easy to get wrong:
+- Never delete `CANCELLED` or `CLOSED` from `ContactStatus` — they are contractually required.
+- Never write to `status` from a workflow, handoff, or import.
+Lifecycle position is a *separate* system-owned axis. Keep the two apart and the requirement
+is satisfied structurally rather than by convention.
+
+### requirementsplan.md Is a Constraint Source, Not Just Background
+`docs/requirementsplan.md` holds signed client requirements (REQ066–REQ137) that the
+steering files do not restate. Three CRM redesign proposals were caught violating it only
+because it was read: REQ131 (status lock), REQ132 (4 pipelines × max 5 stages), and §2
+(the master record is named "Client Profiles", not "Contacts"). Check it before proposing
+any rename, enum change, or pipeline-structure change.
+
+### Navigation Is Defined Three Times — crm-layout.tsx Is Dead Code
+`use-layout.ts` is the **live** sidebar (consumed by `sidebar-nav.tsx`).
+`crm-layout.tsx` defines a second, richer nav array — including the Customers entry — and
+**nothing imports it**. `command-palette.tsx` holds a third copy keyed on legacy `p*`
+permission IDs. This is why Customers/Companies/Deals appear "orphaned": the modules exist
+and the routes exist, but the live nav array is the thinnest of the three copies. Before
+concluding a module is missing from navigation, check which nav array is actually wired.
+
+### Deal Stage Change Has Two Write Paths, and the Board Uses the Wrong One
+`PATCH /crm/deals/:id/stage` (`moveDealStage`) is the governed path: it writes
+`DealStageHistory`, the audit entry, and fires workflow triggers. But `UpdateDealSchema` is
+`CreateDealSchema.partial()`, so `stageId` is also accepted by `PUT /crm/deals/:id` — and
+`handleDragEnd` in `pipeline-page.tsx` uses that path for all non-terminal stages. Result:
+board drags record no history, no activity, no trigger. Any feature that reads stage history
+(velocity, forecast accuracy, timeline, stage automation) is inert until this is closed.
+Tracked as audit findings **DI-1/DI-2**.
+
+### Stage Has No tenantId — moveDealStage Does Not Tenant-Scope the Target
+Both `deals.service.ts` and `deals.repository.ts` resolve the target stage with
+`prisma.stage.findFirst({ where: { id: newStageId } })` — no tenant filter and no pipeline
+join. `Stage` has no `tenantId` column, so scope is only reachable by joining through
+`Pipeline`. An authenticated user can move their own deal onto any stage ID in the platform.
+This is the one place the otherwise-sound tenant isolation model is broken. Audit **SEC-1/SEC-2**.
+
+### file_search Index Can Be Stale — Verify Deletions With the Shell
+`grep_search` returned matches from `docs/crm-audit-and-plan.md` and `read_file` returned
+its contents, but the file does not exist on disk — `str_replace` failed with "file not
+found" and `Get-ChildItem` confirmed it is gone. The search index served a cached copy.
+When a file edit fails with "not found" despite search hits, confirm with
+`Get-ChildItem` before assuming a path error.
+
+### Sequence CRM Work: Governed Write Paths Before Any Analytics Feature
+Fixing DI-1 (board writes through the governed stage-change path) retroactively activates
+stage history, velocity analytics, the deal timeline, workflow triggers, and forecast
+accuracy — all already built and currently inert. Building or debugging any of those five
+features before closing DI-1 means debugging against data that is never recorded. The
+general rule: find the ungoverned write path before investigating the empty table.
 
 ### productInterests Plural vs productInterest Singular (Silent Data Loss)
 The frontend Contact type uses `productInterests: string[]` (plural array). The backend DTO and Prisma schema also use `productInterests`. But the contact adapter used `productInterest` (singular string) for mapping — causing the field to never reach the backend and never restore after a fetch. Always verify adapter key names match both the frontend type AND the backend DTO. A mismatch causes silent data loss with no TypeScript error.
@@ -382,3 +448,16 @@ passwordResetRateLimiter // 3 / hour
 
 ### Schema Drift — Missing Columns After Deploy
 When `prisma migrate deploy` says "No pending migrations" but columns are missing, the schema has drifted beyond what the migration files capture. Root cause: columns were added directly to `schema.prisma` without creating migration files. Fix options: (1) delete and recreate the database for a clean slate, or (2) run `npx prisma migrate dev --name add_missing_columns` locally to generate a new migration file, then push. Always generate migration files when changing schema — never rely on `db push` for production.
+
+
+### handleDragEnd Bypasses moveDealStage — The Root of All Pipeline Bugs
+`pipeline-page.tsx` `handleDragEnd` calls `updateDeal(id, { stageId })` for non-terminal stage moves instead of `moveDealStage`. This means: no `DealStageHistory` record, no `Activity`, no workflow trigger fires, no `closedAt` stamp, and velocity analytics read from empty tables. Only the won/lost modals call `moveDealStage`. Fix: route ALL stage changes (including drag) through `moveDealStage`; remove `stageId` from `UpdateDealSchema` so the wrong door is closed at the API boundary.
+
+### Stage Has No tenantId — moveDealStage Cross-Tenant Vulnerability
+`Stage` model has no `tenantId` column. `deals.repository.ts` resolves the target stage with `prisma.stage.findFirst({ where: { id: newStageId } })` — no tenant scoping. A malicious user can pass any stageId in the system to move their deal to another tenant's stage. Fix: validate via `{ id: newStageId, pipeline: { tenantId } }` and add `tenantId` to Stage as defence in depth.
+
+### forecast-bar.tsx Uses stageId String Matching for Won/Lost Detection
+`forecast-bar.tsx` uses `d.stageId.toLowerCase().includes('won')` and `includes('lost')` to identify terminal deals. Stage IDs are UUIDs — they never contain 'won' or 'lost'. This means the forecast bar always counts zero won deals and includes all deals as "open". Fix: look up the stage in the pipeline's stages array and check `stage.isWon` / `stage.isLost` flags.
+
+### Customers Page Filters on Wrong Field — status vs customerType
+`customers-page.tsx` filters `c.status === 'Closed'`. But the backend won-deal handoff sets `customerType = 'Active Customer'` on contacts, never changes `status` to 'Closed'. Result: customers created via deal-won never appear in the Customers view, and customers added from the Customers page (with `customerType = 'Active Customer'`) never appear either because filter checks `status`. Fix: filter on `customerType === 'Active Customer'` or (after migration) `lifecycleStage === 'CUSTOMER'`.

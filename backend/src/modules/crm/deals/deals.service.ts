@@ -57,7 +57,10 @@ export async function updateDeal(id: string, tenantId: string, userId: string, d
 }
 
 export async function moveDealStage(id: string, tenantId: string, userId: string, dto: MoveDealStageDto) {
-  const newStage = await prisma.stage.findFirst({ where: { id: dto.stageId } });
+  // SEC-1 fix: Resolve stage within the tenant boundary via pipeline
+  const newStage = await prisma.stage.findFirst({
+    where: { id: dto.stageId, tenantId },
+  });
   if (!newStage) throw new NotFoundError('Stage');
 
   if (newStage.isLost && !dto.lostReason) {

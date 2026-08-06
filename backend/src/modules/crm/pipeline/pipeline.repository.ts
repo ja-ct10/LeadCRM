@@ -50,18 +50,19 @@ export async function deletePipeline(id: string, tenantId: string) {
 export async function createStage(tenantId: string, dto: CreateStageDto) {
   const pipeline = await prisma.pipeline.findFirst({ where: { id: dto.pipelineId, tenantId } });
   if (!pipeline) return null;
-  return prisma.stage.create({ data: dto });
+  // tenantId derived from the parent pipeline — never independently settable
+  return prisma.stage.create({ data: { ...dto, tenantId } });
 }
 
 export async function updateStage(id: string, tenantId: string, dto: UpdateStageDto) {
-  const stage = await prisma.stage.findFirst({ where: { id }, include: { pipeline: true } });
-  if (!stage || stage.pipeline.tenantId !== tenantId) return null;
+  const stage = await prisma.stage.findFirst({ where: { id, tenantId } });
+  if (!stage) return null;
   return prisma.stage.update({ where: { id }, data: dto });
 }
 
 export async function deleteStage(id: string, tenantId: string) {
-  const stage = await prisma.stage.findFirst({ where: { id }, include: { pipeline: true } });
-  if (!stage || stage.pipeline.tenantId !== tenantId) return null;
+  const stage = await prisma.stage.findFirst({ where: { id, tenantId } });
+  if (!stage) return null;
 
   const activeDeals = await prisma.deal.count({ where: { stageId: id, tenantId, isArchived: false } });
   if (activeDeals > 0) return { hasActiveDeals: true as const };
