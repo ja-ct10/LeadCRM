@@ -337,5 +337,13 @@ Vercel with Turborepo requires all environment variables used during build to be
 ### Non-UTF-8 Characters Break Vercel Webpack Build
 A single non-printable character (e.g. a Windows em-dash `—` pasted from rich text) in a `.tsx` file causes `stream did not contain valid UTF-8` and kills the entire Vercel build. Fix with PowerShell: `$content -replace '[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]', '-'` then write back as UTF-8 without BOM.
 
+### ALLOWED_ORIGINS Must Include the Deployed Frontend URL
+CORS is configured from `process.env.ALLOWED_ORIGINS` (comma-separated). If this env var on Render does not include the Vercel frontend origin exactly, the browser blocks all requests with `No 'Access-Control-Allow-Origin'` — making every API call fail before even reaching the auth logic. Set this in the Render dashboard:
+```
+ALLOWED_ORIGINS=https://your-frontend.vercel.app,http://localhost:3000
+APP_URL=https://your-frontend.vercel.app
+```
+Also: when `NODE_ENV=production` and SMTP is unconfigured, the old `sendLoginOtp` silently returned without sending or erroring. The fix: throw `AppError('Email service not configured', 503)` in production when SMTP is missing, so the 500 becomes a meaningful error rather than a mystery.
+
 ### Schema Drift — Missing Columns After Deploy
 When `prisma migrate deploy` says "No pending migrations" but columns are missing, the schema has drifted beyond what the migration files capture. Root cause: columns were added directly to `schema.prisma` without creating migration files. Fix options: (1) delete and recreate the database for a clean slate, or (2) run `npx prisma migrate dev --name add_missing_columns` locally to generate a new migration file, then push. Always generate migration files when changing schema — never rely on `db push` for production.

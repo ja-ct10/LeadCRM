@@ -341,13 +341,19 @@ export async function sendLoginOtp(dto: LoginDto, ctx: LoginContext = {}): Promi
     create: { email: dto.email, codeHash, expires },
   });
 
-  const smtpConfigured = process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS;
+  const smtpConfigured = !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 
   if (!smtpConfigured) {
     if (process.env.NODE_ENV !== 'production') {
+      // Dev fallback — log the OTP so the flow can be tested without real SMTP
       console.log(`\n[DEV] Login OTP for ${dto.email}: ${code}\n`);
+      return;
     }
-    return;
+    // Production with no SMTP configured — surface a clear error instead of silent failure
+    throw new AppError(
+      'Email service is not configured on the server. Please contact support.',
+      503,
+    );
   }
 
   await sendMail({
