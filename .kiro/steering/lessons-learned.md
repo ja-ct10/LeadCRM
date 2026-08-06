@@ -345,6 +345,9 @@ APP_URL=https://your-frontend.vercel.app
 ```
 Also: when `NODE_ENV=production` and SMTP is unconfigured, the old `sendLoginOtp` silently returned without sending or erroring. The fix: throw `AppError('Email service not configured', 503)` in production when SMTP is missing, so the 500 becomes a meaningful error rather than a mystery.
 
+### Render Free Tier Blocks Outbound SMTP — Use HTTP Email APIs
+Render's free/starter tier blocks or throttles outbound TCP connections on ports 587 and 465. `nodemailer.sendMail()` hangs indefinitely (no error, no timeout), causing the request to time out and return 500 to the client. The fix: use an HTTP-based transactional email API (Resend, SendGrid, Postmark) instead of raw SMTP. These send over HTTPS port 443, which is never blocked. The `resend` npm package was already in `dependencies` — switching `email.service.ts` from nodemailer to `new Resend(apiKey).emails.send()` resolved it instantly.
+
 ### Registration OTP Requires a Separate Token Model and Endpoints
 Login OTP (`LoginOtpToken`) validates credentials first, then sends a code. Registration OTP (`RegistrationOtpToken`) has no existing user — it verifies email ownership before account creation. They must be separate models (different lifecycles, different rate limits) with dedicated endpoints (`/auth/send-registration-otp`, `/auth/verify-registration-otp`). A frontend-only "OTP step" that just toggles a flag without calling any API is a stub that silently ships as a broken feature.
 

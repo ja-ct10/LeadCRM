@@ -253,17 +253,19 @@ export async function requestPasswordReset(dto: ForgotPasswordDto): Promise<void
   const appUrl   = process.env.APP_URL ?? 'http://localhost:3000';
   const resetUrl = `${appUrl}/reset-password?token=${rawToken}`;
 
-  const smtpConfigured =
-    process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS;
+  const emailConfigured = !!process.env.RESEND_API_KEY;
 
-  if (!smtpConfigured) {
-    // Dev fallback — log the link so the flow can be tested without real SMTP
+  if (!emailConfigured) {
     if (process.env.NODE_ENV !== 'production') {
-      console.log('\n[DEV] Password reset link (SMTP not configured):');
+      console.log('\n[DEV] Password reset link (email not configured):');
       console.log(resetUrl);
       console.log('');
+      return;
     }
-    return;
+    throw new AppError(
+      'Email service is not configured on the server. Please contact support.',
+      503,
+    );
   }
 
   await sendMail({
@@ -341,15 +343,15 @@ export async function sendLoginOtp(dto: LoginDto, ctx: LoginContext = {}): Promi
     create: { email: dto.email, codeHash, expires },
   });
 
-  const smtpConfigured = !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+  const emailConfigured = !!process.env.RESEND_API_KEY;
 
-  if (!smtpConfigured) {
+  if (!emailConfigured) {
     if (process.env.NODE_ENV !== 'production') {
-      // Dev fallback — log the OTP so the flow can be tested without real SMTP
+      // eslint-disable-next-line no-console
       console.log(`\n[DEV] Login OTP for ${dto.email}: ${code}\n`);
       return;
     }
-    // Production with no SMTP configured — surface a clear error instead of silent failure
+    // Production with no email configured — surface a clear error instead of silent failure
     throw new AppError(
       'Email service is not configured on the server. Please contact support.',
       503,
@@ -448,9 +450,9 @@ export async function sendRegistrationOtp(email: string): Promise<void> {
     create: { email, codeHash, expires },
   });
 
-  const smtpConfigured = !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+  const emailConfigured = !!process.env.RESEND_API_KEY;
 
-  if (!smtpConfigured) {
+  if (!emailConfigured) {
     if (process.env.NODE_ENV !== 'production') {
       // eslint-disable-next-line no-console
       console.log(`\n[DEV] Registration OTP for ${email}: ${code}\n`);

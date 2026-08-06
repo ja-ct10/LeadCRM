@@ -1,17 +1,15 @@
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 import { AppError } from '../errors/app-error';
 
 /**
- * Sends transactional email via Gmail SMTP (or any SMTP provider).
+ * Email service — uses Resend HTTP API for reliable delivery from any host.
  *
  * Required env vars:
- *   SMTP_HOST  — e.g. smtp.gmail.com
- *   SMTP_PORT  — e.g. 587
- *   SMTP_USER  — Gmail address
- *   SMTP_PASS  — Gmail App Password (16 chars, no spaces)
- *   SMTP_FROM  — display name + address, e.g. "LeadCRM <you@gmail.com>"
+ *   RESEND_API_KEY — from https://resend.com/api-keys
+ *   RESEND_FROM   — verified sender, e.g. "LeadCRM <noreply@yourdomain.com>"
+ *                   Free plan: use "onboarding@resend.dev" (sends to account owner only)
  *
- * In development without credentials, logs the reset URL to console instead.
+ * Falls back to console logging in development when RESEND_API_KEY is not set.
  */
 
 export interface SendMailOptions {
@@ -20,45 +18,43 @@ export interface SendMailOptions {
   html: string;
 }
 
-function isSmtpConfigured(): boolean {
-  return !!(
-    process.env.SMTP_HOST &&
-    process.env.SMTP_USER &&
-    process.env.SMTP_PASS
-  );
-}
-
-function createTransporter() {
-  const port = parseInt(process.env.SMTP_PORT ?? '587', 10);
-
-  return nodemailer.createTransport({
-    host:   process.env.SMTP_HOST,
-    port,
-    secure: port === 465, // true for 465 (SSL), false for 587 (STARTTLS)
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
+function isEmailConfigured(): boolean {
+  return !!(process.env.RESEND_API_KEY);
 }
 
 export async function sendMail(options: SendMailOptions): Promise<void> {
-  if (!isSmtpConfigured()) {
+  if (!isEmailConfigured()) {
+    if (process.env.NODE_ENV !== 'production') {
+      // eslint-disable-next-line no-console
+      console.log(`\n[DEV] Email would be sent to: ${options.to}`);
+      // eslint-disable-next-line no-console
+      console.log(`[DEV] Subject: ${options.subject}\n`);
+      return;
+    }
     throw new AppError(
-      'Email service is not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASS in your .env file.',
-      503
+      'Email service is not configured. Set RESEND_API_KEY in your environment.',
+      503,
     );
   }
 
-  const transporter = createTransporter();
-  const from = process.env.SMTP_FROM ?? `LeadCRM <${process.env.SMTP_USER}>`;
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const from = process.env.RESEND_FROM ?? 'LeadCRM <onboarding@resend.dev>';
 
-  await transporter.sendMail({
+  const { error } = await resend.emails.send({
     from,
-    to:      options.to,
+    to: [options.to],
     subject: options.subject,
-    html:    options.html,
+    html: options.html,
   });
+
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.error('[EmailService] Resend error:', error.message);
+    throw new AppError(
+      `Failed to send email: ${error.message}`,
+      502,
+    );
+  }
 }
 
 /**
@@ -91,7 +87,7 @@ export function buildPasswordResetEmail(resetUrl: string): string {
           Your password will not change until you click the link above.
         </p>
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
-        <p style="color: #cbd5e1; font-size: 11px;">LeadCRM · Automated notification</p>
+        <p style="color: #cbd5e1; font-size: 11px;">LeadCRM &middot; Automated notification</p>
       </div>
     </body>
     </html>
@@ -125,13 +121,12 @@ export function buildLoginOtpEmail(code: string): string {
           Someone may have entered your email address by mistake.
         </p>
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
-        <p style="color: #cbd5e1; font-size: 11px;">LeadCRM · Automated notification</p>
+        <p style="color: #cbd5e1; font-size: 11px;">LeadCRM &middot; Automated notification</p>
       </div>
     </body>
     </html>
   `;
 }
-
 
 /**
  * Builds the HTML body for a registration verification OTP email.
@@ -159,7 +154,7 @@ export function buildRegistrationOtpEmail(code: string): string {
           If you didn't try to register, you can safely ignore this email.
         </p>
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
-        <p style="color: #cbd5e1; font-size: 11px;">LeadCRM · Automated notification</p>
+        <p style="color: #cbd5e1; font-size: 11px;">LeadCRM &middot; Automated notification</p>
       </div>
     </body>
     </html>
