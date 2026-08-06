@@ -841,7 +841,18 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
                     maxLength={6}
                     placeholder="------"
                   />
-                  <button type="button" onClick={() => setShowRegOTP(false)} className="w-full mt-4 text-xs text-slate-500 hover:text-slate-300">
+                  <div className="mt-3">
+                    <ResendOtpButton
+                      email={adminData.email}
+                      password={adminData.password}
+                      onResend={async () => {
+                        // Registration flow: re-trigger the send OTP step
+                        setShowRegOTP(false);
+                        setTimeout(() => setShowRegOTP(true), 50);
+                      }}
+                    />
+                  </div>
+                  <button type="button" onClick={() => setShowRegOTP(false)} className="w-full mt-3 text-xs text-slate-500 hover:text-slate-300">
                     Go Back
                   </button>
                 </div>
