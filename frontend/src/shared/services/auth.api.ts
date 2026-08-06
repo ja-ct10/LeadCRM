@@ -46,4 +46,10 @@ export const authApi = {
 
   verifyOtp: (email: string, code: string) =>
     apiClient.post<AuthResponse>('/auth/verify-otp', { email, code }),
+
+  sendRegistrationOtp: (email: string) =>
+    apiClient.post<{ success: boolean; message: string }>('/auth/send-registration-otp', { email }),
+
+  verifyRegistrationOtp: (email: string, code: string) =>
+    apiClient.post<{ success: boolean; message: string }>('/auth/verify-registration-otp', { email, code }),
 };

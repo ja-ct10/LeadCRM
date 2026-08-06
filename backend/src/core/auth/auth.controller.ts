@@ -7,6 +7,8 @@ import {
   resetPasswordWithToken,
   sendLoginOtp,
   verifyLoginOtp,
+  sendRegistrationOtp,
+  verifyRegistrationOtp,
 } from './auth.service';
 import { revokeSession } from './session.service';
 import prisma from '../../config/database.config';
@@ -16,6 +18,8 @@ import {
   ResetPasswordSchema,
   SendOtpSchema,
   VerifyOtpSchema,
+  SendRegistrationOtpSchema,
+  VerifyRegistrationOtpSchema,
 } from './auth.dto';
 
 const COOKIE_NAME = 'leadcrm_token';
@@ -135,9 +139,33 @@ export async function registerGuest(req: Request, res: Response, next: NextFunct
   }
 }
 
-export async function verifyEmail(req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function verifyEmail(_req: Request, res: Response, _next: NextFunction): Promise<void> {
+  // Placeholder — email verification during registration now uses the OTP flow below
+  res.status(501).json({ success: false, error: 'Use /auth/send-registration-otp and /auth/verify-registration-otp instead.' });
+}
+
+export async function sendRegOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    // Mock implementation for now
+    const parsed = SendRegistrationOtpSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: parsed.error.errors[0]?.message ?? 'Invalid input' });
+      return;
+    }
+    await sendRegistrationOtp(parsed.data.email);
+    res.json({ success: true, message: 'Verification code sent to your email address.' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function verifyRegOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const parsed = VerifyRegistrationOtpSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: parsed.error.errors[0]?.message ?? 'Invalid input' });
+      return;
+    }
+    await verifyRegistrationOtp(parsed.data.email, parsed.data.code);
     res.json({ success: true, message: 'Email verified successfully.' });
   } catch (err) {
     next(err);

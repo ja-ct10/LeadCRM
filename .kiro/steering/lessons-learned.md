@@ -345,6 +345,9 @@ APP_URL=https://your-frontend.vercel.app
 ```
 Also: when `NODE_ENV=production` and SMTP is unconfigured, the old `sendLoginOtp` silently returned without sending or erroring. The fix: throw `AppError('Email service not configured', 503)` in production when SMTP is missing, so the 500 becomes a meaningful error rather than a mystery.
 
+### Registration OTP Requires a Separate Token Model and Endpoints
+Login OTP (`LoginOtpToken`) validates credentials first, then sends a code. Registration OTP (`RegistrationOtpToken`) has no existing user — it verifies email ownership before account creation. They must be separate models (different lifecycles, different rate limits) with dedicated endpoints (`/auth/send-registration-otp`, `/auth/verify-registration-otp`). A frontend-only "OTP step" that just toggles a flag without calling any API is a stub that silently ships as a broken feature.
+
 ### Render/Vercel Dashboard Env Vars Keep Their Quotes — dotenv Strips Them
 `.env` files are parsed by dotenv, which strips surrounding quotes. Dashboard-entered env vars on Render and Vercel are stored **literally**, quotes included. A value like `SMTP_FROM="LeadCRM <you@gmail.com>"` works locally but becomes a malformed From header in production, causing nodemailer to throw and the endpoint to 500. Never wrap dashboard env values in quotes, even when the value contains spaces or angle brackets.
 ```

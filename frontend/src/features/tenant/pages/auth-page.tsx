@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/store/AuthContext';
+import { authApi } from '@/shared/services/auth.api';
 import { ArrowLeft, CheckCircle2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -200,13 +201,24 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
       }
       
       if (!showRegOTP) {
-        setShowRegOTP(true);
-        setError('');
+        // Step 1: Send the real OTP email before showing the code input
+        try {
+          await authApi.sendRegistrationOtp(adminData.email);
+          setShowRegOTP(true);
+          setError('');
+        } catch (err: unknown) {
+          setError(err instanceof Error ? err.message : 'Failed to send verification code. Please try again.');
+        }
         return;
       }
       
-      // Registration OTP verification — skip gate, proceed directly
-      // (Email verification for registration is handled post-approval)
+      // Step 2: Verify the OTP code the user entered
+      try {
+        await authApi.verifyRegistrationOtp(adminData.email, otp);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Invalid or expired code.');
+        return;
+      }
 
       try {
         const success = await registerTenant({...tenantData, businessReqs, verificationDocs: { ...verificationDocs, uploadedAt: new Date().toISOString() }}, adminData);
@@ -865,9 +877,8 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
                       email={adminData.email}
                       password={adminData.password}
                       onResend={async () => {
-                        // Registration flow: re-trigger the send OTP step
-                        setShowRegOTP(false);
-                        setTimeout(() => setShowRegOTP(true), 50);
+                        // Re-send the registration OTP via the real API
+                        await authApi.sendRegistrationOtp(adminData.email);
                       }}
                     />
                   </div>

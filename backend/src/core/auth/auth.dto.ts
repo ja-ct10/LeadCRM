@@ -57,5 +57,16 @@ export const VerifyOtpSchema = z.object({
   code: z.string().length(6, 'OTP must be 6 digits'),
 });
 
+export const SendRegistrationOtpSchema = z.object({
+  email: z.string().email('Valid email required'),
+});
+
+export const VerifyRegistrationOtpSchema = z.object({
+  email: z.string().email('Valid email required'),
+  code: z.string().length(6, 'OTP must be 6 digits'),
+});
+
 export type SendOtpDto = z.infer<typeof SendOtpSchema>;
 export type VerifyOtpDto = z.infer<typeof VerifyOtpSchema>;
+export type SendRegistrationOtpDto = z.infer<typeof SendRegistrationOtpSchema>;
+export type VerifyRegistrationOtpDto = z.infer<typeof VerifyRegistrationOtpSchema>;

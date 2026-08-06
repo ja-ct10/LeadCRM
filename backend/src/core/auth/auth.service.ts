@@ -5,7 +5,7 @@ import { signToken } from './jwt.service';
 import { createSession } from './session.service';
 import { AppError } from '../../shared/errors/app-error';
 import { ConflictError } from '../../shared/errors/http-error';
-import { sendMail, buildPasswordResetEmail, buildLoginOtpEmail } from '../../shared/services/email.service';
+import { sendMail, buildPasswordResetEmail, buildLoginOtpEmail, buildRegistrationOtpEmail } from '../../shared/services/email.service';
 import type { ForgotPasswordDto, ResetPasswordDto } from './auth.dto';
 
 const prisma = new PrismaClient();
@@ -424,4 +424,81 @@ export async function verifyLoginOtp(email: string, code: string, ctx: LoginCont
       tenantId:  user.tenantId,
     },
   };
+}
+
+// ── Registration Email Verification OTP ───────────────────────────────
+
+const REG_OTP_TTL_MS       = 10 * 60 * 1000; // 10 minutes
+const REG_OTP_MAX_ATTEMPTS = 5;
+
+/**
+ * Sends a 6-digit verification code to the given email during registration.
+ * Does NOT require an existing user — the account hasn't been created yet.
+ */
+export async function sendRegistrationOtp(email: string): Promise<void> {
+  // Generate a 6-digit numeric code
+  const code     = String(Math.floor(100000 + Math.random() * 900000));
+  const codeHash = await hashPassword(code);
+  const expires  = new Date(Date.now() + REG_OTP_TTL_MS);
+
+  // Upsert — one active OTP per email at a time
+  await prisma.registrationOtpToken.upsert({
+    where:  { email },
+    update: { codeHash, expires, attempts: 0 },
+    create: { email, codeHash, expires },
+  });
+
+  const smtpConfigured = !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+
+  if (!smtpConfigured) {
+    if (process.env.NODE_ENV !== 'production') {
+      // eslint-disable-next-line no-console
+      console.log(`\n[DEV] Registration OTP for ${email}: ${code}\n`);
+      return;
+    }
+    throw new AppError(
+      'Email service is not configured on the server. Please contact support.',
+      503,
+    );
+  }
+
+  await sendMail({
+    to:      email,
+    subject: `${code} is your LeadCRM verification code`,
+    html:    buildRegistrationOtpEmail(code),
+  });
+}
+
+/**
+ * Verifies a registration OTP code. Returns true on success.
+ * Throws AppError on failure (expired, wrong code, too many attempts).
+ */
+export async function verifyRegistrationOtp(email: string, code: string): Promise<boolean> {
+  const record = await prisma.registrationOtpToken.findUnique({ where: { email } });
+
+  if (!record) throw new AppError('No verification code found for this email. Please request a new one.', 400);
+
+  if (record.expires < new Date()) {
+    await prisma.registrationOtpToken.delete({ where: { email } });
+    throw new AppError('Verification code has expired. Please request a new one.', 400);
+  }
+
+  if (record.attempts >= REG_OTP_MAX_ATTEMPTS) {
+    await prisma.registrationOtpToken.delete({ where: { email } });
+    throw new AppError('Too many incorrect attempts. Please request a new code.', 429);
+  }
+
+  const valid = await comparePassword(code, record.codeHash);
+  if (!valid) {
+    await prisma.registrationOtpToken.update({
+      where: { email },
+      data:  { attempts: { increment: 1 } },
+    });
+    const remaining = REG_OTP_MAX_ATTEMPTS - record.attempts - 1;
+    throw new AppError(`Incorrect code. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`, 400);
+  }
+
+  // Code verified — delete it
+  await prisma.registrationOtpToken.delete({ where: { email } });
+  return true;
 }

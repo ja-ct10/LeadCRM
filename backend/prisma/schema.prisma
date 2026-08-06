@@ -1279,3 +1279,17 @@ model LoginOtpToken {
 
   @@unique([email])
 }
+
+// ─────────────────────────────────────────────
+// REGISTRATION OTP TOKEN (email verification during registration)
+// ─────────────────────────────────────────────
+model RegistrationOtpToken {
+  id        String   @id @default(uuid())
+  email     String
+  codeHash  String   // bcrypt hash of the 6-digit code
+  expires   DateTime
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@unique([email])
+}

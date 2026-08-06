@@ -131,3 +131,37 @@ export function buildLoginOtpEmail(code: string): string {
     </html>
   `;
 }
+
+
+/**
+ * Builds the HTML body for a registration verification OTP email.
+ */
+export function buildRegistrationOtpEmail(code: string): string {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8" /></head>
+    <body style="font-family: Inter, Arial, sans-serif; background: #f8fafc; padding: 40px 0;">
+      <div style="max-width: 480px; margin: 0 auto; background: #ffffff; border-radius: 12px;
+                  border: 1px solid #e5e7eb; padding: 40px; text-align: center;">
+        <h1 style="font-size: 22px; font-weight: 700; color: #0f172a; margin-bottom: 8px;">
+          Verify your email
+        </h1>
+        <p style="color: #64748b; font-size: 14px; line-height: 1.6; margin-bottom: 28px;">
+          Use the code below to complete your registration. It expires in <strong>10 minutes</strong>.
+        </p>
+        <div style="display: inline-block; background: #f1f5f9; border-radius: 12px;
+                    padding: 20px 40px; margin-bottom: 28px;">
+          <span style="font-size: 36px; font-weight: 800; letter-spacing: 10px;
+                       color: #0f172a; font-family: monospace;">${code}</span>
+        </div>
+        <p style="color: #94a3b8; font-size: 12px; line-height: 1.6;">
+          If you didn't try to register, you can safely ignore this email.
+        </p>
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+        <p style="color: #cbd5e1; font-size: 11px;">LeadCRM · Automated notification</p>
+      </div>
+    </body>
+    </html>
+  `;
+}
