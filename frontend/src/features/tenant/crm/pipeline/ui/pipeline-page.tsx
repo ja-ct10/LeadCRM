@@ -13,7 +13,8 @@ import {
   History, MessageSquare, Tag, Trash2,
   ChevronRight, ChevronDown, ChevronUp, ExternalLink, Receipt, Rocket,
   PhoneCall, Mail, Users, Shield, Lock, Layers, Search,
-  LayoutGrid, Table, List, SlidersHorizontal, RotateCcw, Check, Archive
+  LayoutGrid, Table, List, SlidersHorizontal, RotateCcw, Check, Archive,
+  Briefcase, HeadphonesIcon, RefreshCw, UserCheck, Zap
 } from 'lucide-react';
 import {
   DndContext,
@@ -314,6 +315,141 @@ const DroppableCell = ({ id, stage, swimlaneValue, children, isDraggingAny, isAu
   );
 };
 
+// ── Pipeline Templates ────────────────────────────────────────────────────────
+// Stage badge Tailwind classes — keyed by stage color hex so we avoid inline style={{}}
+const STAGE_BADGE_CLASSES: Record<string, string> = {
+  '#6366f1': 'bg-indigo-500/10 border-indigo-500/30 text-indigo-500 dark:text-indigo-400',
+  '#8b5cf6': 'bg-violet-500/10 border-violet-500/30 text-violet-500 dark:text-violet-400',
+  '#0ea5e9': 'bg-sky-500/10 border-sky-500/30 text-sky-500 dark:text-sky-400',
+  '#3b82f6': 'bg-blue-500/10 border-blue-500/30 text-blue-500 dark:text-blue-400',
+  '#f59e0b': 'bg-amber-500/10 border-amber-500/30 text-amber-500 dark:text-amber-400',
+  '#10b981': 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500 dark:text-emerald-400',
+  '#ef4444': 'bg-red-500/10 border-red-500/30 text-red-500 dark:text-red-400',
+};
+const DEFAULT_STAGE_BADGE = 'bg-slate-500/10 border-slate-500/30 text-slate-500 dark:text-slate-400';
+
+interface PipelineTemplate {
+  id: string;
+  name: string;
+  description: string;
+  icon: React.ReactNode;
+  color: string;
+  accentColor: string;
+  stages: Array<{
+    name: string;
+    order: number;
+    probability: number;
+    color: string;
+    isDefault?: boolean;
+    isWon?: boolean;
+    isLost?: boolean;
+  }>;
+}
+
+const PIPELINE_TEMPLATES: PipelineTemplate[] = [
+  {
+    id: 'inquiry',
+    name: 'Inquiry / Sales Pipeline',
+    description: 'Classic B2B sales flow from first inquiry to closed deal. Ideal for IT, Telecom & consulting services.',
+    icon: <Briefcase size={20} />,
+    color: 'bg-blue-500/10 border-blue-500/20',
+    accentColor: 'text-blue-500',
+    stages: [
+      { name: 'New Inquiry',       order: 1, probability: 10,  color: '#6366f1', isDefault: true },
+      { name: 'Contacted',         order: 2, probability: 20,  color: '#8b5cf6' },
+      { name: 'Qualified',         order: 3, probability: 40,  color: '#0ea5e9' },
+      { name: 'Demo / Meeting',    order: 4, probability: 55,  color: '#3b82f6' },
+      { name: 'Proposal Sent',     order: 5, probability: 70,  color: '#f59e0b' },
+      { name: 'Negotiation',       order: 6, probability: 85,  color: '#f97316' },
+      { name: 'Closed Won',        order: 7, probability: 100, color: '#10b981', isWon: true },
+      { name: 'Closed Lost',       order: 8, probability: 0,   color: '#ef4444', isLost: true },
+    ],
+  },
+  {
+    id: 'it-telecom',
+    name: 'IT / Telecom Sales',
+    description: 'Tailored for IT services and telecom deals — includes technical evaluation and procurement stages common in enterprise B2B.',
+    icon: <Layers size={20} />,
+    color: 'bg-sky-500/10 border-sky-500/20',
+    accentColor: 'text-sky-500',
+    stages: [
+      { name: 'Lead Identified',   order: 1, probability: 10,  color: '#6366f1', isDefault: true },
+      { name: 'Discovery Call',    order: 2, probability: 25,  color: '#8b5cf6' },
+      { name: 'Technical Eval',    order: 3, probability: 40,  color: '#0ea5e9' },
+      { name: 'Proposal / RFP',    order: 4, probability: 55,  color: '#3b82f6' },
+      { name: 'Procurement',       order: 5, probability: 70,  color: '#f59e0b' },
+      { name: 'Contract Review',   order: 6, probability: 85,  color: '#f97316' },
+      { name: 'Closed Won',        order: 7, probability: 100, color: '#10b981', isWon: true },
+      { name: 'Closed Lost',       order: 8, probability: 0,   color: '#ef4444', isLost: true },
+    ],
+  },
+  {
+    id: 'onboarding',
+    name: 'Customer Onboarding',
+    description: 'Track new customers through welcome, setup, training, and go-live. Activate after a deal is won.',
+    icon: <UserCheck size={20} />,
+    color: 'bg-emerald-500/10 border-emerald-500/20',
+    accentColor: 'text-emerald-500',
+    stages: [
+      { name: 'Welcome & Kickoff',   order: 1, probability: 100, color: '#6366f1', isDefault: true },
+      { name: 'Requirements Gather', order: 2, probability: 100, color: '#8b5cf6' },
+      { name: 'Setup & Config',      order: 3, probability: 100, color: '#0ea5e9' },
+      { name: 'User Training',       order: 4, probability: 100, color: '#3b82f6' },
+      { name: 'UAT / Sign-off',      order: 5, probability: 100, color: '#f59e0b' },
+      { name: 'Go Live',             order: 6, probability: 100, color: '#10b981', isWon: true },
+      { name: 'Cancelled',           order: 7, probability: 0,   color: '#ef4444', isLost: true },
+    ],
+  },
+  {
+    id: 'support',
+    name: 'Service & Support',
+    description: 'Manage service tickets, support cases, and issue resolution from open to closed.',
+    icon: <HeadphonesIcon size={20} />,
+    color: 'bg-amber-500/10 border-amber-500/20',
+    accentColor: 'text-amber-500',
+    stages: [
+      { name: 'Ticket Opened',   order: 1, probability: 10,  color: '#6366f1', isDefault: true },
+      { name: 'Triaged',         order: 2, probability: 25,  color: '#8b5cf6' },
+      { name: 'In Progress',     order: 3, probability: 50,  color: '#0ea5e9' },
+      { name: 'Awaiting Client', order: 4, probability: 60,  color: '#f59e0b' },
+      { name: 'Testing / QA',    order: 5, probability: 80,  color: '#3b82f6' },
+      { name: 'Resolved',        order: 6, probability: 100, color: '#10b981', isWon: true },
+      { name: 'Unresolved',      order: 7, probability: 0,   color: '#ef4444', isLost: true },
+    ],
+  },
+  {
+    id: 'renewal',
+    name: 'Renewal & Upsell',
+    description: 'Track subscription renewals, contract expansions, and upsell opportunities with existing clients.',
+    icon: <RefreshCw size={20} />,
+    color: 'bg-purple-500/10 border-purple-500/20',
+    accentColor: 'text-purple-500',
+    stages: [
+      { name: 'Renewal Due',        order: 1, probability: 40,  color: '#6366f1', isDefault: true },
+      { name: 'Review Scheduled',   order: 2, probability: 55,  color: '#8b5cf6' },
+      { name: 'Upsell Proposed',    order: 3, probability: 65,  color: '#0ea5e9' },
+      { name: 'Negotiating Terms',  order: 4, probability: 80,  color: '#f59e0b' },
+      { name: 'Contract Sent',      order: 5, probability: 90,  color: '#3b82f6' },
+      { name: 'Renewed / Upsold',   order: 6, probability: 100, color: '#10b981', isWon: true },
+      { name: 'Churned',            order: 7, probability: 0,   color: '#ef4444', isLost: true },
+    ],
+  },
+  {
+    id: 'custom',
+    name: 'Blank / Custom',
+    description: 'Start with a clean slate and build your own stages from scratch.',
+    icon: <Zap size={20} />,
+    color: 'bg-slate-500/10 border-slate-500/20',
+    accentColor: 'text-slate-400',
+    stages: [
+      { name: 'Stage 1', order: 1, probability: 10,  color: '#6366f1', isDefault: true },
+      { name: 'Stage 2', order: 2, probability: 50,  color: '#3b82f6' },
+      { name: 'Won',     order: 3, probability: 100, color: '#10b981', isWon: true },
+      { name: 'Lost',    order: 4, probability: 0,   color: '#ef4444', isLost: true },
+    ],
+  },
+];
+
 export default function PipelinePage({ navigate }: { navigate: (path: string) => void }) {
   const { 
     pipelines, 
@@ -493,6 +629,8 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPipelineModalOpen, setIsPipelineModalOpen] = useState(false);
+  const [pipelineModalStep, setPipelineModalStep] = useState<'template' | 'name'>('template');
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('inquiry');
   const [isManagePipelinesModalOpen, setIsManagePipelinesModalOpen] = useState(false);
   const [editingPipeline, setEditingPipeline] = useState<Pipeline | null>(null);
   const [newPipelineName, setNewPipelineName] = useState('');
@@ -896,21 +1034,24 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
   const handleAddPipeline = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPipelineName.trim()) return;
-    
-    // Default stages from the Lead Sales template — proper flags and probabilities
-    const defaultStages: Stage[] = [
-      { id: uuid(), name: 'New Inquiry',    order: 1, probability: 10, color: '#6366f1', isDefault: true },
-      { id: uuid(), name: 'Contacted',      order: 2, probability: 20, color: '#8b5cf6' },
-      { id: uuid(), name: 'Qualified',      order: 3, probability: 40, color: '#0ea5e9' },
-      { id: uuid(), name: 'Proposal Sent',  order: 4, probability: 60, color: '#3b82f6' },
-      { id: uuid(), name: 'Negotiation',    order: 5, probability: 80, color: '#f59e0b' },
-      { id: uuid(), name: 'Won',            order: 6, probability: 100, color: '#10b981', isWon: true },
-      { id: uuid(), name: 'Lost',           order: 7, probability: 0,   color: '#ef4444', isLost: true },
-    ];
-    
+
+    const template = PIPELINE_TEMPLATES.find(t => t.id === selectedTemplateId) ?? PIPELINE_TEMPLATES[0];
+    const templateStages: Stage[] = template.stages.map(s => ({
+      id: uuid(),
+      name: s.name,
+      order: s.order,
+      probability: s.probability,
+      color: s.color,
+      isDefault: s.isDefault ?? false,
+      isWon: s.isWon ?? false,
+      isLost: s.isLost ?? false,
+    }));
+
     try {
-      await addPipeline({ name: newPipelineName, stages: defaultStages });
+      await addPipeline({ name: newPipelineName.trim(), stages: templateStages });
       setIsPipelineModalOpen(false);
+      setPipelineModalStep('template');
+      setSelectedTemplateId('inquiry');
       setNewPipelineName('');
       toast.success("Pipeline created successfully");
     } catch (err: unknown) {
@@ -1398,45 +1539,199 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
             )
           })}
         </div>
-        <button 
-          onClick={() => setIsPipelineModalOpen(true)}
-          className="flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white text-sm font-medium transition-colors whitespace-nowrap"
-        >
-          <Plus size={16} /> New Pipeline
-        </button>
+        {canManagePipelines && (
+          <button 
+            onClick={() => {
+              setPipelineModalStep('template');
+              setSelectedTemplateId('inquiry');
+              setNewPipelineName('');
+              setIsPipelineModalOpen(true);
+            }}
+            className="flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white text-sm font-medium transition-colors whitespace-nowrap"
+          >
+            <Plus size={16} /> New Pipeline
+          </button>
+        )}
       </div>
 
-      {/* New Pipeline Modal */}
+      {/* New Pipeline Modal — Template Picker */}
       {isPipelineModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-50 dark:bg-slate-950 rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-md overflow-hidden flex flex-col shadow-2xl">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-white/[0.05] shrink-0">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.97, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.97, y: 8 }}
+            transition={{ type: 'spring', damping: 30, stiffness: 280 }}
+            className="bg-white dark:bg-slate-950 rounded-2xl border border-gray-200 dark:border-white/[0.1] w-full max-w-2xl overflow-hidden flex flex-col shadow-2xl"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 dark:border-white/[0.05] shrink-0">
               <div>
-                <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Create New Pipeline</h2>
-                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Add a custom pipeline for another department.</p>
+                {pipelineModalStep === 'template' ? (
+                  <>
+                    <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Choose a Pipeline Template</h2>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Pick a starting point — you can rename stages anytime.</p>
+                  </>
+                ) : (
+                  <>
+                    <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Name Your Pipeline</h2>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                      Based on: <span className={`font-medium ${PIPELINE_TEMPLATES.find(t => t.id === selectedTemplateId)?.accentColor}`}>
+                        {PIPELINE_TEMPLATES.find(t => t.id === selectedTemplateId)?.name}
+                      </span>
+                    </p>
+                  </>
+                )}
               </div>
-              <button onClick={() => setIsPipelineModalOpen(false)} className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg transition-colors"><X size={20} /></button>
+              <button
+                onClick={() => {
+                  setIsPipelineModalOpen(false);
+                  setPipelineModalStep('template');
+                  setSelectedTemplateId('inquiry');
+                  setNewPipelineName('');
+                }}
+                aria-label="Close modal"
+                className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg transition-colors"
+              >
+                <X size={18} />
+              </button>
             </div>
-            <div className="p-6">
-              <form id="add-pipeline-form" onSubmit={handleAddPipeline} className="space-y-4">
-                <div>
-                  <label className="block text-sm text-slate-500 dark:text-slate-400 mb-1.5">Pipeline Name *</label>
-                  <input 
-                    required 
-                    value={newPipelineName} 
-                    onChange={e => setNewPipelineName(e.target.value)} 
-                    className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] focus:bg-white/[0.04] transition-all" 
-                    placeholder="e.g., Customer Onboarding" 
+
+            {/* Step 1 — Template grid */}
+            {pipelineModalStep === 'template' && (
+              <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-3 overflow-y-auto max-h-[60vh] custom-scrollbar">
+                {PIPELINE_TEMPLATES.map(tpl => (
+                  <button
+                    key={tpl.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedTemplateId(tpl.id);
+                      setNewPipelineName(tpl.id === 'custom' ? '' : tpl.name);
+                      setPipelineModalStep('name');
+                    }}
+                    className={`text-left p-4 rounded-xl border-2 transition-all hover:scale-[1.01] active:scale-[0.99] group ${
+                      selectedTemplateId === tpl.id
+                        ? `${tpl.color} shadow-md`
+                        : 'border-gray-200 dark:border-white/[0.06] bg-gray-50 dark:bg-white/[0.02] hover:border-gray-300 dark:hover:border-white/[0.1]'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`mt-0.5 shrink-0 ${tpl.accentColor}`}>
+                        {tpl.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm text-slate-900 dark:text-white leading-tight">{tpl.name}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-snug">{tpl.description}</p>
+                        <div className="flex flex-wrap gap-1 mt-2.5">
+                          {tpl.stages.filter(s => !s.isLost).map(s => (
+                            <span
+                              key={s.name}
+                              className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${STAGE_BADGE_CLASSES[s.color] ?? DEFAULT_STAGE_BADGE}`}
+                            >
+                              {s.isWon && <CheckCircle2 size={9} />}
+                              {s.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Step 2 — Name it */}
+            {pipelineModalStep === 'name' && (
+              <div className="p-6 space-y-5">
+                {/* Stage preview */}
+                <div className="rounded-xl border border-gray-100 dark:border-white/[0.05] bg-gray-50 dark:bg-white/[0.02] p-4">
+                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Stages included</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(PIPELINE_TEMPLATES.find(t => t.id === selectedTemplateId)?.stages ?? []).map((s, idx) => (
+                      <div key={idx} className="flex items-center gap-1.5">
+                        <span
+                          className={`inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full border ${STAGE_BADGE_CLASSES[s.color] ?? DEFAULT_STAGE_BADGE}`}
+                        >
+                          {s.isWon && <CheckCircle2 size={11} />}
+                          {s.isLost && <X size={11} />}
+                          {s.name}
+                        </span>
+                        {idx < (PIPELINE_TEMPLATES.find(t => t.id === selectedTemplateId)?.stages.length ?? 0) - 1 && (
+                          <ChevronRight size={12} className="text-slate-300 dark:text-slate-600 shrink-0" />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <form id="add-pipeline-form" onSubmit={handleAddPipeline}>
+                  <label htmlFor="pipeline-name-input" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                    Pipeline Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="pipeline-name-input"
+                    required
+                    value={newPipelineName}
+                    onChange={e => setNewPipelineName(e.target.value)}
+                    className="h-9 w-full rounded-md border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] px-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
+                    placeholder="e.g., Q4 Sales Pipeline"
                     autoFocus
                   />
-                </div>
-              </form>
+                </form>
+              </div>
+            )}
+
+            {/* Footer */}
+            <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 dark:border-white/[0.05] shrink-0 bg-gray-50 dark:bg-slate-950">
+              {pipelineModalStep === 'name' ? (
+                <button
+                  type="button"
+                  onClick={() => setPipelineModalStep('template')}
+                  className="flex items-center gap-1.5 text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+                >
+                  <ChevronRight size={14} className="rotate-180" /> Back
+                </button>
+              ) : (
+                <span />
+              )}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPipelineModalOpen(false);
+                    setPipelineModalStep('template');
+                    setSelectedTemplateId('inquiry');
+                    setNewPipelineName('');
+                  }}
+                  className="h-9 px-4 rounded-lg border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-transparent text-slate-700 dark:text-slate-300 text-sm font-medium hover:bg-slate-50 dark:hover:bg-white/[0.05] transition-colors"
+                >
+                  Cancel
+                </button>
+                {pipelineModalStep === 'template' ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewPipelineName(
+                        selectedTemplateId === 'custom' ? '' : (PIPELINE_TEMPLATES.find(t => t.id === selectedTemplateId)?.name ?? '')
+                      );
+                      setPipelineModalStep('name');
+                    }}
+                    className="h-9 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-md shadow-blue-500/20 active:scale-95 transition-all"
+                  >
+                    Use Template →
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    form="add-pipeline-form"
+                    className="h-9 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-md shadow-blue-500/20 active:scale-95 transition-all"
+                  >
+                    Create Pipeline
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-white/[0.05] shrink-0 bg-gray-50 dark:bg-slate-950">
-              <button type="button" onClick={() => setIsPipelineModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg transition-colors">Cancel</button>
-              <button type="submit" form="add-pipeline-form" className="px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/20">Create Pipeline</button>
-            </div>
-          </div>
+          </motion.div>
         </div>
       )}
 

@@ -476,3 +476,17 @@ When `prisma migrate deploy` says "No pending migrations" but columns are missin
 
 ### Customers Page Filters on Wrong Field — status vs customerType
 `customers-page.tsx` filters `c.status === 'Closed'`. But the backend won-deal handoff sets `customerType = 'Active Customer'` on contacts, never changes `status` to 'Closed'. Result: customers created via deal-won never appear in the Customers view, and customers added from the Customers page (with `customerType = 'Active Customer'`) never appear either because filter checks `status`. Fix: filter on `customerType === 'Active Customer'` or (after migration) `lifecycleStage === 'CUSTOMER'`.
+
+
+### Dynamic Color → Static Tailwind Lookup for Badge Components
+When rendering colored badges/chips for items that carry dynamic hex color values (e.g. pipeline stage colors stored in the DB), maintain a `Record<hex, tailwindClasses>` lookup map rather than using inline `style={{ backgroundColor, borderColor, color }}`. Inline styles violate the project's no-`style={{}}` rule and bypass Tailwind's purge. Keep the hex-to-class map co-located with the component as a module-level constant.
+```typescript
+const STAGE_BADGE_CLASSES: Record<string, string> = {
+  '#10b981': 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500 dark:text-emerald-400',
+  '#ef4444': 'bg-red-500/10 border-red-500/30 text-red-500 dark:text-red-400',
+  // ...
+};
+const DEFAULT_STAGE_BADGE = 'bg-slate-500/10 border-slate-500/30 text-slate-500 dark:text-slate-400';
+// Usage:
+<span className={`... ${STAGE_BADGE_CLASSES[stage.color] ?? DEFAULT_STAGE_BADGE}`}>
+```
