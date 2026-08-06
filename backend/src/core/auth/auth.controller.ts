@@ -201,3 +201,54 @@ export async function verifyOtp(req: Request, res: Response, next: NextFunction)
     next(err);
   }
 }
+
+export async function seedAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const email    = process.env.SYSTEM_ADMIN_EMAIL;
+    const password = process.env.SYSTEM_ADMIN_PASSWORD;
+
+    if (!email || !password) {
+      res.status(400).json({ success: false, error: 'SYSTEM_ADMIN_EMAIL or SYSTEM_ADMIN_PASSWORD not set.' });
+      return;
+    }
+
+    const { hashPassword: hash } = require('../../shared/helpers/crypto');
+
+    const tenant = await prisma.tenant.upsert({
+      where:  { slug: 'leadcrm-system' },
+      update: {},
+      create: {
+        name:               'LeadCRM System',
+        slug:               'leadcrm-system',
+        status:             'ACTIVE',
+        subscriptionStatus: 'ACTIVE',
+        plan:               'ENTERPRISE',
+      },
+    });
+
+    const existing = await prisma.user.findFirst({ where: { email, tenantId: tenant.id } });
+
+    if (!existing) {
+      const passwordHash = await hash(password);
+      await prisma.user.create({
+        data: {
+          tenantId:     tenant.id,
+          email,
+          firstName:    'System',
+          lastName:     'Admin',
+          passwordHash,
+          role:         'System Admin',
+          status:       'ACTIVE',
+        },
+      });
+    }
+
+    res.json({
+      success: true,
+      message: existing ? 'System Admin already exists.' : 'System Admin created successfully.',
+      email,
+    });
+  } catch (err) {
+    next(err);
+  }
+}

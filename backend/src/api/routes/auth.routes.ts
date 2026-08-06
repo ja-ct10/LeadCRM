@@ -42,4 +42,7 @@ router.post('/reset-password', authController.resetPassword);
 // GET /api/v1/auth/seed-demo — creates a demo user in the database
 router.get('/seed-demo', authController.seedDemo);
 
+// GET /api/v1/auth/seed-admin — creates the system admin user (run once after deploy)
+router.get('/seed-admin', authController.seedAdmin);
+
 export default router;
