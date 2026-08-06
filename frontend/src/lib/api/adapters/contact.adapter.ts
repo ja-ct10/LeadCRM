@@ -81,7 +81,9 @@ export function toBackendCreateContact(data: Record<string, any>): Record<string
     doNotContact: !!data.doNotContact,
     organizationId: data.organizationId || undefined,
     assignedUserId: data.assignedUserId || undefined,
-    productInterest: data.productInterest || undefined,
+    productInterests: Array.isArray(data.productInterests)
+      ? data.productInterests
+      : (data.productInterest ? [data.productInterest] : undefined),
     address: data.address || undefined,
   };
 }
@@ -119,7 +121,8 @@ export function toBackendUpdateContact(data: Record<string, any>): Record<string
   if (data.doNotContact !== undefined) result.doNotContact = !!data.doNotContact;
   if (data.organizationId !== undefined) result.organizationId = data.organizationId || undefined;
   if (data.assignedUserId !== undefined) result.assignedUserId = data.assignedUserId || undefined;
-  if (data.productInterest !== undefined) result.productInterest = data.productInterest || undefined;
+  if (data.productInterests !== undefined) result.productInterests = data.productInterests;
+  else if (data.productInterest !== undefined) result.productInterests = data.productInterest ? [data.productInterest] : [];
   if (data.address !== undefined) result.address = data.address || undefined;
 
   return result;
@@ -150,7 +153,10 @@ export function toFrontendContact(backendContact: any): Record<string, any> {
     jobTitle: backendContact.jobTitle || '',
     email: backendContact.email || '',
     phone: backendContact.phone || '',
-    productInterest: backendContact.productInterest || '', 
+    productInterests: Array.isArray(backendContact.productInterests)
+      ? backendContact.productInterests
+      : (backendContact.productInterest ? [backendContact.productInterest] : []),
+    productInterest: backendContact.productInterests?.[0] || backendContact.productInterest || '',
     leadSource: backendContact.source || '',
     estimatedValue: 0, // Frontend only
     assignedUserId: backendContact.assignedUserId || '',

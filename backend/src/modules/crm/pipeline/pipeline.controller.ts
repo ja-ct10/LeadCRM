@@ -33,6 +33,13 @@ export async function deletePipeline(req: Request, res: Response, next: NextFunc
   } catch (err) { next(err); }
 }
 
+export async function archivePipeline(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    await service.archivePipeline(String(req.params.id), req.user!.tenantId, req.user!.userId);
+    res.status(204).send();
+  } catch (err) { next(err); }
+}
+
 export async function createStage(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const s = await service.createStage(req.user!.tenantId, req.user!.userId, req.body);

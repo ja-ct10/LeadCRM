@@ -1,11 +1,8 @@
 'use client';
 
 // LeadCRM API Client
-// Thin fetch wrapper used by all service files.
-// Sends credentials (HttpOnly cookies) on every request.
-// Falls back gracefully when backend is unreachable.
-
-import { getSession } from 'next-auth/react';
+// Sends HttpOnly cookies (leadcrm_token) on every request via credentials: 'include'.
+// The backend auth middleware reads the cookie directly — no Bearer token needed.
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
 
@@ -15,16 +12,9 @@ async function request<T>(
   body?: unknown,
   params?: Record<string, unknown>
 ): Promise<T> {
-  const session = await getSession();
-  const token = (session as any)?.accessToken;
-
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
 
   let finalPath = path;
   if (params && Object.keys(params).length > 0) {
@@ -43,6 +33,7 @@ async function request<T>(
   const res = await fetch(`${API_URL}${finalPath}`, {
     method,
     headers,
+    credentials: 'include', // sends HttpOnly leadcrm_token cookie automatically
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
 

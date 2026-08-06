@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+const id = () => z.string().min(1);
+
 export const CreateCompanySchema = z.object({
   name:           z.string().min(1).max(255),
   industry:       z.string().optional(),
@@ -11,7 +13,7 @@ export const CreateCompanySchema = z.object({
   city:           z.string().optional(),
   province:       z.string().optional(),
   country:        z.string().default('Philippines'),
-  assignedUserId: z.string().cuid().optional(),
+  assignedUserId: id().optional(),
   notes:          z.string().optional(),
   internalNotes:  z.string().optional(),
   productInterests: z.array(z.string()).optional(),

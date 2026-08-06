@@ -1,8 +1,8 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import AuthPage from '@/features/tenant/pages/AuthPage';
-import { PATH_TO_PATHNAME } from '@/shared/lib/route-map';
+import AuthPage from '@/features/tenant/pages/auth-page';
+import { PATH_TO_PATHNAME } from '@/lib/route-map';
 
 export default function RegisterPage() {
   const router = useRouter();

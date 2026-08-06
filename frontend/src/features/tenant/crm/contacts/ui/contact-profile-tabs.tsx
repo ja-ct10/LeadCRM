@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 import { uuid } from '@/lib/utils';
 
 import React, { useState, useEffect } from 'react';
@@ -103,9 +103,9 @@ export const ClientProfileTabs = ({
   // Load activities of this contact
   useEffect(() => {
     const defaultActivities = [
-      { id: 'e1', type: 'system', text: 'Contact / Organization CRM record registered in database.', time: contact.createdAt || '3 days ago', user: contact.createdBy || 'System Admin' },
-      { id: 'e2', type: 'system', text: `Contact established with status '${contact.status}' and value of $${contact.estimatedValue?.toLocaleString()}.`, time: '3 days ago', user: 'System Admin' },
-      { id: 'e3', type: 'system', text: contact.assignedUserId ? `Assigned to representative handler.` : 'Registered as unassigned account.', time: '3 days ago', user: 'System Admin' }
+      { id: 'e1', type: 'note', text: 'Contact / Organization CRM record registered in database.', time: contact.createdAt || '3 days ago', user: contact.createdBy || 'System Admin' },
+      { id: 'e2', type: 'note', text: `Contact established with status '${contact.status}' and value of $${contact.estimatedValue?.toLocaleString()}.`, time: '3 days ago', user: 'System Admin' },
+      { id: 'e3', type: 'note', text: contact.assignedUserId ? `Assigned to representative handler.` : 'Registered as unassigned account.', time: '3 days ago', user: 'System Admin' }
     ];
 
     const savedActivities = localStorage.getItem(`crm_activities_${contact.id}`);
@@ -124,7 +124,7 @@ export const ClientProfileTabs = ({
     localStorage.setItem(`crm_activities_${contact.id}`, JSON.stringify(updatedList));
   };
 
-  const addActivityLog = (text: string, type: string = 'system') => {
+  const addActivityLog = (text: string, type: string = 'note') => {
     const newLog = {
       id: uuid(),
       type,
@@ -140,7 +140,7 @@ export const ClientProfileTabs = ({
   const handleLogInteraction = (e: React.FormEvent) => {
     e.preventDefault();
     if (!logNotes.trim()) return;
-    addActivityLog(`Logged custom ${logType}: "${logNotes}"`, 'user_action');
+    addActivityLog(`Logged custom ${logType}: "${logNotes}"`, 'note');
     setLogNotes('');
     toast.success(`Registered custom ${logType} session directly in timeline!`);
   };
@@ -150,9 +150,9 @@ export const ClientProfileTabs = ({
     try {
       await updateContact(contact.id, { notes: contactNotes, internalNotes: internalNotes });
       toast.success('Successfully committed notes changes!');
-      addActivityLog(`Wrote and saved updated profile internal notes.`, 'user_action');
-    } catch (error: any) {
-      toast.error(error.message || "Failed to update notes");
+      addActivityLog(`Wrote and saved updated profile internal notes.`, 'note');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to update notes");
     }
   };
 

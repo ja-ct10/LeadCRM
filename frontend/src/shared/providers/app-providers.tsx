@@ -4,23 +4,20 @@ import React from 'react';
 import { AuthProvider } from '@/store/AuthContext';
 import { DataProvider } from '@/store/DataContext';
 import { Toaster } from 'sonner';
-import GlobalLoader from '@/shared/components/GlobalLoader';
-import { SessionProvider } from 'next-auth/react';
+import GlobalLoader from '@/shared/components/global-loader';
 
 /**
  * AppProviders — wraps the entire app with auth + data context.
- * Must be 'use client' because AuthProvider and DataProvider use localStorage.
+ * Auth uses HttpOnly cookie-based JWT (custom backend) — no NextAuth SessionProvider needed.
  */
 export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
-    <SessionProvider>
-      <AuthProvider>
-        <DataProvider>
-          {children}
-          <GlobalLoader />
-          <Toaster position="top-right" />
-        </DataProvider>
-      </AuthProvider>
-    </SessionProvider>
+    <AuthProvider>
+      <DataProvider>
+        {children}
+        <GlobalLoader />
+        <Toaster position="top-right" />
+      </DataProvider>
+    </AuthProvider>
   );
 }

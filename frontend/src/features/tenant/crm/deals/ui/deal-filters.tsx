@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { TrelloFilter } from '@/shared/components/TrelloFilter';
+import { TrelloFilter } from '@/shared/components/trello-filter';
 import { DEAL_PRIORITIES } from '../constants/deal.constants';
 import type { DealPageFilters } from '../types/deal-page.types';
 import type { Pipeline } from '@/store/types';

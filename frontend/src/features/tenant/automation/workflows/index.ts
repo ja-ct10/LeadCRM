@@ -1,5 +1,5 @@
 // Workflows module — barrel export
-export { default as WorkflowsPage } from './WorkflowsPage';
+export { default as WorkflowsPage } from './ui/workflows-page';
 
 // UI
 export { WorkflowRecipesModal } from './ui/workflow-recipes-modal';

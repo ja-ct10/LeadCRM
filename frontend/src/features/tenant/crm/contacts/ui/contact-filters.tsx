@@ -1,6 +1,6 @@
 import React from 'react';
 import { Search, X, User, Briefcase } from 'lucide-react';
-import { TrelloFilter, FilterOption } from '@/shared/components/TrelloFilter';
+import { TrelloFilter, FilterOption } from '@/shared/components/trello-filter';
 
 interface FilterProps {
   searchTerm: string;

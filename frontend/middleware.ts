@@ -1,47 +1,21 @@
-import { withAuth } from "next-auth/middleware";
-import { NextResponse } from "next/server";
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
-export default withAuth(
-  function middleware(req) {
-    const token = req.nextauth.token;
-    const path = req.nextUrl.pathname;
-
-    // Protect system admin routes
-    if (path.startsWith("/(system-admin)") || path.startsWith("/system")) {
-      if (token?.role !== "System Admin") {
-        return NextResponse.redirect(new URL("/login", req.url));
-      }
-    }
-    
-    // Prevent authenticated users from accessing guest routes
-    if (token && (path.startsWith("/login") || path.startsWith("/register"))) {
-      return NextResponse.redirect(new URL("/dashboard", req.url));
-    }
-
-    return NextResponse.next();
-  },
-  {
-    callbacks: {
-      authorized: ({ token, req }) => {
-        const path = req.nextUrl.pathname;
-        // Public paths that do not require auth
-        if (
-          path.startsWith("/login") ||
-          path.startsWith("/register") ||
-          path.startsWith("/api/auth") ||
-          path === "/"
-        ) {
-          return true;
-        }
-        // Require auth for all other paths
-        return !!token;
-      },
-    },
-    pages: {
-      signIn: "/login",
-    },
-  }
-);
+/**
+ * Middleware — intentionally minimal.
+ *
+ * Auth protection is handled client-side by <AuthGuard> in each layout.
+ * AuthContext supports both mock (localStorage) and real API (NextAuth)
+ * modes via NEXT_PUBLIC_USE_MOCK_AUTH. Server-side token inspection would
+ * only work in real-API mode, so we avoid it here to prevent redirect loops
+ * when running in mock mode.
+ *
+ * The matcher below excludes static assets and Next.js internals so this
+ * runs only on actual page navigations.
+ */
+export function middleware(_req: NextRequest): NextResponse {
+  return NextResponse.next();
+}
 
 export const config = {
   matcher: [
@@ -51,8 +25,8 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
-     * - public files
+     * - public files (images, svg, etc.)
      */
-    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    '/((?!api|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };

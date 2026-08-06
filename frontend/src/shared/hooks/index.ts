@@ -1,4 +1,4 @@
 // Shared hooks — barrel export
-export { useTheme } from './useTheme';
-export { usePermissions, useHasPermission, useCanAny } from './usePermissions';
-export { usePagination } from './usePagination';
+export { useTheme } from './use-theme';
+export { usePermissions, useHasPermission, useCanAny } from './use-permissions';
+export { usePagination } from './use-pagination';

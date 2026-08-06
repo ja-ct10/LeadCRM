@@ -1,0 +1,868 @@
+'use client';
+
+import React, { useState, useEffect } from "react";
+import { useData } from "@/store/DataContext";
+import { useAuth } from "@/store/AuthContext";
+import {
+  Shield,
+  Building2,
+  Plus,
+  Search,
+  Edit2,
+  Trash2,
+  CheckCircle2,
+  Users,
+  Lock,
+  Globe,
+  Mail,
+  Phone,
+  MapPin,
+  Save,
+  Layout,
+  Copy,
+  X,
+  RefreshCw,
+  ChevronDown,
+  ChevronRight,
+  Wrench,
+  Package,
+  Receipt,
+  Clock,
+  DollarSign,
+  Link,
+  Check,
+  Palette,
+  Moon,
+  Sun,
+  Monitor,
+  GitBranch,
+  Network,
+  ShieldAlert,
+  Layers,
+  Info,
+  Archive,
+  Camera,
+  User,
+  Bell,
+  Building,
+  CreditCard,
+  Zap,
+} from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { RoleDefinition } from "@/store/types";
+import { toast } from "sonner";
+
+type SettingsTab =
+  | 'account'
+  | 'appearance'
+  | 'memberships'
+  | 'org-general'
+  | 'users'
+  | 'roles'
+  | 'custom-fields'
+  | 'archived'
+  | 'plan'
+  | 'billing';
+
+type RoleSubTab = "Roles" | "Role Hierarchy" | "All Permissions";
+
+interface NavGroup {
+  label: string;
+  items: { id: SettingsTab; label: string; icon: React.ElementType }[];
+}
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: 'GENERAL',
+    items: [
+      { id: 'account', label: 'Account', icon: User },
+      { id: 'appearance', label: 'Appearance', icon: Palette },
+      { id: 'memberships', label: 'Memberships', icon: Building },
+    ],
+  },
+  {
+    label: 'ORGANIZATION',
+    items: [
+      { id: 'org-general', label: 'General', icon: Building2 },
+      { id: 'users', label: 'Team Management', icon: Users },
+      { id: 'roles', label: 'Roles & Permissions', icon: Shield },
+    ],
+  },
+  {
+    label: 'CUSTOMIZATION',
+    items: [
+      { id: 'custom-fields', label: 'Custom Fields', icon: Zap },
+      { id: 'archived', label: 'Archived Data', icon: Archive },
+    ],
+  },
+  {
+    label: 'BILLING',
+    items: [
+      { id: 'plan', label: 'Plan & Usage', icon: CreditCard },
+      { id: 'billing', label: 'Payment Methods', icon: Receipt },
+    ],
+  },
+];
+
+export default function SettingsPage(): React.ReactElement {
+  const { user, tenant, updateProfile } = useAuth();
+  const {
+    organizations,
+    contacts,
+    deals,
+    pipelines,
+    workflows,
+    campaigns,
+    templates,
+    users,
+    roles,
+    permissions,
+    addRole,
+    updateRole,
+    deleteRole,
+    restoreRecord,
+    resetDemoData,
+    isServiceModuleEnabled,
+    toggleServiceModule,
+    isAssetModuleEnabled,
+    toggleAssetModule,
+    isBillingModuleEnabled,
+    toggleBillingModule,
+    updateTenant,
+  } = useData();
+
+  const userRoleDef = roles.find((r) => r.name === user?.role);
+  const userPerms = userRoleDef?.permissions || [];
+  const isClientAdmin = user?.role === "Client Admin";
+  const canManageRoles = isClientAdmin || userPerms.includes("p26");
+  const canEditSettings = isClientAdmin || userPerms.includes("p28");
+
+  const [activeTab, setActiveTab] = useState<SettingsTab>('account');
+  const [activeRoleSubTab, setActiveRoleSubTab] = useState<RoleSubTab>("Roles");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Role Modal state
+  const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
+  const [editingRole, setEditingRole] = useState<RoleDefinition | null>(null);
+  const [roleForm, setRoleForm] = useState({ name: "", description: "", permissions: [] as string[] });
+  const [copyFromRoleId, setCopyFromRoleId] = useState("");
+
+  // Role Hierarchy State
+  const [selectedHierarchyRoleId, setSelectedHierarchyRoleId] = useState<string>("r1");
+  const [hierarchySearchQuery, setHierarchySearchQuery] = useState<string>("");
+
+  // Organization state
+  const [orgName, setOrgName] = useState(tenant?.name || "");
+  const [orgEmail, setOrgEmail] = useState(tenant?.email || "");
+  const [orgPhone, setOrgPhone] = useState(tenant?.phone || "");
+  const [orgAddress, setOrgAddress] = useState(tenant?.address || "");
+  const [orgIndustry, setOrgIndustry] = useState(tenant?.industry || "");
+  const [orgTimezone, setOrgTimezone] = useState(tenant?.timezone || "UTC");
+  const [orgCurrency, setOrgCurrency] = useState(tenant?.currency || "USD");
+  const [orgDomain, setOrgDomain] = useState(tenant?.domain || "");
+
+  // Appearance state
+  const [appTheme, setAppTheme] = useState(localStorage.getItem("app_theme") || "Dark");
+  const [appAccent, setAppAccent] = useState(localStorage.getItem("app_accent_color") || "#3B82F6");
+  const [appFontSize, setAppFontSize] = useState(localStorage.getItem("app_font_size") || "Medium");
+
+  // Account (profile) state
+  const [firstName, setFirstName] = useState(user?.firstName || "");
+  const [lastName, setLastName] = useState(user?.lastName || "");
+  const [email, setEmail] = useState(user?.email || "");
+  const [phone, setPhone] = useState(user?.phone || "");
+  const [jobTitle, setJobTitle] = useState(user?.role === "Client Admin" ? "System Administrator" : user?.role || "");
+  const [department, setDepartment] = useState("IT");
+  const [timezone, setTimezone] = useState("UTC-5  · Eastern Time");
+  const [language, setLanguage] = useState("English (US)");
+
+  // Archived filter
+  const [archivedFilter, setArchivedFilter] = useState<string>("All");
+
+  useEffect(() => {
+    const handleSync = () => { setAppTheme(localStorage.getItem("app_theme") || "Dark"); };
+    window.addEventListener("themechange", handleSync);
+    return () => window.removeEventListener("themechange", handleSync);
+  }, []);
+
+  const handleSaveAppearance = (): void => {
+    localStorage.setItem("app_theme", appTheme);
+    localStorage.setItem("app_accent_color", appAccent);
+    localStorage.setItem("app_font_size", appFontSize);
+    if (appTheme === "Light") {
+      document.documentElement.classList.remove("dark");
+      document.documentElement.classList.add("light");
+    } else if (appTheme === "Dark") {
+      document.documentElement.classList.remove("light");
+      document.documentElement.classList.add("dark");
+    } else {
+      if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        document.documentElement.classList.add("dark");
+        document.documentElement.classList.remove("light");
+      } else {
+        document.documentElement.classList.add("light");
+        document.documentElement.classList.remove("dark");
+      }
+    }
+    document.documentElement.style.setProperty("--color-blue-400", `color-mix(in srgb, ${appAccent} 85%, white)`);
+    document.documentElement.style.setProperty("--color-blue-500", appAccent);
+    document.documentElement.style.setProperty("--color-blue-600", `color-mix(in srgb, ${appAccent} 85%, black)`);
+    document.documentElement.style.setProperty("--color-blue-700", `color-mix(in srgb, ${appAccent} 70%, black)`);
+    let size = "16px";
+    if (appFontSize === "Small") size = "14px";
+    if (appFontSize === "Large") size = "18px";
+    document.documentElement.style.fontSize = size;
+    toast.success("Appearance settings saved successfully");
+    window.dispatchEvent(new Event("themechange"));
+  };
+
+  const handleSaveAccount = (e: React.FormEvent): void => {
+    e.preventDefault();
+    updateProfile({ firstName, lastName, email, phone, role: user?.role || "Client Admin" });
+    toast.success("Profile updated successfully!");
+  };
+
+  const handleSaveOrganization = (): void => {
+    if (tenant) {
+      updateTenant(tenant.id, { name: orgName, email: orgEmail, phone: orgPhone, address: orgAddress, industry: orgIndustry, timezone: orgTimezone, currency: orgCurrency, domain: orgDomain });
+      toast.success("Organization settings saved successfully");
+    }
+  };
+
+  const filteredRoles = roles.filter(
+    (r) => r.name.toLowerCase().includes(searchQuery.toLowerCase()) || r.description.toLowerCase().includes(searchQuery.toLowerCase()),
+  );
+
+  const filteredPermissions = permissions.filter(
+    (p) => p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.category.toLowerCase().includes(searchQuery.toLowerCase()),
+  );
+
+  // ── Account Tab ──────────────────────────────────────────────────────────────
+  const renderAccountTab = (): React.ReactElement => (
+    <form onSubmit={handleSaveAccount} className="space-y-6 max-w-2xl">
+      {/* Profile Banner */}
+      <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.06] rounded-2xl overflow-hidden">
+        <div className="h-20 bg-gradient-to-r from-slate-200 via-slate-150 to-slate-100 dark:from-slate-800 dark:to-slate-850 relative" />
+        <div className="p-5 pt-0 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div className="flex flex-col sm:flex-row gap-3 -mt-8 sm:items-end">
+            <div className="relative shrink-0">
+              <div className="w-16 h-16 rounded-full bg-slate-800 border-4 border-white dark:border-slate-900 flex items-center justify-center text-white text-lg font-bold shadow-md">
+                {firstName.charAt(0)}{lastName.charAt(0)}
+              </div>
+              <button type="button" onClick={() => toast.info("Avatar upload simulated.")}
+                className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center shadow text-slate-600 dark:text-slate-300 hover:scale-105 transition-transform cursor-pointer"
+                aria-label="Change profile photo">
+                <Camera size={11} />
+              </button>
+            </div>
+            <div className="pb-1">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white">{firstName} {lastName}</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{user?.role || "Administrator"} · {tenant?.name || "Organization"}</p>
+            </div>
+          </div>
+          <span className="pb-1 px-2.5 py-1 bg-red-500/10 text-red-600 dark:text-red-400 text-xs font-bold rounded-lg border border-red-500/10 flex items-center gap-1.5 w-fit">
+            <Shield size={11} /> {user?.role === "Client Admin" ? "Administrator" : user?.role || "Admin"}
+          </span>
+        </div>
+      </div>
+
+      {/* Basic Info */}
+      <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Basic Information</h3>
+          <p className="text-xs text-slate-400 mt-0.5">Your name and contact details visible to teammates</p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="settings-first-name">First Name</label>
+            <input id="settings-first-name" type="text" required value={firstName} onChange={(e) => setFirstName(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-blue-500 transition-colors" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="settings-last-name">Last Name</label>
+            <input id="settings-last-name" type="text" required value={lastName} onChange={(e) => setLastName(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-blue-500 transition-colors" />
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="settings-email">Email Address</label>
+          <div className="relative">
+            <Mail size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input id="settings-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg pl-8 pr-3 py-2 text-xs focus:outline-none focus:border-blue-500 transition-colors" />
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="settings-phone">Phone Number</label>
+          <div className="relative">
+            <Phone size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input id="settings-phone" type="text" value={phone} onChange={(e) => setPhone(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg pl-8 pr-3 py-2 text-xs focus:outline-none focus:border-blue-500 transition-colors" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="settings-job-title">Job Title</label>
+            <input id="settings-job-title" type="text" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-blue-500 transition-colors" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="settings-department">Department</label>
+            <input id="settings-department" type="text" value={department} onChange={(e) => setDepartment(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-blue-500 transition-colors" />
+          </div>
+        </div>
+      </div>
+
+      <div className="flex justify-end">
+        <button type="submit" className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold px-5 py-2 rounded-lg text-xs transition-all shadow-md shadow-blue-500/20 cursor-pointer">
+          <Save size={13} /> Save Changes
+        </button>
+      </div>
+    </form>
+  );
+
+  // ── Appearance Tab ───────────────────────────────────────────────────────────
+  const renderAppearanceTab = (): React.ReactElement => (
+    <div className="max-w-2xl space-y-6">
+      <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-6">
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+          <Palette className="w-4 h-4 text-blue-500" /> System Appearance
+        </h3>
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-3">Theme Preference</label>
+          <div className="grid grid-cols-3 gap-3">
+            {[{ id: "Light", icon: Sun, desc: "Clean and bright" }, { id: "Dark", icon: Moon, desc: "High contrast" }, { id: "System", icon: Monitor, desc: "Device settings" }].map((theme) => (
+              <button key={theme.id} onClick={() => setAppTheme(theme.id)}
+                className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all cursor-pointer ${appTheme === theme.id ? "border-blue-500 bg-blue-500/10 dark:bg-blue-500/5" : "border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600 bg-gray-50 dark:bg-slate-800/20"}`}>
+                <div className={`p-2 rounded-full ${appTheme === theme.id ? "bg-blue-500 text-white" : "bg-gray-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400"}`}>
+                  <theme.icon className="w-4 h-4" />
+                </div>
+                <div className="text-center">
+                  <div className="text-xs font-bold text-slate-900 dark:text-white">{theme.id}</div>
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400">{theme.desc}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="pt-4 border-t border-gray-200 dark:border-white/[0.06]">
+          <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-3">Accent Color</label>
+          <div className="flex flex-wrap gap-3">
+            {[{ name: "Blue", color: "#3B82F6" }, { name: "Indigo", color: "#6366f1" }, { name: "Violet", color: "#8b5cf6" }, { name: "Emerald", color: "#10b981" }, { name: "Rose", color: "#f43f5e" }, { name: "Amber", color: "#f59e0b" }, { name: "Slate", color: "#64748b" }].map((accent) => (
+              <button key={accent.color} onClick={() => setAppAccent(accent.color)} title={accent.name}
+                className={`w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer ${appAccent === accent.color ? "ring-2 ring-offset-2 ring-offset-white dark:ring-offset-slate-900 scale-110" : "hover:scale-105"}`}
+                style={{ backgroundColor: accent.color } as React.CSSProperties}>
+                {appAccent === accent.color && <Check className="w-4 h-4 text-white" />}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="pt-4 border-t border-gray-200 dark:border-white/[0.06]">
+          <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-3">Interface Density</label>
+          <div className="flex gap-3">
+            {["Small", "Medium", "Large"].map((size) => (
+              <button key={size} onClick={() => setAppFontSize(size)}
+                className={`px-4 py-2 rounded-lg border text-xs font-medium transition-all cursor-pointer ${appFontSize === size ? "border-blue-500 bg-blue-500/10 text-blue-600 dark:text-blue-400" : "border-gray-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-gray-300 dark:hover:border-slate-600"}`}>
+                {size}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex justify-end pt-2 border-t border-gray-200 dark:border-white/[0.06]">
+          <button onClick={handleSaveAppearance}
+            className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition-all shadow-md shadow-blue-500/20 cursor-pointer">
+            <Save className="w-3.5 h-3.5" /> Apply Changes
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── Memberships Tab ──────────────────────────────────────────────────────────
+  const renderMembershipsTab = (): React.ReactElement => (
+    <div className="max-w-2xl space-y-4">
+      <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5">
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+          <Building size={14} className="text-blue-500" /> Organization Membership
+        </h3>
+        <div className="p-4 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400">
+            <Building2 size={16} />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-slate-800 dark:text-slate-200">{tenant?.name || "Organization"}</p>
+            <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mt-0.5">{user?.role || "Member"}</p>
+          </div>
+        </div>
+        <p className="text-xs text-slate-400 dark:text-slate-500 mt-3">Contact a system administrator to change your organization membership.</p>
+      </div>
+    </div>
+  );
+
+  // ── Org General Tab ──────────────────────────────────────────────────────────
+  const renderOrgGeneralTab = (): React.ReactElement => (
+    <div className="max-w-2xl space-y-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="org-name">Organization Name</label>
+          <div className="relative">
+            <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+            <input id="org-name" type="text" value={orgName} onChange={(e) => setOrgName(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors" />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="org-industry">Industry</label>
+          <div className="relative">
+            <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+            <input id="org-industry" type="text" value={orgIndustry} onChange={(e) => setOrgIndustry(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors" />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="org-email">Email</label>
+          <div className="relative">
+            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+            <input id="org-email" type="email" value={orgEmail} onChange={(e) => setOrgEmail(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors" />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="org-phone">Phone</label>
+          <div className="relative">
+            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+            <input id="org-phone" type="text" value={orgPhone} onChange={(e) => setOrgPhone(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors" />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="org-domain">Domain</label>
+          <div className="relative">
+            <Link className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+            <input id="org-domain" type="text" value={orgDomain} onChange={(e) => setOrgDomain(e.target.value)} placeholder="e.g., example.com"
+              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors" />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="org-timezone">Timezone</label>
+          <div className="relative">
+            <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+            <select id="org-timezone" value={orgTimezone} onChange={(e) => setOrgTimezone(e.target.value)}
+              className="w-full pl-9 pr-8 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors appearance-none">
+              <option value="UTC">UTC</option>
+              <option value="America/New_York">Eastern Time (ET)</option>
+              <option value="America/Chicago">Central Time (CT)</option>
+              <option value="America/Denver">Mountain Time (MT)</option>
+              <option value="America/Los_Angeles">Pacific Time (PT)</option>
+              <option value="Europe/London">London (GMT/BST)</option>
+              <option value="Asia/Manila">Philippine Time (PHT)</option>
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="org-currency">Currency</label>
+          <div className="relative">
+            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+            <select id="org-currency" value={orgCurrency} onChange={(e) => setOrgCurrency(e.target.value)}
+              className="w-full pl-9 pr-8 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors appearance-none">
+              <option value="USD">USD ($)</option>
+              <option value="EUR">EUR (€)</option>
+              <option value="GBP">GBP (£)</option>
+              <option value="PHP">PHP (₱)</option>
+              <option value="AUD">AUD ($)</option>
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
+          </div>
+        </div>
+        <div className="space-y-1.5 sm:col-span-2">
+          <label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="org-address">Office Address</label>
+          <div className="relative">
+            <MapPin className="absolute left-3 top-3 w-3.5 h-3.5 text-slate-500" />
+            <textarea id="org-address" value={orgAddress} onChange={(e) => setOrgAddress(e.target.value)} rows={2}
+              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors resize-none" />
+          </div>
+        </div>
+      </div>
+      {canEditSettings && (
+        <div className="flex justify-end">
+          <button onClick={handleSaveOrganization}
+            className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition-all shadow-md shadow-blue-500/20 cursor-pointer">
+            <Save className="w-3.5 h-3.5" /> Save Changes
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  // ── Users (Team Management) Tab ───────────────────────────────────────────────
+  const renderUsersTab = (): React.ReactElement => (
+    <div className="max-w-3xl space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Team Members</h3>
+        <span className="text-xs text-slate-500 dark:text-slate-400">{users.filter((u) => !u.isArchived).length} members</span>
+      </div>
+      <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.06] rounded-2xl overflow-hidden">
+        {users.filter((u) => !u.isArchived).map((u, idx) => (
+          <div key={u.id} className={`flex items-center justify-between px-4 py-3 ${idx !== 0 ? 'border-t border-gray-100 dark:border-white/[0.04]' : ''}`}>
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-700 dark:text-slate-300 text-xs font-bold shrink-0">
+                {u.firstName?.charAt(0)}{u.lastName?.charAt(0)}
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-slate-900 dark:text-white">{u.firstName} {u.lastName}</p>
+                <p className="text-[10px] text-slate-400">{u.email}</p>
+              </div>
+            </div>
+            <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded text-[10px] font-semibold">{u.role}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  // ── Roles & Permissions Tab ──────────────────────────────────────────────────
+  const renderRolesTab = (): React.ReactElement => (
+    <div className="max-w-4xl space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="relative max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+          <input type="text" placeholder="Search roles..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 transition-colors" />
+        </div>
+        <div className="flex gap-2">
+          <button onClick={resetDemoData}
+            className="flex items-center gap-1.5 px-3 py-2 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-medium transition-all border border-gray-200 dark:border-slate-700 cursor-pointer">
+            <RefreshCw className="w-3.5 h-3.5" /> Reset
+          </button>
+          {canManageRoles && (
+            <button onClick={() => { setEditingRole(null); setRoleForm({ name: "", description: "", permissions: [] }); setCopyFromRoleId(""); setIsRoleModalOpen(true); }}
+              className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition-all shadow-md shadow-blue-500/20 cursor-pointer">
+              <Plus className="w-3.5 h-3.5" /> New Role
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Role sub-tabs */}
+      <div className="flex gap-1 bg-slate-100 dark:bg-slate-800/50 p-1 rounded-lg w-fit">
+        {(["Roles", "All Permissions"] as RoleSubTab[]).map((tab) => (
+          <button key={tab} onClick={() => setActiveRoleSubTab(tab as RoleSubTab)}
+            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${activeRoleSubTab === tab ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'}`}>
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      {activeRoleSubTab === 'Roles' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filteredRoles.map((role) => {
+            const rolePermissions = permissions.filter((p) => role.permissions.includes(p.id));
+            const categories = Array.from(new Set(rolePermissions.map((p) => p.category)));
+            return (
+              <motion.div key={role.id} layout initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+                className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.06] rounded-xl p-4 hover:border-blue-500/30 transition-all">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white">{role.name}</h3>
+                      {role.isSystemRole && (
+                        <span className="px-1.5 py-0.5 bg-blue-500/10 text-blue-400 text-[10px] font-bold uppercase rounded border border-blue-500/20">System</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{role.description}</p>
+                  </div>
+                  {canManageRoles && (
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => { setEditingRole(null); setRoleForm({ name: `${role.name} (Copy)`, description: role.description, permissions: [...role.permissions] }); setCopyFromRoleId(role.id); setIsRoleModalOpen(true); }}
+                        className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-blue-400/10 rounded-lg transition-all cursor-pointer" title="Copy Role"><Copy className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => { setEditingRole(role); setRoleForm({ name: role.name, description: role.description, permissions: [...role.permissions] }); setIsRoleModalOpen(true); }}
+                        className="p-1.5 text-slate-400 hover:text-white hover:bg-white/[0.05] rounded-lg transition-all cursor-pointer"><Edit2 className="w-3.5 h-3.5" /></button>
+                      {!role.isSystemRole && (
+                        <button onClick={() => deleteRole(role.id)}
+                          className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 text-[10px] font-medium text-slate-400 mb-3">
+                  <span className="flex items-center gap-1"><Users className="w-3 h-3" />{role.userCount} users</span>
+                  <span>·</span>
+                  <span className="flex items-center gap-1"><Lock className="w-3 h-3" />{role.permissions.length} permissions</span>
+                </div>
+                <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
+                  {categories.map((category) => (
+                    <div key={category}>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{category}</p>
+                      {rolePermissions.filter((p) => p.category === category).map((p) => (
+                        <div key={p.id} className="px-2 py-1 bg-slate-50 dark:bg-slate-800/50 rounded text-[10px] text-slate-600 dark:text-slate-400 mb-1">{p.name}</div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
+
+      {activeRoleSubTab === 'All Permissions' && (
+        <div className="space-y-6">
+          {Array.from(new Set(filteredPermissions.map((p) => p.category))).map((category) => {
+            const catPerms = filteredPermissions.filter((p) => p.category === category);
+            return (
+              <div key={category}>
+                <div className="flex items-center gap-3 mb-3">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">{category}</h3>
+                  <div className="h-px flex-1 bg-gray-100 dark:bg-white/[0.05]" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {catPerms.map((permission) => (
+                    <div key={permission.id} className="flex items-start gap-2.5 p-3 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.06] rounded-xl hover:border-blue-500/20 transition-all">
+                      <div className="mt-0.5 p-1 bg-gray-100 dark:bg-slate-800 rounded-lg">
+                        <CheckCircle2 className="w-3 h-3 text-slate-400" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-semibold text-slate-900 dark:text-white">{permission.name}</h4>
+                        <p className="text-[10px] text-slate-400 mt-0.5 leading-relaxed">{permission.description}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Role modal */}
+      <AnimatePresence>
+        {isRoleModalOpen && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setIsRoleModalOpen(false)}>
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ type: 'spring', damping: 30, stiffness: 280 }}
+              className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.08] rounded-2xl p-6 w-full max-w-lg shadow-2xl"
+              onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">{editingRole ? 'Edit Role' : 'New Role'}</h3>
+                <button onClick={() => setIsRoleModalOpen(false)} className="p-1.5 text-slate-400 hover:text-white hover:bg-white/[0.05] rounded-lg transition-colors cursor-pointer"><X className="w-4 h-4" /></button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5" htmlFor="role-name">Role Name</label>
+                  <input id="role-name" type="text" value={roleForm.name} onChange={(e) => setRoleForm({ ...roleForm, name: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-blue-500 transition-colors" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5" htmlFor="role-desc">Description</label>
+                  <input id="role-desc" type="text" value={roleForm.description} onChange={(e) => setRoleForm({ ...roleForm, description: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-blue-500 transition-colors" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">Permissions</label>
+                  <div className="max-h-48 overflow-y-auto custom-scrollbar space-y-1 border border-gray-200 dark:border-slate-700 rounded-lg p-2">
+                    {permissions.map((p) => (
+                      <label key={p.id} className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded cursor-pointer">
+                        <input type="checkbox" checked={roleForm.permissions.includes(p.id)}
+                          onChange={(e) => setRoleForm({ ...roleForm, permissions: e.target.checked ? [...roleForm.permissions, p.id] : roleForm.permissions.filter((id) => id !== p.id) })}
+                          className="w-3.5 h-3.5 rounded border-slate-300 dark:border-slate-600 accent-blue-500" />
+                        <span className="text-xs text-slate-700 dark:text-slate-300">{p.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 mt-5">
+                <button onClick={() => setIsRoleModalOpen(false)} className="px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer">Cancel</button>
+                <button onClick={() => {
+                  if (!roleForm.name.trim()) { toast.error("Role name is required"); return; }
+                  if (editingRole) { updateRole(editingRole.id, roleForm); toast.success("Role updated"); }
+                  else { addRole({ ...roleForm, isSystemRole: false, userCount: 0 }); toast.success("Role created"); }
+                  setIsRoleModalOpen(false);
+                }} className="px-4 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors shadow-md shadow-blue-500/20 cursor-pointer">
+                  {editingRole ? 'Save Changes' : 'Create Role'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+
+  // ── Archived Data Tab ────────────────────────────────────────────────────────
+  const renderArchivedTab = (): React.ReactElement => {
+    const allArchived = [
+      ...organizations.filter((o) => o.isArchived).map((o) => ({ type: "Organization", id: o.id, name: o.name })),
+      ...contacts.filter((c) => c.isArchived).map((c) => ({ type: "Contact", id: c.id, name: c.contactPerson + " (" + c.companyName + ")" })),
+      ...deals.filter((d) => d.isArchived).map((d) => ({ type: "Deal", id: d.id, name: d.title })),
+      ...pipelines.filter((p) => p.isArchived).map((p) => ({ type: "Pipeline", id: p.id, name: p.name })),
+      ...workflows.filter((w) => w.isArchived).map((w) => ({ type: "Workflow", id: w.id, name: w.name })),
+      ...campaigns.filter((c) => c.isArchived).map((c) => ({ type: "Campaign", id: c.id, name: c.name })),
+      ...templates.filter((t) => t.isArchived).map((t) => ({ type: "Template", id: t.id, name: t.name })),
+      ...roles.filter((r) => r.isArchived).map((r) => ({ type: "Role", id: r.id, name: r.name })),
+      ...users.filter((u) => u.isArchived).map((u) => ({ type: "User", id: u.id, name: `${u.firstName} ${u.lastName}` })),
+    ];
+    const filteredArchived = archivedFilter === "All" ? allArchived : allArchived.filter((x) => x.type === archivedFilter);
+
+    return (
+      <div className="max-w-3xl space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Archived Data Recovery</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Restore records previously archived instead of deleted.</p>
+          </div>
+        </div>
+        <div className="flex gap-1.5 flex-wrap">
+          {["All", "Contact", "Organization", "Deal", "Pipeline", "User", "Role", "Workflow", "Campaign", "Template"].map((type) => (
+            <button key={type} onClick={() => setArchivedFilter(type)}
+              className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${archivedFilter === type ? "bg-blue-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"}`}>
+              {type}
+            </button>
+          ))}
+        </div>
+        <div className="space-y-2">
+          {filteredArchived.length === 0 ? (
+            <div className="text-center py-10 bg-slate-50 dark:bg-slate-900 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
+              <Archive className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
+              <p className="text-xs text-slate-400">No archived records found.</p>
+            </div>
+          ) : (
+            filteredArchived.map((item) => (
+              <div key={item.id} className="flex items-center justify-between p-3 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.06] rounded-xl">
+                <div>
+                  <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">{item.type}</span>
+                  <p className="text-xs font-semibold text-slate-900 dark:text-white mt-0.5">{item.name}</p>
+                </div>
+                <button onClick={() => { restoreRecord(item.type as Parameters<typeof restoreRecord>[0], item.id); toast.success(`${item.type} restored`); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 rounded-lg text-xs font-semibold transition-colors cursor-pointer">
+                  <RefreshCw size={12} /> Restore
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // ── Plan & Billing Tabs ───────────────────────────────────────────────────────
+  const renderPlanTab = (): React.ReactElement => (
+    <div className="max-w-2xl space-y-4">
+      <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-4">
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+          <CreditCard className="w-4 h-4 text-blue-500" /> Plan & Usage
+        </h3>
+        <div className="flex items-center justify-between p-4 bg-blue-500/5 dark:bg-blue-500/10 border border-blue-500/20 rounded-xl">
+          <div>
+            <p className="text-xs font-bold text-slate-900 dark:text-white">Professional Plan</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">Active subscription</p>
+          </div>
+          <span className="px-2.5 py-1 bg-emerald-500/10 text-emerald-500 text-[10px] font-bold rounded-full border border-emerald-500/20 uppercase">Active</span>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          {[{ label: "Users", used: users.filter((u) => !u.isArchived).length, limit: 25 }, { label: "Contacts", used: contacts.filter((c) => !c.isArchived).length, limit: 10000 }, { label: "Campaigns", used: campaigns.filter((c) => !c.isArchived).length, limit: 50 }].map((item) => (
+            <div key={item.label} className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-100 dark:border-white/[0.05]">
+              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">{item.label}</p>
+              <p className="text-sm font-bold text-slate-900 dark:text-white">{item.used}<span className="text-xs text-slate-400 font-normal"> / {item.limit}</span></p>
+              <div className="mt-2 h-1 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                <div className="h-full bg-blue-500 rounded-full" style={{ width: `${Math.min(100, Math.round((item.used / item.limit) * 100))}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderBillingTab = (): React.ReactElement => (
+    <div className="max-w-2xl space-y-4">
+      <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-4">
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+          <Receipt className="w-4 h-4 text-blue-500" /> Payment Methods
+        </h3>
+        <div className="p-4 border border-dashed border-gray-200 dark:border-slate-700 rounded-xl text-center">
+          <Receipt className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
+          <p className="text-xs text-slate-400">No payment methods on file.</p>
+          <button className="mt-3 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer">Add Payment Method</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderCustomFieldsTab = (): React.ReactElement => (
+    <div className="max-w-2xl space-y-4">
+      <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5">
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+          <Zap className="w-4 h-4 text-blue-500" /> Custom Fields
+        </h3>
+        <div className="text-center py-8 border border-dashed border-gray-200 dark:border-slate-700 rounded-xl">
+          <Zap className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
+          <p className="text-xs text-slate-400">Custom fields configuration coming soon.</p>
+        </div>
+      </div>
+    </div>
+  );
+
+  const tabContentMap: Record<SettingsTab, () => React.ReactElement> = {
+    'account': renderAccountTab,
+    'appearance': renderAppearanceTab,
+    'memberships': renderMembershipsTab,
+    'org-general': renderOrgGeneralTab,
+    'users': renderUsersTab,
+    'roles': renderRolesTab,
+    'custom-fields': renderCustomFieldsTab,
+    'archived': renderArchivedTab,
+    'plan': renderPlanTab,
+    'billing': renderBillingTab,
+  };
+
+  const activeGroup = NAV_GROUPS.find((g) => g.items.some((i) => i.id === activeTab));
+  const activeItem = activeGroup?.items.find((i) => i.id === activeTab);
+
+  return (
+    <div className="flex h-full -m-4 lg:-m-8 min-h-[calc(100vh-4rem)]">
+      {/* Left Sub-Nav */}
+      <aside className="w-52 shrink-0 border-r border-gray-200 dark:border-white/[0.05] bg-white dark:bg-[#0a0c0f] overflow-y-auto custom-scrollbar py-4">
+        {NAV_GROUPS.map((group) => (
+          <div key={group.label} className="mb-4">
+            <p className="px-4 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">{group.label}</p>
+            {group.items.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className={`w-full flex items-center gap-2 px-4 py-1.5 text-xs font-medium transition-colors cursor-pointer text-left
+                    ${isActive
+                      ? 'border-l-2 border-blue-500 pl-[14px] bg-blue-500/5 dark:bg-blue-500/[0.08] text-blue-500 dark:text-blue-400'
+                      : 'border-l-2 border-transparent text-slate-500 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-white/[0.03]'
+                    }`}
+                >
+                  <Icon className="w-3.5 h-3.5 shrink-0" />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </aside>
+
+      {/* Right Content */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar px-6 py-5">
+        {/* Page header */}
+        <div className="mb-5">
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white">{activeItem?.label ?? 'Settings'}</h1>
+          <p className="text-xs text-slate-400 mt-0.5">
+            {activeGroup?.label ?? ''}{activeGroup && activeItem ? ' · ' : ''}{activeItem?.label ?? ''}
+          </p>
+        </div>
+        {tabContentMap[activeTab]()}
+      </div>
+    </div>
+  );
+}

@@ -35,6 +35,15 @@ export async function deletePipeline(id: string, tenantId: string, userId: strin
   await writeAuditLog({ tenantId, userId, action: 'pipeline.deleted', entityType: 'Pipeline', entityId: id });
 }
 
+export async function archivePipeline(id: string, tenantId: string, userId: string) {
+  const result = await repo.deletePipeline(id, tenantId);
+  if (!result) throw new NotFoundError('Pipeline');
+  if ('hasActiveDeals' in result) {
+    throw new ValidationError('Cannot archive a pipeline with active deals. Move deals to another pipeline first.');
+  }
+  await writeAuditLog({ tenantId, userId, action: 'pipeline.archived', entityType: 'Pipeline', entityId: id });
+}
+
 export async function createStage(tenantId: string, userId: string, dto: CreateStageDto) {
   const stage = await repo.createStage(tenantId, dto);
   if (!stage) throw new NotFoundError('Pipeline');

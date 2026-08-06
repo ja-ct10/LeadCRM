@@ -1,7 +1,7 @@
 import { uuid } from '@/lib/utils';
 import React from 'react';
 import { Zap, Plus } from 'lucide-react';
-import { ModalCloseButton } from '@/shared/components/ui/ModalCloseButton';
+import { ModalCloseButton } from '@/shared/components/ui/modal-close-button';
 
 interface WorkflowAction {
   id: string;

@@ -3,7 +3,7 @@
 import React from 'react';
 import { Calendar, User as UserIcon, CheckCircle2, Clock, AlertCircle, Briefcase, FileText, Tag } from 'lucide-react';
 import { Task, Deal, User } from '@/store/types';
-import { ModalCloseButton } from '@/shared/components/ui/ModalCloseButton';
+import { ModalCloseButton } from '@/shared/components/ui/modal-close-button';
 
 interface TaskDetailsDrawerProps {
   task: Task | null;

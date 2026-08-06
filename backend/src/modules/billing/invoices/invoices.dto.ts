@@ -1,4 +1,6 @@
-﻿import { z } from 'zod';
+import { z } from 'zod';
+
+const id = () => z.string().min(1);
 
 export const CreateInvoiceSchema = z.object({
   invoiceNumber:   z.string().min(1),
@@ -14,9 +16,9 @@ export const CreateInvoiceSchema = z.object({
   startDate:       z.string().datetime(),
   dueDate:         z.string().datetime().optional(),
   nextBillingDate: z.string().datetime().optional(),
-  dealId:          z.string().cuid().optional(),
-  contactId:       z.string().cuid().optional(),
-  organizationId:  z.string().cuid().optional(),
+  dealId:          id().optional(),
+  contactId:       id().optional(),
+  organizationId:  id().optional(),
   notes:           z.string().optional(),
 });
 

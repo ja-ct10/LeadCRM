@@ -3,7 +3,7 @@
 import React from 'react';
 import { Mail, Phone, Shield, Briefcase, CheckSquare, TrendingUp, Award, Calendar, User as UserIcon } from 'lucide-react';
 import { User, Deal, Task } from '@/store/types';
-import { ModalCloseButton } from '@/shared/components/ui/ModalCloseButton';
+import { ModalCloseButton } from '@/shared/components/ui/modal-close-button';
 
 interface UserProfileDrawerProps {
   user: User | null;

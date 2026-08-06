@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, {
   createContext,
@@ -59,9 +59,16 @@ import { toast } from 'sonner';
 import { usersService } from "@/features/tenant/administration/users/services/users.service";
 import { USE_MOCK_DATA } from "@/lib/config";
 import { contactsService } from "@/features/tenant/crm/contacts/services/contacts.service";
-import { organizationsService } from "@/features/tenant/crm/contacts/services/organizations.service";
+import { organizationsService } from "@/features/tenant/crm/companies/services/organizations.service";
 import { pipelineService } from "@/features/tenant/crm/pipeline/services/pipeline.service";
 import { activitiesService } from "@/features/tenant/crm/activities/services/activities.service";
+import { tasksApi } from "@/shared/services/tasks.api";
+import { workflowsApi } from "@/shared/services/workflows.api";
+import { campaignsApi } from "@/shared/services/campaigns.api";
+import { templatesApi } from "@/shared/services/templates.api";
+import { serviceOrdersApi } from "@/shared/services/service-orders.api";
+import { invoicesApi } from "@/shared/services/invoices.api";
+import { auditApi } from "@/shared/services/audit.api";
 import {
   toBackendCreateContact,
   toBackendUpdateContact,
@@ -126,14 +133,15 @@ interface DataContextType {
   addPipeline: (pipeline: Omit<Pipeline, "id" | "tenantId">) => Promise<void>;
   updatePipeline: (id: string, updates: Partial<Pipeline>) => Promise<void>;
   deletePipeline: (id: string) => Promise<void>;
-  addTask: (task: Omit<Task, "id" | "tenantId" | "createdAt">) => void;
-  updateTask: (id: string, updates: Partial<Task>) => void;
-  updateServiceOrder: (id: string, updates: Partial<ServiceOrder>) => void;
+  addTask: (task: Omit<Task, "id" | "tenantId" | "createdAt">) => Promise<void>;
+  updateTask: (id: string, updates: Partial<Task>) => Promise<void>;
+  addServiceOrder: (so: Omit<ServiceOrder, "id" | "tenantId" | "createdAt">) => Promise<void>;
+  updateServiceOrder: (id: string, updates: Partial<ServiceOrder>) => Promise<void>;
   addWorkflow: (
     workflow: Omit<Workflow, "id" | "tenantId" | "executionCount">,
-  ) => void;
-  updateWorkflow: (id: string, updates: Partial<Workflow>) => void;
-  deleteWorkflow: (id: string) => void;
+  ) => Promise<void>;
+  updateWorkflow: (id: string, updates: Partial<Workflow>) => Promise<void>;
+  deleteWorkflow: (id: string) => Promise<void>;
   addCampaign: (
     campaign: Omit<
       Campaign,
@@ -145,14 +153,14 @@ interface DataContextType {
       | "clickedCount"
       | "engagement"
     >,
-  ) => void;
-  updateCampaign: (id: string, updates: Partial<Campaign>) => void;
-  deleteCampaign: (id: string) => void;
+  ) => Promise<void>;
+  updateCampaign: (id: string, updates: Partial<Campaign>) => Promise<void>;
+  deleteCampaign: (id: string) => Promise<void>;
   addTemplate: (
     template: Omit<Template, "id" | "tenantId" | "createdAt">,
-  ) => void;
-  updateTemplate: (id: string, updates: Partial<Template>) => void;
-  deleteTemplate: (id: string) => void;
+  ) => Promise<void>;
+  updateTemplate: (id: string, updates: Partial<Template>) => Promise<void>;
+  deleteTemplate: (id: string) => Promise<void>;
   reorderDeals: (reorderedDeals: Deal[]) => void;
   addRole: (
     role: Omit<RoleDefinition, "id" | "tenantId" | "updatedAt">,
@@ -318,12 +326,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const loadData = async () => {
     // ── REAL-API MODE ──────────────────────────────────────────────────────────
-    // When USE_MOCK_DATA is false, fetch Contacts/Orgs/Deals/Pipelines from the
-    // backend database. All other modules still fall through to localStorage.
     if (!USE_MOCK_DATA) {
-      if (!user) return; // Wait until the user is authenticated
+      if (!user) return;
 
       try {
+        // Batch 1 — core CRM (already migrated)
         const [contactsRes, orgsRes, dealsRes, pipelinesRes, activitiesRes, usersRes, rolesRes] = await Promise.all([
           contactsService.getAll({ limit: 500 }),
           organizationsService.getAll({ limit: 500 }),
@@ -334,90 +341,75 @@ export function DataProvider({ children }: { children: ReactNode }) {
           usersService.getRoles(),
         ]);
 
-        const apiContacts = (contactsRes?.data ?? []).map(toFrontendContact);
-        const apiOrgs     = (orgsRes?.data ?? []).map(toFrontendOrg);
-        const apiDeals    = (dealsRes?.data ?? []).map(toFrontendDeal);
-        const apiPipelines = Array.isArray((pipelinesRes as any)?.data)
+        const apiContacts   = (contactsRes?.data ?? []).map(toFrontendContact);
+        const apiOrgs       = (orgsRes?.data ?? []).map(toFrontendOrg);
+        const apiDeals      = (dealsRes?.data ?? []).map(toFrontendDeal);
+        const apiPipelines  = Array.isArray((pipelinesRes as any)?.data)
           ? ((pipelinesRes as any).data as any[]).map(toFrontendPipeline)
           : ((pipelinesRes as any)?.data ? [(pipelinesRes as any).data].map(toFrontendPipeline) : []);
         const apiActivities = activitiesRes?.data ?? [];
-        const apiUsers = usersRes?.data ?? [];
-        const apiRoles = rolesRes?.data ?? [];
+        const apiUsers      = usersRes?.data ?? [];
+        const apiRoles      = rolesRes?.data ?? [];
 
-        if (user?.role === "System Admin") {
-          setContacts(apiContacts as Contact[]);
-          setOrganizations(apiOrgs as Organization[]);
-          setDeals(apiDeals as Deal[]);
-          setPipelines(apiPipelines as Pipeline[]);
-          setActivities(apiActivities as Activity[]);
-          setUsers(apiUsers as any[]);
-          setRoles(apiRoles as any[]);
-        } else if (tenant) {
-          setContacts((apiContacts as Contact[]).filter((c: any) => !c.isArchived));
-          setOrganizations((apiOrgs as Organization[]).filter((o: any) => !o.isArchived));
-          setDeals((apiDeals as Deal[]).filter((d: any) => !d.isArchived));
-          setPipelines((apiPipelines as Pipeline[]).filter((p: any) => !p.isArchived));
-          setActivities(apiActivities as Activity[]);
-          setUsers((apiUsers as any[]).filter((u: any) => !u.isArchived));
-          setRoles((apiRoles as any[]).filter((r: any) => !r.isArchived));
-        }
+        setContacts((apiContacts as Contact[]).filter((c: any) => !c.isArchived));
+        setOrganizations((apiOrgs as Organization[]).filter((o: any) => !o.isArchived));
+        setDeals((apiDeals as Deal[]).filter((d: any) => !d.isArchived));
+        setPipelines((apiPipelines as Pipeline[]).filter((p: any) => !p.isArchived));
+        setActivities(apiActivities as Activity[]);
+        setUsers((apiUsers as any[]).filter((u: any) => !u.isArchived));
+        setRoles((apiRoles as any[]).filter((r: any) => !r.isArchived));
       } catch (err) {
         console.error('[DataContext] Failed to load CRM data from API:', err);
       }
 
-      // Still load localStorage-only modules below
-      const w   = safeParse("leadcrm_workflows", MOCK_WORKFLOWS);
-      const c   = safeParse("leadcrm_campaigns", MOCK_CAMPAIGNS);
-      const tpl = safeParse("leadcrm_templates", MOCK_TEMPLATES);
-      const r   = safeParse("leadcrm_roles", MOCK_ROLES);
-      const perm = safeParse("leadcrm_permissions", MOCK_PERMISSIONS);
-      const u   = safeParse("leadcrm_users", MOCK_USERS);
-      const tsk = safeParse("leadcrm_tasks", MOCK_TASKS ?? []);
-      const execs = safeParse("leadcrm_workflow_executions", MOCK_WORKFLOW_EXECUTIONS ?? []);
-      const pending = safeParse("leadcrm_pending_actions", [] as PendingAction[]);
-      const so  = safeParse("leadcrm_service_orders", MOCK_SERVICE_ORDERS ?? []);
+      // Batch 2 — operations, marketing, automation, billing, audit
+      try {
+        const [tasksRes, soRes, workflowsRes, campaignsRes, templatesRes, invoicesRes, auditRes] = await Promise.all([
+          tasksApi.list({ limit: 500 }),
+          serviceOrdersApi.list({ limit: 500 }),
+          workflowsApi.list({ limit: 500 }),
+          campaignsApi.list({ limit: 500 }),
+          templatesApi.list({ limit: 500 }),
+          invoicesApi.list({ limit: 500 }),
+          auditApi.list({ limit: 200 }),
+        ]);
+
+        setTasks((tasksRes?.data ?? []) as Task[]);
+        setServiceOrders((soRes?.data ?? []) as ServiceOrder[]);
+        setWorkflows((workflowsRes?.data ?? []) as Workflow[]);
+        setCampaigns((campaignsRes?.data ?? []) as Campaign[]);
+        setTemplates((templatesRes?.data ?? []) as Template[]);
+        setInvoices((invoicesRes?.data ?? []) as Invoice[]);
+
+        // Map backend audit shape → frontend AuditLog shape
+        const mappedLogs: AuditLog[] = (auditRes?.data ?? []).map((entry: any) => ({
+          id:        entry.id,
+          tenantId:  entry.tenantId ?? '',
+          userId:    entry.userId ?? entry.user?.id ?? 'system',
+          userEmail: entry.user?.email ?? '',
+          action:    entry.action,
+          details:   entry.changeset
+            ? JSON.stringify(entry.changeset)
+            : (entry.metadata ? JSON.stringify(entry.metadata) : entry.action),
+          timestamp: entry.createdAt,
+          ipAddress: entry.ipAddress ?? '',
+        }));
+        setAuditLogs(mappedLogs);
+      } catch (err) {
+        console.error('[DataContext] Failed to load secondary modules from API:', err);
+      }
+
+      // Assets & Inventory have no backend yet — use localStorage fallback
       const ast = safeParse("leadcrm_assets", MOCK_ASSETS ?? []);
       const inv = safeParse("leadcrm_inventory", MOCK_INVENTORY ?? []);
-      const logs = safeParse("leadcrm_audit_logs", [] as AuditLog[]);
-      const serviceEnabled  = safeParse("leadcrm_service_enabled", false);
-      const assetEnabled    = safeParse("leadcrm_asset_enabled", false);
-      const billingEnabled  = safeParse("leadcrm_billing_enabled", false);
-      const activityData    = safeParse("leadcrm_activities", [] as Activity[]);
-      const execRuns  = safeParse("leadcrm_workflow_execution_runs", [] as WorkflowExecutionRun[]);
-      const execSteps = safeParse("leadcrm_workflow_execution_steps", [] as WorkflowExecutionStep[]);
-      const invoiceData = safeParse("leadcrm_invoices", MOCK_INVOICES);
-      const t = safeParse("leadcrm_tenants", MOCK_TENANTS);
+      setAssets(ast as Asset[]);
+      setInventoryItems(inv);
 
-      setIsServiceModuleEnabled(serviceEnabled);
-      setIsAssetModuleEnabled(assetEnabled);
-      setIsBillingModuleEnabled(billingEnabled);
+      // Module feature flags from localStorage
+      setIsServiceModuleEnabled(safeParse("leadcrm_service_enabled", true));
+      setIsAssetModuleEnabled(safeParse("leadcrm_asset_enabled", true));
+      setIsBillingModuleEnabled(safeParse("leadcrm_billing_enabled", true));
 
-      if (user?.role === "System Admin") {
-        setAuditLogs(logs); setWorkflows(w); setCampaigns(c); setTemplates(tpl);
-        setRoles(r); setPermissions(perm); setUsers(u); setTenants(t);
-        setTasks(tsk); setWorkflowExecutions(execs); setServiceOrders(so);
-        setAssets(ast as Asset[]); setInventoryItems(inv);
-        setWorkflowExecutionRuns(execRuns); setWorkflowExecutionSteps(execSteps);
-        setInvoices(invoiceData);
-      } else if (tenant) {
-        setAuditLogs(logs.filter((log: any) => !log.tenantId || log.tenantId === tenant.id));
-        setWorkflows(w.filter((x: any) => x.tenantId === tenant.id));
-        setCampaigns(c.filter((x: any) => x.tenantId === tenant.id));
-        setTemplates(tpl.filter((x: any) => x.tenantId === tenant.id));
-        setRoles(r.filter((x: any) => x.tenantId === tenant.id));
-        setPermissions(perm);
-        setUsers(u.filter((x: any) => x.tenantId === tenant.id));
-        setTenants(t.filter((x: any) => x.id === tenant.id));
-        setTasks(tsk.filter((x: any) => x.tenantId === tenant.id));
-        setWorkflowExecutions(execs.filter((x: any) => x.tenantId === tenant.id));
-        setPendingActions(pending.filter((x: any) => x.tenantId === tenant.id));
-        setServiceOrders(so.filter((x: any) => x.tenantId === tenant.id));
-        setAssets((ast as Asset[]).filter((x: any) => x.tenantId === tenant.id));
-        setInventoryItems(inv.filter((x: any) => x.tenantId === tenant.id));
-        setWorkflowExecutionRuns(execRuns.filter((x: any) => x.tenantId === tenant.id));
-        setWorkflowExecutionSteps(execSteps.filter((x: any) => x.tenantId === tenant.id));
-        setInvoices(invoiceData.filter((x: any) => x.tenantId === tenant.id && !x.isArchived));
-      }
       return; // Exit — mock path below is skipped in real mode
     }
     // ── MOCK / LOCALSTORAGE MODE (unchanged below) ─────────────────────────────
@@ -654,6 +646,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    // Only load data when we have a confirmed authenticated user
+    if (!USE_MOCK_DATA && !user) return;
     loadData();
   }, [user, tenant]);
 
@@ -1064,8 +1058,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setOrganizations((prev) => [org, ...prev]);
         addAuditLog("Created Organization", `Organization "${org.name}" was added.`);
         return org.id;
-      } catch (err: any) {
-        throw new Error(err?.message ?? 'Failed to create organization');
+      } catch (err: unknown) {
+        throw new Error(err instanceof Error ? err.message : 'Failed to create organization');
       }
     }
 
@@ -1089,8 +1083,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const org = toFrontendOrg((res as any).data ?? res) as Organization;
         setOrganizations((prev) => prev.map((o) => (o.id === id ? org : o)));
         addAuditLog("Updated Organization", `Organization "${org.name}" was updated.`);
-      } catch (err: any) {
-        throw new Error(err?.message ?? 'Failed to update organization');
+      } catch (err: unknown) {
+        throw new Error(err instanceof Error ? err.message : 'Failed to update organization');
       }
       return;
     }
@@ -1113,8 +1107,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
           prev.map((o) => (o.id === id ? { ...o, isArchived: true, archivedAt: new Date().toISOString(), archivedBy: user?.id } : o)),
         );
         addAuditLog("Organization Archived", `Archived organization id '${id}'.`);
-      } catch (err: any) {
-        throw new Error(err?.message ?? 'Failed to archive organization');
+      } catch (err: unknown) {
+        throw new Error(err instanceof Error ? err.message : 'Failed to archive organization');
       }
       return;
     }
@@ -1145,8 +1139,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
           contact.id,
         );
         runWorkflows("lead_created", { contact });
-      } catch (err: any) {
-        throw new Error(err?.message ?? 'Failed to create contact');
+      } catch (err: unknown) {
+        throw new Error(err instanceof Error ? err.message : 'Failed to create contact');
       }
       return;
     }
@@ -1176,8 +1170,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const contact = toFrontendContact((res as any).data ?? res) as Contact;
         setContacts((prev) => prev.map((l) => (l.id === id ? contact : l)));
         addAuditLog("Contact Updated", `Updated contact '${contact.contactPerson}'.`, id);
-      } catch (err: any) {
-        throw new Error(err?.message ?? 'Failed to update contact');
+      } catch (err: unknown) {
+        throw new Error(err instanceof Error ? err.message : 'Failed to update contact');
       }
       return;
     }
@@ -1232,8 +1226,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
           prev.map((l) => (l.id === id ? { ...l, isArchived: true, archivedAt: new Date().toISOString(), archivedBy: user?.id } : l)),
         );
         addAuditLog("Contact Archived", `Archived contact id '${id}'.`);
-      } catch (err: any) {
-        throw new Error(err?.message ?? 'Failed to archive contact');
+      } catch (err: unknown) {
+        throw new Error(err instanceof Error ? err.message : 'Failed to archive contact');
       }
       return;
     }
@@ -1267,7 +1261,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           deal.id,
         );
         addActivity({
-          type: 'deal-created',
+          type: 'deal_action',
           relatedToType: 'deal',
           relatedToId: deal.id,
           title: `Deal created: ${deal.title}`,
@@ -1275,8 +1269,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
           createdAt: new Date().toISOString(),
         });
         runWorkflows("deal_created", { deal });
-      } catch (err: any) {
-        throw new Error(err?.message ?? 'Failed to create deal');
+      } catch (err: unknown) {
+        throw new Error(err instanceof Error ? err.message : 'Failed to create deal');
       }
       return;
     }
@@ -1320,7 +1314,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       newDeal.id,
     );
     addActivity({
-      type: 'deal-created',
+      type: 'deal_action',
       relatedToType: 'deal',
       relatedToId: newDeal.id,
       title: `Deal created: ${newDeal.title}`,
@@ -1343,7 +1337,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           const newName = pLine?.stages.find((s) => s.id === updates.stageId)?.name || updates.stageId;
           addAuditLog("Deal Updated", `Updated pipeline stage to '${newName}' for deal '${deal.title}'.`, id);
           addActivity({
-            type: 'stage-change',
+            type: 'stage_change',
             relatedToType: 'deal',
             relatedToId: deal.id,
             title: `Deal moved to new stage`,
@@ -1354,8 +1348,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         } else {
            addAuditLog("Deal Updated", `Modified deal details for '${deal.title}'.`, id);
         }
-      } catch (err: any) {
-        throw new Error(err?.message ?? 'Failed to update deal');
+      } catch (err: unknown) {
+        throw new Error(err instanceof Error ? err.message : 'Failed to update deal');
       }
       return;
     }
@@ -1381,7 +1375,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
           // Fire stage-change Activity
           addActivity({
-            type: 'stage-change',
+            type: 'stage_change',
             relatedToType: 'deal',
             relatedToId: d.id,
             title: `Deal moved to new stage`,
@@ -1471,7 +1465,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const newName = pLine?.stages.find((s) => s.id === stageId)?.name || stageId;
         addAuditLog("Deal Stage Changed", `Moved deal '${deal.title}' to stage '${newName}'.`, id);
         addActivity({
-          type: 'stage-change',
+          type: 'stage_change',
           relatedToType: 'deal',
           relatedToId: deal.id,
           title: `Deal moved to new stage`,
@@ -1506,7 +1500,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           };
           
           addActivity({
-            type: 'stage-change',
+            type: 'stage_change',
             relatedToType: 'deal',
             relatedToId: d.id,
             title: `Deal moved to new stage`,
@@ -1533,8 +1527,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
           prev.map((d) => (d.id === id ? { ...d, isArchived: true } : d)),
         );
         addAuditLog("Deal Archived", `Archived deal id '${id}'.`);
-      } catch (err: any) {
-        throw new Error(err?.message ?? 'Failed to archive deal');
+      } catch (err: unknown) {
+        throw new Error(err instanceof Error ? err.message : 'Failed to archive deal');
       }
       return;
     }
@@ -1573,8 +1567,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const pipeline = toFrontendPipeline((res as any).data ?? res) as Pipeline;
         setPipelines((prev) => [pipeline, ...prev]);
         addAuditLog("Pipeline Created", `Created pipeline '${pipeline.name}'.`);
-      } catch (err: any) {
-        throw new Error(err?.message ?? 'Failed to create pipeline');
+      } catch (err: unknown) {
+        throw new Error(err instanceof Error ? err.message : 'Failed to create pipeline');
       }
       return;
     }
@@ -1596,8 +1590,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const pipeline = toFrontendPipeline((res as any).data ?? res) as Pipeline;
         setPipelines((prev) => prev.map((p) => (p.id === id ? pipeline : p)));
         addAuditLog("Pipeline Updated", `Updated pipeline '${pipeline.name}'.`);
-      } catch (err: any) {
-        throw new Error(err?.message ?? 'Failed to update pipeline');
+      } catch (err: unknown) {
+        throw new Error(err instanceof Error ? err.message : 'Failed to update pipeline');
       }
       return;
     }
@@ -1616,8 +1610,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
           prev.map((p) => (p.id === id ? { ...p, isArchived: true } : p)),
         );
         addAuditLog("Pipeline Archived", `Archived pipeline id '${id}'.`);
-      } catch (err: any) {
-        throw new Error(err?.message ?? 'Failed to archive pipeline');
+      } catch (err: unknown) {
+        throw new Error(err instanceof Error ? err.message : 'Failed to archive pipeline');
       }
       return;
     }
@@ -1635,9 +1629,33 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const addTask = (taskData: any) => {
+  const addTask = async (taskData: any) => {
     if (!tenant) return;
     const now = new Date().toISOString();
+
+    if (!USE_MOCK_DATA) {
+      try {
+        const dto = {
+          title:          taskData.title,
+          description:    taskData.description || undefined,
+          status:         (taskData.status || 'pending') as 'pending' | 'in_progress' | 'blocked' | 'completed' | 'cancelled',
+          priority:       (taskData.priority || 'Medium') as 'Low' | 'Medium' | 'High',
+          dueDate:        taskData.dueDate ? (taskData.dueDate.includes('T') ? taskData.dueDate : `${taskData.dueDate}T00:00:00.000Z`) : new Date(Date.now() + 7 * 86400000).toISOString(),
+          assignedUserId: taskData.assignedUserId,
+          dealId:         taskData.dealId || undefined,
+          contactId:      taskData.contactId || undefined,
+          organizationId: taskData.organizationId || undefined,
+        };
+        const res = await tasksApi.create(dto as any);
+        const created = res?.data ?? res;
+        setTasks((prev) => [created as Task, ...prev]);
+        addAuditLog("Task Created", `Created task '${dto.title}'.`);
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Failed to create task");
+      }
+      return;
+    }
+
     const newTask: Task = {
       ...taskData,
       id: uuid(),
@@ -1655,19 +1673,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
     };
     const newTasks = [...tasks, newTask];
     saveAndSet("leadcrm_tasks", newTasks, setTasks);
-    addAuditLog(
-      "Task Created",
-      `Created task '${newTask.title}' and assigned it to ${newTask.assignedUserId === "system" ? "System automation" : "user reps"}.`,
-    );
+    addAuditLog("Task Created", `Created task '${newTask.title}'.`);
   };
 
-  const updateTask = (id: string, updates: Partial<Task>) => {
+  const updateTask = async (id: string, updates: Partial<Task>) => {
+    if (!USE_MOCK_DATA) {
+      try {
+        const dto: Record<string, unknown> = { ...updates };
+        if (dto.dueDate && typeof dto.dueDate === 'string' && !dto.dueDate.includes('T')) {
+          dto.dueDate = `${dto.dueDate}T00:00:00.000Z`;
+        }
+        const res = await tasksApi.update(id, dto as any);
+        const updated = res?.data ?? res;
+        setTasks((prev) => prev.map((t) => (t.id === id ? (updated as Task) : t)));
+        addAuditLog("Task Updated", `Updated task '${(updated as any).title || id}'.`);
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Failed to update task");
+      }
+      return;
+    }
+
     const original = tasks.find((t) => t.id === id);
     const newTasks = tasks.map((t) => {
       if (t.id !== id) return t;
       const updated = { ...t, ...updates };
-
-      // Track assignment history when assignedUserId changes
       if (updates.assignedUserId && updates.assignedUserId !== t.assignedUserId) {
         const record: import('./types').TaskAssignmentRecord = {
           assignedTo: updates.assignedUserId,
@@ -1679,170 +1708,219 @@ export function DataProvider({ children }: { children: ReactNode }) {
         updated.assignmentHistory = [...(t.assignmentHistory || []), record];
         updated.assignedBy = user?.id || 'system';
       }
-
       return updated;
     });
     saveAndSet("leadcrm_tasks", newTasks, setTasks);
-    if (original) {
-      const changes: string[] = [];
-      if (updates.status && updates.status !== original.status) {
-        changes.push(`status to '${updates.status}'`);
-      }
-      if (updates.title && updates.title !== original.title) {
-        changes.push(`title to '${updates.title}'`);
-      }
-      if (updates.assignedUserId && updates.assignedUserId !== original.assignedUserId) {
-        const assignedUser = users.find((u) => u.id === updates.assignedUserId);
-        changes.push(
-          `assigned to '${assignedUser ? `${assignedUser.firstName} ${assignedUser.lastName}` : updates.assignedUserId}'`,
-        );
-      }
-      const details =
-        changes.length > 0
-          ? `Updated ${changes.join(", ")} for task '${original.title}'.`
-          : `Modified task details for '${original.title}'.`;
-      addAuditLog("Task Updated", details);
-    }
+    if (original) addAuditLog("Task Updated", `Modified task '${original.title}'.`);
   };
 
-  const updateServiceOrder = (id: string, updates: Partial<ServiceOrder>) => {
+  const addServiceOrder = async (soData: Omit<ServiceOrder, "id" | "tenantId" | "createdAt">) => {
+    if (!tenant) return;
+    if (!USE_MOCK_DATA) {
+      try {
+        const dto: Record<string, unknown> = { ...soData };
+        if (dto.scheduledDate && typeof dto.scheduledDate === 'string' && !dto.scheduledDate.includes('T')) {
+          dto.scheduledDate = `${dto.scheduledDate}T00:00:00.000Z`;
+        }
+        const res = await serviceOrdersApi.create(dto as any);
+        const created = res?.data ?? res;
+        setServiceOrders((prev) => [created as ServiceOrder, ...prev]);
+        addAuditLog("Service Order Created", `Created service order '${(created as any).title || 'new'}'.`);
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Failed to create service order");
+      }
+      return;
+    }
+    const newSO: ServiceOrder = {
+      ...soData,
+      id: uuid(),
+      tenantId: tenant.id,
+      createdAt: new Date().toISOString(),
+    } as ServiceOrder;
+    saveAndSet("leadcrm_service_orders", [...serviceOrders, newSO], setServiceOrders);
+    addAuditLog("Service Order Created", `Created service order '${newSO.title || 'new'}'.`);
+  };
+
+  const updateServiceOrder = async (id: string, updates: Partial<ServiceOrder>) => {
+    if (!USE_MOCK_DATA) {
+      try {
+        const dto: Record<string, unknown> = { ...updates };
+        if (dto.scheduledDate && typeof dto.scheduledDate === 'string' && !dto.scheduledDate.includes('T')) {
+          dto.scheduledDate = `${dto.scheduledDate}T00:00:00.000Z`;
+        }
+        const res = await serviceOrdersApi.update(id, dto as any);
+        const updated = res?.data ?? res;
+        setServiceOrders((prev) => prev.map((so) => (so.id === id ? (updated as ServiceOrder) : so)));
+        addAuditLog("Service Order Updated", `Updated service order '${(updated as any).title || id}'.`);
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Failed to update service order");
+      }
+      return;
+    }
     const original = serviceOrders.find((so) => so.id === id);
-    const newOrders = serviceOrders.map((so) =>
-      so.id === id ? { ...so, ...updates } : so,
-    );
+    const newOrders = serviceOrders.map((so) => so.id === id ? { ...so, ...updates } : so);
     saveAndSet("leadcrm_service_orders", newOrders, setServiceOrders);
-    if (original) {
-      addAuditLog(
-        "Service Order Updated",
-        `Service Order ID '${original.id}' status updated to '${updates.status || original.status}'.`,
-      );
-    }
+    if (original) addAuditLog("Service Order Updated", `Updated service order '${original.title || id}'.`);
   };
 
-  const addWorkflow = (workflowData: any) => {
+  const addWorkflow = async (workflowData: any) => {
     if (!tenant) return;
-    const newWorkflow: Workflow = {
-      ...workflowData,
-      id: uuid(),
-      tenantId: tenant.id,
-      executionCount: 0,
-      status: "active",
-    };
-    const newWorkflows = [...workflows, newWorkflow];
-    saveAndSet("leadcrm_workflows", newWorkflows, setWorkflows);
-    addAuditLog(
-      "Workflow Created",
-      `Added business workflow automation rule '${newWorkflow.name}' for trigger '${newWorkflow.trigger}'.`,
-    );
-  };
-
-  const updateWorkflow = (id: string, updates: Partial<Workflow>) => {
-    const original = workflows.find((w) => w.id === id);
-    const newWorkflows = workflows.map((w) =>
-      w.id === id ? { ...w, ...updates } : w,
-    );
-    saveAndSet("leadcrm_workflows", newWorkflows, setWorkflows);
-    if (original) {
-      addAuditLog(
-        "Workflow Updated",
-        `Updated workflow settings for automation rule '${original.name}'.`,
-      );
+    if (!USE_MOCK_DATA) {
+      try {
+        const dto = {
+          name:        workflowData.name,
+          description: workflowData.description || undefined,
+          trigger:     workflowData.trigger,
+          conditions:  workflowData.conditions || undefined,
+          actions:     workflowData.actions || [],
+          isActive:    workflowData.isActive ?? false,
+        };
+        const res = await workflowsApi.create(dto as any);
+        const created = res?.data ?? res;
+        setWorkflows((prev) => [created as Workflow, ...prev]);
+        addAuditLog("Workflow Created", `Created workflow '${dto.name}'.`);
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Failed to create workflow");
+      }
+      return;
     }
+    const newWorkflow: Workflow = { ...workflowData, id: uuid(), tenantId: tenant.id, executionCount: 0, status: "active" };
+    saveAndSet("leadcrm_workflows", [...workflows, newWorkflow], setWorkflows);
+    addAuditLog("Workflow Created", `Created workflow '${newWorkflow.name}'.`);
   };
 
-  const deleteWorkflow = (id: string) => {
-    const original = workflows.find((w) => w.id === id);
-    const newWorkflows = workflows.map((w) =>
-      w.id === id ? { ...w, isArchived: true } : w,
-    );
-    saveAndSet("leadcrm_workflows", newWorkflows, setWorkflows);
-    if (original) {
-      addAuditLog(
-        "Workflow Archived",
-        `Archived workflow automation rule '${original.name}'.`,
-      );
+  const updateWorkflow = async (id: string, updates: Partial<Workflow>) => {
+    if (!USE_MOCK_DATA) {
+      try {
+        const res = await workflowsApi.update(id, updates as any);
+        const updated = res?.data ?? res;
+        setWorkflows((prev) => prev.map((w) => (w.id === id ? (updated as Workflow) : w)));
+        addAuditLog("Workflow Updated", `Updated workflow '${(updated as any).name || id}'.`);
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Failed to update workflow");
+      }
+      return;
     }
+    const original = workflows.find((w) => w.id === id);
+    saveAndSet("leadcrm_workflows", workflows.map((w) => w.id === id ? { ...w, ...updates } : w), setWorkflows);
+    if (original) addAuditLog("Workflow Updated", `Updated workflow '${original.name}'.`);
   };
 
-  const addCampaign = (campaignData: any) => {
+  const deleteWorkflow = async (id: string) => {
+    if (!USE_MOCK_DATA) {
+      try {
+        await workflowsApi.archive(id);
+        setWorkflows((prev) => prev.filter((w) => w.id !== id));
+        addAuditLog("Workflow Archived", `Archived workflow id '${id}'.`);
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Failed to archive workflow");
+      }
+      return;
+    }
+    const original = workflows.find((w) => w.id === id);
+    saveAndSet("leadcrm_workflows", workflows.map((w) => w.id === id ? { ...w, isArchived: true } : w), setWorkflows);
+    if (original) addAuditLog("Workflow Archived", `Archived workflow '${original.name}'.`);
+  };
+
+  const addCampaign = async (campaignData: any) => {
     if (!tenant) return;
+    if (!USE_MOCK_DATA) {
+      try {
+        const res = await campaignsApi.create(campaignData);
+        const created = res?.data ?? res;
+        setCampaigns((prev) => [created as Campaign, ...prev]);
+        addAuditLog("Campaign Created", `Created campaign '${(created as any).name || 'new'}'.`);
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Failed to create campaign");
+      }
+      return;
+    }
     const newCampaign: Campaign = {
-      ...campaignData,
-      id: uuid(),
-      tenantId: tenant.id,
-      createdAt: new Date().toLocaleDateString(),
-      sentCount: 0,
-      openedCount: 0,
-      clickedCount: 0,
-      engagement: 0,
+      ...campaignData, id: uuid(), tenantId: tenant.id,
+      createdAt: new Date().toLocaleDateString(), sentCount: 0, openedCount: 0, clickedCount: 0, engagement: 0,
     };
-    const newCampaigns = [...campaigns, newCampaign];
-    saveAndSet("leadcrm_campaigns", newCampaigns, setCampaigns);
-    addAuditLog(
-      "Campaign Created",
-      `Created campaign schedule '${newCampaign.name}' with source template ID '${campaignData.templateId || "default"}'.`,
-    );
+    saveAndSet("leadcrm_campaigns", [...campaigns, newCampaign], setCampaigns);
+    addAuditLog("Campaign Created", `Created campaign '${newCampaign.name}'.`);
   };
 
-  const updateCampaign = (id: string, updates: Partial<Campaign>) => {
-    const original = campaigns.find((c) => c.id === id);
-    const newCampaigns = campaigns.map((c) =>
-      c.id === id ? { ...c, ...updates } : c,
-    );
-    saveAndSet("leadcrm_campaigns", newCampaigns, setCampaigns);
-    if (original) {
-      addAuditLog(
-        "Campaign Updated",
-        `Updated campaign configurations for '${original.name}'.`,
-      );
+  const updateCampaign = async (id: string, updates: Partial<Campaign>) => {
+    if (!USE_MOCK_DATA) {
+      try {
+        const res = await campaignsApi.update(id, updates);
+        const updated = res?.data ?? res;
+        setCampaigns((prev) => prev.map((c) => (c.id === id ? (updated as Campaign) : c)));
+        addAuditLog("Campaign Updated", `Updated campaign '${(updated as any).name || id}'.`);
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Failed to update campaign");
+      }
+      return;
     }
-  };
-
-  const deleteCampaign = (id: string) => {
     const original = campaigns.find((c) => c.id === id);
-    const newCampaigns = campaigns.map((c) =>
-      c.id === id ? { ...c, isArchived: true } : c,
-    );
-    saveAndSet("leadcrm_campaigns", newCampaigns, setCampaigns);
-    if (original) {
-      addAuditLog(
-        "Campaign Archived",
-        `Archived marketing campaign '${original.name}'.`,
-      );
-    }
+    saveAndSet("leadcrm_campaigns", campaigns.map((c) => c.id === id ? { ...c, ...updates } : c), setCampaigns);
+    if (original) addAuditLog("Campaign Updated", `Updated campaign '${original.name}'.`);
   };
 
-  const addTemplate = (templateData: any) => {
+  const deleteCampaign = async (id: string) => {
+    if (!USE_MOCK_DATA) {
+      try {
+        await campaignsApi.archive(id);
+        setCampaigns((prev) => prev.filter((c) => c.id !== id));
+        addAuditLog("Campaign Archived", `Archived campaign id '${id}'.`);
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Failed to archive campaign");
+      }
+      return;
+    }
+    const original = campaigns.find((c) => c.id === id);
+    saveAndSet("leadcrm_campaigns", campaigns.map((c) => c.id === id ? { ...c, isArchived: true } : c), setCampaigns);
+    if (original) addAuditLog("Campaign Archived", `Archived campaign '${original.name}'.`);
+  };
+
+  const addTemplate = async (templateData: any) => {
     if (!tenant) return;
-    const newTemplate: Template = {
-      ...templateData,
-      id: uuid(),
-      tenantId: tenant.id,
-      createdAt: new Date().toLocaleDateString(),
-    };
-    const newTemplates = [...templates, newTemplate];
-    saveAndSet("leadcrm_templates", newTemplates, setTemplates);
-  };
-
-  const updateTemplate = (id: string, updates: Partial<Template>) => {
-    const newTemplates = templates.map((t) =>
-      t.id === id ? { ...t, ...updates } : t,
-    );
-    saveAndSet("leadcrm_templates", newTemplates, setTemplates);
-  };
-
-  const deleteTemplate = (id: string) => {
-    const original = templates.find((t) => t.id === id);
-    const newTemplates = templates.map((t) =>
-      t.id === id ? { ...t, isArchived: true } : t,
-    );
-    saveAndSet("leadcrm_templates", newTemplates, setTemplates);
-    if (original) {
-      addAuditLog(
-        "Template Archived",
-        `Archived communication template '${original.name}'.`,
-      );
+    if (!USE_MOCK_DATA) {
+      try {
+        const res = await templatesApi.create(templateData);
+        const created = res?.data ?? res;
+        setTemplates((prev) => [created as Template, ...prev]);
+        addAuditLog("Template Created", `Created template '${(created as any).name || 'new'}'.`);
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Failed to create template");
+      }
+      return;
     }
+    const newTemplate: Template = { ...templateData, id: uuid(), tenantId: tenant.id, createdAt: new Date().toLocaleDateString() };
+    saveAndSet("leadcrm_templates", [...templates, newTemplate], setTemplates);
+  };
+
+  const updateTemplate = async (id: string, updates: Partial<Template>) => {
+    if (!USE_MOCK_DATA) {
+      try {
+        const res = await templatesApi.update(id, updates);
+        const updated = res?.data ?? res;
+        setTemplates((prev) => prev.map((t) => (t.id === id ? (updated as Template) : t)));
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Failed to update template");
+      }
+      return;
+    }
+    saveAndSet("leadcrm_templates", templates.map((t) => t.id === id ? { ...t, ...updates } : t), setTemplates);
+  };
+
+  const deleteTemplate = async (id: string) => {
+    if (!USE_MOCK_DATA) {
+      try {
+        await templatesApi.archive(id);
+        setTemplates((prev) => prev.filter((t) => t.id !== id));
+        addAuditLog("Template Archived", `Archived template id '${id}'.`);
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Failed to archive template");
+      }
+      return;
+    }
+    const original = templates.find((t) => t.id === id);
+    saveAndSet("leadcrm_templates", templates.map((t) => t.id === id ? { ...t, isArchived: true } : t), setTemplates);
+    if (original) addAuditLog("Template Archived", `Archived template '${original.name}'.`);
   };
 
   const addRole = async (roleData: any) => {
@@ -1863,8 +1941,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
           setRoles((prev) => prev.map((r) => (r.id === newRole.id ? res.data! : r)));
           addAuditLog("Role Created", `Created custom user access level group description: '${newRole.name}'.`);
         }
-      } catch (err: any) {
-        toast.error("Failed to create role: " + (err.message || "Unknown error"));
+      } catch (err: unknown) {
+        toast.error("Failed to create role: " + (err instanceof Error ? err.message : "Unknown error"));
         setRoles((prev) => prev.filter((r) => r.id !== newRole.id));
       }
       return;
@@ -1895,8 +1973,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
           setRoles((prev) => prev.map((r) => (r.id === id ? res.data! : r)));
           addAuditLog("Role Updated", `Updated permissions or configuration for access level role: '${original.name}'.`);
         }
-      } catch (err: any) {
-        toast.error("Failed to update role: " + (err.message || "Unknown error"));
+      } catch (err: unknown) {
+        toast.error("Failed to update role: " + (err instanceof Error ? err.message : "Unknown error"));
         setRoles((prev) => prev.map((r) => (r.id === id ? original : r)));
       }
       return;
@@ -1924,8 +2002,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       try {
         await usersService.deleteRole(id);
         addAuditLog("Role Archived", `Archived custom user access level group: '${original.name}'.`);
-      } catch (err: any) {
-        toast.error("Failed to archive role: " + (err.message || "Unknown error"));
+      } catch (err: unknown) {
+        toast.error("Failed to archive role: " + (err instanceof Error ? err.message : "Unknown error"));
         setRoles((prev) => prev.map((r) => (r.id === id ? original : r)));
       }
       return;
@@ -1974,8 +2052,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
             `Registered new team member: '${firstName} ${lastName}'.`,
           );
         }
-      } catch (err: any) {
-        toast.error("Failed to register user: " + (err.message || "Unknown error"));
+      } catch (err: unknown) {
+        toast.error("Failed to register user: " + (err instanceof Error ? err.message : "Unknown error"));
         setUsers((prev) => prev.filter((u) => u.id !== newUser.id));
       }
       return;
@@ -2028,8 +2106,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
             `Updated profile/role details for team member: '${firstName} ${lastName}'.`,
           );
         }
-      } catch (err: any) {
-        toast.error("Failed to update user: " + (err.message || "Unknown error"));
+      } catch (err: unknown) {
+        toast.error("Failed to update user: " + (err instanceof Error ? err.message : "Unknown error"));
         setUsers((prev) => prev.map((u) => (u.id === id ? original : u)));
       }
       return;
@@ -2074,8 +2152,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
           "User Archived",
           `Deactivated and archived team member account: '${original.firstName} ${original.lastName}'.`,
         );
-      } catch (err: any) {
-        toast.error("Failed to archive user: " + (err.message || "Unknown error"));
+      } catch (err: unknown) {
+        toast.error("Failed to archive user: " + (err instanceof Error ? err.message : "Unknown error"));
         setUsers((prev) => prev.map((u) => (u.id === id ? original : u)));
       }
       return;
@@ -2308,29 +2386,66 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setActivities(updated.filter((a: Activity) => a.tenantId === currentTenantId));
   };
 
-  const addInvoice = (invoiceData: Omit<Invoice, 'id' | 'tenantId' | 'createdAt'>) => {
+  const addInvoice = async (invoiceData: Omit<Invoice, 'id' | 'tenantId' | 'createdAt'>) => {
     if (!tenant) return;
-    const newInvoice: Invoice = {
-      ...invoiceData,
-      id: uuid(),
-      tenantId: tenant.id,
-      createdAt: new Date().toISOString(),
-    };
+    if (!USE_MOCK_DATA) {
+      try {
+        const dto: Record<string, unknown> = { ...invoiceData };
+        // Ensure datetime fields are ISO format
+        (['startDate', 'dueDate', 'nextBillingDate'] as const).forEach((field) => {
+          const val = dto[field] as string | undefined;
+          if (val && !val.includes('T')) dto[field] = `${val}T00:00:00.000Z`;
+        });
+        const res = await invoicesApi.create(dto as any);
+        const created = res?.data ?? res;
+        setInvoices((prev) => [created as Invoice, ...prev]);
+        addAuditLog('Invoice Created', `Created invoice for '${(created as any).companyName || 'client'}'.`);
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Failed to create invoice");
+      }
+      return;
+    }
+    const newInvoice: Invoice = { ...invoiceData, id: uuid(), tenantId: tenant.id, createdAt: new Date().toISOString() };
     const all = JSON.parse(localStorage.getItem('leadcrm_invoices') || JSON.stringify(MOCK_INVOICES));
     const updated = [...all, newInvoice];
     localStorage.setItem('leadcrm_invoices', JSON.stringify(updated));
     setInvoices(updated.filter((x: Invoice) => x.tenantId === tenant.id && !x.isArchived));
-    addAuditLog('Invoice Created', `Created invoice ${newInvoice.id} for ${newInvoice.companyName}`);
+    addAuditLog('Invoice Created', `Created invoice for '${newInvoice.companyName}'.`);
   };
 
-  const updateInvoice = (id: string, updates: Partial<Invoice>) => {
+  const updateInvoice = async (id: string, updates: Partial<Invoice>) => {
+    if (!USE_MOCK_DATA) {
+      try {
+        const dto: Record<string, unknown> = { ...updates };
+        (['startDate', 'dueDate', 'nextBillingDate'] as const).forEach((field) => {
+          const val = dto[field] as string | undefined;
+          if (val && !val.includes('T')) dto[field] = `${val}T00:00:00.000Z`;
+        });
+        const res = await invoicesApi.update(id, dto as any);
+        const updated = res?.data ?? res;
+        setInvoices((prev) => prev.map((inv) => (inv.id === id ? (updated as Invoice) : inv)));
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Failed to update invoice");
+      }
+      return;
+    }
     const all = JSON.parse(localStorage.getItem('leadcrm_invoices') || JSON.stringify(MOCK_INVOICES));
     const updated = all.map((inv: Invoice) => inv.id === id ? { ...inv, ...updates } : inv);
     localStorage.setItem('leadcrm_invoices', JSON.stringify(updated));
     if (tenant) setInvoices(updated.filter((x: Invoice) => x.tenantId === tenant.id && !x.isArchived));
   };
 
-  const removeInvoice = (id: string) => {
+  const removeInvoice = async (id: string) => {
+    if (!USE_MOCK_DATA) {
+      try {
+        await invoicesApi.archive(id);
+        setInvoices((prev) => prev.filter((inv) => inv.id !== id));
+        addAuditLog('Invoice Archived', `Archived invoice id '${id}'.`);
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Failed to archive invoice");
+      }
+      return;
+    }
     const all = JSON.parse(localStorage.getItem('leadcrm_invoices') || JSON.stringify(MOCK_INVOICES));
     const updated = all.map((inv: Invoice) => inv.id === id ? { ...inv, isArchived: true } : inv);
     localStorage.setItem('leadcrm_invoices', JSON.stringify(updated));
@@ -2523,6 +2638,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         addAuditLog,
         addTask,
         updateTask,
+        addServiceOrder,
         updateServiceOrder,
         addWorkflow,
         updateWorkflow,

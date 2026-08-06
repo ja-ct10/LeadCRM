@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { loginUser } from './auth.service';
 import { revokeSession } from './session.service';
+import prisma from '../../config/database.config';
 
 const COOKIE_NAME = 'leadcrm_token';
 const COOKIE_OPTIONS = {
@@ -40,8 +41,16 @@ export async function logout(req: Request, res: Response): Promise<void> {
   res.json({ success: true });
 }
 
-export async function me(req: Request, res: Response): Promise<void> {
-  res.json({ success: true, data: { user: req.user } });
+export async function me(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    // Fetch full user from DB so firstName/lastName are included
+    const user = await prisma.user.findFirst({
+      where: { id: req.user!.userId, tenantId: req.user!.tenantId },
+      select: { id: true, email: true, role: true, firstName: true, lastName: true, tenantId: true, status: true },
+    });
+    if (!user) { res.status(401).json({ success: false, error: 'User not found' }); return; }
+    res.json({ success: true, data: { user } });
+  } catch (err) { next(err); }
 }
 
 export async function seedDemo(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -99,7 +108,8 @@ export async function seedDemo(req: Request, res: Response, next: NextFunction):
   }
 }
 
-import { registerClientAdmin as registerClientAdminService, registerGuest as registerGuestService } from './auth.service';
+import { registerClientAdmin as registerClientAdminService, registerGuest as registerGuestService, requestPasswordReset, resetPasswordWithToken, sendLoginOtp, verifyLoginOtp } from './auth.service';
+import { ForgotPasswordSchema, ResetPasswordSchema, SendOtpSchema, VerifyOtpSchema } from './auth.dto';
 
 export async function registerClientAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -128,10 +138,65 @@ export async function verifyEmail(req: Request, res: Response, next: NextFunctio
   }
 }
 
+export async function forgotPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const parsed = ForgotPasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: parsed.error.errors[0]?.message ?? 'Invalid input' });
+      return;
+    }
+    await requestPasswordReset(parsed.data);
+    // Always return success — never reveal whether the email exists
+    res.json({ success: true, message: 'If that email is registered, a reset link has been sent.' });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function resetPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    // Mock implementation for now
-    res.json({ success: true, message: 'Password reset instructions sent.' });
+    const parsed = ResetPasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: parsed.error.errors[0]?.message ?? 'Invalid input' });
+      return;
+    }
+    await resetPasswordWithToken(parsed.data);
+    res.json({ success: true, message: 'Password has been reset successfully. You can now log in.' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function sendOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const parsed = SendOtpSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: parsed.error.errors[0]?.message ?? 'Invalid input' });
+      return;
+    }
+    await sendLoginOtp(parsed.data, {
+      userAgent: req.headers['user-agent'],
+      ipAddress: req.ip,
+    });
+    res.json({ success: true, message: 'OTP sent to your email address.' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function verifyOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const parsed = VerifyOtpSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: parsed.error.errors[0]?.message ?? 'Invalid input' });
+      return;
+    }
+    const result = await verifyLoginOtp(parsed.data.email, parsed.data.code, {
+      userAgent: req.headers['user-agent'],
+      ipAddress: req.ip,
+    });
+    res.cookie(COOKIE_NAME, result.token, COOKIE_OPTIONS);
+    res.json({ success: true, data: { user: result.user, token: result.token } });
   } catch (err) {
     next(err);
   }

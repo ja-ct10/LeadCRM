@@ -1,11 +1,8 @@
 'use client';
-
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
-import ProfileSettingsPage from '@/features/tenant/settings/ui/profile-settings-page';
-import { PATH_TO_PATHNAME } from '@/shared/lib/route-map';
-
+const ProfileSettingsPage = dynamic(() => import('../../../../src/features/tenant/settings/ui/profile-settings-page'), { ssr: false });
 export default function ProfileSettingsRoute() {
   const router = useRouter();
-  const navigate = (path: string) => router.push(PATH_TO_PATHNAME[path] ?? '/dashboard');
-  return <ProfileSettingsPage navigate={navigate} />;
+  return <ProfileSettingsPage navigate={(path: string) => router.push(path)} />;
 }

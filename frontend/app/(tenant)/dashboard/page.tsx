@@ -1,2 +1,4 @@
-import Dashboard from '@/features/tenant/dashboard/Dashboard';
+'use client';
+import dynamic from 'next/dynamic';
+const Dashboard = dynamic(() => import('../../../src/features/tenant/dashboard/ui/dashboard'), { ssr: false });
 export default Dashboard;

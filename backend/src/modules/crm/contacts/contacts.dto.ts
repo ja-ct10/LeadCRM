@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+const id = () => z.string().min(1);
+
 export const CreateContactSchema = z.object({
   firstName:      z.string().min(1, 'First name is required').max(100),
   lastName:       z.string().min(1, 'Last name is required').max(100),
@@ -13,15 +15,15 @@ export const CreateContactSchema = z.object({
   source:         z.string().optional(),
   notes:          z.string().optional(),
   doNotContact:   z.boolean().default(false),
-  organizationId: z.string().cuid().optional(),
-  assignedUserId: z.string().cuid().optional(),
+  organizationId: id().optional(),
+  assignedUserId: id().optional(),
   productInterests: z.array(z.string()).optional(),
   address:        z.string().optional(),
   customerType:   z.enum(['Prospect', 'Active Customer', 'Inactive Customer', 'Former Customer']).optional(),
   customerSince:  z.string().datetime().optional(),
   activeProducts: z.array(z.string()).optional(),
 }).refine(
-  (data) => true, // Remove strict email/phone requirement to allow UI flexibility
+  () => true,
   { message: 'Valid record', path: [] },
 );
 
@@ -38,8 +40,8 @@ export const UpdateContactSchema = z.object({
   source:         z.string().optional(),
   notes:          z.string().optional(),
   doNotContact:   z.boolean().optional(),
-  organizationId: z.string().cuid().optional(),
-  assignedUserId: z.string().cuid().optional(),
+  organizationId: id().optional(),
+  assignedUserId: id().optional(),
   productInterests: z.array(z.string()).optional(),
   address:        z.string().optional(),
   customerType:   z.enum(['Prospect', 'Active Customer', 'Inactive Customer', 'Former Customer']).optional(),

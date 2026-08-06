@@ -31,7 +31,18 @@ export function toFrontendPriority(priority?: string): 'Low' | 'Medium' | 'High'
 }
 
 /**
- * Prepares frontend deal data for creation in the backend API.
+ * Converts a plain date string ("YYYY-MM-DD") or ISO datetime to a full ISO 8601 datetime.
+ * Required because the backend uses z.string().datetime() which rejects date-only strings.
+ */
+function toISODatetime(value: string | undefined | null): string | undefined {
+  if (!value) return undefined;
+  // Already a full ISO datetime
+  if (value.includes('T')) return value;
+  // Plain date "YYYY-MM-DD" → append midnight UTC
+  return `${value}T00:00:00.000Z`;
+}
+
+/**
  * Maps and formats fields, and strips frontend-only properties.
  * 
  * @param data - Partial frontend deal data
@@ -45,7 +56,7 @@ export function toBackendCreateDeal(data: Partial<any>): any {
     value: typeof data.value === 'number' ? data.value : undefined,
     currency: 'PHP', // Default currency as per DTO
     priority: toBackendPriority(data.priority),
-    expectedCloseDate: data.expectedCloseDate || undefined,
+    expectedCloseDate: toISODatetime(data.expectedCloseDate),
     description: data.description || undefined,
     leadSource: data.leadSource || undefined,
     organizationId: data.companyId || data.organizationId || undefined,
@@ -65,28 +76,32 @@ export function toBackendCreateDeal(data: Partial<any>): any {
  */
 export function toBackendUpdateDeal(data: Partial<any>): any {
   const updateData: any = {};
-  
-  if (data.pipelineId !== undefined) updateData.pipelineId = data.pipelineId;
-  if (data.stageId !== undefined) updateData.stageId = data.stageId;
+
+  // Only include ID fields when they have a non-empty value — the backend
+  // schema uses z.string().uuid() which rejects empty strings outright.
+  if (data.pipelineId) updateData.pipelineId = data.pipelineId;
+  if (data.stageId) updateData.stageId = data.stageId;
   if (data.title !== undefined) updateData.title = data.title;
   if (data.value !== undefined) updateData.value = data.value;
   if (data.priority !== undefined) updateData.priority = toBackendPriority(data.priority);
-  if (data.expectedCloseDate !== undefined) updateData.expectedCloseDate = data.expectedCloseDate;
+  if (data.expectedCloseDate !== undefined) updateData.expectedCloseDate = toISODatetime(data.expectedCloseDate);
   if (data.description !== undefined) updateData.description = data.description;
   if (data.leadSource !== undefined) updateData.leadSource = data.leadSource;
-  
-  if (data.companyId !== undefined || data.organizationId !== undefined) {
-    updateData.organizationId = data.companyId || data.organizationId;
-  }
-  
-  if (data.assignedUserId !== undefined) updateData.assignedUserId = data.assignedUserId;
-  
+
+  // Strip empty strings for optional UUID fields
+  const orgId = data.companyId || data.organizationId;
+  if (orgId) updateData.organizationId = orgId;
+
+  if (data.assignedUserId) updateData.assignedUserId = data.assignedUserId;
+
+  // Strip empty contact IDs from the array before sending
   if (data.contactIds !== undefined) {
-    updateData.contactIds = data.contactIds;
-  } else if (data.contactId !== undefined) {
+    const filtered = data.contactIds.filter(Boolean);
+    if (filtered.length > 0) updateData.contactIds = filtered;
+  } else if (data.contactId) {
     updateData.contactIds = [data.contactId];
   }
-  
+
   return updateData;
 }
 

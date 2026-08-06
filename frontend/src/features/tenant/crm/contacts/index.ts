@@ -1,5 +1,5 @@
 // Contacts module — barrel export
-export { default as ContactsPage } from './ContactsPage';
+export { default as ContactsPage } from './ui/contacts-page';
 
 // UI components
 export { ClientTable } from './ui/contacts-table';

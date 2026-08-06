@@ -10,8 +10,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
-import { BackButton } from '@/shared/components/ui/BackButton';
-import { ModalCloseButton } from '@/shared/components/ui/ModalCloseButton';
+import { BackButton } from '@/shared/components/ui/back-button';
+import { ModalCloseButton } from '@/shared/components/ui/modal-close-button';
 
 // Define Prop Interfaces
 interface VisualWorkflowBuilderProps {

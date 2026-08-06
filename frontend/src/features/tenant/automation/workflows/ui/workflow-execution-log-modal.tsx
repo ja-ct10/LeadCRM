@@ -1,8 +1,8 @@
 import React from 'react';
 import { History, Clock, FileText } from 'lucide-react';
 import { Workflow, WorkflowExecution } from '@/store/types';
-import { ModalCloseButton } from '@/shared/components/ui/ModalCloseButton';
-import { usePagination } from '@/shared/hooks/usePagination';
+import { ModalCloseButton } from '@/shared/components/ui/modal-close-button';
+import { usePagination } from '@/shared/hooks/use-pagination';
 import { Pagination } from '@/shared/components/ui/pagination';
 
 interface WorkflowExecutionLogModalProps {

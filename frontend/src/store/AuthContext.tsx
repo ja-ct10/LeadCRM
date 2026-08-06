@@ -5,7 +5,6 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { User, Tenant } from './types';
 import { MOCK_USERS, MOCK_TENANTS } from './mockData';
 import { authApi } from '@/shared/services/auth.api';
-import { useSession, signIn, signOut } from 'next-auth/react';
 
 // When true, auth calls hit the mock localStorage data instead of the backend.
 // Set NEXT_PUBLIC_USE_MOCK_AUTH=false in .env.local to use the real API.
@@ -16,9 +15,12 @@ interface AuthContextType {
   tenant: Tenant | null;
   isLoading: boolean;
   login: (email: string, password?: string) => Promise<boolean>;
+  verifyOtp: (email: string, code: string) => Promise<boolean>;
   logout: () => Promise<void>;
   registerTenant: (tenantData: any, adminData: any) => Promise<boolean>;
   registerGuestAccount: (guestData: any) => Promise<boolean>;
+  requestPasswordReset: (email: string) => Promise<boolean>;
+  confirmPasswordReset: (token: string, password: string) => Promise<boolean>;
   switchRole: (role: string) => void;
   updateProfile: (profileData: Partial<User>) => void;
 }
@@ -26,7 +28,6 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { data: session, status } = useSession();
   const [user, setUser]       = useState<User | null>(null);
   const [tenant, setTenant]   = useState<Tenant | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -48,26 +49,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         setIsLoading(false);
       } else {
-        // Real API (NextAuth)
-        if (status === 'loading') {
-          setIsLoading(true);
-        } else if (status === 'authenticated' && session.user) {
-          setUser(session.user as unknown as User); // Map as needed
-          // Since the real API uses JWTs that contain the tenant ID, we can infer a basic tenant object
-          // to bypass frontend guards that require a non-null tenant.
-          const userTenantId = (session.user as any).tenantId || 'default-tenant';
-          setTenant({ id: userTenantId, name: 'Active Tenant', status: 'active', environment: 'production' } as any);
-          setIsLoading(false);
-        } else {
+        // Real API — verify the HttpOnly cookie by calling /auth/me
+        try {
+          const res = await authApi.me();
+          if (res?.data?.user) {
+            const apiUser = res.data.user as unknown as User;
+            setUser(apiUser);
+            if (apiUser.tenantId && apiUser.tenantId !== 'system') {
+              setTenant({ id: apiUser.tenantId, name: '', status: 'active', environment: 'production' } as any);
+            }
+          } else {
+            setUser(null);
+            setTenant(null);
+          }
+        } catch {
+          // No valid session cookie — user needs to log in
           setUser(null);
           setTenant(null);
-          setIsLoading(false);
         }
+        setIsLoading(false);
       }
     };
 
     restoreSession();
-  }, [session, status]);
+  }, []); // Run once on mount only — session restore is not NextAuth-dependent
 
   // ── Login ─────────────────────────────────────────────────────────
   const login = async (email: string, password?: string): Promise<boolean> => {
@@ -76,14 +81,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const res = await signIn('credentials', {
-        redirect: false,
-        email,
-        password: password ?? '',
-      });
-      return !!res?.ok;
-    } catch {
+      // Step 1: verify credentials + send OTP
+      await authApi.sendOtp(email, password ?? '');
+      return true; // signals OTP was sent — UI should show OTP step
+    } catch (err: unknown) {
+      if (process.env.NODE_ENV !== 'production') {
+        // eslint-disable-next-line no-console
+        console.error('[AuthContext] login failed:', err instanceof Error ? err.message : err);
+      }
       return false;
+    }
+  };
+
+  // ── Verify OTP + complete login ────────────────────────────────────
+  const verifyOtp = async (email: string, code: string): Promise<boolean> => {
+    if (USE_MOCK_AUTH) {
+      return mockLogin(email);
+    }
+    try {
+      const res = await authApi.verifyOtp(email, code);
+      if (res?.data?.user) {
+        const apiUser = res.data.user as unknown as User;
+        setUser(apiUser);
+        if (apiUser.tenantId && apiUser.tenantId !== 'system') {
+          setTenant({ id: apiUser.tenantId, name: '', status: 'active', environment: 'production' } as any);
+        }
+        return true;
+      }
+      return false;
+    } catch (err: unknown) {
+      if (process.env.NODE_ENV !== 'production') {
+        // eslint-disable-next-line no-console
+        console.error('[AuthContext] verifyOtp failed:', err instanceof Error ? err.message : err);
+      }
+      throw err; // re-throw so UI can show the specific error message
     }
   };
 
@@ -125,7 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ── Logout ────────────────────────────────────────────────────────
   const logout = async (): Promise<void> => {
     if (!USE_MOCK_AUTH) {
-      await signOut({ redirect: false });
+      try { await authApi.logout(); } catch { /* ignore — clear local state regardless */ }
     }
     setUser(null);
     setTenant(null);
@@ -183,8 +214,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           acceptTerms: true,
         });
         return true;
-      } catch (err) {
-        console.error(err);
+      } catch (err: unknown) {
+        // Log safely — never expose stack traces or secrets
+        if (process.env.NODE_ENV !== 'production') {
+          // eslint-disable-next-line no-console
+          console.error('[AuthContext] registerTenant failed:', err instanceof Error ? err.message : err);
+        }
         return false;
       }
     }
@@ -202,10 +237,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           password: guestData.password,
         });
         return true;
-      } catch (err) {
-        console.error(err);
+      } catch (err: unknown) {
+        if (process.env.NODE_ENV !== 'production') {
+          // eslint-disable-next-line no-console
+          console.error('[AuthContext] registerGuestAccount failed:', err instanceof Error ? err.message : err);
+        }
         return false;
       }
+    }
+  };
+
+  // ── Password reset ─────────────────────────────────────────────────
+  const requestPasswordReset = async (email: string): Promise<boolean> => {
+    if (USE_MOCK_AUTH) {
+      // Mock: always succeed silently
+      return true;
+    }
+    try {
+      await authApi.forgotPassword(email);
+      return true;
+    } catch (err: unknown) {
+      if (process.env.NODE_ENV !== 'production') {
+        // eslint-disable-next-line no-console
+        console.error('[AuthContext] requestPasswordReset failed:', err instanceof Error ? err.message : err);
+      }
+      return false;
+    }
+  };
+
+  const confirmPasswordReset = async (token: string, password: string): Promise<boolean> => {
+    if (USE_MOCK_AUTH) {
+      return true;
+    }
+    try {
+      await authApi.resetPassword(token, password);
+      return true;
+    } catch (err: unknown) {
+      if (process.env.NODE_ENV !== 'production') {
+        // eslint-disable-next-line no-console
+        console.error('[AuthContext] confirmPasswordReset failed:', err instanceof Error ? err.message : err);
+      }
+      return false;
     }
   };
 
@@ -233,7 +305,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, tenant, isLoading, login, logout, registerTenant, registerGuestAccount, switchRole, updateProfile }}>
+    <AuthContext.Provider value={{ user, tenant, isLoading, login, verifyOtp, logout, registerTenant, registerGuestAccount, requestPasswordReset, confirmPasswordReset, switchRole, updateProfile }}>
       {children}
     </AuthContext.Provider>
   );

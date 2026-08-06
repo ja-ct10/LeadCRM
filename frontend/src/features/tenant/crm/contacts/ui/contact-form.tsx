@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Contact, Organization } from "@/store/types";
-import { SlidingDrawer } from "@/shared/components/SlidingDrawer";
+import { SlidingDrawer } from "@/shared/components/sliding-drawer";
 import { useData } from "@/store/DataContext";
 import { useAuth } from "@/store/AuthContext";
 import { toast } from "sonner";

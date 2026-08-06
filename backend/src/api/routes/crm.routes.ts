@@ -52,6 +52,7 @@ router.get(    '/pipelines',                 authorize('deals.view'),    pipelin
 router.get(    '/pipelines/:id',             authorize('deals.view'),    pipelineController.getPipelineById);
 router.post(   '/pipelines',                 authorize('deals.create'),  validate(CreatePipelineSchema), pipelineController.createPipeline);
 router.put(    '/pipelines/:id',             authorize('deals.edit'),    validate(UpdatePipelineSchema), pipelineController.updatePipeline);
+router.patch(  '/pipelines/:id/archive',     authorize('deals.delete'),  pipelineController.archivePipeline);
 router.delete( '/pipelines/:id',             authorize('deals.delete'),  pipelineController.deletePipeline);
 
 // ── Stages (nested under pipeline context) ────────────

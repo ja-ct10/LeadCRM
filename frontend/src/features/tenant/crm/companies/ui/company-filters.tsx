@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { TrelloFilter } from '@/shared/components/TrelloFilter';
+import { TrelloFilter } from '@/shared/components/trello-filter';
 import { COMPANY_INDUSTRIES, COMPANY_SIZES } from '../constants/company.constants';
 import type { CompanyFilters } from '../types/company.types';
 

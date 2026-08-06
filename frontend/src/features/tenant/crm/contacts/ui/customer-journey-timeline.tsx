@@ -3,7 +3,7 @@
 import React from 'react';
 import { Calendar, CheckCircle2, DollarSign, FileText, Briefcase, UserCheck, MessageSquare, AlertCircle, Clock, ShieldCheck } from 'lucide-react';
 import { Contact, Deal, Task, Invoice } from '@/store/types';
-import { usePagination } from '@/shared/hooks/usePagination';
+import { usePagination } from '@/shared/hooks/use-pagination';
 import { Pagination } from '@/shared/components/ui/pagination';
 
 export interface TimelineEvent {

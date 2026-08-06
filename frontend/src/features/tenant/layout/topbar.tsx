@@ -4,7 +4,7 @@ import React from 'react';
 import { Menu, Bell, StickyNote, Sun, Moon } from 'lucide-react';
 import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
-import { useTheme } from '@/shared/hooks/useTheme';
+import { useTheme } from '@/shared/hooks/use-theme';
 
 interface TopbarProps {
   onOpenSidebar: () => void;

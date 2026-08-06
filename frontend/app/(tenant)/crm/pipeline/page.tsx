@@ -1,12 +1,8 @@
 'use client';
-
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
-import PipelinePage from '@/features/tenant/crm/pipeline/PipelinePage';
-import { PATH_TO_PATHNAME } from '@/shared/lib/route-map';
-
-// PipelinePage accepts a navigate prop — wire it to the router
+const PipelinePage = dynamic(() => import('../../../../src/features/tenant/crm/pipeline/ui/pipeline-page'), { ssr: false });
 export default function PipelineRoute() {
   const router = useRouter();
-  const navigate = (path: string) => router.push(PATH_TO_PATHNAME[path] ?? '/dashboard');
-  return <PipelinePage navigate={navigate} />;
+  return <PipelinePage navigate={(path: string) => router.push(path)} />;
 }

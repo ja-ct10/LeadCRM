@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 import { uuid } from '@/lib/utils';
 
 import React, { useState, useEffect } from 'react';
@@ -143,20 +143,20 @@ export const CompanyProfileTabs = ({
       type: a.type,
       text: a.title || a.description || (a as any).notes || a.type,
       time: new Date(a.createdAt).toLocaleDateString(),
-      user: users.find(u => u.id === (a.createdBy || (a as any).userId))?.firstName || (a.createdBy === 'system' ? 'System' : 'Admin')
+      user: users.find(u => u.id === (a.createdBy || (a as any).userId))?.firstName || (a.createdBy === 'note' ? 'System' : 'Admin')
     }));
 
   const saveActivities = (updatedList: any[]) => {
     // Legacy function, no longer used directly as activities are saved to DB
   };
 
-  const addActivityLog = (text: string, type: string = 'system') => {
+  const addActivityLog = (text: string, type: string = 'note') => {
     addActivity({
       type: type as any,
       title: text,
       relatedToType: 'company',
       relatedToId: selectedOrg.id,
-      createdBy: currentUser?.id || 'system',
+      createdBy: currentUser?.id || 'note',
       createdAt: new Date().toISOString(),
     });
   };
@@ -164,7 +164,7 @@ export const CompanyProfileTabs = ({
   const handleLogInteraction = (e: React.FormEvent) => {
     e.preventDefault();
     if (!logNotes.trim()) return;
-    addActivityLog(`Logged Corporate interaction [${logType}]: "${logNotes}"`, 'user_action');
+    addActivityLog(`Logged Corporate interaction [${logType}]: "${logNotes}"`, 'note');
     setLogNotes('');
     toast.success(`Registered interaction for ${selectedOrg.name}!`);
   };
@@ -172,7 +172,7 @@ export const CompanyProfileTabs = ({
   const handleSaveNotes = () => {
     updateOrganization(selectedOrg.id, { notes: companyNotes, internalNotes: internalNotes });
     toast.success('Successfully updated corporate records!');
-    addActivityLog(`Modified central organization internal dossiers.`, 'user_action');
+    addActivityLog(`Modified central organization internal dossiers.`, 'note');
   };
 
   const handleSendEmail = (e: React.FormEvent) => {
@@ -240,7 +240,7 @@ export const CompanyProfileTabs = ({
     if (cascadeAddress) { fields.orgAddress = cascadeAddress; }
 
     handleSyncCompanyDetails(selectedOrg.name, fields);
-    addActivityLog(`Executed global parameter sync: website, industry, size coordinates.`, 'system');
+    addActivityLog(`Executed global parameter sync: website, industry, size coordinates.`, 'note');
   };
 
   const [selectedDealModal, setSelectedDealModal] = useState<Deal | null>(null);

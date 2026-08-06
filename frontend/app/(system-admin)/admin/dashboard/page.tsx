@@ -1,7 +1,6 @@
 'use client';
-
-import AdminConsole from '@/features/system-admin/AdminConsole';
-
+import dynamic from 'next/dynamic';
+const AdminConsole = dynamic(() => import('../../../../src/features/system-admin/admin-console'), { ssr: false });
 export default function AdminDashboardPage() {
   return <AdminConsole activeTabProp="dashboard" />;
 }

@@ -7,7 +7,7 @@ import { ClientProfileTabs } from './contact-profile-tabs';
 import { CompanyProfileTabs, ExtendedOrg } from './company-profile-tabs';
 import { ShieldCheck, TrendingUp } from 'lucide-react';
 import { getCRMStatusStyles } from '@/lib/utils';
-import { BackButton } from '@/shared/components/ui/BackButton';
+import { BackButton } from '@/shared/components/ui/back-button';
 
 interface UnifiedDetailViewProps {
   type: 'individual' | 'organization';

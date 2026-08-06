@@ -2,10 +2,14 @@
 
 // ─── Activity — universal event record for all business objects ─────────────
 
+// Must match backend Zod enum exactly: activities.dto.ts
 export type ActivityType =
   | 'call' | 'meeting' | 'email' | 'sms' | 'whatsapp'
-  | 'note' | 'task' | 'workflow' | 'stage-change'
-  | 'file-upload' | 'deal-created' | 'contact-created';
+  | 'note' | 'task' | 'workflow'
+  | 'stage_change' | 'stage-change'
+  | 'file_upload' | 'file-upload'
+  | 'deal_action' | 'deal-created' | 'contact-created'
+  | 'deal_action' | 'file_upload';
 
 export interface Activity {
   id: string;

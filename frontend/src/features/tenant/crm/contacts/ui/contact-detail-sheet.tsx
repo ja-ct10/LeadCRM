@@ -1,11 +1,11 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { SlidingDrawer } from '@/shared/components/SlidingDrawer';
+import { SlidingDrawer } from '@/shared/components/sliding-drawer';
 import { Contact, Organization } from '@/store/types';
 import { useData } from '@/store/DataContext';
 import { getCRMStatusStyles } from '@/lib/utils';
-import { AlertTriangle, Archive, Building, Briefcase, Calendar, CheckCircle, Clock, FileText, Mail, MapPin, Package, Phone, TrendingUp, User } from 'lucide-react';
+import { AlertTriangle, Archive, Building, Briefcase, Calendar, Edit2, FileText, Mail, MapPin, Package, Phone, Tag, TrendingUp, User } from 'lucide-react';
 
 const formatDate = (dateString: string) => {
   if (!dateString) return '--';
@@ -18,6 +18,7 @@ interface ClientDetailSheetProps {
   client: Contact | Organization | null;
   clientType: 'individual' | 'organization';
   onArchive: (id: string, type: 'individual' | 'organization') => void;
+  onEdit?: () => void;
 }
 
 export function ClientDetailSheet({
@@ -25,7 +26,8 @@ export function ClientDetailSheet({
   onClose,
   client,
   clientType,
-  onArchive
+  onArchive,
+  onEdit,
 }: ClientDetailSheetProps) {
   const { deals, serviceOrders, pipelines } = useData();
 
@@ -94,6 +96,15 @@ export function ClientDetailSheet({
       title={clientName}
       subtitle={isIndividual ? (client as Contact).jobTitle : (client as Organization).industry}
       width="w-full max-w-2xl md:max-w-4xl"
+      headerActions={onEdit ? (
+        <button
+          onClick={onEdit}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 border border-blue-200 dark:border-blue-500/30 rounded-lg transition-colors"
+        >
+          <Edit2 size={13} />
+          Edit
+        </button>
+      ) : undefined}
     >
       <div className="p-6 md:p-8 overflow-y-auto space-y-8 pb-24 font-sans text-slate-800 dark:text-slate-200">
         
@@ -136,6 +147,10 @@ export function ClientDetailSheet({
                 {isIndividual && (
                   <>
                     <div>
+                      <span className="text-slate-500 block text-xs mb-1">Job Title</span>
+                      <div className="font-medium">{(client as Contact).jobTitle || '--'}</div>
+                    </div>
+                    <div>
                       <span className="text-slate-500 block text-xs mb-1">Company</span>
                       <div className="font-medium">{(client as Contact).companyName || '--'}</div>
                     </div>
@@ -156,24 +171,46 @@ export function ClientDetailSheet({
                   </div>
                 </div>
                 <div>
-                  <span className="text-slate-500 block text-xs mb-1">Location</span>
+                  <span className="text-slate-500 block text-xs mb-1">Address</span>
                   <div className="font-medium flex items-center gap-2">
                     <MapPin size={14} className="text-slate-400" />
-                    {isIndividual ? [
-                      (client as Contact).city,
-                      (client as Contact).province,
-                      (client as Contact).country
-                    ].filter(Boolean).join(', ') || '--' : [
-                      (client as Organization).city,
-                      (client as Organization).province,
-                      (client as Organization).country
-                    ].filter(Boolean).join(', ') || '--'}
+                    {(() => {
+                      const c = client as any;
+                      // Try granular fields first, fall back to address string
+                      const parts = [c.city, c.province, c.country].filter(Boolean);
+                      return parts.length > 0 ? parts.join(', ') : (c.address || '--');
+                    })()}
                   </div>
                 </div>
                 <div>
-                  <span className="text-slate-500 block text-xs mb-1">Product Interest</span>
-                  <div className="font-medium">{(client as any).productInterest || '--'}</div>
+                  <span className="text-slate-500 block text-xs mb-1">Lead Source</span>
+                  <div className="font-medium">{(client as Contact).leadSource || '--'}</div>
                 </div>
+                <div>
+                  <span className="text-slate-500 block text-xs mb-1">Product Interest</span>
+                  <div className="font-medium flex flex-wrap gap-1.5">
+                    {(() => {
+                      const interests = (client as Contact).productInterests;
+                      if (Array.isArray(interests) && interests.length > 0) {
+                        return interests.map((p, i) => (
+                          <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20 rounded-full text-xs font-medium">
+                            <Tag size={10} />
+                            {p}
+                          </span>
+                        ));
+                      }
+                      return <span className="text-slate-400">--</span>;
+                    })()}
+                  </div>
+                </div>
+                {(client as Contact).notes && (
+                  <div>
+                    <span className="text-slate-500 block text-xs mb-1">Notes</span>
+                    <div className="font-medium text-slate-700 dark:text-slate-300 text-xs leading-relaxed bg-slate-50 dark:bg-white/[0.02] rounded-lg p-2.5 border border-slate-200 dark:border-white/[0.05]">
+                      {(client as Contact).notes}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

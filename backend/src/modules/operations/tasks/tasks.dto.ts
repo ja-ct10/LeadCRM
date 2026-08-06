@@ -1,4 +1,6 @@
-﻿import { z } from 'zod';
+import { z } from 'zod';
+
+const id = () => z.string().min(1);
 
 export const CreateTaskSchema = z.object({
   title:          z.string().min(1).max(255),
@@ -7,10 +9,10 @@ export const CreateTaskSchema = z.object({
   priority:       z.enum(['Low', 'Medium', 'High']).default('Medium'),
   dueDate:        z.string().datetime(),
   reminderAt:     z.string().datetime().optional(),
-  dealId:         z.string().cuid().optional(),
-  contactId:      z.string().cuid().optional(),
-  organizationId: z.string().cuid().optional(),
-  assignedUserId: z.string().cuid(),
+  dealId:         id().optional(),
+  contactId:      id().optional(),
+  organizationId: id().optional(),
+  assignedUserId: id(),
 });
 
 export const UpdateTaskSchema = CreateTaskSchema.partial();

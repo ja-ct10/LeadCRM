@@ -1,6 +1,6 @@
 'use client';
 
-import CrmLayout from '@/features/tenant/shared/layouts/CrmLayout';
+import CrmLayout from '@/features/tenant/layout/crm-layout';
 import { AuthGuard } from '@/shared/providers/auth-guard';
 
 export default function TenantLayout({ children }: { children: React.ReactNode }) {

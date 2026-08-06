@@ -96,7 +96,8 @@
   /* Dark theme base — applied when html.dark */
   html.dark,
   html.dark body {
-    @apply bg-[#030712] text-slate-100;
+    @apply bg-[#0a0c0f] text-slate-100;
+    font-size: 13px;
   }
 
   /* Inputs, selects, textareas */
@@ -170,4 +171,14 @@ html.dark .modal-bg {
   100% {
     transform: translateX(100%);
   }
+}
+
+/* Sidebar dark background variable */
+:root {
+  --sidebar-bg: #0d0f14;
+}
+
+/* Tighten page content spacing */
+.page-content {
+  padding: 1rem 1.5rem;
 }

@@ -5,8 +5,8 @@ import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
 import { ServiceOrder } from '@/store/types';
 import { MapPin, Calendar, CheckCircle2, Camera, Check } from 'lucide-react';
-import { BackButton } from '@/shared/components/ui/BackButton';
-import { ModalCloseButton } from '@/shared/components/ui/ModalCloseButton';
+import { BackButton } from '@/shared/components/ui/back-button';
+import { ModalCloseButton } from '@/shared/components/ui/modal-close-button';
 
 export default function TechnicianDashboard() {
   const { serviceOrders, updateServiceOrder } = useData();

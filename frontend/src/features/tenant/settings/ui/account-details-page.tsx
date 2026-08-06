@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/store/AuthContext';
 import { Shield, Monitor, CreditCard, Package, Zap, Receipt, Calendar, CheckCircle2, Download, Eye, CreditCard as CreditCardIcon, Plus, FileText, Mail, X, ChevronDown } from 'lucide-react';
-import { BackButton } from '@/shared/components/ui/BackButton';
+import { BackButton } from '@/shared/components/ui/back-button';
 
 export default function AccountDetailsPage() {
   const { tenant } = useAuth();

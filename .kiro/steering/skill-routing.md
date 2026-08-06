@@ -9,6 +9,7 @@ inclusion: always
 
 | Task / Keywords | Skills to Activate |
 |---|---|
+| Folder structure, module boundaries, FSD, feature slices, public API, index.ts | `workflow-process` → `understand-first` → `frontend-patterns` |
 | Any UI: component, page, layout, modal, form, table, colors, spacing | `leadcrm-design-system` → `frontend-patterns` |
 | Component structure, filters, charts, RBAC guards, dark mode | `frontend-patterns` |
 | Animations, transitions, motion, spring, enter/exit | `motion-ui` |

@@ -9,8 +9,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useData } from '@/store/DataContext';
-import { TrelloFilter } from '@/shared/components/TrelloFilter';
-import { usePagination } from '@/shared/hooks/usePagination';
+import { TrelloFilter } from '@/shared/components/trello-filter';
+import { usePagination } from '@/shared/hooks/use-pagination';
 import { Pagination } from '@/shared/components/ui/pagination';
 
 export default function InventoryPage() {

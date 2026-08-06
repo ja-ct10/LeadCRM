@@ -7,9 +7,10 @@ import {
   Cpu, Activity, AlertTriangle, CheckCircle2,
   ExternalLink, History
 } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
 import { motion, AnimatePresence } from 'motion/react';
-import { TrelloFilter } from '@/shared/components/TrelloFilter';
-import { usePagination } from '@/shared/hooks/usePagination';
+import { TrelloFilter } from '@/shared/components/trello-filter';
+import { usePagination } from '@/shared/hooks/use-pagination';
 import { Pagination } from '@/shared/components/ui/pagination';
 
 interface Asset {
@@ -145,10 +146,19 @@ export default function AssetsPage() {
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 font-normal">Track installed hardware, warranties, and maintenance history across client sites.</p>
         </div>
-        <button className="flex items-center gap-2 h-9 px-3 text-xs font-medium rounded-md shadow-xs bg-blue-600 hover:bg-blue-700 text-white transition-colors">
-          <Plus size={14} />
-          Register Asset
-        </button>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                aria-label="Register Asset"
+                className="h-9 w-9 flex items-center justify-center rounded-md shadow-xs bg-blue-600 hover:bg-blue-700 text-white transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 cursor-pointer"
+              >
+                <Plus size={14} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Register Asset</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
 
       {/* Stats Overview */}

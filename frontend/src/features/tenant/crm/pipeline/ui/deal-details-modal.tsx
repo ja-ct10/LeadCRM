@@ -11,7 +11,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Deal, Pipeline, User as UserType, Task, TaskStatus } from '@/store/types';
 import { useData } from '@/store/DataContext';
 import { toast } from 'sonner';
-import { ModalCloseButton } from '@/shared/components/ui/ModalCloseButton';
+import { ModalCloseButton } from '@/shared/components/ui/modal-close-button';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -172,8 +172,12 @@ export function DealDetailsModal({
 
   function handleSaveEdit(e: React.FormEvent) {
     e.preventDefault();
+    // Destructure stageId out — the edit form has no stage selector, so spreading
+    // it would send the current (possibly stale or mock) stageId to the backend.
+    // Stage changes must go through moveDealStage exclusively.
+    const { stageId: _stageId, ...editableFields } = editFields;
     onUpdateDeal(deal.id, {
-      ...editFields,
+      ...editableFields,
       productInterests: editFields.productInterests ? editFields.productInterests.split(',').map(s => s.trim()).filter(Boolean) : [],
       priority: editFields.priority as Deal['priority'],
     });

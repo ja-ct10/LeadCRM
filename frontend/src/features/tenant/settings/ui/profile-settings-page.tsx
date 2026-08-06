@@ -27,7 +27,7 @@ import {
   Moon,
 } from "lucide-react";
 import { toast } from "sonner";
-import { BackButton } from "@/shared/components/ui/BackButton";
+import { BackButton } from "@/shared/components/ui/back-button";
 
 interface ProfileSettingsPageProps {
   navigate: (path: string) => void;

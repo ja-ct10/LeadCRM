@@ -1,5 +1,5 @@
 // Pipeline module — barrel export
-export { default as PipelinePage } from './PipelinePage';
+export { default as PipelinePage } from './ui/pipeline-page';
 
 // Hooks
 export { usePipeline } from './hooks/use-pipeline';

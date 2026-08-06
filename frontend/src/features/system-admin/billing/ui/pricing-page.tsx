@@ -3,7 +3,7 @@ import { uuid } from '@/lib/utils';
 import React, { useState } from 'react';
 import { CheckCircle2, Server, Users, Plus, Trash2, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ModalCloseButton } from '@/shared/components/ui/ModalCloseButton';
+import { ModalCloseButton } from '@/shared/components/ui/modal-close-button';
 
 const DEFAULT_PLANS = [
   {

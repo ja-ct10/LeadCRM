@@ -95,7 +95,7 @@ enum DealActionType {
 // No tenantId — these users own the platform itself
 // ─────────────────────────────────────────────
 model SystemAdmin {
-  id           String   @id @default(cuid())
+  id           String   @id @default(uuid())
   email        String   @unique
   firstName    String
   lastName     String
@@ -110,7 +110,7 @@ model SystemAdmin {
 // Managed by SystemAdmin, consumed by Subscription
 // ─────────────────────────────────────────────
 model PricingPlan {
-  id             String   @id @default(cuid())
+  id             String   @id @default(uuid())
   name           String   @unique  // "Free" | "Pro" | "Enterprise"
   planType       PlanType
   monthlyPrice   Float    @default(0)
@@ -132,7 +132,7 @@ model PricingPlan {
 // PLAN FEATURE
 // ─────────────────────────────────────────────
 model PlanFeature {
-  id          String @id @default(cuid())
+  id          String @id @default(uuid())
   planId      String
   name        String // e.g. "Workflow Automation", "Gmail Integration"
   description String?
@@ -148,7 +148,7 @@ model PlanFeature {
 // Subscription is the authoritative billing source.
 // ─────────────────────────────────────────────
 model Tenant {
-  id                 String             @id @default(cuid())
+  id                 String             @id @default(uuid())
   name               String
   slug               String             @unique
   industry           String?
@@ -210,7 +210,7 @@ model Tenant {
 // SUBSCRIPTION (billing source of truth)
 // ─────────────────────────────────────────────
 model Subscription {
-  id              String             @id @default(cuid())
+  id              String             @id @default(uuid())
   tenantId        String
   planId          String
   billingCycle    BillingCycle
@@ -234,7 +234,7 @@ model Subscription {
 // PAYMENT METHOD (saved methods per tenant)
 // ─────────────────────────────────────────────
 model PaymentMethod {
-  id            String   @id @default(cuid())
+  id            String   @id @default(uuid())
   tenantId      String
   methodName    String   // "GCash" | "Maya" | "Credit Card" | "Bank Transfer"
   accountName   String?
@@ -254,7 +254,7 @@ model PaymentMethod {
 // USER
 // ─────────────────────────────────────────────
 model User {
-  id           String     @id @default(cuid())
+  id           String     @id @default(uuid())
   tenantId     String
   email        String
   firstName    String
@@ -303,7 +303,7 @@ model User {
 // permissions String[] removed — use RolePermission table instead
 // ─────────────────────────────────────────────
 model RoleDefinition {
-  id           String    @id @default(cuid())
+  id           String    @id @default(uuid())
   tenantId     String
   name         String
   description  String?
@@ -327,7 +327,7 @@ model RoleDefinition {
 // module examples: contacts | deals | campaigns | workflows | billing | reports | users | settings
 // ─────────────────────────────────────────────
 model RolePermission {
-  id        String @id @default(cuid())
+  id        String @id @default(uuid())
   tenantId  String
   roleId    String
   module    String // e.g. "contacts", "deals", "campaigns"
@@ -347,7 +347,7 @@ model RolePermission {
 // USER ROLE (JUNCTION)
 // ─────────────────────────────────────────────
 model UserRole {
-  id       String @id @default(cuid())
+  id       String @id @default(uuid())
   userId   String
   roleId   String
   tenantId String
@@ -364,7 +364,7 @@ model UserRole {
 // SESSION (Token Revocation)
 // ─────────────────────────────────────────────
 model Session {
-  id           String    @id @default(cuid())
+  id           String    @id @default(uuid())
   userId       String
   tenantId     String
   tokenHash    String    @unique  // SHA-256 of JWT, never plaintext
@@ -386,7 +386,7 @@ model Session {
 // TENANT INVITATION
 // ─────────────────────────────────────────────
 model TenantInvitation {
-  id          String    @id @default(cuid())
+  id          String    @id @default(uuid())
   tenantId    String
   email       String
   roleId      String
@@ -409,7 +409,7 @@ model TenantInvitation {
 // TENANT DOCUMENT (onboarding files, contracts, etc.)
 // ─────────────────────────────────────────────
 model TenantDocument {
-  id           String    @id @default(cuid())
+  id           String    @id @default(uuid())
   tenantId     String
   fileName     String
   documentType String    // "contract" | "business_permit" | "id_proof" | "other"
@@ -430,7 +430,7 @@ model TenantDocument {
 // Tracks resource usage per tenant environment
 // ─────────────────────────────────────────────
 model Environment {
-  id            String   @id @default(cuid())
+  id            String   @id @default(uuid())
   tenantId      String
   envCode       String   // e.g. "prod" | "staging" | "sandbox"
   type          String   // "production" | "staging" | "sandbox"
@@ -453,7 +453,7 @@ model Environment {
 // ORGANIZATION
 // ─────────────────────────────────────────────
 model Organization {
-  id             String    @id @default(cuid())
+  id             String    @id @default(uuid())
   tenantId       String
   assignedUserId String?
   name           String
@@ -494,7 +494,7 @@ model Organization {
 // CONTACT
 // ─────────────────────────────────────────────
 model Contact {
-  id              String        @id @default(cuid())
+  id              String        @id @default(uuid())
   tenantId        String
   organizationId  String?
   assignedUserId  String?
@@ -551,7 +551,7 @@ model Contact {
 // PIPELINE & STAGE
 // ─────────────────────────────────────────────
 model Pipeline {
-  id         String   @id @default(cuid())
+  id         String   @id @default(uuid())
   tenantId   String
   name       String
   type       String?  // e.g. "Sales" | "Service" | "Onboarding"
@@ -569,7 +569,7 @@ model Pipeline {
 }
 
 model Stage {
-  id          String   @id @default(cuid())
+  id          String   @id @default(uuid())
   pipelineId  String
   name        String
   order       Int
@@ -593,7 +593,7 @@ model Stage {
 // DEAL
 // ─────────────────────────────────────────────
 model Deal {
-  id                String    @id @default(cuid())
+  id                String    @id @default(uuid())
   tenantId          String
   pipelineId        String
   stageId           String
@@ -647,7 +647,7 @@ model Deal {
 // CONTACT-DEAL JUNCTION (multi-contact deals)
 // ─────────────────────────────────────────────
 model ContactDeal {
-  id        String   @id @default(cuid())
+  id        String   @id @default(uuid())
   contactId String
   dealId    String
   tenantId  String
@@ -669,7 +669,7 @@ model ContactDeal {
 // DEAL STAGE HISTORY
 // ─────────────────────────────────────────────
 model DealStageHistory {
-  id              String    @id @default(cuid())
+  id              String    @id @default(uuid())
   tenantId        String
   dealId          String
   previousStageId String?
@@ -696,7 +696,7 @@ model DealStageHistory {
 // Every DealAction also triggers an Activity entry for the timeline.
 // ─────────────────────────────────────────────
 model DealAction {
-  id            String         @id @default(cuid())
+  id            String         @id @default(uuid())
   tenantId      String
   dealId        String
   performedById String
@@ -718,7 +718,7 @@ model DealAction {
 // TASK
 // ─────────────────────────────────────────────
 model Task {
-  id             String    @id @default(cuid())
+  id             String    @id @default(uuid())
   tenantId       String
   dealId         String?
   contactId      String?
@@ -754,7 +754,7 @@ model Task {
 // ACTIVITY (unified timeline — typed FKs, no polymorphic)
 // ─────────────────────────────────────────────
 model Activity {
-  id             String    @id @default(cuid())
+  id             String    @id @default(uuid())
   tenantId       String
   createdById    String
   type           String    // call|meeting|email|sms|note|task|workflow|stage_change|deal_action|file_upload
@@ -786,7 +786,7 @@ model Activity {
 // NOTIFICATION
 // ─────────────────────────────────────────────
 model Notification {
-  id         String    @id @default(cuid())
+  id         String    @id @default(uuid())
   tenantId   String
   userId     String
   type       String    // deal_assigned|task_due|campaign_sent|workflow_failed|deal_action|...
@@ -811,7 +811,7 @@ model Notification {
 // mentor: "no need for audience_contacts, just filtration logic, query from contacts"
 // ─────────────────────────────────────────────
 model TargetAudience {
-  id           String   @id @default(cuid())
+  id           String   @id @default(uuid())
   tenantId     String
   name         String
   description  String?
@@ -832,7 +832,7 @@ model TargetAudience {
 // e.g. { field: "score", operator: "gte", value: "80" }
 // ─────────────────────────────────────────────
 model TargetAudienceCondition {
-  id               String @id @default(cuid())
+  id               String @id @default(uuid())
   targetAudienceId String
   field            String   // contact field name e.g. "status", "score", "source", "tags"
   operator         String   // equals|not_equals|contains|gte|lte|in|not_in
@@ -849,7 +849,7 @@ model TargetAudienceCondition {
 // CAMPAIGN & TEMPLATE
 // ─────────────────────────────────────────────
 model Campaign {
-  id               String         @id @default(cuid())
+  id               String         @id @default(uuid())
   tenantId         String
   targetAudienceId String?        // FK to TargetAudience — replaces old targetAudience String?
   emailTemplateId  String?        // optional FK to Template (type=Email)
@@ -885,7 +885,7 @@ model Campaign {
 // CAMPAIGN METRICS (historical snapshots — separate from inline totals on Campaign)
 // ─────────────────────────────────────────────
 model CampaignMetrics {
-  id             String   @id @default(cuid())
+  id             String   @id @default(uuid())
   tenantId       String
   campaignId     String
   sentCount      Int      @default(0)
@@ -912,7 +912,7 @@ model CampaignMetrics {
 // CAMPAIGN-CONTACT JUNCTION (per-contact delivery tracking)
 // ─────────────────────────────────────────────
 model CampaignContact {
-  id           String    @id @default(cuid())
+  id           String    @id @default(uuid())
   tenantId     String
   campaignId   String
   contactId    String
@@ -937,7 +937,7 @@ model CampaignContact {
 // Campaign links to this via emailTemplateId or smsTemplateId
 // ─────────────────────────────────────────────
 model Template {
-  id         String   @id @default(cuid())
+  id         String   @id @default(uuid())
   tenantId   String
   name       String
   type       String   // "Email" | "SMS"
@@ -960,7 +960,7 @@ model Template {
 // conditions and actions stored as typed JSON (never eval()'d)
 // ─────────────────────────────────────────────
 model Workflow {
-  id          String   @id @default(cuid())
+  id          String   @id @default(uuid())
   tenantId    String
   name        String
   description String?
@@ -979,7 +979,7 @@ model Workflow {
 }
 
 model WorkflowTriggerRecord {
-  id          String   @id @default(cuid())
+  id          String   @id @default(uuid())
   tenantId    String
   workflowId  String
   triggerType String
@@ -997,7 +997,7 @@ model WorkflowTriggerRecord {
 }
 
 model WorkflowExecutionRun {
-  id           String    @id @default(cuid())
+  id           String    @id @default(uuid())
   tenantId     String
   workflowId   String
   triggerId    String
@@ -1017,7 +1017,7 @@ model WorkflowExecutionRun {
 }
 
 model WorkflowExecutionStep {
-  id          String   @id @default(cuid())
+  id          String   @id @default(uuid())
   tenantId    String
   executionId String
   stepIndex   Int
@@ -1038,7 +1038,7 @@ model WorkflowExecutionStep {
 // Invoice now links to Subscription for billing-driven invoices
 // ─────────────────────────────────────────────
 model Invoice {
-  id              String    @id @default(cuid())
+  id              String    @id @default(uuid())
   tenantId        String
   subscriptionId  String?   // link to Subscription for recurring billing invoices
   dealId          String?
@@ -1076,7 +1076,7 @@ model Invoice {
 }
 
 model PaymentTransaction {
-  id                 String    @id @default(cuid())
+  id                 String    @id @default(uuid())
   tenantId           String
   invoiceId          String
   paymentMethodId    String?   // FK to PaymentMethod (saved method) — nullable for ad-hoc
@@ -1105,7 +1105,7 @@ model PaymentTransaction {
 // SERVICE ORDER
 // ─────────────────────────────────────────────
 model ServiceOrder {
-  id                   String    @id @default(cuid())
+  id                   String    @id @default(uuid())
   tenantId             String
   assignedTechnicianId String?
   contactId            String?
@@ -1138,7 +1138,7 @@ model ServiceOrder {
 // ASSET & INVENTORY
 // ─────────────────────────────────────────────
 model Asset {
-  id             String    @id @default(cuid())
+  id             String    @id @default(uuid())
   tenantId       String
   organizationId String?
   name           String
@@ -1160,7 +1160,7 @@ model Asset {
 }
 
 model InventoryItem {
-  id            String    @id @default(cuid())
+  id            String    @id @default(uuid())
   tenantId      String
   name          String
   sku           String
@@ -1186,7 +1186,7 @@ model InventoryItem {
 // category: auth | crm | billing | workflow | admin | system
 // ─────────────────────────────────────────────
 model AuditLog {
-  id         String   @id @default(cuid())
+  id         String   @id @default(uuid())
   tenantId   String
   userId     String
   action     String   // e.g. "contact.created" | "deal.stage_changed" | "user.login"
@@ -1215,7 +1215,7 @@ model AuditLog {
 // EMAIL DELIVERY LOG
 // ─────────────────────────────────────────────
 model EmailDeliveryLog {
-  id             String    @id @default(cuid())
+  id             String    @id @default(uuid())
   tenantId       String
   campaignId     String?
   contactId      String?
@@ -1245,7 +1245,7 @@ model EmailDeliveryLog {
 // VERIFICATION TOKEN (Email Verification)
 // ─────────────────────────────────────────────
 model VerificationToken {
-  id         String   @id @default(cuid())
+  id         String   @id @default(uuid())
   identifier String
   token      String   @unique
   expires    DateTime
@@ -1258,11 +1258,25 @@ model VerificationToken {
 // PASSWORD RESET TOKEN
 // ─────────────────────────────────────────────
 model PasswordResetToken {
-  id        String   @id @default(cuid())
+  id        String   @id @default(uuid())
   email     String
   token     String   @unique
   expires   DateTime
   createdAt DateTime @default(now())
 
   @@unique([email, token])
+}
+
+// ─────────────────────────────────────────────
+// LOGIN OTP TOKEN (2-factor login step)
+// ─────────────────────────────────────────────
+model LoginOtpToken {
+  id        String   @id @default(uuid())
+  email     String
+  codeHash  String   // bcrypt hash of the 6-digit code
+  expires   DateTime
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@unique([email])
 }

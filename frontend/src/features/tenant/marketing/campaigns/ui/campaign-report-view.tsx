@@ -7,7 +7,7 @@ import {
   Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell,
 } from '@/shared/components/charts/ChartComponents';
 import { Campaign } from '@/store/types';
-import { BackButton } from '@/shared/components/ui/BackButton';
+import { BackButton } from '@/shared/components/ui/back-button';
 
 // ··· Static chart data ························································
 

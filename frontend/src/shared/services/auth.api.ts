@@ -34,4 +34,16 @@ export const authApi = {
 
   registerGuest: (payload: any) =>
     apiClient.post<AuthResponse>('/auth/register/guest', payload),
+
+  forgotPassword: (email: string) =>
+    apiClient.post<{ success: boolean; message: string }>('/auth/forgot-password', { email }),
+
+  resetPassword: (token: string, password: string) =>
+    apiClient.post<{ success: boolean; message: string }>('/auth/reset-password', { token, password }),
+
+  sendOtp: (email: string, password: string) =>
+    apiClient.post<{ success: boolean; message: string }>('/auth/send-otp', { email, password }),
+
+  verifyOtp: (email: string, code: string) =>
+    apiClient.post<AuthResponse>('/auth/verify-otp', { email, code }),
 };

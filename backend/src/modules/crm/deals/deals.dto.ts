@@ -1,8 +1,12 @@
 import { z } from 'zod';
 
+// ID field helper — accepts any non-empty string (UUID, CUID, or custom).
+// Format validation is not a business rule; referential integrity is enforced by the DB.
+const id = () => z.string().min(1);
+
 export const CreateDealSchema = z.object({
-  pipelineId:        z.string().cuid(),
-  stageId:           z.string().cuid(),
+  pipelineId:        id(),
+  stageId:           id(),
   title:             z.string().min(1).max(255),
   value:             z.number().positive().optional(),
   currency:          z.string().default('PHP'),
@@ -10,9 +14,9 @@ export const CreateDealSchema = z.object({
   expectedCloseDate: z.string().datetime().optional(),
   description:       z.string().optional(),
   leadSource:        z.string().optional(),
-  organizationId:    z.string().cuid().optional(),
-  assignedUserId:    z.string().cuid().optional(),
-  contactIds:        z.array(z.string().cuid()).optional(),
+  organizationId:    id().optional(),
+  assignedUserId:    id().optional(),
+  contactIds:        z.array(id()).optional(),
   industry:          z.string().optional(),
   address:           z.string().optional(),
   productInterests:  z.array(z.string()).optional(),
@@ -21,19 +25,19 @@ export const CreateDealSchema = z.object({
 export const UpdateDealSchema = CreateDealSchema.partial();
 
 export const DealHandoffSchema = z.object({
-  assignOwnerId: z.string().cuid().optional(),
-  kickoffDate: z.string().datetime().optional(),
-  notes: z.string().optional(),
+  assignOwnerId:      id().optional(),
+  kickoffDate:        z.string().datetime().optional(),
+  notes:              z.string().optional(),
   createServiceOrder: z.boolean().default(false),
 });
 
 export const MoveDealStageSchema = z.object({
-  stageId:    z.string().cuid(),
+  stageId:    id(),
   note:       z.string().optional(),
   lostReason: z.string().optional(),
   handoff:    DealHandoffSchema.optional(),
 });
 
-export type CreateDealDto   = z.infer<typeof CreateDealSchema>;
-export type UpdateDealDto   = z.infer<typeof UpdateDealSchema>;
+export type CreateDealDto    = z.infer<typeof CreateDealSchema>;
+export type UpdateDealDto    = z.infer<typeof UpdateDealSchema>;
 export type MoveDealStageDto = z.infer<typeof MoveDealStageSchema>;

@@ -3,11 +3,11 @@
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
-import { usePermissions, PERMISSION_BRIDGE } from '@/shared/hooks/usePermissions';
-import { PATHNAME_TO_PATH, PATH_TO_PATHNAME } from '@/shared/lib/route-map';
+import { usePermissions, PERMISSION_BRIDGE } from '@/shared/hooks/use-permissions';
+import { PATHNAME_TO_PATH, PATH_TO_PATHNAME } from '@/lib/route-map';
 import {
   LayoutDashboard, Users, Briefcase, Workflow, Mail, Wrench,
-  Package, Receipt, Building2, CreditCard, Activity, ListTodo, Layers, Shield,
+  Package, Receipt, Building2, CreditCard, Activity, ListTodo, Layers, Shield, Settings,
 } from 'lucide-react';
 
 export const NAV_ITEMS = [
@@ -24,6 +24,7 @@ export const NAV_ITEMS = [
   { name: 'Campaigns',         path: 'campaigns',         icon: Mail,            permission: 'campaigns.view', roles: null },
   { name: 'Users',             path: 'users',             icon: Users,           permission: 'users.view',     roles: null },
   { name: 'Account Details',   path: 'account-details',   icon: Shield,          permission: null,             roles: ['Client Admin'] as const },
+  { name: 'Settings',          path: 'settings',          icon: Settings,        permission: null,             roles: null },
   { name: 'Audit Trail',       path: 'audit-log',         icon: Activity,        permission: 'audit.view',     roles: null },
   { name: 'Dashboard',         path: 'admin-dashboard',   icon: LayoutDashboard, permission: null,             roles: ['System Admin'] as const },
   { name: 'Client Management', path: 'admin-clients',     icon: Building2,       permission: null,             roles: ['System Admin'] as const },
