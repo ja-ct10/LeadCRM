@@ -39,4 +39,21 @@ export const pipelineService = {
 
   archivePipeline: (id: string): Promise<void> =>
     apiClient.patch<void>(`/crm/pipelines/${id}/archive`),
+
+  // ── Stage CRUD ────────────────────────────────────────
+  createStage: (data: { pipelineId: string; name: string; order: number; probability?: number; color?: string; isWon?: boolean; isLost?: boolean; isDefault?: boolean; requiredFields?: string[]; rottenAfterDays?: number }): Promise<ApiResponse<any>> =>
+    apiClient.post<ApiResponse<any>>('/crm/stages', data),
+
+  updateStage: (id: string, data: { name?: string; order?: number; probability?: number; color?: string; isWon?: boolean; isLost?: boolean; isDefault?: boolean; requiredFields?: string[]; rottenAfterDays?: number }): Promise<ApiResponse<any>> =>
+    apiClient.put<ApiResponse<any>>(`/crm/stages/${id}`, data),
+
+  deleteStage: (id: string): Promise<void> =>
+    apiClient.delete<void>(`/crm/stages/${id}`),
+
+  reorderStages: (pipelineId: string, stageIds: string[]): Promise<ApiResponse<Pipeline>> =>
+    apiClient.patch<ApiResponse<Pipeline>>(`/crm/pipelines/${pipelineId}/stages/reorder`, { stageIds }),
+
+  // ── Pipeline Templates ────────────────────────────────
+  getTemplates: (): Promise<ApiResponse<any[]>> =>
+    apiClient.get<ApiResponse<any[]>>('/crm/pipeline-templates'),
 };

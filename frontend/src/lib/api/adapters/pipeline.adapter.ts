@@ -15,6 +15,12 @@ export function toFrontendStage(backendStage: any): any {
     name: backendStage.name || 'Unnamed Stage',
     order: typeof backendStage.order === 'number' ? backendStage.order : 0,
     probability: typeof backendStage.probability === 'number' ? backendStage.probability : undefined,
+    color: backendStage.color || undefined,
+    isWon: !!backendStage.isWon,
+    isLost: !!backendStage.isLost,
+    isDefault: !!backendStage.isDefault,
+    requiredFields: Array.isArray(backendStage.requiredFields) ? backendStage.requiredFields : [],
+    rottenAfterDays: typeof backendStage.rottenAfterDays === 'number' ? backendStage.rottenAfterDays : undefined,
   };
 }
 
@@ -48,21 +54,14 @@ export function toFrontendPipeline(backendPipeline: any): any {
 export function toBackendCreatePipeline(frontendPipeline: any): any {
   return {
     name: frontendPipeline.name,
-    stages: frontendPipeline.stages?.map((s: any) => ({
-      name: s.name,
-      order: s.order,
-      probability: s.probability
-    }))
+    // stages are NOT sent here — they're created individually via POST /stages
+    // after the pipeline is created (Zod strips unknown fields from CreatePipelineSchema)
   };
 }
 
 export function toBackendUpdatePipeline(frontendPipeline: any): any {
   return {
     name: frontendPipeline.name,
-    stages: frontendPipeline.stages?.map((s: any) => ({
-      name: s.name,
-      order: s.order,
-      probability: s.probability
-    }))
+    // stages are NOT sent here — they're managed individually via stage CRUD endpoints
   };
 }
