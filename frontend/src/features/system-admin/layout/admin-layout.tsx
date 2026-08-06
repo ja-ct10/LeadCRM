@@ -25,7 +25,7 @@ const NAV_ITEMS = [
 
 /**
  * Dedicated sidebar + topbar layout for System Admin (LeadCRM operator).
- * Completely separate from CrmLayout — different nav, different colour identity.
+ * Completely separate from CrmLayout - different nav, different colour identity.
  */
 export default function AdminLayout({ children, currentPath, navigate }: AdminLayoutProps) {
   const { user, logout } = useAuth();
