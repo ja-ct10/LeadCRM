@@ -7,7 +7,6 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "noEmit": false,
-    "types": ["node"],
     "paths": {
       "@leadcrm/shared": ["../shared/src/index.ts"]
     }
