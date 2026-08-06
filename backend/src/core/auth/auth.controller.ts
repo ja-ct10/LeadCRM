@@ -1,7 +1,22 @@
 import { Request, Response, NextFunction } from 'express';
-import { loginUser } from './auth.service';
+import {
+  loginUser,
+  registerClientAdmin as registerClientAdminService,
+  registerGuest as registerGuestService,
+  requestPasswordReset,
+  resetPasswordWithToken,
+  sendLoginOtp,
+  verifyLoginOtp,
+} from './auth.service';
 import { revokeSession } from './session.service';
 import prisma from '../../config/database.config';
+import { hashPassword } from '../../shared/helpers/crypto';
+import {
+  ForgotPasswordSchema,
+  ResetPasswordSchema,
+  SendOtpSchema,
+  VerifyOtpSchema,
+} from './auth.dto';
 
 const COOKIE_NAME = 'leadcrm_token';
 const COOKIE_OPTIONS = {
@@ -53,63 +68,54 @@ export async function me(req: Request, res: Response, next: NextFunction): Promi
   } catch (err) { next(err); }
 }
 
-export async function seedDemo(req: Request, res: Response, next: NextFunction): Promise<void> {
+const DEMO_EMAIL = 'admin@democorp.com';
+
+export async function seedDemo(_req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { PrismaClient } = require('@prisma/client');
-    const bcrypt = require('bcryptjs');
-    const prisma = new PrismaClient();
+    const demoPassword = process.env.DEMO_USER_PASSWORD;
+    if (!demoPassword) {
+      res.status(400).json({
+        success: false,
+        error: 'DEMO_USER_PASSWORD is not set on the server.',
+      });
+      return;
+    }
 
     const tenant = await prisma.tenant.upsert({
-      where: { slug: 'demo-corp' },
+      where:  { slug: 'demo-corp' },
       update: {},
       create: {
-        name: 'Demo Corp Solutions',
-        slug: 'demo-corp',
-        status: 'ACTIVE',
+        name:               'Demo Corp Solutions',
+        slug:               'demo-corp',
+        status:             'ACTIVE',
         subscriptionStatus: 'ACTIVE',
-        plan: 'ENTERPRISE',
+        plan:               'ENTERPRISE',
       },
     });
 
-    const passwordHash = await bcrypt.hash('admin123', 10);
+    const passwordHash = await hashPassword(demoPassword);
 
-    const user = await prisma.user.upsert({
-      where: { 
-        tenantId_email: {
-          tenantId: tenant.id,
-          email: 'admin@democorp.com'
-        }
-      },
-      update: {
-        passwordHash,
-        status: 'ACTIVE',
-      },
+    await prisma.user.upsert({
+      where:  { tenantId_email: { tenantId: tenant.id, email: DEMO_EMAIL } },
+      update: { passwordHash, status: 'ACTIVE' },
       create: {
-        tenantId: tenant.id,
-        email: 'admin@democorp.com',
+        tenantId:  tenant.id,
+        email:     DEMO_EMAIL,
         firstName: 'Alice',
-        lastName: 'Admin',
+        lastName:  'Admin',
         passwordHash,
-        role: 'Client Admin',
-        status: 'ACTIVE',
+        role:      'Client Admin',
+        status:    'ACTIVE',
       },
     });
 
-    res.json({
-      success: true,
-      message: 'Demo user successfully seeded!',
-      credentials: {
-        email: 'admin@democorp.com',
-        password: 'admin123'
-      }
-    });
+    // Never return credentials in an API response — the operator set the
+    // password via DEMO_USER_PASSWORD and already knows it.
+    res.json({ success: true, message: 'Demo user successfully seeded.', email: DEMO_EMAIL });
   } catch (err) {
     next(err);
   }
 }
-
-import { registerClientAdmin as registerClientAdminService, registerGuest as registerGuestService, requestPasswordReset, resetPasswordWithToken, sendLoginOtp, verifyLoginOtp } from './auth.service';
-import { ForgotPasswordSchema, ResetPasswordSchema, SendOtpSchema, VerifyOtpSchema } from './auth.dto';
 
 export async function registerClientAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -212,8 +218,6 @@ export async function seedAdmin(req: Request, res: Response, next: NextFunction)
       return;
     }
 
-    const { hashPassword: hash } = require('../../shared/helpers/crypto');
-
     const tenant = await prisma.tenant.upsert({
       where:  { slug: 'leadcrm-system' },
       update: {},
@@ -229,7 +233,7 @@ export async function seedAdmin(req: Request, res: Response, next: NextFunction)
     const existing = await prisma.user.findFirst({ where: { email, tenantId: tenant.id } });
 
     if (!existing) {
-      const passwordHash = await hash(password);
+      const passwordHash = await hashPassword(password);
       await prisma.user.create({
         data: {
           tenantId:     tenant.id,

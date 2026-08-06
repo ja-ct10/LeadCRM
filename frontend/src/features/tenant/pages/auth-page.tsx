@@ -12,15 +12,25 @@ const loginSchema = z.object({
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
+// Mirrors the backend GuestRegisterSchema — firstName/lastName min 2,
+// password min 8. Keep in sync with backend/src/core/auth/auth.dto.ts.
 const guestSchema = z.object({
-  firstName: z.string().min(1, 'First name is required'),
-  lastName: z.string().min(1, 'Last name is required'),
+  firstName: z.string().min(2, 'First name must be at least 2 characters'),
+  lastName: z.string().min(2, 'Last name must be at least 2 characters'),
   email: z.string().email('Invalid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
   confirmPassword: z.string()
 }).refine(data => data.password === data.confirmPassword, {
   message: "Passwords don't match",
   path: ["confirmPassword"],
+});
+
+// Mirrors the backend ClientAdminRegisterSchema.
+const clientAdminSchema = z.object({
+  firstName: z.string().min(2, 'First name must be at least 2 characters'),
+  lastName: z.string().min(2, 'Last name must be at least 2 characters'),
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
 });
 
 const RESEND_COOLDOWN = 30;
@@ -173,6 +183,15 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
     if (registrationType === 'client') {
       if (adminData.password !== adminData.confirmPassword) {
         setError('Passwords do not match');
+        return;
+      }
+      // Validate against the same rules the backend enforces, so users get
+      // an inline message instead of a 400 from the API.
+      try {
+        clientAdminSchema.parse(adminData);
+      } catch (err: unknown) {
+        const zodErr = err as { errors?: Array<{ message: string }> };
+        setError(zodErr.errors?.[0]?.message || 'Validation failed');
         return;
       }
       if (botCheck.answer !== botCheck.expected) {

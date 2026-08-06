@@ -1,8 +1,22 @@
 import { Router } from 'express';
-import { authRateLimiter } from '../middleware/rate-limit.middleware';
+import {
+  authRateLimiter,
+  registerRateLimiter,
+  passwordResetRateLimiter,
+} from '../middleware/rate-limit.middleware';
 import { authMiddleware } from '../middleware/auth.middleware';
+import { authorize } from '../middleware/rbac.middleware';
+import { Permission } from '../../shared/constants/permissions';
 import { validate } from '../middleware/validate.middleware';
-import { LoginSchema } from '../../core/auth/auth.dto';
+import {
+  LoginSchema,
+  ClientAdminRegisterSchema,
+  GuestRegisterSchema,
+  SendOtpSchema,
+  VerifyOtpSchema,
+  ForgotPasswordSchema,
+  ResetPasswordSchema,
+} from '../../core/auth/auth.dto';
 import * as authController from '../../core/auth/auth.controller';
 
 const router = Router();
@@ -16,33 +30,31 @@ router.post('/logout', authController.logout);
 // GET /api/v1/auth/me — returns current user from token (session-validated)
 router.get('/me', authMiddleware, authController.me);
 
-import { ClientAdminRegisterSchema, GuestRegisterSchema } from '../../core/auth/auth.dto';
-
 // POST /api/v1/auth/register/client-admin
-router.post('/register/client-admin', authRateLimiter, validate(ClientAdminRegisterSchema), authController.registerClientAdmin);
+router.post('/register/client-admin', registerRateLimiter, validate(ClientAdminRegisterSchema), authController.registerClientAdmin);
 
 // POST /api/v1/auth/register/guest
-router.post('/register/guest', authRateLimiter, validate(GuestRegisterSchema), authController.registerGuest);
+router.post('/register/guest', registerRateLimiter, validate(GuestRegisterSchema), authController.registerGuest);
 
 // POST /api/v1/auth/verify-email
-router.post('/verify-email', authController.verifyEmail);
+router.post('/verify-email', authRateLimiter, authController.verifyEmail);
 
-// POST /api/v1/auth/send-otp — verify credentials + send 6-digit OTP (rate-limited)
-router.post('/send-otp', authRateLimiter, authController.sendOtp);
+// POST /api/v1/auth/send-otp — verify credentials + send 6-digit OTP (rate-limited, validated)
+router.post('/send-otp', authRateLimiter, validate(SendOtpSchema), authController.sendOtp);
 
-// POST /api/v1/auth/verify-otp — verify OTP + issue JWT session
-router.post('/verify-otp', authRateLimiter, authController.verifyOtp);
+// POST /api/v1/auth/verify-otp — verify OTP + issue JWT session (rate-limited, validated)
+router.post('/verify-otp', authRateLimiter, validate(VerifyOtpSchema), authController.verifyOtp);
 
-// POST /api/v1/auth/forgot-password — request reset link (rate-limited)
-router.post('/forgot-password', authRateLimiter, authController.forgotPassword);
+// POST /api/v1/auth/forgot-password — request reset link (strict rate-limited, validated)
+router.post('/forgot-password', passwordResetRateLimiter, validate(ForgotPasswordSchema), authController.forgotPassword);
 
-// POST /api/v1/auth/reset-password — confirm reset with token + new password
-router.post('/reset-password', authController.resetPassword);
+// POST /api/v1/auth/reset-password — confirm reset with token + new password (strict rate-limited, validated)
+router.post('/reset-password', passwordResetRateLimiter, validate(ResetPasswordSchema), authController.resetPassword);
 
-// GET /api/v1/auth/seed-demo — creates a demo user in the database
-router.get('/seed-demo', authController.seedDemo);
+// POST /api/v1/auth/seed-demo — creates a demo tenant + user (System Admin only)
+router.post('/seed-demo', authMiddleware, authorize(Permission.ADMIN_ACCESS), authController.seedDemo);
 
-// GET /api/v1/auth/seed-admin — creates the system admin user (run once after deploy)
-router.get('/seed-admin', authController.seedAdmin);
+// POST /api/v1/auth/seed-admin — creates the system admin user (run once after deploy, requires env secret)
+router.post('/seed-admin', authController.seedAdmin);
 
 export default router;

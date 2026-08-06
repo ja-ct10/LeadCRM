@@ -345,5 +345,34 @@ APP_URL=https://your-frontend.vercel.app
 ```
 Also: when `NODE_ENV=production` and SMTP is unconfigured, the old `sendLoginOtp` silently returned without sending or erroring. The fix: throw `AppError('Email service not configured', 503)` in production when SMTP is missing, so the 500 becomes a meaningful error rather than a mystery.
 
+### Render/Vercel Dashboard Env Vars Keep Their Quotes — dotenv Strips Them
+`.env` files are parsed by dotenv, which strips surrounding quotes. Dashboard-entered env vars on Render and Vercel are stored **literally**, quotes included. A value like `SMTP_FROM="LeadCRM <you@gmail.com>"` works locally but becomes a malformed From header in production, causing nodemailer to throw and the endpoint to 500. Never wrap dashboard env values in quotes, even when the value contains spaces or angle brackets.
+```
+# .env (local)     — quotes are fine, dotenv removes them
+SMTP_FROM="LeadCRM <you@gmail.com>"
+# Render dashboard — NO quotes, they become part of the value
+SMTP_FROM=LeadCRM <you@gmail.com>
+```
+
+### Audit for Dead Env Config When Swapping Providers
+`RESEND_API_KEY` and `RESEND_FROM` were set in production but grep showed zero Resend references — the service had been switched to nodemailer/SMTP. Dead credential config is a liability: it looks load-bearing during debugging and is one more secret to leak. Grep the codebase for a provider name before assuming its env vars matter.
+
+### Never Use @example.com in Auth Smoke Tests
+`send-otp` and `forgot-password` perform a real SMTP send. Testing with `qa@example.com` makes Gmail actually deliver, then bounce (example.com publishes a Null MX per RFC 7505) — flooding the SMTP account's inbox and risking sender reputation. Use a real inbox you own, or unset `SMTP_HOST` so the dev fallback logs the code to console instead. A slow `send-otp` response (3–6s) is the signal that a live SMTP handshake happened.
+
+### Frontend Zod Schemas Must Mirror Backend DTOs Exactly
+`auth-page.tsx` allowed 6-char passwords while `auth.dto.ts` required 8, so registration failed with an opaque 400 after the user filled the whole form. Same for name fields (frontend min 1 vs backend min 2). Whenever a backend DTO changes, update the matching frontend schema and leave a comment naming the file it mirrors.
+
+### rate-limit max Values Drift From Their Comments
+`authRateLimiter` read `max: 500` under a comment saying "5 per 15 minutes" — effectively zero brute-force protection. Also, one shared limiter across login + register + OTP means a normal signup-then-login journey burns the login budget. Split by threat surface and use `skipSuccessfulRequests: true` so honest users are never throttled.
+```typescript
+authRateLimiter     // 10 / 15min, skipSuccessfulRequests — login, send-otp, verify-otp
+registerRateLimiter // 10 / hour — registration is not a guessing surface
+passwordResetRateLimiter // 3 / hour
+```
+
+### Windows: prisma generate Fails With EPERM While Dev Servers Run
+`npm run build` runs `prisma generate`, which rewrites `node_modules/.prisma/client/query_engine-windows.dll.node`. Any running `ts-node-dev`/Next dev server holds that DLL open and the rename fails with `EPERM`. This is an environment lock, not a code error — `npx tsc --noEmit` still passes. Stop dev servers before building.
+
 ### Schema Drift — Missing Columns After Deploy
 When `prisma migrate deploy` says "No pending migrations" but columns are missing, the schema has drifted beyond what the migration files capture. Root cause: columns were added directly to `schema.prisma` without creating migration files. Fix options: (1) delete and recreate the database for a clean slate, or (2) run `npx prisma migrate dev --name add_missing_columns` locally to generate a new migration file, then push. Always generate migration files when changing schema — never rely on `db push` for production.
