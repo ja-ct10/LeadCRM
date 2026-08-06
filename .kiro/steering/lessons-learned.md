@@ -318,6 +318,8 @@ When a file edit fails with "not found" despite search hits, confirm with
 ### Use `prisma migrate deploy` for Pre-Written Migrations
 `prisma migrate dev` detects schema drift against the DB and prompts to create a NEW migration — even when you already have hand-written migration files on disk. It's designed for authoring migrations interactively. For applying existing migration files (like our 4 CRM migrations), always use `prisma migrate deploy` which applies pending migrations in order without drift checks or name prompts. Also: if `migrate dev` encounters a previously failed migration, resolve it first with `prisma migrate resolve --rolled-back "<migration_name>"` then delete the bad folder.
 
+**Critical:** If you accidentally run `migrate dev` and it generates a "sync" migration alongside your manual ones, DELETE IT IMMEDIATELY. The auto-generated migration will have a timestamp between your manual migrations and will try to `DROP DEFAULT` or `ALTER` columns that haven't been created yet (because the creating migration comes later chronologically). This causes `column does not exist` errors on deploy. The fix: delete the sync folder, run `prisma migrate resolve --rolled-back` on the production DB, then redeploy.
+
 ### Sequence CRM Work: Governed Write Paths Before Any Analytics Feature
 Fixing DI-1 (board writes through the governed stage-change path) retroactively activates
 stage history, velocity analytics, the deal timeline, workflow triggers, and forecast
