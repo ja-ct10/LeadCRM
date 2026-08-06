@@ -309,3 +309,33 @@ stageId: z.string().uuid()
 const id = () => z.string().min(1);
 stageId: id()
 ```
+
+### Render devDependencies Strip Problem
+Render runs its own `npm install` (production-only) **before** executing the build script, stripping all `devDependencies` including `@types/*` and `typescript`. The `--include=dev` flag in the build command does not help because Render's pre-install already ran. The only reliable fix: move `@types/*` and `typescript` into `dependencies` in `backend/package.json` so they always install.
+```json
+// backend/package.json — move these to dependencies, not devDependencies
+"@types/node": "^22.14.0",
+"@types/express": "^5.0.1",
+"@types/bcryptjs": "^2.4.6",
+"@types/cors": "^2.8.17",
+"@types/cookie-parser": "1.4.10",
+"@types/jsonwebtoken": "^9.0.9",
+"@types/nodemailer": "^8.0.1",
+"typescript": "~5.8.2"
+```
+
+### Exclude Seeders from Production TypeScript Build
+Seeder files use `@faker-js/faker` and other dev-only packages. Including them in the TypeScript compile causes build failures on platforms that strip devDependencies. Always exclude seeders from `tsconfig.json`:
+```json
+"exclude": ["node_modules", "dist", "src/database/seeders"]
+```
+Having the same package in both `dependencies` and `devDependencies` — npm resolves to the `devDependencies` entry, which then gets stripped on production installs.
+
+### Turbo.json env Whitelist Required for Vercel
+Vercel with Turborepo requires all environment variables used during build to be declared in `turbo.json` under `tasks.build.env`. Missing entries causes a warning and the variables won't be available, breaking auth and API connections.
+
+### Non-UTF-8 Characters Break Vercel Webpack Build
+A single non-printable character (e.g. a Windows em-dash `—` pasted from rich text) in a `.tsx` file causes `stream did not contain valid UTF-8` and kills the entire Vercel build. Fix with PowerShell: `$content -replace '[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]', '-'` then write back as UTF-8 without BOM.
+
+### Schema Drift — Missing Columns After Deploy
+When `prisma migrate deploy` says "No pending migrations" but columns are missing, the schema has drifted beyond what the migration files capture. Root cause: columns were added directly to `schema.prisma` without creating migration files. Fix options: (1) delete and recreate the database for a clean slate, or (2) run `npx prisma migrate dev --name add_missing_columns` locally to generate a new migration file, then push. Always generate migration files when changing schema — never rely on `db push` for production.
