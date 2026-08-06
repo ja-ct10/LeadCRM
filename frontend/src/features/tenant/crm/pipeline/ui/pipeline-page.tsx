@@ -1853,6 +1853,46 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
 
 
       {/* Conditional Rendering of Views: Kanban, Table, or List */}
+
+      {/* Apply Template Banner — shown when pipeline has only generic/blank stages */}
+      {(() => {
+        const stages = activePipeline?.stages || [];
+        const hasGenericStages = stages.length <= 2 || stages.every(s => /^stage\s*\d+$/i.test(s.name));
+        const hasNoDeals = pipelineDeals.length === 0;
+        if (!(hasGenericStages && hasNoDeals && canManagePipelines)) return null;
+        return (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+            className="rounded-2xl border border-dashed border-blue-500/30 bg-blue-500/[0.04] dark:bg-blue-500/[0.06] p-6 flex flex-col sm:flex-row items-start sm:items-center gap-4"
+          >
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
+                <Layers size={18} className="text-blue-400" />
+              </div>
+              <div>
+                <p className="font-semibold text-sm text-slate-900 dark:text-white">This pipeline has no stages set up yet</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Apply a ready-to-use template to get started in seconds — stages, probabilities, and flow included.</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setPipelineModalStep('template');
+                  setSelectedTemplateId('inquiry');
+                  setNewPipelineName('');
+                  setIsPipelineModalOpen(true);
+                }}
+                className="h-9 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center gap-2"
+              >
+                <Rocket size={14} /> Browse Templates
+              </button>
+            </div>
+          </motion.div>
+        );
+      })()}
       
       {viewMode === 'kanban' && (
         <DndContext
