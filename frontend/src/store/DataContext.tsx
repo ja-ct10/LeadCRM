@@ -1562,11 +1562,33 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     if (!USE_MOCK_DATA) {
       try {
-        const dto = toBackendCreatePipeline(pipelineData) as any;
-        const res = await pipelineService.createPipeline(dto);
+        // 1. Create the pipeline (name only — backend schema doesn't accept stages)
+        const res = await pipelineService.createPipeline({ name: pipelineData.name });
         const pipeline = toFrontendPipeline((res as any).data ?? res) as Pipeline;
+
+        // 2. Create each stage individually via the stage CRUD API
+        if (pipelineData.stages && pipelineData.stages.length > 0) {
+          const createdStages: any[] = [];
+          for (let i = 0; i < pipelineData.stages.length; i++) {
+            const s = pipelineData.stages[i];
+            const stageRes = await pipelineService.createStage({
+              pipelineId: pipeline.id,
+              name: s.name,
+              order: i + 1,
+              probability: s.probability,
+              color: s.color,
+              isWon: s.isWon,
+              isLost: s.isLost,
+              isDefault: s.isDefault || i === 0,
+            });
+            const created = (stageRes as any).data ?? stageRes;
+            createdStages.push(created);
+          }
+          pipeline.stages = createdStages;
+        }
+
         setPipelines((prev) => [pipeline, ...prev]);
-        addAuditLog("Pipeline Created", `Created pipeline '${pipeline.name}'.`);
+        addAuditLog("Pipeline Created", `Created pipeline '${pipeline.name}' with ${pipeline.stages.length} stages.`);
       } catch (err: unknown) {
         throw new Error(err instanceof Error ? err.message : 'Failed to create pipeline');
       }
@@ -1585,11 +1607,81 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const updatePipeline = async (id: string, updates: Partial<Pipeline>): Promise<void> => {
     if (!USE_MOCK_DATA) {
       try {
-        const dto = toBackendUpdatePipeline(updates) as any;
-        const res = await pipelineService.updatePipeline(id, dto);
-        const pipeline = toFrontendPipeline((res as any).data ?? res) as Pipeline;
-        setPipelines((prev) => prev.map((p) => (p.id === id ? pipeline : p)));
-        addAuditLog("Pipeline Updated", `Updated pipeline '${pipeline.name}'.`);
+        // 1. Update the pipeline name/settings if provided
+        if (updates.name) {
+          await pipelineService.updatePipeline(id, { name: updates.name });
+        }
+
+        // 2. If stages are provided, sync them individually
+        if (updates.stages) {
+          const existingPipeline = pipelines.find(p => p.id === id);
+          const existingStages = existingPipeline?.stages || [];
+          const newStages = updates.stages;
+
+          // Find stages to delete (exist in old but not in new)
+          const newStageIds = new Set(newStages.map(s => s.id));
+          const stagesToDelete = existingStages.filter(s => !newStageIds.has(s.id));
+
+          // Find stages to create (exist in new but not in old, or have client-generated UUIDs)
+          const existingStageIds = new Set(existingStages.map(s => s.id));
+          const stagesToCreate = newStages.filter(s => !existingStageIds.has(s.id));
+
+          // Find stages to update (exist in both)
+          const stagesToUpdate = newStages.filter(s => existingStageIds.has(s.id));
+
+          // Delete removed stages
+          for (const stage of stagesToDelete) {
+            try { await pipelineService.deleteStage(stage.id); } catch { /* may have active deals */ }
+          }
+
+          // Create new stages
+          for (const stage of stagesToCreate) {
+            const idx = newStages.indexOf(stage);
+            await pipelineService.createStage({
+              pipelineId: id,
+              name: stage.name,
+              order: idx + 1,
+              probability: stage.probability,
+              color: stage.color,
+              isWon: stage.isWon,
+              isLost: stage.isLost,
+              isDefault: stage.isDefault,
+            });
+          }
+
+          // Update existing stages (name changes, order changes)
+          for (const stage of stagesToUpdate) {
+            const oldStage = existingStages.find(s => s.id === stage.id);
+            const idx = newStages.indexOf(stage);
+            if (oldStage && (oldStage.name !== stage.name || oldStage.order !== idx + 1)) {
+              await pipelineService.updateStage(stage.id, {
+                name: stage.name,
+                order: idx + 1,
+                probability: stage.probability,
+                color: stage.color,
+                isWon: stage.isWon,
+                isLost: stage.isLost,
+              });
+            }
+          }
+
+          // Reorder all stages to match the new order
+          const orderedIds = newStages.map(s => s.id).filter(sid => existingStageIds.has(sid));
+          if (orderedIds.length > 1) {
+            try { await pipelineService.reorderStages(id, orderedIds); } catch { /* non-critical */ }
+          }
+        }
+
+        // 3. Refetch the pipeline to get the final server state
+        const refreshRes = await pipelineService.getPipelines();
+        const allPipelines = ((refreshRes as any).data ?? refreshRes) as any[];
+        const refreshed = allPipelines.find((p: any) => p.id === id);
+        if (refreshed) {
+          const mapped = toFrontendPipeline(refreshed) as Pipeline;
+          setPipelines((prev) => prev.map((p) => (p.id === id ? mapped : p)));
+        }
+
+        addAuditLog("Pipeline Updated", `Updated pipeline.`);
       } catch (err: unknown) {
         throw new Error(err instanceof Error ? err.message : 'Failed to update pipeline');
       }

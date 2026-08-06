@@ -371,6 +371,9 @@ onUpdateDeal(deal.id, { ...editableFields });
 ### "Dead Code" That Is Actually Imported — Verify Before Deleting
 `crm-layout.tsx` was reported as dead code (nothing imports its *nav array*), but the file itself was imported by `app/(tenant)/layout.tsx` as the layout shell. Deleting it broke the build immediately. The lesson: "unused nav array inside a file" ≠ "unused file". Always run `tsc --noEmit` or grep for the file path before deleting, even when an audit says it's dead. The file's *internal* duplication was the defect — the file itself had a live consumer.
 
+### Zod .partial() Silently Strips Unexpected Fields — Stage CRUD Never Persisted
+`UpdatePipelineSchema = CreatePipelineSchema.partial()` only allows `{ name?, currency? }`. When the frontend sends `{ name, stages: [...] }` to `PUT /pipelines/:id`, Zod silently strips `stages` — no error, no warning, data lost. The backend has full stage CRUD endpoints (`POST /stages`, `PUT /stages/:id`, `DELETE /stages/:id`) that work perfectly, but the frontend never calls them. It tries to batch-update stages through the pipeline update which can't accept them. **Rule:** if a child entity has its own CRUD endpoints, always use those endpoints individually. Never try to send nested children through a parent update that doesn't declare them in its schema.
+
 ### The Real "Invalid cuid" Source — Deal ID Itself, Not the Payload
 After multiple rounds of patching payload fields, the error persisted because the **deal `id` in the URL** was the invalid value — not any field in the request body. Seeded records with IDs like `rey-deal-1` exist in Postgres but Prisma's `findFirst({ where: { id } })` validates the ID format before querying, throwing "Invalid cuid" even for a simple lookup. Patching the frontend adapter never helps when the root is a bad primary key in the database. Always check the request URL in the network tab first — the path param is validated too.
 

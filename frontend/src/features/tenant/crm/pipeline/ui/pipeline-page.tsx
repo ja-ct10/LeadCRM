@@ -897,14 +897,15 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
     e.preventDefault();
     if (!newPipelineName.trim()) return;
     
-    // Create a pipeline with default stages
+    // Default stages from the Lead Sales template — proper flags and probabilities
     const defaultStages: Stage[] = [
-      { id: uuid(), name: 'Contact', order: 0 },
-      { id: uuid(), name: 'Site Inspection', order: 1 },
-      { id: uuid(), name: 'Proposal', order: 2 },
-      { id: uuid(), name: 'Negotiation', order: 3 },
-      { id: uuid(), name: 'Closed Won', order: 4 },
-      { id: uuid(), name: 'Closed Lost', order: 5 },
+      { id: uuid(), name: 'New Inquiry',    order: 1, probability: 10, color: '#6366f1', isDefault: true },
+      { id: uuid(), name: 'Contacted',      order: 2, probability: 20, color: '#8b5cf6' },
+      { id: uuid(), name: 'Qualified',      order: 3, probability: 40, color: '#0ea5e9' },
+      { id: uuid(), name: 'Proposal Sent',  order: 4, probability: 60, color: '#3b82f6' },
+      { id: uuid(), name: 'Negotiation',    order: 5, probability: 80, color: '#f59e0b' },
+      { id: uuid(), name: 'Won',            order: 6, probability: 100, color: '#10b981', isWon: true },
+      { id: uuid(), name: 'Lost',           order: 7, probability: 0,   color: '#ef4444', isLost: true },
     ];
     
     try {
