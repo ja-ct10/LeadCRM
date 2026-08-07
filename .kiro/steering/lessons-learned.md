@@ -492,16 +492,12 @@ const DEFAULT_STAGE_BADGE = 'bg-slate-500/10 border-slate-500/30 text-slate-500 
 ```
 
 
-### Demo Seed Must Be Wired into prisma/seed.ts
-`demo.seed.ts` creates `admin@democorp.com` and other test accounts, but `prisma/seed.ts` only called `seedSystemAdmin` + `generateTenants`. So `npm run db:seed` never created the demo users — local login always failed with "Invalid email or password" even though the accounts existed in the Render DB. Fix: always import and call `seedDemoAccounts()` in `prisma/seed.ts` before `generateTenants`. Also add `DEV_OTP_BYPASS=true` and `DEV_SEED_EMAILS` to `.env` so seed accounts bypass the OTP email step locally and accept `000000` as the code.
-
-
-### Seed Files Without Standalone Runner Are Silent No-Ops
-When `ts-node seed-file.ts` is run directly, a file that only exports a function (no `if (require.main === module)` block) exits with code 0 and does nothing. No error, no output — completely silent. Always add a standalone runner to every seeder:
-```typescript
-if (require.main === module) {
-  seedDemoAccounts()
-    .catch((err) => { console.error('[Seed] Error:', err); process.exit(1); })
-    .finally(() => prisma.$disconnect());
-}
+### npm Workspaces Monorepo — CI Cache Path Must Point to Root Lockfile
+In an npm workspaces monorepo, `npm ci` at the root installs ALL workspace packages. There is only ONE `package-lock.json` at the repo root — subdirectories (`frontend/`, `backend/`, `shared/`) never get their own lockfile. GitHub Actions `actions/setup-node` with `cache: 'npm'` will throw "Some specified paths were not resolved" if `cache-dependency-path` points to a subpackage path. Always set it to the root:
+```yaml
+- uses: actions/setup-node@v4
+  with:
+    cache: 'npm'
+    cache-dependency-path: package-lock.json  # root, not frontend/package-lock.json
 ```
+Run `npm ci` once at root. Then use `working-directory` for per-package commands.
