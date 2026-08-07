@@ -10,9 +10,6 @@ jobs:
   frontend:
     name: Frontend — TypeScript Check
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
 
     steps:
       - name: Checkout
@@ -23,23 +20,23 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+          # Monorepo: lock file lives at root, not in subpackage directories
+          cache-dependency-path: package-lock.json
 
-      - name: Install dependencies
+      - name: Install dependencies (monorepo root)
         run: npm ci
 
       - name: TypeScript check
+        working-directory: frontend
         run: npx tsc --noEmit
 
       - name: Lint
+        working-directory: frontend
         run: npm run lint
 
   backend:
     name: Backend — TypeScript Check
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
 
     steps:
       - name: Checkout
@@ -50,20 +47,18 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
+          cache-dependency-path: package-lock.json
 
-      - name: Install dependencies
+      - name: Install dependencies (monorepo root)
         run: npm ci
 
       - name: TypeScript check
+        working-directory: backend
         run: npx tsc --noEmit
 
   shared:
     name: Shared Package — TypeScript Check
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: shared
 
     steps:
       - name: Checkout
@@ -74,10 +69,11 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: shared/package-lock.json
+          cache-dependency-path: package-lock.json
 
-      - name: Install dependencies
+      - name: Install dependencies (monorepo root)
         run: npm ci
 
       - name: TypeScript check
+        working-directory: shared
         run: npx tsc --noEmit

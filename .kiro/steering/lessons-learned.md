@@ -490,3 +490,14 @@ const DEFAULT_STAGE_BADGE = 'bg-slate-500/10 border-slate-500/30 text-slate-500 
 // Usage:
 <span className={`... ${STAGE_BADGE_CLASSES[stage.color] ?? DEFAULT_STAGE_BADGE}`}>
 ```
+
+
+### npm Workspaces Monorepo — CI Cache Path Must Point to Root Lockfile
+In an npm workspaces monorepo, `npm ci` at the root installs ALL workspace packages. There is only ONE `package-lock.json` at the repo root — subdirectories (`frontend/`, `backend/`, `shared/`) never get their own lockfile. GitHub Actions `actions/setup-node` with `cache: 'npm'` will throw "Some specified paths were not resolved" if `cache-dependency-path` points to a subpackage path. Always set it to the root:
+```yaml
+- uses: actions/setup-node@v4
+  with:
+    cache: 'npm'
+    cache-dependency-path: package-lock.json  # root, not frontend/package-lock.json
+```
+Run `npm ci` once at root. Then use `working-directory` for per-package commands.
