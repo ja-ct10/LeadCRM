@@ -1,20 +1,42 @@
 'use client';
 
-import React from 'react';
-import { Menu, Bell, StickyNote, Sun, Moon } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Menu, Bell, Mail, Sun, Moon } from 'lucide-react';
 import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
 import { useTheme } from '@/shared/hooks/use-theme';
+import { getGmailStatus, fetchGmailEmails } from '@/features/tenant/inbox/services/gmail.service';
 
 interface TopbarProps {
   onOpenSidebar: () => void;
-  onOpenNotes: () => void;
+  onOpenInbox: () => void;
 }
 
-export default function Topbar({ onOpenSidebar, onOpenNotes }: TopbarProps) {
+export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps) {
   const { user, switchRole } = useAuth();
   const { resetDemoData, roles } = useData();
   const { theme, toggleTheme, isDark } = useTheme();
+  const [inboxCount, setInboxCount] = useState(0);
+
+  // Fetch unread email count for badge
+  useEffect(() => {
+    let isMounted = true;
+    getGmailStatus()
+      .then((status) => {
+        if (status.isConnected) {
+          return fetchGmailEmails({ maxResults: 30, query: 'in:inbox is:unread' });
+        }
+        return null;
+      })
+      .then((result) => {
+        if (isMounted && result) {
+          setInboxCount(result.emails.length);
+        }
+      })
+      .catch(() => { /* silently ignore */ });
+
+    return () => { isMounted = false; };
+  }, []);
 
   return (
     <header className="h-14 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 lg:px-6 shrink-0 sticky top-0 z-30 transition-colors duration-200">
@@ -57,12 +79,17 @@ export default function Topbar({ onOpenSidebar, onOpenNotes }: TopbarProps) {
           {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
         </button>
 
-        <button onClick={onOpenNotes}
+        <button onClick={onOpenInbox}
           className="relative p-2 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors rounded-md hover:bg-blue-50 dark:hover:bg-blue-950/40 cursor-pointer"
-          title="Open Scratchpad Notes"
-          id="header-notes-toggle">
-          <StickyNote className="w-4 h-4" />
-          <span className="absolute top-1 right-1 w-2 h-2 bg-amber-500 rounded-full animate-bounce" />
+          title="Open Inbox"
+          aria-label="Open Inbox"
+          id="header-inbox-toggle">
+          <Mail className="w-4 h-4" />
+          {inboxCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center">
+              {inboxCount}
+            </span>
+          )}
         </button>
 
         <button className="relative p-2 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
