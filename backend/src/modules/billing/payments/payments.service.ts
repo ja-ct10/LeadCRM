@@ -15,7 +15,7 @@ export function validatePaymongoSignature(
   if (!signatureHeader) throw new AppError('Missing PayMongo signature header', 400);
 
   // Header format: "t=<timestamp>,te=<hash>,li=<hash>"
-  const parts = Object.fromEntries(signatureHeader.split(',').map((p) => p.split('=')));
+  const parts = Object.fromEntries(signatureHeader.split(',').map((p: string) => p.split('=')));
   const timestamp = parts['t'];
   const signature = parts['te'] ?? parts['li'];
 
