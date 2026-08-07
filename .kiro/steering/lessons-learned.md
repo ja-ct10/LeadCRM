@@ -490,3 +490,18 @@ const DEFAULT_STAGE_BADGE = 'bg-slate-500/10 border-slate-500/30 text-slate-500 
 // Usage:
 <span className={`... ${STAGE_BADGE_CLASSES[stage.color] ?? DEFAULT_STAGE_BADGE}`}>
 ```
+
+
+### Demo Seed Must Be Wired into prisma/seed.ts
+`demo.seed.ts` creates `admin@democorp.com` and other test accounts, but `prisma/seed.ts` only called `seedSystemAdmin` + `generateTenants`. So `npm run db:seed` never created the demo users — local login always failed with "Invalid email or password" even though the accounts existed in the Render DB. Fix: always import and call `seedDemoAccounts()` in `prisma/seed.ts` before `generateTenants`. Also add `DEV_OTP_BYPASS=true` and `DEV_SEED_EMAILS` to `.env` so seed accounts bypass the OTP email step locally and accept `000000` as the code.
+
+
+### Seed Files Without Standalone Runner Are Silent No-Ops
+When `ts-node seed-file.ts` is run directly, a file that only exports a function (no `if (require.main === module)` block) exits with code 0 and does nothing. No error, no output — completely silent. Always add a standalone runner to every seeder:
+```typescript
+if (require.main === module) {
+  seedDemoAccounts()
+    .catch((err) => { console.error('[Seed] Error:', err); process.exit(1); })
+    .finally(() => prisma.$disconnect());
+}
+```

@@ -315,6 +315,15 @@ export async function resetPasswordWithToken(dto: ResetPasswordDto): Promise<voi
 const OTP_TTL_MS      = 10 * 60 * 1000; // 10 minutes
 const OTP_MAX_ATTEMPTS = 5;
 
+// ── Dev OTP bypass helpers (never active in production) ───────────────────
+const DEV_BYPASS_ACTIVE = process.env.NODE_ENV !== 'production' && process.env.DEV_OTP_BYPASS === 'true';
+const DEV_BYPASS_CODE   = '000000';
+function isDevSeedAccount(email: string): boolean {
+  if (!DEV_BYPASS_ACTIVE) return false;
+  const allowed = (process.env.DEV_SEED_EMAILS ?? '').split(',').map(e => e.trim().toLowerCase());
+  return allowed.includes(email.toLowerCase());
+}
+
 /**
  * Step 1 — Verify email+password, then generate and email a 6-digit OTP.
  * Always returns generic success to avoid leaking valid emails.
@@ -329,6 +338,20 @@ export async function sendLoginOtp(dto: LoginDto, ctx: LoginContext = {}): Promi
 
   if (user.status !== 'ACTIVE') {
     throw new AppError('Account is inactive. Contact your administrator.', 403);
+  }
+
+  // Dev bypass — seed accounts skip email and use fixed code "000000"
+  if (isDevSeedAccount(dto.email)) {
+    const codeHash = await hashPassword(DEV_BYPASS_CODE);
+    const expires  = new Date(Date.now() + OTP_TTL_MS);
+    await prisma.loginOtpToken.upsert({
+      where:  { email: dto.email },
+      update: { codeHash, expires, attempts: 0 },
+      create: { email: dto.email, codeHash, expires },
+    });
+    // eslint-disable-next-line no-console
+    console.log(`\n[DEV BYPASS] OTP for ${dto.email} is: ${DEV_BYPASS_CODE}\n`);
+    return;
   }
 
   // Generate a 6-digit numeric code

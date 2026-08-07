@@ -135,11 +135,11 @@ export async function seedDemoAccounts() {
           isDefault: true,
           stages: {
             create: [
-              { name: 'Lead', order: 1, isDefault: true },
-              { name: 'Contacted', order: 2 },
-              { name: 'Qualified', order: 3 },
-              { name: 'Won', order: 4, isWon: true },
-              { name: 'Lost', order: 5, isLost: true },
+              { name: 'Lead',      order: 1, isDefault: true, tenantId: clientTenant.id, color: '#64748b', probability: 10 },
+              { name: 'Contacted', order: 2,                  tenantId: clientTenant.id, color: '#3b82f6', probability: 25 },
+              { name: 'Qualified', order: 3,                  tenantId: clientTenant.id, color: '#8b5cf6', probability: 50 },
+              { name: 'Won',       order: 4, isWon: true,     tenantId: clientTenant.id, color: '#10b981', probability: 100 },
+              { name: 'Lost',      order: 5, isLost: true,    tenantId: clientTenant.id, color: '#ef4444', probability: 0 },
             ]
           }
         }
@@ -165,4 +165,11 @@ export async function seedDemoAccounts() {
   }
   
   console.log('[Seed] Demo accounts seeded successfully.');
+}
+
+// ── Standalone runner ─────────────────────────────────────────────────────
+if (require.main === module) {
+  seedDemoAccounts()
+    .catch((err) => { console.error('[Seed] Error:', err); process.exit(1); })
+    .finally(() => prisma.$disconnect());
 }
