@@ -501,3 +501,29 @@ In an npm workspaces monorepo, `npm ci` at the root installs ALL workspace packa
     cache-dependency-path: package-lock.json  # root, not frontend/package-lock.json
 ```
 Run `npm ci` once at root. Then use `working-directory` for per-package commands.
+
+
+### tsconfig exclude Is Not Applied in CI Unless You're Careful
+`tsconfig.json` with `"exclude": ["src/database/seeders"]` excludes seeders when running `npx tsc` inside the `backend/` directory locally — but CI clones the repo fresh and runs from the repo root, so any file outside the `include` globs but not in `exclude` may get picked up differently. Seeder files that use loose typing (implicit `any` on Prisma transaction callbacks, `.map((s) =>`, etc.) pass locally because seeders are excluded, but fail in CI if the tsconfig path resolution differs. Always add utility/script files to `exclude` explicitly and annotate any non-inferred callback params with explicit types.
+
+
+### CI Must Run `prisma generate` Before `tsc` — Prisma Types Don't Exist on Fresh Clone
+On a fresh CI clone, `node_modules/.prisma/client` doesn't exist until `prisma generate` runs. Without it, every Prisma `$transaction(async (tx) => ...)` callback parameter falls back to `any` because the `PrismaClient` type can't be inferred. This causes `noImplicitAny` failures even though the code is correct. Always add `npx prisma generate` as a CI step immediately after `npm ci` and before `tsc --noEmit`.
+```yaml
+- run: npm ci
+- run: npx prisma generate
+  working-directory: backend
+- run: npx tsc --noEmit
+  working-directory: backend
+```
+
+
+### next lint Is Deprecated in Next.js 15+ — Use tsc --noEmit
+`next lint` is deprecated in Next.js 15/16 and fails interactively when no ESLint config exists — it prompts for ESLint setup and exits with code 1 in CI. Since the backend and shared packages already use `tsc --noEmit` for linting, change the frontend `package.json` lint script to match. No extra ESLint dependencies needed.
+```json
+// WRONG — deprecated, fails without eslint config
+"lint": "next lint"
+
+// CORRECT — consistent with backend/shared
+"lint": "tsc --noEmit"
+```

@@ -41,7 +41,7 @@ export async function getDealVelocity(tenantId: string) {
 
   const avgDays = (deals: typeof closedDeals) => {
     if (deals.length === 0) return null;
-    const sum = deals.reduce((acc, d) => {
+    const sum = deals.reduce((acc: number, d) => {
       const ms = (d.closedAt as Date).getTime() - d.createdAt.getTime();
       return acc + ms / (1000 * 60 * 60 * 24);
     }, 0);
