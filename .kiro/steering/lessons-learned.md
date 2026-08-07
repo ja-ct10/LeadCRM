@@ -621,3 +621,37 @@ Run `npm ci` once at root. Then use `working-directory` for per-package commands
 ### ContentEditable Rich Text: Tailwind Resets Kill Lists
 
 Tailwind's `@base` layer resets `list-style` to `none` and removes padding on `ul`/`ol`. When using `contentEditable` with `document.execCommand('insertUnorderedList')`, the bullet points render but are invisible. Fix by adding utility overrides on the editor container: `[&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5`. Also: `execCommand` only works when the editor is focused — always call `.focus()` before the command.
+
+### tsconfig exclude Is Not Applied in CI Unless You're Careful
+`tsconfig.json` with `"exclude": ["src/database/seeders"]` excludes seeders when running `npx tsc` inside the `backend/` directory locally — but CI clones the repo fresh and runs from the repo root, so any file outside the `include` globs but not in `exclude` may get picked up differently. Seeder files that use loose typing (implicit `any` on Prisma transaction callbacks, `.map((s) =>`, etc.) pass locally because seeders are excluded, but fail in CI if the tsconfig path resolution differs. Always add utility/script files to `exclude` explicitly and annotate any non-inferred callback params with explicit types.
+
+
+### CI Must Run `prisma generate` Before `tsc` — Prisma Types Don't Exist on Fresh Clone
+On a fresh CI clone, `node_modules/.prisma/client` doesn't exist until `prisma generate` runs. Without it, every Prisma `$transaction(async (tx) => ...)` callback parameter falls back to `any` because the `PrismaClient` type can't be inferred. This causes `noImplicitAny` failures even though the code is correct. Always add `npx prisma generate` as a CI step immediately after `npm ci` and before `tsc --noEmit`.
+```yaml
+- run: npm ci
+- run: npx prisma generate
+  working-directory: backend
+- run: npx tsc --noEmit
+  working-directory: backend
+```
+
+
+### next lint Is Deprecated in Next.js 15+ — Use tsc --noEmit
+`next lint` is deprecated in Next.js 15/16 and fails interactively when no ESLint config exists — it prompts for ESLint setup and exits with code 1 in CI. Since the backend and shared packages already use `tsc --noEmit` for linting, change the frontend `package.json` lint script to match. No extra ESLint dependencies needed.
+```json
+// WRONG — deprecated, fails without eslint config
+"lint": "next lint"
+
+// CORRECT — consistent with backend/shared
+"lint": "tsc --noEmit"
+```
+
+
+### DEV_OTP_BYPASS and DEV_SEED_EMAILS Must Be in .env.example
+The OTP bypass for seed accounts only activates when `DEV_OTP_BYPASS=true` and the email is listed in `DEV_SEED_EMAILS`. Both vars were missing from `.env.example`, so teammates on fresh clones always hit the real OTP flow — no email configured means the code only prints to the server console, and teammates have no idea to look there. Always include dev-only bypass vars in `.env.example` with safe defaults pre-filled so the team can log in immediately after `npm run db:seed`.
+```env
+DEV_OTP_BYPASS="true"
+DEV_SEED_EMAILS="admin@democorp.com,bob@democorp.com,super@leadcrm.com,guest@democorp.com"
+```
+With this in place, all seed accounts use OTP code `000000` in development.
