@@ -516,3 +516,14 @@ On a fresh CI clone, `node_modules/.prisma/client` doesn't exist until `prisma g
 - run: npx tsc --noEmit
   working-directory: backend
 ```
+
+
+### next lint Is Deprecated in Next.js 15+ — Use tsc --noEmit
+`next lint` is deprecated in Next.js 15/16 and fails interactively when no ESLint config exists — it prompts for ESLint setup and exits with code 1 in CI. Since the backend and shared packages already use `tsc --noEmit` for linting, change the frontend `package.json` lint script to match. No extra ESLint dependencies needed.
+```json
+// WRONG — deprecated, fails without eslint config
+"lint": "next lint"
+
+// CORRECT — consistent with backend/shared
+"lint": "tsc --noEmit"
+```
