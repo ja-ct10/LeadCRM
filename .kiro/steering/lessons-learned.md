@@ -527,3 +527,12 @@ On a fresh CI clone, `node_modules/.prisma/client` doesn't exist until `prisma g
 // CORRECT — consistent with backend/shared
 "lint": "tsc --noEmit"
 ```
+
+
+### DEV_OTP_BYPASS and DEV_SEED_EMAILS Must Be in .env.example
+The OTP bypass for seed accounts only activates when `DEV_OTP_BYPASS=true` and the email is listed in `DEV_SEED_EMAILS`. Both vars were missing from `.env.example`, so teammates on fresh clones always hit the real OTP flow — no email configured means the code only prints to the server console, and teammates have no idea to look there. Always include dev-only bypass vars in `.env.example` with safe defaults pre-filled so the team can log in immediately after `npm run db:seed`.
+```env
+DEV_OTP_BYPASS="true"
+DEV_SEED_EMAILS="admin@democorp.com,bob@democorp.com,super@leadcrm.com,guest@democorp.com"
+```
+With this in place, all seed accounts use OTP code `000000` in development.
