@@ -1,67 +1,58 @@
-# LeadCRM AgentOS Power
+# LeadCRM Development System
 
-A research-first, team-modeled SaaS engineering operating system for building production-grade CRM applications with Next.js 15, TypeScript, React Context, and multi-tenant SaaS architecture.
+Multi-tenant CRM + Workflow Automation platform. Next.js 15, Express.js, Prisma 5, PostgreSQL 16.
 
 ## Keywords
 
-saas, crm, nextjs, typescript, react, multi-tenant, rbac, agentos, engineering, research-first, clean-code, frontend, backend, audit, tenant, leadcrm, quality-gates, tdd, security
+saas, crm, nextjs, typescript, react, multi-tenant, rbac, frontend, backend, prisma, security, leadcrm, quality, tdd
 
-## Structure (Optimized — August 2026)
+## Configuration (August 2026 — Optimized)
 
-All content is now in `.kiro/` following Kiro's native workspace standard.
-
-### Steering (auto-loaded every session — `inclusion: always`)
+### Steering (always-loaded — ~4,200 tokens total)
 
 | File | Purpose |
 |---|---|
-| `product.md` | Identity, dev commands, API route map, ports |
-| `tech.md` | Full tech stack table with versions and constraints |
-| `structure.md` | Monorepo layout, file naming, import rules |
-| `architecture.md` | Layer contracts, RBAC, Six-Pillar Rule, patterns |
-| `coding-standards.md` | TypeScript, React, SaaS safety, anti-patterns, size limits |
-| `security.md` | Auth, RBAC, tenant isolation, secrets, rate limits |
-| `ui-ux.md` | Design tokens, typography, motion specs, dark mode |
-| `testing.md` | TDD cycle, RBAC/tenant test patterns, coverage minimums |
-| `skill-routing.md` | Auto-activate matrix for skills and sub-agents |
+| `product.md` | Stack, paths, API routes, dev commands |
+| `structure.md` | File naming, imports, module anatomy |
+| `architecture.md` | Layer contracts, RBAC, Six-Pillar Rule |
+| `coding-standards.md` | TypeScript, React, SaaS safety, anti-patterns |
+| `security.md` | Auth, tenant isolation, secrets, rate limits |
 
-### Steering (manual — load with `#name` in chat)
+### Steering (conditional)
 
-| File | Load When |
-|---|---|
-| `lessons-learned.md` | Debugging, reviewing past decisions, recalling pitfalls |
-| `deployment.md` | Docker, CI/CD, infrastructure, migration work |
-
-### Skills (on-demand — activate per task type)
-
-| Skill | Activate When |
-|---|---|
-| `crm-patterns` | CRM modules, deal pipeline, workflow engine, campaigns |
-| `leadcrm-design-system` | Any UI work — tokens, component specs, layout |
-| `frontend-patterns` | Components, filters, charts, forms, RBAC guards |
-| `backend-patterns` | Express, repository pattern, auth, Zod validation |
-| `saas-scalability` | Multi-tenancy, plans, feature gating, domain events |
-| `security-review` | Auth, RBAC, tenant isolation, input validation |
-| `verification-loop` | Pre-PR quality gate — 7 gates, Definition of Done |
-| `workflow-process` | Non-trivial tasks, architecture decisions, 5-role review |
-| `react-patterns` | React hooks, component composition, forms |
-| `react-performance` | Re-renders, bundle size, memoization, waterfalls |
-| `nextjs-patterns` | App Router, SSR boundaries, env vars, dynamic imports |
-| `motion-ui` | Animations, transitions, spring physics |
-| `accessibility` | WCAG, ARIA, keyboard nav, focus management |
-| `prisma-patterns` | Schema, migrations, multi-tenant queries, soft deletes |
-| `api-design` | REST conventions, status codes, pagination, middleware |
-| `tdd-workflow` | TDD cycle, RBAC/tenant test patterns |
-| `e2e-testing` | Playwright, Page Object Model, flaky test prevention |
-| `git-workflow` | Branches, commits, PR descriptions |
-| `docker-patterns` | Dockerfiles, docker-compose, container security |
-| `ui-ux-pro-max` | Design system search, color/typography/motion database |
-
-### Hooks (automatic triggers)
-
-| Hook | Trigger | Action |
+| File | Mode | Loads When |
 |---|---|---|
-| `activate-on-task` | preTaskExecution | Phase 0 context scan + severity classification |
-| `code-review-on-write` | postToolUse: write | SaaS safety + LeadCRM rule violations check |
-| `quality-gate` | userTriggered | Full 7-gate quality check |
-| `security-check-on-create` | fileCreated in auth/api/middleware/store | Security scan |
-| `session-wrap` | agentStop | Capture new lessons learned |
+| `ui-ux.md` | fileMatch `*.tsx,*.css` | Frontend files are active |
+| `testing.md` | manual (`#testing`) | Writing tests |
+| `skill-routing.md` | manual (`#skill-routing`) | Planning complex tasks |
+| `deployment.md` | manual (`#deployment`) | Docker/CI work |
+| `lessons-learned.md` | manual (`#lessons-learned`) | Debugging, reviewing pitfalls |
+
+### Skills (22 installed — demand-loaded, zero idle cost)
+
+See `.kiro/how-to-use-skills.md` for the full guide.
+
+### Hooks (credit-efficient)
+
+| Hook | Trigger | Type | Credits |
+|---|---|---|---|
+| `activate-on-task` | preTaskExecution | askAgent | ~0.5/task |
+| `security-check-on-create` | fileCreated (auth/api/middleware/store) | runCommand | 0 |
+| `code-review-on-write` | userTriggered | askAgent | Only when you run it |
+| `quality-gate` | userTriggered | askAgent | Only when you run it |
+| `session-wrap` | userTriggered | askAgent | Only when you run it |
+
+### Powers
+
+| Power | Purpose |
+|---|---|
+| Context7 | Live documentation lookup (Next.js 15, Prisma 5, React 19) |
+| Figma | Design-to-code implementation |
+| Design System Scaffold | Component specs and theming |
+| Stripe | Payment integration patterns |
+
+### MCP Servers
+
+| Server | Auto-Approved Tools |
+|---|---|
+| `context7` | `resolve-library-id`, `get-library-docs` |

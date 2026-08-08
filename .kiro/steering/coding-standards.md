@@ -37,13 +37,11 @@ inclusion: always
 ## UI Rules
 
 - Dark mode classes on **every** element — no light-only components
-- Animations from `motion/react` only — never `framer-motion`
-- Charts from `ChartComponents.tsx` only — never direct `recharts` imports
-- Filters use `<TrelloFilter>` — never raw `<select>`
 - RBAC guard on every create/edit/delete UI element — no guard = no render
 - `cn()` for conditional classes — never string concatenation
 - No inline `style={{}}` — Tailwind classes only
 - Never change layout/design unless explicitly asked
+<!-- animations/charts/filter constraints in product.md Key Constraints -->
 
 ## File Naming
 
@@ -92,9 +90,4 @@ Do NOT write code if any of these are true:
 
 → Stop · Investigate · Propose options before proceeding.
 
-## Git Rules
-
-- **NEVER** run `git commit`, `git push`, or `git add` without explicit user instruction
-- Never commit directly to `main` — always push to a feature branch
-- Branch naming: `feature/`, `fix/`, `refactor/`, `security/` off `dev-copy-1`
-- Commit format: `type(scope): concise description under 72 characters`
+<!-- Git rules removed — load #git-workflow skill when needed -->

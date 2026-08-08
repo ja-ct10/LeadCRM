@@ -1,6 +1,7 @@
 ---
-description: LeadCRM UI/UX principles — design tokens, typography, component specs, layout rules, motion system. Always loaded.
-inclusion: always
+description: LeadCRM UI/UX principles — design tokens, typography, component specs, layout rules, motion system. Auto-loaded for frontend files.
+inclusion: fileMatch
+fileMatchPattern: "**/*.tsx,**/*.css,**/*.module.css"
 ---
 
 # LeadCRM — UI/UX Standards

@@ -1,6 +1,6 @@
 ---
-description: LeadCRM testing standards — TDD workflow, coverage requirements, RBAC test patterns, E2E guidelines. Always loaded.
-inclusion: always
+description: LeadCRM testing standards — TDD workflow, coverage requirements, RBAC test patterns, E2E guidelines. Load manually with #testing when writing tests.
+inclusion: manual
 ---
 
 # LeadCRM — Testing Standards

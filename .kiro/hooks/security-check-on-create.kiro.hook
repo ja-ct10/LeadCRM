@@ -1,13 +1,13 @@
 {
   "name": "Security Check on Sensitive Files",
-  "version": "1.1.0",
-  "description": "Security review when files are created in auth/api/middleware/store.",
+  "version": "1.3.0",
+  "description": "Shell-based secret scan when files are created in auth/api/middleware/store. Uses runCommand (zero credits).",
   "when": {
     "type": "fileCreated",
     "patterns": ["**/auth/**", "**/api/**", "**/middleware/**", "**/store/**"]
   },
   "then": {
-    "type": "askAgent",
-    "prompt": "A new file was just created. Review ONLY — do NOT write or edit any files in this response. Read `.agent/checklists/security.md`. Check for: hardcoded secrets, missing RBAC/tenantId guards (if applicable), and unsafe data practices. Report findings as a short bullet list only. If nothing is wrong, say 'No security issues found.' in one line."
+    "type": "runCommand",
+    "command": "powershell -Command \"Write-Host '[Security Scan]'; $matches = Select-String -Path '${file}' -Pattern '(password|secret|apiKey|api_key|token)\\s*=\\s*[''`\"][^''`\"]{6,}[''`\"]' -AllMatches; if ($matches) { Write-Host 'WARNING: Possible hardcoded secret found:'; $matches | ForEach-Object { Write-Host $_.Line } } else { Write-Host 'No hardcoded secrets detected.' }\""
   }
 }
