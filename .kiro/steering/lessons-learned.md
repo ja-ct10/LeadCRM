@@ -655,3 +655,10 @@ DEV_OTP_BYPASS="true"
 DEV_SEED_EMAILS="admin@democorp.com,bob@democorp.com,super@leadcrm.com,guest@democorp.com"
 ```
 With this in place, all seed accounts use OTP code `000000` in development.
+
+
+### Git Rebase Blocks on Vim Swap File — Use GIT_EDITOR=true to Skip
+When `git rebase --continue` opens vim and a `.swp` file exists, the rebase hangs interactively. Set `GIT_EDITOR=true` (a no-op that exits 0) to accept the existing commit message without opening an editor:
+```powershell
+$env:GIT_EDITOR = "true"; git rebase --continue
+```
