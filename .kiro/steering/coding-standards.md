@@ -26,14 +26,6 @@ inclusion: always
 - Keys: stable `id` — never array index
 - Mutations: always spread into new objects — never mutate
 
-## SaaS Safety (Non-Negotiable)
-
-- `tenantId: tenant.id` on every new record — sourced from `useAuth()`, **NEVER** from user input
-- `tenant` from `useAuth()` — **NEVER** from `useData()`
-- `addAuditLog()` on every create/update/delete — no exceptions
-- `addActivity()` on every mutation creating an observable state change
-- All data ops through `DataContext` only — never direct `localStorage` in components or hooks
-
 ## UI Rules
 
 - Dark mode classes on **every** element — no light-only components
