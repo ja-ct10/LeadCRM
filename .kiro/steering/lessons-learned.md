@@ -662,3 +662,12 @@ When `git rebase --continue` opens vim and a `.swp` file exists, the rebase hang
 ```powershell
 $env:GIT_EDITOR = "true"; git rebase --continue
 ```
+
+
+### Use .gitattributes union Merge for Append-Only Files
+Append-only files like `lessons-learned.md` will conflict on every merge because both branches add content at the end. Adding a `.gitattributes` rule with `merge=union` tells git to keep all lines from both sides instead of producing conflict markers — permanently eliminating this class of conflict for the file.
+```
+# .gitattributes
+.kiro/steering/lessons-learned.md merge=union
+```
+Apply this to any file that is strictly additive (changelogs, lesson logs, audit trails).
