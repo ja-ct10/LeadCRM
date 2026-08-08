@@ -22,6 +22,30 @@ export async function seedDemoAccounts() {
     },
   });
 
+  // Canonical seed email from env — falls back to the dev default so fresh
+  // clones work out of the box without touching .env.
+  const systemAdminEmail    = process.env.SYSTEM_ADMIN_EMAIL    ?? 'admin@gmail.com';
+  const systemAdminPassword = process.env.SYSTEM_ADMIN_PASSWORD ?? 'admin123';
+  const systemAdminHash     = systemAdminEmail === 'admin@gmail.com' && systemAdminPassword === 'admin123'
+    ? passwordHash  // reuse the hash already computed above
+    : await hashPassword(systemAdminPassword);
+
+  // Primary seeded System Admin — credentials controlled by env vars.
+  await prisma.user.upsert({
+    where: { tenantId_email: { tenantId: systemTenant.id, email: systemAdminEmail } },
+    update: {},
+    create: {
+      tenantId: systemTenant.id,
+      email:        systemAdminEmail,
+      firstName:    'System',
+      lastName:     'Admin',
+      passwordHash: systemAdminHash,
+      role:         'System Admin',
+      status:       'ACTIVE',
+    },
+  });
+
+  // Keep the legacy alias so existing sessions / demos still work.
   await prisma.user.upsert({
     where: { tenantId_email: { tenantId: systemTenant.id, email: 'super@leadcrm.com' } },
     update: {},
