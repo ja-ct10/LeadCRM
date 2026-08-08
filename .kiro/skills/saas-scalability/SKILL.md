@@ -5,17 +5,7 @@ description: SaaS architecture standards for LeadCRM — multi-tenancy enforceme
 
 # SaaS Architecture — LeadCRM
 
-## Multi-Tenancy (Non-Negotiable)
-
-```typescript
-// WRONG — no tenant scoping
-const newContact = { id: uuid(), ...data };
-
-// CORRECT — tenantId always present
-const newContact = { id: uuid(), tenantId: tenant.id, createdAt: now(), ...data };
-```
-
-Every record must have `tenantId`. Every query must filter by `tenantId`. Cross-tenant access is a critical security failure.
+> Core tenantId rules, module boundaries, and DataContext migration contract are in `.kiro/steering/architecture.md` (always loaded). This skill adds plan gating, data lifecycle, domain events, and cache isolation — content not covered by always-loaded steering.
 
 ## Subscription Plan Gating
 
@@ -36,6 +26,7 @@ const isFeatureEnabled = (feature: string): boolean => {
 Enforcement: API/service layer = **authoritative**. UI layer = secondary (UX only, not security).
 
 ## Plan Limits
+
 ```
 contacts:  free 250  | pro 5000  | enterprise unlimited
 users:     free 3    | pro 15    | enterprise unlimited
@@ -55,43 +46,26 @@ Active → Archived → Soft-Deleted → Purged (GDPR only)
 - Workflow execution history: retained permanently
 
 ```typescript
-// Soft delete pattern
+// Soft delete — all queries must also filter: deletedAt: null
 await prisma.contact.update({
   where: { id, tenantId },
   data: { deletedAt: new Date(), deletedBy: currentUserId },
 });
-// All queries: where: { tenantId, deletedAt: null }
 ```
-
-## Module Boundaries
-
-Modules may reference IDs across modules. Modules may **not** directly mutate another module's data. Cross-module changes go through the service layer.
 
 ## Domain Events (Current → Future)
 
-`addAuditLog()` is the current event stub. Signature is compatible with future event bus.
+`addAuditLog()` is the current event stub. Its signature is compatible with a future event bus — do not change it.
 
 Key events: `contact.created` · `deal.won` · `deal.lost` · `campaign.sent` · `invoice.paid` · `workflow.executed`
 
-## DataContext Migration Readiness
-
-Function signatures must stay identical when migrating localStorage → real API:
+## Tenant Resource Isolation (Caching)
 
 ```typescript
-// CURRENT
-const addContact = (data: CreateContactInput): void => { /* localStorage */ };
-
-// FUTURE — same signature, different body
-const addContact = async (data: CreateContactInput): Promise<void> => { /* fetch */ };
-```
-
-## Tenant Resource Isolation
-
-```typescript
-// WRONG — shared cache key
+// WRONG — shared cache key leaks across tenants
 await cache.set('contacts', data);
 
-// CORRECT — tenant-namespaced
+// CORRECT — always namespace by tenantId
 await cache.set(`tenant:${tenantId}:contacts`, data);
 ```
 

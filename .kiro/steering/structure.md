@@ -25,9 +25,11 @@ App Router route files are **3-line import shells only** — no logic, no JSX:
 ```tsx
 'use client';
 import dynamic from 'next/dynamic';
-const Page = dynamic(() => import('../../../src/features/tenant/crm/contacts/contacts-page'), { ssr: false });
+const Page = dynamic(() => import('../../../src/features/tenant/crm/contacts/ui/contacts-page'), { ssr: false });
 export default Page;
 ```
+
+Note: page components always live in `[module]/ui/` — the import path must include `/ui/`.
 
 ## Backend Layer Rule
 ```

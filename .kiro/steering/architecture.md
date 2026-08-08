@@ -16,7 +16,7 @@ React Application — src/App.tsx
   ↓
 Custom Hooks (useContacts, useDeals, etc.)
   ↓
-DataContext (state + data ops — current: localStorage | future: fetch API)
+DataContext (state + data ops — USE_MOCK_DATA=false uses real API)
   ↓
 Express + PostgreSQL API (backend)
 ```
@@ -40,9 +40,11 @@ Route files in `app/(tenant)/` are **3-line import shells only** — no logic, n
 // app/(tenant)/contacts/page.tsx
 'use client';
 import dynamic from 'next/dynamic';
-const ContactsPage = dynamic(() => import('../../../src/features/tenant/crm/contacts/contacts-page'), { ssr: false });
+const ContactsPage = dynamic(() => import('../../../src/features/tenant/crm/contacts/ui/contacts-page'), { ssr: false });
 export default ContactsPage;
 ```
+
+Page components always live in `[module]/ui/` — the import path must include `/ui/`.
 
 ## RBAC Model
 

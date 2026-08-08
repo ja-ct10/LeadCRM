@@ -268,14 +268,6 @@ const user = await prisma.user.findFirst({
 res.json({ success: true, data: { user } });
 ```
 
-### Two-Step OTP Login Architecture
-
-Login uses a split endpoint pattern: `POST /auth/send-otp` (verifies credentials + emails code) and `POST /auth/verify-otp` (validates code + issues JWT). The `login()` function in AuthContext only triggers the OTP send — `verifyOtp()` is a separate context function called after code entry. This keeps credential verification and session issuance decoupled.
-
-### Reset Password Route Must Exist as a Next.js Page
-
-The email reset link points to `/reset-password?token=...`. Without `app/reset-password/page.tsx`, Next.js returns 404. The token detection logic in `auth-page.tsx` only runs when the page actually renders — it can't intercept a missing route. Always create the route file alongside the UI logic.
-
 ### ActivityType Union Must Match All Consumers
 
 `ActivityType` in `store/types/shared.types.ts` must include every string key used in `activity-timeline.tsx`'s icon/color maps. Both hyphenated (`stage-change`) and underscore (`stage_change`) variants must be in the union if both are used. Missing variants cause `Record<ActivityType, ...>` compile errors. Always update the type when adding a new activity variant.
