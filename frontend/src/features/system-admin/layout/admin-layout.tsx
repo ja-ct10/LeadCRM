@@ -19,7 +19,6 @@ const NAV_ITEMS = [
   { name: 'Client Management',  path: 'admin-clients',      icon: Building2 },
   { name: 'Pricing',            path: 'admin-pricing',      icon: CreditCard },
   { name: 'Billing',            path: 'admin-billing',      icon: Receipt },
-  { name: 'Environment Health', path: 'admin-environments', icon: Activity },
   { name: 'Audit Trail',        path: 'audit-log',          icon: Activity },
 ];
 
