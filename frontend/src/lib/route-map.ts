@@ -33,6 +33,7 @@ export const PATHNAME_TO_PATH: Record<string, string> = {
   '/admin/pricing':                'admin-pricing',
   '/admin/billing':                'admin-billing',
   '/admin/environments':           'admin-environments',
+  '/admin/audit':                  'admin-audit-log',
 };
 
 // Reverse map — canonical pathname for each path (first match wins)
@@ -65,4 +66,5 @@ export const PATH_TO_PATHNAME: Record<string, string> = {
   'admin-pricing':       '/admin/pricing',
   'admin-billing':       '/admin/billing',
   'admin-environments':  '/admin/environments',
+  'admin-audit-log':     '/admin/audit',
 };

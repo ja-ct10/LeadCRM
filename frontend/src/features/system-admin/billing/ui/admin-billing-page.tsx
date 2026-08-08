@@ -3,9 +3,9 @@ import React, { useState } from 'react';
 import { Search, Eye, Download, CreditCard, Building2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { usePagination } from '@/shared/hooks/use-pagination';
 import { Pagination } from '@/shared/components/ui/pagination';
-import { motion, AnimatePresence } from 'motion/react';
+import { AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
-import { ModalCloseButton } from '@/shared/components/ui/modal-close-button';
+import { SideSheet } from '@/shared/components/side-sheet';
 
 const MOCK_INVOICES = [
   { id: 'INV-2026-001', client: 'Acme Corporation',    plan: 'Enterprise', amount: 199, date: '2026-03-15', method: 'Credit Card',   status: 'paid' },
@@ -141,49 +141,46 @@ export default function AdminBillingPage() {
       </div>
 
       {/* Invoice detail modal */}
-      <AnimatePresence>
-        {selectedInvoice && (
-          <div className="fixed inset-0 bg-slate-900/40 dark:bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white dark:bg-slate-950 rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
-              <div className="px-6 py-5 border-b border-slate-200 dark:border-slate-800 flex justify-between items-start">
-                <div>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">Invoice Details</h3>
-                  <p className="text-sm text-slate-500 mt-0.5">Complete information for {selectedInvoice.id}</p>
-                </div>
-                <ModalCloseButton onClose={() => setSelectedInvoice(null)} ariaLabel="Close invoice details modal" size={20} />
-              </div>
-              <div className="p-6">
-                <div className="flex justify-between items-start mb-6">
-                  <div>
-                    <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-1">LeadCRM</h2>
-                    <p className="text-sm text-slate-500">Invoice {selectedInvoice.id}</p>
-                  </div>
-                  <span className={`px-3 py-1 rounded-full text-xs font-bold capitalize ${STATUS_STYLES[selectedInvoice.status]}`}>{selectedInvoice.status}</span>
-                </div>
-                <div className="grid grid-cols-2 gap-6 mb-6 pb-6 border-b border-slate-100 dark:border-slate-800">
-                  {[['Bill To', selectedInvoice.client], ['Invoice Date', selectedInvoice.date], ['Payment Method', selectedInvoice.method], ['Plan', selectedInvoice.plan]].map(([k, v]) => (
-                    <div key={k}>
-                      <p className="text-xs font-medium text-slate-500 mb-1">{k}</p>
-                      <p className="font-medium text-slate-900 dark:text-white">{v}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex justify-between text-lg font-bold text-slate-900 dark:text-white pt-4 border-t border-slate-100 dark:border-slate-800">
-                  <span>Total</span><span>${selectedInvoice.amount}</span>
-                </div>
-              </div>
-              <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/30 flex justify-end gap-3">
-                <button onClick={() => setSelectedInvoice(null)} className="px-4 py-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg font-medium text-sm transition-colors">Close</button>
-                <button onClick={() => { handleDownload(selectedInvoice.id); setSelectedInvoice(null); }}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 transition-colors flex items-center gap-2">
-                  <Download size={16} /> Download PDF
-                </button>
-              </div>
-            </motion.div>
+      {/* Invoice detail side panel */}
+<AnimatePresence>
+  {selectedInvoice && (
+    <SideSheet
+      isOpen={true}
+      onClose={() => setSelectedInvoice(null)}
+      title="Invoice Details"
+      subtitle={`Complete information for ${selectedInvoice.id}`}
+      width="w-full sm:max-w-md"
+    >
+      <div className="p-6">
+        <div className="flex justify-between items-start mb-6">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-1">LeadCRM</h2>
+            <p className="text-sm text-slate-500">Invoice {selectedInvoice.id}</p>
           </div>
-        )}
-      </AnimatePresence>
+          <span className={`px-3 py-1 rounded-full text-xs font-bold capitalize ${STATUS_STYLES[selectedInvoice.status]}`}>{selectedInvoice.status}</span>
+        </div>
+        <div className="grid grid-cols-2 gap-6 mb-6 pb-6 border-b border-slate-100 dark:border-slate-800">
+          {[['Bill To', selectedInvoice.client], ['Invoice Date', selectedInvoice.date], ['Payment Method', selectedInvoice.method], ['Plan', selectedInvoice.plan]].map(([k, v]) => (
+            <div key={k}>
+              <p className="text-xs font-medium text-slate-500 mb-1">{k}</p>
+              <p className="font-medium text-slate-900 dark:text-white">{v}</p>
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-between text-lg font-bold text-slate-900 dark:text-white pt-4 border-t border-slate-100 dark:border-slate-800">
+          <span>Total</span><span>${selectedInvoice.amount}</span>
+        </div>
+      </div>
+      <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/30 flex justify-end gap-3">
+        <button onClick={() => setSelectedInvoice(null)} className="px-4 py-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg font-medium text-sm transition-colors">Close</button>
+        <button onClick={() => { handleDownload(selectedInvoice.id); setSelectedInvoice(null); }}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 transition-colors flex items-center gap-2">
+          <Download size={16} /> Download PDF
+        </button>
+      </div>
+    </SideSheet>
+  )}
+</AnimatePresence>
     </div>
   );
 }

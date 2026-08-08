@@ -11,7 +11,7 @@ import { Tenant } from '@/store/types';
 import { useTenants } from '../hooks/use-tenants';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
-import { ModalCloseButton } from '@/shared/components/ui/modal-close-button';
+import { SideSheet } from '@/shared/components/side-sheet';
 
 /**
  * System Admin — Client Management page.
@@ -178,33 +178,26 @@ export default function ClientManagement() {
 
 function TenantDetailModal({ tenant, onClose, onApprove }: { tenant: Tenant; onClose: () => void; onApprove: () => void }) {
   return (
-    <div className="fixed inset-0 bg-slate-900/40 dark:bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-white dark:bg-slate-950 rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white">Client Details</h3>
-          <ModalCloseButton onClose={onClose} ariaLabel="Close tenant details modal" size={20} />
+    <SideSheet isOpen={true} onClose={onClose} title="Client Details">
+      <div className="p-6 grid grid-cols-2 gap-6">
+        <InfoBlock title="Company Information" fields={[['Name', tenant.name], ['Industry', tenant.industry], ['Size', tenant.size]]} />
+        <InfoBlock title="Contact Details" fields={[['Email', tenant.email], ['Phone', tenant.phone], ['Address', tenant.address]]} />
+        <div className="col-span-2 grid grid-cols-3 gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+          {[['Status', tenant.status], ['Environment', tenant.environment], ['Created', new Date(tenant.createdAt).toLocaleDateString()]].map(([k, v]) => (
+            <div key={k} className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-100 dark:border-slate-700">
+              <div className="text-xs text-slate-500 mb-1">{k}</div>
+              <div className="font-medium capitalize text-slate-900 dark:text-white">{v}</div>
+            </div>
+          ))}
         </div>
-        <div className="p-6 grid grid-cols-2 gap-6">
-          <InfoBlock title="Company Information" fields={[['Name', tenant.name], ['Industry', tenant.industry], ['Size', tenant.size]]} />
-          <InfoBlock title="Contact Details" fields={[['Email', tenant.email], ['Phone', tenant.phone], ['Address', tenant.address]]} />
-          <div className="col-span-2 grid grid-cols-3 gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
-            {[['Status', tenant.status], ['Environment', tenant.environment], ['Created', new Date(tenant.createdAt).toLocaleDateString()]].map(([k, v]) => (
-              <div key={k} className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-100 dark:border-slate-700">
-                <div className="text-xs text-slate-500 mb-1">{k}</div>
-                <div className="font-medium capitalize text-slate-900 dark:text-white">{v}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="p-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-xl font-medium text-sm hover:bg-slate-50 transition-colors">Close</button>
-          {tenant.status === 'pending' && (
-            <button onClick={onApprove} className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-medium text-sm hover:bg-emerald-700 transition-colors">Approve Client</button>
-          )}
-        </div>
-      </motion.div>
-    </div>
+      </div>
+      <div className="p-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex justify-end gap-3">
+        <button onClick={onClose} className="px-4 py-2 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-xl font-medium text-sm hover:bg-slate-50 transition-colors">Close</button>
+        {tenant.status === 'pending' && (
+          <button onClick={onApprove} className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-medium text-sm hover:bg-emerald-700 transition-colors">Approve Client</button>
+        )}
+      </div>
+    </SideSheet>
   );
 }
 
