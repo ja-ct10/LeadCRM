@@ -6,8 +6,8 @@ import { useData } from '@/store/DataContext';
 import { usePermissions, PERMISSION_BRIDGE } from '@/shared/hooks/use-permissions';
 import { PATHNAME_TO_PATH, PATH_TO_PATHNAME } from '@/lib/route-map';
 import {
-  LayoutDashboard, Users, Briefcase, Workflow, Mail, Wrench,
-  Package, Receipt, Building2, CreditCard, Activity, ListTodo, Layers, Shield, Settings,
+  LayoutDashboard, Briefcase, Workflow, Mail, Wrench,
+  Package, Receipt, Building2, CreditCard, Activity, ListTodo, Layers, Settings,
   UserCheck, Building, Target,
 } from 'lucide-react';
 
@@ -31,9 +31,6 @@ export const NAV_ITEMS = [
   // ── Billing ─────────────────────────────────────────
   { name: 'Contract Billing',  path: 'billing',           icon: Receipt,         permission: 'billing.view',   roles: null,          group: 'Billing', featureFlag: 'billing' as const },
   // ── Administration ──────────────────────────────────
-  { name: 'Users',             path: 'users',             icon: Users,           permission: 'users.view',     roles: null,          group: 'Administration' },
-  { name: 'Account Details',   path: 'account-details',   icon: Shield,          permission: null,             roles: ['Client Admin'] as const, group: 'Administration' },
-  { name: 'Settings',          path: 'settings',          icon: Settings,        permission: null,             roles: null,          group: 'Administration' },
   { name: 'Audit Trail',       path: 'audit-log',         icon: Activity,        permission: 'audit.view',     roles: null,          group: 'Administration' },
   // ── System Admin (separate portal) ──────────────────
   { name: 'Dashboard',         path: 'admin-dashboard',   icon: LayoutDashboard, permission: null,             roles: ['System Admin'] as const, group: null },

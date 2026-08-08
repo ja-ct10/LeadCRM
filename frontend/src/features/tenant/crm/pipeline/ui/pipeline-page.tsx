@@ -2027,11 +2027,14 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                         <div className="font-semibold text-slate-905 dark:text-white text-xs group-hover:text-blue-500 transition-colors">
                           {deal.title}
                         </div>
-                        {deal.tags && (
-                          <div className="flex gap-1 mt-1">
-                            {(deal.tags || '').split(',').map((t: string) => t.trim() && (
+                        {deal.tags && deal.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {(Array.isArray(deal.tags)
+                              ? deal.tags
+                              : String(deal.tags).split(',')
+                            ).map((t: string) => t.trim()).filter(Boolean).map((t: string) => (
                               <span key={t} className="bg-slate-100 dark:bg-white/[0.05] text-slate-500 text-[9px] font-bold tracking-wide uppercase px-1.5 py-0.5 rounded">
-                                {t.trim()}
+                                {t}
                               </span>
                             ))}
                           </div>

@@ -13,7 +13,7 @@ interface SideSheetProps {
   width?: string;
 }
 
-export function SideSheet({ isOpen, onClose, title, subtitle, children, width = 'w-full max-w-md md:max-w-xl' }: SideSheetProps) {
+export function SideSheet({ isOpen, onClose, title, subtitle, children, width = 'w-full sm:max-w-md md:max-w-xl' }: SideSheetProps) {
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -41,7 +41,7 @@ export function SideSheet({ isOpen, onClose, title, subtitle, children, width = 
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className={`fixed inset-y-0 right-0 ${width} bg-white dark:bg-slate-900 shadow-2xl z-[110] flex flex-col border-l border-gray-200 dark:border-white/10`}
+            className={`fixed inset-y-0 right-0 ${width} bg-white dark:bg-slate-900 shadow-2xl z-[110] flex flex-col border-l-0 sm:border-l border-gray-200 dark:border-white/10`}
           >
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/[0.02]">

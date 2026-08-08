@@ -1,11 +1,14 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { X } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Settings } from 'lucide-react';
 import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
 import AccountDropdown from './account-dropdown';
 import { useLayout } from './use-layout';
+import { cn } from '@/lib/utils';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface SidebarNavProps {
   sidebarOpen: boolean;
@@ -13,7 +16,11 @@ interface SidebarNavProps {
   navigate: (path: string) => void;
   isAccountDropdownOpen: boolean;
   onToggleAccountDropdown: () => void;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
 }
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function SidebarNav({
   sidebarOpen,
@@ -21,80 +28,177 @@ export default function SidebarNav({
   navigate,
   isAccountDropdownOpen,
   onToggleAccountDropdown,
-}: SidebarNavProps) {
+  isCollapsed,
+  onToggleCollapse,
+}: SidebarNavProps): React.ReactElement {
   const { currentPath, filteredNav } = useLayout();
   const { user } = useAuth();
   const { tasks } = useData();
 
-  const overdueCount = useMemo(() =>
-    tasks.filter(t =>
-      t.assignedUserId === user?.id &&
-      t.status !== 'completed' &&
-      t.status !== 'cancelled' &&
-      !!t.dueDate && new Date(t.dueDate) < new Date(),
-    ).length,
+  const overdueCount = useMemo(
+    () =>
+      tasks.filter(
+        (t) =>
+          t.assignedUserId === user?.id &&
+          t.status !== 'completed' &&
+          t.status !== 'cancelled' &&
+          !!t.dueDate &&
+          new Date(t.dueDate) < new Date(),
+      ).length,
     [tasks, user?.id],
   );
 
+  const isSettingsActive = currentPath === 'settings';
+
+  // On mobile, sidebar is always full-width when open; isCollapsed only applies on lg+
   return (
-    <aside className={`
-      fixed lg:static inset-y-0 left-0 z-50 w-60 bg-white dark:bg-slate-900
-      border-r border-slate-200 dark:border-slate-800
-      transform transition-transform duration-200 ease-in-out flex flex-col shadow-lg lg:shadow-none
-      ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-    `}>
-      {/* Logo */}
-      <div className="border-b border-slate-200 dark:border-slate-800 px-4 py-3 shrink-0 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-white ring-1 ring-slate-200 dark:ring-slate-700 overflow-hidden shrink-0">
-            <img src="/leadcrm_logo.png" alt="LeadCRM Logo" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
-          </div>
-          <h1 className="text-sm font-bold tracking-tight text-slate-900 dark:text-white">LeadCRM</h1>
-        </div>
-        <button
-          className="lg:hidden text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors p-1.5 rounded-md cursor-pointer"
-          onClick={onCloseSidebar}
+    <aside
+      className={cn(
+        'fixed lg:static inset-y-0 left-0 z-50',
+        'bg-white dark:bg-slate-900',
+        'border-r border-slate-200 dark:border-slate-800',
+        'transform transition-all duration-200 ease-in-out',
+        'flex flex-col shadow-lg lg:shadow-none',
+        // Mobile: slide in/out
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
+        // Width: mobile always 240px, desktop collapses to icon-strip
+        'w-60',
+        isCollapsed && 'lg:w-14',
+      )}
+    >
+      {/* ── Logo + collapse button ───────────────────────────────── */}
+      <div className={cn(
+        'border-b border-slate-200 dark:border-slate-800 shrink-0',
+        'flex items-center justify-between',
+        isCollapsed ? 'lg:flex-col lg:gap-1 px-1.5 py-2' : 'px-3 py-3',
+      )}>
+        {/* Logo */}
+        <div
+          className={cn('flex items-center gap-2.5 min-w-0', isCollapsed && 'lg:justify-center')}
+          title={isCollapsed ? 'LeadCRM' : undefined}
         >
-          <X size={18} />
+          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-white ring-1 ring-slate-200 dark:ring-slate-700 overflow-hidden shrink-0">
+            <img
+              src="/leadcrm_logo.png"
+              alt="LeadCRM"
+              className="h-full w-full object-cover"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+          {!isCollapsed && (
+            <h1 className="text-sm font-bold tracking-tight text-slate-900 dark:text-white truncate">
+              LeadCRM
+            </h1>
+          )}
+        </div>
+
+        {/* Mobile close button */}
+        <button
+          className="lg:hidden text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors p-1.5 rounded-md cursor-pointer shrink-0"
+          onClick={onCloseSidebar}
+          aria-label="Close sidebar"
+        >
+          <X size={17} />
+        </button>
+
+        {/* Desktop collapse toggle */}
+        <button
+          className={cn(
+            'hidden lg:flex items-center justify-center rounded-md transition-colors cursor-pointer',
+            'text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800',
+            isCollapsed ? 'w-8 h-8 shrink-0' : 'w-6 h-6 shrink-0',
+          )}
+          onClick={onToggleCollapse}
+          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {isCollapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
         </button>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 flex flex-col gap-0.5 px-3 py-3 overflow-y-auto custom-scrollbar">
+      {/* ── Main navigation ──────────────────────────────────────── */}
+      <nav className="flex-1 flex flex-col gap-0.5 px-2 py-2 overflow-y-auto custom-scrollbar">
         {filteredNav.map((item) => {
           const Icon = item.icon;
           const isActive = currentPath === item.path;
-          // Show overdue badge on Tasks nav item
           const showOverdueBadge = item.path === 'tasks' && overdueCount > 0;
+
           return (
             <button
               key={item.path + item.name}
               onClick={() => { navigate(item.path); onCloseSidebar(); }}
-              className={`
-                w-full flex items-center gap-2.5 rounded-md px-3 py-2 text-xs font-medium transition-colors cursor-pointer
-                ${isActive
+              title={isCollapsed ? item.name : undefined}
+              className={cn(
+                'w-full flex items-center rounded-md py-2 text-xs font-medium transition-colors cursor-pointer',
+                isCollapsed ? 'lg:justify-center px-1.5' : 'gap-2.5 px-2.5',
+                isActive
                   ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800/60'
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white border border-transparent'}
-              `}
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white border border-transparent',
+              )}
             >
-              <Icon className="h-4 w-4 shrink-0" />
-              <span className="truncate flex-1 text-left">{item.name}</span>
-              {showOverdueBadge && (
-                <span className="shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
-                  {overdueCount}
-                </span>
+              <div className="relative shrink-0">
+                <Icon className="h-4 w-4" />
+                {/* Dot badge when collapsed */}
+                {isCollapsed && showOverdueBadge && (
+                  <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-red-500" />
+                )}
+              </div>
+              {!isCollapsed && (
+                <>
+                  <span className="truncate flex-1 text-left">{item.name}</span>
+                  {showOverdueBadge && (
+                    <span className="shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                      {overdueCount}
+                    </span>
+                  )}
+                </>
               )}
             </button>
           );
         })}
       </nav>
 
-      {/* Account dropdown at bottom of sidebar */}
-      <AccountDropdown
-        isOpen={isAccountDropdownOpen}
-        onToggle={onToggleAccountDropdown}
-        navigate={navigate}
-      />
+      {/* ── Footer: Settings + Account ───────────────────────────── */}
+      <div className="shrink-0">
+        {/* Settings button */}
+        <div className="px-2 pb-1">
+          <button
+            onClick={() => { navigate('settings'); onCloseSidebar(); }}
+            title={isCollapsed ? 'Settings' : undefined}
+            className={cn(
+              'w-full flex items-center rounded-md py-2 text-xs font-medium transition-colors cursor-pointer',
+              isCollapsed ? 'lg:justify-center px-1.5' : 'gap-2.5 px-2.5',
+              isSettingsActive
+                ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800/60'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white border border-transparent',
+            )}
+          >
+            <Settings className="h-4 w-4 shrink-0" />
+            {!isCollapsed && <span className="truncate flex-1 text-left">Settings</span>}
+          </button>
+        </div>
+
+        {/* Account dropdown — full mode on mobile & expanded desktop; collapsed avatar on lg collapsed */}
+        <div className={cn(isCollapsed && 'lg:hidden')}>
+          <AccountDropdown
+            isOpen={isAccountDropdownOpen}
+            onToggle={onToggleAccountDropdown}
+            navigate={navigate}
+          />
+        </div>
+
+        {/* Collapsed avatar-only version — only shows on desktop collapsed */}
+        {isCollapsed && (
+          <div className="hidden lg:flex justify-center px-1 pb-2">
+            <AccountDropdown
+              isOpen={isAccountDropdownOpen}
+              onToggle={onToggleAccountDropdown}
+              navigate={navigate}
+              collapsed
+            />
+          </div>
+        )}
+      </div>
     </aside>
   );
 }

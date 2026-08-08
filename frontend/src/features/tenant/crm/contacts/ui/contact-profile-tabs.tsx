@@ -214,8 +214,12 @@ export const ClientProfileTabs = ({
     toast.success('Task scheduled successfully on Taskboard!');
   };
 
-  // Dynamic tags parsed
-  const parsedTags = contact.tags ? contact.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+  // Dynamic tags parsed — handles both string[] (API) and legacy comma-string
+  const parsedTags = contact.tags
+    ? (Array.isArray(contact.tags)
+        ? (contact.tags as string[]).filter(Boolean)
+        : String(contact.tags).split(',').map((t: string) => t.trim()).filter(Boolean))
+    : [];
 
   // Connected Deals — authoritative SSOT helper
   const connectedDeals = React.useMemo(() => {

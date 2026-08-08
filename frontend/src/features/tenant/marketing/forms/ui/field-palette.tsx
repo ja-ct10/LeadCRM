@@ -1,0 +1,176 @@
+'use client';
+
+import React from 'react';
+import { FormFieldType, FormDesign } from '../types/form.types';
+import { cn } from '@/lib/utils';
+
+interface FieldPaletteProps {
+  onAddField: (type: FormFieldType) => void;
+  design?: FormDesign;
+  onDesignChange?: (design: FormDesign) => void;
+  mode?: 'fields' | 'design';
+}
+
+const LAYOUT_FIELDS: { type: FormFieldType; label: string; icon: string }[] = [
+  { type: 'heading', label: 'Heading', icon: 'H1' },
+  { type: 'paragraph', label: 'Paragraph', icon: 'P' },
+];
+
+const CRM_FIELDS: { type: FormFieldType; label: string; icon: string; color: string }[] = [
+  { type: 'contact-name', label: 'Contact Name', icon: '👤', color: 'bg-emerald-700' },
+  { type: 'contact-phone', label: 'Contact Phone', icon: '📞', color: 'bg-emerald-700' },
+  { type: 'contact-email', label: 'Contact Email', icon: '@', color: 'bg-emerald-700' },
+  { type: 'company-website', label: 'Company Website', icon: '🌐', color: 'bg-emerald-700' },
+  { type: 'company-name', label: 'Company Name', icon: '🏢', color: 'bg-emerald-700' },
+];
+
+const REGULAR_FIELDS: { type: FormFieldType; label: string; icon: string; color: string }[] = [
+  { type: 'multi-line', label: 'Multi Line', icon: '≡', color: 'bg-amber-700' },
+  { type: 'single-line', label: 'Single Line', icon: 'T', color: 'bg-amber-700' },
+  { type: 'number', label: 'Number', icon: '#', color: 'bg-amber-700' },
+  { type: 'checkbox', label: 'Checkbox', icon: '☑', color: 'bg-amber-700' },
+  { type: 'dropdown', label: 'Dropdown', icon: '⊙', color: 'bg-amber-700' },
+  { type: 'phone', label: 'Phone', icon: '☎', color: 'bg-amber-700' },
+  { type: 'url', label: 'URL', icon: '🌐', color: 'bg-amber-700' },
+  { type: 'email', label: 'Email', icon: '@', color: 'bg-amber-700' },
+];
+
+export function FieldPalette({ onAddField, design, onDesignChange, mode = 'fields' }: FieldPaletteProps): React.ReactElement {
+  if (mode === 'design' && design && onDesignChange) {
+    return <DesignPanel design={design} onChange={onDesignChange} />;
+  }
+
+  return (
+    <div className="p-3 space-y-4 overflow-y-auto custom-scrollbar flex-1">
+      {/* Layout section */}
+      <div>
+        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">LAYOUT</p>
+        <div className="grid grid-cols-2 gap-2">
+          {LAYOUT_FIELDS.map((f) => (
+            <button key={f.type} onClick={() => onAddField(f.type)}
+              className="flex flex-col items-center gap-1.5 p-3 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-white/[0.07] rounded-xl hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-all cursor-pointer group">
+              <div className="w-9 h-9 rounded-lg bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-bold text-slate-700 dark:text-slate-300 group-hover:bg-blue-100 dark:group-hover:bg-blue-500/20 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors text-sm">
+                {f.icon}
+              </div>
+              <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400">{f.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* CRM Template section */}
+      <div>
+        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">CHOOSE FROM A TEMPLATE</p>
+        <p className="text-[10px] text-slate-400 dark:text-slate-500 mb-2">Add a form field that automatically maps to a CRM field.</p>
+        <div className="grid grid-cols-2 gap-2">
+          {CRM_FIELDS.map((f) => (
+            <button key={f.type} onClick={() => onAddField(f.type)}
+              className="flex flex-col items-center gap-1.5 p-3 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-white/[0.07] rounded-xl hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-all cursor-pointer group">
+              <div className={cn('w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold', f.color)}>
+                {f.icon}
+              </div>
+              <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 text-center leading-tight">{f.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Regular Fields section */}
+      <div>
+        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">REGULAR FIELDS...</p>
+        <p className="text-[10px] text-slate-400 dark:text-slate-500 mb-2">Or start from scratch (you can optionally map to a CRM field later).</p>
+        <div className="grid grid-cols-2 gap-2">
+          {REGULAR_FIELDS.map((f) => (
+            <button key={f.type} onClick={() => onAddField(f.type)}
+              className="flex flex-col items-center gap-1.5 p-3 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-white/[0.07] rounded-xl hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-all cursor-pointer group">
+              <div className={cn('w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold', f.color)}>
+                {f.icon}
+              </div>
+              <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-400">{f.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface DesignPanelProps {
+  design: FormDesign;
+  onChange: (d: FormDesign) => void;
+}
+
+function ColorInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }): React.ReactElement {
+  return (
+    <div className="space-y-1">
+      <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{label}</label>
+      <div className="relative">
+        <input type="color" value={value || '#ffffff'} onChange={(e) => onChange(e.target.value)}
+          className="absolute left-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded cursor-pointer border-0 bg-transparent" />
+        <input type="text" value={value} onChange={(e) => onChange(e.target.value)} placeholder="e.g. #3B82F6"
+          className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg text-[11px] focus:outline-none focus:border-blue-500 transition-colors" />
+      </div>
+    </div>
+  );
+}
+
+function DesignPanel({ design, onChange }: DesignPanelProps): React.ReactElement {
+  const update = (patch: Partial<FormDesign>) => onChange({ ...design, ...patch });
+
+  return (
+    <div className="p-3 space-y-4 overflow-y-auto custom-scrollbar flex-1">
+      {/* General styles */}
+      <details open className="group">
+        <summary className="flex items-center justify-between cursor-pointer py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 list-none">
+          <span className="flex items-center gap-1.5">🎨 General styles</span>
+          <svg className="w-3.5 h-3.5 group-open:rotate-180 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </summary>
+        <div className="mt-2 space-y-3">
+          <ColorInput label="Background color" value={design.generalBg} onChange={(v) => update({ generalBg: v })} />
+          <ColorInput label="Border color" value={design.generalBorder} onChange={(v) => update({ generalBorder: v })} />
+          <ColorInput label="Text color" value={design.generalText} onChange={(v) => update({ generalText: v })} />
+        </div>
+      </details>
+
+      {/* Field styles */}
+      <details open className="group">
+        <summary className="flex items-center justify-between cursor-pointer py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 list-none">
+          <span className="flex items-center gap-1.5">✏️ Field styles</span>
+          <svg className="w-3.5 h-3.5 group-open:rotate-180 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </summary>
+        <div className="mt-2 space-y-3">
+          <ColorInput label="Background color" value={design.fieldBg} onChange={(v) => update({ fieldBg: v })} />
+          <ColorInput label="Border color" value={design.fieldBorder} onChange={(v) => update({ fieldBorder: v })} />
+          <ColorInput label="Text color" value={design.fieldText} onChange={(v) => update({ fieldText: v })} />
+          <div className="space-y-1">
+            <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Radius</label>
+            <select value={design.fieldRadius} onChange={(e) => update({ fieldRadius: e.target.value as FormDesign['fieldRadius'] })}
+              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg text-xs focus:outline-none focus:border-blue-500">
+              {(['none', 'sm', 'md', 'lg', 'full'] as const).map((r) => <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Size</label>
+            <select value={design.fieldSize} onChange={(e) => update({ fieldSize: e.target.value as FormDesign['fieldSize'] })}
+              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg text-xs focus:outline-none focus:border-blue-500">
+              {(['sm', 'regular', 'lg'] as const).map((s) => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+            </select>
+          </div>
+        </div>
+      </details>
+
+      {/* Button styles */}
+      <details open className="group">
+        <summary className="flex items-center justify-between cursor-pointer py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 list-none">
+          <span className="flex items-center gap-1.5">👆 Button styles</span>
+          <svg className="w-3.5 h-3.5 group-open:rotate-180 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </summary>
+        <div className="mt-2 space-y-3">
+          <ColorInput label="Background color" value={design.buttonBg} onChange={(v) => update({ buttonBg: v })} />
+          <ColorInput label="Border color" value={design.buttonBorder} onChange={(v) => update({ buttonBorder: v })} />
+          <ColorInput label="Text color" value={design.buttonText} onChange={(v) => update({ buttonText: v })} />
+        </div>
+      </details>
+    </div>
+  );
+}

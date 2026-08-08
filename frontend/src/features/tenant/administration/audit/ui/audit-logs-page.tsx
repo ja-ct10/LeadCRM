@@ -420,11 +420,11 @@ export default function AuditLogsPage() {
   }, [filteredLogs, selectedLogId]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* 1. Header Section - Compact Enterprise Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
         <div className="flex items-baseline gap-2.5 flex-wrap">
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Audit Trail & Activity Log</h1>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Audit Trail & Activity Log</h1>
           <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">
             — Track user mutations, state transitions, security changes, and system operations
           </span>
