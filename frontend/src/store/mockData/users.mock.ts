@@ -70,6 +70,16 @@ export const MOCK_USERS: User[] = [
     status: 'active',
   },
   {
+    // Primary System Admin — email matches SYSTEM_ADMIN_EMAIL seed default (admin@gmail.com)
+    id: 'user_system_admin',
+    tenantId: 'system',
+    firstName: 'System',
+    lastName: 'Admin',
+    email: 'admin@gmail.com',
+    role: 'System Admin',
+    status: 'active',
+  },
+  {
     id: 'user_client_admin',
     tenantId: 'tenant_demo',
     firstName: 'Alice',
