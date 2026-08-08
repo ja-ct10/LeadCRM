@@ -274,7 +274,7 @@ export async function saveDraftHandler(req: Request, res: Response, next: NextFu
 export async function deleteDraftHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { userId, tenantId } = req.user!;
-    const { draftId } = req.params;
+    const draftId = String(req.params.draftId);
 
     if (!draftId) {
       throw new AppError('draftId is required', 400);
