@@ -671,3 +671,20 @@ Append-only files like `lessons-learned.md` will conflict on every merge because
 .kiro/steering/lessons-learned.md merge=union
 ```
 Apply this to any file that is strictly additive (changelogs, lesson logs, audit trails).
+
+
+### Kiro Credit Optimization: askAgent Hooks Cost Credits, runCommand Does Not
+
+Every `askAgent` hook fires a full billable agent turn. `runCommand` executes locally with zero credits. Audit rule: any hook doing a simple check (secrets scan, lint, format) should be `runCommand`. Only use `askAgent` for reasoning tasks that genuinely need the LLM.
+
+### Steering Redundancy Compounds on Every Message
+
+Duplicate content across always-loaded steering files (e.g. tech stack in both `product.md` and `tech.md`) doubles the token cost of that content on every single message. Merged or deleted files reduce cost permanently — not just per session. Audit all always-loaded files for overlap before adding new ones.
+
+### System Admin Seed Uses Three Disconnected Sources
+
+The System Admin email lives in three places that must all agree: `backend/.env` (`SYSTEM_ADMIN_EMAIL`), `backend/src/database/seeders/demo.seed.ts` (hardcoded upsert), and `frontend/src/store/mockData/users.mock.ts` (mock user array). The mock also needs the email in `DEMO_EMAILS` inside `AuthContext.tsx` and `DEV_SEED_EMAILS` in `.env` for OTP bypass. If any of these disagree, login silently fails for that account in one mode (mock or real API) while working in the other.
+
+
+### Research-Backed Steering Optimization Ceiling (~4,200 always-loaded tokens)
+ETH Zurich / arXiv 2602.11988 (2025–2026): verbose/LLM-generated context files reduce task success by 2–3% and raise cost 20%+. The fix is not removing all steering — it's removing redundancy and keeping only rules that would change output if missing. For this project, ~4,200 always-loaded tokens across 5 files is the validated floor. Below that, hallucinations and rule violations cost more to fix than the tokens saved. Duplicate rule detection: grep all always-loaded files for the same keyword — if it appears in 2+ files with no new information, remove from the lower-priority file.

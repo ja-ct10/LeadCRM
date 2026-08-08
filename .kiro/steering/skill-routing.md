@@ -1,6 +1,6 @@
 ---
-description: Skill and sub-agent routing matrix for LeadCRM. Always loaded.
-inclusion: always
+description: Skill and sub-agent routing matrix for LeadCRM. Load manually with #skill-routing when planning complex tasks.
+inclusion: manual
 ---
 
 # LeadCRM — Skill Routing
