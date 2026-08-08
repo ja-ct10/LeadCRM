@@ -14,6 +14,9 @@
     "db:seed:full": "ts-node src/database/seeders/demo-full.seed.ts",
     "db:seed:reymark": "ts-node src/database/seeders/reymark.seed.ts"
   },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  },
   "dependencies": {
     "@faker-js/faker": "^8.4.1",
     "@prisma/client": "^5.22.0",
