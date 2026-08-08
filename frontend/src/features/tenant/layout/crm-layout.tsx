@@ -1,19 +1,38 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import SidebarNav from './sidebar-nav';
 import Topbar from './topbar';
 import { useLayout } from './use-layout';
 
+const SIDEBAR_COLLAPSED_KEY = 'leadcrm_sidebar_collapsed';
+
 /**
  * CrmLayout — tenant portal shell.
  * Composes sidebar, topbar, and content area.
- * Navigation items and permissions are owned by `use-layout.ts` (single source of truth).
+ * Navigation items and permissions are owned by `use-layout.ts`.
  */
 export default function CrmLayout({ children }: { children: React.ReactNode }) {
   const { navigate } = useLayout();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);       // mobile overlay open
+  const [isCollapsed, setIsCollapsed] = useState(false);       // desktop collapsed
   const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState(false);
+
+  // Restore collapse preference from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+      if (stored !== null) setIsCollapsed(stored === 'true');
+    } catch { /* noop */ }
+  }, []);
+
+  const handleToggleCollapse = () => {
+    setIsCollapsed((prev) => {
+      const next = !prev;
+      try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next)); } catch { /* noop */ }
+      return next;
+    });
+  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-[#030712]">
@@ -22,7 +41,9 @@ export default function CrmLayout({ children }: { children: React.ReactNode }) {
         onCloseSidebar={() => setSidebarOpen(false)}
         navigate={navigate}
         isAccountDropdownOpen={isAccountDropdownOpen}
-        onToggleAccountDropdown={() => setIsAccountDropdownOpen(prev => !prev)}
+        onToggleAccountDropdown={() => setIsAccountDropdownOpen((prev) => !prev)}
+        isCollapsed={isCollapsed}
+        onToggleCollapse={handleToggleCollapse}
       />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">

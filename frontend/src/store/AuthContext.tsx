@@ -23,6 +23,13 @@ interface AuthContextType {
   confirmPasswordReset: (token: string, password: string) => Promise<boolean>;
   switchRole: (role: string) => void;
   updateProfile: (profileData: Partial<User>) => void;
+  /**
+   * Switch to a demo/seeded account by email.
+   * - Mock mode: direct login — no password or OTP needed.
+   * - Real API mode: sends OTP with the account password, then auto-verifies with '000000' (DEMO_MODE bypass).
+   * Returns true on success, false on failure.
+   */
+  switchDemoAccount: (email: string, password: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -126,7 +133,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let foundUser = allUsers.find((u: User) => u.email === email);
 
     // Fallback: reset to mock data if demo account not found
-    const DEMO_EMAILS = ['admin@gmail.com', 'admin@democorp.com', 'bob@democorp.com', 'super@leadcrm.com', 'guest@democorp.com'];
+    const DEMO_EMAILS = [
+      'admin@gmail.com',
+      'super@leadcrm.com',
+      'admin@democorp.com',
+      'bob@democorp.com',
+      'guest@democorp.com',
+    ];
     if (!foundUser && DEMO_EMAILS.includes(email)) {
       allUsers   = MOCK_USERS;
       allTenants = MOCK_TENANTS;
@@ -289,6 +302,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('leadcrm_user', JSON.stringify(updated));
   };
 
+  // ── Switch demo account (works both mock + real API) ───────────────
+  // Mock mode  → direct mockLogin (no OTP, instant switch).
+  // Real API   → sendOtp with password, then auto-verify with '000000'
+  //              (requires DEMO_MODE=true + DEV_SEED_EMAILS on the server).
+  const switchDemoAccount = async (email: string, password: string): Promise<boolean> => {
+    if (USE_MOCK_AUTH) {
+      return mockLogin(email);
+    }
+    try {
+      // Step 1: request OTP
+      await authApi.sendOtp(email, password);
+      // Step 2: auto-verify with fixed bypass code
+      const ok = await verifyOtp(email, '000000');
+      return ok;
+    } catch (err: unknown) {
+      if (process.env.NODE_ENV !== 'production') {
+        // eslint-disable-next-line no-console
+        console.error('[AuthContext] switchDemoAccount failed:', err instanceof Error ? err.message : err);
+      }
+      return false;
+    }
+  };
+
   // ── Update profile ────────────────────────────────────────────────
   const updateProfile = (profileData: Partial<User>): void => {
     if (!user) return;
@@ -305,7 +341,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, tenant, isLoading, login, verifyOtp, logout, registerTenant, registerGuestAccount, requestPasswordReset, confirmPasswordReset, switchRole, updateProfile }}>
+    <AuthContext.Provider value={{ user, tenant, isLoading, login, verifyOtp, logout, registerTenant, registerGuestAccount, requestPasswordReset, confirmPasswordReset, switchRole, updateProfile, switchDemoAccount }}>
       {children}
     </AuthContext.Provider>
   );
