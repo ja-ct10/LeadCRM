@@ -40,7 +40,6 @@ export const NAV_ITEMS = [
   { name: 'Client Management', path: 'admin-clients',     icon: Building2,       permission: null,             roles: ['System Admin'] as const, group: null },
   { name: 'Pricing',           path: 'admin-pricing',     icon: CreditCard,      permission: null,             roles: ['System Admin'] as const, group: null },
   { name: 'Billing',           path: 'admin-billing',     icon: Receipt,         permission: null,             roles: ['System Admin'] as const, group: null },
-  { name: 'Environment Health',path: 'admin-environments',icon: Activity,        permission: null,             roles: ['System Admin'] as const, group: null },
   { name: 'Audit Trail',       path: 'audit-log',         icon: Activity,        permission: null,             roles: ['System Admin'] as const, group: null },
 ] as const;
 
