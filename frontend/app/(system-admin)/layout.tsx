@@ -10,3 +10,4 @@ export default function SystemAdminLayout({ children }: { children: React.ReactN
     </AuthGuard>
   );
 }
+  
