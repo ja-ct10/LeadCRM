@@ -1317,3 +1317,29 @@ model RegistrationOtpToken {
 
   @@unique([email])
 }
+
+// ─────────────────────────────────────────────
+// EMAIL ACCOUNT (Gmail OAuth2 integration per user)
+// Stores encrypted tokens for Gmail API access.
+// Each user can connect ONE Gmail account per tenant.
+// ─────────────────────────────────────────────
+model EmailAccount {
+  id              String    @id @default(uuid())
+  tenantId        String
+  userId          String
+  provider        String    @default("gmail") // "gmail" | future: "outlook"
+  email           String    // the connected Gmail address
+  accessToken     String    // encrypted — never log or expose
+  refreshToken    String?   // encrypted — needed for offline access
+  tokenExpiresAt  DateTime?
+  scopes          String[]  // granted OAuth scopes
+  isActive        Boolean   @default(true)
+  lastSyncAt      DateTime?
+  syncCursor      String?   // Gmail history ID for incremental sync
+  connectedAt     DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([tenantId, userId, provider])
+  @@index([tenantId, userId])
+  @@index([tenantId, isActive])
+}

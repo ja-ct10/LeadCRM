@@ -10,3 +10,33 @@ export interface GmailTokens {
   refresh_token?: string;
   expiry_date?: number;
 }
+
+export interface GmailEmail {
+  id: string;
+  threadId: string;
+  from: string;
+  to: string[];
+  subject: string;
+  snippet: string;
+  body: string;
+  date: string;
+  isRead: boolean;
+  labels: string[];
+}
+
+export interface GmailThread {
+  id: string;
+  subject: string;
+  snippet: string;
+  lastMessageDate: string;
+  messageCount: number;
+  participants: string[];
+  isRead: boolean;
+}
+
+export interface EmailAccountStatus {
+  isConnected: boolean;
+  email: string | null;
+  connectedAt: string | null;
+  lastSyncAt: string | null;
+}

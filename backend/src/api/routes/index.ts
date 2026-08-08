@@ -7,6 +7,7 @@ import automationRoutes from './automation.routes';
 import administrationRoutes from './administration.routes';
 import billingRoutes from './billing.routes';
 import reportingRoutes from './reporting.routes';
+import integrationsRoutes from './integrations.routes';
 
 const router = Router();
 
@@ -18,5 +19,6 @@ router.use('/automation', automationRoutes);
 router.use('/administration', administrationRoutes);
 router.use('/billing', billingRoutes);
 router.use('/reporting', reportingRoutes);
+router.use('/integrations', integrationsRoutes);
 
 export default router;
