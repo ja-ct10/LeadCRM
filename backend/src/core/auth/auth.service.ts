@@ -316,7 +316,9 @@ const OTP_TTL_MS      = 10 * 60 * 1000; // 10 minutes
 const OTP_MAX_ATTEMPTS = 5;
 
 // ── Dev OTP bypass helpers (never active in production) ───────────────────
-const DEV_BYPASS_ACTIVE = process.env.NODE_ENV !== 'production' && process.env.DEV_OTP_BYPASS === 'true';
+// DEV_OTP_BYPASS activates when explicitly set to 'true' OR when DEMO_MODE=true (for staging/capstone deployments).
+// DEMO_MODE allows demo accounts to use OTP '000000' on production servers without changing NODE_ENV.
+const DEV_BYPASS_ACTIVE = process.env.DEV_OTP_BYPASS === 'true' || process.env.DEMO_MODE === 'true';
 const DEV_BYPASS_CODE   = '000000';
 function isDevSeedAccount(email: string): boolean {
   if (!DEV_BYPASS_ACTIVE) return false;

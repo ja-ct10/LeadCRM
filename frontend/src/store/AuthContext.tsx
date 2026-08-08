@@ -126,7 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let foundUser = allUsers.find((u: User) => u.email === email);
 
     // Fallback: reset to mock data if demo account not found
-    const DEMO_EMAILS = ['admin@democorp.com', 'bob@democorp.com', 'super@leadcrm.com', 'guest@democorp.com'];
+    const DEMO_EMAILS = ['admin@gmail.com', 'admin@democorp.com', 'bob@democorp.com', 'super@leadcrm.com', 'guest@democorp.com'];
     if (!foundUser && DEMO_EMAILS.includes(email)) {
       allUsers   = MOCK_USERS;
       allTenants = MOCK_TENANTS;
