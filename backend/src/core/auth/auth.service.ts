@@ -39,6 +39,9 @@ export async function loginUser(dto: LoginDto, ctx: LoginContext = {}) {
   // Generic message — do not reveal whether email exists
   if (!user) throw new AppError('Invalid email or password', 401);
 
+  // OAuth-only users have no password — reject password login attempts
+  if (!user.passwordHash) throw new AppError('Invalid email or password', 401);
+
   const valid = await comparePassword(dto.password, user.passwordHash);
   if (!valid) throw new AppError('Invalid email or password', 401);
 
@@ -334,6 +337,9 @@ export async function sendLoginOtp(dto: LoginDto, ctx: LoginContext = {}): Promi
   // Validate credentials first — throws if invalid
   const user = await prisma.user.findFirst({ where: { email: dto.email } });
   if (!user) throw new AppError('Invalid email or password', 401);
+
+  // OAuth-only users have no password — direct them to Google Sign-In
+  if (!user.passwordHash) throw new AppError('Invalid email or password', 401);
 
   const valid = await comparePassword(dto.password, user.passwordHash);
   if (!valid) throw new AppError('Invalid email or password', 401);

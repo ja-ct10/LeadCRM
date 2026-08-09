@@ -65,4 +65,12 @@ router.post('/seed-demo', authMiddleware, authorize(Permission.ADMIN_ACCESS), au
 // POST /api/v1/auth/seed-admin — creates the system admin user (run once after deploy, requires env secret)
 router.post('/seed-admin', authController.seedAdmin);
 
+// POST /api/v1/auth/oauth/google — Google OAuth bridge (called by NextAuth signIn callback)
+// Validates id_token with Google, finds or creates user, issues HttpOnly JWT cookie
+router.post('/oauth/google', authRateLimiter, authController.oauthGoogle);
+
+// PATCH /api/v1/auth/oauth/complete-profile — new Google OAuth user fills in company details
+// Requires valid session cookie — tenantId sourced from JWT, never from request body
+router.patch('/oauth/complete-profile', authMiddleware, authController.completeOAuthProfile);
+
 export default router;
