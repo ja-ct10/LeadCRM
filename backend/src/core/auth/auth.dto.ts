@@ -95,11 +95,12 @@ export type OAuthGoogleDto = z.infer<typeof OAuthGoogleSchema>;
 // ─── Complete OAuth Profile ───────────────────────────────────────────────────
 // PATCH /api/v1/auth/oauth/complete-profile
 // Called after new Google OAuth user fills in their company details.
+// Note: country is accepted but not persisted — Tenant model has no country field.
 export const CompleteOAuthProfileSchema = z.object({
   companyName:  z.string().min(2, 'Company name is required'),
   industry:     z.string().min(1, 'Industry is required'),
   companySize:  z.string().min(1, 'Company size is required'),
-  country:      z.string().min(1, 'Country is required'),
+  country:      z.string().optional(),
 });
 
 export type CompleteOAuthProfileDto = z.infer<typeof CompleteOAuthProfileSchema>;

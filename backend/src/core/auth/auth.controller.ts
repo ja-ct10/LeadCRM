@@ -62,13 +62,32 @@ export async function logout(req: Request, res: Response): Promise<void> {
 
 export async function me(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    // Fetch full user from DB so firstName/lastName are included
+    // Fetch full user + tenant from DB so all profile fields are included
     const user = await prisma.user.findFirst({
       where: { id: req.user!.userId, tenantId: req.user!.tenantId },
-      select: { id: true, email: true, role: true, firstName: true, lastName: true, tenantId: true, status: true },
+      select: {
+        id: true, email: true, role: true, firstName: true, lastName: true,
+        tenantId: true, status: true,
+        tenant: {
+          select: { name: true, industry: true, companySize: true },
+        },
+      },
     });
     if (!user) { res.status(401).json({ success: false, error: 'User not found' }); return; }
-    res.json({ success: true, data: { user } });
+
+    // Flatten tenant fields onto the user object for easy consumption
+    const { tenant, ...userFields } = user;
+    res.json({
+      success: true,
+      data: {
+        user: {
+          ...userFields,
+          tenantName:  tenant?.name        ?? null,
+          industry:    tenant?.industry    ?? null,
+          companySize: tenant?.companySize ?? null,
+        },
+      },
+    });
   } catch (err) { next(err); }
 }
 
@@ -436,7 +455,7 @@ export async function completeOAuthProfile(req: Request, res: Response, next: Ne
       data:  {
         name:        companyName,
         industry,
-        companySize: companySize,
+        companySize,
       },
     });
 

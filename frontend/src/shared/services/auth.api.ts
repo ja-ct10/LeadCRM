@@ -71,7 +71,7 @@ export const authApi = {
     companyName:  string;
     industry:     string;
     companySize:  string;
-    country:      string;
+    country?:     string;
   }) =>
     apiClient.patch<{ success: boolean }>('/auth/oauth/complete-profile', payload),
 };
