@@ -132,6 +132,11 @@ model PricingPlan {
   maxDeals       Int?
   storageLimit   Int?     // MB
   isActive       Boolean  @default(true)
+  // ── Stripe ────────────────────────────────────────────────────────
+  stripeProductId        String?  @unique  // prod_xxx — one Product per plan
+  stripeMonthlyPriceId   String?  @unique  // price_xxx for monthly billing
+  stripeQuarterlyPriceId String?  @unique  // price_xxx for quarterly billing
+  stripeAnnualPriceId    String?  @unique  // price_xxx for annual billing
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -177,6 +182,8 @@ model Tenant {
   maxDeals           Int?
   approvedById       String?            // SystemAdmin id who approved
   approvedAt         DateTime?
+  // ── Stripe ────────────────────────────────────────────────────────
+  stripeCustomerId   String?  @unique   // cus_xxx — one customer per tenant
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
@@ -232,6 +239,9 @@ model Subscription {
   endDate         DateTime?
   nextBillingDate DateTime?
   cancelledAt     DateTime?
+  // ── Stripe ────────────────────────────────────────────────────────
+  stripeSubscriptionId   String?  @unique  // sub_xxx
+  stripeCheckoutSessionId String?          // cs_xxx — transient, kept for audit trail
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
@@ -240,6 +250,7 @@ model Subscription {
   invoices Invoice[]
 
   @@index([tenantId, status])
+  @@index([stripeSubscriptionId])
 }
 
 // ─────────────────────────────────────────────
@@ -1133,15 +1144,24 @@ model PaymentTransaction {
   paymentMethodId    String?   // FK to PaymentMethod (saved method) — nullable for ad-hoc
   amount             Float
   currency           String    @default("PHP")
-  status             String    // pending|paid|failed|refunded
+  status             String    // pending|paid|failed|refunded|partially_refunded
   transactionRef     String?   // internal or external reference number
   paymongoPaymentId  String?   @unique
   paymongoPaymentUrl String?
-  paymentMethod      String?   // card|gcash|maya|bank_transfer (denorm for quick display)
+  paymentMethod      String?   // card|gcash|maya|bank_transfer|stripe (denorm for quick display)
   paidAt             DateTime?
   failureReason      String?
   metadata           Json?
+  // ── Stripe ────────────────────────────────────────────────────────
+  stripePaymentIntentId    String?  @unique  // pi_xxx
+  stripeCheckoutSessionId  String?           // cs_xxx — checkout origin
+  stripeInvoiceId          String?           // in_xxx — for subscription invoices
+  stripeEventId            String?           // evt_xxx — webhook event that created this record (idempotency)
+  refundedAmount           Float?            // partial refund tracking
+  refundedAt               DateTime?
+  stripeRefundId           String?  @unique  // re_xxx
   createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @default(now()) @updatedAt
 
   tenant        Tenant         @relation(fields: [tenantId], references: [id])
   invoice       Invoice        @relation(fields: [invoiceId], references: [id])
@@ -1150,6 +1170,8 @@ model PaymentTransaction {
   @@index([tenantId, status])
   @@index([invoiceId])
   @@index([paymongoPaymentId])
+  @@index([stripePaymentIntentId])
+  @@index([stripeEventId])
 }
 
 // ─────────────────────────────────────────────

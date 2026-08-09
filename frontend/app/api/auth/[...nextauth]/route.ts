@@ -33,7 +33,9 @@ interface LeadCRMUser {
 }
 
 // ─── Auth options ─────────────────────────────────────────────────────────────
-export const authOptions: NextAuthOptions = {
+// Not exported — Next.js 15 route handlers must only export GET/POST.
+// Import authOptions from here only in server-side code (e.g. getServerSession).
+const authOptions: NextAuthOptions = {
   secret: NEXTAUTH_SECRET,
 
   providers: [
