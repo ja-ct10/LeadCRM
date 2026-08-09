@@ -8,7 +8,7 @@ export async function findAllActivities(tenantId: string, query: Record<string, 
 
   const where: any = { tenantId };
   
-  if (query.contactId) where.contactId = String(query.contactId);
+  if (query.leadId) where.leadId = String(query.leadId);
   if (query.dealId) where.dealId = String(query.dealId);
   if (query.organizationId) where.organizationId = String(query.organizationId);
   if (query.taskId) where.taskId = String(query.taskId);

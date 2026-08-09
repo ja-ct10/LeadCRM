@@ -24,8 +24,8 @@ export async function findAllDeals(tenantId: string, query: Record<string, unkno
         stage:       true,
         pipeline:    true,
         assignedUser: { select: { id: true, firstName: true, lastName: true } },
-        contactDeals: {
-          include: { contact: { select: { id: true, firstName: true, lastName: true } } },
+        leadDeals: {
+          include: { lead: { select: { id: true, firstName: true, lastName: true } } },
         },
       },
     }),
@@ -41,11 +41,11 @@ export async function findDealById(id: string, tenantId: string) {
     include: {
       stage:        { select: { id: true, name: true, isWon: true, isLost: true, color: true } },
       pipeline:     true,
-      organization: true,
+      organization: { select: { id: true, name: true } },
       assignedUser: { select: { id: true, firstName: true, lastName: true, email: true } },
       owner:        { select: { id: true, firstName: true, lastName: true, email: true } },
-      contactDeals: {
-        include: { contact: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } } },
+      leadDeals: {
+        include: { lead: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } } },
       },
       stageHistories: {
         orderBy: { movedAt: 'desc' },
@@ -61,15 +61,15 @@ export async function findDealById(id: string, tenantId: string) {
 }
 
 export async function createDeal(tenantId: string, ownerId: string, dto: CreateDealDto) {
-  const { contactIds, ...dealData } = dto;
+  const { leadIds, ...dealData } = dto;
 
   const deal = await prisma.deal.create({
     data: { ...dealData, tenantId, ownerId },
   });
 
-  if (contactIds && contactIds.length > 0) {
-    await prisma.contactDeal.createMany({
-      data: contactIds.map((contactId) => ({ contactId, dealId: deal.id, tenantId, addedById: ownerId })),
+  if (leadIds && leadIds.length > 0) {
+    await prisma.leadDeal.createMany({
+      data: leadIds.map((leadId) => ({ leadId, dealId: deal.id, tenantId, addedById: ownerId })),
       skipDuplicates: true,
     });
   }
@@ -81,7 +81,7 @@ export async function updateDeal(id: string, tenantId: string, dto: UpdateDealDt
   const existing = await prisma.deal.findFirst({ where: { id, tenantId } });
   if (!existing) return null;
 
-  const { contactIds, ...updateData } = dto;
+  const { leadIds, ...updateData } = dto;
   return prisma.deal.update({ where: { id }, data: updateData });
 }
 
@@ -95,7 +95,7 @@ export async function moveDealStage(
 ) {
   const deal = await prisma.deal.findFirst({
     where: { id, tenantId },
-    include: { stage: true, organization: true, contactDeals: true }
+    include: { stage: true, organization: true, leadDeals: true }
   });
   if (!deal) return null;
 
@@ -137,7 +137,7 @@ export async function moveDealStage(
         type: 'stage_change',
         title: `Deal moved from "${deal.stage.name}" to "${newStage.name}"`,
         dealId: deal.id,
-        organizationId: deal.organizationId || undefined,
+        accountId: deal.accountId || undefined,
       }
     });
 
@@ -145,33 +145,30 @@ export async function moveDealStage(
     if (newStage.isWon) {
       const activeProducts = deal.productInterests || [];
 
-      // Update Organization
-      if (deal.organizationId) {
+      // Update Account
+      if (deal.accountId) {
         const org = deal.organization!;
         const updatedProducts = Array.from(new Set([...(org.activeProducts || []), ...activeProducts]));
-        await tx.organization.update({
-          where: { id: deal.organizationId },
+        await tx.account.update({
+          where: { id: deal.accountId },
           data: {
             customerType: 'Active Customer',
-            customerSince: org.customerSince || now,
             activeProducts: updatedProducts,
           },
         });
       }
 
-      // Update Contacts — set customerType AND lifecycleStage
-      if (deal.contactDeals.length > 0) {
-        for (const cd of deal.contactDeals) {
-          const contact = await tx.contact.findUnique({ where: { id: cd.contactId } });
+      // Update Contacts — set status AND lifecycleStage
+      if (deal.leadDeals.length > 0) {
+        for (const cd of deal.leadDeals) {
+          const contact = await tx.lead.findUnique({ where: { id: cd.leadId } });
           if (contact) {
-            const updatedContactProducts = Array.from(new Set([...(contact.activeProducts || []), ...activeProducts]));
-            await tx.contact.update({
-              where: { id: cd.contactId },
+            const updatedContactProducts = Array.from(new Set([...(contact.productInterest || []), ...activeProducts]));
+            await tx.lead.update({
+              where: { id: cd.leadId },
               data: {
-                customerType: 'Active Customer',
-                lifecycleStage: 'CUSTOMER',
-                customerSince: contact.customerSince || now,
-                activeProducts: updatedContactProducts,
+                status: 'Active Customer',
+                productInterest: updatedContactProducts,
               },
             });
           }
@@ -183,7 +180,7 @@ export async function moveDealStage(
         await tx.serviceOrder.create({
           data: {
             tenantId, dealId: deal.id,
-            organizationId: deal.organizationId,
+            accountId: deal.accountId,
             assignedTechnicianId: handoff.assignOwnerId || movedById,
             title: `Onboarding: ${deal.title}`,
             description: handoff.notes || `Post-sale onboarding for Deal: ${deal.title}`,

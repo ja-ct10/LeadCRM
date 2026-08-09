@@ -1,50 +1,35 @@
-'use client';
+﻿'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import type { Campaign, Template } from '@/store/types';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
 import { toast } from 'sonner';
 import { Plus, Send, X, Mail, MessageSquare, Megaphone, BarChart2, Eye, MousePointerClick, Edit2, Trash2, Play, Pause, Search, Filter, TrendingUp, TrendingDown, Copy, Calendar, ArrowLeft, SplitSquareHorizontal, ListOrdered, Monitor, Smartphone, Tags, Wand2, LayoutTemplate, Zap, Trophy, MoreVertical, Sparkles, Users, Loader2 } from 'lucide-react';
 import EmptyState from '@/shared/components/empty-state';
 import { TrelloFilter } from '@/shared/components/trello-filter';
+import { SideSheet } from '@/shared/components/side-sheet';
 import { CampaignReportView } from './campaign-report-view';
+import { CampaignBuilder } from './campaign-builder';
 import { usePagination } from '@/shared/hooks/use-pagination';
 import { Pagination } from '@/shared/components/ui/pagination';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
-const reportData = [
-  { name: 'Day 1', opens: 400, clicks: 240 },
-  { name: 'Day 2', opens: 300, clicks: 139 },
-  { name: 'Day 3', opens: 200, clicks: 980 },
-  { name: 'Day 4', opens: 278, clicks: 390 },
-  { name: 'Day 5', opens: 189, clicks: 480 },
-  { name: 'Day 6', opens: 239, clicks: 380 },
-  { name: 'Day 7', opens: 349, clicks: 430 },
-];
 
-const deviceData = [
-  { name: 'Mobile', value: 55 },
-  { name: 'Desktop', value: 40 },
-  { name: 'Tablet', value: 5 },
-];
-const COLORS = ['#10B981', '#0A6EFF', '#F59E0B'];
-
-const topLinks = [
-  { url: 'https://leadcrm.com/pricing', clicks: 842 },
-  { url: 'https://leadcrm.com/features/automation', clicks: 531 },
-  { url: 'https://leadcrm.com/book-demo', clicks: 289 },
-];
 
 export default function CampaignsPage() {
   const { campaigns, templates, roles, addCampaign, updateCampaign, deleteCampaign, addTemplate } = useData();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'all' | 'email' | 'sms'>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showBuilder, setShowBuilder] = useState(false);
+  const [builderInitialType, setBuilderInitialType] = useState<string | undefined>();
+  const [builderInitialContent, setBuilderInitialContent] = useState<string | undefined>();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
   const [isScheduling, setIsScheduling] = useState(false);
-  const [selectedCampaignForReport, setSelectedCampaignForReport] = useState<any>(null);
-  const [activeMetricTab, setActiveMetricTab] = useState<'sent' | 'delivered' | 'opened' | 'clicked' | 'responded' | 'bounced'>('sent');
+  const [selectedCampaignForReport, setSelectedCampaignForReport] = useState<Campaign | null>(null);
+  const [activeMetricTab, setActiveMetricTab] = useState<'sent' | 'delivered' | 'opened' | 'clicked' | 'bounced'>('sent');
   const [messageContent, setMessageContent] = useState('');
   const [isSequence, setIsSequence] = useState(false);
   const [sequenceSteps, setSequenceSteps] = useState([{ delay: 0, unit: 'days', content: '' }]);
@@ -53,7 +38,7 @@ export default function CampaignsPage() {
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [newTemplateType, setNewTemplateType] = useState<'Email' | 'SMS'>('Email');
   const [newTemplate, setNewTemplate] = useState({ name: '', subject: '', content: '', category: 'Marketing' });
-  const [previewTemplate, setPreviewTemplate] = useState<any>(null);
+  const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null);
 
   const [builderMode, setBuilderMode] = useState<'text' | 'visual'>('text');
   const [showVarDropdown, setShowVarDropdown] = useState(false);
@@ -92,25 +77,11 @@ export default function CampaignsPage() {
     setAudienceConditions(prev => prev.map((cond, i) => i === index ? { ...cond, [key]: value } : cond));
   };
 
-  const getEstimatedSize = () => {
-    if (audienceConditions.length === 0) return 0;
-    let base = 1240;
-    audienceConditions.forEach(cond => {
-      const valStr = (cond.value || '').toLowerCase();
-      if (cond.field === 'Status') {
-        if (valStr === 'hot') base = Math.floor(base * 0.16);
-        else if (valStr === 'warm') base = Math.floor(base * 0.25);
-        else if (valStr === 'cold') base = Math.floor(base * 0.40);
-        else if (valStr) base = Math.floor(base * 0.35);
-      } else if (cond.field === 'Source') {
-        base = Math.floor(base * 0.22);
-      } else if (cond.field === 'Industry' || cond.field === 'Role') {
-        base = Math.floor(base * 0.18);
-      } else {
-        base = Math.max(12, Math.floor(base * 0.45));
-      }
-    });
-    return Math.max(15, base);
+  const getEstimatedSize = (): string => {
+    if (audienceConditions.length === 0 || audienceConditions.every(c => !c.value.trim())) {
+      return 'All contacts';
+    }
+    return 'Calculating...';
   };
 
   const handleCreateAudience = () => {
@@ -136,31 +107,22 @@ export default function CampaignsPage() {
     setTargetAudiences(prev => [...prev, newAudName]);
     setNewCampaignTarget(newAudName);
     setIsAudienceModalOpen(false);
+    // Builder stays open (showBuilder is already true)
     
     // reset form
     setAudienceName('');
     setAudienceConditions([{ field: 'Status', operator: 'Equals', value: '' }]);
 
-    toast.success(`Target Audience "${newAudName}" created and selected! =ƒÄ»`);
+    toast.success(`Target Audience "${newAudName}" created and selected!`);
   };
 
   const [isBrainstorming, setIsBrainstorming] = useState(false);
   const [brainstormPrompt, setBrainstormPrompt] = useState('');
-  const [generatedIdeas, setGeneratedIdeas] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedIdeas, setGeneratedIdeas] = useState<string[]>([]);
 
   const handleGenerateIdeas = () => {
-    if (!brainstormPrompt.trim()) return;
-    setIsGenerating(true);
-    // Simulate AI generation
-    setTimeout(() => {
-      setGeneratedIdeas([
-        `Subject: Unlock Your Potential with ${newCampaignName}\n\nHi {{first_name}},\n\nWe noticed you're interested in scaling up. Let's talk about how we can help.`,
-        `Subject: The secret to better results? =ƒñ½\n\nHey {{first_name}},\n\nIf you're reading this, you probably know that managing contacts is hard. What if we told you it doesn't have to be?`,
-        `Subject: Quick question about your goals, {{first_name}}\n\nHi {{first_name}},\n\nJust reaching out to see if you have 5 minutes to chat about your upcoming projects this quarter.`
-      ]);
-      setIsGenerating(false);
-    }, 1500);
+    toast.info('AI brainstorming is not yet available. This feature is coming soon.');
   };
 
   const getPreviewText = (text: string) => {
@@ -191,15 +153,25 @@ export default function CampaignsPage() {
     }
     return `${newCampaignName || 'LeadCRM Broadcast'}`;
   };
+  // ── KPI computations (real data, no hardcoded numbers) ─────────────────────
+  const activeCampaignCount   = campaigns.filter(c => c.status === 'active' && !c.isArchived).length;
+  const totalMessagesSent     = campaigns.filter(c => !c.isArchived).reduce((sum, c) => sum + (c.sentCount || 0), 0);
+  const totalOpened           = campaigns.filter(c => !c.isArchived).reduce((sum, c) => sum + (c.openedCount || 0), 0);
+  const totalClicked          = campaigns.filter(c => !c.isArchived).reduce((sum, c) => sum + (c.clickedCount || 0), 0);
+  const campaignsWithSends    = campaigns.filter(c => !c.isArchived && (c.sentCount || 0) > 0);
+  const avgOpenRate           = campaignsWithSends.length > 0
+    ? campaignsWithSends.reduce((sum, c) => sum + ((c.openedCount || 0) / (c.sentCount || 1)) * 100, 0) / campaignsWithSends.length
+    : 0;
+  // Get user role definition for RBAC checks
   const userRoleDef = roles.find(r => r.name === user?.role);
   const userPerms = userRoleDef?.permissions || [];
   const isClientAdmin = user?.role === 'Client Admin';
-  const canCreateCampaign = isClientAdmin || userPerms.includes('p18');
-  const canEditCampaign = isClientAdmin || userPerms.includes('p19');
-  const canDeleteCampaign = isClientAdmin || userPerms.includes('p20');
-  const canSendCampaign = isClientAdmin || userPerms.includes('p21');
+  const canCreateCampaign = isClientAdmin || userPerms.some(p => p === 'p18' || p === 'campaigns.create');
+  const canEditCampaign   = isClientAdmin || userPerms.some(p => p === 'p19' || p === 'campaigns.edit');
+  const canDeleteCampaign = isClientAdmin || userPerms.some(p => p === 'p20' || p === 'campaigns.delete');
+  const canSendCampaign   = isClientAdmin || userPerms.some(p => p === 'p21' || p === 'campaigns.send');
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!newCampaignName.trim()) {
       toast.error('Please enter a campaign name.');
       return;
@@ -210,7 +182,7 @@ export default function CampaignsPage() {
       return;
     }
 
-    addCampaign({
+    await addCampaign({
       name: newCampaignName,
       type: newCampaignType as 'Email' | 'Sms' | 'Multi-Channel',
       status: isScheduling ? 'scheduled' : 'active',
@@ -223,13 +195,13 @@ export default function CampaignsPage() {
     resetCampaignForm();
   };
 
-  const handleSaveDraft = () => {
+  const handleSaveDraft = async () => {
     if (!newCampaignName.trim()) {
       toast.error('Please enter a campaign name.');
       return;
     }
 
-    addCampaign({
+    await addCampaign({
       name: newCampaignName,
       type: newCampaignType as 'Email' | 'Sms' | 'Multi-Channel',
       status: 'Draft',
@@ -253,10 +225,9 @@ export default function CampaignsPage() {
     setIsTriggerBased(false);
     setIsBrainstorming(false);
     setBrainstormPrompt('');
-    setGeneratedIdeas([]);
   };
 
-  const handleDuplicate = (camp: any) => {
+  const handleDuplicate = (camp: Campaign) => {
     addCampaign({
       name: `${camp.name} (Copy)`,
       type: camp.type,
@@ -332,6 +303,146 @@ export default function CampaignsPage() {
     resetDeps: [searchTerm, statusFilter, typeFilter, activeTab],
   });
 
+  if (showBuilder) {
+    return (
+      <>
+        <CampaignBuilder
+          onBack={() => setShowBuilder(false)}
+          onCreateAudience={() => setIsAudienceModalOpen(true)}
+          initialType={builderInitialType}
+          initialContent={builderInitialContent}
+        />
+        {/* Create Target Audience Side Panel — rendered alongside builder */}
+        <SideSheet isOpen={isAudienceModalOpen} onClose={() => setIsAudienceModalOpen(false)} title="Create Target Audience" subtitle="Define conditions to segment your contacts">
+          <div className="p-5 space-y-4">
+            {/* Audience Name Field */}
+            <div>
+              <label id="builder-audience-name-label" htmlFor="builder-audience-name-input" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                Audience Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="builder-audience-name-input"
+                aria-labelledby="builder-audience-name-label"
+                value={audienceName}
+                onChange={(e) => setAudienceName(e.target.value)}
+                className="w-full bg-white dark:bg-black/20 border border-gray-200 dark:border-white/5 rounded-lg px-3.5 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors"
+                placeholder="e.g., High-Value Prospects"
+              />
+            </div>
+
+            {/* Conditions list header */}
+            <div className="flex justify-between items-center pt-1">
+              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                Conditions <span className="text-red-500">*</span>
+              </span>
+              <button
+                type="button"
+                onClick={handleAddCondition}
+                className="text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-50 hover:bg-slate-100 dark:bg-white/4 dark:hover:bg-white/8 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/5 transition-all flex items-center gap-1.5"
+              >
+                <Plus size={13} className="stroke-[2.5px]" /> Add Condition
+              </button>
+            </div>
+
+            {/* Conditions List */}
+            <div className="space-y-3.5 max-h-75 overflow-y-auto pr-1">
+              {audienceConditions.map((cond, index) => (
+                <div
+                  key={index}
+                  className="p-3.5 bg-slate-50/70 dark:bg-white/1 border border-gray-100 dark:border-white/3 rounded-xl flex items-end gap-3 relative group"
+                >
+                  <div className="grid grid-cols-3 gap-2.5 flex-1 text-left">
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400 block mb-1">Field</label>
+                      <select
+                        value={cond.field}
+                        onChange={(e) => handleConditionChange(index, 'field', e.target.value)}
+                        className="w-full bg-white dark:bg-black/35 border border-gray-200 dark:border-white/8 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-200 focus:outline-none"
+                      >
+                        <option value="Status">Status</option>
+                        <option value="Source">Source</option>
+                        <option value="Industry">Industry</option>
+                        <option value="Customer Type">Customer Type</option>
+                        <option value="Role">Role</option>
+                        <option value="Lead Score">Lead Score</option>
+                        <option value="Deal Value">Deal Value ($)</option>
+                        <option value="Date Created">Date Created</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400 block mb-1">Operator</label>
+                      <select
+                        value={cond.operator}
+                        onChange={(e) => handleConditionChange(index, 'operator', e.target.value)}
+                        className="w-full bg-white dark:bg-black/35 border border-gray-200 dark:border-white/8 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-200 focus:outline-none"
+                      >
+                        <option value="Equals">Equals</option>
+                        <option value="Not Equals">Not Equals</option>
+                        <option value="Contains">Contains</option>
+                        <option value="Greater Than">Greater Than</option>
+                        <option value="Less Than">Less Than</option>
+                        <option value="In Last (days)">In Last (days)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 dark:text-slate-400 block mb-1">Value</label>
+                      <input
+                        value={cond.value}
+                        onChange={(e) => handleConditionChange(index, 'value', e.target.value)}
+                        placeholder="Enter value"
+                        className="w-full bg-white dark:bg-black/35 border border-gray-200 dark:border-white/8 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  {audienceConditions.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveCondition(index)}
+                      className="p-1.5 mb-1.5 text-slate-400 hover:text-red-500 hover:bg-red-500/10 dark:hover:bg-red-500/20 rounded transition-colors"
+                      title="Remove condition"
+                      aria-label="Remove condition"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Estimated audience size banner */}
+            <div className="bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200/50 dark:border-blue-500/20 p-3.5 rounded-xl">
+              <div className="text-xs font-semibold text-blue-700 dark:text-blue-300">
+                Estimated Audience Size: <span className="font-bold">~{getEstimatedSize()} contacts</span>
+              </div>
+              <div className="text-[10px] text-blue-500 dark:text-blue-400/80 mt-1 font-medium">
+                All conditions must be met (AND logic)
+              </div>
+            </div>
+
+            {/* Footer buttons */}
+            <div className="sticky bottom-0 flex justify-end gap-2.5 pt-4 border-t border-gray-200 dark:border-white/5">
+              <button
+                type="button"
+                onClick={() => setIsAudienceModalOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-white/5 rounded-lg border border-gray-200 dark:border-white/8 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateAudience}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all"
+              >
+                Create Audience
+              </button>
+            </div>
+          </div>
+        </SideSheet>
+      </>
+    );
+  }
+
   if (selectedCampaignForReport) {
     return (
       <CampaignReportView
@@ -368,7 +479,7 @@ export default function CampaignsPage() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
-                    onClick={() => setIsModalOpen(true)}
+                    onClick={() => setShowBuilder(true)}
                     aria-label="Create Campaign"
                     className="h-9 w-9 flex items-center justify-center bg-blue-600 text-white rounded-md hover:bg-blue-700 active:scale-95 transition-all shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 cursor-pointer"
                   >
@@ -387,55 +498,59 @@ export default function CampaignsPage() {
         <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
           <span className="text-slate-500 dark:text-slate-400 font-medium">Active Campaigns</span>
           <div className="flex items-baseline gap-1.5 mt-1">
-            <span className="text-base font-bold text-slate-900 dark:text-white">{campaigns.filter(c => c.status === 'active' && !c.isArchived).length}</span>
-            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">+2 active</span>
+            <span className="text-base font-bold text-slate-900 dark:text-white">{activeCampaignCount}</span>
           </div>
         </div>
 
         <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
           <span className="text-slate-500 dark:text-slate-400 font-medium">Total Messages Sent</span>
           <div className="flex items-baseline gap-1.5 mt-1">
-            <span className="text-base font-bold text-slate-900 dark:text-white">12,480</span>
-            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">+18%</span>
+            <span className="text-base font-bold text-slate-900 dark:text-white">{totalMessagesSent.toLocaleString()}</span>
           </div>
         </div>
 
         <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
-          <span className="text-slate-500 dark:text-slate-400 font-medium">Leads Generated</span>
+          <span className="text-slate-500 dark:text-slate-400 font-medium">Total Opened</span>
           <div className="flex items-baseline gap-1.5 mt-1">
-            <span className="text-base font-bold text-slate-900 dark:text-white">1,248</span>
-            <span className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold">+12%</span>
+            <span className="text-base font-bold text-slate-900 dark:text-white">{totalOpened.toLocaleString()}</span>
           </div>
         </div>
 
         <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
-          <span className="text-slate-500 dark:text-slate-400 font-medium">Closed Customers</span>
+          <span className="text-slate-500 dark:text-slate-400 font-medium">Total Clicked</span>
           <div className="flex items-baseline gap-1 mt-1">
-            <span className="text-base font-bold text-slate-900 dark:text-white">42</span>
-            <span className="text-[11px] text-slate-500">converted</span>
+            <span className="text-base font-bold text-slate-900 dark:text-white">{totalClicked.toLocaleString()}</span>
           </div>
         </div>
 
         <div className="flex flex-col justify-between">
           <span className="text-slate-500 dark:text-slate-400 font-medium">Avg Open Rate</span>
           <div className="flex items-center gap-2 mt-1">
-            <span className="text-base font-bold text-slate-900 dark:text-white">44.8%</span>
+            <span className="text-base font-bold text-slate-900 dark:text-white">{avgOpenRate.toFixed(1)}%</span>
             <div className="w-12 bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
-              <div className="bg-emerald-500 h-full w-[44.8%]"></div>
+            <div
+              className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+              style={{ width: `${Math.min(avgOpenRate, 100)}%` }}
+              role="progressbar"
+              aria-valuenow={Math.round(avgOpenRate)}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label={`Average open rate: ${avgOpenRate.toFixed(1)}%`}
+            />
             </div>
           </div>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 bg-white dark:bg-white/[0.02] p-1 rounded-lg w-fit border border-gray-200 dark:border-white/[0.05]">
+      <div className="flex items-center gap-1 bg-white dark:bg-white/2 p-1 rounded-lg w-fit border border-gray-200 dark:border-white/5">
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 onClick={() => setActiveTab('all')}
                 aria-label="All Campaigns"
-                className={`h-8 w-8 flex items-center justify-center rounded-md transition-colors ${activeTab === 'all' ? 'bg-white/[0.1] text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
+                className={`h-8 w-8 flex items-center justify-center rounded-md transition-colors ${activeTab === 'all' ? 'bg-white/10 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
               >
                 <BarChart2 size={16} />
               </button>
@@ -447,7 +562,7 @@ export default function CampaignsPage() {
               <button
                 onClick={() => setActiveTab('email')}
                 aria-label="Email Templates"
-                className={`h-8 w-8 flex items-center justify-center rounded-md transition-colors ${activeTab === 'email' ? 'bg-white/[0.1] text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
+                className={`h-8 w-8 flex items-center justify-center rounded-md transition-colors ${activeTab === 'email' ? 'bg-white/10 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
               >
                 <Mail size={16} />
               </button>
@@ -459,7 +574,7 @@ export default function CampaignsPage() {
               <button
                 onClick={() => setActiveTab('sms')}
                 aria-label="SMS Templates"
-                className={`h-8 w-8 flex items-center justify-center rounded-md transition-colors ${activeTab === 'sms' ? 'bg-white/[0.1] text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
+                className={`h-8 w-8 flex items-center justify-center rounded-md transition-colors ${activeTab === 'sms' ? 'bg-white/10 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
               >
                 <MessageSquare size={16} />
               </button>
@@ -478,7 +593,7 @@ export default function CampaignsPage() {
               title="No Campaigns Created Yet"
               description="Launch targeted email or SMS marketing campaigns to follow up with your contacts, educate prospects, and drive sales automatically."
               actionLabel="Create Campaign"
-              onAction={() => setIsModalOpen(true)}
+              onAction={() => setShowBuilder(true)}
               secondaryActionLabel={templates.filter(t => t.type === 'Email').length === 0 ? undefined : "Browse Templates"}
               onSecondaryAction={templates.filter(t => t.type === 'Email').length === 0 ? undefined : () => setActiveTab('email')}
             />
@@ -486,7 +601,7 @@ export default function CampaignsPage() {
         ) : (
           <div className="space-y-4">
             {/* Filters & Search */}
-            <div className="flex flex-col sm:flex-row gap-4 justify-between items-center bg-white dark:bg-white/[0.02] p-3 rounded-2xl border border-gray-200 dark:border-white/[0.05] shadow-sm mb-4">
+            <div className="flex flex-col sm:flex-row gap-4 justify-between items-center bg-white dark:bg-white/2 p-3 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm mb-4">
               <div className="flex-1 w-full relative flex items-center bg-slate-50 dark:bg-slate-900/50 hover:bg-white dark:hover:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl transition-all duration-200 focus-within:bg-white dark:focus-within:bg-slate-900 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/80 shadow-sm max-w-md">
                 <div className="pl-3.5 flex items-center gap-2 shrink-0 py-2.5">
                   <Search size={15} className="text-slate-400 dark:text-slate-500" />
@@ -507,7 +622,7 @@ export default function CampaignsPage() {
                   </button>
                 )}
               </div>
-              <div className="shrink-0 flex items-center gap-2 overflow-x-auto">
+              <div className="shrink-0 flex items-center gap-2">
                  <TrelloFilter
                    searchTerm={searchTerm}
                    setSearchTerm={setSearchTerm}
@@ -532,10 +647,10 @@ export default function CampaignsPage() {
               </div>
             </div>
 
-            <div className="bg-white dark:bg-white/[0.02] rounded-xl border border-gray-200 dark:border-white/[0.05] shadow-lg backdrop-blur-xl overflow-hidden">
+            <div className="bg-white dark:bg-white/2 rounded-xl border border-gray-200 dark:border-white/5 shadow-lg backdrop-blur-xl overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
-                  <thead className="bg-white dark:bg-white/[0.02] text-slate-500 dark:text-slate-400 border-b border-gray-200 dark:border-white/[0.05]">
+                  <thead className="bg-white dark:bg-white/2 text-slate-500 dark:text-slate-400 border-b border-gray-200 dark:border-white/5">
                     <tr>
                       <th className="px-6 py-4 font-medium">Campaign</th>
                       <th className="px-6 py-4 font-medium">Type</th>
@@ -546,9 +661,9 @@ export default function CampaignsPage() {
                       <th className="px-6 py-4 font-medium text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/[0.05]">
+                  <tbody className="divide-y divide-white/5">
                     {filteredCampaigns.length > 0 ? paginateItems(filteredCampaigns).map(camp => (
-                      <tr key={camp.id} className="hover:bg-white dark:bg-white/[0.02] transition-colors group">
+                      <tr key={camp.id} className="hover:bg-white dark:bg-white/2 transition-colors group">
                         <td className="px-6 py-4">
                           <div className="font-medium text-slate-900 dark:text-white">{camp.name}</div>
                           {camp.description && <div className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">{camp.description}</div>}
@@ -565,7 +680,7 @@ export default function CampaignsPage() {
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
-                            <div className="w-5 h-5 rounded-full bg-gray-50 dark:bg-white/[0.05] flex items-center justify-center border border-gray-200 dark:border-white/[0.05]">
+                            <div className="w-5 h-5 rounded-full bg-gray-50 dark:bg-white/5 flex items-center justify-center border border-gray-200 dark:border-white/5">
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
                             </div>
                             <span className="text-sm">{camp.targetAudience}</span>
@@ -593,7 +708,7 @@ export default function CampaignsPage() {
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-24 h-2 bg-gray-50 dark:bg-white/[0.05] rounded-full overflow-hidden">
+                            <div className="w-24 h-2 bg-gray-50 dark:bg-white/5 rounded-full overflow-hidden">
                               <div 
                                 className="h-full bg-slate-400 rounded-full" 
                                 style={{ width: `${camp.engagement}%` }}
@@ -603,29 +718,29 @@ export default function CampaignsPage() {
                           </div>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex items-center justify-end gap-1">
                             <button 
                               title="View Report" 
                               onClick={() => setSelectedCampaignForReport(camp)}
-                              className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.1] rounded-md transition-colors"
+                              className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-md transition-colors"
                             >
                               <BarChart2 size={16} />
                             </button>
                             {canSendCampaign && (
                               <>
-                                {camp.status === 'active' ? (
-                                  <button onClick={() => updateCampaign(camp.id, { status: 'paused' })} title="Pause" className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.1] rounded-md transition-colors">
+                                {camp.status.toLowerCase() === 'active' ? (
+                                  <button onClick={() => updateCampaign(camp.id, { status: 'paused' })} title="Pause" className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-md transition-colors">
                                     <Pause size={16} />
                                   </button>
-                                ) : camp.status === 'paused' ? (
-                                  <button onClick={() => updateCampaign(camp.id, { status: 'active' })} title="Resume" className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.1] rounded-md transition-colors">
+                                ) : camp.status.toLowerCase() === 'paused' ? (
+                                  <button onClick={() => updateCampaign(camp.id, { status: 'active' })} title="Resume" className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-md transition-colors">
                                     <Play size={16} />
                                   </button>
                                 ) : null}
                               </>
                             )}
                             {canCreateCampaign && (
-                              <button onClick={() => handleDuplicate(camp)} title="Duplicate" className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.1] rounded-md transition-colors">
+                              <button onClick={() => handleDuplicate(camp)} title="Duplicate" className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-md transition-colors">
                                 <Copy size={16} />
                               </button>
                             )}
@@ -634,8 +749,8 @@ export default function CampaignsPage() {
                                 setNewCampaignName(camp.name);
                                 setNewCampaignType(camp.type);
                                 setNewCampaignTarget(camp.targetAudience);
-                                setIsModalOpen(true);
-                              }} title="Edit" className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.1] rounded-md transition-colors">
+                                setShowBuilder(true);
+                              }} title="Edit" className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-md transition-colors">
                                 <Edit2 size={16} />
                               </button>
                             )}
@@ -682,7 +797,7 @@ export default function CampaignsPage() {
           <div className="flex justify-end mb-4">
             <button 
               onClick={() => { setNewTemplateType('Email'); setIsTemplateModalOpen(true); }}
-              className="flex items-center gap-2 bg-gray-50 dark:bg-white/[0.05] border border-gray-300 dark:border-white/[0.1] text-slate-900 dark:text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-white/[0.1] transition-colors"
+              className="flex items-center gap-2 bg-gray-50 dark:bg-white/5 border border-gray-300 dark:border-white/10 text-slate-900 dark:text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
             >
               <Plus size={16} /> New Email Template
             </button>
@@ -690,26 +805,28 @@ export default function CampaignsPage() {
           {emailTemplates.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {emailTemplates.map(template => (
-                <div key={template.id} className="bg-white dark:bg-white/[0.02] rounded-xl border border-gray-200 dark:border-white/[0.05] p-5 shadow-lg backdrop-blur-xl flex flex-col h-full">
+                <div key={template.id} className="bg-white dark:bg-white/2 rounded-xl border border-gray-200 dark:border-white/5 p-5 shadow-lg backdrop-blur-xl flex flex-col h-full">
                   <div className="flex justify-between items-start mb-3">
-                    <span className="px-2.5 py-1 bg-gray-50 dark:bg-white/[0.05] text-slate-700 dark:text-slate-300 text-xs font-medium rounded-md border border-gray-200 dark:border-white/[0.05]">
+                    <span className="px-2.5 py-1 bg-gray-50 dark:bg-white/5 text-slate-700 dark:text-slate-300 text-xs font-medium rounded-md border border-gray-200 dark:border-white/5">
                       {template.category}
                     </span>
                     <Mail size={16} className="text-slate-500 dark:text-slate-400" />
                   </div>
                   <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-1">{template.name}</h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400 mb-4 line-clamp-1">{template.subject}</p>
-                  <div className="bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg p-4 text-sm text-slate-700 dark:text-slate-300 mb-6 flex-grow">
+                  <div className="bg-white dark:bg-white/2 border border-gray-200 dark:border-white/5 rounded-lg p-4 text-sm text-slate-700 dark:text-slate-300 mb-6 grow">
                     <p className="line-clamp-3">{template.content}</p>
                   </div>
                   <div className="flex gap-3 mt-auto">
-                    <button onClick={() => setPreviewTemplate(template)} className="flex-1 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-white/[0.02] border border-gray-300 dark:border-white/[0.1] rounded-lg hover:bg-gray-50 dark:hover:bg-white/[0.05] hover:text-slate-900 dark:hover:text-white transition-colors">
+                    <button onClick={() => setPreviewTemplate(template)} className="flex-1 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-white/2 border border-gray-300 dark:border-white/10 rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white transition-colors">
                       Preview
                     </button>
                     <button onClick={() => {
                       setNewCampaignType('Email');
                       setMessageContent(template.content);
-                      setIsModalOpen(true);
+                      setBuilderInitialType('Email');
+                      setBuilderInitialContent(template.content);
+                      setShowBuilder(true);
                     }} className="flex-1 py-2 text-sm font-medium text-white bg-[#0A6EFF] rounded-lg hover:bg-blue-600 transition-colors shadow-[0_0_15px_rgba(10,110,255,0.2)]">
                       Use Template
                     </button>
@@ -736,7 +853,7 @@ export default function CampaignsPage() {
           <div className="flex justify-end mb-4">
             <button 
               onClick={() => { setNewTemplateType('SMS'); setIsTemplateModalOpen(true); }}
-              className="flex items-center gap-2 bg-gray-50 dark:bg-white/[0.05] border border-gray-300 dark:border-white/[0.1] text-slate-900 dark:text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-white/[0.1] transition-colors"
+              className="flex items-center gap-2 bg-gray-50 dark:bg-white/5 border border-gray-300 dark:border-white/10 text-slate-900 dark:text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
             >
               <Plus size={16} /> New SMS Template
             </button>
@@ -744,22 +861,22 @@ export default function CampaignsPage() {
           {smsTemplates.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {smsTemplates.map(template => (
-                <div key={template.id} className="bg-white dark:bg-white/[0.02] rounded-xl border border-gray-200 dark:border-white/[0.05] p-5 shadow-lg backdrop-blur-xl flex flex-col h-full">
+                <div key={template.id} className="bg-white dark:bg-white/2 rounded-xl border border-gray-200 dark:border-white/5 p-5 shadow-lg backdrop-blur-xl flex flex-col h-full">
                   <div className="flex justify-between items-start mb-3">
-                    <span className="px-2.5 py-1 bg-gray-50 dark:bg-white/[0.05] text-slate-700 dark:text-slate-300 text-xs font-medium rounded-md border border-gray-200 dark:border-white/[0.05]">
+                    <span className="px-2.5 py-1 bg-gray-50 dark:bg-white/5 text-slate-700 dark:text-slate-300 text-xs font-medium rounded-md border border-gray-200 dark:border-white/5">
                       {template.category}
                     </span>
                     <MessageSquare size={16} className="text-slate-500 dark:text-slate-400" />
                   </div>
                   <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">{template.name}</h3>
-                  <div className="bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg p-4 text-sm text-slate-700 dark:text-slate-300 mb-2 flex-grow">
+                  <div className="bg-white dark:bg-white/2 border border-gray-200 dark:border-white/5 rounded-lg p-4 text-sm text-slate-700 dark:text-slate-300 mb-2 grow">
                     <p className="line-clamp-4">{template.content}</p>
                   </div>
                   <div className="text-xs text-slate-500 mb-6">
                     {template.content.length} characters
                   </div>
                   <div className="flex gap-3 mt-auto">
-                    <button onClick={() => setPreviewTemplate(template)} className="flex-1 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-white/[0.02] border border-gray-300 dark:border-white/[0.1] rounded-lg hover:bg-gray-50 dark:hover:bg-white/[0.05] hover:text-slate-905 hover:text-slate-900 dark:hover:text-white transition-colors">
+                    <button onClick={() => setPreviewTemplate(template)} className="flex-1 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-white/2 border border-gray-300 dark:border-white/10 rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 hover:text-slate-905 hover:text-slate-900 dark:hover:text-white transition-colors">
                       Preview
                     </button>
                     <button onClick={() => {
@@ -787,36 +904,27 @@ export default function CampaignsPage() {
         </div>
       )}
 
-      {/* Create Campaign Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-50 dark:bg-slate-950 rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex-shrink-0 flex items-center justify-between p-6 border-b border-gray-200 dark:border-white/[0.05]">
-              <div>
-                <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Create Campaign</h2>
-                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Draft a new message to send to your contacts.</p>
-              </div>
-              <button type="button" onClick={() => setIsModalOpen(false)} className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/5 rounded-lg transition-colors"><X size={20} /></button>
-            </div>
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-5">
+      {/* Create Campaign Side Panel */}
+      <SideSheet isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Create Campaign" subtitle="Draft a new message to send to your contacts." width="w-full max-w-2xl">
+        <div className="p-6 space-y-5">
               <div className="grid grid-cols-2 gap-5">
                 <div className="col-span-2">
-                  <label htmlFor="campaign-name-input" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Campaign Name</label>
+                  <label htmlFor="campaign-name-input" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Campaign Name <span className="text-red-500">*</span></label>
                   <input 
                     id="campaign-name-input" 
                     value={newCampaignName} 
                     onChange={(e) => setNewCampaignName(e.target.value)} 
-                    className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] focus:bg-white/[0.04] transition-all" 
+                    className="w-full bg-white dark:bg-white/2 border border-gray-200 dark:border-white/5 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/10 focus:bg-white/4 transition-all" 
                     placeholder="e.g. Q3 Newsletter" 
                   />
                 </div>
                 <div>
-                  <label htmlFor="campaign-type-select" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Type</label>
+                  <label htmlFor="campaign-type-select" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Type <span className="text-red-500">*</span></label>
                   <select 
                     id="campaign-type-select" 
                     value={newCampaignType} 
                     onChange={(e) => setNewCampaignType(e.target.value)} 
-                    className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] focus:bg-white/[0.04] transition-all"
+                    className="w-full bg-white dark:bg-white/2 border border-gray-200 dark:border-white/5 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/10 focus:bg-white/4 transition-all"
                   >
                     <option value="Email" className="bg-gray-50 dark:bg-slate-950">Email</option>
                     <option value="SMS" className="bg-gray-50 dark:bg-slate-950">SMS</option>
@@ -828,7 +936,7 @@ export default function CampaignsPage() {
                     <label htmlFor="campaign-audience-select" className="text-sm font-medium text-slate-700 dark:text-slate-300">Target Audience</label>
                     <button 
                       type="button" 
-                      onClick={() => setIsAudienceModalOpen(true)}
+                      onClick={() => { setIsModalOpen(false); setIsAudienceModalOpen(true); }}
                       className="text-xs font-bold text-[#0A6EFF] hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 transition-colors flex items-center gap-1 bg-blue-500/10 hover:bg-blue-500/20 px-2 py-0.5 rounded border border-blue-500/20"
                     >
                       <Plus size={11} className="stroke-[3px]" /> Create New
@@ -839,7 +947,7 @@ export default function CampaignsPage() {
                       id="campaign-audience-select" 
                       value={newCampaignTarget} 
                       onChange={(e) => setNewCampaignTarget(e.target.value)} 
-                      className="w-full appearance-none bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] focus:bg-white/[0.04] transition-all pr-10"
+                      className="w-full appearance-none bg-white dark:bg-white/2 border border-gray-200 dark:border-white/5 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/10 focus:bg-white/4 transition-all pr-10"
                     >
                       {targetAudiences.map(aud => (
                         <option key={aud} value={aud} className="bg-gray-50 dark:bg-slate-950">{aud}</option>
@@ -850,7 +958,7 @@ export default function CampaignsPage() {
                 </div>
                 <div className="col-span-2">
                   <div className="flex flex-col sm:flex-row gap-4 mb-4">
-                    <div className="flex-1 flex items-center justify-between p-4 bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg">
+                    <div className="flex-1 flex items-center justify-between p-4 bg-white dark:bg-white/2 border border-gray-200 dark:border-white/5 rounded-lg">
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
                           <ListOrdered size={16} className="text-emerald-400" />
@@ -862,7 +970,7 @@ export default function CampaignsPage() {
                       </div>
                       <label className="relative inline-flex items-center cursor-pointer">
                         <input type="checkbox" className="sr-only peer" checked={isSequence} onChange={() => setIsSequence(!isSequence)} />
-                        <div className="w-9 h-5 bg-white/[0.1] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500 peer-disabled:opacity-50"></div>
+                        <div className="w-9 h-5 bg-gray-300 dark:bg-slate-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:shadow-sm after:transition-all peer-checked:bg-emerald-500 peer-disabled:opacity-50"></div>
                       </label>
                     </div>
                   </div>
@@ -872,7 +980,7 @@ export default function CampaignsPage() {
                   {isSequence ? (
                     <div className="space-y-4">
                       {sequenceSteps.map((step, index) => (
-                        <div key={index} className="bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg p-4 animate-in fade-in slide-in-from-bottom-2">
+                        <div key={index} className="bg-white dark:bg-white/2 border border-gray-200 dark:border-white/5 rounded-lg p-4 animate-in fade-in slide-in-from-bottom-2">
                           <div className="flex justify-between items-center mb-3">
                             <h5 className="text-sm font-medium text-slate-900 dark:text-white flex items-center gap-2">
                               <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xs">{index + 1}</span>
@@ -883,7 +991,7 @@ export default function CampaignsPage() {
                                 <span className="text-xs text-slate-500 dark:text-slate-400">Wait</span>
                                 <input 
                                   type="number" 
-                                  className="w-16 bg-black/20 border border-gray-200 dark:border-white/[0.05] rounded px-2 py-1 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1]" 
+                                  className="w-16 bg-black/20 border border-gray-200 dark:border-white/5 rounded px-2 py-1 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/10" 
                                   value={step.delay} 
                                   onChange={(e) => {
                                     const newSteps = [...sequenceSteps];
@@ -892,7 +1000,7 @@ export default function CampaignsPage() {
                                   }} 
                                 />
                                 <select
-                                  className="bg-black/20 border border-gray-200 dark:border-white/[0.05] rounded px-2 py-1 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] appearance-none"
+                                  className="bg-black/20 border border-gray-200 dark:border-white/5 rounded px-2 py-1 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/10 appearance-none"
                                   value={step.unit}
                                   onChange={(e) => {
                                     const newSteps = [...sequenceSteps];
@@ -918,7 +1026,7 @@ export default function CampaignsPage() {
                           </div>
                           <textarea 
                             rows={3} 
-                            className="w-full bg-black/20 border border-gray-200 dark:border-white/[0.05] rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] transition-all resize-none" 
+                            className="w-full bg-black/20 border border-gray-200 dark:border-white/5 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/10 transition-all resize-none" 
                             placeholder="Message content for this step..."
                             value={step.content}
                             onChange={(e) => {
@@ -942,8 +1050,8 @@ export default function CampaignsPage() {
                         <div>
                           <div className="flex justify-between items-center mb-2">
                             <div className="flex gap-2">
-                              <button onClick={() => setBuilderMode('text')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${builderMode === 'text' ? 'bg-white/[0.1] text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>Text Editor</button>
-                              <button onClick={() => setBuilderMode('visual')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${builderMode === 'visual' ? 'bg-white/[0.1] text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}><LayoutTemplate size={14} /> Visual Builder</button>
+                              <button onClick={() => setBuilderMode('text')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${builderMode === 'text' ? 'bg-white/10 text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}>Text Editor</button>
+                              <button onClick={() => setBuilderMode('visual')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${builderMode === 'visual' ? 'bg-white/10 text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}><LayoutTemplate size={14} /> Visual Builder</button>
                             </div>
                             <div className="flex items-center gap-2">
                               <div className="relative">
@@ -990,9 +1098,9 @@ export default function CampaignsPage() {
                               </div>
                               
                               {generatedIdeas.length > 0 && (
-                                <div className="mt-4 space-y-3 max-h-[250px] overflow-y-auto custom-scrollbar pr-2">
+                                <div className="mt-4 space-y-3 max-h-62.5 overflow-y-auto custom-scrollbar pr-2">
                                   {generatedIdeas.map((idea, i) => (
-                                    <div key={i} className="bg-white dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.1] rounded-lg p-3 text-sm relative group hover:border-purple-500/50 transition-colors shadow-sm">
+                                    <div key={i} className="bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg p-3 text-sm relative group hover:border-purple-500/50 transition-colors shadow-sm">
                                       <p className="whitespace-pre-wrap text-slate-700 dark:text-slate-300 pr-10">{idea}</p>
                                       <button 
                                         onClick={() => {
@@ -1012,19 +1120,19 @@ export default function CampaignsPage() {
                           {builderMode === 'text' ? (
                             <textarea 
                               rows={8} 
-                              className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] focus:bg-white/[0.04] transition-all custom-scrollbar resize-none" 
+                              className="w-full bg-white dark:bg-white/2 border border-gray-200 dark:border-white/5 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/10 focus:bg-white/4 transition-all custom-scrollbar resize-none" 
                               placeholder="Hello {{first_name}}, ..."
                               value={messageContent}
                               onChange={(e) => setMessageContent(e.target.value)}
                             ></textarea>
                           ) : (
-                            <div className="h-48 w-full bg-black/20 border border-gray-200 dark:border-white/[0.05] border-dashed rounded-lg flex flex-col items-center justify-center text-slate-500">
+                            <div className="h-48 w-full bg-black/20 border border-gray-200 dark:border-white/5 border-dashed rounded-lg flex flex-col items-center justify-center text-slate-500">
                               <LayoutTemplate size={32} className="mb-3 opacity-50" />
                               <p className="text-sm">Drag and drop blocks here</p>
                               <div className="flex gap-2 mt-4">
-                                <span className="px-3 py-1.5 bg-gray-50 dark:bg-white/[0.05] rounded text-xs border border-gray-200 dark:border-white/[0.05] cursor-grab hover:bg-gray-100 dark:hover:bg-white/[0.1] transition-colors">Text Block</span>
-                                <span className="px-3 py-1.5 bg-gray-50 dark:bg-white/[0.05] rounded text-xs border border-gray-200 dark:border-white/[0.05] cursor-grab hover:bg-gray-100 dark:hover:bg-white/[0.1] transition-colors">Image</span>
-                                <span className="px-3 py-1.5 bg-gray-50 dark:bg-white/[0.05] rounded text-xs border border-gray-200 dark:border-white/[0.05] cursor-grab hover:bg-gray-100 dark:hover:bg-white/[0.1] transition-colors">Button</span>
+                                <span className="px-3 py-1.5 bg-gray-50 dark:bg-white/5 rounded text-xs border border-gray-200 dark:border-white/5 cursor-grab hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">Text Block</span>
+                                <span className="px-3 py-1.5 bg-gray-50 dark:bg-white/5 rounded text-xs border border-gray-200 dark:border-white/5 cursor-grab hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">Image</span>
+                                <span className="px-3 py-1.5 bg-gray-50 dark:bg-white/5 rounded text-xs border border-gray-200 dark:border-white/5 cursor-grab hover:bg-gray-100 dark:hover:bg-white/10 transition-colors">Button</span>
                               </div>
                             </div>
                           )}
@@ -1042,7 +1150,7 @@ export default function CampaignsPage() {
                                   type="button"
                                   key={tag.key}
                                   onClick={() => setMessageContent(prev => prev + tag.key)}
-                                  className="text-[11px] bg-slate-100 hover:bg-slate-200 dark:bg-white/[0.04] dark:hover:bg-white/[0.08] text-slate-700 dark:text-slate-300 font-medium px-2 py-1 rounded border border-gray-200 dark:border-white/[0.05] transition-all hover:border-gray-300 dark:hover:border-white/[0.1]"
+                                  className="text-[11px] bg-slate-100 hover:bg-slate-200 dark:bg-white/4 dark:hover:bg-white/8 text-slate-700 dark:text-slate-300 font-medium px-2 py-1 rounded border border-gray-200 dark:border-white/5 transition-all hover:border-gray-300 dark:hover:border-white/10"
                                   title={`Insert ${tag.label}`}
                                 >
                                   {tag.key}
@@ -1051,19 +1159,19 @@ export default function CampaignsPage() {
                             </div>
                           </div>
                         </div>
-                        <div className="bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg p-4 flex flex-col h-full min-h-[300px]">
-                          <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-100 dark:border-white/[0.05]">
+                        <div className="bg-white dark:bg-white/2 border border-gray-200 dark:border-white/5 rounded-lg p-4 flex flex-col h-full min-h-75">
+                          <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-100 dark:border-white/5">
                             <div className="flex items-baseline gap-2">
                               <span className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
                                 Live Preview
                               </span>
                               <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">({newCampaignType})</span>
                             </div>
-                            <div className="flex gap-1 bg-black/10 dark:bg-black/20 p-0.5 rounded-md border border-gray-200 dark:border-white/[0.05]">
+                            <div className="flex gap-1 bg-black/10 dark:bg-black/20 p-0.5 rounded-md border border-gray-200 dark:border-white/5">
                               <button 
                                 type="button"
                                 onClick={() => setPreviewDevice('desktop')}
-                                className={`p-1 rounded transition-colors ${previewDevice === 'desktop' ? 'bg-white dark:bg-white/[0.1] text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white'}`}
+                                className={`p-1 rounded transition-colors ${previewDevice === 'desktop' ? 'bg-white dark:bg-white/10 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white'}`}
                                 title="Desktop Preview"
                               >
                                 <Monitor size={14} />
@@ -1071,7 +1179,7 @@ export default function CampaignsPage() {
                               <button 
                                 type="button"
                                 onClick={() => setPreviewDevice('mobile')}
-                                className={`p-1 rounded transition-colors ${previewDevice === 'mobile' ? 'bg-white dark:bg-white/[0.1] text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white'}`}
+                                className={`p-1 rounded transition-colors ${previewDevice === 'mobile' ? 'bg-white dark:bg-white/10 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white'}`}
                                 title="Mobile Preview"
                               >
                                 <Smartphone size={14} />
@@ -1081,7 +1189,7 @@ export default function CampaignsPage() {
                           
                           <div className="flex-1 flex items-center justify-center py-2 bg-slate-50/50 dark:bg-black/10 rounded-lg p-3">
                             {previewDevice === 'mobile' ? (
-                              <div className="w-[250px] aspect-[9/18] max-h-[360px] border-[5px] border-slate-800 dark:border-slate-700 rounded-[2rem] bg-white dark:bg-[#0c0f16] shadow-xl overflow-hidden flex flex-col relative animate-in zoom-in-95 duration-200">
+                              <div className="w-62.5 aspect-9/18 max-h-90 border-[5px] border-slate-800 dark:border-slate-700 rounded-4xl bg-white dark:bg-[#0c0f16] shadow-xl overflow-hidden flex flex-col relative animate-in zoom-in-95 duration-200">
                                 <div className="absolute top-1.5 left-1/2 -translate-x-1/2 w-16 h-3.5 bg-black rounded-lg z-10 flex items-center justify-center">
                                   <div className="w-1 h-1 bg-slate-800 rounded-full mr-2"></div>
                                   <div className="w-6 h-0.5 bg-slate-800 rounded"></div>
@@ -1090,14 +1198,14 @@ export default function CampaignsPage() {
                                   {newCampaignType === 'SMS' ? (
                                     <div className="flex flex-col h-full">
                                       <div className="text-center text-[10px] text-slate-400 dark:text-slate-500 mb-2 font-medium">Text Message: Today</div>
-                                      <div className="bg-emerald-500 text-white p-2.5 rounded-2xl rounded-tr-sm max-w-[85%] self-end break-words shadow-sm text-[11px] whitespace-pre-wrap leading-relaxed">
+                                      <div className="bg-emerald-500 text-white p-2.5 rounded-2xl rounded-tr-sm max-w-[85%] self-end wrap-break-word shadow-sm text-[11px] whitespace-pre-wrap leading-relaxed">
                                         {getPreviewText(messageContent) || <span className="italic opacity-60">Message body is empty...</span>}
                                       </div>
                                       <div className="text-[10px] text-slate-400 dark:text-slate-500 text-right mt-1 pr-1">Delivered</div>
                                     </div>
                                   ) : (
-                                    <div className="flex flex-col h-full bg-slate-50 dark:bg-[#131924] rounded-lg overflow-hidden border border-gray-200/50 dark:border-white/[0.05]">
-                                      <div className="p-2 border-b border-gray-200 dark:border-white/[0.05] bg-white dark:bg-white/[0.02]">
+                                    <div className="flex flex-col h-full bg-slate-50 dark:bg-[#131924] rounded-lg overflow-hidden border border-gray-200/50 dark:border-white/5">
+                                      <div className="p-2 border-b border-gray-200 dark:border-white/5 bg-white dark:bg-white/2">
                                         <div className="font-semibold text-slate-900 dark:text-white text-[10px] truncate">{getSubjectLine(messageContent)}</div>
                                         <div className="text-[9px] text-slate-500 mt-0.5">To: John Doe ({newCampaignTarget})</div>
                                       </div>
@@ -1109,17 +1217,17 @@ export default function CampaignsPage() {
                                 </div>
                               </div>
                             ) : (
-                              <div className="w-full h-full min-h-[180px] bg-white dark:bg-[#131924] border border-gray-200 dark:border-white/[0.05] rounded-lg flex flex-col shadow-inner overflow-hidden animate-in fade-in duration-200 text-xs">
+                              <div className="w-full h-full min-h-45 bg-white dark:bg-[#131924] border border-gray-200 dark:border-white/5 rounded-lg flex flex-col shadow-inner overflow-hidden animate-in fade-in duration-200 text-xs">
                                 {newCampaignType === 'SMS' ? (
                                   <div className="flex flex-col h-full p-4 justify-center">
-                                    <div className="bg-emerald-500 text-white px-4 py-3 rounded-2xl rounded-tr-sm max-w-[70%] self-end break-words shadow text-sm whitespace-pre-wrap leading-relaxed">
+                                    <div className="bg-emerald-500 text-white px-4 py-3 rounded-2xl rounded-tr-sm max-w-[70%] self-end wrap-break-word shadow text-sm whitespace-pre-wrap leading-relaxed">
                                       {getPreviewText(messageContent) || <span className="italic opacity-60">Message body is empty...</span>}
                                     </div>
                                     <div className="text-[10px] text-slate-400 dark:text-slate-500 text-right mt-1.5 pr-2 font-medium">Delivered via SMS Texting GÇó Today</div>
                                   </div>
                                 ) : (
                                   <div className="flex flex-col h-full">
-                                    <div className="p-3 border-b border-gray-200 dark:border-white/[0.08] bg-slate-50/50 dark:bg-white/[0.02] flex flex-col gap-1">
+                                    <div className="p-3 border-b border-gray-200 dark:border-white/8 bg-slate-50/50 dark:bg-white/2 flex flex-col gap-1">
                                       <div className="flex items-center gap-2">
                                         <span className="text-slate-400 w-12 font-medium">Subject:</span>
                                         <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">{getSubjectLine(messageContent)}</span>
@@ -1143,18 +1251,18 @@ export default function CampaignsPage() {
                   )}
                 </div>
                 <div className="col-span-2">
-                  <div className="flex items-center justify-between p-4 bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg">
+                  <div className="flex items-center justify-between p-4 bg-white dark:bg-white/2 border border-gray-200 dark:border-white/5 rounded-lg">
                     <div>
                       <h4 className="text-sm font-medium text-slate-900 dark:text-white">Schedule Campaign</h4>
                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Send this campaign at a later date and time.</p>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
                       <input type="checkbox" className="sr-only peer" checked={isScheduling} onChange={() => setIsScheduling(!isScheduling)} />
-                      <div className="w-11 h-6 bg-white/[0.1] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#0A6EFF]"></div>
+                      <div className="w-11 h-6 bg-gray-300 dark:bg-slate-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:shadow-sm after:transition-all peer-checked:bg-blue-600"></div>
                     </label>
                   </div>
                   {isScheduling && (
-                    <div className="mt-3 grid grid-cols-2 gap-4 p-4 bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg animate-in fade-in slide-in-from-top-2">
+                    <div className="mt-3 grid grid-cols-2 gap-4 p-4 bg-white dark:bg-white/2 border border-gray-200 dark:border-white/5 rounded-lg animate-in fade-in slide-in-from-top-2">
                       <div>
                         <label htmlFor="campaign-schedule-date" className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">Date</label>
                         <input 
@@ -1162,7 +1270,7 @@ export default function CampaignsPage() {
                           type="date" 
                           value={newCampaignDate}
                           onChange={(e) => setNewCampaignDate(e.target.value)}
-                          className="w-full bg-slate-100 dark:bg-black/20 border border-gray-200 dark:border-white/[0.05] rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] transition-all" 
+                          className="w-full bg-slate-100 dark:bg-black/20 border border-gray-200 dark:border-white/5 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/10 transition-all" 
                         />
                       </div>
                       <div>
@@ -1172,13 +1280,13 @@ export default function CampaignsPage() {
                           type="time" 
                           value={newCampaignTime}
                           onChange={(e) => setNewCampaignTime(e.target.value)}
-                          className="w-full bg-slate-100 dark:bg-black/20 border border-gray-200 dark:border-white/[0.05] rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] transition-all" 
+                          className="w-full bg-slate-100 dark:bg-black/20 border border-gray-200 dark:border-white/5 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/10 transition-all" 
                         />
                       </div>
                     </div>
                   )}
 
-                  <div className="flex items-center justify-between p-4 bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg mt-4">
+                  <div className="flex items-center justify-between p-4 bg-white dark:bg-white/2 border border-gray-200 dark:border-white/5 rounded-lg mt-4">
                     <div className="flex items-center gap-3">
                       <div className="p-2 bg-amber-500/10 rounded-lg border border-amber-500/20">
                         <Zap size={16} className="text-amber-400" />
@@ -1190,17 +1298,17 @@ export default function CampaignsPage() {
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
                       <input type="checkbox" className="sr-only peer" checked={isTriggerBased} onChange={() => setIsTriggerBased(!isTriggerBased)} disabled={isScheduling} />
-                      <div className="w-9 h-5 bg-white/[0.1] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500 peer-disabled:opacity-50"></div>
+                      <div className="w-9 h-5 bg-gray-300 dark:bg-slate-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-amber-500/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:shadow-sm after:transition-all peer-checked:bg-amber-500 peer-disabled:opacity-50"></div>
                     </label>
                   </div>
                   {isTriggerBased && (
-                    <div className="mt-3 p-4 bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg animate-in fade-in slide-in-from-top-2">
+                    <div className="mt-3 p-4 bg-white dark:bg-white/2 border border-gray-200 dark:border-white/5 rounded-lg animate-in fade-in slide-in-from-top-2">
                       <label htmlFor="campaign-trigger-event" className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">When this event occurs:</label>
                       <select 
                         id="campaign-trigger-event"
                         value={triggerEvent}
                         onChange={(e) => setTriggerEvent(e.target.value)}
-                        className="w-full bg-black/20 border border-gray-200 dark:border-white/[0.05] rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] appearance-none"
+                        className="w-full bg-black/20 border border-gray-200 dark:border-white/5 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/10 appearance-none"
                       >
                         <option value="status_hot" className="bg-gray-50 dark:bg-slate-950">Contact Status changes to 'Hot'</option>
                         <option value="new_lead" className="bg-gray-50 dark:bg-slate-950">New Contact is added</option>
@@ -1211,42 +1319,23 @@ export default function CampaignsPage() {
                   )}
                 </div>
               </div>
-            </div>
-            <div className="flex-shrink-0 flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-white/[0.05] bg-gray-50 dark:bg-slate-950">
-              <button type="button" onClick={handleSaveDraft} className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/5 rounded-lg transition-colors">Save Draft</button>
-              <button onClick={handleSend} className="flex items-center gap-2 px-4 py-2 bg-[#0A6EFF] text-slate-900 dark:text-white text-sm font-medium rounded-lg hover:bg-blue-600 transition-colors shadow-[0_0_15px_rgba(10,110,255,0.2)]">
-                {isScheduling ? <Calendar size={16} /> : <Send size={16} />}
-                {isScheduling ? 'Schedule' : 'Send Now'}
-              </button>
-            </div>
+          {/* Footer */}
+          <div className="sticky bottom-0 flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-white/5 bg-white dark:bg-slate-900">
+            <button type="button" onClick={handleSaveDraft} className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-white/5 rounded-lg border border-gray-200 dark:border-white/8 transition-colors">Save Draft</button>
+            <button onClick={handleSend} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all">
+              {isScheduling ? <Calendar size={16} /> : <Send size={16} />}
+              {isScheduling ? 'Schedule' : 'Send Now'}
+            </button>
           </div>
         </div>
-      )}
+      </SideSheet>
 
-      {/* Create Target Audience Modal */}
-      {isAudienceModalOpen && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#0f131a] text-slate-900 dark:text-slate-100 rounded-2xl border border-gray-200 dark:border-white/[0.08] w-full max-w-lg overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-            {/* Header */}
-            <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-white/[0.04]">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Create Target Audience</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Define conditions to segment your contacts</p>
-              </div>
-              <button 
-                type="button" 
-                onClick={() => setIsAudienceModalOpen(false)} 
-                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg transition-colors"
-                aria-label="Close"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="p-5 space-y-4">
+      {/* Create Target Audience Side Panel */}
+      <SideSheet isOpen={isAudienceModalOpen} onClose={() => { setIsAudienceModalOpen(false); setIsModalOpen(true); }} title="Create Target Audience" subtitle="Define conditions to segment your contacts">
+        <div className="p-5 space-y-4">
               {/* Audience Name Field */}
               <div>
-                <label id="audience-name-label" htmlFor="audience-name-input" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
+                <label id="audience-name-label" htmlFor="audience-name-input" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                   Audience Name <span className="text-red-500">*</span>
                 </label>
                 <input 
@@ -1254,39 +1343,39 @@ export default function CampaignsPage() {
                   aria-labelledby="audience-name-label"
                   value={audienceName} 
                   onChange={(e) => setAudienceName(e.target.value)} 
-                  className="w-full bg-slate-50 dark:bg-black/20 border border-gray-200 dark:border-white/[0.05] rounded-lg px-3.5 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 dark:focus:border-blue-500 focus:bg-white dark:focus:bg-black/40 transition-all" 
+                  className="w-full bg-white dark:bg-black/20 border border-gray-200 dark:border-white/5 rounded-lg px-3.5 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors" 
                   placeholder="e.g., High-Value Prospects" 
                 />
               </div>
 
               {/* Conditions list header */}
               <div className="flex justify-between items-center pt-1">
-                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
                   Conditions <span className="text-red-500">*</span>
                 </span>
                 <button 
                   type="button" 
                   onClick={handleAddCondition}
-                  className="text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-50 hover:bg-slate-100 dark:bg-white/[0.04] dark:hover:bg-white/[0.08] hover:border-slate-300 dark:hover:border-white/[0.1] px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.05] transition-all flex items-center gap-1.5"
+                  className="text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-50 hover:bg-slate-100 dark:bg-white/4 dark:hover:bg-white/8 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/5 transition-all flex items-center gap-1.5"
                 >
                   <Plus size={13} className="stroke-[2.5px]" /> Add Condition
                 </button>
               </div>
 
               {/* Conditions List */}
-              <div className="space-y-3.5 max-h-[180px] overflow-y-auto custom-scrollbar pr-1">
+              <div className="space-y-3.5 max-h-75 overflow-y-auto pr-1">
                 {audienceConditions.map((cond, index) => (
                   <div 
                     key={index} 
-                    className="p-3.5 bg-slate-50/70 dark:bg-white/[0.01] border border-gray-100 dark:border-white/[0.03] rounded-xl flex items-end gap-3 animate-in fade-in slide-in-from-top-1.5 relative group"
+                    className="p-3.5 bg-slate-50/70 dark:bg-white/1 border border-gray-100 dark:border-white/3 rounded-xl flex items-end gap-3 relative group"
                   >
                     <div className="grid grid-cols-3 gap-2.5 flex-1 text-left">
                       <div>
-                        <label className="text-[10px] uppercase tracking-wider font-semibold text-slate-500 block mb-1">Field</label>
+                        <label className="text-xs font-medium text-slate-500 dark:text-slate-400 block mb-1">Field</label>
                         <select 
                           value={cond.field} 
                           onChange={(e) => handleConditionChange(index, 'field', e.target.value)} 
-                          className="w-full bg-white dark:bg-black/35 border border-gray-200 dark:border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-200 focus:outline-none"
+                          className="w-full bg-white dark:bg-black/35 border border-gray-200 dark:border-white/8 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-200 focus:outline-none"
                         >
                           <option value="Status">Status</option>
                           <option value="Source">Source</option>
@@ -1299,11 +1388,11 @@ export default function CampaignsPage() {
                         </select>
                       </div>
                       <div>
-                        <label className="text-[10px] uppercase tracking-wider font-semibold text-slate-500 block mb-1">Operator</label>
+                        <label className="text-xs font-medium text-slate-500 dark:text-slate-400 block mb-1">Operator</label>
                         <select 
                           value={cond.operator} 
                           onChange={(e) => handleConditionChange(index, 'operator', e.target.value)} 
-                          className="w-full bg-white dark:bg-black/35 border border-gray-200 dark:border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-200 focus:outline-none"
+                          className="w-full bg-white dark:bg-black/35 border border-gray-200 dark:border-white/8 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-200 focus:outline-none"
                         >
                           <option value="Equals">Equals</option>
                           <option value="Not Equals">Not Equals</option>
@@ -1314,12 +1403,12 @@ export default function CampaignsPage() {
                         </select>
                       </div>
                       <div>
-                        <label className="text-[10px] uppercase tracking-wider font-semibold text-slate-500 block mb-1">Value</label>
+                        <label className="text-xs font-medium text-slate-500 dark:text-slate-400 block mb-1">Value</label>
                         <input 
                           value={cond.value} 
                           onChange={(e) => handleConditionChange(index, 'value', e.target.value)} 
                           placeholder="Enter value" 
-                          className="w-full bg-white dark:bg-black/35 border border-gray-200 dark:border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500"
+                          className="w-full bg-white dark:bg-black/35 border border-gray-200 dark:border-white/8 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500"
                         />
                       </div>
                     </div>
@@ -1330,6 +1419,7 @@ export default function CampaignsPage() {
                         onClick={() => handleRemoveCondition(index)}
                         className="p-1.5 mb-1.5 text-slate-400 hover:text-red-500 hover:bg-red-500/10 dark:hover:bg-red-500/20 rounded transition-colors"
                         title="Remove condition"
+                        aria-label="Remove condition"
                       >
                         <X size={14} />
                       </button>
@@ -1338,7 +1428,7 @@ export default function CampaignsPage() {
                 ))}
               </div>
 
-              {/* Estimated audience size banner matching style from screenshot */}
+              {/* Estimated audience size banner */}
               <div className="bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200/50 dark:border-blue-500/20 p-3.5 rounded-xl">
                 <div className="text-xs font-semibold text-blue-700 dark:text-blue-300">
                   Estimated Audience Size: <span className="font-bold">~{getEstimatedSize()} contacts</span>
@@ -1347,44 +1437,33 @@ export default function CampaignsPage() {
                   All conditions must be met (AND logic)
                 </div>
               </div>
-            </div>
 
-            {/* Footer buttons */}
-            <div className="flex justify-end gap-2.5 p-4 border-t border-gray-100 dark:border-white/[0.04] bg-slate-50 dark:bg-white/[0.01]">
-              <button 
-                type="button" 
-                onClick={() => setIsAudienceModalOpen(false)} 
-                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg border border-gray-200 dark:border-white/[0.05] transition-colors"
-              >
-                Cancel
-              </button>
-              <button 
-                type="button" 
-                onClick={handleCreateAudience} 
-                className="px-4 py-2 bg-slate-600 hover:bg-slate-700 dark:bg-slate-500 dark:hover:bg-slate-400 text-white dark:text-slate-950 text-xs font-semibold rounded-lg transition-colors shadow-sm"
-              >
-                Create Audience
-              </button>
-            </div>
+          {/* Footer buttons */}
+          <div className="sticky bottom-0 flex justify-end gap-2.5 pt-4 border-t border-gray-200 dark:border-white/5">
+            <button 
+              type="button" 
+              onClick={() => { setIsAudienceModalOpen(false); setIsModalOpen(true); }} 
+              className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-white/5 rounded-lg border border-gray-200 dark:border-white/8 transition-colors"
+            >
+              Cancel
+            </button>
+            <button 
+              type="button" 
+              onClick={handleCreateAudience} 
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all"
+            >
+              Create Audience
+            </button>
           </div>
         </div>
-      )}
-      {/* Create Template Modal */}
-      {isTemplateModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-50 dark:bg-slate-950 rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-lg overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-white/[0.05]">
-              <div>
-                <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Create {newTemplateType} Template</h2>
-                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Save a message to reuse in future campaigns.</p>
-              </div>
-              <button onClick={() => setIsTemplateModalOpen(false)} className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/5 rounded-lg transition-colors"><X size={20} /></button>
-            </div>
-            <div className="p-6 space-y-4">
+      </SideSheet>
+      {/* Create Template Side Panel */}
+      <SideSheet isOpen={isTemplateModalOpen} onClose={() => setIsTemplateModalOpen(false)} title={`Create ${newTemplateType} Template`} subtitle="Save a message to reuse in future campaigns.">
+        <div className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Template Name</label>
                 <input 
-                  className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] focus:bg-white/[0.04] transition-all" 
+                  className="w-full bg-white dark:bg-white/2 border border-gray-200 dark:border-white/5 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors" 
                   placeholder="e.g. Welcome Series - Email 1" 
                   value={newTemplate.name}
                   onChange={(e) => setNewTemplate({...newTemplate, name: e.target.value})}
@@ -1393,7 +1472,7 @@ export default function CampaignsPage() {
               <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Category</label>
                 <select 
-                  className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] focus:bg-white/[0.04] transition-all"
+                  className="w-full bg-white dark:bg-white/2 border border-gray-200 dark:border-white/5 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors"
                   value={newTemplate.category}
                   onChange={(e) => setNewTemplate({...newTemplate, category: e.target.value})}
                 >
@@ -1407,7 +1486,7 @@ export default function CampaignsPage() {
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Subject Line</label>
                   <input 
-                    className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] focus:bg-white/[0.04] transition-all" 
+                    className="w-full bg-white dark:bg-white/2 border border-gray-200 dark:border-white/5 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors" 
                     placeholder="Welcome to LeadCRM!" 
                     value={newTemplate.subject}
                     onChange={(e) => setNewTemplate({...newTemplate, subject: e.target.value})}
@@ -1415,33 +1494,59 @@ export default function CampaignsPage() {
                 </div>
               )}
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Message Content</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Message Content</label>
+                  <div className="relative">
+                    <button 
+                      type="button"
+                      onClick={() => setShowVarDropdown(!showVarDropdown)} 
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-500/10 rounded-md hover:bg-blue-500/20 transition-colors duration-200 border border-blue-500/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                    >
+                      <Wand2 size={14} /> Insert Variable
+                    </button>
+                    {showVarDropdown && (
+                      <div className="absolute right-0 bottom-full mb-1 w-48 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/10 rounded-lg shadow-xl overflow-hidden z-50 backdrop-blur-xl">
+                        {['{{first_name}}', '{{last_name}}', '{{company_name}}', '{{sender_name}}', '{{sender_email}}'].map(v => (
+                          <button 
+                            key={v} 
+                            type="button"
+                            onClick={() => { 
+                              setNewTemplate({...newTemplate, content: newTemplate.content + v}); 
+                              setShowVarDropdown(false); 
+                            }} 
+                            className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors duration-150 cursor-pointer"
+                          >
+                            {v}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
                 <textarea 
-                  rows={6} 
-                  className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] focus:bg-white/[0.04] transition-all custom-scrollbar resize-none" 
+                  rows={8} 
+                  className="w-full bg-white dark:bg-white/2 border border-gray-200 dark:border-white/5 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors resize-none" 
                   placeholder={`Hi {{first_name}},\n\n...`}
                   value={newTemplate.content}
                   onChange={(e) => setNewTemplate({...newTemplate, content: e.target.value})}
                 ></textarea>
               </div>
-            </div>
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-white/[0.05] bg-gray-50 dark:bg-slate-950">
-              <button onClick={() => setIsTemplateModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/5 rounded-lg transition-colors">Cancel</button>
-              <button 
-                onClick={handleSaveTemplate} 
-                className="px-4 py-2 bg-[#0A6EFF] text-slate-900 dark:text-white text-sm font-medium rounded-lg hover:bg-blue-600 transition-colors shadow-[0_0_15px_rgba(10,110,255,0.2)]"
-              >
-                Save Template
-              </button>
-            </div>
+          <div className="sticky bottom-0 flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-white/5 bg-white dark:bg-slate-900">
+            <button onClick={() => setIsTemplateModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-white/5 rounded-lg border border-gray-200 dark:border-white/8 transition-colors">Cancel</button>
+            <button 
+              onClick={handleSaveTemplate} 
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all"
+            >
+              Save Template
+            </button>
           </div>
         </div>
-      )}
+      </SideSheet>
       {/* Preview Template Modal */}
       {previewTemplate && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-50 dark:bg-slate-950 rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-lg overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-white/[0.05]">
+          <div className="bg-gray-50 dark:bg-slate-950 rounded-2xl border border-gray-300 dark:border-white/10 w-full max-w-lg overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-white/5">
               <div>
                 <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Template Preview</h2>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{previewTemplate.name}</p>
@@ -1457,12 +1562,12 @@ export default function CampaignsPage() {
               )}
               <div>
                 <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Content</label>
-                <div className="bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg p-4 text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
+                <div className="bg-white dark:bg-white/2 border border-gray-200 dark:border-white/5 rounded-lg p-4 text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
                   {previewTemplate.content}
                 </div>
               </div>
             </div>
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-white/[0.05] bg-gray-50 dark:bg-slate-950">
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-slate-950">
               <button onClick={() => setPreviewTemplate(null)} className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/5 rounded-lg transition-colors">Close</button>
               <button 
                 onClick={() => {

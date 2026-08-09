@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState } from 'react';
 import { Search, Filter, X, ChevronDown, Check, User as UserIcon, Calendar, Activity, Tag } from 'lucide-react';
@@ -146,7 +146,7 @@ export function TrelloFilter({
         <Filter size={14} className={activeCount > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500'} />
         <span>Filter</span>
         {activeCount > 0 && (
-          <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 rounded-full text-[11px] font-semibold ml-0.5">
+          <span className="flex items-center justify-center min-w-4.5 h-4.5 px-1 bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 rounded-full text-[11px] font-semibold ml-0.5">
             {activeCount}
           </span>
         )}
@@ -160,7 +160,7 @@ export function TrelloFilter({
             className="fixed inset-0 z-40" 
             onClick={() => setIsOpen(false)} 
           />
-          <div className="absolute right-0 top-full mt-2 w-[340px] rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl p-3.5 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="absolute right-0 top-full mt-2 w-85 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl p-3.5 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
             {/* Header */}
             <div className="flex justify-between items-center pb-2.5 mb-3 border-b border-slate-200 dark:border-slate-800">
               <span className="text-xs font-semibold text-slate-900 dark:text-white uppercase tracking-wider">Filters</span>
@@ -174,7 +174,7 @@ export function TrelloFilter({
             </div>
 
 
-            <div className="space-y-5 max-h-[420px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
+            <div className="space-y-5 max-h-105 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
               
               {/* Keyword */}
               {setSearchTerm !== undefined && (
@@ -365,7 +365,7 @@ export function TrelloFilter({
                           {selectedLabels.includes(l.id) && <Check size={12} className="text-white stroke-[3px]" />}
                         </div>
                         {l.color ? (
-                           <div className={`w-auto min-w-[100px] inline-flex h-7 rounded-lg ml-1 items-center px-3 ${l.color}`}>
+                           <div className={`w-auto min-w-25 inline-flex h-7 rounded-lg ml-1 items-center px-3 ${l.color}`}>
                              <span className="text-xs font-bold text-white drop-shadow-sm">{l.label}</span>
                            </div>
                         ) : (

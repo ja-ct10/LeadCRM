@@ -13,7 +13,7 @@ export async function findAllTasks(tenantId: string, query: Record<string, unkno
     ...(query.priority       ? { priority:       String(query.priority) }       : {}),
     ...(query.assignedUserId ? { assignedUserId: String(query.assignedUserId) } : {}),
     ...(query.dealId         ? { dealId:         String(query.dealId) }         : {}),
-    ...(query.contactId      ? { contactId:      String(query.contactId) }      : {}),
+    ...(query.leadId      ? { leadId:      String(query.leadId) }      : {}),
     ...(query.overdue === 'true' ? { dueDate: { lt: new Date() }, status: { notIn: ['completed', 'cancelled'] } } : {}),
     ...(query.search ? { title: { contains: String(query.search), mode: 'insensitive' as const } } : {}),
   };
@@ -25,7 +25,7 @@ export async function findAllTasks(tenantId: string, query: Record<string, unkno
         assignedUser: { select: { id: true, firstName: true, lastName: true } },
         assignedBy:   { select: { id: true, firstName: true, lastName: true } },
         deal:         { select: { id: true, title: true } },
-        contact:      { select: { id: true, firstName: true, lastName: true } },
+        lead:      { select: { id: true, firstName: true, lastName: true } },
       },
     }),
     prisma.task.count({ where }),
@@ -42,7 +42,7 @@ export async function findTaskById(id: string, tenantId: string) {
       assignedBy:   { select: { id: true, firstName: true, lastName: true } },
       completedBy:  { select: { id: true, firstName: true, lastName: true } },
       deal:         { select: { id: true, title: true } },
-      contact:      { select: { id: true, firstName: true, lastName: true } },
+      lead:      { select: { id: true, firstName: true, lastName: true } },
     },
   });
 }

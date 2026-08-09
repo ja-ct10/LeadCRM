@@ -12,15 +12,17 @@ export async function findAllInvoices(tenantId: string, query: Record<string, un
     ...(query.status        ? { status:        String(query.status) }        : {}),
     ...(query.paymentStatus ? { paymentStatus: String(query.paymentStatus) } : {}),
     ...(query.dealId        ? { dealId:        String(query.dealId) }        : {}),
-    ...(query.contactId     ? { contactId:     String(query.contactId) }     : {}),
+    ...(query.leadId        ? { leadId:        String(query.leadId) }        : {}),
+    ...(query.customerId    ? { customerId:    String(query.customerId) }    : {}),
   };
 
   const [data, total] = await Promise.all([
     prisma.invoice.findMany({
       where, skip, take: limit, orderBy: { createdAt: 'desc' },
       include: {
-        deal:    { select: { id: true, title: true } },
-        contact: { select: { id: true, firstName: true, lastName: true } },
+        deal: { select: { id: true, title: true } },
+        lead: { select: { id: true, firstName: true, lastName: true } },
+        customer: { select: { id: true, firstName: true, lastName: true } },
       },
     }),
     prisma.invoice.count({ where }),
@@ -34,7 +36,8 @@ export async function findInvoiceById(id: string, tenantId: string) {
     where: { id, tenantId },
     include: {
       deal:         { select: { id: true, title: true } },
-      contact:      { select: { id: true, firstName: true, lastName: true } },
+      lead:         { select: { id: true, firstName: true, lastName: true } },
+      customer:     { select: { id: true, firstName: true, lastName: true } },
       transactions: { orderBy: { createdAt: 'desc' } },
     },
   });

@@ -1,14 +1,14 @@
-﻿import prisma from '../../../config/database.config';
+import prisma from '../../../config/database.config';
 
 /** Pipeline summary — deal count and total value per stage */
 export async function getPipelineSummary(tenantId: string, pipelineId?: string) {
   const pipelines = await prisma.pipeline.findMany({
-    where: { tenantId, isArchived: false, ...(pipelineId ? { id: pipelineId } : {}) },
+    where: { tenantId, ...(pipelineId ? { id: pipelineId } : {}) },
     include: {
       stages: {
         orderBy: { order: 'asc' },
         include: {
-          _count: { select: { deals: { where: { isArchived: false } } } },
+          _count: { select: { deals: { where: { /* isArchived */ } } } },
         },
       },
     },
@@ -32,7 +32,7 @@ export async function getPipelineSummary(tenantId: string, pipelineId?: string) 
 /** Average days to close for deals that have closedAt stamped */
 export async function getDealVelocity(tenantId: string) {
   const closedDeals = await prisma.deal.findMany({
-    where: { tenantId, isArchived: false, closedAt: { not: null } },
+    where: { tenantId, closedAt: { not: null } },
     select: { createdAt: true, closedAt: true, stage: { select: { isWon: true, isLost: true } } },
   });
 
@@ -59,9 +59,9 @@ export async function getDealVelocity(tenantId: string) {
 
 /** Contact count by status */
 export async function getContactStatusBreakdown(tenantId: string) {
-  const groups = await prisma.contact.groupBy({
+  const groups = await prisma.lead.groupBy({
     by:    ['status'],
-    where: { tenantId, isArchived: false },
+    where: { tenantId },
     _count: { status: true },
   });
   return groups.map((g) => ({ status: g.status, count: g._count.status }));
@@ -70,9 +70,9 @@ export async function getContactStatusBreakdown(tenantId: string) {
 /** Task completion stats */
 export async function getTaskCompletion(tenantId: string) {
   const [total, completed, overdue] = await Promise.all([
-    prisma.task.count({ where: { tenantId, isArchived: false } }),
-    prisma.task.count({ where: { tenantId, isArchived: false, status: 'completed' } }),
-    prisma.task.count({ where: { tenantId, isArchived: false, dueDate: { lt: new Date() }, status: { notIn: ['completed', 'cancelled'] } } }),
+    prisma.task.count({ where: { tenantId } }),
+    prisma.task.count({ where: { tenantId, status: 'completed' } }),
+    prisma.task.count({ where: { tenantId, dueDate: { lt: new Date() }, status: { notIn: ['completed', 'cancelled'] } } }),
   ]);
   return { total, completed, overdue, pending: total - completed };
 }
@@ -80,7 +80,7 @@ export async function getTaskCompletion(tenantId: string) {
 /** Campaign engagement summary */
 export async function getCampaignSummary(tenantId: string) {
   const campaigns = await prisma.campaign.findMany({
-    where:   { tenantId, isArchived: false },
+    where:   { tenantId },
     orderBy: { sentAt: 'desc' },
     take:    10,
     select: { id: true, name: true, type: true, status: true, sentCount: true, openedCount: true, clickedCount: true, engagement: true, sentAt: true },

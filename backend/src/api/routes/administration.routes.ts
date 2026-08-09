@@ -20,6 +20,7 @@ router.put(   '/users/:id',              authorize('users.manage'), userControll
 router.delete('/users/:id',              authorize('users.manage'), userController.deleteRecord);
 router.patch( '/users/:id/archive',      authorize('users.manage'), userController.archive);
 router.patch( '/users/:id/restore',      authorize('users.manage'), userController.restore);
+router.patch( '/users/:id/deactivate',   authorize('users.manage'), userController.archive);
 router.post(  '/users/bulk-update',      authorize('users.manage'), userController.bulkUpdate);
 router.post(  '/users/bulk-delete',      authorize('users.manage'), userController.bulkDelete);
 
@@ -30,6 +31,7 @@ router.post(  '/roles',                authorize('roles.manage'), roleController
 router.put(   '/roles/:id',            authorize('roles.manage'), roleController.updateRole);
 router.patch( '/roles/:id/archive',    authorize('roles.manage'), roleController.archiveRole);
 router.post(  '/roles/assign',         authorize('roles.manage'), roleController.assignRoleToUser);
+router.post(  '/roles/unassign',       authorize('roles.manage'), roleController.removeRoleFromUser);
 router.delete('/roles/unassign',       authorize('roles.manage'), roleController.removeRoleFromUser);
 
 // ── Permissions (read-only reference for role builder) ─

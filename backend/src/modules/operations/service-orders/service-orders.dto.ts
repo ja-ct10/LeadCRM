@@ -8,7 +8,7 @@ export const CreateServiceOrderSchema = z.object({
   status:               z.enum(['pending', 'in_progress', 'completed', 'cancelled']).default('pending'),
   scheduledDate:        z.string().datetime(),
   assignedTechnicianId: id().optional(),
-  contactId:            id().optional(),
+  leadId:            id().optional(),
   organizationId:       id().optional(),
   dealId:               id().optional(),
   invoiceId:            id().optional(),

@@ -7,8 +7,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // ─────────────────────────────────────────────
@@ -61,12 +61,12 @@ enum ContactStatus {
 // REQ131: ContactStatus (above) is human-owned and never changed by automation.
 // This enum is the system-owned complement.
 enum ContactLifecycleStage {
-  LEAD            // captured, not yet qualified
-  QUALIFIED       // qualified, ready for opportunity
-  CONTACT         // known person, active relationship
-  CUSTOMER        // has at least one won deal
-  CHURNED         // former customer, no active deals
-  DISQUALIFIED    // dead — will not proceed
+  LEAD // captured, not yet qualified
+  QUALIFIED // qualified, ready for opportunity
+  CONTACT // known person, active relationship
+  CUSTOMER // has at least one won deal
+  CHURNED // former customer, no active deals
+  DISQUALIFIED // dead — will not proceed
 }
 
 enum Priority {
@@ -122,7 +122,7 @@ model SystemAdmin {
 // ─────────────────────────────────────────────
 model PricingPlan {
   id             String   @id @default(uuid())
-  name           String   @unique  // "Free" | "Pro" | "Enterprise"
+  name           String   @unique // "Free" | "Pro" | "Enterprise"
   planType       PlanType
   monthlyPrice   Float    @default(0)
   quarterlyPrice Float    @default(0)
@@ -130,7 +130,7 @@ model PricingPlan {
   maxUsers       Int?
   maxContacts    Int?
   maxDeals       Int?
-  storageLimit   Int?     // MB
+  storageLimit   Int? // MB
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -143,7 +143,7 @@ model PricingPlan {
 // PLAN FEATURE
 // ─────────────────────────────────────────────
 model PlanFeature {
-  id          String @id @default(uuid())
+  id          String  @id @default(uuid())
   planId      String
   name        String // e.g. "Workflow Automation", "Gmail Integration"
   description String?
@@ -163,19 +163,19 @@ model Tenant {
   name               String
   slug               String             @unique
   industry           String?
-  companySize        String?            // "1-10" | "11-50" | "51-200" | "200+"
+  companySize        String? // "1-10" | "11-50" | "51-200" | "200+"
   email              String?
   phone              String?
   address            String?
   status             TenantStatus       @default(SANDBOX)
   subscriptionStatus SubscriptionStatus @default(TRIAL)
-  plan               PlanType           @default(FREE)  // denorm cache — source of truth = Subscription
+  plan               PlanType           @default(FREE) // denorm cache — source of truth = Subscription
   trialEndsAt        DateTime?
   subscriptionEndsAt DateTime?
   maxUsers           Int?
   maxContacts        Int?
   maxDeals           Int?
-  approvedById       String?            // SystemAdmin id who approved
+  approvedById       String? // SystemAdmin id who approved
   approvedAt         DateTime?
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
@@ -187,13 +187,15 @@ model Tenant {
   invitations        TenantInvitation[]
   subscriptions      Subscription[]
   paymentMethods     PaymentMethod[]
-  organizations      Organization[]
-  contacts           Contact[]
+  organizations      Account[]
+  leads              Lead[]
+  customers          Customer[]
   pipelines          Pipeline[]
   stages             Stage[]
   deals              Deal[]
   dealActions        DealAction[]
-  contactDeals       ContactDeal[]
+  leadDeals          LeadDeal[]
+  customerDeals      CustomerDeal[]
   dealStageHistories DealStageHistory[]
   tasks              Task[]
   activities         Activity[]
@@ -216,6 +218,9 @@ model Tenant {
   emailDeliveryLogs  EmailDeliveryLog[]
   documents          TenantDocument[]
   environments       Environment[]
+  SMSQueue           SMSQueue[]
+  EmailEvent         EmailEvent[]
+  AutomationRule     AutomationRule[]
 }
 
 // ─────────────────────────────────────────────
@@ -248,9 +253,9 @@ model Subscription {
 model PaymentMethod {
   id            String   @id @default(uuid())
   tenantId      String
-  methodName    String   // "GCash" | "Maya" | "Credit Card" | "Bank Transfer"
+  methodName    String // "GCash" | "Maya" | "Credit Card" | "Bank Transfer"
   accountName   String?
-  accountNumber String?  // masked — e.g. "****1234"
+  accountNumber String? // masked — e.g. "****1234"
   isDefault     Boolean  @default(false)
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
@@ -266,36 +271,38 @@ model PaymentMethod {
 // USER
 // ─────────────────────────────────────────────
 model User {
-  id           String     @id @default(uuid())
-  tenantId     String
-  email        String
-  firstName    String
-  lastName     String
-  passwordHash String
-  phone        String?
-  jobTitle     String?
-  department   String?
-  avatarUrl    String?
-  timeZone     String?
-  lastLoginAt  DateTime?
+  id            String     @id @default(uuid())
+  tenantId      String
+  email         String
+  firstName     String
+  lastName      String
+  passwordHash  String
+  phone         String?
+  jobTitle      String?
+  department    String?
+  avatarUrl     String?
+  timeZone      String?
+  lastLoginAt   DateTime?
   // role kept as String for JWT compatibility during UserRole migration.
   // New code should read role from UserRole junction; this is the legacy fallback.
-  role         String     @default("Sales Rep")
-  status       UserStatus @default(ACTIVE)
+  role          String     @default("Sales Rep")
+  status        UserStatus @default(ACTIVE)
   emailVerified DateTime?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
 
-  tenant               Tenant             @relation(fields: [tenantId], references: [id])
-  userRoles            UserRole[]
-  sessions             Session[]
-  invitationsSent      TenantInvitation[] @relation("InvitedByUser")
-  organizationsOwned   Organization[]
-  assignedContacts     Contact[]          @relation("AssignedContacts")
-  ownedContacts        Contact[]          @relation("OwnedContacts")
+  tenant             Tenant             @relation(fields: [tenantId], references: [id])
+  userRoles          UserRole[]
+  sessions           Session[]
+  invitationsSent    TenantInvitation[] @relation("InvitedByUser")
+  organizationsOwned Account[]
+  assignedLeads      Lead[]             @relation("AssignedLeads")
+  assignedCustomers  Customer[]         @relation("AssignedCustomers")
+
   assignedDeals        Deal[]             @relation("AssignedDeals")
   ownedDeals           Deal[]             @relation("OwnedDeals")
-  contactDealsAdded    ContactDeal[]
+  leadDealsAdded       LeadDeal[]
+  customerDealsAdded   CustomerDeal[]
   dealStageHistories   DealStageHistory[]
   dealActionsPerformed DealAction[]
   assignedTasks        Task[]             @relation("AssignedTasks")
@@ -315,16 +322,16 @@ model User {
 // permissions String[] removed — use RolePermission table instead
 // ─────────────────────────────────────────────
 model RoleDefinition {
-  id           String    @id @default(uuid())
+  id           String   @id @default(uuid())
   tenantId     String
   name         String
   description  String?
-  isSystemRole Boolean   @default(false)
-  isArchived   Boolean   @default(false)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  isSystemRole Boolean  @default(false)
+  isArchived   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  tenant      Tenant            @relation(fields: [tenantId], references: [id])
+  tenant      Tenant             @relation(fields: [tenantId], references: [id])
   userRoles   UserRole[]
   invitations TenantInvitation[]
   permissions RolePermission[]
@@ -339,7 +346,7 @@ model RoleDefinition {
 // module examples: contacts | deals | campaigns | workflows | billing | reports | users | settings
 // ─────────────────────────────────────────────
 model RolePermission {
-  id        String @id @default(uuid())
+  id        String  @id @default(uuid())
   tenantId  String
   roleId    String
   module    String // e.g. "contacts", "deals", "campaigns"
@@ -379,7 +386,7 @@ model Session {
   id           String    @id @default(uuid())
   userId       String
   tenantId     String
-  tokenHash    String    @unique  // SHA-256 of JWT, never plaintext
+  tokenHash    String    @unique // SHA-256 of JWT, never plaintext
   userAgent    String?
   ipAddress    String?
   expiresAt    DateTime
@@ -424,12 +431,12 @@ model TenantDocument {
   id           String    @id @default(uuid())
   tenantId     String
   fileName     String
-  documentType String    // "contract" | "business_permit" | "id_proof" | "other"
-  filePath     String    // URL to object storage — NOT base64
-  fileSize     Int?      // bytes
+  documentType String // "contract" | "business_permit" | "id_proof" | "other"
+  filePath     String // URL to object storage — NOT base64
+  fileSize     Int? // bytes
   status       String    @default("pending") // pending|verified|rejected
   uploadedAt   DateTime  @default(now())
-  verifiedById String?   // SystemAdmin id
+  verifiedById String? // SystemAdmin id
   verifiedAt   DateTime?
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
@@ -442,18 +449,18 @@ model TenantDocument {
 // Tracks resource usage per tenant environment
 // ─────────────────────────────────────────────
 model Environment {
-  id            String   @id @default(uuid())
+  id            String    @id @default(uuid())
   tenantId      String
-  envCode       String   // e.g. "prod" | "staging" | "sandbox"
-  type          String   // "production" | "staging" | "sandbox"
-  cpuUsage      Float?   // percentage
-  ramUsage      Float?   // percentage
-  storageUsage  Float?   // percentage
-  uptimePct     Float?   // percentage
-  isDefault     Boolean  @default(false)
+  envCode       String // e.g. "prod" | "staging" | "sandbox"
+  type          String // "production" | "staging" | "sandbox"
+  cpuUsage      Float? // percentage
+  ramUsage      Float? // percentage
+  storageUsage  Float? // percentage
+  uptimePct     Float? // percentage
+  isDefault     Boolean   @default(false)
   lastCheckedAt DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
@@ -464,35 +471,36 @@ model Environment {
 // ─────────────────────────────────────────────
 // ORGANIZATION
 // ─────────────────────────────────────────────
-model Organization {
-  id             String    @id @default(uuid())
-  tenantId       String
-  assignedUserId String?
-  name           String
-  industry       String?
-  size           String?   // "1-10" | "11-50" | "51-200" | "200+"
-  website        String?
-  taxId          String?
-  notes          String?   @db.Text
-  internalNotes  String?   @db.Text
-  tags           String[]
+model Account {
+  id               String    @id @default(uuid())
+  tenantId         String
+  assignedUserId   String?
+  name             String
+  industry         String?
+  size             String? // "1-10" | "11-50" | "51-200" | "200+"
+  website          String?
+  taxId            String?
+  notes            String?   @db.Text
+  internalNotes    String?   @db.Text
+  tags             String[]
   productInterests String[]
-  activeProducts String[]
-  customerType   String    @default("Prospect") // Prospect | Active Customer | Inactive Customer | Former Customer
-  customerSince  DateTime?
-  address        String?
-  city           String?
-  province       String?
-  country        String?   @default("Philippines")
-  isArchived     Boolean   @default(false)
-  deletedAt      DateTime?
-  deletedBy      String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  activeProducts   String[]
+  customerType     String    @default("Prospect") // Prospect | Active Customer | Inactive Customer | Former Customer
+  customerSince    DateTime?
+  address          String?
+  city             String?
+  province         String?
+  country          String?   @default("Philippines")
+  isArchived       Boolean   @default(false)
+  deletedAt        DateTime?
+  deletedBy        String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   tenant        Tenant         @relation(fields: [tenantId], references: [id])
   assignedUser  User?          @relation(fields: [assignedUserId], references: [id])
-  contacts      Contact[]
+  leads         Lead[]
+  customers     Customer[]
   deals         Deal[]
   activities    Activity[]
   serviceOrders ServiceOrder[]
@@ -505,62 +513,79 @@ model Organization {
 // ─────────────────────────────────────────────
 // CONTACT
 // ─────────────────────────────────────────────
-model Contact {
-  id              String        @id @default(uuid())
+// ─────────────────────────────────────────────
+// LEAD
+// ─────────────────────────────────────────────
+model Lead {
+  id              String   @id @default(uuid())
   tenantId        String
-  organizationId  String?
-  assignedUserId  String?
-  ownerId         String?       // original capturer (immutable — set on create, never updated)
+  createdAt       DateTime @default(now())
+  companyName     String?
+  address         String?
   firstName       String
   lastName        String
-  email           String?
   phone           String?
-  company         String?
-  jobTitle        String?
-  linkedinUrl     String?
-  status          ContactStatus @default(WARM)
-  lifecycleStage  ContactLifecycleStage @default(LEAD) // system-owned — changed by conversion, won-deal handoff, explicit disqualify
-  recordType      String?       // "Individual" | "Organization" — drives conditional field visibility (REQ134)
-  score           Int           @default(75)
+  email           String?
+  productInterest String[]
   source          String?
-  notes           String?
-  productInterests String[]
-  activeProducts  String[]
-  customerType    String        @default("Prospect") // Prospect | Active Customer | Inactive Customer | Former Customer
-  customerSince   DateTime?
-  address         String?
-  lastContactedAt DateTime?
-  convertedAt     DateTime?
-  qualifiedAt     DateTime?     // timestamp when lifecycle moved to QUALIFIED
-  disqualifiedReason String?    // required when lifecycle is set to DISQUALIFIED
-  doNotContact    Boolean       @default(false)
-  isArchived      Boolean       @default(false)
-  archiveReason   String?
-  deletedAt       DateTime?
-  deletedBy       String?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  assignedUserId  String?
+  status          String   @default("Inquiry")
+  accountId       String?
 
-  tenant            Tenant            @relation(fields: [tenantId], references: [id])
-  organization      Organization?     @relation(fields: [organizationId], references: [id])
-  assignedUser      User?             @relation("AssignedContacts", fields: [assignedUserId], references: [id])
-  owner             User?             @relation("OwnedContacts", fields: [ownerId], references: [id])
-  contactDeals      ContactDeal[]
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  account      Account? @relation(fields: [accountId], references: [id])
+  assignedUser User?    @relation("AssignedLeads", fields: [assignedUserId], references: [id])
+
+  leadDeals         LeadDeal[]
+  deals             Deal[]
   tasks             Task[]
   activities        Activity[]
-  invoices          Invoice[]
-  serviceOrders     ServiceOrder[]
   campaignContacts  CampaignContact[]
   emailDeliveryLogs EmailDeliveryLog[]
-
-  // legacy singular FK kept for backward compatibility during ContactDeal migration
-  deals Deal[]
+  SMSQueue          SMSQueue[]
+  invoices          Invoice[]
+  serviceOrders     ServiceOrder[]
 
   @@index([tenantId, status])
-  @@index([tenantId, lifecycleStage])
   @@index([tenantId, assignedUserId])
-  @@index([tenantId, createdAt])
-  @@index([tenantId, isArchived])
+  @@index([tenantId, email])
+}
+
+// ─────────────────────────────────────────────
+// CUSTOMER
+// ─────────────────────────────────────────────
+model Customer {
+  id              String   @id @default(uuid())
+  tenantId        String
+  createdAt       DateTime @default(now())
+  companyName     String?
+  address         String?
+  firstName       String
+  lastName        String
+  phone           String?
+  email           String?
+  productInterest String[]
+  source          String?
+  assignedUserId  String?
+  status          String   @default("Active")
+  accountId       String?
+
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  account      Account? @relation(fields: [accountId], references: [id])
+  assignedUser User?    @relation("AssignedCustomers", fields: [assignedUserId], references: [id])
+
+  customerDeals     CustomerDeal[]
+  deals             Deal[]
+  tasks             Task[]
+  activities        Activity[]
+  campaignContacts  CampaignContact[]
+  emailDeliveryLogs EmailDeliveryLog[]
+  SMSQueue          SMSQueue[]
+  invoices          Invoice[]
+  serviceOrders     ServiceOrder[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, assignedUserId])
   @@index([tenantId, email])
 }
 
@@ -571,8 +596,8 @@ model Pipeline {
   id          String   @id @default(uuid())
   tenantId    String
   name        String
-  type        String?  // e.g. "Sales" | "Service" | "Onboarding"
-  templateKey String?  // identifies seeded templates for upgrades (e.g. "sales-inquiries")
+  type        String? // e.g. "Sales" | "Service" | "Onboarding"
+  templateKey String? // identifies seeded templates for upgrades (e.g. "sales-inquiries")
   isDefault   Boolean  @default(false)
   currency    String?  @default("PHP")
   isArchived  Boolean  @default(false)
@@ -589,17 +614,17 @@ model Pipeline {
 model Stage {
   id              String   @id @default(uuid())
   pipelineId      String
-  tenantId        String   // defence-in-depth: derived from Pipeline.tenantId at creation, never independently editable
+  tenantId        String // defence-in-depth: derived from Pipeline.tenantId at creation, never independently editable
   name            String
   order           Int
-  probability     Int?     // 0-100 for revenue forecasting
-  color           String?  // hex e.g. "#3fb950"
+  probability     Int? // 0-100 for revenue forecasting
+  color           String? // hex e.g. "#3fb950"
   description     String?
   isWon           Boolean  @default(false) // terminal: deal won
   isLost          Boolean  @default(false) // terminal: deal lost
   isDefault       Boolean  @default(false) // starting stage for new deals
-  requiredFields  String[] // Deal fields required before entry (REQ089) e.g. ["organizationId", "value"]
-  rottenAfterDays Int?     // days after which a deal in this stage is flagged stale
+  requiredFields  String[] // Deal fields required before entry (REQ089) e.g. ["accountId", "value"]
+  rottenAfterDays Int? // days after which a deal in this stage is flagged stale
   createdAt       DateTime @default(now())
 
   pipeline               Pipeline           @relation(fields: [pipelineId], references: [id])
@@ -620,10 +645,11 @@ model Deal {
   tenantId          String
   pipelineId        String
   stageId           String
-  contactId         String?   // legacy singular FK — use ContactDeal for new multi-contact deals
-  organizationId    String?
+  leadId            String?
+  customerId        String? // legacy singular FK — use ContactDeal for new multi-contact deals
+  accountId         String?
   assignedUserId    String?
-  ownerId           String?   // original deal owner (immutable)
+  ownerId           String? // original deal owner (immutable)
   title             String
   value             Float?
   currency          String?   @default("PHP")
@@ -636,7 +662,7 @@ model Deal {
   industry          String?
   productInterests  String[]
   address           String?
-  tags              String[]  // normalized to array — consistent with Contact.tags and Organization.tags
+  tags              String[] // normalized to array — consistent with Contact.tags and Organization.tags
   order             Int       @default(0)
   isArchived        Boolean   @default(false)
   archiveReason     String?
@@ -644,14 +670,16 @@ model Deal {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
-  tenant         Tenant           @relation(fields: [tenantId], references: [id])
-  pipeline       Pipeline         @relation(fields: [pipelineId], references: [id])
-  stage          Stage            @relation(fields: [stageId], references: [id])
-  contact        Contact?         @relation(fields: [contactId], references: [id])
-  organization   Organization?    @relation(fields: [organizationId], references: [id])
-  assignedUser   User?            @relation("AssignedDeals", fields: [assignedUserId], references: [id])
-  owner          User?            @relation("OwnedDeals", fields: [ownerId], references: [id])
-  contactDeals   ContactDeal[]
+  tenant         Tenant             @relation(fields: [tenantId], references: [id])
+  pipeline       Pipeline           @relation(fields: [pipelineId], references: [id])
+  stage          Stage              @relation(fields: [stageId], references: [id])
+  lead           Lead?              @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  customer       Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  organization   Account?           @relation(fields: [accountId], references: [id])
+  assignedUser   User?              @relation("AssignedDeals", fields: [assignedUserId], references: [id])
+  owner          User?              @relation("OwnedDeals", fields: [ownerId], references: [id])
+  leadDeals      LeadDeal[]
+  customerDeals  CustomerDeal[]
   stageHistories DealStageHistory[]
   actions        DealAction[]
   tasks          Task[]
@@ -669,44 +697,63 @@ model Deal {
 // ─────────────────────────────────────────────
 // CONTACT-DEAL JUNCTION (multi-contact deals)
 // ─────────────────────────────────────────────
-model ContactDeal {
+model LeadDeal {
   id        String   @id @default(uuid())
-  contactId String
+  leadId    String
   dealId    String
   tenantId  String
-  role      String?  // "Primary Contact" | "Decision Maker" | "Technical Evaluator"
+  role      String?
   addedById String?
   addedAt   DateTime @default(now())
 
-  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  deal    Deal    @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  tenant  Tenant  @relation(fields: [tenantId], references: [id])
-  addedBy User?   @relation(fields: [addedById], references: [id])
+  lead    Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  deal    Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  tenant  Tenant @relation(fields: [tenantId], references: [id])
+  addedBy User?  @relation(fields: [addedById], references: [id])
 
-  @@unique([contactId, dealId])
+  @@unique([leadId, dealId])
   @@index([dealId, tenantId])
-  @@index([contactId, tenantId])
+  @@index([leadId, tenantId])
+}
+
+model CustomerDeal {
+  id         String   @id @default(uuid())
+  customerId String
+  dealId     String
+  tenantId   String
+  role       String?
+  addedById  String?
+  addedAt    DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  deal     Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  addedBy  User?    @relation(fields: [addedById], references: [id])
+
+  @@unique([customerId, dealId])
+  @@index([dealId, tenantId])
+  @@index([customerId, tenantId])
 }
 
 // ─────────────────────────────────────────────
 // DEAL STAGE HISTORY
 // ─────────────────────────────────────────────
 model DealStageHistory {
-  id              String    @id @default(uuid())
+  id              String   @id @default(uuid())
   tenantId        String
   dealId          String
   previousStageId String?
   newStageId      String
   movedById       String
-  movedAt         DateTime  @default(now())
-  timeInPrevStage Int?      // minutes spent in previous stage (computed on insert)
+  movedAt         DateTime @default(now())
+  timeInPrevStage Int? // minutes spent in previous stage (computed on insert)
   note            String?
 
-  tenant        Tenant  @relation(fields: [tenantId], references: [id])
-  deal          Deal    @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  movedBy       User    @relation(fields: [movedById], references: [id])
-  newStage      Stage   @relation("NewStage", fields: [newStageId], references: [id])
-  previousStage Stage?  @relation("PreviousStage", fields: [previousStageId], references: [id])
+  tenant        Tenant @relation(fields: [tenantId], references: [id])
+  deal          Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  movedBy       User   @relation(fields: [movedById], references: [id])
+  newStage      Stage  @relation("NewStage", fields: [newStageId], references: [id])
+  previousStage Stage? @relation("PreviousStage", fields: [previousStageId], references: [id])
 
   @@index([dealId, tenantId])
   @@index([tenantId, movedAt])
@@ -724,7 +771,7 @@ model DealAction {
   dealId        String
   performedById String
   actionType    DealActionType
-  payload       Json?          // e.g. { field: "status", from: "WARM", to: "HOT" } or { to: "user@email.com" }
+  payload       Json? // e.g. { field: "status", from: "WARM", to: "HOT" } or { to: "user@email.com" }
   note          String?
   performedAt   DateTime       @default(now())
 
@@ -744,15 +791,16 @@ model Task {
   id             String    @id @default(uuid())
   tenantId       String
   dealId         String?
-  contactId      String?
-  organizationId String?
+  leadId         String?
+  customerId     String?
+  accountId      String?
   assignedUserId String
   assignedById   String?
   completedById  String?
   title          String
   description    String?
   status         String    @default("pending") // pending|in_progress|blocked|completed|cancelled
-  priority       String    @default("Medium")  // Low|Medium|High
+  priority       String    @default("Medium") // Low|Medium|High
   dueDate        DateTime
   reminderAt     DateTime?
   completedAt    DateTime?
@@ -760,12 +808,13 @@ model Task {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id])
-  deal         Deal?         @relation(fields: [dealId], references: [id], onDelete: SetNull)
-  contact      Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  assignedUser User          @relation("AssignedTasks", fields: [assignedUserId], references: [id])
-  assignedBy   User?         @relation("TaskAssignedBy", fields: [assignedById], references: [id])
-  completedBy  User?         @relation("TaskCompletedBy", fields: [completedById], references: [id])
+  tenant       Tenant     @relation(fields: [tenantId], references: [id])
+  deal         Deal?      @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  lead         Lead?      @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  customer     Customer?  @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  assignedUser User       @relation("AssignedTasks", fields: [assignedUserId], references: [id])
+  assignedBy   User?      @relation("TaskAssignedBy", fields: [assignedById], references: [id])
+  completedBy  User?      @relation("TaskCompletedBy", fields: [completedById], references: [id])
   activities   Activity[]
 
   @@index([tenantId, assignedUserId, status])
@@ -777,30 +826,33 @@ model Task {
 // ACTIVITY (unified timeline — typed FKs, no polymorphic)
 // ─────────────────────────────────────────────
 model Activity {
-  id             String    @id @default(uuid())
-  tenantId       String
-  createdById    String
-  type           String    // call|meeting|email|sms|note|task|workflow|stage_change|deal_action|file_upload
-  title          String
-  description    String?
-  metadata       Json?
+  id          String   @id @default(uuid())
+  tenantId    String
+  createdById String
+  type        String // call|meeting|email|sms|note|task|workflow|stage_change|deal_action|file_upload
+  title       String
+  description String?
+  metadata    Json?
   // Exactly one of these is non-null
-  contactId      String?
-  dealId         String?
-  organizationId String?
-  taskId         String?
-  invoiceId      String?
-  createdAt      DateTime  @default(now())
+  leadId      String?
+  customerId  String?
+  dealId      String?
+  accountId   String?
+  taskId      String?
+  invoiceId   String?
+  createdAt   DateTime @default(now())
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id])
-  createdBy    User          @relation(fields: [createdById], references: [id])
-  contact      Contact?      @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  deal         Deal?         @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  task         Task?         @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  invoice      Invoice?      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  tenant       Tenant    @relation(fields: [tenantId], references: [id])
+  createdBy    User      @relation(fields: [createdById], references: [id])
+  lead         Lead?     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  customer     Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  deal         Deal?     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  organization Account?  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  task         Task?     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  invoice      Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
-  @@index([tenantId, contactId, createdAt])
+  @@index([tenantId, leadId, createdAt])
+  @@index([tenantId, customerId, createdAt])
   @@index([tenantId, dealId, createdAt])
   @@index([tenantId, createdAt])
 }
@@ -812,7 +864,7 @@ model Notification {
   id         String    @id @default(uuid())
   tenantId   String
   userId     String
-  type       String    // deal_assigned|task_due|campaign_sent|workflow_failed|deal_action|...
+  type       String // deal_assigned|task_due|campaign_sent|workflow_failed|deal_action|...
   title      String
   body       String?
   entityType String?
@@ -834,15 +886,15 @@ model Notification {
 // mentor: "no need for audience_contacts, just filtration logic, query from contacts"
 // ─────────────────────────────────────────────
 model TargetAudience {
-  id           String   @id @default(uuid())
-  tenantId     String
-  name         String
-  description  String?
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  tenant     Tenant                   @relation(fields: [tenantId], references: [id])
+  tenant     Tenant                    @relation(fields: [tenantId], references: [id])
   conditions TargetAudienceCondition[]
   campaigns  Campaign[]
 
@@ -855,11 +907,11 @@ model TargetAudience {
 // e.g. { field: "score", operator: "gte", value: "80" }
 // ─────────────────────────────────────────────
 model TargetAudienceCondition {
-  id               String @id @default(uuid())
+  id               String   @id @default(uuid())
   targetAudienceId String
-  field            String   // contact field name e.g. "status", "score", "source", "tags"
-  operator         String   // equals|not_equals|contains|gte|lte|in|not_in
-  value            String   // stored as string, cast at query time
+  field            String // contact field name e.g. "status", "score", "source", "tags"
+  operator         String // equals|not_equals|contains|gte|lte|in|not_in
+  value            String // stored as string, cast at query time
   conditionOrder   Int      @default(0)
   createdAt        DateTime @default(now())
 
@@ -874,14 +926,14 @@ model TargetAudienceCondition {
 model Campaign {
   id               String         @id @default(uuid())
   tenantId         String
-  targetAudienceId String?        // FK to TargetAudience — replaces old targetAudience String?
-  emailTemplateId  String?        // optional FK to Template (type=Email)
-  smsTemplateId    String?        // optional FK to Template (type=SMS)
+  targetAudienceId String? // FK to TargetAudience — replaces old targetAudience String?
+  emailTemplateId  String? // optional FK to Template (type=Email)
+  smsTemplateId    String? // optional FK to Template (type=SMS)
   name             String
   type             CampaignType
   status           CampaignStatus @default(DRAFT)
   subject          String?
-  body             String?        // inline body override when no template selected
+  body             String? // inline body override when no template selected
   sentCount        Int            @default(0)
   openedCount      Int            @default(0)
   clickedCount     Int            @default(0)
@@ -892,13 +944,14 @@ model Campaign {
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
-  tenant           Tenant           @relation(fields: [tenantId], references: [id])
-  targetAudience   TargetAudience?  @relation(fields: [targetAudienceId], references: [id], onDelete: SetNull)
-  emailTemplate    Template?        @relation("CampaignEmailTemplate", fields: [emailTemplateId], references: [id], onDelete: SetNull)
-  smsTemplate      Template?        @relation("CampaignSmsTemplate", fields: [smsTemplateId], references: [id], onDelete: SetNull)
-  campaignContacts CampaignContact[]
-  metrics          CampaignMetrics[]
+  tenant            Tenant             @relation(fields: [tenantId], references: [id])
+  targetAudience    TargetAudience?    @relation(fields: [targetAudienceId], references: [id], onDelete: SetNull)
+  emailTemplate     Template?          @relation("CampaignEmailTemplate", fields: [emailTemplateId], references: [id], onDelete: SetNull)
+  smsTemplate       Template?          @relation("CampaignSmsTemplate", fields: [smsTemplateId], references: [id], onDelete: SetNull)
+  campaignContacts  CampaignContact[]
+  metrics           CampaignMetrics[]
   emailDeliveryLogs EmailDeliveryLog[]
+  SMSQueue          SMSQueue[]
 
   @@index([tenantId, status])
   @@index([tenantId, isArchived])
@@ -938,7 +991,8 @@ model CampaignContact {
   id           String    @id @default(uuid())
   tenantId     String
   campaignId   String
-  contactId    String
+  leadId       String?
+  customerId   String?
   status       String    @default("pending") // pending|sent|delivered|opened|clicked|bounced|unsubscribed
   sentAt       DateTime?
   deliveredAt  DateTime?
@@ -947,11 +1001,13 @@ model CampaignContact {
   bouncedAt    DateTime?
   unsubscribed Boolean   @default(false)
 
-  tenant   Tenant   @relation(fields: [tenantId], references: [id])
-  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  contact  Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  campaign Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  lead     Lead?     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
-  @@unique([campaignId, contactId])
+  @@unique([campaignId, leadId])
+  @@unique([campaignId, customerId])
   @@index([campaignId, tenantId, status])
 }
 
@@ -963,17 +1019,17 @@ model Template {
   id         String   @id @default(uuid())
   tenantId   String
   name       String
-  type       String   // "Email" | "SMS"
+  type       String // "Email" | "SMS"
   category   String?
-  subject    String?  // email only
+  subject    String? // email only
   content    String
   isArchived Boolean  @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  tenant            Tenant     @relation(fields: [tenantId], references: [id])
-  campaignsAsEmail  Campaign[] @relation("CampaignEmailTemplate")
-  campaignsAsSms    Campaign[] @relation("CampaignSmsTemplate")
+  tenant           Tenant     @relation(fields: [tenantId], references: [id])
+  campaignsAsEmail Campaign[] @relation("CampaignEmailTemplate")
+  campaignsAsSms   Campaign[] @relation("CampaignSmsTemplate")
 
   @@index([tenantId, type, isArchived])
 }
@@ -987,9 +1043,9 @@ model Workflow {
   tenantId    String
   name        String
   description String?
-  trigger     String   // e.g. "deal.stage_changed" | "contact.created" | "task.overdue"
-  conditions  Json?    // WorkflowCondition[] typed JSON
-  actions     Json     // WorkflowAction[] typed JSON
+  trigger     String // e.g. "deal.stage_changed" | "contact.created" | "task.overdue"
+  conditions  Json? // WorkflowCondition[] typed JSON
+  actions     Json // WorkflowAction[] typed JSON
   isActive    Boolean  @default(false)
   isArchived  Boolean  @default(false)
   createdAt   DateTime @default(now())
@@ -1011,8 +1067,8 @@ model WorkflowTriggerRecord {
   triggeredAt DateTime @default(now())
   payload     Json?
 
-  tenant   Tenant               @relation(fields: [tenantId], references: [id])
-  workflow Workflow             @relation(fields: [workflowId], references: [id])
+  tenant   Tenant                 @relation(fields: [tenantId], references: [id])
+  workflow Workflow               @relation(fields: [workflowId], references: [id])
   runs     WorkflowExecutionRun[]
 
   @@index([tenantId, workflowId])
@@ -1044,8 +1100,8 @@ model WorkflowExecutionStep {
   tenantId    String
   executionId String
   stepIndex   Int
-  actionType  String   // create_task|send_email|assign_owner|update_field|send_sms|change_status|...
-  status      String   // success|failed|skipped
+  actionType  String // create_task|send_email|assign_owner|update_field|send_sms|change_status|...
+  status      String // success|failed|skipped
   output      Json?
   error       String?
   executedAt  DateTime @default(now())
@@ -1063,18 +1119,19 @@ model WorkflowExecutionStep {
 model Invoice {
   id              String    @id @default(uuid())
   tenantId        String
-  subscriptionId  String?   // link to Subscription for recurring billing invoices
+  subscriptionId  String? // link to Subscription for recurring billing invoices
   dealId          String?
-  contactId       String?
-  organizationId  String?
-  invoiceNumber   String    // INV-2024-001 (tenant-scoped auto-generated)
+  leadId          String?
+  customerId      String?
+  accountId       String?
+  invoiceNumber   String // INV-2024-001 (tenant-scoped auto-generated)
   plan            String?
   amount          Float
   taxAmount       Float     @default(0)
   discountAmount  Float     @default(0)
   totalAmount     Float
   currency        String    @default("PHP")
-  frequency       String    // Monthly|Quarterly|Annual|One-time
+  frequency       String // Monthly|Quarterly|Annual|One-time
   status          String    @default("Pending")
   paymentStatus   String    @default("Unpaid")
   startDate       DateTime
@@ -1089,7 +1146,8 @@ model Invoice {
   tenant       Tenant               @relation(fields: [tenantId], references: [id])
   subscription Subscription?        @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
   deal         Deal?                @relation(fields: [dealId], references: [id], onDelete: SetNull)
-  contact      Contact?             @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  lead         Lead?                @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  customer     Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
   transactions PaymentTransaction[]
   activities   Activity[]
 
@@ -1102,22 +1160,22 @@ model PaymentTransaction {
   id                 String    @id @default(uuid())
   tenantId           String
   invoiceId          String
-  paymentMethodId    String?   // FK to PaymentMethod (saved method) — nullable for ad-hoc
+  paymentMethodId    String? // FK to PaymentMethod (saved method) — nullable for ad-hoc
   amount             Float
   currency           String    @default("PHP")
-  status             String    // pending|paid|failed|refunded
-  transactionRef     String?   // internal or external reference number
+  status             String // pending|paid|failed|refunded
+  transactionRef     String? // internal or external reference number
   paymongoPaymentId  String?   @unique
   paymongoPaymentUrl String?
-  paymentMethod      String?   // card|gcash|maya|bank_transfer (denorm for quick display)
+  paymentMethod      String? // card|gcash|maya|bank_transfer (denorm for quick display)
   paidAt             DateTime?
   failureReason      String?
   metadata           Json?
   createdAt          DateTime  @default(now())
 
-  tenant        Tenant         @relation(fields: [tenantId], references: [id])
-  invoice       Invoice        @relation(fields: [invoiceId], references: [id])
-  savedMethod   PaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  tenant      Tenant         @relation(fields: [tenantId], references: [id])
+  invoice     Invoice        @relation(fields: [invoiceId], references: [id])
+  savedMethod PaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, status])
   @@index([invoiceId])
@@ -1131,8 +1189,9 @@ model ServiceOrder {
   id                   String    @id @default(uuid())
   tenantId             String
   assignedTechnicianId String?
-  contactId            String?
-  organizationId       String?
+  leadId               String?
+  customerId           String?
+  accountId            String?
   dealId               String?
   invoiceId            String?
   title                String
@@ -1141,17 +1200,18 @@ model ServiceOrder {
   scheduledDate        DateTime
   completedAt          DateTime?
   actualDurationMins   Int?
-  photos               Json?     // { before: [url], after: [url] } — object storage URLs, NOT base64
-  signature            String?   // URL to signed document in object storage
+  photos               Json? // { before: [url], after: [url] } — object storage URLs, NOT base64
+  signature            String? // URL to signed document in object storage
   notes                String?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id])
-  technician   User?         @relation(fields: [assignedTechnicianId], references: [id])
-  contact      Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  deal         Deal?         @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  tenant       Tenant    @relation(fields: [tenantId], references: [id])
+  technician   User?     @relation(fields: [assignedTechnicianId], references: [id])
+  lead         Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  customer     Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  organization Account?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  deal         Deal?     @relation(fields: [dealId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, status, assignedTechnicianId])
   @@index([tenantId, scheduledDate])
@@ -1161,25 +1221,25 @@ model ServiceOrder {
 // ASSET & INVENTORY
 // ─────────────────────────────────────────────
 model Asset {
-  id             String    @id @default(uuid())
+  id             String   @id @default(uuid())
   tenantId       String
-  organizationId String?
+  accountId      String?
   name           String
-  category       String    // Security|Telecom|IT|Infrastructure
+  category       String // Security|Telecom|IT|Infrastructure
   serialNumber   String
   client         String
-  status         String    @default("Active") // Active|Maintenance|Retired|Faulty
+  status         String   @default("Active") // Active|Maintenance|Retired|Faulty
   installDate    DateTime
   warrantyExpiry DateTime
   location       String
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id])
-  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  organization Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, status])
-  @@index([tenantId, organizationId])
+  @@index([tenantId, accountId])
 }
 
 model InventoryItem {
@@ -1212,11 +1272,11 @@ model AuditLog {
   id         String   @id @default(uuid())
   tenantId   String
   userId     String
-  action     String   // e.g. "contact.created" | "deal.stage_changed" | "user.login"
-  entityType String   // e.g. "Contact" | "Deal" | "User"
+  action     String // e.g. "contact.created" | "deal.stage_changed" | "user.login"
+  entityType String // e.g. "Contact" | "Deal" | "User"
   entityId   String?
   category   String   @default("crm") // auth|crm|billing|workflow|admin|system
-  changeset  Json?    // { before: { status: "WARM" }, after: { status: "HOT" } }
+  changeset  Json? // { before: { status: "WARM" }, after: { status: "HOT" } }
   metadata   Json?
   ipAddress  String?
   userAgent  String?
@@ -1241,13 +1301,14 @@ model EmailDeliveryLog {
   id             String    @id @default(uuid())
   tenantId       String
   campaignId     String?
-  contactId      String?
+  leadId         String?
+  customerId     String?
   fromEmail      String
   toEmail        String
   subject        String
   gmailMessageId String?   @unique
   gmailThreadId  String?
-  status         String    // sent|delivered|opened|clicked|bounced|failed
+  status         String // sent|delivered|opened|clicked|bounced|failed
   sentAt         DateTime?
   openedAt       DateTime?
   clickedAt      DateTime?
@@ -1255,11 +1316,14 @@ model EmailDeliveryLog {
   errorMessage   String?
   createdAt      DateTime  @default(now())
 
-  tenant   Tenant    @relation(fields: [tenantId], references: [id])
-  campaign Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  contact  Contact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  tenant     Tenant       @relation(fields: [tenantId], references: [id])
+  campaign   Campaign?    @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  lead       Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  customer   Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  EmailEvent EmailEvent[]
 
-  @@index([tenantId, contactId])
+  @@index([tenantId, leadId])
+  @@index([tenantId, customerId])
   @@index([tenantId, campaignId])
   @@index([gmailMessageId])
 }
@@ -1296,7 +1360,7 @@ model PasswordResetToken {
 model LoginOtpToken {
   id        String   @id @default(uuid())
   email     String
-  codeHash  String   // bcrypt hash of the 6-digit code
+  codeHash  String // bcrypt hash of the 6-digit code
   expires   DateTime
   attempts  Int      @default(0)
   createdAt DateTime @default(now())
@@ -1310,7 +1374,7 @@ model LoginOtpToken {
 model RegistrationOtpToken {
   id        String   @id @default(uuid())
   email     String
-  codeHash  String   // bcrypt hash of the 6-digit code
+  codeHash  String // bcrypt hash of the 6-digit code
   expires   DateTime
   attempts  Int      @default(0)
   createdAt DateTime @default(now())
@@ -1324,22 +1388,91 @@ model RegistrationOtpToken {
 // Each user can connect ONE Gmail account per tenant.
 // ─────────────────────────────────────────────
 model EmailAccount {
-  id              String    @id @default(uuid())
-  tenantId        String
-  userId          String
-  provider        String    @default("gmail") // "gmail" | future: "outlook"
-  email           String    // the connected Gmail address
-  accessToken     String    // encrypted — never log or expose
-  refreshToken    String?   // encrypted — needed for offline access
-  tokenExpiresAt  DateTime?
-  scopes          String[]  // granted OAuth scopes
-  isActive        Boolean   @default(true)
-  lastSyncAt      DateTime?
-  syncCursor      String?   // Gmail history ID for incremental sync
-  connectedAt     DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id             String    @id @default(uuid())
+  tenantId       String
+  userId         String
+  provider       String    @default("gmail") // "gmail" | future: "outlook"
+  email          String // the connected Gmail address
+  accessToken    String // encrypted — never log or expose
+  refreshToken   String? // encrypted — needed for offline access
+  tokenExpiresAt DateTime?
+  scopes         String[] // granted OAuth scopes
+  isActive       Boolean   @default(true)
+  lastSyncAt     DateTime?
+  syncCursor     String? // Gmail history ID for incremental sync
+  connectedAt    DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@unique([tenantId, userId, provider])
   @@index([tenantId, userId])
   @@index([tenantId, isActive])
+}
+
+// ─────────────────────────────────────────────
+// SMS QUEUE (Local Android Gateway)
+// ─────────────────────────────────────────────
+model SMSQueue {
+  id           String    @id @default(uuid())
+  tenantId     String
+  campaignId   String?
+  leadId       String?
+  customerId   String?
+  toNumber     String
+  message      String
+  status       String    @default("pending") // pending|processing|sent|delivered|failed
+  retryCount   Int       @default(0)
+  scheduledFor DateTime?
+  sentAt       DateTime?
+  errorMessage String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  campaign Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  lead     Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status])
+  @@index([tenantId, scheduledFor])
+}
+
+// ─────────────────────────────────────────────
+// EMAIL EVENT (Tracking opens, clicks, etc.)
+// ─────────────────────────────────────────────
+model EmailEvent {
+  id            String   @id @default(uuid())
+  tenantId      String
+  deliveryLogId String
+  eventType     String // open|click|bounce|unsubscribe
+  url           String? // for clicks
+  userAgent     String?
+  ipAddress     String?
+  createdAt     DateTime @default(now())
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id])
+  deliveryLog EmailDeliveryLog @relation(fields: [deliveryLogId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, eventType])
+  @@index([deliveryLogId])
+}
+
+// ─────────────────────────────────────────────
+// AUTOMATION RULE (Trigger-based background jobs)
+// ─────────────────────────────────────────────
+model AutomationRule {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  description String?
+  triggerType String // e.g. "contact.created", "deal.won", "no.reply.3days"
+  conditions  Json?
+  actions     Json // what to do (e.g., schedule campaign)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, isActive])
+  @@index([tenantId, triggerType])
 }

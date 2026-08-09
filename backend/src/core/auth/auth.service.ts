@@ -141,8 +141,8 @@ export async function registerClientAdmin(dto: ClientAdminRegisterDto) {
       },
     });
 
-    // 3. Create Organization
-    const organization = await tx.organization.create({
+    // 3. Create Account (replaces removed Organization model)
+    await (tx as any).account.create({
       data: {
         tenantId: tenant.id,
         name: dto.companyName,
@@ -152,7 +152,7 @@ export async function registerClientAdmin(dto: ClientAdminRegisterDto) {
       },
     });
 
-    return { tenant, user, organization };
+    return { tenant, user };
   });
 
   return { id: result.user.id, email: result.user.email, role: result.user.role, tenantId: result.tenant.id };
@@ -193,7 +193,8 @@ export async function registerGuest(dto: GuestRegisterDto) {
       },
     });
 
-    const organization = await tx.organization.create({
+    // Create Account (replaces removed Organization model)
+    await (tx as any).account.create({
       data: {
         tenantId: tenant.id,
         name: 'Demo Sandbox Org',
@@ -315,15 +316,6 @@ export async function resetPasswordWithToken(dto: ResetPasswordDto): Promise<voi
 const OTP_TTL_MS      = 10 * 60 * 1000; // 10 minutes
 const OTP_MAX_ATTEMPTS = 5;
 
-// ── Dev OTP bypass helpers (never active in production) ───────────────────
-const DEV_BYPASS_ACTIVE = process.env.NODE_ENV !== 'production' && process.env.DEV_OTP_BYPASS === 'true';
-const DEV_BYPASS_CODE   = '000000';
-function isDevSeedAccount(email: string): boolean {
-  if (!DEV_BYPASS_ACTIVE) return false;
-  const allowed = (process.env.DEV_SEED_EMAILS ?? '').split(',').map(e => e.trim().toLowerCase());
-  return allowed.includes(email.toLowerCase());
-}
-
 /**
  * Step 1 — Verify email+password, then generate and email a 6-digit OTP.
  * Always returns generic success to avoid leaking valid emails.
@@ -340,21 +332,26 @@ export async function sendLoginOtp(dto: LoginDto, ctx: LoginContext = {}): Promi
     throw new AppError('Account is inactive. Contact your administrator.', 403);
   }
 
-  // Dev bypass — seed accounts skip email and use fixed code "000000"
-  if (isDevSeedAccount(dto.email)) {
-    const codeHash = await hashPassword(DEV_BYPASS_CODE);
-    const expires  = new Date(Date.now() + OTP_TTL_MS);
+  // ── DEV_OTP_BYPASS: skip real email, store a known code ─────────────
+  const devBypass = process.env.DEV_OTP_BYPASS === 'true' && process.env.NODE_ENV !== 'production';
+
+  if (devBypass) {
+    const bypassCode = '000000';
+    const bypassHash = await hashPassword(bypassCode);
+    const expires    = new Date(Date.now() + OTP_TTL_MS);
+
     await prisma.loginOtpToken.upsert({
       where:  { email: dto.email },
-      update: { codeHash, expires, attempts: 0 },
-      create: { email: dto.email, codeHash, expires },
+      update: { codeHash: bypassHash, expires, attempts: 0 },
+      create: { email: dto.email, codeHash: bypassHash, expires },
     });
+
     // eslint-disable-next-line no-console
-    console.log(`\n[DEV BYPASS] OTP for ${dto.email} is: ${DEV_BYPASS_CODE}\n`);
+    console.log(`\n[DEV] OTP bypass active — use code "${bypassCode}" for ${dto.email}\n`);
     return;
   }
 
-  // Generate a 6-digit numeric code
+  // ── Normal flow: generate + send real OTP ──────────────────────────
   const code     = String(Math.floor(100000 + Math.random() * 900000));
   const codeHash = await hashPassword(code);
   const expires  = new Date(Date.now() + OTP_TTL_MS);

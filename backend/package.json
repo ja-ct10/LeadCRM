@@ -12,7 +12,13 @@
     "db:seed": "ts-node prisma/seed.ts",
     "db:seed:demo": "ts-node src/database/seeders/demo.seed.ts",
     "db:seed:full": "ts-node src/database/seeders/demo-full.seed.ts",
-    "db:seed:reymark": "ts-node src/database/seeders/reymark.seed.ts"
+    "db:seed:reymark": "ts-node src/database/seeders/reymark.seed.ts",
+    "db:seed:production-test": "ts-node src/database/seeders/production-test.seed.ts",
+    "test:campaign-production": "ts-node src/scripts/run-production-campaign-test.ts",
+    "test:email-infrastructure": "ts-node src/scripts/test-email-infrastructure.ts",
+    "verify:production-architecture": "ts-node src/scripts/verify-production-architecture.ts",
+    "test:gmail-connection": "ts-node src/scripts/test-gmail-connection.ts",
+    "audit:hardcoded-data": "ts-node src/scripts/audit-hardcoded-data.ts"
   },
   "dependencies": {
     "@faker-js/faker": "^8.4.1",

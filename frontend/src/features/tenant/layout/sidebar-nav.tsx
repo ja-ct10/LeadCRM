@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useMemo } from 'react';
 import { X } from 'lucide-react';
@@ -80,7 +80,7 @@ export default function SidebarNav({
               <Icon className="h-4 w-4 shrink-0" />
               <span className="truncate flex-1 text-left">{item.name}</span>
               {showOverdueBadge && (
-                <span className="shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                <span className="shrink-0 min-w-4.5 h-4.5 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
                   {overdueCount}
                 </span>
               )}
@@ -98,3 +98,4 @@ export default function SidebarNav({
     </aside>
   );
 }
+

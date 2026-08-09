@@ -10,7 +10,7 @@ export async function findAllServiceOrders(tenantId: string, query: Record<strin
     tenantId,
     ...(query.status              ? { status:              String(query.status) }              : {}),
     ...(query.assignedTechnicianId ? { assignedTechnicianId: String(query.assignedTechnicianId) } : {}),
-    ...(query.contactId           ? { contactId:           String(query.contactId) }           : {}),
+    ...(query.leadId           ? { leadId:           String(query.leadId) }           : {}),
     ...(query.search
       ? { title: { contains: String(query.search), mode: 'insensitive' as const } }
       : {}),
@@ -20,9 +20,8 @@ export async function findAllServiceOrders(tenantId: string, query: Record<strin
     prisma.serviceOrder.findMany({
       where, skip, take: limit, orderBy: { scheduledDate: 'asc' },
       include: {
-        technician:   { select: { id: true, firstName: true, lastName: true } },
-        contact:      { select: { id: true, firstName: true, lastName: true } },
-        organization: { select: { id: true, name: true } },
+        technician: { select: { id: true, firstName: true, lastName: true } },
+        customer:   { select: { id: true, firstName: true, lastName: true } },
       },
     }),
     prisma.serviceOrder.count({ where }),
@@ -35,10 +34,9 @@ export async function findServiceOrderById(id: string, tenantId: string) {
   return prisma.serviceOrder.findFirst({
     where: { id, tenantId },
     include: {
-      technician:   { select: { id: true, firstName: true, lastName: true, email: true } },
-      contact:      { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
-      organization: { select: { id: true, name: true } },
-      deal:         { select: { id: true, title: true } },
+      technician: { select: { id: true, firstName: true, lastName: true, email: true } },
+      customer:   { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+      deal:       { select: { id: true, title: true } },
     },
   });
 }

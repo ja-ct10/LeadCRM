@@ -1,6 +1,7 @@
-'use client';
+﻿'use client';
 
 import React, { ReactNode, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { ModalCloseButton } from '@/shared/components/ui/modal-close-button';
 
@@ -25,7 +26,7 @@ export function SideSheet({ isOpen, onClose, title, subtitle, children, width = 
     };
   }, [isOpen]);
 
-  return (
+  const content = (
     <AnimatePresence>
       {isOpen && (
         <>
@@ -34,17 +35,17 @@ export function SideSheet({ isOpen, onClose, title, subtitle, children, width = 
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100]"
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-200"
           />
           <motion.div
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className={`fixed inset-y-0 right-0 ${width} bg-white dark:bg-slate-900 shadow-2xl z-[110] flex flex-col border-l border-gray-200 dark:border-white/10`}
+            className={`fixed inset-y-0 right-0 ${width} bg-white dark:bg-slate-900 shadow-2xl z-210 flex flex-col border-l border-gray-200 dark:border-white/10`}
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/[0.02]">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/2">
               <div>
                 <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">{title}</h2>
                 {subtitle && <p className="text-sm text-slate-500 mt-1">{subtitle}</p>}
@@ -61,4 +62,7 @@ export function SideSheet({ isOpen, onClose, title, subtitle, children, width = 
       )}
     </AnimatePresence>
   );
+
+  if (typeof window === 'undefined') return null;
+  return createPortal(content, document.body);
 }
