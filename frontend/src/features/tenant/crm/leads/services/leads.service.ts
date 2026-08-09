@@ -30,6 +30,7 @@ export const leadsService = {
     if (params?.search)   query.set('search',   params.search);
     if (params?.archived) query.set('archived', 'true');
     const qs = query.toString();
+    // canonical path: /crm/leads
     return apiClient.get<PaginatedResponse<Lead>>(`/crm/leads${qs ? `?${qs}` : ''}`);
   },
 

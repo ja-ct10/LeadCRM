@@ -8,9 +8,9 @@ export async function findAllServiceOrders(tenantId: string, query: Record<strin
 
   const where = {
     tenantId,
-    ...(query.status              ? { status:              String(query.status) }              : {}),
+    ...(query.status               ? { status:               String(query.status) }               : {}),
     ...(query.assignedTechnicianId ? { assignedTechnicianId: String(query.assignedTechnicianId) } : {}),
-    ...(query.contactId           ? { contactId:           String(query.contactId) }           : {}),
+    ...(query.leadId               ? { leadId:               String(query.leadId) }               : {}),
     ...(query.search
       ? { title: { contains: String(query.search), mode: 'insensitive' as const } }
       : {}),
@@ -21,7 +21,7 @@ export async function findAllServiceOrders(tenantId: string, query: Record<strin
       where, skip, take: limit, orderBy: { scheduledDate: 'asc' },
       include: {
         technician:   { select: { id: true, firstName: true, lastName: true } },
-        contact:      { select: { id: true, firstName: true, lastName: true } },
+        lead:         { select: { id: true, firstName: true, lastName: true } },
         organization: { select: { id: true, name: true } },
       },
     }),
@@ -36,7 +36,7 @@ export async function findServiceOrderById(id: string, tenantId: string) {
     where: { id, tenantId },
     include: {
       technician:   { select: { id: true, firstName: true, lastName: true, email: true } },
-      contact:      { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+      lead:         { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
       organization: { select: { id: true, name: true } },
       deal:         { select: { id: true, title: true } },
     },

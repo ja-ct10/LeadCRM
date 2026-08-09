@@ -144,18 +144,18 @@ export async function registerClientAdmin(dto: ClientAdminRegisterDto) {
       },
     });
 
-    // 3. Create Organization
-    const organization = await tx.organization.create({
+    // 3. Create Account (replaces Organization)
+    await tx.account.create({
       data: {
         tenantId: tenant.id,
         name: dto.companyName,
         industry: dto.industry,
         size: dto.companySize,
         country: dto.country,
-      },
+      } as never,
     });
 
-    return { tenant, user, organization };
+    return { tenant, user };
   });
 
   return { id: result.user.id, email: result.user.email, role: result.user.role, tenantId: result.tenant.id };
@@ -196,11 +196,11 @@ export async function registerGuest(dto: GuestRegisterDto) {
       },
     });
 
-    const organization = await tx.organization.create({
+    const organization = await tx.account.create({
       data: {
         tenantId: tenant.id,
         name: 'Demo Sandbox Org',
-      },
+      } as never,
     });
 
     // Seed some basic data for the guest
@@ -360,8 +360,8 @@ export async function sendLoginOtp(dto: LoginDto, ctx: LoginContext = {}): Promi
     const expires  = new Date(Date.now() + OTP_TTL_MS);
     await prisma.loginOtpToken.upsert({
       where:  { email: dto.email },
-      update: { userId: user.id, codeHash, expires, attempts: 0 },
-      create: { email: dto.email, userId: user.id, codeHash, expires },
+      update: { codeHash, expires, attempts: 0 },
+      create: { email: dto.email, codeHash, expires },
     });
     // eslint-disable-next-line no-console
     console.log(`\n[DEV BYPASS] OTP for ${dto.email} is: ${DEV_BYPASS_CODE}\n`);
@@ -376,8 +376,8 @@ export async function sendLoginOtp(dto: LoginDto, ctx: LoginContext = {}): Promi
   // Upsert — one active OTP per email at a time, tied to the resolved userId
   await prisma.loginOtpToken.upsert({
     where:  { email: dto.email },
-    update: { userId: user.id, codeHash, expires, attempts: 0 },
-    create: { email: dto.email, userId: user.id, codeHash, expires },
+    update: { codeHash, expires, attempts: 0 },
+    create: { email: dto.email, codeHash, expires },
   });
 
   const emailConfigured = !!process.env.RESEND_API_KEY;
@@ -433,9 +433,8 @@ export async function verifyLoginOtp(email: string, code: string, ctx: LoginCont
   // OTP verified — delete it and issue session
   await prisma.loginOtpToken.delete({ where: { email } });
 
-  // Use the userId stored when the OTP was created — this correctly resolves the
-  // right user even when the same email exists across multiple tenants.
-  const user = await prisma.user.findUnique({ where: { id: record.userId } });
+  // Look up the user by email — the OTP is scoped to email (single identity per email per tenant)
+  const user = await prisma.user.findFirst({ where: { email } });
   if (!user) throw new AppError('User not found.', 404);
 
   const token = signToken({

@@ -27,6 +27,7 @@ export const accountsService = {
     if (params?.search)   query.set('search',   params.search);
     if (params?.archived) query.set('archived', 'true');
     const qs = query.toString();
+    // canonical path: /crm/accounts
     return apiClient.get<PaginatedResponse<any>>(`/crm/accounts${qs ? `?${qs}` : ''}`);
   },
 

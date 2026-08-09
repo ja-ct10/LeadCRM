@@ -1,4 +1,4 @@
-// LeadCRM ΓÇö Prisma Schema
+﻿// LeadCRM ΓÇö Prisma Schema
 // Single source of truth for all database models
 // ORM: Prisma 5 | DB: PostgreSQL
 
@@ -276,7 +276,7 @@ model User {
   email         String
   firstName     String
   lastName      String
-  passwordHash  String?   // nullable — OAuth-only users have no password
+  passwordHash  String
   phone         String?
   jobTitle      String?
   department    String?
@@ -312,7 +312,6 @@ model User {
   serviceOrders        ServiceOrder[]
   notifications        Notification[]
   auditLogs            AuditLog[]
-  oauthAccounts        OAuthAccount[]
 
   @@unique([tenantId, email])
   @@index([tenantId, status])
@@ -400,33 +399,6 @@ model Session {
 
   @@index([userId, tenantId])
   @@index([tokenHash])
-}
-
-// ─────────────────────────────────────────────
-// OAUTH ACCOUNT
-// Links a social provider account to a LeadCRM user.
-// One user can have multiple OAuth providers linked.
-// ─────────────────────────────────────────────
-model OAuthAccount {
-  id                String    @id @default(uuid())
-  userId            String
-  tenantId          String
-  provider          String    // "google" | "github" | "microsoft"
-  providerAccountId String    // subject claim from the OAuth provider (immutable)
-  accessToken       String?   // encrypted at rest — short-lived
-  refreshToken      String?   // encrypted at rest — long-lived
-  idToken           String?   // raw OIDC id_token for verification
-  tokenType         String?   // "Bearer"
-  scope             String?   // e.g. "openid email profile"
-  expiresAt         DateTime? // access token expiry
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  // One provider account can only be linked to one user
-  @@unique([provider, providerAccountId])
-  @@index([userId, tenantId])
 }
 
 // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ

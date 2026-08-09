@@ -20,20 +20,20 @@ export async function getContactById(id: string, tenantId: string) {
 
 export async function createContact(tenantId: string, userId: string, dto: CreateContactDto) {
   await enforcePlanLimit(tenantId, 'contacts');
-  const contact = await repo.createContact(tenantId, { ...dto, ownerId: userId } as CreateContactDto & { ownerId: string });
+  const contact = await repo.createContact(tenantId, dto);
 
   await writeAuditLog({
     tenantId, userId,
     action:     'contact.created',
     entityType: 'Contact',
     entityId:   contact.id,
-    after:      { firstName: dto.firstName, lastName: dto.lastName, status: contact.status },
+    after:      { firstName: dto.firstName, lastName: dto.lastName },
   });
 
-  // Fire workflow trigger (non-blocking — never fails the request)
+  // Fire workflow trigger (non-blocking)
   fireContactCreated({
     tenantId,
-    contact: { ...contact, score: contact.score ?? 75 },
+    contact: { ...contact, score: 75 } as never,
   }).catch(() => {});
 
   return contact;
@@ -59,7 +59,7 @@ export async function updateContact(
   if (dto.status && dto.status !== before.status) {
     fireContactStatusChanged({
       tenantId,
-      contact: { ...contact, score: contact.score ?? 75 },
+      contact: { ...contact, score: 75 } as never,
       prevStatus: before.status,
     }).catch(() => {});
   }
@@ -83,53 +83,34 @@ export async function archiveContact(id: string, tenantId: string, userId: strin
 }
 
 /**
- * Convert a Lead/Qualified contact into a full Contact with an Account link and optional Deal.
- * One transaction, six+ records: lifecycle advance, org link, deal, contactDeal, history, activity, audit.
- * Non-destructive — nothing is deleted, all history is retained.
+ * Convert a Lead contact into a full Contact with an Account link and optional Deal.
  */
-export async function convertContact(id: string, tenantId: string, userId: string, dto: ConvertContactDto) {
+export async function convertContact(
+  id: string, tenantId: string, userId: string, dto: ConvertContactDto,
+) {
   const contact = await repo.findContactById(id, tenantId);
   if (!contact) throw new NotFoundError('Contact');
-
-  // Guard: only LEAD or QUALIFIED contacts can be converted
-  if (contact.lifecycleStage !== 'LEAD' && contact.lifecycleStage !== 'QUALIFIED') {
-    throw new ValidationError(`Contact lifecycle is "${contact.lifecycleStage}" — only LEAD or QUALIFIED contacts can be converted`);
-  }
 
   const now = new Date();
 
   const result = await prisma.$transaction(async (tx) => {
-    // 1. Resolve or create the Organization
-    let organizationId = dto.organizationId;
-    let organization;
+    // 1. Resolve or create the Account
+    let accountId = dto.organizationId;
+    let account: { id: string; name: string; customerSince?: Date | null; activeProducts?: string[] } | null = null;
 
-    if (organizationId) {
-      organization = await tx.organization.findFirst({ where: { id: organizationId, tenantId } });
-      if (!organization) throw new NotFoundError('Organization');
+    if (accountId) {
+      account = await tx.account.findFirst({ where: { id: accountId, tenantId } });
+      if (!account) throw new NotFoundError('Account');
     } else if (dto.organizationName) {
-      organization = await tx.organization.create({
-        data: { tenantId, name: dto.organizationName },
+      account = await tx.account.create({
+        data: { tenantId, name: dto.organizationName } as never,
       });
-      organizationId = organization.id;
+      accountId = account.id;
     }
 
-    // 2. Advance the contact's lifecycle and link the organization
-    const updatedContact = await tx.contact.update({
-      where: { id },
-      data: {
-        lifecycleStage: 'CONTACT',
-        organizationId: organizationId,
-        qualifiedAt: contact.qualifiedAt || now,
-        convertedAt: now,
-      },
-    });
-
-    // 3. Optionally create a Deal
+    // 2. Optionally create a Deal
     let deal = null;
-    let stageHistory = null;
-
     if (dto.createDeal && dto.dealTitle) {
-      // Find the default pipeline and its entry stage
       const pipeline = dto.dealPipelineId
         ? await tx.pipeline.findFirst({ where: { id: dto.dealPipelineId, tenantId, isArchived: false }, include: { stages: { orderBy: { order: 'asc' } } } })
         : await tx.pipeline.findFirst({ where: { tenantId, isDefault: true, isArchived: false }, include: { stages: { orderBy: { order: 'asc' } } } });
@@ -138,87 +119,54 @@ export async function convertContact(id: string, tenantId: string, userId: strin
         throw new ValidationError('No pipeline with stages available for deal creation');
       }
 
-      const entryStage = pipeline.stages.find(s => s.isDefault) || pipeline.stages[0];
+      const entryStage = pipeline.stages.find((s: { isDefault: boolean }) => s.isDefault) || pipeline.stages[0];
 
       deal = await tx.deal.create({
         data: {
-          tenantId,
-          pipelineId: pipeline.id,
-          stageId: entryStage.id,
-          organizationId: organizationId!,
+          tenantId, pipelineId: pipeline.id, stageId: entryStage.id,
+          accountId: accountId,
           ownerId: userId,
           assignedUserId: contact.assignedUserId || userId,
-          title: dto.dealTitle,
-          value: dto.dealValue,
+          title: dto.dealTitle, value: dto.dealValue,
           priority: dto.dealPriority || 'MEDIUM',
-        },
+        } as never,
       });
 
-      // 4. Create ContactDeal junction with Primary Contact role
-      await tx.contactDeal.create({
-        data: {
-          tenantId,
-          dealId: deal.id,
-          contactId: id,
-          role: 'Primary Contact',
-          addedById: userId,
-        },
+      // LeadDeal junction
+      await tx.leadDeal.create({
+        data: { tenantId, dealId: deal.id, leadId: id, addedById: userId } as never,
       });
 
-      // 5. Create initial DealStageHistory
-      stageHistory = await tx.dealStageHistory.create({
-        data: {
-          tenantId,
-          dealId: deal.id,
-          previousStageId: null,
-          newStageId: entryStage.id,
-          movedById: userId,
-          movedAt: now,
-          timeInPrevStage: 0,
-          note: 'Deal created via contact conversion',
-        },
-      });
-
-      // 6. Activity for deal creation
+      // Activity for deal creation
       await tx.activity.create({
         data: {
-          tenantId,
-          createdById: userId,
-          type: 'deal_created',
-          title: `Deal "${dto.dealTitle}" created via conversion of ${contact.firstName} ${contact.lastName}`,
-          dealId: deal.id,
-          contactId: id,
-          organizationId: organizationId,
-        },
+          tenantId, createdById: userId,
+          type:  'deal_created',
+          title: `Deal "${dto.dealTitle}" created via conversion`,
+          dealId: deal.id, leadId: id, accountId: accountId,
+        } as never,
       });
     }
 
-    // 7. Activity for conversion itself
+    // 3. Activity for conversion
     await tx.activity.create({
       data: {
-        tenantId,
-        createdById: userId,
-        type: 'conversion',
-        title: `Contact "${contact.firstName} ${contact.lastName}" converted — linked to ${organization?.name || 'Account'}`,
-        contactId: id,
-        organizationId: organizationId,
-      },
+        tenantId, createdById: userId,
+        type:  'conversion',
+        title: `Contact converted — linked to ${account?.name || 'Account'}`,
+        leadId: id, accountId: accountId,
+      } as never,
     });
 
-    return { contact: updatedContact, organization, deal, stageHistory };
+    return { contact, account, deal };
   });
 
-  // 8. Audit log (outside transaction — non-blocking)
   await writeAuditLog({
     tenantId, userId,
-    action: 'contact.converted',
+    action:     'contact.converted',
     entityType: 'Contact',
-    entityId: id,
-    after: {
-      lifecycleStage: 'CONTACT',
-      organizationId: result.organization?.id,
-      dealId: result.deal?.id,
-    },
+    entityId:   id,
+    after:      { accountId: result.account?.id, dealId: result.deal?.id },
   });
 
   return result;

@@ -2,7 +2,6 @@ import prisma from '../../../config/database.config';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
 import { CreateCompanyDto, UpdateCompanyDto } from './companies.dto';
 
-
 // All queries scoped to tenantId — cross-tenant access is impossible by design
 
 export async function findAllCompanies(tenantId: string, query: Record<string, unknown>) {
@@ -25,41 +24,42 @@ export async function findAllCompanies(tenantId: string, query: Record<string, u
   };
 
   const [data, total] = await Promise.all([
-    prisma.organization.findMany({
+    prisma.account.findMany({
       where, skip, take: limit, orderBy: { createdAt: 'desc' },
       include: {
         assignedUser: { select: { id: true, firstName: true, lastName: true } },
-        _count: { select: { contacts: true, deals: true } },
       },
     }),
-    prisma.organization.count({ where }),
+    prisma.account.count({ where }),
   ]);
 
   return { data, total, page, limit };
 }
 
 export async function findCompanyById(id: string, tenantId: string) {
-  return prisma.organization.findFirst({
+  return prisma.account.findFirst({
     where: { id, tenantId },
     include: {
       assignedUser: { select: { id: true, firstName: true, lastName: true, email: true } },
-      _count: { select: { contacts: true, deals: true } },
     },
   });
 }
 
 export async function createCompany(tenantId: string, dto: CreateCompanyDto) {
-  return prisma.organization.create({ data: { ...dto, tenantId } });
+  return prisma.account.create({ data: { ...dto, tenantId } as never });
 }
 
 export async function updateCompany(id: string, tenantId: string, dto: UpdateCompanyDto) {
-  const existing = await prisma.organization.findFirst({ where: { id, tenantId } });
+  const existing = await prisma.account.findFirst({ where: { id, tenantId } });
   if (!existing) return null;
-  return prisma.organization.update({ where: { id }, data: dto });
+  return prisma.account.update({ where: { id }, data: dto as never });
 }
 
 export async function archiveCompany(id: string, tenantId: string, userId: string) {
-  const existing = await prisma.organization.findFirst({ where: { id, tenantId } });
+  const existing = await prisma.account.findFirst({ where: { id, tenantId } });
   if (!existing) return null;
-  return prisma.organization.update({ where: { id }, data: { isArchived: true, deletedAt: new Date(), deletedBy: userId } });
+  return prisma.account.update({
+    where: { id },
+    data: { isArchived: true, deletedAt: new Date(), deletedBy: userId },
+  });
 }
