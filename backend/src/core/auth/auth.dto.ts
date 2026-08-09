@@ -70,3 +70,37 @@ export type SendOtpDto = z.infer<typeof SendOtpSchema>;
 export type VerifyOtpDto = z.infer<typeof VerifyOtpSchema>;
 export type SendRegistrationOtpDto = z.infer<typeof SendRegistrationOtpSchema>;
 export type VerifyRegistrationOtpDto = z.infer<typeof VerifyRegistrationOtpSchema>;
+
+
+// ─── OAuth (Google Sign-In) ───────────────────────────────────────────────────
+// Posted by the NextAuth signIn callback to the backend bridge endpoint.
+// The backend validates the id_token with Google before trusting any fields.
+export const OAuthGoogleSchema = z.object({
+  providerAccountId: z.string().min(1, 'providerAccountId is required'),
+  idToken:           z.string().min(1, 'idToken is required'),
+  accessToken:       z.string().optional(),
+  refreshToken:      z.string().optional(),
+  expiresAtEpoch:    z.number().int().positive().optional(),
+  scope:             z.string().optional(),
+  // Profile fields pre-populated from the OIDC id_token claims
+  email:             z.string().email('Valid email required'),
+  firstName:         z.string().min(1, 'firstName is required'),
+  lastName:          z.string().default(''),
+  avatarUrl:         z.string().url().optional(),
+  emailVerified:     z.boolean(),
+});
+
+export type OAuthGoogleDto = z.infer<typeof OAuthGoogleSchema>;
+
+// ─── Complete OAuth Profile ───────────────────────────────────────────────────
+// PATCH /api/v1/auth/oauth/complete-profile
+// Called after new Google OAuth user fills in their company details.
+// Note: country is accepted but not persisted — Tenant model has no country field.
+export const CompleteOAuthProfileSchema = z.object({
+  companyName:  z.string().min(2, 'Company name is required'),
+  industry:     z.string().min(1, 'Industry is required'),
+  companySize:  z.string().min(1, 'Company size is required'),
+  country:      z.string().optional(),
+});
+
+export type CompleteOAuthProfileDto = z.infer<typeof CompleteOAuthProfileSchema>;

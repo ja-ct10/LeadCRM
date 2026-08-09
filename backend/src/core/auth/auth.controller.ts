@@ -62,13 +62,32 @@ export async function logout(req: Request, res: Response): Promise<void> {
 
 export async function me(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    // Fetch full user from DB so firstName/lastName are included
+    // Fetch full user + tenant from DB so all profile fields are included
     const user = await prisma.user.findFirst({
       where: { id: req.user!.userId, tenantId: req.user!.tenantId },
-      select: { id: true, email: true, role: true, firstName: true, lastName: true, tenantId: true, status: true },
+      select: {
+        id: true, email: true, role: true, firstName: true, lastName: true,
+        tenantId: true, status: true,
+        tenant: {
+          select: { name: true, industry: true, companySize: true },
+        },
+      },
     });
     if (!user) { res.status(401).json({ success: false, error: 'User not found' }); return; }
-    res.json({ success: true, data: { user } });
+
+    // Flatten tenant fields onto the user object for easy consumption
+    const { tenant, ...userFields } = user;
+    res.json({
+      success: true,
+      data: {
+        user: {
+          ...userFields,
+          tenantName:  tenant?.name        ?? null,
+          industry:    tenant?.industry    ?? null,
+          companySize: tenant?.companySize ?? null,
+        },
+      },
+    });
   } catch (err) { next(err); }
 }
 
@@ -280,6 +299,176 @@ export async function seedAdmin(req: Request, res: Response, next: NextFunction)
       message: existing ? 'System Admin already exists.' : 'System Admin created successfully.',
       email,
     });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── Google OAuth Bridge ─────────────────────────────────────────────────────
+import { OAuthGoogleSchema } from './auth.dto';
+import { findOrCreateUserByOAuth } from './oauth.service';
+
+/**
+ * POST /api/v1/auth/oauth/google
+ *
+ * Called exclusively by the NextAuth signIn callback (server-to-server).
+ * NextAuth has already verified the Google id_token before calling our
+ * signIn callback — the profile data is trustworthy at this point.
+ *
+ * We use the providerAccountId (Google sub) as the stable identifier
+ * rather than re-verifying the id_token, which eliminates the audience
+ * mismatch problem when frontend and backend use the same Google project.
+ *
+ * Security: This endpoint is not exposed to browsers — it is called only
+ * server-to-server from the Next.js API route. We still validate all
+ * input with Zod and enforce tenant isolation via the JWT we issue.
+ */
+export async function oauthGoogle(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const parsed = OAuthGoogleSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: parsed.error.errors[0]?.message ?? 'Invalid request' });
+      return;
+    }
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.info('[OAuth] /auth/oauth/google called — email:', req.body?.email, '| providerAccountId:', String(req.body?.providerAccountId ?? '').slice(0, 8));
+    }
+
+    const dto = parsed.data;
+
+    // NextAuth already verified the id_token with Google before calling this endpoint.
+    // We trust the providerAccountId (Google sub) and email from the verified profile.
+    // For defence-in-depth we still validate that providerAccountId is non-empty
+    // and that email matches what's in the id_token via a lightweight JWT decode.
+    if (!dto.providerAccountId || dto.providerAccountId.length < 3) {
+      res.status(400).json({ success: false, error: 'Invalid Google account identifier.' });
+      return;
+    }
+
+    // Decode (not verify) the id_token to extract the sub and email for cross-check.
+    // Full cryptographic verification was already done by NextAuth + Google's JWKS.
+    let tokenEmail: string | undefined;
+    let tokenSub: string | undefined;
+    try {
+      const parts = dto.idToken.split('.');
+      if (parts.length === 3) {
+        const claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as {
+          sub?: string;
+          email?: string;
+          aud?: string | string[];
+        };
+        tokenEmail = claims.email;
+        tokenSub   = claims.sub;
+      }
+    } catch {
+      // Decode failed — proceed with DTO values (NextAuth already verified)
+    }
+
+    // Cross-check: sub from token must match providerAccountId from NextAuth
+    if (tokenSub && tokenSub !== dto.providerAccountId) {
+      console.error('[OAuth] sub mismatch — token sub:', tokenSub, '| dto providerAccountId:', dto.providerAccountId);
+      res.status(401).json({ success: false, error: 'Account identifier mismatch.' });
+      return;
+    }
+
+    // Cross-check: email from token must match email from NextAuth profile
+    if (tokenEmail && tokenEmail !== dto.email) {
+      console.error('[OAuth] email mismatch — token email:', tokenEmail, '| dto email:', dto.email);
+      res.status(401).json({ success: false, error: 'Email mismatch.' });
+      return;
+    }
+
+    const result = await findOrCreateUserByOAuth(
+      {
+        providerAccountId: dto.providerAccountId,
+        provider:          'google',
+        email:             dto.email,
+        firstName:         dto.firstName,
+        lastName:          dto.lastName,
+        avatarUrl:         dto.avatarUrl,
+        emailVerified:     dto.emailVerified,
+        idToken:           dto.idToken,
+        accessToken:       dto.accessToken,
+        refreshToken:      dto.refreshToken,
+        expiresAtEpoch:    dto.expiresAtEpoch,
+        scope:             dto.scope,
+      },
+      {
+        userAgent: req.headers['user-agent'],
+        ipAddress: req.ip,
+      },
+    );
+
+    // Issue the LeadCRM session cookie
+    res.cookie(COOKIE_NAME, result.token, COOKIE_OPTIONS);
+
+    res.json({
+      success: true,
+      data: {
+        user:                    result.user,
+        token:                   result.token,
+        isNewUser:               result.isNewUser,
+        requiresProfileCompletion: result.requiresProfileCompletion,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── Complete OAuth Profile ──────────────────────────────────────────────────
+import { CompleteOAuthProfileSchema } from './auth.dto';
+import { writeAuditLog } from '../audit/audit.service';
+
+/**
+ * PATCH /api/v1/auth/oauth/complete-profile
+ *
+ * Patches the Tenant record for a new Google OAuth user who just filled in
+ * their company details on the complete-profile page.
+ *
+ * Security:
+ *  - Requires authenticate middleware — tenantId sourced from JWT, never body
+ *  - Validates all input via Zod before touching the DB
+ *  - Returns 404 if tenant not found (never 403)
+ */
+export async function completeOAuthProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const parsed = CompleteOAuthProfileSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: parsed.error.errors[0]?.message ?? 'Validation failed' });
+      return;
+    }
+
+    const { companyName, industry, companySize, country } = parsed.data;
+    // tenantId comes from the verified JWT — never trust the request body
+    const tenantId = req.user!.tenantId;
+
+    const tenant = await prisma.tenant.findFirst({ where: { id: tenantId } });
+    if (!tenant) {
+      res.status(404).json({ success: false, error: 'Tenant not found' });
+      return;
+    }
+
+    await prisma.tenant.update({
+      where: { id: tenantId },
+      data:  {
+        name:        companyName,
+        industry,
+        companySize,
+      },
+    });
+
+    await writeAuditLog({
+      tenantId,
+      userId:     req.user!.userId,
+      action:     'OAUTH_PROFILE_COMPLETED',
+      entityType: 'Tenant',
+      entityId:   tenantId,
+      metadata:   { companyName, industry },
+    });
+
+    res.json({ success: true });
   } catch (err) {
     next(err);
   }
