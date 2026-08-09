@@ -184,6 +184,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   const loginWithGoogle = async (): Promise<void> => {
     if (USE_MOCK_AUTH) return;
+    // callbackUrl is a fallback — the NextAuth redirect callback overrides it
+    // based on role once the OAuth bridge returns the user's role.
     await nextAuthSignIn('google', { callbackUrl: '/dashboard' });
   };
 

@@ -30,6 +30,8 @@ interface LeadCRMUser {
   tenantId:                  string;
   accessToken:               string;
   requiresProfileCompletion: boolean;
+  /** Role-based destination URL set after OAuth bridge succeeds */
+  callbackUrl?:              string;
 }
 
 // ─── Auth options ─────────────────────────────────────────────────────────────
@@ -197,6 +199,13 @@ export const authOptions: NextAuthOptions = {
             maxAge: 7 * 24 * 60 * 60,
           });
 
+          // Route to the correct UI based on role (skip profile completion for existing accounts)
+          if (!result.data.requiresProfileCompletion) {
+            const role = result.data.user.role;
+            const destination = role === 'System Admin' ? '/admin/tenants' : '/dashboard';
+            lcUser.callbackUrl = destination;
+          }
+
           return true;
         } catch (err) {
           console.error('[NextAuth] OAuth signIn exception:', err instanceof Error ? err.message : err);
@@ -222,6 +231,7 @@ export const authOptions: NextAuthOptions = {
         token.tenantId                  = lcUser.tenantId;
         token.accessToken               = lcUser.accessToken;
         token.requiresProfileCompletion = lcUser.requiresProfileCompletion ?? false;
+        if (lcUser.callbackUrl) token.callbackUrl = lcUser.callbackUrl;
       }
       return token;
     },
@@ -240,6 +250,21 @@ export const authOptions: NextAuthOptions = {
       session.accessToken    = token.accessToken               as string;
       session.requiresProfileCompletion = token.requiresProfileCompletion as boolean ?? false;
       return session;
+    },
+
+    /**
+     * redirect — after sign-in, send the user to the role-appropriate URL.
+     * System Admin → /admin/tenants
+     * All others   → /dashboard (or /auth/complete-profile if profile incomplete)
+     * Falls back to the requested callbackUrl if it's a relative path.
+     */
+    async redirect({ url, baseUrl }) {
+      // If the URL is relative, keep it (e.g. callbackUrl='/dashboard')
+      if (url.startsWith('/')) return `${baseUrl}${url}`;
+      // If same origin, allow
+      if (url.startsWith(baseUrl)) return url;
+      // Default fallback
+      return `${baseUrl}/dashboard`;
     },
   },
 

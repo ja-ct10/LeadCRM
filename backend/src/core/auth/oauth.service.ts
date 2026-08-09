@@ -141,7 +141,8 @@ export async function findOrCreateUserByOAuth(
   }
 
   const existingUser = await prisma.user.findFirst({
-    where: { email: profile.email },
+    where:   { email: profile.email },
+    include: { tenant: { select: { industry: true, companySize: true, name: true } } },
   });
 
   if (existingUser) {
@@ -189,11 +190,16 @@ export async function findOrCreateUserByOAuth(
       ipAddress:  ctx.ipAddress,
     });
 
+    // Seeder / existing accounts already have a fully provisioned tenant.
+    // Only ask for profile completion if the tenant is missing required fields.
+    const tenant = existingUser.tenant;
+    const needsCompletion = !tenant?.industry || !tenant?.companySize;
+
     return {
       token,
       user:                    toPublicUser(existingUser),
       isNewUser:               false,
-      requiresProfileCompletion: false,
+      requiresProfileCompletion: needsCompletion,
     };
   }
 
@@ -222,7 +228,7 @@ export async function findOrCreateUserByOAuth(
         firstName:     profile.firstName,
         lastName:      profile.lastName,
         // OAuth-only user — no password. passwordHash is nullable in schema.
-        passwordHash:  undefined,
+        passwordHash:  null,
         avatarUrl:     profile.avatarUrl ?? null,
         emailVerified: profile.emailVerified ? new Date() : null,
         status:        'ACTIVE',
@@ -306,6 +312,7 @@ function toPublicUser(user: {
   lastName: string;
   tenantId: string;
   avatarUrl: string | null;
+  tenant?: { industry: string | null; companySize: string | null; name: string } | null;
 }) {
   return {
     id:        user.id,
