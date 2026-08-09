@@ -31,9 +31,11 @@ export async function createPipeline(tenantId: string, dto: CreatePipelineDto) {
 }
 
 export async function updatePipeline(id: string, tenantId: string, dto: UpdatePipelineDto) {
-  const existing = await prisma.pipeline.findFirst({ where: { id, tenantId } });
-  if (!existing) return null;
-  return prisma.pipeline.update({ where: { id }, data: dto });
+  try {
+    return await prisma.pipeline.update({ where: { id, tenantId }, data: dto });
+  } catch {
+    return null;
+  }
 }
 
 export async function deletePipeline(id: string, tenantId: string) {
@@ -55,9 +57,11 @@ export async function createStage(tenantId: string, dto: CreateStageDto) {
 }
 
 export async function updateStage(id: string, tenantId: string, dto: UpdateStageDto) {
-  const stage = await prisma.stage.findFirst({ where: { id, tenantId } });
-  if (!stage) return null;
-  return prisma.stage.update({ where: { id }, data: dto });
+  try {
+    return await prisma.stage.update({ where: { id, tenantId }, data: dto });
+  } catch {
+    return null;
+  }
 }
 
 export async function deleteStage(id: string, tenantId: string) {

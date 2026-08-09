@@ -75,8 +75,7 @@ export function getConnectedDealsForContact(contact: any, deals: any[]): any[] {
   });
 }
 
-export function getConnectedDealsForOrg(
-  org: { id?: string; name?: string; contacts?: any[] },
+export function getConnectedDealsForOrg(  org: { id?: string; name?: string; contacts?: any[] },
   deals: any[],
   allContacts: any[] = []
 ): any[] {
@@ -111,6 +110,31 @@ export function getConnectedDealsForOrg(
     if (d.contactId && contactIdsSet.has(d.contactId)) return true;
     if (d.contactIds && d.contactIds.some(cid => contactIdsSet.has(cid))) return true;
     if (d.contactPerson && contactNamesSet.has(d.contactPerson.toLowerCase().trim())) return true;
+    return false;
+  });
+}
+
+/**
+ * Returns all deals connected to a specific Lead by leadId / leadIds / name matching.
+ * Mirrors getConnectedDealsForOrg but scoped to a single Lead record.
+ */
+export function getConnectedDealsForLead(
+  lead: { id?: string; leadPerson?: string; firstName?: string; lastName?: string },
+  deals: any[],
+): any[] {
+  if (!lead || !deals || deals.length === 0) return [];
+  const leadId = lead.id;
+  const fullName = lead.leadPerson?.toLowerCase().trim() ||
+    `${lead.firstName || ''} ${lead.lastName || ''}`.trim().toLowerCase();
+
+  return deals.filter(d => {
+    if (d.isArchived) return false;
+    if (leadId && d.leadId === leadId) return true;
+    if (leadId && d.leadIds && d.leadIds.includes(leadId)) return true;
+    if (leadId && d.contactId === leadId) return true;
+    if (leadId && d.contactIds && d.contactIds.includes(leadId)) return true;
+    if (fullName && d.leadPerson && d.leadPerson.toLowerCase().trim() === fullName) return true;
+    if (fullName && d.contactPerson && d.contactPerson.toLowerCase().trim() === fullName) return true;
     return false;
   });
 }

@@ -73,4 +73,8 @@ export interface Deal {
   }[];
   activities?: { id: string; type: 'call' | 'email' | 'meeting' | 'note'; description: string; timestamp: string; userId: string }[];
   ownershipHistory?: DealOwnershipRecord[]; // full ownership audit trail
+  // Lead linkage — added after CRM model split
+  leadId?: string;
+  leadIds?: string[];
+  leadPerson?: { id: string; firstName: string; lastName: string };
 }

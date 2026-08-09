@@ -57,7 +57,7 @@ export async function enforcePlanLimit(
   if (!limit) return; // No limit set — allow
 
   let count = 0;
-  if (resource === 'contacts') count = await prisma.contact.count({ where: { tenantId } });
+  if (resource === 'contacts') count = await prisma.lead.count({ where: { tenantId } });
   else if (resource === 'users') count = await prisma.user.count({ where: { tenantId } });
   else if (resource === 'deals') count = await prisma.deal.count({ where: { tenantId } });
 

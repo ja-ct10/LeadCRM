@@ -65,9 +65,9 @@ export default function BillingPage() {
   const filtered = invoices.filter(inv => {
     const q = searchQuery.toLowerCase();
     const matchSearch = !q ||
-      inv.companyName.toLowerCase().includes(q) ||
-      inv.id.toLowerCase().includes(q) ||
-      inv.plan.toLowerCase().includes(q);
+      (inv.companyName ?? '').toLowerCase().includes(q) ||
+      (inv.id ?? '').toLowerCase().includes(q) ||
+      (inv.plan ?? '').toLowerCase().includes(q);
     const matchStatus = filterStatus === 'All' || inv.status === filterStatus;
     return matchSearch && matchStatus;
   });

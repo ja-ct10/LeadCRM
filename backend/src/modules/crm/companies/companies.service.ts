@@ -19,7 +19,7 @@ export async function createCompany(tenantId: string, userId: string, dto: Creat
   const company = await repo.createCompany(tenantId, dto);
   await writeAuditLog({
     tenantId, userId,
-    action: 'company.created', entityType: 'Organization', entityId: company.id,
+    action: 'account.created', entityType: 'Account', entityId: company.id,
     after: { name: dto.name, industry: dto.industry },
   });
   return company;
@@ -40,7 +40,7 @@ export async function updateCompany(
   );
   await writeAuditLog({
     tenantId, userId,
-    action: 'company.updated', entityType: 'Organization', entityId: id,
+    action: 'account.updated', entityType: 'Account', entityId: id,
     before: cb, after: ca,
   });
   return company;
@@ -51,7 +51,7 @@ export async function archiveCompany(id: string, tenantId: string, userId: strin
   if (!company) throw new NotFoundError('Company');
   await writeAuditLog({
     tenantId, userId,
-    action: 'company.archived', entityType: 'Organization', entityId: id,
+    action: 'account.archived', entityType: 'Account', entityId: id,
     after: { isArchived: true },
   });
   return company;

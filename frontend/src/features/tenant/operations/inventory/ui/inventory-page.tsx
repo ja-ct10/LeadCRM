@@ -20,10 +20,11 @@ export default function InventoryPage() {
   const [filterStockStatuses, setFilterStockStatuses] = useState<string[]>([]);
 
   const filteredItems = inventoryItems.filter(item => {
-    const matchesSearch = 
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.supplier.toLowerCase().includes(searchQuery.toLowerCase());
+    const searchLower = searchQuery.toLowerCase();
+    const matchesSearch = !searchQuery ||
+      (item.name ?? '').toLowerCase().includes(searchLower) ||
+      (item.sku ?? '').toLowerCase().includes(searchLower) ||
+      (item.supplier ?? '').toLowerCase().includes(searchLower);
     const matchesCategory = filterCategories.length === 0 || filterCategories.includes(item.category);
     const stockLabel = item.quantity <= 0 ? 'Out of Stock' : item.quantity <= item.minQuantity ? 'Low Stock' : 'In Stock';
     const matchesStock = filterStockStatuses.length === 0 || filterStockStatuses.includes(stockLabel);

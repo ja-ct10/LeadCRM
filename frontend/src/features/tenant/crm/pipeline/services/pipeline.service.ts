@@ -8,8 +8,11 @@ export const pipelineService = {
   getPipelines: (): Promise<PaginatedResponse<Pipeline>> =>
     apiClient.get<PaginatedResponse<Pipeline>>('/crm/pipelines'),
 
-  getDeals: (pipelineId?: string): Promise<PaginatedResponse<Deal>> => {
-    const qs = pipelineId ? `?pipelineId=${pipelineId}` : '';
+  getDeals: (pipelineId?: string, limit?: number): Promise<PaginatedResponse<Deal>> => {
+    const params = new URLSearchParams();
+    if (pipelineId) params.set('pipelineId', pipelineId);
+    if (limit) params.set('limit', String(limit));
+    const qs = params.toString() ? `?${params.toString()}` : '';
     return apiClient.get<PaginatedResponse<Deal>>(`/crm/deals${qs}`);
   },
 
