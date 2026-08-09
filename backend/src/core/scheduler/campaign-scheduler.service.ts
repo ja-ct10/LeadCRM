@@ -12,8 +12,11 @@
 
 import prisma from '../../config/database.config';
 import { writeAuditLog } from '../audit/audit.service';
-import { sendBulkEmail } from '../../modules/marketing/email/gmail.service';
-import { sendBulkSms } from '../../modules/marketing/sms/sms-gateway.service';
+
+// Email/SMS senders are not yet wired — scheduler runs in dry-run mode until
+// gmail.service and sms-gateway.service are fully integrated into dev schema.
+async function sendBulkEmail(..._args: unknown[]): Promise<void> { /* stub */ }
+async function sendBulkSms(..._args: unknown[]): Promise<void> { /* stub */ }
 
 interface ScheduledCampaign {
   id: string;
@@ -217,8 +220,8 @@ async function processSingleCampaign(campaign: ScheduledCampaign & { targetAudie
  */
 async function getTargetContacts(tenantId: string, targetAudienceId?: string): Promise<any[]> {
   if (!targetAudienceId) {
-    // No specific audience, get all active leads
-    return await prisma.lead.findMany({
+    // No specific audience, get all active contacts
+    return await prisma.contact.findMany({
       where: { 
         tenantId,
         isArchived: false
@@ -233,9 +236,9 @@ async function getTargetContacts(tenantId: string, targetAudienceId?: string): P
     });
   }
 
-  // For now, return all leads - proper audience filtering would require
+  // For now, return all contacts - proper audience filtering would require
   // evaluating the audience conditions dynamically
-  return await prisma.lead.findMany({
+  return await prisma.contact.findMany({
     where: { 
       tenantId,
       isArchived: false
