@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -109,14 +109,14 @@ export default function GlobalLoader() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.15 }}
-          className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-gray-900/60 dark:bg-slate-950/75 backdrop-blur-md"
+          className="fixed inset-0 z-9999 flex flex-col items-center justify-center bg-gray-900/60 dark:bg-slate-950/75 backdrop-blur-md"
         >
           <motion.div
             initial={{ scale: 0.92, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.92, opacity: 0 }}
             transition={{ type: "spring", damping: 22, stiffness: 380 }}
-            className="bg-white dark:bg-[#0b0f19] border border-gray-100 dark:border-white/[0.08] rounded-2xl p-8 max-w-xs w-full mx-4 shadow-2xl flex flex-col items-center space-y-4 text-center ring-1 ring-black/[0.03]"
+            className="bg-white dark:bg-[#0b0f19] border border-gray-100 dark:border-white/8 rounded-2xl p-8 max-w-xs w-full mx-4 shadow-2xl flex flex-col items-center space-y-4 text-center ring-1 ring-black/3"
           >
             {/* Elegant Double Ring Loading Wheel */}
             <div className="relative flex items-center justify-center h-16 w-16">
@@ -138,7 +138,7 @@ export default function GlobalLoader() {
             </div>
 
             {/* Design & Requirement Traceability Info */}
-            <div className="w-full bg-slate-50 dark:bg-white/[0.02] rounded-lg py-2 px-3 border border-gray-100 dark:border-white/[0.04] flex items-center justify-center gap-1.5 text-[10px] font-mono text-slate-500 dark:text-blue-400/80">
+            <div className="w-full bg-slate-50 dark:bg-white/2 rounded-lg py-2 px-3 border border-gray-100 dark:border-white/4 flex items-center justify-center gap-1.5 text-[10px] font-mono text-slate-500 dark:text-blue-400/80">
               <Shield size={11} className="text-blue-500" />
               <span>Secure Connection • LeadCRM</span>
             </div>
@@ -148,3 +148,4 @@ export default function GlobalLoader() {
     </AnimatePresence>
   );
 }
+

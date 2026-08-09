@@ -1,12 +1,12 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useMemo } from 'react';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
-import { Contact } from '@/store/types';
-import { ClientTable } from '@/features/tenant/crm/contacts/ui/contacts-table';
-import { ClientDetailSheet } from '@/features/tenant/crm/contacts/ui/contact-detail-sheet';
-import { ContactFormSheet } from '@/features/tenant/crm/contacts/ui/contact-form';
+import { Customer } from '@/store/types';
+import { ClientTable } from '@/features/tenant/crm/leads/ui/leads-table';
+import { ClientDetailSheet } from '@/features/tenant/crm/leads/ui/lead-detail-sheet';
+import { LeadFormSheet as CustomerFormSheet } from '@/features/tenant/crm/leads/ui/lead-form';
 import { usePagination } from '@/shared/hooks/use-pagination';
 import { Pagination } from '@/shared/components/ui/pagination';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
@@ -16,25 +16,26 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shar
 import { toast } from 'sonner';
 
 /**
- * Customers Page — shows only contacts with customerType = 'Active Customer'.
+ * Customers Page — shows only customers with customerType = 'Active Customer'.
  * Set by the won-deal handoff. Status is human-owned and independent (REQ131).
- * Reuses the existing contacts table and detail sheet — no duplication.
+ * Reuses the existing customers table and detail sheet — no duplication.
  */
 export default function CustomersPage() {
-  const { contacts, organizations, users, tasks, deals, campaigns, addContact, updateContact, deleteContact, restoreRecord, addTask, updateTask } = useData({ includeArchived: false });
+  const { contacts, organizations, users, tasks, deals, campaigns, addContact: addCustomer, updateContact: updateCustomer, deleteContact: deleteCustomer, restoreRecord, addTask, updateTask } = useData({ includeArchived: false });
+  const customers = contacts; // alias — filtering happens below
   const { user } = useAuth();
 
   const canCreate = useHasPermission('contacts.create');
 
   const [searchTerm, setSearchTerm]         = useState('');
   const [isFormOpen, setIsFormOpen]         = useState(false);
-  const [editingContact, setEditingContact] = useState<Contact | undefined>();
-  const [detailSheetClient, setDetailSheetClient] = useState<Contact | null>(null);
+  const [editingCustomer, setEditingCustomer] = useState<Customer | undefined>();
+  const [detailSheetClient, setDetailSheetClient] = useState<Customer | null>(null);
 
   // BW-2 fix: filter on customerType (set by won-deal handoff), NOT status
   // REQ131: status is human-owned and unrelated to customer standing
-  const customers = useMemo(() => {
-    return contacts.filter(c => {
+  const filteredCustomers = useMemo(() => {
+    return customers.filter(c => {
       const isCustomer = c.customerType === 'Active Customer';
       if (!isCustomer) return false;
       if (!searchTerm) return true;
@@ -47,34 +48,34 @@ export default function CustomersPage() {
         c.jobTitle?.toLowerCase().includes(q)
       );
     });
-  }, [contacts, searchTerm]);
+  }, [customers, searchTerm]);
 
   const { currentPage, pageSize, totalPages, goToPage, setPageSize, paginateItems } = usePagination({
-    totalItems: customers.length,
+    totalItems: filteredCustomers.length,
     initialPageSize: 25,
     pageSizeOptions: [10, 25, 50, 100],
     resetDeps: [searchTerm],
   });
 
-  const paginatedCustomers = paginateItems(customers);
+  const paginatedCustomers = paginateItems(filteredCustomers);
 
-  const handleOpenCreate = () => { setEditingContact(undefined); setIsFormOpen(true); };
-  const handleOpenEdit   = (c: Contact) => { setEditingContact(c); setIsFormOpen(true); };
-  const handleCloseForm  = () => { setIsFormOpen(false); setEditingContact(undefined); };
+  const handleOpenCreate = () => { setEditingCustomer(undefined); setIsFormOpen(true); };
+  const handleOpenEdit   = (c: Customer) => { setEditingCustomer(c); setIsFormOpen(true); };
+  const handleCloseForm  = () => { setIsFormOpen(false); setEditingCustomer(undefined); };
 
   const handleSubmit = (data: any) => {
-    if (editingContact) {
-      updateContact(editingContact.id, data);
+    if (editingCustomer) {
+      updateCustomer(editingCustomer.id, data);
       toast.success('Customer updated');
     } else {
-      addContact({ ...data, customerType: 'Active Customer' });
+      addCustomer({ ...data, customerType: 'Active Customer' });
       toast.success('Customer added');
     }
     handleCloseForm();
   };
 
   const handleDelete = (id: string) => {
-    deleteContact(id);
+    deleteCustomer(id);
     toast.success('Customer removed');
   };
 
@@ -116,14 +117,14 @@ export default function CustomersPage() {
           placeholder="Search customers..."
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value)}
-          className="h-9 w-full max-w-sm rounded-md border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] px-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
+          className="h-9 w-full max-w-sm rounded-md border border-gray-200 dark:border-white/8 bg-white dark:bg-white/2 px-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
         />
       </div>
 
-      {/* Table — reuses contacts table */}
+      {/* Table — reuses customers table */}
       <ClientTable
         data={paginatedCustomers}
-        viewMode="contacts"
+        viewMode="leads"
         onEdit={handleOpenEdit}
         onView={(c) => setDetailSheetClient(c)}
         onArchive={(c) => handleDelete(c.id)}
@@ -150,7 +151,7 @@ export default function CustomersPage() {
           client={detailSheetClient}
           clientType="individual"
           onEdit={() => {
-            setEditingContact(detailSheetClient);
+            setEditingCustomer(detailSheetClient);
             setIsFormOpen(true);
             setDetailSheetClient(null);
           }}
@@ -160,13 +161,14 @@ export default function CustomersPage() {
 
       {/* Form Sheet */}
       {isFormOpen && (
-        <ContactFormSheet
+        <CustomerFormSheet
           isOpen={isFormOpen}
           onClose={handleCloseForm}
           onSave={handleSubmit}
-          initialData={editingContact}
+          initialData={editingCustomer}
         />
       )}
     </div>
   );
 }
+

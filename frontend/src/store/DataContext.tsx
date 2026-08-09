@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, {
   createContext,
@@ -58,8 +58,8 @@ import { uuid } from "@/lib/utils";
 import { toast } from 'sonner';
 import { usersService } from "@/features/tenant/administration/users/services/users.service";
 import { USE_MOCK_DATA } from "@/lib/config";
-import { contactsService } from "@/features/tenant/crm/contacts/services/contacts.service";
-import { organizationsService } from "@/features/tenant/crm/companies/services/organizations.service";
+import { leadsService as contactsService } from "@/features/tenant/crm/leads/services/leads.service";
+import { accountsService as organizationsService } from "@/features/tenant/crm/accounts/services/accounts.service";
 import { pipelineService } from "@/features/tenant/crm/pipeline/services/pipeline.service";
 import { activitiesService } from "@/features/tenant/crm/activities/services/activities.service";
 import { tasksApi } from "@/shared/services/tasks.api";

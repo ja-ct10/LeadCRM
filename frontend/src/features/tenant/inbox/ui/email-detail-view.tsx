@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Reply, Forward, Trash2, Archive, Loader2, Send } from 'lucide-react';
 import { sendGmailEmail } from '../services/gmail.service';
+import { sanitizeEmailHtml } from '@/src/lib/sanitize';
 
 interface GmailEmail {
   id: string;
@@ -106,7 +107,7 @@ export default function EmailDetailView({ email, onBack, onEmailsChanged }: Emai
   return (
     <div className="flex flex-col h-full">
       {/* Header bar */}
-      <div className="flex items-center gap-3 px-6 py-3 border-b border-gray-100 dark:border-white/[0.05] shrink-0">
+      <div className="flex items-center gap-3 px-6 py-3 border-b border-gray-100 dark:border-white/5 shrink-0">
         <button
           onClick={onBack}
           className="p-2 text-slate-500 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
@@ -119,7 +120,7 @@ export default function EmailDetailView({ email, onBack, onEmailsChanged }: Emai
 
         <button
           onClick={handleReply}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.08] text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.05] transition-colors cursor-pointer"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/8 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors cursor-pointer"
           aria-label="Reply"
         >
           <Reply className="w-3.5 h-3.5" />
@@ -127,7 +128,7 @@ export default function EmailDetailView({ email, onBack, onEmailsChanged }: Emai
         </button>
         <button
           onClick={handleForward}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.08] text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.05] transition-colors cursor-pointer"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/8 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors cursor-pointer"
           aria-label="Forward"
         >
           <Forward className="w-3.5 h-3.5" />
@@ -186,13 +187,13 @@ export default function EmailDetailView({ email, onBack, onEmailsChanged }: Emai
         {/* Email body */}
         <div
           className="prose prose-sm dark:prose-invert max-w-none text-slate-700 dark:text-slate-300 text-[13px] leading-relaxed [&_a]:text-blue-500 [&_img]:max-w-full [&_img]:rounded-md"
-          dangerouslySetInnerHTML={{ __html: email.body || '<p style="color:#94a3b8">(No content)</p>' }}
+          dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(email.body || '<p style="color:#94a3b8">(No content)</p>') }}
         />
       </div>
 
       {/* Reply/Forward panel */}
       {replyMode !== 'none' && (
-        <div className="border-t border-gray-200 dark:border-white/[0.05] px-6 py-4 shrink-0 bg-slate-50/50 dark:bg-white/[0.01]">
+        <div className="border-t border-gray-200 dark:border-white/5 px-6 py-4 shrink-0 bg-slate-50/50 dark:bg-white/1">
           {/* To field with Reply/Forward label inline */}
           <div className="flex items-center gap-2 mb-3">
             <span className="text-xs font-medium text-slate-500 dark:text-slate-400 shrink-0">
@@ -205,7 +206,7 @@ export default function EmailDetailView({ email, onBack, onEmailsChanged }: Emai
               onChange={(e) => setReplyTo(e.target.value)}
               readOnly={replyMode === 'reply'}
               placeholder="recipient@email.com"
-              className="flex-1 h-9 px-3 rounded-lg border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-500 read-only:bg-slate-100 dark:read-only:bg-slate-800"
+              className="flex-1 h-9 px-3 rounded-lg border border-gray-200 dark:border-white/8 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-500 read-only:bg-slate-100 dark:read-only:bg-slate-800"
             />
           </div>
 
@@ -214,7 +215,7 @@ export default function EmailDetailView({ email, onBack, onEmailsChanged }: Emai
             value={replyBody}
             onChange={(e) => setReplyBody(e.target.value)}
             placeholder={replyMode === 'reply' ? 'Write your reply...' : 'Add a message (optional)...'}
-            className="w-full h-36 px-3 py-2.5 rounded-lg border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-500 resize-y"
+            className="w-full h-36 px-3 py-2.5 rounded-lg border border-gray-200 dark:border-white/8 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-500 resize-y"
             aria-label={replyMode === 'reply' ? 'Reply body' : 'Forward message'}
           />
 
@@ -247,10 +248,10 @@ export default function EmailDetailView({ email, onBack, onEmailsChanged }: Emai
 
       {/* Bottom action bar when reply panel is closed */}
       {replyMode === 'none' && (
-        <div className="flex items-center gap-3 px-6 py-3 border-t border-gray-100 dark:border-white/[0.05] shrink-0">
+        <div className="flex items-center gap-3 px-6 py-3 border-t border-gray-100 dark:border-white/5 shrink-0">
           <button
             onClick={handleReply}
-            className="inline-flex items-center gap-2 h-9 px-4 rounded-lg border border-gray-200 dark:border-white/[0.08] text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.05] transition-colors cursor-pointer"
+            className="inline-flex items-center gap-2 h-9 px-4 rounded-lg border border-gray-200 dark:border-white/8 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors cursor-pointer"
             aria-label="Reply"
           >
             <Reply className="w-4 h-4" />
@@ -258,7 +259,7 @@ export default function EmailDetailView({ email, onBack, onEmailsChanged }: Emai
           </button>
           <button
             onClick={handleForward}
-            className="inline-flex items-center gap-2 h-9 px-4 rounded-lg border border-gray-200 dark:border-white/[0.08] text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.05] transition-colors cursor-pointer"
+            className="inline-flex items-center gap-2 h-9 px-4 rounded-lg border border-gray-200 dark:border-white/8 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors cursor-pointer"
             aria-label="Forward"
           >
             <Forward className="w-4 h-4" />

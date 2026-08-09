@@ -45,17 +45,17 @@ function buildQuery(params: Record<string, unknown>): string {
 
 export const companiesApi = {
   list: (query: Record<string, unknown> = {}) =>
-    apiClient.get<CompaniesResponse>(`/crm/companies${buildQuery(query)}`),
+    apiClient.get<CompaniesResponse>(`/crm/accounts${buildQuery(query)}`),
 
   get: (id: string) =>
-    apiClient.get<CompanyResponse>(`/crm/companies/${id}`),
+    apiClient.get<CompanyResponse>(`/crm/accounts/${id}`),
 
   create: (data: Partial<Company>) =>
-    apiClient.post<CompanyResponse>('/crm/companies', data),
+    apiClient.post<CompanyResponse>('/crm/accounts', data),
 
   update: (id: string, data: Partial<Company>) =>
-    apiClient.put<CompanyResponse>(`/crm/companies/${id}`, data),
+    apiClient.put<CompanyResponse>(`/crm/accounts/${id}`, data),
 
   archive: (id: string) =>
-    apiClient.patch<{ success: boolean }>(`/crm/companies/${id}/archive`),
+    apiClient.patch<{ success: boolean }>(`/crm/accounts/${id}/archive`),
 };

@@ -34,19 +34,19 @@ function buildQuery(params: ContactListQuery): string {
 
 export const contactsApi = {
   list: (query: ContactListQuery = {}) =>
-    apiClient.get<ContactsResponse>(`/crm/contacts${buildQuery(query)}`),
+    apiClient.get<ContactsResponse>(`/crm/leads${buildQuery(query)}`),
 
   get: (id: string) =>
-    apiClient.get<ContactResponse>(`/crm/contacts/${id}`),
+    apiClient.get<ContactResponse>(`/crm/leads/${id}`),
 
   create: (data: Partial<Contact>) =>
-    apiClient.post<ContactResponse>('/crm/contacts', data),
+    apiClient.post<ContactResponse>('/crm/leads', data),
 
   update: (id: string, data: Partial<Contact>) =>
-    apiClient.put<ContactResponse>(`/crm/contacts/${id}`, data),
+    apiClient.put<ContactResponse>(`/crm/leads/${id}`, data),
 
   archive: (id: string) =>
-    apiClient.patch<{ success: boolean }>(`/crm/contacts/${id}/archive`),
+    apiClient.patch<{ success: boolean }>(`/crm/leads/${id}/archive`),
 
   convert: (id: string, data: {
     organizationId?: string;
@@ -57,5 +57,5 @@ export const contactsApi = {
     dealPipelineId?: string;
     dealPriority?: 'LOW' | 'MEDIUM' | 'HIGH';
   }) =>
-    apiClient.post<{ success: boolean; data: { contact: Contact; organization: unknown; deal: unknown } }>(`/crm/contacts/${id}/convert`, data),
+    apiClient.post<{ success: boolean; data: { contact: Contact; organization: unknown; deal: unknown } }>(`/crm/leads/${id}/convert`, data),
 };
