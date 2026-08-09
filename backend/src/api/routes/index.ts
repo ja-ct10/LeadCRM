@@ -8,6 +8,7 @@ import administrationRoutes from './administration.routes';
 import billingRoutes from './billing.routes';
 import reportingRoutes from './reporting.routes';
 import integrationsRoutes from './integrations.routes';
+import adminRoutes from './admin.routes';
 
 const router = Router();
 
@@ -20,5 +21,11 @@ router.use('/administration', administrationRoutes);
 router.use('/billing', billingRoutes);
 router.use('/reporting', reportingRoutes);
 router.use('/integrations', integrationsRoutes);
+
+// ── System Admin routes (protected by systemAdminMiddleware) ──────────────────
+// /api/v1/admin/*   — all billing, subscription, and plan management
+// /api/v1/webhooks/* — Stripe webhook (no auth, raw body)
+router.use('/admin', adminRoutes);
+router.use('/webhooks', adminRoutes);
 
 export default router;
