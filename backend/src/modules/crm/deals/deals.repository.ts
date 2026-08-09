@@ -78,11 +78,12 @@ export async function createDeal(tenantId: string, ownerId: string, dto: CreateD
 }
 
 export async function updateDeal(id: string, tenantId: string, dto: UpdateDealDto) {
-  const existing = await prisma.deal.findFirst({ where: { id, tenantId } });
-  if (!existing) return null;
-
   const { leadIds: _leadIds, ...updateData } = dto as UpdateDealDto & { leadIds?: string[] };
-  return prisma.deal.update({ where: { id }, data: updateData as never });
+  try {
+    return await prisma.deal.update({ where: { id, tenantId }, data: updateData as never });
+  } catch {
+    return null;
+  }
 }
 
 export async function moveDealStage(
@@ -188,7 +189,9 @@ export async function moveDealStage(
 }
 
 export async function archiveDeal(id: string, tenantId: string, archiveReason?: string) {
-  const existing = await prisma.deal.findFirst({ where: { id, tenantId } });
-  if (!existing) return null;
-  return prisma.deal.update({ where: { id }, data: { isArchived: true, archiveReason: archiveReason ?? null } });
+  try {
+    return await prisma.deal.update({ where: { id, tenantId }, data: { isArchived: true, archiveReason: archiveReason ?? null } });
+  } catch {
+    return null;
+  }
 }

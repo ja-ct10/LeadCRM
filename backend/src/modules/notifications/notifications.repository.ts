@@ -28,12 +28,10 @@ export async function findNotifications(tenantId: string, userId: string, query:
 }
 
 export async function markNotificationRead(id: string, tenantId: string, userId: string): Promise<void> {
-  const existing = await prisma.notification.findFirst({ where: { id, tenantId, userId } });
-  if (!existing) return;
-
-  await prisma.notification.update({
-    where: { id },
-    data: { isRead: true, readAt: new Date() },
+  // Single update — Prisma returns RecordNotFound error if the WHERE doesn't match, caught silently
+  await prisma.notification.updateMany({
+    where: { id, tenantId, userId },
+    data:  { isRead: true, readAt: new Date() },
   });
 }
 

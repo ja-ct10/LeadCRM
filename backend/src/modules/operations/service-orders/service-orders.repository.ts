@@ -48,25 +48,29 @@ export async function createServiceOrder(tenantId: string, dto: CreateServiceOrd
 }
 
 export async function updateServiceOrder(id: string, tenantId: string, dto: UpdateServiceOrderDto) {
-  const existing = await prisma.serviceOrder.findFirst({ where: { id, tenantId } });
-  if (!existing) return null;
-  return prisma.serviceOrder.update({ where: { id }, data: dto });
+  try {
+    return await prisma.serviceOrder.update({ where: { id, tenantId }, data: dto });
+  } catch {
+    return null;
+  }
 }
 
 export async function completeServiceOrder(
   id: string, tenantId: string, dto: CompleteServiceOrderDto,
 ) {
-  const existing = await prisma.serviceOrder.findFirst({ where: { id, tenantId } });
-  if (!existing) return null;
-  return prisma.serviceOrder.update({
-    where: { id },
-    data: {
-      status:             'completed',
-      completedAt:        new Date(),
-      actualDurationMins: dto.actualDurationMins,
-      notes:              dto.notes,
-      photos:             dto.photos as object | undefined,
-      signature:          dto.signature,
-    },
-  });
+  try {
+    return await prisma.serviceOrder.update({
+      where: { id, tenantId },
+      data: {
+        status:             'completed',
+        completedAt:        new Date(),
+        actualDurationMins: dto.actualDurationMins,
+        notes:              dto.notes,
+        photos:             dto.photos as object | undefined,
+        signature:          dto.signature,
+      },
+    });
+  } catch {
+    return null;
+  }
 }

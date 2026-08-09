@@ -58,22 +58,28 @@ export async function createTask(tenantId: string, assignedById: string, dto: Cr
 }
 
 export async function updateTask(id: string, tenantId: string, dto: UpdateTaskDto) {
-  const existing = await prisma.task.findFirst({ where: { id, tenantId } });
-  if (!existing) return null;
-  return prisma.task.update({ where: { id }, data: dto });
+  try {
+    return await prisma.task.update({ where: { id, tenantId }, data: dto });
+  } catch {
+    return null;
+  }
 }
 
 export async function completeTask(id: string, tenantId: string, completedById: string) {
-  const existing = await prisma.task.findFirst({ where: { id, tenantId } });
-  if (!existing) return null;
-  return prisma.task.update({
-    where: { id },
-    data: { status: 'completed', completedAt: new Date(), completedById },
-  });
+  try {
+    return await prisma.task.update({
+      where: { id, tenantId },
+      data: { status: 'completed', completedAt: new Date(), completedById },
+    });
+  } catch {
+    return null;
+  }
 }
 
 export async function archiveTask(id: string, tenantId: string) {
-  const existing = await prisma.task.findFirst({ where: { id, tenantId } });
-  if (!existing) return null;
-  return prisma.task.update({ where: { id }, data: { isArchived: true } });
+  try {
+    return await prisma.task.update({ where: { id, tenantId }, data: { isArchived: true } });
+  } catch {
+    return null;
+  }
 }
