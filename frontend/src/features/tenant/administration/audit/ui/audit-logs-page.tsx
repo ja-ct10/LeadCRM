@@ -115,10 +115,10 @@ export default function AuditLogsPage() {
   const filteredLogs = useMemo(() => {
     return auditLogs.filter(log => {
       // Search matching
-      const matchesSearch = 
-        log.action.toLowerCase().includes(search.toLowerCase()) ||
-        log.details.toLowerCase().includes(search.toLowerCase()) ||
-        log.userEmail.toLowerCase().includes(search.toLowerCase());
+      const matchesSearch = !search ||
+        (log.action ?? '').toLowerCase().includes(search.toLowerCase()) ||
+        (log.details ?? '').toLowerCase().includes(search.toLowerCase()) ||
+        (log.userEmail ?? '').toLowerCase().includes(search.toLowerCase());
 
       // Category matching
       let matchesCategory = true;

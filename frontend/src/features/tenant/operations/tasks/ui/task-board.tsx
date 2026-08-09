@@ -42,8 +42,10 @@ export default function TaskBoard() {
   ];
 
   const filteredTasks = tasks.filter(t => {
-    const matchesSearch = t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          t.description.toLowerCase().includes(searchQuery.toLowerCase());
+    const searchLower = searchQuery.toLowerCase();
+    const matchesSearch = !searchQuery ||
+      (t.title ?? '').toLowerCase().includes(searchLower) ||
+      (t.description ?? '').toLowerCase().includes(searchLower);
     const matchesPriority = selectedPriorities.length === 0 || selectedPriorities.includes(t.priority || 'Medium');
     const matchesOwner = selectedOwners.length === 0 || selectedOwners.includes(t.assignedUserId || 'unassigned');
     const matchesStatus = selectedStatuses.length === 0 || selectedStatuses.includes(t.status);

@@ -281,10 +281,11 @@ export default function CampaignsPage() {
 
   const filteredCampaigns = campaigns.filter(camp => {
     if (camp.isArchived) return false;
-    const matchesSearch = camp.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          (camp.description && camp.description.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchesStatus = statusFilter.length === 0 || statusFilter.some(s => camp.status.toLowerCase() === s.toLowerCase());
-    const matchesType = typeFilter.length === 0 || typeFilter.some(t => camp.type.toLowerCase() === t.toLowerCase());
+    const matchesSearch = !searchTerm ||
+      (camp.name ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (camp.description ?? '').toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter.length === 0 || statusFilter.some(s => (camp.status ?? '').toLowerCase() === s.toLowerCase());
+    const matchesType = typeFilter.length === 0 || typeFilter.some(t => (camp.type ?? '').toLowerCase() === t.toLowerCase());
     return matchesSearch && matchesStatus && matchesType;
   });
 
