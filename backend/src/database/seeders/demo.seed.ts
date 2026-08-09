@@ -96,7 +96,7 @@ export async function seedDemoAccounts(): Promise<void> {
     },
   });
 
-  await prisma.organization.upsert({
+  await prisma.account.upsert({
     where:  { id: 'democorp-org-id' },
     update: {},
     create: {
@@ -160,21 +160,20 @@ export async function seedDemoAccounts(): Promise<void> {
   const userClientAdmin = await prisma.user.findFirst({ where: { email: 'admin@democorp.com' } });
   
   if (userClientAdmin) {
-    // Check if contacts already exist
-    const contactsCount = await prisma.contact.count({ where: { tenantId: clientTenant.id } });
-    if (contactsCount === 0) {
-      console.log('[Seed] Seeding sample contacts & deals...');
-      await prisma.contact.create({
+    // Check if leads already exist
+    const leadsCount = await prisma.lead.count({ where: { tenantId: clientTenant.id } });
+    if (leadsCount === 0) {
+      console.log('[Seed] Seeding sample leads & deals...');
+      await prisma.lead.create({
         data: {
-          tenantId: clientTenant.id,
-          firstName: 'John',
-          lastName: 'Doe',
-          email: 'john.doe@example.com',
-          company: 'Tech Solutions',
-          status: 'HOT',
-          ownerId: userClientAdmin.id,
+          tenantId:       clientTenant.id,
+          firstName:      'John',
+          lastName:       'Doe',
+          email:          'john.doe@example.com',
+          companyName:    'Tech Solutions',
+          status:         'Inquiry',
           assignedUserId: userClientAdmin.id,
-        }
+        },
       });
 
       const pipeline = await prisma.pipeline.create({

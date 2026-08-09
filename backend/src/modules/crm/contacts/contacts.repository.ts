@@ -2,11 +2,6 @@ import prisma from '../../../config/database.config';
 import { CreateContactDto, UpdateContactDto } from './contacts.dto';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
 
-// Score map — kept in sync with business rules
-const STATUS_SCORES: Record<string, number> = {
-  HOT: 95, WARM: 75, COLD: 40, CANCELLED: 0, CLOSED: 100,
-};
-
 // All queries are scoped to tenantId — cross-tenant access is impossible by design
 export async function findAllContacts(tenantId: string, query: Record<string, unknown>) {
   const { page, limit } = getPaginationParams(query);
@@ -14,16 +9,18 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
 
   const where = {
     tenantId,
-    isArchived: query.archived === 'true',
-    ...(query.status         ? { status:    String(query.status) as never }       : {}),
-    ...(query.accountId      ? { accountId: String(query.accountId) }             : {}),
-    ...(query.assignedUserId ? { assignedUserId: String(query.assignedUserId) }   : {}),
+    // Lead has no isArchived — archive is expressed as status='Archived'
+    ...(query.archived === 'true' ? { status: 'Archived' } : { status: { not: 'Archived' } }),
+    ...(query.status         ? { status:         String(query.status) }        : {}),
+    ...(query.accountId      ? { accountId:      String(query.accountId) }     : {}),
+    ...(query.assignedUserId ? { assignedUserId: String(query.assignedUserId) } : {}),
     ...(query.search
       ? {
           OR: [
-            { firstName: { contains: String(query.search), mode: 'insensitive' as const } },
-            { lastName:  { contains: String(query.search), mode: 'insensitive' as const } },
-            { email:     { contains: String(query.search), mode: 'insensitive' as const } },
+            { firstName:   { contains: String(query.search), mode: 'insensitive' as const } },
+            { lastName:    { contains: String(query.search), mode: 'insensitive' as const } },
+            { email:       { contains: String(query.search), mode: 'insensitive' as const } },
+            { companyName: { contains: String(query.search), mode: 'insensitive' as const } },
           ],
         }
       : {}),
@@ -35,6 +32,7 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
       orderBy: { createdAt: 'desc' },
       include: {
         assignedUser: { select: { id: true, firstName: true, lastName: true } },
+        account:      { select: { id: true, name: true } },
       },
     }),
     prisma.lead.count({ where }),
@@ -48,6 +46,7 @@ export async function findContactById(id: string, tenantId: string) {
     where: { id, tenantId },
     include: {
       assignedUser: { select: { id: true, firstName: true, lastName: true, email: true } },
+      account:      { select: { id: true, name: true, industry: true } },
     },
   });
 }
@@ -64,7 +63,7 @@ export async function updateContact(id: string, tenantId: string, dto: UpdateCon
 
   return prisma.lead.update({
     where: { id },
-    data: dto as never,
+    data:  dto,
   });
 }
 
@@ -72,8 +71,9 @@ export async function archiveContact(id: string, tenantId: string, _userId: stri
   const existing = await prisma.lead.findFirst({ where: { id, tenantId } });
   if (!existing) return null;
 
+  // Lead has no isArchived — archive is expressed as status change
   return prisma.lead.update({
     where: { id },
-    data: { status: 'Archived' } as never,
+    data:  { status: 'Archived' },
   });
 }

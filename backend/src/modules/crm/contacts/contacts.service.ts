@@ -33,7 +33,7 @@ export async function createContact(tenantId: string, userId: string, dto: Creat
   // Fire workflow trigger (non-blocking)
   fireContactCreated({
     tenantId,
-    contact: { ...contact, score: 75 } as never,
+    contact: contact as never,
   }).catch(() => {});
 
   return contact;
@@ -59,7 +59,7 @@ export async function updateContact(
   if (dto.status && dto.status !== before.status) {
     fireContactStatusChanged({
       tenantId,
-      contact: { ...contact, score: 75 } as never,
+      contact: contact as never,
       prevStatus: before.status,
     }).catch(() => {});
   }
@@ -76,7 +76,7 @@ export async function archiveContact(id: string, tenantId: string, userId: strin
     action:     'contact.archived',
     entityType: 'Contact',
     entityId:   id,
-    after:      { isArchived: true },
+    after:      { status: 'Archived' },
   });
 
   return contact;
@@ -95,15 +95,15 @@ export async function convertContact(
 
   const result = await prisma.$transaction(async (tx) => {
     // 1. Resolve or create the Account
-    let accountId = dto.organizationId;
+    let accountId = dto.accountId;
     let account: { id: string; name: string; customerSince?: Date | null; activeProducts?: string[] } | null = null;
 
     if (accountId) {
       account = await tx.account.findFirst({ where: { id: accountId, tenantId } });
       if (!account) throw new NotFoundError('Account');
-    } else if (dto.organizationName) {
+    } else if (dto.accountName) {
       account = await tx.account.create({
-        data: { tenantId, name: dto.organizationName } as never,
+        data: { tenantId, name: dto.accountName } as never,
       });
       accountId = account.id;
     }
