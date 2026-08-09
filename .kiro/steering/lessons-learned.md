@@ -680,3 +680,156 @@ The System Admin email lives in three places that must all agree: `backend/.env`
 
 ### Research-Backed Steering Optimization Ceiling (~4,200 always-loaded tokens)
 ETH Zurich / arXiv 2602.11988 (2025–2026): verbose/LLM-generated context files reduce task success by 2–3% and raise cost 20%+. The fix is not removing all steering — it's removing redundancy and keeping only rules that would change output if missing. For this project, ~4,200 always-loaded tokens across 5 files is the validated floor. Below that, hallucinations and rule violations cost more to fix than the tokens saved. Duplicate rule detection: grep all always-loaded files for the same keyword — if it appears in 2+ files with no new information, remove from the lower-priority file.
+### Campaign Status Case Mismatch — Backend UPPERCASE vs Frontend lowercase
+
+The Prisma enum `CampaignStatus` uses `ACTIVE`, `PAUSED`, `DRAFT`, `COMPLETED`, `SCHEDULED` (uppercase). The frontend Campaign type uses `'active' | 'paused' | 'Draft' | 'completed' | 'scheduled'` (mixed case). Status comparisons in UI logic must use `.toLowerCase()` to handle both API responses (uppercase) and locally-created records (mixed case). This applies to all conditional rendering based on status (badges, action buttons, filters).
+
+```typescript
+// WRONG — fails when API returns 'ACTIVE'
+camp.status === "active";
+
+// CORRECT — handles both 'active' and 'ACTIVE'
+camp.status.toLowerCase() === "active";
+```
+
+### Hand-Written Migrations Must Use `DO $$ BEGIN/EXCEPTION` for ADD CONSTRAINT
+
+`ALTER TABLE ... ADD CONSTRAINT` fails with `duplicate_object` (code 42710) if the constraint already exists — e.g. from a previous failed migration attempt that was partially applied. Wrap every `ADD CONSTRAINT` in an exception block to make the migration idempotent:
+
+```sql
+DO $$ BEGIN
+  ALTER TABLE "Account" ADD CONSTRAINT "Account_tenantId_fkey"
+    FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id");
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+```
+
+`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, and `CREATE INDEX IF NOT EXISTS` are already idempotent — only FK constraints need this treatment.
+
+### Prisma Relation Name ≠ FK Column Name After Model Rename
+
+When a Prisma model is renamed (e.g. `Organization` → `Account`) but the relation field name on the referencing model is kept as-is (`organization Account? @relation(...)`), the Prisma-generated client still exposes it under the old relation name (`deal.organization`, not `deal.account`). Changing the include key to `account` causes a TS2353 type error — the correct key stays `organization`. Always check the actual relation field name in `schema.prisma`, not the model name.
+
+```prisma
+// schema.prisma — relation field name is "organization", model is Account
+organization Account? @relation(fields: [accountId], references: [id])
+```
+
+```typescript
+// CORRECT — use the relation field name, not the model name
+include: {
+  organization: true;
+} // ✓
+include: {
+  account: true;
+} // ✗ — TS2353
+```
+
+### Customer Model Has No isArchived / deletedAt / deletedBy Fields
+
+After the `split_crm_models` migration, the `Customer` table was created without soft-delete columns (`isArchived`, `deletedAt`, `deletedBy`). Archiving a Customer must be done by updating `status` to `'Inactive'`. Attempting to write those fields causes a Prisma TS2353 error at compile time.
+
+### Account Has `leads[]` and `customers[]` — Not `contacts[]`
+
+After migration, `Account` replaced `Organization`. The relation arrays are `leads Lead[]` and `customers Customer[]`. Any `_count: { select: { contacts: true } }` call on Account will fail with TS2353. Use `leads` and `customers` instead.
+
+### workflow.engine.ts Must Use `leadId` and `prisma.lead`, Not `contactId`/`prisma.contact`
+
+After the CRM split migration, `Task.contactId` was renamed to `Task.leadId` and `prisma.contact` no longer exists — use `prisma.lead`. The workflow engine's `actionCreateTask` and `actionUpdateField` both referenced the old names and must be updated after any CRM model migration.
+
+### Widening Types Is Safer Than Narrowing When UI Predates the Schema
+
+When UI components were built against a rich `Contact` type (with required `companyName`, `email`, `contactPerson`, `score`) and the backend model is leaner (all optional), the correct fix is to make the shared type fully optional rather than rewriting dozens of UI callsites. The `Contact` type now acts as a superset — strict where the backend enforces it, optional everywhere the UI fills in data dynamically.
+
+### IDE TS Cache vs `tsc --noEmit` Are Different Sources of Truth
+
+After `prisma generate`, the IDE (VS Code language server) keeps showing stale Prisma errors (`tx.account does not exist`) even though `npx tsc --noEmit` reports 0 errors. The CLI is authoritative. IDE errors in Prisma-generated types clear after "TypeScript: Restart TS Server" (`Ctrl+Shift+P`). Never revert working code based on IDE cache alone.
+
+### `typeof === 'string'` Guard on Already-String Fields Produces `never`
+
+When TypeScript knows a field is `string | undefined` and you add a `typeof x === 'string'` guard inside a block that already narrows it, the intersection can resolve to `never`. Use `String(x)` coercion or optional chaining `x?.toLowerCase()` instead of runtime type guards on fields that TypeScript already knows are string-typed.
+
+### OAuth Token Encryption Must Happen in Callback Handlers
+
+OAuth callbacks must call `encryptToken()` BEFORE saving tokens to the database. The encryption service may exist but won't be used unless explicitly called during the OAuth flow. Both integration callback handlers need the same fix.
+
+```typescript
+// Import at top of callback handler
+import { encryptToken } from "../../core/encryption/crypto.service";
+
+// In callback function, before prisma.emailAccount.upsert()
+const encryptedAccessToken = encryptToken(tokens.access_token);
+const encryptedRefreshToken = tokens.refresh_token
+  ? encryptToken(tokens.refresh_token)
+  : null;
+
+// Then use encrypted tokens in upsert
+await prisma.emailAccount.upsert({
+  // ...
+  accessToken: encryptedAccessToken,
+  refreshToken: encryptedRefreshToken,
+});
+```
+
+**Why it matters**: Without encryption, OAuth tokens are stored in plain text in the database, creating a critical security vulnerability. The `decryptToken()` function will fail with "Invalid encrypted token format" when trying to read unencrypted tokens.
+
+### Prisma Model Field Names Must Match Exactly in Scripts
+
+When writing test scripts, verify field names against `schema.prisma` before use. Common mismatches: `createdBy` doesn't exist on Campaign (no audit fields), relation names are `campaignContacts` not `contacts`, Lead has no unique `tenantId_email` constraint (use findFirst + create pattern instead of upsert). Always run `npx prisma generate` after schema changes and check the generated types in `node_modules/.prisma/client/index.d.ts` for authoritative field names.
+
+```typescript
+// WRONG — Campaign doesn't have createdBy field
+await prisma.campaign.create({ data: { createdBy: userId } });
+
+// CORRECT — Campaign only has tenantId + campaign fields
+await prisma.campaign.create({ data: { tenantId, name, type, status } });
+
+// WRONG — relation name is campaignContacts
+include: {
+  contacts: {
+    include: {
+      lead: true;
+    }
+  }
+}
+
+// CORRECT — use the actual relation name
+include: {
+  campaignContacts: {
+    include: {
+      lead: true;
+    }
+  }
+}
+```
+
+### Data Exists in DB But Not Showing in UI — Check Tenant Mismatch First
+
+When data exists in the database (verified in pgAdmin/Prisma Studio) but the frontend shows "0 total" or "No records found", the most common cause is **tenant ID mismatch** between the logged-in user and the database records.
+
+LeadCRM enforces strict multi-tenant isolation: every query filters by `req.user.tenantId` from the JWT. If test scripts or seeders create records with a different `tenantId` than the logged-in user's tenant, those records will be invisible to that user — this is by design, not a bug.
+
+**Diagnostic approach**:
+
+1. Check JWT payload: What is `user.tenantId`?
+2. Check database records: What `tenantId` do the records have?
+3. If mismatch: Either log in with a user from the correct tenant, or update records to match
+
+**Common scenario**: Campaign/email test scripts hardcode Demo Sandbox tenant ID (`a3543600-e623-4774-ae21-da85f98081c2`), but user logs in with a seeded tenant (Kulas - Stokes, etc.). Result: test creates leads, but user can't see them.
+
+```typescript
+// Created diagnostic script: backend/src/scripts/diagnose-leads-issue.ts
+// Shows all users, leads, and identifies tenant mismatches
+
+// Created fix script: backend/src/scripts/fix-leads-tenant.ts
+// Safely moves records between tenants when needed
+```
+
+**Prevention**: Test scripts should query for an actual user and use their `tenantId`, not hardcode tenant IDs.
+
+### Frontend API Routes Must Never Import @prisma/client — Vercel Build Silently Breaks
+
+Next.js API routes added under `frontend/app/api/` that import `@prisma/client` cause Vercel to fail at "Collecting page data" with `@prisma/client did not initialize yet`. Vercel only builds the frontend package and never runs `prisma generate` for it — the Prisma client has no generated code. The error is non-obvious because it appears as a runtime crash during static generation, not a compile error.
+
+The fix is always deletion. The backend already has the equivalent routes at `/api/v1/marketing/` with proper `authenticate` + `tenantMiddleware` + RBAC middleware. Frontend API routes that bypass the backend also skip auth, RBAC, and tenant isolation — they used a hardcoded `'default-tenant-id'` fallback, which is a security hole.
+
+Rule: **Zero Prisma imports anywhere under `frontend/`.** If you need a new data endpoint, add it to the Express backend and call it from the frontend via `fetch` or the service layer.
