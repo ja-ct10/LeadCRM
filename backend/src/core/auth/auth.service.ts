@@ -334,15 +334,21 @@ function isDevSeedAccount(email: string): boolean {
  * Always returns generic success to avoid leaking valid emails.
  */
 export async function sendLoginOtp(dto: LoginDto, ctx: LoginContext = {}): Promise<void> {
-  // Validate credentials first — throws if invalid
-  const user = await prisma.user.findFirst({ where: { email: dto.email } });
+  // Find all users with this email across tenants, then match by password.
+  // This correctly handles multi-tenant setups where the same email can exist
+  // in more than one tenant (@@unique([tenantId, email]) in schema).
+  const candidates = await prisma.user.findMany({ where: { email: dto.email } });
+  if (candidates.length === 0) throw new AppError('Invalid email or password', 401);
+
+  // Find the specific user whose password matches
+  let user: (typeof candidates)[0] | null = null;
+  for (const candidate of candidates) {
+    if (!candidate.passwordHash) continue;
+    const valid = await comparePassword(dto.password, candidate.passwordHash);
+    if (valid) { user = candidate; break; }
+  }
+
   if (!user) throw new AppError('Invalid email or password', 401);
-
-  // OAuth-only users have no password — direct them to Google Sign-In
-  if (!user.passwordHash) throw new AppError('Invalid email or password', 401);
-
-  const valid = await comparePassword(dto.password, user.passwordHash);
-  if (!valid) throw new AppError('Invalid email or password', 401);
 
   if (user.status !== 'ACTIVE') {
     throw new AppError('Account is inactive. Contact your administrator.', 403);
@@ -354,8 +360,8 @@ export async function sendLoginOtp(dto: LoginDto, ctx: LoginContext = {}): Promi
     const expires  = new Date(Date.now() + OTP_TTL_MS);
     await prisma.loginOtpToken.upsert({
       where:  { email: dto.email },
-      update: { codeHash, expires, attempts: 0 },
-      create: { email: dto.email, codeHash, expires },
+      update: { userId: user.id, codeHash, expires, attempts: 0 },
+      create: { email: dto.email, userId: user.id, codeHash, expires },
     });
     // eslint-disable-next-line no-console
     console.log(`\n[DEV BYPASS] OTP for ${dto.email} is: ${DEV_BYPASS_CODE}\n`);
@@ -367,11 +373,11 @@ export async function sendLoginOtp(dto: LoginDto, ctx: LoginContext = {}): Promi
   const codeHash = await hashPassword(code);
   const expires  = new Date(Date.now() + OTP_TTL_MS);
 
-  // Upsert — one active OTP per email at a time
+  // Upsert — one active OTP per email at a time, tied to the resolved userId
   await prisma.loginOtpToken.upsert({
     where:  { email: dto.email },
-    update: { codeHash, expires, attempts: 0 },
-    create: { email: dto.email, codeHash, expires },
+    update: { userId: user.id, codeHash, expires, attempts: 0 },
+    create: { email: dto.email, userId: user.id, codeHash, expires },
   });
 
   const emailConfigured = !!process.env.RESEND_API_KEY;
@@ -427,7 +433,9 @@ export async function verifyLoginOtp(email: string, code: string, ctx: LoginCont
   // OTP verified — delete it and issue session
   await prisma.loginOtpToken.delete({ where: { email } });
 
-  const user = await prisma.user.findFirst({ where: { email } });
+  // Use the userId stored when the OTP was created — this correctly resolves the
+  // right user even when the same email exists across multiple tenants.
+  const user = await prisma.user.findUnique({ where: { id: record.userId } });
   if (!user) throw new AppError('User not found.', 404);
 
   const token = signToken({

@@ -201,6 +201,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setTenant(null);
     localStorage.removeItem('leadcrm_user');
     localStorage.removeItem('leadcrm_tenant');
+    // Clear any saved post-login redirect so a new user doesn't inherit the
+    // previous session's destination (e.g. System Admin → /admin/dashboard).
+    sessionStorage.removeItem('leadcrm_redirect_after_login');
   };
 
   // ── Register tenant ────────────────────────────────────────────────

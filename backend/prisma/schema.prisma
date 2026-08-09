@@ -1324,6 +1324,7 @@ model PasswordResetToken {
 model LoginOtpToken {
   id        String   @id @default(uuid())
   email     String
+  userId    String   // which user this OTP belongs to — needed for multi-tenant email disambiguation
   codeHash  String   // bcrypt hash of the 6-digit code
   expires   DateTime
   attempts  Int      @default(0)
