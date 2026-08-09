@@ -1,10 +1,11 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/store/AuthContext';
 import { authApi } from '@/shared/services/auth.api';
 import { ArrowLeft, CheckCircle2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
+import { GoogleSignInButton } from '@/shared/components/google-sign-in-button';
 
 import { z } from 'zod';
 
@@ -96,8 +97,8 @@ function ResendOtpButton({ email, password, onResend }: ResendOtpButtonProps): R
   );
 }
 
-export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'register', onNavigate: (path: string) => void }) {
-  const { login, verifyOtp, registerTenant, registerGuestAccount, requestPasswordReset, confirmPasswordReset } = useAuth();
+export default function AuthPage({ mode, onNavigate, oauthError }: { mode: 'login' | 'register', onNavigate: (path: string) => void, oauthError?: string }) {
+  const { login, verifyOtp, loginWithGoogle, registerTenant, registerGuestAccount, requestPasswordReset, confirmPasswordReset } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -109,6 +110,26 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
   const [resetPassword, setResetPassword] = useState('');
   const [resetConfirm, setResetConfirm] = useState('');
   const [resetSuccess, setResetSuccess] = useState(false);
+
+  // ── Map NextAuth error codes to user-friendly messages ──────────────
+  const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+    AccessDenied: 'Google sign-in failed. Please make sure the backend server is running and try again.',
+    OAuthAccountNotLinked: 'This email is already registered with a different sign-in method. Please use your original login method.',
+    Configuration: 'Authentication is misconfigured. Please contact support.',
+    OAuthSignin: 'Could not start the Google sign-in flow. Please try again.',
+    OAuthCallback: 'Google sign-in callback failed. Please try again.',
+    Default: 'An unexpected authentication error occurred. Please try again.',
+  };
+
+  // ── Show OAuth error from NextAuth redirect ─────────────────────────
+  React.useEffect(() => {
+    if (oauthError) {
+      const message = OAUTH_ERROR_MESSAGES[oauthError] ?? OAUTH_ERROR_MESSAGES.Default;
+      setError(message);
+      toast.error(message);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oauthError]);
 
   // Pick up ?token= from the URL for the reset-password deep link
   React.useEffect(() => {
@@ -528,6 +549,23 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
             )}
           </form>
 
+          {/* ── Google Sign-In ─────────────────────────────────────── */}
+          {!showOTP && (
+            <>
+              <div className="relative my-6">
+                <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                  <div className="w-full border-t border-gray-200 dark:border-white/[0.06]" />
+                </div>
+                <div className="relative flex justify-center">
+                  <span className="px-3 bg-blue-50 dark:bg-[#0A1931] text-xs text-slate-400 dark:text-slate-500 font-medium">
+                    or
+                  </span>
+                </div>
+              </div>
+              <GoogleSignInButton onClick={loginWithGoogle} />
+            </>
+          )}
+
           <div className="mt-8 text-center text-sm text-slate-500 dark:text-slate-400">
             Don't have an account? <button onClick={() => onNavigate('register')} className="text-[#0A6EFF] font-medium hover:underline ml-1">Register</button>
           </div>
@@ -600,6 +638,19 @@ export default function AuthPage({ mode, onNavigate }: { mode: 'login' | 'regist
                   <p className="text-sm text-slate-500 dark:text-slate-400">Instant access to a seeded sandbox environment for testing.</p>
                 </button>
               </div>
+
+              {/* ── Google Sign-Up ─────────────────────────────────── */}
+              <div className="relative mt-2">
+                <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                  <div className="w-full border-t border-gray-200 dark:border-white/[0.06]" />
+                </div>
+                <div className="relative flex justify-center">
+                  <span className="px-3 bg-blue-50 dark:bg-[#0A1931]/90 text-xs text-slate-400 dark:text-slate-500 font-medium">
+                    or sign up with
+                  </span>
+                </div>
+              </div>
+              <GoogleSignInButton onClick={loginWithGoogle} label="Continue with Google" />
             </div>
           )}
 

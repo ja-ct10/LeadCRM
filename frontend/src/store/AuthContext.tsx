@@ -2,6 +2,7 @@
 
 import { uuid } from '@/lib/utils';
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { signIn as nextAuthSignIn, signOut as nextAuthSignOut } from 'next-auth/react';
 import { User, Tenant } from './types';
 import { MOCK_USERS, MOCK_TENANTS } from './mockData';
 import { authApi } from '@/shared/services/auth.api';
@@ -15,6 +16,7 @@ interface AuthContextType {
   tenant: Tenant | null;
   isLoading: boolean;
   login: (email: string, password?: string) => Promise<boolean>;
+  loginWithGoogle: () => Promise<void>;
   verifyOtp: (email: string, code: string) => Promise<boolean>;
   logout: () => Promise<void>;
   registerTenant: (tenantData: any, adminData: any) => Promise<boolean>;
@@ -166,10 +168,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
+  // ── Login with Google (NextAuth OAuth flow) ──────────────────────
+  /**
+   * Triggers the NextAuth Google OAuth redirect flow.
+   * NextAuth will:
+   *   1. Redirect to Google consent screen
+   *   2. On success, call our signIn callback which posts to /auth/oauth/google
+   *   3. The backend sets the LeadCRM HttpOnly JWT cookie
+   *   4. NextAuth redirects to callbackUrl
+   *
+   * After the redirect completes, the page re-mounts and restoreSession()
+   * re-hydrates AuthContext from the new cookie via /auth/me.
+   *
+   * In mock mode, Google sign-in is not available.
+   */
+  const loginWithGoogle = async (): Promise<void> => {
+    if (USE_MOCK_AUTH) return;
+    await nextAuthSignIn('google', { callbackUrl: '/dashboard' });
+  };
+
   // ── Logout ────────────────────────────────────────────────────────
   const logout = async (): Promise<void> => {
     if (!USE_MOCK_AUTH) {
+      // Revoke the LeadCRM backend session + clear HttpOnly JWT cookie
       try { await authApi.logout(); } catch { /* ignore — clear local state regardless */ }
+      // Also clear the NextAuth JWT cookie (used by Google OAuth flow)
+      try { await nextAuthSignOut({ redirect: false }); } catch { /* non-critical */ }
     }
     setUser(null);
     setTenant(null);
@@ -341,7 +365,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, tenant, isLoading, login, verifyOtp, logout, registerTenant, registerGuestAccount, requestPasswordReset, confirmPasswordReset, switchRole, updateProfile, switchDemoAccount }}>
+    <AuthContext.Provider value={{ user, tenant, isLoading, login, loginWithGoogle, verifyOtp, logout, registerTenant, registerGuestAccount, requestPasswordReset, confirmPasswordReset, switchRole, updateProfile, switchDemoAccount }}>
       {children}
     </AuthContext.Provider>
   );
