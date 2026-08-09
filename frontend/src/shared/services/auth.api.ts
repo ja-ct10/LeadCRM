@@ -52,4 +52,26 @@ export const authApi = {
 
   verifyRegistrationOtp: (email: string, code: string) =>
     apiClient.post<{ success: boolean; message: string }>('/auth/verify-registration-otp', { email, code }),
+
+  /**
+   * Called after NextAuth completes the Google OAuth flow.
+   * The backend /auth/oauth/google endpoint already set the LeadCRM
+   * HttpOnly cookie during the NextAuth signIn callback — this call
+   * to /auth/me simply re-hydrates the AuthContext state from that cookie.
+   */
+  refreshSession: () =>
+    apiClient.get<AuthResponse>('/auth/me'),
+
+  /**
+   * Patches the tenant record for a new Google OAuth user who needs to
+   * complete their company profile. tenantId is read from the server-side
+   * session cookie — never from the request body.
+   */
+  completeOAuthProfile: (payload: {
+    companyName:  string;
+    industry:     string;
+    companySize:  string;
+    country:      string;
+  }) =>
+    apiClient.patch<{ success: boolean }>('/auth/oauth/complete-profile', payload),
 };
