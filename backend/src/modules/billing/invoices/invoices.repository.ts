@@ -12,15 +12,15 @@ export async function findAllInvoices(tenantId: string, query: Record<string, un
     ...(query.status        ? { status:        String(query.status) }        : {}),
     ...(query.paymentStatus ? { paymentStatus: String(query.paymentStatus) } : {}),
     ...(query.dealId        ? { dealId:        String(query.dealId) }        : {}),
-    ...(query.contactId     ? { contactId:     String(query.contactId) }     : {}),
+    ...(query.leadId        ? { leadId:     String(query.leadId) }         : {}),
   };
 
   const [data, total] = await Promise.all([
     prisma.invoice.findMany({
       where, skip, take: limit, orderBy: { createdAt: 'desc' },
       include: {
-        deal:    { select: { id: true, title: true } },
-        contact: { select: { id: true, firstName: true, lastName: true } },
+        deal: { select: { id: true, title: true } },
+        lead: { select: { id: true, firstName: true, lastName: true } },
       },
     }),
     prisma.invoice.count({ where }),
@@ -34,7 +34,7 @@ export async function findInvoiceById(id: string, tenantId: string) {
     where: { id, tenantId },
     include: {
       deal:         { select: { id: true, title: true } },
-      contact:      { select: { id: true, firstName: true, lastName: true } },
+      lead:         { select: { id: true, firstName: true, lastName: true } },
       transactions: { orderBy: { createdAt: 'desc' } },
     },
   });
@@ -45,22 +45,29 @@ export async function createInvoice(tenantId: string, dto: CreateInvoiceDto) {
 }
 
 export async function updateInvoice(id: string, tenantId: string, dto: UpdateInvoiceDto) {
-  const existing = await prisma.invoice.findFirst({ where: { id, tenantId } });
-  if (!existing) return null;
-  return prisma.invoice.update({ where: { id }, data: dto });
+  try {
+    return await prisma.invoice.update({ where: { id, tenantId }, data: dto });
+  } catch {
+    // Record not found or cross-tenant attempt
+    return null;
+  }
 }
 
 export async function markInvoicePaid(id: string, tenantId: string, paidAt: Date) {
-  const existing = await prisma.invoice.findFirst({ where: { id, tenantId } });
-  if (!existing) return null;
-  return prisma.invoice.update({
-    where: { id },
-    data: { paymentStatus: 'Paid', status: 'Active', paidAt },
-  });
+  try {
+    return await prisma.invoice.update({
+      where: { id, tenantId },
+      data: { paymentStatus: 'Paid', status: 'Active', paidAt },
+    });
+  } catch {
+    return null;
+  }
 }
 
 export async function archiveInvoice(id: string, tenantId: string) {
-  const existing = await prisma.invoice.findFirst({ where: { id, tenantId } });
-  if (!existing) return null;
-  return prisma.invoice.update({ where: { id }, data: { isArchived: true } });
+  try {
+    return await prisma.invoice.update({ where: { id, tenantId }, data: { isArchived: true } });
+  } catch {
+    return null;
+  }
 }

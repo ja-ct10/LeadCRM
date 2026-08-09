@@ -3,7 +3,10 @@ import { uuid } from '@/lib/utils';
 import React, { useState } from 'react';
 import { CheckCircle2, Server, Users, Plus, Trash2, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { toast } from 'sonner';
 import { ModalCloseButton } from '@/shared/components/ui/modal-close-button';
+import { pricingApiService } from '../services/pricing.service';
+import { adminStripeService } from '../services/admin-stripe.service';
 
 const DEFAULT_PLANS = [
   {
@@ -60,15 +63,27 @@ export default function PricingPage() {
     return base;
   };
 
-  const handleSavePlan = () => {
+  const handleSavePlan = async () => {
     if (!editingPlan) return;
     setIsSaving(true);
-    setTimeout(() => {
+    try {
+      // Wire save to real API
+      await pricingApiService.updatePlan(editingPlan.id, {
+        price:    editingPlan.price,
+        features: editingPlan.features.filter((f) => f.enabled).map((f) => f.text),
+      });
+      // Also kick off Stripe product sync if the plan has a real ID
+      await adminStripeService.syncPlan(editingPlan.id).catch(() => {
+        // Non-fatal — plan saved in DB, Stripe sync can be retried
+      });
       setPlans(plans.map((p) => (p.id === editingPlan.id ? editingPlan : p)));
-      setIsSaving(false);
       setSaveStatus('success');
       setTimeout(() => { setEditingPlan(null); setSaveStatus('idle'); }, 900);
-    }, 1200);
+    } catch {
+      toast.error('Failed to save plan. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (

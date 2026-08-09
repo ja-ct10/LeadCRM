@@ -41,3 +41,6 @@ metadata.json
 vite.config.ts
 index.html
 src/main.tsx
+
+# Turborepo cache
+.turbo/

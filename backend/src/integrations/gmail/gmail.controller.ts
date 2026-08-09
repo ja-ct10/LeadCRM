@@ -4,6 +4,7 @@ import { getAuthorizationUrl, exchangeCodeForTokens, getUserInfo, GMAIL_SCOPES }
 import { fetchEmails, sendEmail, getConnectionStatus, disconnectAccount, trashEmails, archiveEmails, saveDraft, deleteDraft } from './gmail.service';
 import { AppError } from '../../shared/errors/app-error';
 import { writeAuditLog } from '../../core/audit/audit.service';
+import { encryptToken } from '../../core/encryption/crypto.service';
 
 const prisma = new PrismaClient();
 
@@ -61,13 +62,17 @@ export async function callback(req: Request, res: Response, next: NextFunction):
     // Get the connected Gmail address
     const userInfo = await getUserInfo(tokens.access_token);
 
+    // Encrypt tokens before storing
+    const encryptedAccessToken = encryptToken(tokens.access_token);
+    const encryptedRefreshToken = tokens.refresh_token ? encryptToken(tokens.refresh_token) : null;
+
     // Upsert the EmailAccount record
     await prisma.emailAccount.upsert({
       where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } },
       update: {
         email: userInfo.email,
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token ?? undefined,
+        accessToken: encryptedAccessToken,
+        refreshToken: encryptedRefreshToken ?? undefined,
         tokenExpiresAt: expiresAt,
         scopes: tokens.scope.split(' '),
         isActive: true,
@@ -78,8 +83,8 @@ export async function callback(req: Request, res: Response, next: NextFunction):
         userId,
         provider: 'gmail',
         email: userInfo.email,
-        accessToken: tokens.access_token,
-        refreshToken: tokens.refresh_token ?? null,
+        accessToken: encryptedAccessToken,
+        refreshToken: encryptedRefreshToken,
         tokenExpiresAt: expiresAt,
         scopes: tokens.scope.split(' '),
         isActive: true,

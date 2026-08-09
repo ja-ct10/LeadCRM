@@ -15,4 +15,6 @@ export type {
   Task, TaskStatus, TaskAssignmentRecord,
   ServiceOrder, Asset, InventoryItem,
   Invoice,
+  Lead, CreateLeadRequest, UpdateLeadRequest,
+  Customer,
 } from './types/index';

@@ -212,6 +212,19 @@ The frontend `ActivityType` union in `store/types/shared.types.ts` must be a cha
 
 Database passwords, JWT secrets, and API keys shared in chat are compromised the moment they're sent — they appear in conversation history and logs. Always rotate any credential shared this way immediately. Use environment variables exclusively; reference them by key name (e.g. `DATABASE_URL`) never by value.
 
+### Production Test Scripts Must Compile Before Deployment
+
+Production readiness tests that fail TypeScript compilation cannot verify actual functionality. When building test infrastructure for production verification, ensure all test scripts compile successfully in isolation before declaring a module "production ready." Schema field mismatches, deprecated API usage, and type errors will block execution regardless of architectural soundness.
+
+```typescript
+// WRONG — test script with compilation errors
+npm run test:campaign-production  // fails: Property 'createCipher' does not exist
+
+// CORRECT — verify test compilation first
+npm run lint                      // fix all TypeScript errors
+npm run test:campaign-production  // then run actual tests
+```
+
 ### Batch API Fetches in loadData for Performance
 
 When migrating modules from localStorage to real API, fetch all modules in parallel batches using `Promise.all` rather than sequential awaits. Group by failure domain (CRM core vs. secondary modules) so one failing module doesn't block the others from loading.
@@ -615,11 +628,13 @@ Run `npm ci` once at root. Then use `working-directory` for per-package commands
 Tailwind's `@base` layer resets `list-style` to `none` and removes padding on `ul`/`ol`. When using `contentEditable` with `document.execCommand('insertUnorderedList')`, the bullet points render but are invisible. Fix by adding utility overrides on the editor container: `[&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5`. Also: `execCommand` only works when the editor is focused — always call `.focus()` before the command.
 
 ### tsconfig exclude Is Not Applied in CI Unless You're Careful
+
 `tsconfig.json` with `"exclude": ["src/database/seeders"]` excludes seeders when running `npx tsc` inside the `backend/` directory locally — but CI clones the repo fresh and runs from the repo root, so any file outside the `include` globs but not in `exclude` may get picked up differently. Seeder files that use loose typing (implicit `any` on Prisma transaction callbacks, `.map((s) =>`, etc.) pass locally because seeders are excluded, but fail in CI if the tsconfig path resolution differs. Always add utility/script files to `exclude` explicitly and annotate any non-inferred callback params with explicit types.
 
-
 ### CI Must Run `prisma generate` Before `tsc` — Prisma Types Don't Exist on Fresh Clone
+
 On a fresh CI clone, `node_modules/.prisma/client` doesn't exist until `prisma generate` runs. Without it, every Prisma `$transaction(async (tx) => ...)` callback parameter falls back to `any` because the `PrismaClient` type can't be inferred. This causes `noImplicitAny` failures even though the code is correct. Always add `npx prisma generate` as a CI step immediately after `npm ci` and before `tsc --noEmit`.
+
 ```yaml
 - run: npm ci
 - run: npx prisma generate
@@ -628,9 +643,10 @@ On a fresh CI clone, `node_modules/.prisma/client` doesn't exist until `prisma g
   working-directory: backend
 ```
 
-
 ### next lint Is Deprecated in Next.js 15+ — Use tsc --noEmit
+
 `next lint` is deprecated in Next.js 15/16 and fails interactively when no ESLint config exists — it prompts for ESLint setup and exits with code 1 in CI. Since the backend and shared packages already use `tsc --noEmit` for linting, change the frontend `package.json` lint script to match. No extra ESLint dependencies needed.
+
 ```json
 // WRONG — deprecated, fails without eslint config
 "lint": "next lint"
@@ -639,29 +655,34 @@ On a fresh CI clone, `node_modules/.prisma/client` doesn't exist until `prisma g
 "lint": "tsc --noEmit"
 ```
 
-
 ### DEV_OTP_BYPASS and DEV_SEED_EMAILS Must Be in .env.example
+
 The OTP bypass for seed accounts only activates when `DEV_OTP_BYPASS=true` and the email is listed in `DEV_SEED_EMAILS`. Both vars were missing from `.env.example`, so teammates on fresh clones always hit the real OTP flow — no email configured means the code only prints to the server console, and teammates have no idea to look there. Always include dev-only bypass vars in `.env.example` with safe defaults pre-filled so the team can log in immediately after `npm run db:seed`.
+
 ```env
 DEV_OTP_BYPASS="true"
 DEV_SEED_EMAILS="admin@democorp.com,bob@democorp.com,super@leadcrm.com,guest@democorp.com"
 ```
+
 With this in place, all seed accounts use OTP code `000000` in development.
 
-
 ### Git Rebase Blocks on Vim Swap File — Use GIT_EDITOR=true to Skip
+
 When `git rebase --continue` opens vim and a `.swp` file exists, the rebase hangs interactively. Set `GIT_EDITOR=true` (a no-op that exits 0) to accept the existing commit message without opening an editor:
+
 ```powershell
 $env:GIT_EDITOR = "true"; git rebase --continue
 ```
 
-
 ### Use .gitattributes union Merge for Append-Only Files
+
 Append-only files like `lessons-learned.md` will conflict on every merge because both branches add content at the end. Adding a `.gitattributes` rule with `merge=union` tells git to keep all lines from both sides instead of producing conflict markers — permanently eliminating this class of conflict for the file.
+
 ```
 # .gitattributes
 .kiro/steering/lessons-learned.md merge=union
 ```
+
 Apply this to any file that is strictly additive (changelogs, lesson logs, audit trails).
 
 
@@ -680,3 +701,197 @@ The System Admin email lives in three places that must all agree: `backend/.env`
 
 ### Research-Backed Steering Optimization Ceiling (~4,200 always-loaded tokens)
 ETH Zurich / arXiv 2602.11988 (2025–2026): verbose/LLM-generated context files reduce task success by 2–3% and raise cost 20%+. The fix is not removing all steering — it's removing redundancy and keeping only rules that would change output if missing. For this project, ~4,200 always-loaded tokens across 5 files is the validated floor. Below that, hallucinations and rule violations cost more to fix than the tokens saved. Duplicate rule detection: grep all always-loaded files for the same keyword — if it appears in 2+ files with no new information, remove from the lower-priority file.
+### SideSheet Must Use createPortal to Escape Layout Stacking Context
+
+The CRM layout uses `overflow-hidden` on both the outer flex container and the main content wrapper, creating stacking contexts that trap `position: fixed` elements. Even with `z-[110]`, a `SideSheet` rendered inside `<main>` appears beneath the `z-50` sidebar because it's trapped in a child stacking context. Fix: use `createPortal(content, document.body)` to render the overlay and panel at the document root, escaping all parent overflow/z-index traps. Also bump z-index to `z-[200]`/`z-[210]` for safety.
+
+```tsx
+// WRONG — renders inside overflow-hidden main, trapped under sidebar
+return (
+  <AnimatePresence>
+    {isOpen && <motion.div className="fixed z-[110]" />}
+  </AnimatePresence>
+);
+
+// CORRECT — portals to body, escapes all stacking contexts
+const content = (
+  <AnimatePresence>
+    {isOpen && <motion.div className="fixed z-[210]" />}
+  </AnimatePresence>
+);
+return createPortal(content, document.body);
+```
+
+### Early Returns Hide Sibling UI — Portaled Components Must Co-Render
+
+When a full-page view uses `if (showX) { return <FullPage /> }`, any `SideSheet` or modal defined after that return never renders. Even though `SideSheet` uses `createPortal` to `document.body`, it must be in the same JSX tree that actually executes. Fix: wrap the early return in a Fragment and include the SideSheet alongside the full-page component.
+
+```tsx
+// WRONG — SideSheet defined later in the file never renders
+if (showBuilder) return <CampaignBuilder />;
+// ... 500 lines later ...
+<SideSheet isOpen={isAudienceOpen}>...</SideSheet>; // ← never reached
+
+// CORRECT — co-render in the same return
+if (showBuilder)
+  return (
+    <>
+      <CampaignBuilder onCreateAudience={() => setOpen(true)} />
+      <SideSheet isOpen={isAudienceOpen}>...</SideSheet>
+    </>
+  );
+```
+
+### Campaign Status Case Mismatch — Backend UPPERCASE vs Frontend lowercase
+
+The Prisma enum `CampaignStatus` uses `ACTIVE`, `PAUSED`, `DRAFT`, `COMPLETED`, `SCHEDULED` (uppercase). The frontend Campaign type uses `'active' | 'paused' | 'Draft' | 'completed' | 'scheduled'` (mixed case). Status comparisons in UI logic must use `.toLowerCase()` to handle both API responses (uppercase) and locally-created records (mixed case). This applies to all conditional rendering based on status (badges, action buttons, filters).
+
+```typescript
+// WRONG — fails when API returns 'ACTIVE'
+camp.status === "active";
+
+// CORRECT — handles both 'active' and 'ACTIVE'
+camp.status.toLowerCase() === "active";
+```
+
+### Hand-Written Migrations Must Use `DO $$ BEGIN/EXCEPTION` for ADD CONSTRAINT
+
+`ALTER TABLE ... ADD CONSTRAINT` fails with `duplicate_object` (code 42710) if the constraint already exists — e.g. from a previous failed migration attempt that was partially applied. Wrap every `ADD CONSTRAINT` in an exception block to make the migration idempotent:
+
+```sql
+DO $$ BEGIN
+  ALTER TABLE "Account" ADD CONSTRAINT "Account_tenantId_fkey"
+    FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id");
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+```
+
+`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, and `CREATE INDEX IF NOT EXISTS` are already idempotent — only FK constraints need this treatment.
+
+### Prisma Relation Name ≠ FK Column Name After Model Rename
+
+When a Prisma model is renamed (e.g. `Organization` → `Account`) but the relation field name on the referencing model is kept as-is (`organization Account? @relation(...)`), the Prisma-generated client still exposes it under the old relation name (`deal.organization`, not `deal.account`). Changing the include key to `account` causes a TS2353 type error — the correct key stays `organization`. Always check the actual relation field name in `schema.prisma`, not the model name.
+
+```prisma
+// schema.prisma — relation field name is "organization", model is Account
+organization Account? @relation(fields: [accountId], references: [id])
+```
+
+```typescript
+// CORRECT — use the relation field name, not the model name
+include: {
+  organization: true;
+} // ✓
+include: {
+  account: true;
+} // ✗ — TS2353
+```
+
+### Customer Model Has No isArchived / deletedAt / deletedBy Fields
+
+After the `split_crm_models` migration, the `Customer` table was created without soft-delete columns (`isArchived`, `deletedAt`, `deletedBy`). Archiving a Customer must be done by updating `status` to `'Inactive'`. Attempting to write those fields causes a Prisma TS2353 error at compile time.
+
+### Account Has `leads[]` and `customers[]` — Not `contacts[]`
+
+After migration, `Account` replaced `Organization`. The relation arrays are `leads Lead[]` and `customers Customer[]`. Any `_count: { select: { contacts: true } }` call on Account will fail with TS2353. Use `leads` and `customers` instead.
+
+### workflow.engine.ts Must Use `leadId` and `prisma.lead`, Not `contactId`/`prisma.contact`
+
+After the CRM split migration, `Task.contactId` was renamed to `Task.leadId` and `prisma.contact` no longer exists — use `prisma.lead`. The workflow engine's `actionCreateTask` and `actionUpdateField` both referenced the old names and must be updated after any CRM model migration.
+
+### Widening Types Is Safer Than Narrowing When UI Predates the Schema
+
+When UI components were built against a rich `Contact` type (with required `companyName`, `email`, `contactPerson`, `score`) and the backend model is leaner (all optional), the correct fix is to make the shared type fully optional rather than rewriting dozens of UI callsites. The `Contact` type now acts as a superset — strict where the backend enforces it, optional everywhere the UI fills in data dynamically.
+
+### IDE TS Cache vs `tsc --noEmit` Are Different Sources of Truth
+
+After `prisma generate`, the IDE (VS Code language server) keeps showing stale Prisma errors (`tx.account does not exist`) even though `npx tsc --noEmit` reports 0 errors. The CLI is authoritative. IDE errors in Prisma-generated types clear after "TypeScript: Restart TS Server" (`Ctrl+Shift+P`). Never revert working code based on IDE cache alone.
+
+### `typeof === 'string'` Guard on Already-String Fields Produces `never`
+
+When TypeScript knows a field is `string | undefined` and you add a `typeof x === 'string'` guard inside a block that already narrows it, the intersection can resolve to `never`. Use `String(x)` coercion or optional chaining `x?.toLowerCase()` instead of runtime type guards on fields that TypeScript already knows are string-typed.
+
+### OAuth Token Encryption Must Happen in Callback Handlers
+
+OAuth callbacks must call `encryptToken()` BEFORE saving tokens to the database. The encryption service may exist but won't be used unless explicitly called during the OAuth flow. Both integration callback handlers need the same fix.
+
+```typescript
+// Import at top of callback handler
+import { encryptToken } from "../../core/encryption/crypto.service";
+
+// In callback function, before prisma.emailAccount.upsert()
+const encryptedAccessToken = encryptToken(tokens.access_token);
+const encryptedRefreshToken = tokens.refresh_token
+  ? encryptToken(tokens.refresh_token)
+  : null;
+
+// Then use encrypted tokens in upsert
+await prisma.emailAccount.upsert({
+  // ...
+  accessToken: encryptedAccessToken,
+  refreshToken: encryptedRefreshToken,
+});
+```
+
+**Why it matters**: Without encryption, OAuth tokens are stored in plain text in the database, creating a critical security vulnerability. The `decryptToken()` function will fail with "Invalid encrypted token format" when trying to read unencrypted tokens.
+
+### Prisma Model Field Names Must Match Exactly in Scripts
+
+When writing test scripts, verify field names against `schema.prisma` before use. Common mismatches: `createdBy` doesn't exist on Campaign (no audit fields), relation names are `campaignContacts` not `contacts`, Lead has no unique `tenantId_email` constraint (use findFirst + create pattern instead of upsert). Always run `npx prisma generate` after schema changes and check the generated types in `node_modules/.prisma/client/index.d.ts` for authoritative field names.
+
+```typescript
+// WRONG — Campaign doesn't have createdBy field
+await prisma.campaign.create({ data: { createdBy: userId } });
+
+// CORRECT — Campaign only has tenantId + campaign fields
+await prisma.campaign.create({ data: { tenantId, name, type, status } });
+
+// WRONG — relation name is campaignContacts
+include: {
+  contacts: {
+    include: {
+      lead: true;
+    }
+  }
+}
+
+// CORRECT — use the actual relation name
+include: {
+  campaignContacts: {
+    include: {
+      lead: true;
+    }
+  }
+}
+```
+
+### Data Exists in DB But Not Showing in UI — Check Tenant Mismatch First
+
+When data exists in the database (verified in pgAdmin/Prisma Studio) but the frontend shows "0 total" or "No records found", the most common cause is **tenant ID mismatch** between the logged-in user and the database records.
+
+LeadCRM enforces strict multi-tenant isolation: every query filters by `req.user.tenantId` from the JWT. If test scripts or seeders create records with a different `tenantId` than the logged-in user's tenant, those records will be invisible to that user — this is by design, not a bug.
+
+**Diagnostic approach**:
+
+1. Check JWT payload: What is `user.tenantId`?
+2. Check database records: What `tenantId` do the records have?
+3. If mismatch: Either log in with a user from the correct tenant, or update records to match
+
+**Common scenario**: Campaign/email test scripts hardcode Demo Sandbox tenant ID (`a3543600-e623-4774-ae21-da85f98081c2`), but user logs in with a seeded tenant (Kulas - Stokes, etc.). Result: test creates leads, but user can't see them.
+
+```typescript
+// Created diagnostic script: backend/src/scripts/diagnose-leads-issue.ts
+// Shows all users, leads, and identifies tenant mismatches
+
+// Created fix script: backend/src/scripts/fix-leads-tenant.ts
+// Safely moves records between tenants when needed
+```
+
+**Prevention**: Test scripts should query for an actual user and use their `tenantId`, not hardcode tenant IDs.
+
+### Frontend API Routes Must Never Import @prisma/client — Vercel Build Silently Breaks
+
+Next.js API routes added under `frontend/app/api/` that import `@prisma/client` cause Vercel to fail at "Collecting page data" with `@prisma/client did not initialize yet`. Vercel only builds the frontend package and never runs `prisma generate` for it — the Prisma client has no generated code. The error is non-obvious because it appears as a runtime crash during static generation, not a compile error.
+
+The fix is always deletion. The backend already has the equivalent routes at `/api/v1/marketing/` with proper `authenticate` + `tenantMiddleware` + RBAC middleware. Frontend API routes that bypass the backend also skip auth, RBAC, and tenant isolation — they used a hardcoded `'default-tenant-id'` fallback, which is a security hole.
+
+Rule: **Zero Prisma imports anywhere under `frontend/`.** If you need a new data endpoint, add it to the Express backend and call it from the frontend via `fetch` or the service layer.

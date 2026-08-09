@@ -1,13 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../../../config/database.config';
 import { CreateContactDto, UpdateContactDto } from './contacts.dto';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
-
-const prisma = new PrismaClient();
-
-// Score map — kept in sync with business rules
-const STATUS_SCORES: Record<string, number> = {
-  HOT: 95, WARM: 75, COLD: 40, CANCELLED: 0, CLOSED: 100,
-};
 
 // All queries are scoped to tenantId — cross-tenant access is impossible by design
 export async function findAllContacts(tenantId: string, query: Record<string, unknown>) {
@@ -16,85 +9,74 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
 
   const where = {
     tenantId,
-    isArchived: query.archived === 'true',
-    doNotContact: query.doNotContact === 'true' ? true : undefined,
-    ...(query.status         ? { status:         String(query.status) as never }         : {}),
-    ...(query.organizationId ? { organizationId: String(query.organizationId) }          : {}),
-    ...(query.assignedUserId ? { assignedUserId: String(query.assignedUserId) }          : {}),
+    // Lead has no isArchived — archive is expressed as status='Archived'
+    ...(query.archived === 'true' ? { status: 'Archived' } : { status: { not: 'Archived' } }),
+    ...(query.status         ? { status:         String(query.status) }        : {}),
+    ...(query.accountId      ? { accountId:      String(query.accountId) }     : {}),
+    ...(query.assignedUserId ? { assignedUserId: String(query.assignedUserId) } : {}),
     ...(query.search
       ? {
           OR: [
-            { firstName: { contains: String(query.search), mode: 'insensitive' as const } },
-            { lastName:  { contains: String(query.search), mode: 'insensitive' as const } },
-            { email:     { contains: String(query.search), mode: 'insensitive' as const } },
-            { company:   { contains: String(query.search), mode: 'insensitive' as const } },
+            { firstName:   { contains: String(query.search), mode: 'insensitive' as const } },
+            { lastName:    { contains: String(query.search), mode: 'insensitive' as const } },
+            { email:       { contains: String(query.search), mode: 'insensitive' as const } },
+            { companyName: { contains: String(query.search), mode: 'insensitive' as const } },
           ],
         }
       : {}),
   };
 
   const [data, total] = await Promise.all([
-    prisma.contact.findMany({
+    prisma.lead.findMany({
       where, skip, take: limit,
-      orderBy: [{ score: 'desc' }, { createdAt: 'desc' }],
+      orderBy: { createdAt: 'desc' },
       include: {
-        organization: { select: { id: true, name: true } },
         assignedUser: { select: { id: true, firstName: true, lastName: true } },
+        account:      { select: { id: true, name: true } },
       },
     }),
-    prisma.contact.count({ where }),
+    prisma.lead.count({ where }),
   ]);
 
   return { data, total, page, limit };
 }
 
 export async function findContactById(id: string, tenantId: string) {
-  return prisma.contact.findFirst({
+  return prisma.lead.findFirst({
     where: { id, tenantId },
     include: {
-      organization: { select: { id: true, name: true } },
       assignedUser: { select: { id: true, firstName: true, lastName: true, email: true } },
-      owner:        { select: { id: true, firstName: true, lastName: true } },
+      account:      { select: { id: true, name: true, industry: true } },
     },
   });
 }
 
 export async function createContact(tenantId: string, dto: CreateContactDto) {
-  const score = STATUS_SCORES[dto.status ?? 'WARM'] ?? 75;
-
-  return prisma.contact.create({
-    data: {
-      ...dto,
-      tenantId,
-      score,
-      // ownerId is set to the creating user's ID — done in service layer
-    },
+  return prisma.lead.create({
+    data: { ...dto, tenantId },
   });
 }
 
 export async function updateContact(id: string, tenantId: string, dto: UpdateContactDto) {
-  const existing = await prisma.contact.findFirst({ where: { id, tenantId } });
-  if (!existing) return null;
-
-  // Auto-update score when status changes
-  const score = dto.status ? STATUS_SCORES[dto.status] : undefined;
-
-  return prisma.contact.update({
-    where: { id },
-    data: { ...dto, ...(score !== undefined ? { score } : {}) },
-  });
+  try {
+    return await prisma.lead.update({
+      where:  { id, tenantId },
+      data:   dto,
+    });
+  } catch {
+    // Record not found or cross-tenant attempt
+    return null;
+  }
 }
 
-export async function archiveContact(id: string, tenantId: string, userId: string) {
-  const existing = await prisma.contact.findFirst({ where: { id, tenantId } });
-  if (!existing) return null;
-
-  return prisma.contact.update({
-    where: { id },
-    data: { 
-      isArchived: true,
-      deletedAt: new Date(),
-      deletedBy: userId,
-    },
-  });
+export async function archiveContact(id: string, tenantId: string, _userId: string) {
+  try {
+    // Lead has no isArchived — archive is expressed as status change
+    return await prisma.lead.update({
+      where: { id, tenantId },
+      data:  { status: 'Archived' },
+    });
+  } catch {
+    return null;
+  }
 }

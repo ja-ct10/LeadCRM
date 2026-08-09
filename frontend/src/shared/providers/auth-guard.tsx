@@ -26,12 +26,19 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Authenticated — check for a saved redirect target
+    // Authenticated — check for a saved redirect target.
+    // Guard: never send a non-System-Admin user to an /admin/* path
+    // (stale key left over from a previous System Admin session).
     const savedRedirect = sessionStorage.getItem('leadcrm_redirect_after_login');
+    sessionStorage.removeItem('leadcrm_redirect_after_login');
     if (savedRedirect && savedRedirect !== '/login' && savedRedirect !== '/register') {
-      sessionStorage.removeItem('leadcrm_redirect_after_login');
-      router.replace(savedRedirect);
-      return;
+      const isAdminPath = savedRedirect.startsWith('/admin');
+      const isSystemAdmin = user.role === 'System Admin';
+      if (!isAdminPath || isSystemAdmin) {
+        router.replace(savedRedirect);
+        return;
+      }
+      // Fall through to role-based default landing below
     }
 
     // Role-based default landing: only redirect from root or login page
