@@ -58,22 +58,25 @@ export async function createContact(tenantId: string, dto: CreateContactDto) {
 }
 
 export async function updateContact(id: string, tenantId: string, dto: UpdateContactDto) {
-  const existing = await prisma.lead.findFirst({ where: { id, tenantId } });
-  if (!existing) return null;
-
-  return prisma.lead.update({
-    where: { id },
-    data:  dto,
-  });
+  try {
+    return await prisma.lead.update({
+      where:  { id, tenantId },
+      data:   dto,
+    });
+  } catch {
+    // Record not found or cross-tenant attempt
+    return null;
+  }
 }
 
 export async function archiveContact(id: string, tenantId: string, _userId: string) {
-  const existing = await prisma.lead.findFirst({ where: { id, tenantId } });
-  if (!existing) return null;
-
-  // Lead has no isArchived — archive is expressed as status change
-  return prisma.lead.update({
-    where: { id },
-    data:  { status: 'Archived' },
-  });
+  try {
+    // Lead has no isArchived — archive is expressed as status change
+    return await prisma.lead.update({
+      where: { id, tenantId },
+      data:  { status: 'Archived' },
+    });
+  } catch {
+    return null;
+  }
 }

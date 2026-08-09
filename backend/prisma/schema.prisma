@@ -1,4 +1,4 @@
-﻿// LeadCRM ΓÇö Prisma Schema
+// LeadCRM ΓÇö Prisma Schema
 // Single source of truth for all database models
 // ORM: Prisma 5 | DB: PostgreSQL
 
@@ -547,6 +547,8 @@ model Account {
 
   @@index([tenantId, isArchived])
   @@index([tenantId, name])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, assignedUserId])
 }
 
 // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -588,6 +590,8 @@ model Lead {
   @@index([tenantId, status])
   @@index([tenantId, assignedUserId])
   @@index([tenantId, email])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, accountId])
 }
 
 // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -626,6 +630,8 @@ model Customer {
   @@index([tenantId, status])
   @@index([tenantId, assignedUserId])
   @@index([tenantId, email])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, accountId])
 }
 
 // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ

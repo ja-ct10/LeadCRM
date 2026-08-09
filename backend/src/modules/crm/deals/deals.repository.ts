@@ -159,15 +159,11 @@ export async function moveDealStage(
       }
 
       if (deal.leadDeals.length > 0) {
-        for (const ld of deal.leadDeals) {
-          const lead = await tx.lead.findUnique({ where: { id: ld.leadId } });
-          if (lead) {
-            await tx.lead.update({
-              where: { id: ld.leadId },
-              data: { status: 'Active Customer' } as never,
-            });
-          }
-        }
+        // Single query instead of N findUnique+update pairs
+        await tx.lead.updateMany({
+          where: { id: { in: deal.leadDeals.map((ld) => ld.leadId) } },
+          data: { status: 'Active Customer' },
+        });
       }
 
       if (handoff?.createServiceOrder) {

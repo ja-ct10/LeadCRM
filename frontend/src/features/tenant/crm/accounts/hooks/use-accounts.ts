@@ -32,7 +32,7 @@ export function useAccounts() {
         const all: Account[] = raw ? JSON.parse(raw) : [];
         setAccounts(all.filter(c => c.tenantId === tenant.id && !c.isArchived));
       } else {
-        const res = await accountsService.getAll({ limit: 500 });
+        const res = await accountsService.getAll({ limit: 100 });
         const data = (res?.data ?? []) as Account[];
         setAccounts(data.filter(c => !c.isArchived));
       }

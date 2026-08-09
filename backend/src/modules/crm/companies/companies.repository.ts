@@ -50,16 +50,21 @@ export async function createCompany(tenantId: string, dto: CreateCompanyDto) {
 }
 
 export async function updateCompany(id: string, tenantId: string, dto: UpdateCompanyDto) {
-  const existing = await prisma.account.findFirst({ where: { id, tenantId } });
-  if (!existing) return null;
-  return prisma.account.update({ where: { id }, data: dto as never });
+  try {
+    return await prisma.account.update({ where: { id, tenantId }, data: dto as never });
+  } catch {
+    // Record not found or cross-tenant attempt
+    return null;
+  }
 }
 
 export async function archiveCompany(id: string, tenantId: string, userId: string) {
-  const existing = await prisma.account.findFirst({ where: { id, tenantId } });
-  if (!existing) return null;
-  return prisma.account.update({
-    where: { id },
-    data: { isArchived: true, deletedAt: new Date(), deletedBy: userId },
-  });
+  try {
+    return await prisma.account.update({
+      where: { id, tenantId },
+      data: { isArchived: true, deletedAt: new Date(), deletedBy: userId },
+    });
+  } catch {
+    return null;
+  }
 }

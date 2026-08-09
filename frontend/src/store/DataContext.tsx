@@ -332,12 +332,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       try {
         // Batch 1 — core CRM (already migrated)
         const [contactsRes, orgsRes, dealsRes, pipelinesRes, activitiesRes, usersRes, rolesRes] = await Promise.all([
-          contactsService.getAll({ limit: 500 }),
-          organizationsService.getAll({ limit: 500 }),
-          pipelineService.getDeals(),
+          contactsService.getAll({ limit: 100 }),
+          organizationsService.getAll({ limit: 100 }),
+          pipelineService.getDeals(undefined, 100),
           pipelineService.getPipelines(),
-          activitiesService.getAll({ limit: 1000 }),
-          usersService.getAll({ limit: 500 }),
+          activitiesService.getAll({ limit: 50 }),
+          usersService.getAll({ limit: 200 }),
           usersService.getRoles(),
         ]);
 
@@ -365,13 +365,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // Batch 2 — operations, marketing, automation, billing, audit
       try {
         const [tasksRes, soRes, workflowsRes, campaignsRes, templatesRes, invoicesRes, auditRes] = await Promise.all([
-          tasksApi.list({ limit: 500 }),
-          serviceOrdersApi.list({ limit: 500 }),
-          workflowsApi.list({ limit: 500 }),
-          campaignsApi.list({ limit: 500 }),
-          templatesApi.list({ limit: 500 }),
-          invoicesApi.list({ limit: 500 }),
-          auditApi.list({ limit: 200 }),
+          tasksApi.list({ limit: 100 }),
+          serviceOrdersApi.list({ limit: 100 }),
+          workflowsApi.list({ limit: 200 }),
+          campaignsApi.list({ limit: 100 }),
+          templatesApi.list({ limit: 100 }),
+          invoicesApi.list({ limit: 100 }),
+          auditApi.list({ limit: 50 }),
         ]);
 
         setTasks((tasksRes?.data ?? []) as Task[]);
@@ -649,7 +649,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     // Only load data when we have a confirmed authenticated user
     if (!USE_MOCK_DATA && !user) return;
     loadData();
-  }, [user, tenant]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, tenant?.id]);
 
   // Delegates to extracted pure service: src/modules/workflows/services/workflowConditionEvaluator.ts
   const evaluateWorkflowConditionDirectly = (
@@ -901,7 +902,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }, 10000); // Check every 10 seconds
 
     return () => clearInterval(interval);
-  }, [pendingActions, workflows, deals, contacts]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingActions.length, workflows.length]);
 
   const saveAndSet = (key: string, data: any[], setter: any) => {
     const allData = JSON.parse(localStorage.getItem(key) || "[]");
