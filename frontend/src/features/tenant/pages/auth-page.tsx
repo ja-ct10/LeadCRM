@@ -481,6 +481,17 @@ export default function AuthPage({ mode, onNavigate, oauthError }: { mode: 'logi
           <form onSubmit={handleLogin} className="space-y-5">
             {!showOTP ? (
               <>
+                {/* ── Demo Accounts Quick Fill ───────────────────────── */}
+                <div className="mb-4 space-y-2">
+                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Demo Accounts (Click to fill)</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => { setEmail('admin@gmail.com'); setPassword('admin123'); }} className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2.5 py-1.5 rounded hover:bg-blue-200 dark:hover:bg-blue-800/40 transition-colors">System Admin</button>
+                    <button type="button" onClick={() => { setEmail('admin@democorp.com'); setPassword('admin123'); }} className="text-xs bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 px-2.5 py-1.5 rounded hover:bg-emerald-200 dark:hover:bg-emerald-800/40 transition-colors">Client Admin</button>
+                    <button type="button" onClick={() => { setEmail('bob@democorp.com'); setPassword('admin123'); }} className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-2.5 py-1.5 rounded hover:bg-purple-200 dark:hover:bg-purple-800/40 transition-colors">Sales Rep</button>
+                    <button type="button" onClick={() => { setEmail('guest@democorp.com'); setPassword('guest123'); }} className="text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 px-2.5 py-1.5 rounded hover:bg-orange-200 dark:hover:bg-orange-800/40 transition-colors">Guest Sandbox</button>
+                  </div>
+                </div>
+
                 <div>
                   <label htmlFor="login-email" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Email Address</label>
                   <input

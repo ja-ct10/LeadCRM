@@ -5,6 +5,8 @@ import React, {
   useContext,
   useState,
   useEffect,
+  useCallback,
+  useMemo,
   ReactNode,
 } from "react";
 import { useAuth } from "./AuthContext";
@@ -362,55 +364,58 @@ export function DataProvider({ children }: { children: ReactNode }) {
         console.error('[DataContext] Failed to load CRM data from API:', err);
       }
 
-      // Batch 2 — operations, marketing, automation, billing, audit
-      try {
-        const [tasksRes, soRes, workflowsRes, campaignsRes, templatesRes, invoicesRes, auditRes] = await Promise.all([
-          tasksApi.list({ limit: 100 }),
-          serviceOrdersApi.list({ limit: 100 }),
-          workflowsApi.list({ limit: 200 }),
-          campaignsApi.list({ limit: 100 }),
-          templatesApi.list({ limit: 100 }),
-          invoicesApi.list({ limit: 100 }),
-          auditApi.list({ limit: 50 }),
-        ]);
-
-        setTasks((tasksRes?.data ?? []) as Task[]);
-        setServiceOrders((soRes?.data ?? []) as ServiceOrder[]);
-        setWorkflows((workflowsRes?.data ?? []) as Workflow[]);
-        setCampaigns((campaignsRes?.data ?? []) as Campaign[]);
-        setTemplates((templatesRes?.data ?? []) as Template[]);
-        setInvoices((invoicesRes?.data ?? []) as Invoice[]);
-
-        // Map backend audit shape → frontend AuditLog shape
-        const mappedLogs: AuditLog[] = (auditRes?.data ?? []).map((entry: any) => ({
-          id:        entry.id,
-          tenantId:  entry.tenantId ?? '',
-          userId:    entry.userId ?? entry.user?.id ?? 'system',
-          userEmail: entry.user?.email ?? '',
-          action:    entry.action,
-          details:   entry.changeset
-            ? JSON.stringify(entry.changeset)
-            : (entry.metadata ? JSON.stringify(entry.metadata) : entry.action),
-          timestamp: entry.createdAt,
-          ipAddress: entry.ipAddress ?? '',
-        }));
-        setAuditLogs(mappedLogs);
-      } catch (err) {
-        console.error('[DataContext] Failed to load secondary modules from API:', err);
-      }
-
-      // Assets & Inventory have no backend yet — use localStorage fallback
+      // Batch 2 — deferred after initial paint so Batch 1 data renders first
+      // Assets & Inventory (localStorage) and module flags are synchronous — load them now
       const ast = safeParse("leadcrm_assets", MOCK_ASSETS ?? []);
       const inv = safeParse("leadcrm_inventory", MOCK_INVENTORY ?? []);
       setAssets(ast as Asset[]);
       setInventoryItems(inv);
-
-      // Module feature flags from localStorage
       setIsServiceModuleEnabled(safeParse("leadcrm_service_enabled", true));
       setIsAssetModuleEnabled(safeParse("leadcrm_asset_enabled", true));
       setIsBillingModuleEnabled(safeParse("leadcrm_billing_enabled", true));
 
+      // Defer network-heavy secondary modules to the next event-loop tick
+      // so Batch 1 data (contacts, deals, pipelines) is painted first.
+      setTimeout(async () => {
+        try {
+          const [tasksRes, soRes, workflowsRes, campaignsRes, templatesRes, invoicesRes, auditRes] = await Promise.all([
+            tasksApi.list({ limit: 100 }),
+            serviceOrdersApi.list({ limit: 100 }),
+            workflowsApi.list({ limit: 200 }),
+            campaignsApi.list({ limit: 100 }),
+            templatesApi.list({ limit: 100 }),
+            invoicesApi.list({ limit: 100 }),
+            auditApi.list({ limit: 50 }),
+          ]);
+
+          setTasks((tasksRes?.data ?? []) as Task[]);
+          setServiceOrders((soRes?.data ?? []) as ServiceOrder[]);
+          setWorkflows((workflowsRes?.data ?? []) as Workflow[]);
+          setCampaigns((campaignsRes?.data ?? []) as Campaign[]);
+          setTemplates((templatesRes?.data ?? []) as Template[]);
+          setInvoices((invoicesRes?.data ?? []) as Invoice[]);
+
+          // Map backend audit shape → frontend AuditLog shape
+          const mappedLogs: AuditLog[] = (auditRes?.data ?? []).map((entry: any) => ({
+            id:        entry.id,
+            tenantId:  entry.tenantId ?? '',
+            userId:    entry.userId ?? entry.user?.id ?? 'system',
+            userEmail: entry.user?.email ?? '',
+            action:    entry.action,
+            details:   entry.changeset
+              ? JSON.stringify(entry.changeset)
+              : (entry.metadata ? JSON.stringify(entry.metadata) : entry.action),
+            timestamp: entry.createdAt,
+            ipAddress: entry.ipAddress ?? '',
+          }));
+          setAuditLogs(mappedLogs);
+        } catch (err) {
+          console.error('[DataContext] Failed to load secondary modules from API:', err);
+        }
+      }, 0);
+
       return; // Exit — mock path below is skipped in real mode
+
     }
     // ── MOCK / LOCALSTORAGE MODE (unchanged below) ─────────────────────────────
 
@@ -2679,83 +2684,92 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setIsBillingModuleEnabled(newState);
   };
 
+  // ── Memoize provider value to prevent re-render cascade to 38 consumers ──
+  const contextValue = useMemo(() => ({
+    organizations,
+    contacts,
+    deals,
+    pipelines,
+    workflows,
+    campaigns,
+    templates,
+    roles,
+    permissions,
+    users,
+    tenants,
+    tasks,
+    workflowExecutions,
+    workflowExecutionRuns,
+    workflowExecutionSteps,
+    activities,
+    addActivity,
+    invoices,
+    addInvoice,
+    updateInvoice,
+    removeInvoice,
+    pendingActions,
+    serviceOrders,
+    assets,
+    inventoryItems,
+    auditLogs,
+    addOrganization,
+    updateOrganization,
+    deleteOrganization,
+    addContact,
+    updateContact,
+    deleteContact,
+    addDeal,
+    updateDeal,
+    moveDealStage,
+    deleteDeal,
+    addPipeline,
+    updatePipeline,
+    deletePipeline,
+    addRole,
+    updateRole,
+    deleteRole,
+    resetDemoData,
+    approveTenant,
+    rejectTenant,
+    suspendTenant,
+    updateTenant,
+    addAuditLog,
+    addTask,
+    updateTask,
+    addServiceOrder,
+    updateServiceOrder,
+    addWorkflow,
+    updateWorkflow,
+    deleteWorkflow,
+    reorderDeals,
+    addCampaign,
+    updateCampaign,
+    deleteCampaign,
+    addTemplate,
+    updateTemplate,
+    deleteTemplate,
+    isServiceModuleEnabled,
+    toggleServiceModule,
+    isAssetModuleEnabled,
+    toggleAssetModule,
+    isBillingModuleEnabled,
+    toggleBillingModule,
+    addUser,
+    updateUser,
+    deleteUser,
+    restoreRecord,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [
+    organizations, contacts, deals, pipelines, workflows, campaigns,
+    templates, roles, permissions, users, tenants, tasks,
+    workflowExecutions, workflowExecutionRuns, workflowExecutionSteps,
+    activities, invoices, pendingActions, serviceOrders, assets,
+    inventoryItems, auditLogs,
+    isServiceModuleEnabled, isAssetModuleEnabled, isBillingModuleEnabled,
+  ]);
+
   return (
-    <DataContext.Provider
-      value={{
-        organizations,
-        contacts,
-        deals,
-        pipelines,
-        workflows,
-        campaigns,
-        templates,
-        roles,
-        permissions,
-        users,
-        tenants,
-        tasks,
-        workflowExecutions,
-        workflowExecutionRuns,
-        workflowExecutionSteps,
-        activities,
-        addActivity,
-        invoices,
-        addInvoice,
-        updateInvoice,
-        removeInvoice,
-        pendingActions,
-        serviceOrders,
-        assets,
-        inventoryItems,
-        auditLogs,
-        addOrganization,
-        updateOrganization,
-        deleteOrganization,
-        addContact,
-        updateContact,
-        deleteContact,
-        addDeal,
-        updateDeal,
-        moveDealStage,
-        deleteDeal,
-        addPipeline,
-        updatePipeline,
-        deletePipeline,
-        addRole,
-        updateRole,
-        deleteRole,
-        resetDemoData,
-        approveTenant,
-        rejectTenant,
-        suspendTenant,
-        updateTenant,
-        addAuditLog,
-        addTask,
-        updateTask,
-        addServiceOrder,
-        updateServiceOrder,
-        addWorkflow,
-        updateWorkflow,
-        deleteWorkflow,
-        reorderDeals,
-        addCampaign,
-        updateCampaign,
-        deleteCampaign,
-        addTemplate,
-        updateTemplate,
-        deleteTemplate,
-        isServiceModuleEnabled,
-        toggleServiceModule,
-        isAssetModuleEnabled,
-        toggleAssetModule,
-        isBillingModuleEnabled,
-        toggleBillingModule,
-        addUser,
-        updateUser,
-        deleteUser,
-        restoreRecord,
-      }}
-    >
+    <DataContext.Provider value={contextValue}>
       {children}
     </DataContext.Provider>
   );
@@ -2765,25 +2779,29 @@ export const useData = (options?: { includeArchived?: boolean }) => {
   const context = useContext(DataContext);
   if (context === undefined)
     throw new Error("useData must be used within a DataProvider");
-    
-  if (options?.includeArchived) {
-    return context;
-  }
 
-  return {
-    ...context,
-    contacts: context.contacts.filter((c) => !c.isArchived),
-    organizations: context.organizations.filter((o) => !o.isArchived),
-    deals: context.deals.filter((d) => !d.isArchived),
-    pipelines: context.pipelines.filter((p) => !p.isArchived),
-    workflows: context.workflows.filter((w) => !w.isArchived),
-    campaigns: context.campaigns.filter((c) => !c.isArchived),
-    templates: context.templates.filter((t) => !t.isArchived),
-    roles: context.roles.filter((r) => !r.isArchived),
-    users: context.users.filter((u) => !u.isArchived),
-    tasks: context.tasks ? context.tasks.filter((t) => !("isArchived" in t) || !(t as any).isArchived) : [],
-    serviceOrders: context.serviceOrders ? context.serviceOrders.filter((s) => !("isArchived" in s) || !(s as any).isArchived) : [],
-    assets: context.assets ? context.assets.filter((a) => !("isArchived" in a) || !(a as any).isArchived) : [],
-    inventoryItems: context.inventoryItems ? context.inventoryItems.filter((i) => !("isArchived" in i) || !(i as any).isArchived) : []
-  };
+  const includeArchived = options?.includeArchived ?? false;
+
+  // Memoize filtered views so consumers don't recompute on every render
+  return useMemo(() => {
+    if (includeArchived) return context;
+
+    return {
+      ...context,
+      contacts: context.contacts.filter((c) => !c.isArchived),
+      organizations: context.organizations.filter((o) => !o.isArchived),
+      deals: context.deals.filter((d) => !d.isArchived),
+      pipelines: context.pipelines.filter((p) => !p.isArchived),
+      workflows: context.workflows.filter((w) => !w.isArchived),
+      campaigns: context.campaigns.filter((c) => !c.isArchived),
+      templates: context.templates.filter((t) => !t.isArchived),
+      roles: context.roles.filter((r) => !r.isArchived),
+      users: context.users.filter((u) => !u.isArchived),
+      tasks: context.tasks ? context.tasks.filter((t) => !("isArchived" in t) || !(t as any).isArchived) : [],
+      serviceOrders: context.serviceOrders ? context.serviceOrders.filter((s) => !("isArchived" in s) || !(s as any).isArchived) : [],
+      assets: context.assets ? context.assets.filter((a) => !("isArchived" in a) || !(a as any).isArchived) : [],
+      inventoryItems: context.inventoryItems ? context.inventoryItems.filter((i) => !("isArchived" in i) || !(i as any).isArchived) : []
+    };
+  }, [context, includeArchived]);
 };
+

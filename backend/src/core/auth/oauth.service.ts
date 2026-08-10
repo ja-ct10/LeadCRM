@@ -1,11 +1,11 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../../config/database.config';
 import { randomUUID } from 'crypto';
 import { AppError } from '../../shared/errors/app-error';
 import { signToken } from './jwt.service';
 import { createSession } from './session.service';
 import { writeAuditLog } from '../audit/audit.service';
 
-const prisma = new PrismaClient();
+
 
 const JWT_EXPIRES_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 

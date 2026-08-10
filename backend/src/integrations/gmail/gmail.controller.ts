@@ -1,12 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
-import { PrismaClient } from '@prisma/client';
+import prisma from '../../config/database.config';
 import { getAuthorizationUrl, exchangeCodeForTokens, getUserInfo, GMAIL_SCOPES } from './gmail.oauth';
 import { fetchEmails, sendEmail, getConnectionStatus, disconnectAccount, trashEmails, archiveEmails, saveDraft, deleteDraft } from './gmail.service';
 import { AppError } from '../../shared/errors/app-error';
 import { writeAuditLog } from '../../core/audit/audit.service';
 import { encryptToken } from '../../core/encryption/crypto.service';
 
-const prisma = new PrismaClient();
+
 
 /**
  * GET /integrations/gmail/authorize

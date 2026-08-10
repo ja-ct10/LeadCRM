@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../../config/database.config';
 import crypto from 'crypto';
 import { comparePassword, hashPassword } from '../../shared/helpers/crypto';
 import { signToken } from './jwt.service';
@@ -8,7 +8,7 @@ import { ConflictError } from '../../shared/errors/http-error';
 import { sendMail, buildPasswordResetEmail, buildLoginOtpEmail, buildRegistrationOtpEmail } from '../../shared/services/email.service';
 import type { ForgotPasswordDto, ResetPasswordDto } from './auth.dto';
 
-const prisma = new PrismaClient();
+
 
 // JWT lifetime in milliseconds (must match jwt.service expiresIn)
 const JWT_EXPIRES_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -323,10 +323,20 @@ const OTP_MAX_ATTEMPTS = 5;
 // DEMO_MODE allows demo accounts to use OTP '000000' on production servers without changing NODE_ENV.
 const DEV_BYPASS_ACTIVE = process.env.DEV_OTP_BYPASS === 'true' || process.env.DEMO_MODE === 'true';
 const DEV_BYPASS_CODE   = '000000';
+
+const DEFAULT_SEED_EMAILS = [
+  'admin@gmail.com',
+  'super@leadcrm.com',
+  'admin@democorp.com',
+  'bob@democorp.com',
+  'guest@democorp.com'
+];
+
 function isDevSeedAccount(email: string): boolean {
   if (!DEV_BYPASS_ACTIVE) return false;
-  const allowed = (process.env.DEV_SEED_EMAILS ?? '').split(',').map(e => e.trim().toLowerCase());
-  return allowed.includes(email.toLowerCase());
+  const envAllowed = (process.env.DEV_SEED_EMAILS ?? '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+  const allowed = new Set([...DEFAULT_SEED_EMAILS, ...envAllowed]);
+  return allowed.has(email.toLowerCase());
 }
 
 /**
