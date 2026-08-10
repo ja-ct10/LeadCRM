@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import {
   LayoutDashboard, Building2, CreditCard, Receipt,
   Activity, LogOut, Shield, Sun, Moon, Menu, X,
-  DollarSign, RotateCcw, BarChart2,
+  DollarSign, RotateCcw, BarChart2, Server,
 } from 'lucide-react';
 import { useAuth } from '@/store/AuthContext';
 import { useTheme } from '@/shared/hooks/use-theme';
@@ -23,6 +23,7 @@ const NAV_ITEMS = [
   { name: 'Payments',           path: 'admin-payments',     icon: DollarSign },
   { name: 'Revenue',            path: 'admin-revenue',      icon: BarChart2 },
   { name: 'Refunds',            path: 'admin-refunds',      icon: RotateCcw },
+  { name: 'Environments',       path: 'admin-environments', icon: Server },
   { name: 'Audit Trail',        path: 'admin-audit-log',    icon: Activity },
 ];
 

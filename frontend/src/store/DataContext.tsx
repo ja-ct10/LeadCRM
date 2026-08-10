@@ -137,6 +137,7 @@ interface DataContextType {
   deletePipeline: (id: string) => Promise<void>;
   addTask: (task: Omit<Task, "id" | "tenantId" | "createdAt">) => Promise<void>;
   updateTask: (id: string, updates: Partial<Task>) => Promise<void>;
+  deleteTask: (id: string) => Promise<void>;
   addServiceOrder: (so: Omit<ServiceOrder, "id" | "tenantId" | "createdAt">) => Promise<void>;
   updateServiceOrder: (id: string, updates: Partial<ServiceOrder>) => Promise<void>;
   addWorkflow: (
@@ -1813,6 +1814,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (original) addAuditLog("Task Updated", `Modified task '${original.title}'.`);
   };
 
+  const deleteTask = async (id: string) => {
+    const original = tasks.find((t) => t.id === id);
+    if (!USE_MOCK_DATA) {
+      try {
+        await tasksApi.archive(id);
+        setTasks((prev) => prev.filter((t) => t.id !== id));
+        addAuditLog("Task Deleted", `Deleted task '${original?.title || id}'.`);
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Failed to delete task");
+      }
+      return;
+    }
+    const newTasks = tasks.filter((t) => t.id !== id);
+    saveAndSet("leadcrm_tasks", newTasks, setTasks);
+    addAuditLog("Task Deleted", `Deleted task '${original?.title || id}'.`);
+  };
+
   const addServiceOrder = async (soData: Omit<ServiceOrder, "id" | "tenantId" | "createdAt">) => {
     if (!tenant) return;
     if (!USE_MOCK_DATA) {
@@ -2736,6 +2754,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     addAuditLog,
     addTask,
     updateTask,
+    deleteTask,
     addServiceOrder,
     updateServiceOrder,
     addWorkflow,

@@ -40,20 +40,30 @@ export async function sendMail(options: SendMailOptions): Promise<void> {
   const resend = new Resend(process.env.RESEND_API_KEY);
   const from = process.env.RESEND_FROM ?? 'LeadCRM <onboarding@resend.dev>';
 
-  const { error } = await resend.emails.send({
-    from,
-    to: [options.to],
-    subject: options.subject,
-    html: options.html,
-  });
+  try {
+    const { error } = await resend.emails.send({
+      from,
+      to: [options.to],
+      subject: options.subject,
+      html: options.html,
+    });
 
-  if (error) {
+    if (error) {
+      // eslint-disable-next-line no-console
+      console.error('[EmailService] Resend API error:', error.message);
+      throw new AppError(
+        `Failed to send email: ${error.message}`,
+        502,
+      );
+    }
+  } catch (err: unknown) {
+    // Re-throw AppErrors as-is (already formatted)
+    if (err instanceof AppError) throw err;
+    // Wrap SDK/network errors so they reach the client as a clean 502
+    const message = err instanceof Error ? err.message : 'Unknown email error';
     // eslint-disable-next-line no-console
-    console.error('[EmailService] Resend error:', error.message);
-    throw new AppError(
-      `Failed to send email: ${error.message}`,
-      502,
-    );
+    console.error('[EmailService] Unexpected send failure:', message);
+    throw new AppError(`Failed to send email: ${message}`, 502);
   }
 }
 
