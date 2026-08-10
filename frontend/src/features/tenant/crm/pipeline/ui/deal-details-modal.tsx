@@ -300,7 +300,7 @@ export function DealDetailsModal({
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] p-4 rounded-2xl">
                   <p className="text-xs text-slate-500 mb-1">Deal Value</p>
-                  <p className="text-xl font-bold text-slate-900 dark:text-white">${deal.value.toLocaleString()}</p>
+                  <p className="text-xl font-bold text-slate-900 dark:text-white">₱{deal.value.toLocaleString()}</p>
                 </div>
                 <div className="bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] p-4 rounded-2xl">
                   <p className="text-xs text-slate-500 mb-1">Priority</p>
