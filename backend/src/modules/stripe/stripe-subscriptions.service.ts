@@ -1,4 +1,4 @@
-import { stripe } from '../../config/stripe.config';
+import { getStripe } from '../../config/stripe.config';
 import prisma from '../../config/database.config';
 import { AppError } from '../../shared/errors/app-error';
 import { writeAuditLog } from '../../core/audit/audit.service';
@@ -12,6 +12,7 @@ export async function cancelSubscriptionAtPeriodEnd(
   subscriptionId: string,
   cancelledByUserId: string,
 ): Promise<void> {
+  const stripe = getStripe();
   const sub = await prisma.subscription.findUnique({
     where:  { id: subscriptionId },
     select: { id: true, tenantId: true, stripeSubscriptionId: true, status: true },
@@ -50,6 +51,7 @@ export async function cancelSubscriptionImmediately(
   subscriptionId: string,
   cancelledByUserId: string,
 ): Promise<void> {
+  const stripe = getStripe();
   const sub = await prisma.subscription.findUnique({
     where:  { id: subscriptionId },
     select: { id: true, tenantId: true, stripeSubscriptionId: true },
@@ -87,6 +89,7 @@ export async function cancelSubscriptionImmediately(
 export async function getStripeSubscription(
   subscriptionId: string,
 ): Promise<import('stripe').Stripe.Subscription | null> {
+  const stripe = getStripe();
   const sub = await prisma.subscription.findUnique({
     where:  { id: subscriptionId },
     select: { stripeSubscriptionId: true },

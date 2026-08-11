@@ -59,7 +59,7 @@ export default function EmailVerificationPage({ email, onNavigate }: EmailVerifi
     setIsVerifying(true);
     try {
       const response = await authApi.verifyRegistrationOtp(email, code);
-      if (response?.data?.success) {
+      if (response?.success || (response as any)?.data?.success) {
         setVerificationSuccess(true);
         toast.success('Email verified successfully!');
         // Redirect to login after 2 seconds

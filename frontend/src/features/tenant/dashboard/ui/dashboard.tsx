@@ -35,9 +35,10 @@ export default function Dashboard() {
   };
 
   const handleExportCSV = () => {
+    if (!user) return;
     try {
       // Prepare CSV data for Client Admin
-      const csvRows = [];
+      const csvRows: any[][] = [];
       
       // Header
       csvRows.push(['LeadCRM Dashboard Export', '', '', '']);

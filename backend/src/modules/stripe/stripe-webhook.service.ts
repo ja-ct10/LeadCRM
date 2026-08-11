@@ -1,5 +1,5 @@
 import Stripe from 'stripe';
-import { stripe, STRIPE_WEBHOOK_SECRET } from '../../config/stripe.config';
+import { getStripe, STRIPE_WEBHOOK_SECRET } from '../../config/stripe.config';
 import prisma from '../../config/database.config';
 import { AppError } from '../../shared/errors/app-error';
 import { writeAuditLog } from '../../core/audit/audit.service';
@@ -15,6 +15,7 @@ export function constructStripeEvent(
   rawBody: Buffer | string,
   signatureHeader: string | undefined,
 ): Stripe.Event {
+  const stripe = getStripe();
   if (!STRIPE_WEBHOOK_SECRET) {
     throw new AppError('Stripe webhook secret is not configured', 500);
   }
@@ -127,6 +128,7 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session):
   const now = new Date();
 
   // Retrieve subscription from Stripe to get period dates
+  const stripe = getStripe();
   const stripeSub = await stripe.subscriptions.retrieve(stripeSubscriptionId);
   const periodEnd = new Date((stripeSub.current_period_end ?? 0) * 1000);
 

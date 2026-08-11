@@ -67,7 +67,7 @@ export default function CompanySetupPage({ onNavigate }: CompanySetupPageProps):
         country: 'US', // Default or could be added to form
       });
       
-      if (response?.data?.success) {
+      if (response?.success || (response as any)?.data?.success) {
         toast.success('Company profile completed!');
         onNavigate('dashboard');
       } else {

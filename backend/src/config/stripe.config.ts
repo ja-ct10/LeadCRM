@@ -30,6 +30,13 @@ export const stripe =
         maxNetworkRetries: 2,       // automatic retry on transient 5xx / network errors
       });
 
+export function getStripe(): Stripe {
+  if (!stripe) {
+    throw new Error('Stripe is not configured. Set STRIPE_SECRET_KEY in backend/.env');
+  }
+  return stripe;
+}
+
 export { STRIPE_WEBHOOK_SECRET };
 
 /**

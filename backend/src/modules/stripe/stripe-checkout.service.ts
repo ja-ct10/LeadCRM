@@ -1,4 +1,4 @@
-import { stripe } from '../../config/stripe.config';
+import { getStripe } from '../../config/stripe.config';
 import prisma from '../../config/database.config';
 import { AppError } from '../../shared/errors/app-error';
 import { findOrCreateStripeCustomer } from './stripe-customers.service';
@@ -29,6 +29,7 @@ export interface CreateCheckoutSessionResult {
 export async function createSubscriptionCheckoutSession(
   input: CreateCheckoutSessionInput,
 ): Promise<CreateCheckoutSessionResult> {
+  const stripe = getStripe();
   const { tenantId, planId, billingCycle, successUrl, cancelUrl } = input;
 
   // Validate tenant exists

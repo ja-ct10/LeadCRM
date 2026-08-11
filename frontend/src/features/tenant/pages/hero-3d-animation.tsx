@@ -246,7 +246,7 @@ function PipelineUI({ currentTime, animatedDeal }: PipelineUIProps) {
                 ))}
 
                 {/* Animated Moving Card */}
-                {currentStage === stage && deal.id === animatedDeal.id && (
+                {currentStage === stage && (
                   <motion.div
                     layoutId="moving-card"
                     transition={shouldReduceMotion ? {} : { 

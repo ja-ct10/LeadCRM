@@ -1,4 +1,4 @@
-import { stripe } from '../../config/stripe.config';
+import { getStripe } from '../../config/stripe.config';
 import prisma from '../../config/database.config';
 import { AppError } from '../../shared/errors/app-error';
 
@@ -12,6 +12,7 @@ import { AppError } from '../../shared/errors/app-error';
  * - Amounts are stored in cents (Stripe standard).
  */
 export async function syncPlanToStripe(planId: string): Promise<void> {
+  const stripe = getStripe();
   const plan = await prisma.pricingPlan.findUnique({ where: { id: planId } });
   if (!plan) throw new AppError('Pricing plan not found', 404);
   if (!plan.isActive) throw new AppError('Cannot sync an inactive plan to Stripe', 400);

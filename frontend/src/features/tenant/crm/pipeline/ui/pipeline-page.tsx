@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { uuid } from '@/lib/utils';
 
@@ -1381,7 +1381,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
 
         moveDealStage(String(activeId), overStageId)
           .then(() => {
-            toast.success(`Deal moved to ${overStage.name}`);
+            toast.success(`Deal moved to ${overStage?.name}`);
           })
           .catch((err: unknown) => {
             console.error('[Pipeline DnD] moveDealStage failed (cross-deal drop):', err);

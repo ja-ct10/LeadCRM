@@ -29,7 +29,7 @@ function StatCard({ label, value, sub, subColor = 'text-slate-500', icon: Icon, 
   return (
     <div className="rounded-2xl border border-gray-200 dark:border-white/[0.05] bg-white dark:bg-white/[0.02] shadow-lg p-5 flex items-start gap-4">
       <div className={cn('p-2.5 rounded-xl shrink-0', iconBg)}>
-        <Icon size={18} className="text-white" />
+        {React.createElement(Icon as any, { size: 18, className: "text-white" })}
       </div>
       <div className="min-w-0">
         <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</p>
