@@ -22,6 +22,14 @@ function isEmailConfigured(): boolean {
   return !!(process.env.RESEND_API_KEY);
 }
 
+/**
+ * Returns the list of allowed sandbox emails, or empty array if not in sandbox mode.
+ */
+export function getSandboxEmails(): string[] {
+  const emails = process.env.RESEND_SANDBOX_EMAILS?.split(',').map(e => e.trim()) ?? [];
+  return emails.filter(e => e.length > 0);
+}
+
 export async function sendMail(options: SendMailOptions): Promise<void> {
   if (!isEmailConfigured()) {
     if (process.env.NODE_ENV !== 'production') {
@@ -39,6 +47,31 @@ export async function sendMail(options: SendMailOptions): Promise<void> {
 
   const resend = new Resend(process.env.RESEND_API_KEY);
   const from = process.env.RESEND_FROM ?? 'LeadCRM <onboarding@resend.dev>';
+  
+  // Check if we're in sandbox mode (only allow verified emails)
+  const sandboxEmails = process.env.RESEND_SANDBOX_EMAILS?.split(',').map(e => e.trim()) ?? [];
+  const isSandboxMode = sandboxEmails.length > 0;
+  
+  // If in sandbox mode and recipient is not in the allowed list
+  if (isSandboxMode && !sandboxEmails.includes(options.to)) {
+    if (process.env.NODE_ENV !== 'production') {
+      // eslint-disable-next-line no-console
+      console.warn(`\n[SANDBOX] Email to ${options.to} blocked. Only verified emails allowed: ${sandboxEmails.join(', ')}`);
+      // eslint-disable-next-line no-console
+      console.log(`[SANDBOX] Subject: ${options.subject}`);
+      // Log the code if it's an OTP email for testing
+      const codeMatch = options.html.match(/font-family: monospace;">(\d{6})</);
+      if (codeMatch) {
+        // eslint-disable-next-line no-console
+        console.log(`[SANDBOX] Verification Code: ${codeMatch[1]}\n`);
+      }
+      return;
+    }
+    throw new AppError(
+      `Cannot send email to ${options.to}. Resend sandbox mode only allows verified emails: ${sandboxEmails.join(', ')}`,
+      403,
+    );
+  }
 
   try {
     const { error } = await resend.emails.send({

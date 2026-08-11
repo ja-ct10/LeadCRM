@@ -30,6 +30,10 @@ export const GuestRegisterSchema = z.object({
   lastName: z.string().min(2, 'Last name is required'),
   email: z.string().email('Valid email required'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
+  companyName: z.string().min(2, 'Company name is required'),
+  industry: z.string().optional(),
+  companySize: z.string().optional(),
+  businessWebsite: z.string().url('Invalid URL').optional().or(z.literal('')),
 });
 
 export type ClientAdminRegisterDto = z.infer<typeof ClientAdminRegisterSchema>;

@@ -1490,16 +1490,13 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
 
 
   return (
-    <div className="h-full flex flex-col space-y-4 relative overflow-hidden">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
-        <div className="flex items-baseline gap-2.5 flex-wrap">
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Pipeline Management</h1>
-          <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">
-            — Track deals and stage velocity across sales pipelines
-          </span>
-        </div>
-        
-        <div className="flex items-center gap-2 flex-wrap w-full md:w-auto justify-start md:justify-end">
+    <motion.div 
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      className="h-full flex flex-col space-y-4 relative overflow-hidden"
+    >
+      <div className="flex items-center gap-2 flex-wrap justify-end">
           <TooltipProvider>
             {/* Automation Mode toggle */}
             <UITooltip>
@@ -1558,8 +1555,6 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
             )}
           </TooltipProvider>
         </div>
-      </div>
-
 
       {/* Revenue Forecast Bar */}
       <ForecastBar deals={deals} pipelines={pipelines} />
@@ -2693,7 +2688,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
         />
       )}
 
-    </div>
+    </motion.div>
   );
 }
 

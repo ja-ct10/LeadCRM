@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
-import AuthPage from '@/features/tenant/pages/auth-page';
+import ModernLoginPage from '@/features/tenant/pages/modern-login-page';
 import { PATH_TO_PATHNAME } from '@/lib/route-map';
 
 function LoginPageInner() {
@@ -16,7 +16,7 @@ function LoginPageInner() {
     return router.push(PATH_TO_PATHNAME[path] ?? '/dashboard');
   };
   
-  return <AuthPage mode="login" onNavigate={navigate} oauthError={oauthError} />;
+  return <ModernLoginPage onNavigate={navigate} oauthError={oauthError} />;
 }
 
 export default function LoginPage() {
