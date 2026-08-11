@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import React, { useState, useMemo } from 'react';
+import { motion } from 'motion/react';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
 import { Customer } from '@/store/types';
@@ -80,7 +81,12 @@ export default function CustomersPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <motion.div 
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      className="space-y-6"
+    >
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -168,7 +174,7 @@ export default function CustomersPage() {
           initialData={editingCustomer}
         />
       )}
-    </div>
+    </motion.div>
   );
 }
 

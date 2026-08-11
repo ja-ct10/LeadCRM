@@ -20,7 +20,7 @@ export function AnalyticsCard({ title, value, percentage, icon: Icon, colorClass
           <span className="text-3xl font-bold text-gray-900 dark:text-white">{value}</span>
         </div>
         <div className={cn("p-3 rounded-lg flex items-center justify-center", colorClass)}>
-          <Icon className="w-5 h-5" />
+          {React.createElement(Icon as any, { className: "w-5 h-5" })}
         </div>
       </div>
       

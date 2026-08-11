@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { uuid } from '@/lib/utils';
 
@@ -19,7 +19,9 @@ import {
 import {
   DndContext,
   DragOverlay,
-  closestCorners,
+  closestCenter,
+  pointerWithin,
+  rectIntersection,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -29,6 +31,7 @@ import {
   DragEndEvent,
   defaultDropAnimationSideEffects,
   useDroppable,
+  type CollisionDetection,
 } from '@dnd-kit/core';
 import {
   arrayMove,
@@ -100,8 +103,7 @@ const DealCardContent = ({ deal, assignedUser, canDrag = false, isAutomatedOnly 
       <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
         {deal.value > 0 && (
           <span className="inline-flex items-center gap-1 bg-green-50 text-green-700 dark:bg-green-500/10 dark:text-green-400 border border-green-200 dark:border-green-500/20 px-2 py-0.5 rounded text-xs font-semibold shrink-0">
-            <DollarSign size={12} />
-            {deal.value.toLocaleString()}
+            ₱{deal.value.toLocaleString()}
           </span>
         )}
         <span className={`inline-flex items-center text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0
@@ -161,10 +163,11 @@ const SortableDealCard = ({ deal, assignedUser, onClick, canDrag = true, isAutom
   });
 
   const style = {
-    transform: CSS.Translate.toString(transform),
-    transition,
-    opacity: isDragging ? 0.3 : 1,
-    zIndex: isDragging ? 0 : 1,
+    transform: CSS.Transform.toString(transform),
+    transition: isDragging ? 'none' : transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 999 : 1,
+    cursor: isDragging ? 'grabbing' : 'pointer',
   };
 
   const daysSinceUpdate = Math.floor((new Date().getTime() - new Date(deal.lastStageChangeDate || deal.updatedAt || deal.createdAt || Date.now()).getTime()) / (1000 * 3600 * 24));
@@ -180,16 +183,14 @@ const SortableDealCard = ({ deal, assignedUser, onClick, canDrag = true, isAutom
   }
 
   return (
-    <motion.div
+    <div
       ref={setNodeRef}
       style={style}
-      layoutId={`deal-card-${deal.id}`}
-      transition={{ type: 'spring', damping: 26, stiffness: 180 }}
       onClick={() => onClick(deal)}
-      className={`p-4 rounded-xl border transition-all cursor-pointer group relative ${
+      className={`p-4 rounded-xl border transition-colors cursor-pointer group relative select-none ${
         isDragging 
-          ? 'border-blue-500/50 bg-blue-500/5 ring-2 ring-blue-500/20' 
-          : `${isRotting || isAging ? '' : 'bg-white dark:bg-slate-950'} ${borderStyle} shadow-sm hover:shadow-md hover:-translate-y-0.5`
+          ? 'border-blue-500/50 bg-blue-500/5 ring-2 ring-blue-500/20 shadow-2xl' 
+          : `${isRotting || isAging ? '' : 'bg-white dark:bg-slate-950'} ${borderStyle} shadow-sm hover:shadow-md`
       }`}
     >
       <DealCardContent 
@@ -200,7 +201,7 @@ const SortableDealCard = ({ deal, assignedUser, onClick, canDrag = true, isAutom
         attributes={attributes} 
         listeners={listeners} 
       />
-    </motion.div>
+    </div>
   );
 };
 
@@ -245,11 +246,11 @@ const DroppableStage = ({ stage, children, stageValue, count, isDraggingAny, isA
   return (
     <div 
       ref={setNodeRef} 
-      className={`w-80 flex flex-col bg-white dark:bg-white/[0.02] rounded-2xl border flex-shrink-0 max-h-full backdrop-blur-sm transition-all duration-300 ${
+      className={`w-80 flex flex-col bg-white dark:bg-white/[0.02] rounded-2xl border flex-shrink-0 max-h-full backdrop-blur-sm transition-all duration-200 ${
         isOver 
-          ? 'border-blue-500/60 bg-blue-500/[0.08] shadow-[0_0_30px_rgba(59,130,246,0.15)] scale-[1.02] z-10' 
+          ? 'border-blue-500/60 bg-blue-500/[0.08] shadow-[0_0_30px_rgba(59,130,246,0.2)] scale-[1.02] z-10 ring-2 ring-blue-500/30' 
           : isDraggingAny
-            ? 'border-blue-500/20 bg-blue-500/[0.02] ring-2 ring-blue-500/10'
+            ? 'border-blue-500/20 bg-blue-500/[0.02]'
             : 'border-gray-200 dark:border-white/[0.05]'
       }`}
     >
@@ -259,7 +260,9 @@ const DroppableStage = ({ stage, children, stageValue, count, isDraggingAny, isA
             <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: stage.color }} aria-hidden="true" />
           )}
           <div>
-            <h3 className="font-semibold text-slate-900 dark:text-white text-base group-hover:text-blue-400 transition-colors">{stage.name}</h3>
+            <h3 className={`font-semibold text-base transition-colors ${isOver ? 'text-blue-600 dark:text-blue-400' : 'text-slate-900 dark:text-white'}`}>
+              {stage.name}
+            </h3>
             {stageValue > 0 && (
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">₱{stageValue.toLocaleString()}</p>
             )}
@@ -635,6 +638,9 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
   const [editingPipeline, setEditingPipeline] = useState<Pipeline | null>(null);
   const [newPipelineName, setNewPipelineName] = useState('');
   const [activeDeal, setActiveDeal] = useState<Deal | null>(null);
+  // Maps dealId → stageId for optimistic column position during drag
+  // Cleared on dragEnd so the real data takes over after persistence
+  const [optimisticStageMap, setOptimisticStageMap] = useState<Record<string, string>>({});
   const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
   const [dealToDelete, setDealToDelete] = useState<any>(null);
   const [isDeleteDealModalOpen, setIsDeleteDealModalOpen] = useState(false);
@@ -656,13 +662,39 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 5,
+        // Require 8px movement before initiating drag — prevents accidental drags on click
+        distance: 8,
       },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  /**
+   * Custom collision detection for a multi-container kanban.
+   *
+   * Strategy (per dnd-kit best-practice for kanban boards):
+   *  1. First, try pointerWithin — if the pointer is inside a droppable, use that.
+   *     This gives accurate column-level targeting when dragging to an empty column.
+   *  2. Fall back to rectIntersection — catches cases where the pointer exits a
+   *     container boundary but the drag rect still overlaps a target.
+   *  3. Fall back to closestCenter as a last resort so something always matches.
+   *
+   * This avoids the main `closestCorners` issue: on wide kanban columns, corners
+   * can be geometrically closer to the wrong column, causing cards to jump columns
+   * unexpectedly when dragging near edges.
+   */
+  const customCollisionDetection: CollisionDetection = React.useCallback((args) => {
+    // Pointer-within check first (most accurate for column drops)
+    const pointerCollisions = pointerWithin(args);
+    if (pointerCollisions.length > 0) return pointerCollisions;
+    // Rect intersection fallback
+    const intersections = rectIntersection(args);
+    if (intersections.length > 0) return intersections;
+    // Closest center as final fallback
+    return closestCenter(args);
+  }, []);
 
   const activePipeline = pipelines.find(p => p.id === activePipelineId);
   const allPipelineDeals = React.useMemo(() => {
@@ -732,10 +764,16 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
 
     // 2. Deal Status (Open, Won, Lost)
     if (filterStatus !== 'all') {
+      // Build flag map from stage definitions — never use name substring matching
+      const stageFlagMap: Record<string, { isWon: boolean; isLost: boolean }> = {};
+      activePipeline?.stages.forEach((s: Stage) => {
+        stageFlagMap[s.id] = { isWon: !!s.isWon, isLost: !!s.isLost };
+      });
       result = result.filter(d => {
-        const isWon = d.stageId === 'stage_won' || d.stageId.toLowerCase().includes('won');
-        const isLost = d.stageId === 'stage_lost' || d.stageId.toLowerCase().includes('lost');
-        if (filterStatus === 'won') return isWon;
+        const flags = stageFlagMap[d.stageId];
+        const isWon  = flags?.isWon  ?? false;
+        const isLost = flags?.isLost ?? false;
+        if (filterStatus === 'won')  return isWon;
         if (filterStatus === 'lost') return isLost;
         if (filterStatus === 'open') return !isWon && !isLost;
         return true;
@@ -821,6 +859,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
     return result;
   }, [
     allPipelineDeals, 
+    activePipeline,  // Added: needed for stage flag lookup in filterStatus
     searchQuery, 
     filterStatus, 
     filterStages, 
@@ -1063,32 +1102,128 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
     if (isAutomatedOnly) return;
     const { active } = event;
     const deal = deals.find(d => d.id === active.id);
-    if (deal && canEditDeal(deal)) setActiveDeal(deal);
+    if (deal && canEditDeal(deal)) {
+      setActiveDeal(deal);
+      // Clear any previous optimistic state
+      setOptimisticStageMap({});
+    }
   };
 
   const handleDragOver = (event: DragOverEvent) => {
-    // handleDragOver is intentionally a no-op for API calls.
-    // All actual persistence happens in handleDragEnd to avoid spamming
-    // the backend on every intermediate hover position during a drag.
-    // Visual feedback (drag overlay) is handled by DndContext / drag state.
     if (isAutomatedOnly) return;
     const { active, over } = event;
-    if (!over) return;
-    if (active.id === over.id) return;
+    if (!over || active.id === over.id) return;
+
+    const activeId = String(active.id);
+    const overId   = String(over.id);
+
+    const dragged = deals.find(d => d.id === activeId);
+    if (!dragged || !canEditDeal(dragged)) return;
+
+    // Resolve the target stage from either a stage droppable or a card in that stage
+    let targetStageId: string | null = null;
+
+    // First check if hovering over a stage column itself
+    const stageMatch = activePipeline?.stages.find((s: Stage) => s.id === overId);
+    if (stageMatch) {
+      targetStageId = stageMatch.id;
+    } else {
+      // Otherwise check if hovering over a deal card in a different column
+      const overDeal = deals.find(d => d.id === overId);
+      if (overDeal && overDeal.stageId !== dragged.stageId) {
+        targetStageId = overDeal.stageId;
+      }
+    }
+
+    // Apply optimistic update if target stage is different
+    if (targetStageId && targetStageId !== dragged.stageId) {
+      // Skip terminal stages — those open modals in dragEnd, not during drag
+      const targetStage = activePipeline?.stages.find((s: Stage) => s.id === targetStageId);
+      if (targetStage?.isWon || targetStage?.isLost) return;
+      
+      // Update optimistic map to show card in new column during drag
+      setOptimisticStageMap(prev => {
+        // Only update if different from current optimistic state
+        if (prev[activeId] !== targetStageId) {
+          return { ...prev, [activeId]: targetStageId! };
+        }
+        return prev;
+      });
+    }
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     if (isAutomatedOnly) return;
     const { active, over } = event;
-    setActiveDeal(null);
-
-    if (!over) return;
-
+    
     const activeId = active.id;
+    const activeDeal = deals.find(d => d.id === activeId);
+    
+    // Capture the optimistic target stage BEFORE clearing state
+    const optimisticTargetStage = activeDeal && optimisticStageMap[String(activeId)] 
+      ? optimisticStageMap[String(activeId)]
+      : null;
+    
+    setActiveDeal(null);
+    setOptimisticStageMap({});
+
+    if (!over) {
+      console.log('[Pipeline DnD] Drop cancelled - no target');
+      return;
+    }
+
     const overId = over.id;
 
-    const activeDeal = deals.find(d => d.id === activeId);
-    if (!activeDeal || !canEditDeal(activeDeal)) return;
+    if (!activeDeal || !canEditDeal(activeDeal)) {
+      console.log('[Pipeline DnD] Drop rejected - no deal or no permission');
+      return;
+    }
+
+    console.log('[Pipeline DnD] Dropping deal:', {
+      dealId: activeId,
+      dealTitle: activeDeal.title,
+      currentStage: activeDeal.stageId,
+      targetId: overId,
+      optimisticTargetStage,
+    });
+
+    // If dropped on itself AND we have an optimistic target, use that instead
+    if (activeId === overId && optimisticTargetStage && optimisticTargetStage !== activeDeal.stageId) {
+      console.log('[Pipeline DnD] Dropped on self but using optimistic target:', optimisticTargetStage);
+      const targetStage = activePipeline?.stages.find(s => s.id === optimisticTargetStage);
+      if (targetStage) {
+        // Handle terminal stages
+        if (targetStage.isLost || targetStage.name === 'Closed Lost') {
+          setDealBeingLost(activeDeal);
+          setIsLostReasonModalOpen(true);
+          setLostReason('');
+          return;
+        }
+        if (targetStage.isWon || targetStage.name === 'Closed Won') {
+          setDealBeingWon(activeDeal);
+          setTargetWonStageId(targetStage.id);
+          setIsHandoffModalOpen(true);
+          return;
+        }
+        // Move to the optimistic target stage
+        moveDealStage(String(activeId), optimisticTargetStage)
+          .then(() => {
+            const stageName = targetStage.name;
+            toast.success(`Deal moved to ${stageName}`);
+          })
+          .catch((err: unknown) => {
+            console.error('[Pipeline DnD] moveDealStage failed (optimistic):', err);
+            toast.error(err instanceof Error ? err.message : 'Failed to move deal');
+          });
+        return;
+      }
+    }
+
+    // If dropped on itself with no stage change, do nothing
+    if (activeId === overId) {
+      console.log('[Pipeline DnD] Dropped on self - no action');
+      return;
+    }
 
     const overIdStr = String(overId);
     let targetStageId = overIdStr;
@@ -1110,9 +1245,13 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
       // Cross-pipeline move: update pipeline first, then use moveDealStage for the stage change
       // Since pipelineId is no longer in UpdateDealSchema, we handle this as a special case
       // The backend moveDealStage already handles the deal update, so we call it directly
-      moveDealStage(String(activeId), firstStage.id).catch((err: unknown) => {
-        toast.error(err instanceof Error ? err.message : 'Failed to move deal to new pipeline');
-      });
+      moveDealStage(String(activeId), firstStage.id)
+        .then(() => {
+          toast.success(`Deal moved to ${targetPipeline.name} pipeline`);
+        })
+        .catch((err: unknown) => {
+          toast.error(err instanceof Error ? err.message : 'Failed to move deal to new pipeline');
+        });
       setActivePipelineId(targetPipeline.id);
       return;
     }
@@ -1150,9 +1289,14 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
           }
         }
 
-        moveDealStage(String(activeId), String(targetStageId)).catch((err: unknown) => {
-          toast.error(err instanceof Error ? err.message : 'Failed to move deal');
-        });
+        moveDealStage(String(activeId), String(targetStageId))
+          .then(() => {
+            toast.success(`Deal moved to ${overStage.name}`);
+          })
+          .catch((err: unknown) => {
+            console.error('[Pipeline DnD] moveDealStage failed:', err);
+            toast.error(err instanceof Error ? err.message : 'Failed to move deal');
+          });
       }
 
       // Handle swimlane property changes (priority, client) separately — these are NOT stage changes
@@ -1235,9 +1379,14 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
           }
         }
 
-        moveDealStage(String(activeId), overStageId).catch((err: unknown) => {
-          toast.error(err instanceof Error ? err.message : 'Failed to move deal');
-        });
+        moveDealStage(String(activeId), overStageId)
+          .then(() => {
+            toast.success(`Deal moved to ${overStage?.name}`);
+          })
+          .catch((err: unknown) => {
+            console.error('[Pipeline DnD] moveDealStage failed (cross-deal drop):', err);
+            toast.error(err instanceof Error ? err.message : 'Failed to move deal');
+          });
 
         // Swimlane property changes are separate from stage changes
         if (Object.keys(updates).length > 0) {
@@ -1341,16 +1490,13 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
 
 
   return (
-    <div className="h-full flex flex-col space-y-4 relative overflow-hidden">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
-        <div className="flex items-baseline gap-2.5 flex-wrap">
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Pipeline Management</h1>
-          <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">
-            — Track deals and stage velocity across sales pipelines
-          </span>
-        </div>
-        
-        <div className="flex items-center gap-2 flex-wrap w-full md:w-auto justify-start md:justify-end">
+    <motion.div 
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      className="h-full flex flex-col space-y-4 relative overflow-hidden"
+    >
+      <div className="flex items-center gap-2 flex-wrap justify-end">
           <TooltipProvider>
             {/* Automation Mode toggle */}
             <UITooltip>
@@ -1409,8 +1555,6 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
             )}
           </TooltipProvider>
         </div>
-      </div>
-
 
       {/* Revenue Forecast Bar */}
       <ForecastBar deals={deals} pipelines={pipelines} />
@@ -1897,7 +2041,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
       {viewMode === 'kanban' && (
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCorners}
+          collisionDetection={customCollisionDetection}
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
@@ -1906,7 +2050,10 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
             <div className="flex-1 overflow-x-auto pb-4 custom-scrollbar">
               <div className="flex gap-6 h-full min-w-max items-start">
                 {(activePipeline?.stages || []).map((stage: any) => {
-                  const stageDeals = pipelineDeals.filter(d => d.stageId === stage.id);
+                  // Apply optimistic stage override for visual feedback during drag
+                  const stageDeals = pipelineDeals
+                    .map(d => optimisticStageMap[d.id] ? { ...d, stageId: optimisticStageMap[d.id] } : d)
+                    .filter(d => d.stageId === stage.id);
                   const stageValue = stageDeals.reduce((acc, d) => acc + d.value, 0);
                   
                   return (
@@ -1935,8 +2082,12 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                             />
                           ))}
                           {stageDeals.length === 0 && (
-                            <div className="h-24 border-2 border-dashed border-gray-200 dark:border-white/[0.05] rounded-xl flex items-center justify-center text-slate-500 text-sm bg-white/[0.01]">
-                              Drop deals here
+                            <div className={`h-24 border-2 border-dashed rounded-xl flex items-center justify-center text-sm transition-all ${
+                              !!activeDeal 
+                                ? 'border-blue-400 dark:border-blue-500/50 bg-blue-50 dark:bg-blue-500/5 text-blue-600 dark:text-blue-400 font-medium' 
+                                : 'border-gray-200 dark:border-white/[0.05] bg-white/[0.01] text-slate-500'
+                            }`}>
+                              {!!activeDeal ? '↓ Drop deal here' : 'No deals in this stage'}
                             </div>
                           )}
                         </div>
@@ -1948,17 +2099,17 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
             </div>
           ) : null}
 
-          <DragOverlay dropAnimation={{
-            sideEffects: defaultDropAnimationSideEffects({
-              styles: {
-                active: {
-                  opacity: '0.5',
-                },
-              },
-            }),
-          }}>
+          <DragOverlay
+            dropAnimation={{
+              duration: 200,
+              easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)',
+              sideEffects: defaultDropAnimationSideEffects({
+                styles: { active: { opacity: '0.4' } },
+              }),
+            }}
+          >
             {activeDeal ? (
-              <div className="bg-white dark:bg-slate-950 p-4 rounded-xl border border-blue-500/50 shadow-2xl flex flex-col gap-3 w-80 scale-105 rotate-2">
+              <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border-2 border-blue-500/60 shadow-[0_20px_60px_rgba(0,0,0,0.3)] flex flex-col gap-3 w-80 rotate-1 cursor-grabbing">
                 <DealCardContent 
                   deal={activeDeal} 
                   assignedUser={users?.find((u: any) => u.id === activeDeal.assignedUserId)} 
@@ -2537,7 +2688,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
         />
       )}
 
-    </div>
+    </motion.div>
   );
 }
 

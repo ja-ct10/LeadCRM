@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../../config/database.config';
 import { NotFoundError } from '../../shared/errors/http-error';
-
-const prisma = new PrismaClient();
 
 export async function getTenantById(tenantId: string) {
   const tenant = await prisma.tenant.findUnique({

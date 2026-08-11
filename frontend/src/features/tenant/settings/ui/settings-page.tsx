@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect } from "react";
 import { useData } from "@/store/DataContext";
@@ -782,7 +782,7 @@ export default function SettingsPage(): React.ReactElement {
                       : 'border-l-2 border-transparent text-slate-500 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-white/[0.03]'
                     }`}
                 >
-                  <Icon className="w-3.5 h-3.5 shrink-0" />
+                  {React.createElement(Icon as any, { className: "w-3.5 h-3.5 shrink-0" })}
                   <span>{item.label}</span>
                 </button>
               );

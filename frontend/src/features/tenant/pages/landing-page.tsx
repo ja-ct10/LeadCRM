@@ -1,494 +1,1409 @@
 'use client';
 
 import React from 'react';
-import { motion } from 'motion/react';
+import dynamic from 'next/dynamic';
+import { motion, useReducedMotion, AnimatePresence } from 'motion/react';
 import { 
   ArrowRight, CheckCircle2, BarChart3, Users, Zap, 
-  Briefcase, ShieldCheck, Globe, Play, Star, 
-  Quote, ExternalLink, ChevronRight, Package,
-  Mail, Phone
+  Briefcase, ShieldCheck, Globe, Play, Wrench, Settings,
+  Phone, MapPin, Shield, ArrowUpRight, Mail, Clock,
+  Target, TrendingUp, Smartphone, ChevronDown,
+  Lock, MessageSquare, Database, Megaphone, LayoutDashboard
 } from 'lucide-react';
+import { FeatureCard, ColoredBorderCard, PricingCard } from '../../../shared/components/ui/card';
+import { CookieBanner } from '../../../shared/components/cookie-banner';
+
+// Dynamic import for 3D scene (no SSR)
+const Hero3DScene = dynamic(
+  () => import('./hero-3d-scene'),
+  { ssr: false }
+);
 
 export default function LandingPage({ onNavigate }: { onNavigate: (path: string) => void }) {
-  const [billingCycle, setBillingCycle] = React.useState<'monthly' | 'quarterly' | 'annual'>('monthly');
+  const [billingCycle, setBillingCycle] = React.useState<'monthly' | 'quarterly' | 'annually'>('monthly');
+  const [scrolled, setScrolled] = React.useState(false);
+  const [language, setLanguage] = React.useState<'en' | 'tl'>('en');
+  const [showLangMenu, setShowLangMenu] = React.useState(false);
+  const [activeSection, setActiveSection] = React.useState<string>('');
+  const shouldReduceMotion = useReducedMotion();
 
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.1,
+  // Translation dictionary
+  const translations = {
+    en: {
+      nav: {
+        solutions: 'Solutions',
+        why: 'Why LeadCRM',
+        pricing: 'Pricing',
+        contact: 'Contact',
+        login: 'Log in',
+        getStarted: 'Get started'
       },
+      hero: {
+        badge: 'CRM FOR IT, TELECOM & SECURITY',
+        title1: 'Manage Leads Smarter,',
+        title2: 'Close Deals Faster',
+        subtitle: 'The all-in-one CRM platform that helps sales teams organize leads, automate workflows, and accelerate revenue growth.',
+        startTrial: 'Start free trial',
+        exploreSolutions: 'Explore solutions',
+        freeTrial: '14-DAY FREE TRIAL — NO CREDIT CARD REQUIRED'
+      },
+      solutions: {
+        badge: 'OUR SOLUTIONS',
+        title: 'Your priorities,',
+        title2: 'one platform.',
+        subtitle: 'Purpose-built modules for infrastructure providers — not a generic sales tool bent into shape.',
+        items: [
+          { title: 'Lead Management', desc: 'Organize and track all your leads in one centralized platform with smart segmentation.' },
+          { title: 'Pipeline Tracking', desc: 'Visualize your sales pipeline with drag-and-drop stages and real-time progress updates.' },
+          { title: 'Automation', desc: 'Automate repetitive tasks, follow-ups, and workflows to save time and boost productivity.' },
+          { title: 'Reporting & Analytics', desc: 'Get actionable insights with comprehensive reports and customizable dashboards.' },
+          { title: 'Contact Management', desc: 'Organize your contact history in one place. Maintain a complete record of every contact and profile of your customers.' },
+          { title: 'Remote Access', desc: 'Not at the office? No problem! LeadCRM can be accessed anywhere and everywhere.' },
+          { title: 'Batch Emailing', desc: 'Send multiple emails to multiple receivers at once with batch emailing.' },
+          { title: 'Batch SMS Messaging', desc: 'Need a more reliable way to contact your customers? Use Batch SMS messaging to ensure everyone receives the message.' },
+          { title: 'Centralized Customer Data Storage', desc: 'Ensure everyone can access and see the same data and history by centralizing your customer data into one source.' }
+        ]
+      },
+      why: {
+        badge: 'WHY LEADCRM',
+        title: 'Designed with your',
+        title2: 'business in mind.',
+        subtitle: 'Purpose-built features to help you manage leads, close deals, and grow your business efficiently.',
+        benefits: [
+          { title: 'Save Time with Automation', desc: 'Automate repetitive tasks and workflows to focus on what matters most—building relationships and closing deals.' },
+          { title: 'Improve Team Collaboration', desc: 'Keep your team aligned with shared pipelines, task assignments, and real-time updates.' },
+          { title: 'Increase Conversion Rates', desc: 'Track every lead through the pipeline with insights that help you convert more prospects into customers.' },
+          { title: 'Access it Anywhere at Any Time', desc: 'Work from anywhere with cloud-based access on desktop and mobile devices.' },
+          { title: 'Maximize Your Reach', desc: 'Reach more contacts with batch email and SMS campaigns, all from one platform.' },
+          { title: 'Manage the Full Customer Journey', desc: 'From first contact to closed deal, maintain a complete view of every customer interaction and history.' }
+        ]
+      },
+      pricing: {
+        badge: 'PRICING',
+        title: 'Simple, scalable pricing',
+        subtitle: 'Choose the plan that matches your business stage. Switch or cancel anytime.',
+        monthly: 'Monthly',
+        quarterly: 'Quarterly',
+        annually: 'Annually',
+        save15: 'Save 15%',
+        save25: 'Save 25%',
+        perMonth: 'per month',
+        perQuarter: 'per quarter',
+        perYear: 'per year',
+        bestValue: 'Best value',
+        getStarted: 'Get started',
+        plans: {
+          starter: {
+            name: 'Starter',
+            features: [
+              'Up to 1,000 contacts',
+              'Basic pipeline stages',
+              'Email & SMS campaigns',
+              'Mobile app access',
+              'Standard reports'
+            ]
+          },
+          professional: {
+            name: 'Professional',
+            features: [
+              'Unlimited contacts',
+              'Workflow automation',
+              'Batch messaging',
+              'Priority support',
+              'Custom dashboards',
+              'Asset tracking'
+            ]
+          },
+          enterprise: {
+            name: 'Enterprise',
+            features: [
+              'Custom integrations',
+              'Dedicated account manager',
+              'SLA guarantee',
+              'Advanced audit trails',
+              'White-label option',
+              'Multi-branch access'
+            ]
+          }
+        }
+      },
+      contact: {
+        badge: 'CONTACT',
+        title: 'Let\'s talk about',
+        title2: 'your operations.',
+        subtitle: 'Questions about LeadCRM? Our team of IT specialists is here to help you streamline and scale.',
+        phone: '+63 (02) 8888 8888',
+        phoneLabel: 'Monday to Friday',
+        location: 'Manila, Philippines',
+        locationLabel: 'Service across PH',
+        security: 'security@leadcrm.com',
+        securityLabel: 'Report an incident',
+        form: {
+          firstName: 'First name',
+          lastName: 'Last name',
+          company: 'Company',
+          email: 'Work email',
+          message: 'Message',
+          messagePlaceholder: 'Tell us about your team size, service types, and scaling goals.',
+          send: 'Send message'
+        }
+      },
+      footer: {
+        tagline: 'The premier CRM platform for IT solutions providers, security firms, and telecom agencies.',
+        product: 'Product',
+        company: 'Company',
+        resources: 'Resources',
+        copyright: '© 2026 LeadCRM. All rights reserved.'
+      }
     },
+    tl: {
+      nav: {
+        solutions: 'Solusyon',
+        why: 'Bakit LeadCRM',
+        pricing: 'Presyo',
+        contact: 'Kontakin Kami',
+        login: 'Mag-login',
+        getStarted: 'Magsimula Ngayon'
+      },
+      hero: {
+        badge: 'CRM PARA SA IT, TELECOM AT SECURITY',
+        title1: 'Mas Matalinong Pamamahala ng Leads,',
+        title2: 'Mas Mabilis na Pagbebenta',
+        subtitle: 'Ang kompletong CRM platform na tumutulong sa sales teams na mag-organize ng leads, mag-automate ng proseso, at pabilisin ang paglaki ng negosyo.',
+        startTrial: 'Subukan nang libre',
+        exploreSolutions: 'Alamin ang solusyon',
+        freeTrial: 'LIBRENG 14-ARAW NA TRIAL — WALANG CREDIT CARD'
+      },
+      solutions: {
+        badge: 'ANG AMING SOLUSYON',
+        title: 'Lahat ng kailangan mo,',
+        title2: 'isang platform lang.',
+        subtitle: 'Dinisenyo para sa infrastructure providers — hindi generic na sales tool na pinilit lang.',
+        items: [
+          { title: 'Lead Management', desc: 'I-organize at subaybayan ang lahat ng iyong leads sa isang platform na may matalinong segmentation.' },
+          { title: 'Pipeline Tracking', desc: 'Visualize ang sales pipeline gamit ang drag-and-drop stages at real-time na updates.' },
+          { title: 'Automation', desc: 'I-automate ang paulit-ulit na gawain at workflows para makatipid ng oras at tumaas ang productivity.' },
+          { title: 'Reporting at Analytics', desc: 'Makakuha ng actionable insights gamit ang detalyadong reports at customizable dashboards.' },
+          { title: 'Contact Management', desc: 'Isang lugar lang para sa lahat ng contact history. Kumpleto at organized ang bawat customer profile at interaksyon.' },
+          { title: 'Remote Access', desc: 'Wala sa opisina? Walang problema! I-access ang LeadCRM kahit saan ka naroroon.' },
+          { title: 'Batch Emailing', desc: 'Magpadala ng maraming email sa maraming tao nang sabay-sabay gamit ang batch emailing.' },
+          { title: 'Batch SMS Messaging', desc: 'Mas siguradong paraan ng komunikasyon? Gumamit ng Batch SMS para siguradong makukuha ng lahat ang mensahe.' },
+          { title: 'Centralized Customer Data', desc: 'Siguruhing lahat ay may access sa parehong data at history sa pamamagitan ng centralized customer database.' }
+        ]
+      },
+      why: {
+        badge: 'BAKIT LEADCRM',
+        title: 'Ginawa para sa iyong',
+        title2: 'negosyo.',
+        subtitle: 'Mga feature na dinisenyo para tulungan kang mag-manage ng leads, makakuha ng deals, at palakasin ang negosyo nang epektibo.',
+        benefits: [
+          { title: 'Makatipid ng Oras sa Automation', desc: 'I-automate ang repetitive tasks at workflows para makapag-focus ka sa mas importante—pagbuo ng relasyon at pagsasara ng deals.' },
+          { title: 'Mas Magandang Teamwork', desc: 'I-align ang buong team gamit ang shared pipelines, task assignments, at real-time updates.' },
+          { title: 'Mas Mataas na Conversion Rate', desc: 'Subaybayan ang bawat lead gamit ang insights na tumutulong sa conversion ng mas maraming prospects.' },
+          { title: 'Access Kahit Nasaan Ka', desc: 'Magtrabaho kahit saan gamit ang cloud-based access sa desktop at mobile.' },
+          { title: 'Mas Malawak na Reach', desc: 'Maabot ang mas maraming contacts gamit ang batch email at SMS campaigns sa isang platform.' },
+          { title: 'Buong Customer Journey', desc: 'Mula unang contact hanggang deal closure, makikita ang kumpletong customer interaction at history.' }
+        ]
+      },
+      pricing: {
+        badge: 'PRESYO',
+        title: 'Simple at scalable na pricing',
+        subtitle: 'Pumili ng plan na swak sa iyong negosyo. Pwedeng magpalit o mag-cancel anumang oras.',
+        monthly: 'Buwanan',
+        quarterly: 'Quarterly',
+        annually: 'Tahunan',
+        save15: 'Tipid 15%',
+        save25: 'Tipid 25%',
+        perMonth: 'kada buwan',
+        perQuarter: 'kada quarter',
+        perYear: 'kada taon',
+        bestValue: 'Best value',
+        getStarted: 'Magsimula',
+        plans: {
+          starter: {
+            name: 'Starter',
+            features: [
+              'Hanggang 1,000 contacts',
+              'Basic pipeline stages',
+              'Email at SMS campaigns',
+              'Mobile app access',
+              'Standard reports'
+            ]
+          },
+          professional: {
+            name: 'Professional',
+            features: [
+              'Unlimited contacts',
+              'Workflow automation',
+              'Batch messaging',
+              'Priority support',
+              'Custom dashboards',
+              'Asset tracking'
+            ]
+          },
+          enterprise: {
+            name: 'Enterprise',
+            features: [
+              'Custom integrations',
+              'Dedicated account manager',
+              'SLA guarantee',
+              'Advanced audit trails',
+              'White-label option',
+              'Multi-branch access'
+            ]
+          }
+        }
+      },
+      contact: {
+        badge: 'KONTAKIN KAMI',
+        title: 'Pag-usapan natin ang',
+        title2: 'iyong operations.',
+        subtitle: 'May tanong tungkol sa LeadCRM? Ang aming team ng IT specialists ay handang tumulong sa streamlining at scaling ng iyong negosyo.',
+        phone: '+63 (02) 8888 8888',
+        phoneLabel: 'Lunes hanggang Biyernes',
+        location: 'Maynila, Pilipinas',
+        locationLabel: 'Serbisyo sa buong Pilipinas',
+        security: 'security@leadcrm.com',
+        securityLabel: 'Mag-report ng incident',
+        form: {
+          firstName: 'Pangalan',
+          lastName: 'Apelyido',
+          company: 'Kumpanya',
+          email: 'Work email',
+          message: 'Mensahe',
+          messagePlaceholder: 'Sabihin sa amin ang tungkol sa laki ng team, uri ng serbisyo, at growth goals.',
+          send: 'Ipadala'
+        }
+      },
+      footer: {
+        tagline: 'Ang pangunahing CRM platform para sa IT solutions providers, security firms, at telecom agencies.',
+        product: 'Produkto',
+        company: 'Kumpanya',
+        resources: 'Resources',
+        copyright: '© 2026 LeadCRM. Lahat ng karapatan ay nakalaan.'
+      }
+    }
   };
 
-  const itemVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: {
-      opacity: 1,
-      y: 0,
-      transition: { duration: 0.5 },
-    },
-  };
+  const t = translations[language];
+
+  React.useEffect(() => {
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 50);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.language-selector')) {
+        setShowLangMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Track active section based on scroll position
+  React.useEffect(() => {
+    const handleScrollSpy = () => {
+      const sections = ['solutions', 'why', 'pricing', 'contact'];
+      const scrollPosition = window.scrollY + 200;
+
+      // Check if we're in hero section (top of page)
+      const solutionsElement = document.getElementById('solutions');
+      if (solutionsElement && scrollPosition < solutionsElement.offsetTop) {
+        setActiveSection('');
+        return;
+      }
+
+      for (const section of sections) {
+        const element = document.getElementById(section);
+        if (element) {
+          const offsetTop = element.offsetTop;
+          const offsetBottom = offsetTop + element.offsetHeight;
+          
+          if (scrollPosition >= offsetTop && scrollPosition < offsetBottom) {
+            setActiveSection(section);
+            break;
+          }
+        }
+      }
+    };
+
+    window.addEventListener('scroll', handleScrollSpy);
+    handleScrollSpy(); // Initial check
+    return () => window.removeEventListener('scroll', handleScrollSpy);
+  }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 font-sans selection:bg-[#0A6EFF] selection:text-white overflow-x-hidden">
-      {/* Grid Background */}
-      <div className="fixed inset-0 z-0 pointer-events-none opacity-[0.03]" 
-        style={{ backgroundImage: `radial-gradient(#ffffff 1px, transparent 1px)`, backgroundSize: '40px 40px' }} 
-      />
-      
+    <div className="min-h-screen bg-[#F5F5F5] text-slate-800 antialiased overflow-x-hidden font-body">
       {/* Navbar */}
-      <nav className="container mx-auto px-6 py-6 flex justify-between items-center relative z-50">
-        <motion.div 
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          className="flex items-center gap-3"
-        >
-          <div className="w-10 h-10 bg-white ring-1 ring-blue-500/10 rounded-xl overflow-hidden flex items-center justify-center shadow-[0_0_15px_rgba(10,110,255,0.15)] shrink-0">
-            <img 
-              src="/leadcrm_logo.png" 
-              alt="LeadCRM Logo" 
-              className="h-full w-full object-cover"
-              referrerPolicy="no-referrer"
-            />
+<nav className="fixed top-0 left-0 right-0 z-50 px-6 py-4 transition-all duration-300">
+        <div className={`max-w-7xl mx-auto transition-all duration-300 ${
+          scrolled 
+            ? 'bg-white/95 backdrop-blur-xl border border-gray-200 rounded-2xl shadow-lg px-6 py-3' 
+            : 'px-6 py-3'
+        }`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <img 
+                src="/leadcrm_logo.png" 
+                alt="LeadCRM Logo" 
+                className="w-10 h-10"
+              />
+              <span className="text-xl font-bold text-gray-900">Lead<span className="text-[#4A9EFF]">CRM</span></span>
+            </div>
+            
+            <div className="hidden md:flex items-center gap-8 text-sm font-medium relative">
+              <motion.a 
+                href="#solutions" 
+                onClick={() => setActiveSection('solutions')}
+                whileTap={{ scale: 0.95 }}
+                className={`relative transition-colors ${activeSection === 'solutions' ? 'text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
+              >
+                {t.nav.solutions}
+                {activeSection === 'solutions' && (
+                  <motion.div
+                    layoutId="activeIndicator"
+                    className="absolute -bottom-1 left-0 right-0 h-0.5 bg-blue-600 rounded-full"
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                  />
+                )}
+                {activeSection === 'solutions' && (
+                  <motion.div
+                    className="absolute -bottom-1 left-0 right-0 h-0.5 bg-blue-500 rounded-full blur-sm"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 0.6 }}
+                    transition={{ duration: 0.3 }}
+                  />
+                )}
+              </motion.a>
+              <motion.a 
+                href="#why" 
+                onClick={() => setActiveSection('why')}
+                whileTap={{ scale: 0.95 }}
+                className={`relative transition-colors ${activeSection === 'why' ? 'text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
+              >
+                {t.nav.why}
+                {activeSection === 'why' && (
+                  <motion.div
+                    layoutId="activeIndicator"
+                    className="absolute -bottom-1 left-0 right-0 h-0.5 bg-blue-600 rounded-full"
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                  />
+                )}
+                {activeSection === 'why' && (
+                  <motion.div
+                    className="absolute -bottom-1 left-0 right-0 h-0.5 bg-blue-500 rounded-full blur-sm"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 0.6 }}
+                    transition={{ duration: 0.3 }}
+                  />
+                )}
+              </motion.a>
+              <motion.a 
+                href="#pricing" 
+                onClick={() => setActiveSection('pricing')}
+                whileTap={{ scale: 0.95 }}
+                className={`relative transition-colors ${activeSection === 'pricing' ? 'text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
+              >
+                {t.nav.pricing}
+                {activeSection === 'pricing' && (
+                  <motion.div
+                    layoutId="activeIndicator"
+                    className="absolute -bottom-1 left-0 right-0 h-0.5 bg-blue-600 rounded-full"
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                  />
+                )}
+                {activeSection === 'pricing' && (
+                  <motion.div
+                    className="absolute -bottom-1 left-0 right-0 h-0.5 bg-blue-500 rounded-full blur-sm"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 0.6 }}
+                    transition={{ duration: 0.3 }}
+                  />
+                )}
+              </motion.a>
+              <motion.a 
+                href="#contact" 
+                onClick={() => setActiveSection('contact')}
+                whileTap={{ scale: 0.95 }}
+                className={`relative transition-colors ${activeSection === 'contact' ? 'text-gray-900' : 'text-gray-600 hover:text-gray-900'}`}
+              >
+                {t.nav.contact}
+                {activeSection === 'contact' && (
+                  <motion.div
+                    layoutId="activeIndicator"
+                    className="absolute -bottom-1 left-0 right-0 h-0.5 bg-blue-600 rounded-full"
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                  />
+                )}
+                {activeSection === 'contact' && (
+                  <motion.div
+                    className="absolute -bottom-1 left-0 right-0 h-0.5 bg-blue-500 rounded-full blur-sm"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 0.6 }}
+                    transition={{ duration: 0.3 }}
+                  />
+                )}
+              </motion.a>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {/* Language Selector */}
+              <div className="relative language-selector">
+                <button
+                  onClick={() => setShowLangMenu(!showLangMenu)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 hover:text-gray-900 transition-all text-sm font-medium"
+                >
+                  <Globe size={16} className="text-gray-600" />
+                  <span className="font-semibold">{language.toUpperCase()}</span>
+                  <ChevronDown size={14} className={`transition-transform ${showLangMenu ? 'rotate-180' : ''}`} />
+                </button>
+                
+                {showLangMenu && (
+                  <div className="absolute top-full right-0 mt-2 w-56 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden z-50">
+                    <button
+                      onClick={() => {
+                        setLanguage('en');
+                        setShowLangMenu(false);
+                      }}
+                      className={`w-full px-4 py-3 text-left text-sm font-medium transition-colors flex items-center gap-3 ${
+                        language === 'en' 
+                          ? 'bg-blue-600 text-white' 
+                          : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                      }`}
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-semibold">English</span>
+                        <span className="text-xs opacity-75">United States</span>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setLanguage('tl');
+                        setShowLangMenu(false);
+                      }}
+                      className={`w-full px-4 py-3 text-left text-sm font-medium transition-colors flex items-center gap-3 ${
+                        language === 'tl' 
+                          ? 'bg-blue-600 text-white' 
+                          : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                      }`}
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-semibold">Filipino</span>
+                        <span className="text-xs opacity-75">Philippines</span>
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <button 
+                onClick={() => onNavigate('login')}
+                className="px-5 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
+              >
+                {t.nav.login}
+              </button>
+              <button 
+                onClick={() => onNavigate('register')}
+                className="px-5 py-2.5 text-sm font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-all active:scale-95 shadow-lg shadow-blue-600/30"
+              >
+                {t.nav.getStarted}
+              </button>
+            </div>
           </div>
-          <span className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight font-display">LeadCRM</span>
-        </motion.div>
-        
-        <motion.div 
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          className="flex gap-4 items-center"
-        >
-          <button 
-            onClick={() => onNavigate('login')}
-            className="px-5 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors"
-          >
-            Login
-          </button>
-          <button 
-            onClick={() => onNavigate('register')}
-            className="px-5 py-2.5 text-sm font-medium bg-[#0A6EFF] text-white rounded-lg hover:bg-blue-600 transition-all hover:scale-105 active:scale-95 shadow-[0_0_15px_rgba(10,110,255,0.2)]"
-          >
-            Get Started
-          </button>
-        </motion.div>
+        </div>
       </nav>
 
       {/* Hero Section */}
-      <section className="relative pt-20 pb-32 overflow-hidden">
-        {/* Background glow effects */}
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-blue-500/10 rounded-full blur-[120px] pointer-events-none"></div>
+      <section className="relative pt-32 pb-20 px-6 overflow-hidden">
+        {/* Background effects */}
+        <div className="absolute inset-0 bg-blue-950/20 pointer-events-none" />
+        <div className="absolute top-40 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-blue-600/10 rounded-full blur-[150px] pointer-events-none" />
         
-        <div className="container mx-auto px-6 text-center relative z-10">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-sm font-medium mb-8">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+        <div className="max-w-7xl mx-auto relative z-10">
+          <div className="max-w-4xl">
+            <motion.h1 
+              initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: shouldReduceMotion ? 0 : 0.5, delay: shouldReduceMotion ? 0 : 0.1 }}
+              className="text-6xl md:text-7xl lg:text-8xl font-heading text-gray-900 mb-8 tracking-tight leading-[1.05]"
+            >
+              {t.hero.title1}<br />
+              <span className="text-blue-600 relative inline-block">
+                {t.hero.title2}
+                <motion.div
+                  className="absolute -bottom-2 left-0 right-0 h-1 bg-blue-600 rounded-full"
+                  initial={{ scaleX: 0 }}
+                  animate={{ scaleX: 1 }}
+                  transition={{ delay: 0.8, duration: 0.6 }}
+                />
               </span>
-              Next-Gen CRM for IT Solutions
-            </div>
-            <h1 className="text-5xl md:text-8xl font-extrabold text-slate-900 dark:text-white mb-8 tracking-tight leading-[1.1] max-w-5xl mx-auto font-display">
-              Scale your <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#0A6EFF] via-blue-400 to-purple-400">IT Business</span> <br />
-              with precision.
-            </h1>
-            <p className="text-xl text-slate-500 dark:text-slate-400 mb-12 max-w-2xl mx-auto leading-relaxed">
-              The only all-in-one CRM built specifically for security, telecom, and IT infrastructure providers. Manage contacts, assets, and workflows in one place.
-            </p>
+            </motion.h1>
             
-            <div className="flex flex-col sm:flex-row justify-center gap-4 mb-20">
-              <button 
+            <motion.p 
+              initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: shouldReduceMotion ? 0 : 0.5, delay: shouldReduceMotion ? 0 : 0.2 }}
+              className="text-xl text-gray-600 mb-12 max-w-2xl leading-relaxed font-subtitle"
+            >
+              {t.hero.subtitle}
+            </motion.p>
+            
+            <motion.div 
+              initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: shouldReduceMotion ? 0 : 0.5, delay: shouldReduceMotion ? 0 : 0.3 }}
+              className="flex flex-col sm:flex-row gap-4 mb-6"
+            >
+              <motion.button 
                 onClick={() => onNavigate('register')}
-                className="px-8 py-4 text-lg font-semibold bg-[#0A6EFF] text-white rounded-xl hover:bg-blue-600 transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-2 shadow-[0_0_30px_rgba(10,110,255,0.3)]"
+                whileHover={shouldReduceMotion ? {} : { scale: 1.02 }}
+                whileTap={shouldReduceMotion ? {} : { scale: 0.98 }}
+                className="group min-h-[44px] min-w-[44px] px-10 py-5 bg-blue-600 hover:bg-blue-700 text-white text-lg font-bold rounded-xl transition-all shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2 hover:shadow-blue-600/50"
+                aria-label="Start free trial"
               >
-                Start Free Trial <ArrowRight size={20} />
-              </button>
-              <button 
-                className="px-8 py-4 text-lg font-semibold bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-slate-900 dark:text-white rounded-xl hover:bg-gray-200 dark:hover:bg-white/10 transition-all flex items-center justify-center gap-2 backdrop-blur-sm"
+                {t.hero.startTrial}
+                <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+              </motion.button>
+              <motion.button 
+                onClick={() => window.location.href = '#solutions'}
+                whileHover={shouldReduceMotion ? {} : { scale: 1.02 }}
+                whileTap={shouldReduceMotion ? {} : { scale: 0.98 }}
+                className="min-h-[44px] min-w-[44px] px-10 py-5 bg-white border-2 border-gray-200 text-gray-900 text-lg font-bold rounded-xl transition-all flex items-center justify-center gap-2 hover:bg-gray-50 hover:border-blue-600 shadow-sm"
+                aria-label="Explore solutions"
               >
-                <Play size={20} className="fill-current" /> Watch Demo
-              </button>
-            </div>
-          </motion.div>
+                {t.hero.exploreSolutions}
+              </motion.button>
+            </motion.div>
 
-          {/* Dashboard Preview */}
+            <motion.p 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: shouldReduceMotion ? 0 : 0.5, delay: shouldReduceMotion ? 0 : 0.4 }}
+              className="text-xs text-gray-500 uppercase tracking-widest font-semibold"
+            >
+              {t.hero.freeTrial}
+            </motion.p>
+          </div>
+
+          {/* 3D Hero - Pipeline Animation */}
           <motion.div 
-            initial={{ opacity: 0, y: 40 }}
+            className="mt-32 relative"
+            initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 50 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.2 }}
-            className="relative mx-auto max-w-6xl group"
+            transition={{ delay: 0.6, duration: 0.8 }}
           >
-            <div className="absolute -inset-1 bg-gradient-to-r from-[#0A6EFF] to-purple-500 rounded-2xl blur opacity-20 group-hover:opacity-30 transition duration-1000 group-hover:duration-200"></div>
-            <div className="relative rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-slate-950/80 backdrop-blur-xl p-2 shadow-2xl overflow-hidden">
-              <div className="rounded-xl overflow-hidden border border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-slate-950 aspect-[16/10] flex items-center justify-center relative">
-                {/* Mock UI */}
-                <div className="absolute inset-0 flex">
-                  <div className="w-64 border-r border-gray-200 dark:border-white/5 p-6 space-y-6 hidden md:block">
-                    <div className="h-4 bg-white/10 rounded w-3/4"></div>
-                    <div className="space-y-3">
-                      {[1, 2, 3, 4, 5].map(i => <div key={i} className="h-3 bg-gray-100 dark:bg-white/5 rounded w-full"></div>)}
-                    </div>
-                  </div>
-                  <div className="flex-1 p-8">
-                    <div className="flex justify-between mb-10">
-                      <div className="h-8 bg-white/10 rounded w-48"></div>
-                      <div className="h-8 bg-white/10 rounded w-32"></div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-6 mb-10">
-                      {[1, 2, 3].map(i => (
-                        <div key={i} className="h-32 bg-gray-100 dark:bg-white/[0.03] rounded-2xl border border-gray-200 dark:border-white/5 p-4">
-                          <div className="h-3 bg-white/10 rounded w-1/2 mb-4"></div>
-                          <div className="h-6 bg-white/20 rounded w-3/4"></div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="h-64 bg-white dark:bg-white/[0.02] rounded-2xl border border-gray-200 dark:border-white/5 p-6">
-                      <div className="flex gap-2 mb-6">
-                        {[1, 2, 3, 4, 5, 6, 7].map(i => <div key={i} className="flex-1 h-32 bg-blue-500/20 rounded-lg self-end" style={{ height: `${Math.random() * 100 + 20}%` }}></div>)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                {/* Floating Badge */}
-                <div className="absolute bottom-10 right-10 bg-[#0A6EFF] text-slate-900 dark:text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 animate-bounce">
-                  <Zap size={20} />
-                  <span className="font-bold">Automation Active</span>
-                </div>
+            {/* Top intro text */}
+            <div className="text-center mb-12 max-w-3xl mx-auto">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-blue-200 bg-blue-50 text-blue-700 text-xs font-semibold mb-6">
+                <Play size={14} />
+                WATCH IT IN ACTION
               </div>
-            </div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* Trust Bar */}
-      <section className="py-20 border-y border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-white/[0.01]">
-        <div className="container mx-auto px-6">
-          <p className="text-center text-slate-500 text-sm font-medium uppercase tracking-widest mb-10">Trusted by innovative IT teams worldwide</p>
-          <div className="flex flex-wrap justify-center items-center gap-12 md:gap-24 opacity-40 grayscale hover:grayscale-0 transition-all duration-500">
-            {['TechFlow', 'SecureNet', 'CloudScale', 'DataGuard', 'NetOps'].map(name => (
-              <span key={name} className="text-2xl font-bold text-slate-700 dark:text-slate-300 font-display">{name}</span>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Features Bento Grid */}
-      <section className="py-32 relative">
-        <div className="container mx-auto px-6">
-          <div className="text-center mb-20">
-            <h2 className="text-4xl md:text-5xl font-bold text-slate-900 dark:text-white mb-6 font-display">Engineered for Growth</h2>
-            <p className="text-slate-500 dark:text-slate-400 max-w-2xl mx-auto text-lg">Stop juggling spreadsheets. LeadCRM brings your entire sales and operations cycle into a single, high-performance interface.</p>
-          </div>
-
-          <motion.div 
-            variants={containerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
-            className="grid grid-cols-1 md:grid-cols-3 gap-6"
-          >
-            {/* ... existing cards ... */}
-          </motion.div>
-        </div>
-      </section>
-
-      {/* Benefits Section */}
-      <section className="py-32 relative overflow-hidden">
-        <div className="container mx-auto px-6">
-          <div className="text-center mb-20">
-            <h2 className="text-4xl md:text-5xl font-bold text-slate-900 dark:text-white mb-6 font-display">Why Choose LeadCRM?</h2>
-            <p className="text-slate-500 dark:text-slate-400 max-w-2xl mx-auto text-lg">Built by IT professionals for IT professionals. We understand your unique challenges.</p>
-          </div>
-
-          <div className="grid md:grid-cols-4 gap-8">
-            {[
-              { title: 'Increased Efficiency', desc: 'Automate repetitive tasks and focus on closing deals and delivering services.', icon: Zap, color: 'text-blue-400' },
-              { title: 'Better Visibility', desc: 'Get a 360-degree view of your sales pipeline, assets, and technician schedules.', icon: BarChart3, color: 'text-purple-400' },
-              { title: 'Enhanced Security', desc: 'Enterprise-grade security to protect your sensitive client data and business docs.', icon: ShieldCheck, color: 'text-green-400' },
-              { title: 'Scalable Platform', desc: 'From startup to enterprise, our multi-tenant SaaS architecture grows with you.', icon: Globe, color: 'text-orange-400' },
-            ].map((benefit, i) => (
-              <motion.div 
-                key={i}
-                whileHover={{ y: -5 }}
-                className="p-8 rounded-3xl bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/5 hover:border-gray-200 dark:border-white/10 transition-all"
-              >
-                <div className={`w-12 h-12 rounded-xl bg-gray-100 dark:bg-white/5 flex items-center justify-center mb-6 ${benefit.color}`}>
-                  <benefit.icon size={24} />
-                </div>
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-3 font-display">{benefit.title}</h3>
-                <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">{benefit.desc}</p>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Testimonials */}
-      <section className="py-32 bg-gray-50 dark:bg-white/[0.01] border-y border-gray-200 dark:border-white/5">
-        <div className="container mx-auto px-6">
-          <div className="grid md:grid-cols-2 gap-16 items-center">
-            <div>
-              <div className="inline-flex items-center gap-2 text-[#0A6EFF] font-bold uppercase tracking-widest text-sm mb-6">
-                <Star size={16} className="fill-current" /> Success Stories
-              </div>
-              <h2 className="text-4xl md:text-5xl font-bold text-slate-900 dark:text-white mb-8 font-display leading-tight">
-                "LeadCRM transformed how we handle our IT projects."
+              <h2 className="text-5xl font-heading font-bold text-slate-900 mb-4">
+                Your pipeline, visualized
               </h2>
-              <div className="flex items-center gap-4">
-                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 p-0.5">
-                  <div className="w-full h-full rounded-full bg-gray-50 dark:bg-slate-950 flex items-center justify-center text-xl font-bold">CT</div>
-                </div>
-                <div>
-                  <div className="text-slate-900 dark:text-white font-bold text-lg">Camxian Technologies</div>
-                  <div className="text-slate-500">Security & IT Solutions Provider</div>
+              <p className="text-xl text-slate-600">
+                Experience the smooth flow of deals moving through stages, 
+                from first contact to celebration.
+              </p>
+            </div>
+            
+            {/* 3D Scene with enhanced backdrop */}
+            <div className="relative max-w-6xl mx-auto">
+              {/* Gradient orbs */}
+              <div className="absolute top-1/2 left-1/4 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-600/20 rounded-full blur-[120px] animate-pulse" />
+              <div className="absolute top-1/2 right-1/4 translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-purple-600/20 rounded-full blur-[120px] animate-pulse" style={{ animationDelay: '1s' }} />
+              
+              {/* Main container */}
+              <div className="relative">
+                <div className="absolute -inset-6 bg-blue-600/30 rounded-3xl blur-2xl" />
+                <div className="relative h-[650px] rounded-3xl overflow-hidden border-2 border-white/20 bg-[#080616] shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
+                  <Hero3DScene className="w-full h-full" />
                 </div>
               </div>
             </div>
-            <div className="relative">
-              <Quote size={120} className="absolute -top-10 -left-10 text-slate-900 dark:text-white/[0.03] pointer-events-none" />
-              <div className="bg-white dark:bg-slate-950 p-10 rounded-[2.5rem] border border-gray-200 dark:border-white/5 relative z-10">
-                <p className="text-xl text-slate-700 dark:text-slate-300 italic leading-relaxed mb-8">
-                  "Before LeadCRM, we were losing track of site surveys and hardware warranties. Now, everything is automated. Our technicians are more efficient, and our sales conversion has increased by 40%."
-                </p>
-                <div className="flex gap-1 text-yellow-500">
-                  {[1, 2, 3, 4, 5].map(i => <Star key={i} size={20} className="fill-current" />)}
-                </div>
+            
+            {/* Bottom feature pills */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 1.2 }}
+              className="mt-12 flex flex-wrap items-center justify-center gap-4"
+            >
+              <div className="px-4 py-2 bg-white rounded-full border border-gray-200 text-sm font-medium text-slate-700 flex items-center gap-2">
+                <Zap size={16} className="text-blue-600" />
+                60 FPS Animation
               </div>
-            </div>
+              <div className="px-4 py-2 bg-white rounded-full border border-gray-200 text-sm font-medium text-slate-700 flex items-center gap-2">
+                3D Visualization
+              </div>
+              <div className="px-4 py-2 bg-white rounded-full border border-gray-200 text-sm font-medium text-slate-700 flex items-center gap-2">
+                <CheckCircle2 size={16} className="text-emerald-600" />
+                Real-time Updates
+              </div>
+            </motion.div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Solutions Section */}
+      <section id="solutions" className="py-32 px-6 relative bg-[#F8F9FB] dark:bg-[#0A0B14]">
+        <div className="max-w-7xl mx-auto">
+          <motion.div 
+            initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: shouldReduceMotion ? 0 : 0.6 }}
+            className="mb-20 text-center"
+          >
+            <motion.p 
+              className="text-blue-500 text-xs font-bold uppercase tracking-widest mb-4"
+              initial={{ opacity: 0, scale: 0.8 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.4 }}
+            >
+              {t.solutions.badge}
+            </motion.p>
+            <h2 className="text-5xl md:text-6xl font-bold text-gray-900 dark:text-white mb-6 font-heading leading-tight">
+              {t.solutions.title}<br />{t.solutions.title2}
+            </h2>
+            <p className="text-lg text-gray-500 dark:text-slate-400 max-w-2xl mx-auto">
+              {t.solutions.subtitle}
+            </p>
+          </motion.div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {t.solutions.items.map((solution, i) => {
+              const icons = [Users, BarChart3, Zap, Target, Users, Globe, Mail, MessageSquare, Database];
+              const Icon = icons[i];
+              const numbers = ['01', '02', '03', '04', '05', '06', '07', '08', '09'];
+              
+              return (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: "-50px" }}
+                  transition={{ 
+                    delay: shouldReduceMotion ? 0 : i * 0.05, 
+                    duration: shouldReduceMotion ? 0 : 0.5,
+                    type: 'spring',
+                    stiffness: 120,
+                    damping: 20
+                  }}
+                  className="group"
+                >
+                  <div 
+                    className="relative h-full border-l-4 border-l-transparent bg-white/60 dark:bg-[#1A1B26] p-8 transition-all duration-300 group-hover:border-l-blue-500 group-hover:bg-blue-50/50 dark:group-hover:bg-blue-950/20"
+                    style={{
+                      backgroundImage: `
+                        linear-gradient(to right, rgba(203, 213, 225, 0.12) 1px, transparent 1px),
+                        linear-gradient(to bottom, rgba(203, 213, 225, 0.12) 1px, transparent 1px)
+                      `,
+                      backgroundSize: '24px 24px',
+                      borderTop: '1px solid rgba(203, 213, 225, 0.3)',
+                      borderRight: '1px solid rgba(203, 213, 225, 0.3)',
+                      borderBottom: '1px solid rgba(203, 213, 225, 0.3)'
+                    }}
+                  >
+                    {/* Number badge in top-right */}
+                    <div className="absolute top-6 right-6 text-gray-300 dark:text-white/[0.15] text-2xl font-semibold">
+                      {numbers[i]}
+                    </div>
+
+                    {/* Icon - changes to blue on hover */}
+                    <div className="mb-6">
+                      <Icon className="w-11 h-11 text-gray-600 dark:text-slate-300 group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors duration-300" strokeWidth={1.5} />
+                    </div>
+
+                    {/* Title */}
+                    <h3 className="text-[17px] font-semibold text-gray-900 dark:text-white mb-3 tracking-tight leading-tight">
+                      {solution.title}
+                    </h3>
+
+                    {/* Description */}
+                    <p className="text-[14px] text-gray-500 dark:text-slate-400 leading-relaxed">
+                      {solution.desc}
+                    </p>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* Why LeadCRM Section */}
+      <section id="why" className="py-32 px-6 relative bg-[#0B0F19] dark:bg-[#0B0F19] overflow-hidden">
+        {/* Grid background overlay - matches card grid size */}
+        <div 
+          className="absolute inset-0 opacity-[0.06]"
+          style={{
+            backgroundImage: `
+              linear-gradient(to right, rgba(148, 163, 184, 0.5) 1px, transparent 1px),
+              linear-gradient(to bottom, rgba(148, 163, 184, 0.5) 1px, transparent 1px)
+            `,
+            backgroundSize: '40px 40px'
+          }}
+        />
+
+        <div className="max-w-7xl mx-auto relative z-10">
+          <motion.div 
+            className="text-center mb-20"
+            initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: shouldReduceMotion ? 0 : 0.6 }}
+          >
+            <motion.p 
+              className="text-blue-400 text-xs font-bold uppercase tracking-widest mb-4"
+              initial={{ opacity: 0, scale: 0.8 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.4 }}
+            >
+              {t.why.badge}
+            </motion.p>
+            <h2 className="text-5xl md:text-6xl font-bold text-white mb-6 font-heading leading-tight">
+              {t.why.title}<br />{t.why.title2}
+            </h2>
+            <p className="text-lg text-gray-400 max-w-2xl mx-auto">
+              {t.why.subtitle}
+            </p>
+          </motion.div>
+
+          {/* One unified grid container */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 border border-white/[0.08] rounded-2xl overflow-hidden bg-[#13141F]/40 backdrop-blur-sm">
+            {t.why.benefits.map((benefit, i) => {
+              const icons = [Clock, Users, TrendingUp, Globe, Megaphone, LayoutDashboard];
+              const Icon = icons[i];
+              const numbers = ['01', '02', '03', '04', '05', '06'];
+              
+              // Determine border classes for grid lines
+              const isRightColumn = (i + 1) % 3 !== 0;
+              const isBottomRow = i < 3;
+              
+              return (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: "-50px" }}
+                  transition={{ 
+                    delay: shouldReduceMotion ? 0 : i * 0.08,
+                    duration: shouldReduceMotion ? 0 : 0.5,
+                    type: 'spring',
+                    stiffness: 120,
+                    damping: 20
+                  }}
+                  className="group relative"
+                >
+                  <div 
+                    className={`relative h-full p-8 transition-all duration-300 group-hover:bg-[#2A2D3E]/80 group-hover:z-10
+                      ${isRightColumn ? 'border-r border-white/[0.08]' : ''}
+                      ${isBottomRow ? 'border-b border-white/[0.08]' : ''}
+                    `}
+                  >
+                    {/* Grid overlay that appears on hover - aligned with background */}
+                    <div 
+                      className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+                      style={{
+                        backgroundImage: `
+                          linear-gradient(to right, rgba(148, 163, 184, 0.15) 1px, transparent 1px),
+                          linear-gradient(to bottom, rgba(148, 163, 184, 0.15) 1px, transparent 1px)
+                        `,
+                        backgroundSize: '40px 40px',
+                        backgroundPosition: '0 0'
+                      }}
+                    />
+
+                    {/* Icon with filled circular background - animates on hover */}
+                    <motion.div 
+                      className="mb-6 relative z-10"
+                      whileHover={{ scale: 1.1, rotate: 5 }}
+                      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                    >
+                      <div className="w-12 h-12 rounded-full bg-white/[0.06] border border-white/[0.08] flex items-center justify-center transition-all duration-300 group-hover:bg-white/[0.12] group-hover:border-white/[0.15]">
+                        <Icon className="w-6 h-6 text-gray-300 transition-colors duration-300 group-hover:text-white" strokeWidth={1.5} />
+                      </div>
+                    </motion.div>
+
+                    {/* Title - slides up slightly on hover */}
+                    <motion.h3 
+                      className="text-[17px] font-semibold text-white mb-3 tracking-tight leading-tight relative z-10 transition-all duration-300"
+                      whileHover={{ y: -2 }}
+                      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                    >
+                      {benefit.title}
+                    </motion.h3>
+
+                    {/* Description - fades in more on hover */}
+                    <p className="text-[14px] text-gray-400 leading-relaxed mb-4 relative z-10 transition-all duration-300 group-hover:text-gray-300">
+                      {benefit.desc}
+                    </p>
+
+                    {/* Animated glowing progress line */}
+                    <div className="relative z-10 h-[2px] w-full overflow-hidden">
+                      <motion.div
+                        initial={{ width: 0, opacity: 0 }}
+                        whileHover={{ width: '120px', opacity: 1 }}
+                        transition={{ 
+                          duration: 0.6,
+                          ease: 'easeOut'
+                        }}
+                        className="h-full bg-gray-400 rounded-full relative"
+                        style={{
+                          boxShadow: '0 0 10px rgba(156, 163, 175, 0.8), 0 0 20px rgba(156, 163, 175, 0.4)'
+                        }}
+                      />
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })}
           </div>
         </div>
       </section>
 
       {/* Pricing Section */}
-      <section className="py-32">
-        <div className="container mx-auto px-6">
+      <section id="pricing" className="py-32 px-6 relative">
+        <div className="max-w-7xl mx-auto">
           <div className="text-center mb-20">
-            <h2 className="text-4xl md:text-5xl font-bold text-slate-900 dark:text-white mb-6 font-display">Simple, Scaleable Pricing</h2>
-            <p className="text-slate-500 dark:text-slate-400 max-w-2xl mx-auto text-lg mb-10">Choose the perfect plan for your business stage.</p>
-            
-            <div className="inline-flex items-center p-1 bg-gray-100 dark:bg-white/5 rounded-2xl border border-gray-200 dark:border-white/10">
-              <button 
+            <p className="text-blue-600 text-xs font-bold uppercase tracking-widest mb-4">{t.pricing.badge}</p>
+            <h2 className="text-5xl md:text-6xl font-bold text-gray-900 mb-6 font-heading">{t.pricing.title}</h2>
+            <p className="text-xl text-gray-600 mb-10 font-subtitle">
+              {t.pricing.subtitle}
+            </p>
+
+            <div className="inline-flex items-center p-1 bg-gray-100 rounded-xl border border-gray-200">
+              <button
                 onClick={() => setBillingCycle('monthly')}
-                className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${billingCycle === 'monthly' ? 'bg-[#0A6EFF] text-slate-900 dark:text-white shadow-lg' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
+                className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
+                  billingCycle === 'monthly' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
               >
-                Monthly
+                {t.pricing.monthly}
               </button>
-              <button 
+              <button
                 onClick={() => setBillingCycle('quarterly')}
-                className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${billingCycle === 'quarterly' ? 'bg-[#0A6EFF] text-slate-900 dark:text-white shadow-lg' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
+                className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
+                  billingCycle === 'quarterly' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
               >
-                Quarterly
+                <span>{t.pricing.quarterly}</span>
+                <span className={`ml-2 text-xs font-bold ${
+                  billingCycle === 'quarterly' ? 'text-white' : 'text-green-700'
+                }`}>{t.pricing.save15}</span>
               </button>
-              <button 
-                onClick={() => setBillingCycle('annual')}
-                className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${billingCycle === 'annual' ? 'bg-[#0A6EFF] text-slate-900 dark:text-white shadow-lg' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}`}
+              <button
+                onClick={() => setBillingCycle('annually')}
+                className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
+                  billingCycle === 'annually' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
               >
-                Annual
+                <span>{t.pricing.annually}</span>
+                <span className={`ml-2 text-xs font-bold ${
+                  billingCycle === 'annually' ? 'text-white' : 'text-green-700'
+                }`}>{t.pricing.save25}</span>
               </button>
             </div>
           </div>
-          
+
           <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
             {[
-              { 
-                name: 'Starter', 
-                prices: { monthly: '?999', quarterly: '?2,699', annual: '?9,999' }, 
-                desc: 'For small IT teams.', 
-                features: ['Up to 1,000 Contacts', 'Basic Pipeline', 'Email Support', 'Mobile App Access'] 
+              {
+                name: t.pricing.plans.starter.name,
+                price: billingCycle === 'monthly' ? '₱999' : billingCycle === 'quarterly' ? '₱2,547' : '₱8,999',
+                period: billingCycle === 'monthly' ? t.pricing.perMonth : billingCycle === 'quarterly' ? t.pricing.perQuarter : t.pricing.perYear,
+                features: t.pricing.plans.starter.features
               },
-              { 
-                name: 'Professional', 
-                prices: { monthly: '?2,499', quarterly: '?6,749', annual: '?24,999' }, 
-                desc: 'Our most popular plan.', 
-                features: ['Unlimited Contacts', 'Workflow Automation', 'Batch Messaging', 'Priority Support', 'Custom Dashboards'], 
-                popular: true 
+              {
+                name: t.pricing.plans.professional.name,
+                price: billingCycle === 'monthly' ? '₱2,499' : billingCycle === 'quarterly' ? '₱6,372' : '₱22,499',
+                period: billingCycle === 'monthly' ? t.pricing.perMonth : billingCycle === 'quarterly' ? t.pricing.perQuarter : t.pricing.perYear,
+                badge: t.pricing.bestValue,
+                popular: true,
+                features: t.pricing.plans.professional.features
               },
-              { 
-                name: 'Enterprise', 
-                prices: { monthly: 'Custom', quarterly: 'Custom', annual: 'Custom' }, 
-                desc: 'For large organizations.', 
-                features: ['Custom Integrations', 'Dedicated Manager', 'SLA Guarantee', 'Advanced Security', 'White-label Option'] 
-              },
+              {
+                name: t.pricing.plans.enterprise.name,
+                price: billingCycle === 'monthly' ? '₱9,999' : billingCycle === 'quarterly' ? '₱25,497' : '₱89,999',
+                period: billingCycle === 'monthly' ? t.pricing.perMonth : billingCycle === 'quarterly' ? t.pricing.perQuarter : t.pricing.perYear,
+                features: t.pricing.plans.enterprise.features
+              }
             ].map((plan, i) => (
-              <motion.div 
-                key={i}
-                whileHover={{ y: -10 }}
-                className={`p-10 rounded-[2.5rem] border flex flex-col ${plan.popular ? 'bg-gradient-to-b from-[#0B1120] to-[#030712] border-[#0A6EFF] shadow-[0_0_50px_rgba(10,110,255,0.15)] relative' : 'bg-white dark:bg-slate-950 border-gray-200 dark:border-white/5'}`}
+              <motion.div
+                key={`${plan.name}-${billingCycle}`}
+                initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 30, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ 
+                  delay: shouldReduceMotion ? 0 : i * 0.1, 
+                  duration: shouldReduceMotion ? 0 : 0.5,
+                  type: 'spring',
+                  stiffness: 100,
+                  damping: 15
+                }}
+                whileHover={shouldReduceMotion ? {} : { 
+                  y: plan.popular ? -12 : -8,
+                  scale: plan.popular ? 1.03 : 1.02,
+                  transition: { duration: 0.2 }
+                }}
+                className={`relative rounded-3xl p-10 transition-all cursor-pointer min-h-[44px] ${
+                  plan.popular
+                    ? 'bg-blue-50 dark:bg-blue-950/10 border-2 border-blue-600 shadow-2xl ring-4 ring-blue-500/20 scale-105'
+                    : 'bg-white dark:bg-slate-900 border-2 border-gray-200 dark:border-white/8 hover:border-blue-300 shadow-lg hover:shadow-xl'
+                }`}
+                aria-label={`${plan.name} plan`}
               >
-                {plan.popular && <span className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#0A6EFF] text-slate-900 dark:text-white px-6 py-1.5 text-xs font-bold rounded-full uppercase tracking-widest shadow-xl">Best Value</span>}
-                <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-2 font-display">{plan.name}</h3>
-                <p className="text-slate-500 text-sm mb-8 h-10">{plan.desc}</p>
-                <div className="text-5xl font-extrabold text-slate-900 dark:text-white mb-10 font-display">
-                  {plan.prices[billingCycle]}
-                  {plan.prices[billingCycle] !== 'Custom' && <span className="text-lg text-slate-500 font-normal">/{billingCycle === 'monthly' ? 'mo' : billingCycle === 'quarterly' ? 'qtr' : 'yr'}</span>}
-                </div>
-                <ul className="space-y-5 mb-12 flex-1">
-                  {plan.features.map((f, j) => (
-                    <li key={j} className="flex items-center gap-3 text-slate-700 dark:text-slate-300">
-                      <CheckCircle2 size={20} className="text-[#0A6EFF] shrink-0" /> 
-                      <span className="text-sm">{f}</span>
-                    </li>
+                {plan.badge && (
+                  <motion.div 
+                    className="absolute -top-4 left-1/2 -translate-x-1/2 px-6 py-2 bg-blue-600 text-white text-xs font-bold rounded-full uppercase tracking-wider shadow-lg"
+                    initial={{ scale: 0, rotate: -12 }}
+                    animate={{ scale: 1, rotate: 0 }}
+                    transition={{ type: 'spring', stiffness: 260, damping: 20, delay: 0.3 }}
+                  >
+                    {plan.badge}
+                  </motion.div>
+                )}
+                
+                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2 font-heading">{plan.name}</h3>
+                <AnimatePresence mode="wait">
+                  <motion.div 
+                    key={`price-${plan.name}-${billingCycle}`}
+                    initial={{ opacity: 0, scale: 0.8, y: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.8, y: -20 }}
+                    transition={{ 
+                      type: 'spring', 
+                      stiffness: 300, 
+                      damping: 20 
+                    }}
+                    className="mb-8"
+                  >
+                    <div className={`text-5xl font-black mb-1 ${plan.popular ? 'text-blue-600' : 'text-gray-900 dark:text-white'}`}>
+                      {plan.price}
+                    </div>
+                    {plan.period && (
+                      <div className="text-gray-600 dark:text-gray-400 text-sm font-medium">
+                        {plan.period}
+                      </div>
+                    )}
+                  </motion.div>
+                </AnimatePresence>
+
+                <ul className="space-y-4 mb-10">
+                  {plan.features.map((feature, j) => (
+                    <motion.li 
+                      key={j} 
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.1 + (j * 0.05) }}
+                      className="flex items-start gap-3 text-gray-700 dark:text-gray-300"
+                    >
+                      <motion.div 
+                        className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                          plan.popular ? 'bg-blue-600' : 'bg-gray-200 dark:bg-slate-700'
+                        }`}
+                        whileHover={{ scale: 1.2, rotate: 360 }}
+                        transition={{ duration: 0.3 }}
+                      >
+                        <CheckCircle2 size={14} className={plan.popular ? 'text-white' : 'text-gray-600 dark:text-gray-400'} />
+                      </motion.div>
+                      <span className="text-sm leading-relaxed">{feature}</span>
+                    </motion.li>
                   ))}
                 </ul>
-                <button 
+
+                <motion.button
                   onClick={() => onNavigate('register')}
-                  className={`w-full py-4 rounded-xl font-bold transition-all hover:scale-105 active:scale-95 ${plan.popular ? 'bg-[#0A6EFF] text-slate-900 dark:text-white shadow-[0_0_20px_rgba(10,110,255,0.3)]' : 'bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-slate-900 dark:text-white hover:bg-gray-200 dark:hover:bg-white/10'}`}
+                  whileHover={shouldReduceMotion ? {} : { scale: 1.02 }}
+                  whileTap={shouldReduceMotion ? {} : { scale: 0.98 }}
+                  className={`w-full min-h-[44px] py-4 rounded-xl font-bold transition-all ${
+                    plan.popular
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/30'
+                      : 'bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 border-2 border-gray-200 dark:border-white/8 hover:border-blue-600 text-gray-900 dark:text-white'
+                  }`}
+                  aria-label={`Get started with ${plan.name} plan`}
                 >
-                  Get Started
-                </button>
+                  {t.pricing.getStarted}
+                </motion.button>
               </motion.div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Contact Us Section */}
-      <section className="py-32 relative">
-        <div className="container mx-auto px-6">
-          <div className="max-w-5xl mx-auto bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/5 rounded-[3rem] overflow-hidden grid md:grid-cols-2">
-            <div className="p-12 md:p-16 border-r border-gray-200 dark:border-white/5">
-              <h2 className="text-4xl font-bold text-slate-900 dark:text-white mb-6 font-display">Get in Touch</h2>
-              <p className="text-slate-500 dark:text-slate-400 mb-10">Have questions about LeadCRM? Our team of IT experts is here to help you scale your business.</p>
-              
-              <div className="space-y-6">
-                <div className="flex items-center gap-4 text-slate-700 dark:text-slate-300">
-                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400">
-                    <Mail size={20} />
-                  </div>
-                  <span>support@leadcrm.com</span>
-                </div>
-                <div className="flex items-center gap-4 text-slate-700 dark:text-slate-300">
-                  <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-400">
-                    <Phone size={20} />
-                  </div>
-                  <span>+63 (02) 8888-8888</span>
-                </div>
-                <div className="flex items-center gap-4 text-slate-700 dark:text-slate-300">
-                  <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center text-green-400">
-                    <Globe size={20} />
-                  </div>
-                  <span>Manila, Philippines</span>
-                </div>
-              </div>
-            </div>
-            
-            <div className="p-12 md:p-16 bg-gray-50 dark:bg-white/[0.01]">
-              <form className="space-y-6" onSubmit={(e) => e.preventDefault()}>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">First Name</label>
-                    <input type="text" className="w-full bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-all" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">Last Name</label>
-                    <input type="text" className="w-full bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-all" />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">Email Address</label>
-                  <input type="email" className="w-full bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-all" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-500 dark:text-slate-400 mb-2">Message</label>
-                  <textarea rows={4} className="w-full bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:outline-none focus:border-[#0A6EFF] transition-all resize-none"></textarea>
-                </div>
-                <button className="w-full py-4 bg-[#0A6EFF] text-white rounded-xl font-bold hover:bg-blue-600 transition-all shadow-lg shadow-blue-500/20">
-                  Send Message
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
-      </section>
+      {/* Contact Section */}
+      <section id="contact" className="py-32 px-6 relative bg-gray-50">
+        <div className="max-w-7xl mx-auto">
+          <motion.div 
+            className="max-w-5xl mx-auto bg-white/80 backdrop-blur-xl border-2 border-gray-200 rounded-3xl overflow-hidden shadow-2xl"
+            initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 50 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: shouldReduceMotion ? 0 : 0.6 }}
+          >
+            <div className="grid md:grid-cols-2">
+              <motion.div 
+                className="p-12 md:p-16 relative overflow-hidden"
+                initial={{ opacity: 0, x: shouldReduceMotion ? 0 : -30 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: 0.2, duration: 0.6 }}
+              >
+                {/* Background decoration */}
+                <div className="absolute top-0 right-0 w-64 h-64 bg-blue-100/50 rounded-full blur-3xl" />
+                
+                <div className="relative z-10">
+                  <motion.p 
+                    className="text-blue-600 text-xs font-bold uppercase tracking-widest mb-4"
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    whileInView={{ opacity: 1, scale: 1 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.4 }}
+                  >
+                    {t.contact.badge}
+                  </motion.p>
+                  <h2 className="text-4xl font-bold text-gray-900 mb-6 font-heading">{t.contact.title}<br />{t.contact.title2}</h2>
+                  <p className="text-gray-600 mb-12 leading-relaxed font-subtitle">
+                    {t.contact.subtitle}
+                  </p>
 
-      {/* Final CTA */}
-      <section className="py-32 relative overflow-hidden">
-        <div className="absolute inset-0 bg-[#0A6EFF]/5 pointer-events-none"></div>
-        <div className="container mx-auto px-6 relative z-10">
-          <div className="bg-gradient-to-br from-[#0A6EFF] to-blue-700 rounded-[3rem] p-12 md:p-24 text-center relative overflow-hidden shadow-2xl">
-            <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none" style={{ backgroundImage: `radial-gradient(#ffffff 1px, transparent 1px)`, backgroundSize: '30px 30px' }}></div>
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              whileInView={{ opacity: 1, scale: 1 }}
-              viewport={{ once: true }}
-            >
-              <h2 className="text-4xl md:text-6xl font-extrabold text-slate-900 dark:text-white mb-8 font-display">Ready to modernize your <br /> IT sales process?</h2>
-              <p className="text-blue-100 text-xl mb-12 max-w-2xl mx-auto">Join hundreds of IT solution providers who are scaling faster with LeadCRM. No credit card required.</p>
-              <div className="flex flex-col sm:flex-row justify-center gap-6">
-                <button 
-                  onClick={() => onNavigate('register')}
-                  className="px-10 py-5 text-xl font-bold bg-white text-[#0A6EFF] rounded-2xl hover:bg-blue-50 transition-all hover:scale-105 active:scale-95 shadow-2xl"
-                >
-                  Start Your 14-Day Free Trial
-                </button>
-                <button className="px-10 py-5 text-xl font-bold bg-transparent border-2 border-white/30 text-slate-900 dark:text-white rounded-2xl hover:bg-gray-200 dark:hover:bg-white/10 transition-all">
-                  Contact Sales
-                </button>
-              </div>
-            </motion.div>
-          </div>
+                  <div className="space-y-6">
+                    {[
+                      { icon: <Phone size={20} />, title: t.contact.phone, subtitle: t.contact.phoneLabel, color: 'blue' },
+                      { icon: <MapPin size={20} />, title: t.contact.location, subtitle: t.contact.locationLabel, color: 'purple' },
+                      { icon: <Shield size={20} />, title: t.contact.security, subtitle: t.contact.securityLabel, color: 'green' }
+                    ].map((item, i) => (
+                      <motion.div 
+                        key={i}
+                        className="flex items-center gap-4 group cursor-pointer"
+                        initial={{ opacity: 0, x: -20 }}
+                        whileInView={{ opacity: 1, x: 0 }}
+                        viewport={{ once: true }}
+                        transition={{ delay: 0.3 + (i * 0.1) }}
+                        whileHover={shouldReduceMotion ? {} : { x: 8, transition: { duration: 0.2 } }}
+                      >
+                        <motion.div 
+                          className={`w-14 h-14 rounded-2xl bg-${item.color}-500/10 flex items-center justify-center text-${item.color}-600 border border-${item.color}-500/20 group-hover:shadow-lg group-hover:shadow-${item.color}-500/20 transition-all`}
+                          whileHover={shouldReduceMotion ? {} : { scale: 1.1, rotate: 5 }}
+                        >
+                          {item.icon}
+                        </motion.div>
+                        <div>
+                          <div className="text-gray-900 font-semibold group-hover:text-blue-600 transition-colors">{item.title}</div>
+                          <div className="text-gray-500 text-sm">{item.subtitle}</div>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              </motion.div>
+
+              <motion.div 
+                className="p-12 md:p-16 bg-gray-50"
+                initial={{ opacity: 0, x: shouldReduceMotion ? 0 : 30 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: 0.3, duration: 0.6 }}
+              >
+                <form className="space-y-6" onSubmit={(e) => e.preventDefault()}>
+                  <div className="grid grid-cols-2 gap-4">
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true }}
+                      transition={{ delay: 0.4 }}
+                    >
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">{t.contact.form.firstName}</label>
+                      <input
+                        type="text"
+                        placeholder="John"
+                        className="w-full min-h-[44px] bg-white border-2 border-gray-200 rounded-xl px-4 py-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                        aria-label="First name"
+                      />
+                    </motion.div>
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true }}
+                      transition={{ delay: 0.45 }}
+                    >
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">{t.contact.form.lastName}</label>
+                      <input
+                        type="text"
+                        placeholder="Doe"
+                        className="w-full min-h-[44px] bg-white border-2 border-gray-200 rounded-xl px-4 py-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                        aria-label="Last name"
+                      />
+                    </motion.div>
+                  </div>
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: 0.5 }}
+                  >
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">{t.contact.form.company}</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Camxian Technologies, Inc."
+                      className="w-full min-h-[44px] bg-white border-2 border-gray-200 rounded-xl px-4 py-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                      aria-label="Company name"
+                    />
+                  </motion.div>
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: 0.55 }}
+                  >
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">{t.contact.form.email}</label>
+                    <input
+                      type="email"
+                      placeholder="john@company.com"
+                      className="w-full min-h-[44px] bg-white border-2 border-gray-200 rounded-xl px-4 py-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                      aria-label="Work email"
+                    />
+                  </motion.div>
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: 0.6 }}
+                  >
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">{t.contact.form.message}</label>
+                    <textarea
+                      rows={4}
+                      placeholder={t.contact.form.messagePlaceholder}
+                      className="w-full bg-white border-2 border-gray-200 rounded-xl px-4 py-3 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all resize-none"
+                      aria-label="Message"
+                    />
+                  </motion.div>
+                  <motion.button
+                    type="submit"
+                    whileHover={shouldReduceMotion ? {} : { scale: 1.02 }}
+                    whileTap={shouldReduceMotion ? {} : { scale: 0.98 }}
+                    className="w-full min-h-[44px] py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-blue-600/30 hover:shadow-blue-600/50"
+                    initial={{ opacity: 0, y: 10 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: 0.65 }}
+                    aria-label="Send message"
+                  >
+                    {t.contact.form.send}
+                  </motion.button>
+                </form>
+              </motion.div>
+            </div>
+          </motion.div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="bg-gray-50 dark:bg-slate-950 border-t border-gray-200 dark:border-white/5 py-20">
-        <div className="container mx-auto px-6">
-          <div className="grid md:grid-cols-4 gap-12 mb-20">
-            <div className="col-span-2">
-              <div className="flex items-center gap-3 mb-8">
-                <div className="w-10 h-10 bg-white ring-1 ring-blue-500/10 rounded-xl overflow-hidden flex items-center justify-center shrink-0">
-                  <img 
-                    src="/leadcrm_logo.png" 
-                    alt="LeadCRM Logo" 
-                    className="h-full w-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                </div>
-                <span className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight font-display">LeadCRM</span>
+      <footer className="relative py-20 px-6 bg-gray-50 dark:bg-[#0B0F19] border-t border-gray-200 dark:border-white/[0.08] overflow-hidden">
+        {/* Creative background pattern */}
+        <div 
+          className="absolute inset-0 opacity-[0.03]"
+          style={{
+            backgroundImage: `radial-gradient(circle at 2px 2px, rgba(59, 130, 246, 0.3) 1px, transparent 0)`,
+            backgroundSize: '48px 48px'
+          }}
+        />
+        
+        {/* Gradient orbs for visual interest */}
+        <div className="absolute top-20 right-20 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl" />
+        <div className="absolute bottom-20 left-20 w-96 h-96 bg-purple-500/5 rounded-full blur-3xl" />
+
+        <div className="max-w-7xl mx-auto relative z-10">
+          <div className="grid md:grid-cols-12 gap-12 mb-16">
+            {/* Brand section - spans 4 columns */}
+            <motion.div 
+              className="md:col-span-4"
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5 }}
+            >
+              <div className="flex items-center gap-3 mb-6">
+                {/* Use actual logo */}
+                <img 
+                  src="/leadcrm_logo.png" 
+                  alt="LeadCRM Logo" 
+                  className="w-12 h-12"
+                />
+                <span className="text-xl font-bold text-gray-900 dark:text-white">Lead<span className="text-[#4A9EFF]">CRM</span></span>
               </div>
-              <p className="text-slate-500 max-w-xs leading-relaxed mb-8">
-                The premier CRM platform for IT solutions providers, security firms, and telecom agencies.
+              <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
+                {t.footer.tagline}
               </p>
-              <div className="flex gap-4">
-                {/* Social placeholders */}
-                {[1, 2, 3, 4].map(i => <div key={i} className="w-10 h-10 rounded-full bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 flex items-center justify-center hover:bg-[#0A6EFF] hover:border-[#0A6EFF] transition-all cursor-pointer"><Globe size={18} /></div>)}
+            </motion.div>
+
+            {/* Links sections - span 8 columns */}
+            <div className="md:col-span-8 grid grid-cols-2 md:grid-cols-3 gap-8">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: 0.1 }}
+              >
+                <h4 className="text-gray-900 dark:text-white font-bold mb-4 font-heading">{t.footer.product}</h4>
+                <ul className="space-y-3 text-sm">
+                  {[
+                    { name: 'Solutions', href: '#solutions' },
+                    { name: 'Why LeadCRM', href: '#why' },
+                    { name: 'Pricing', href: '#pricing' }
+                  ].map((item, i) => (
+                    <motion.li 
+                      key={i}
+                      whileHover={{ x: 4 }}
+                      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                    >
+                      <a href={item.href} className="text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors flex items-center gap-2 group">
+                        <span className="w-0 h-[2px] bg-blue-600 group-hover:w-4 transition-all duration-300" />
+                        {item.name}
+                      </a>
+                    </motion.li>
+                  ))}
+                </ul>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: 0.2 }}
+              >
+                <h4 className="text-gray-900 dark:text-white font-bold mb-4 font-heading">{t.footer.company}</h4>
+                <ul className="space-y-3 text-sm">
+                  {[
+                    { name: 'About Us', href: '#', onClick: undefined },
+                    { name: 'Contact', href: '#contact', onClick: undefined },
+                    { name: 'Privacy Policy', href: '#', onClick: () => onNavigate('privacy-policy') },
+                    { name: 'Terms', href: '#', onClick: () => onNavigate('terms-of-service') }
+                  ].map((item, i) => (
+                    <motion.li 
+                      key={i}
+                      whileHover={{ x: 4 }}
+                      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                    >
+                      <a 
+                        href={item.href} 
+                        onClick={(e) => {
+                          if (item.onClick) {
+                            e.preventDefault();
+                            item.onClick();
+                          }
+                        }}
+                        className="text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors flex items-center gap-2 group cursor-pointer"
+                      >
+                        <span className="w-0 h-[2px] bg-blue-600 group-hover:w-4 transition-all duration-300" />
+                        {item.name}
+                      </a>
+                    </motion.li>
+                  ))}
+                </ul>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: 0.3 }}
+              >
+                <h4 className="text-gray-900 dark:text-white font-bold mb-4 font-heading">{t.footer.resources}</h4>
+                <ul className="space-y-3 text-sm">
+                  {['Documentation', 'Support', 'Status', 'Security'].map((item, i) => (
+                    <motion.li 
+                      key={i}
+                      whileHover={{ x: 4 }}
+                      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                    >
+                      <a href="#" className="text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors flex items-center gap-2 group">
+                        <span className="w-0 h-[2px] bg-blue-600 group-hover:w-4 transition-all duration-300" />
+                        {item}
+                      </a>
+                    </motion.li>
+                  ))}
+                </ul>
+              </motion.div>
+            </div>
+          </div>
+
+          {/* Bottom section */}
+          <motion.div 
+            className="pt-8 border-t border-gray-200 dark:border-white/[0.08]"
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5, delay: 0.4 }}
+          >
+            <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+              <p className="text-gray-500 dark:text-gray-400 text-sm">
+                {t.footer.copyright}
+              </p>
+              
+              <div className="flex gap-6">
+                <motion.button
+                  onClick={() => window.open('https://status.leadcrm.com', '_blank')}
+                  className="text-xs font-semibold text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 uppercase tracking-wider transition-colors"
+                  whileHover={{ y: -2 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                >
+                  Status
+                </motion.button>
+                <motion.a
+                  href="mailto:security@leadcrm.com"
+                  className="text-xs font-semibold text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 uppercase tracking-wider transition-colors"
+                  whileHover={{ y: -2 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                >
+                  Security
+                </motion.a>
+                <motion.button
+                  onClick={() => onNavigate('privacy-policy')}
+                  className="text-xs font-semibold text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 uppercase tracking-wider transition-colors"
+                  whileHover={{ y: -2 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                >
+                  Privacy
+                </motion.button>
+                <motion.button
+                  onClick={() => onNavigate('terms-of-service')}
+                  className="text-xs font-semibold text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 uppercase tracking-wider transition-colors"
+                  whileHover={{ y: -2 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                >
+                  Terms
+                </motion.button>
               </div>
             </div>
-            <div>
-              <h4 className="text-slate-900 dark:text-white font-bold mb-6 font-display">Product</h4>
-              <ul className="space-y-4 text-slate-500 text-sm">
-                <li><a href="#" className="hover:text-[#0A6EFF] transition-colors">Features</a></li>
-                <li><a href="#" className="hover:text-[#0A6EFF] transition-colors">Workflows</a></li>
-                <li><a href="#" className="hover:text-[#0A6EFF] transition-colors">Pricing</a></li>
-                <li><a href="#" className="hover:text-[#0A6EFF] transition-colors">API Docs</a></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="text-slate-900 dark:text-white font-bold mb-6 font-display">Company</h4>
-              <ul className="space-y-4 text-slate-500 text-sm">
-                <li><a href="#" className="hover:text-[#0A6EFF] transition-colors">About Us</a></li>
-                <li><a href="#" className="hover:text-[#0A6EFF] transition-colors">Contact</a></li>
-                <li><a href="#" className="hover:text-[#0A6EFF] transition-colors">Privacy Policy</a></li>
-                <li><a href="#" className="hover:text-[#0A6EFF] transition-colors">Terms of Service</a></li>
-              </ul>
-            </div>
-          </div>
-          <div className="pt-12 border-t border-gray-200 dark:border-white/5 flex flex-col md:flex-row justify-between items-center gap-6">
-            <p className="text-slate-600 text-sm">© 2026 LeadCRM. All rights reserved.</p>
-            <div className="flex gap-8 text-xs font-bold text-slate-600 uppercase tracking-widest">
-              <a href="#" className="hover:text-slate-900 dark:hover:text-white transition-colors">Status</a>
-              <a href="#" className="hover:text-slate-900 dark:hover:text-white transition-colors">Security</a>
-              <a href="#" className="hover:text-slate-900 dark:hover:text-white transition-colors">Cookies</a>
-            </div>
-          </div>
+          </motion.div>
         </div>
       </footer>
+
+      {/* Cookie Banner */}
+      <CookieBanner onNavigate={onNavigate} />
     </div>
   );
 }

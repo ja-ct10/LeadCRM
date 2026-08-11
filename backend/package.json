@@ -13,7 +13,9 @@
     "db:seed:demo": "ts-node src/database/seeders/demo.seed.ts",
     "db:seed:full": "ts-node src/database/seeders/demo-full.seed.ts",
     "db:seed:reymark": "ts-node src/database/seeders/reymark.seed.ts",
+    "db:seed:seeder": "ts-node src/database/seeders/seeder.seed.ts",
     "db:seed:production-test": "ts-node src/database/seeders/production-test.seed.ts",
+    "verify:seeder-data": "ts-node src/scripts/verify-seeder-data.ts",
     "test:campaign-production": "ts-node src/scripts/run-production-campaign-test.ts",
     "test:email-infrastructure": "ts-node src/scripts/test-email-infrastructure.ts",
     "verify:production-architecture": "ts-node src/scripts/verify-production-architecture.ts",
@@ -34,6 +36,7 @@
     "@types/node": "^22.14.0",
     "@types/nodemailer": "^8.0.1",
     "bcryptjs": "^2.4.3",
+    "compression": "^1.8.1",
     "cookie-parser": "1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
@@ -49,6 +52,7 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@types/compression": "^1.8.1",
     "@types/helmet": "0.0.48",
     "prisma": "^5.22.0",
     "ts-node": "^10.9.2",

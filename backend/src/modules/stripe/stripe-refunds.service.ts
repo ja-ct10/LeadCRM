@@ -1,4 +1,4 @@
-import { stripe } from '../../config/stripe.config';
+import { getStripe } from '../../config/stripe.config';
 import prisma from '../../config/database.config';
 import { AppError } from '../../shared/errors/app-error';
 import { writeAuditLog } from '../../core/audit/audit.service';
@@ -27,6 +27,7 @@ export interface RefundResult {
  * - DB is updated ONLY after Stripe confirms — never before.
  */
 export async function initiateRefund(input: InitiateRefundInput): Promise<RefundResult> {
+  const stripe = getStripe();
   const { paymentTransactionId, amountCents, reason, initiatedByUserId } = input;
 
   const txn = await prisma.paymentTransaction.findUnique({

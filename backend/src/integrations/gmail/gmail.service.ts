@@ -1,8 +1,8 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../../config/database.config';
 import { refreshAccessToken, getUserInfo } from './gmail.oauth';
 import { GmailEmail, GmailThread } from './gmail.types';
 
-const prisma = new PrismaClient();
+
 
 /**
  * Ensures the access token is still valid; refreshes if expired.

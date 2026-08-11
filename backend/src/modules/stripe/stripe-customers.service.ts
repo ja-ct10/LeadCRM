@@ -1,4 +1,4 @@
-import { stripe } from '../../config/stripe.config';
+import { getStripe } from '../../config/stripe.config';
 import prisma from '../../config/database.config';
 import { AppError } from '../../shared/errors/app-error';
 
@@ -11,6 +11,7 @@ import { AppError } from '../../shared/errors/app-error';
  * - Never creates duplicate customers for the same tenant.
  */
 export async function findOrCreateStripeCustomer(tenantId: string): Promise<string> {
+  const stripe = getStripe();
   const tenant = await prisma.tenant.findUnique({
     where:  { id: tenantId },
     select: { id: true, name: true, email: true, stripeCustomerId: true },
@@ -45,6 +46,7 @@ export async function findOrCreateStripeCustomer(tenantId: string): Promise<stri
  * Returns null if the tenant has no Stripe Customer yet.
  */
 export async function getStripeCustomer(tenantId: string): Promise<import('stripe').Stripe.Customer | null> {
+  const stripe = getStripe();
   const tenant = await prisma.tenant.findUnique({
     where:  { id: tenantId },
     select: { stripeCustomerId: true },

@@ -272,19 +272,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return true; // Simplified mock
     } else {
       try {
+        // Register the guest account
         await authApi.registerGuest({
           firstName: guestData.firstName,
           lastName: guestData.lastName,
           email: guestData.email,
           password: guestData.password,
+          companyName: guestData.companyName,
+          industry: guestData.industry,
+          companySize: guestData.companySize,
+          businessWebsite: guestData.businessWebsite,
         });
+        
+        // Send verification email
+        await authApi.sendRegistrationOtp(guestData.email);
+        
         return true;
       } catch (err: unknown) {
-        if (process.env.NODE_ENV !== 'production') {
-          // eslint-disable-next-line no-console
-          console.error('[AuthContext] registerGuestAccount failed:', err instanceof Error ? err.message : err);
-        }
-        return false;
+        // eslint-disable-next-line no-console
+        console.error('[AuthContext] registerGuestAccount failed:', err);
+        // Re-throw the error so the UI can display it
+        throw err;
       }
     }
   };

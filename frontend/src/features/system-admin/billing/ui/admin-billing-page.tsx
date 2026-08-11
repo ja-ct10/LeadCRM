@@ -24,7 +24,7 @@ const STATUS_CFG: Record<PaymentStatus, { label: string; classes: string; icon: 
 
 function StatusBadge({ status }: { status: string }) {
   const cfg = STATUS_CFG[status as PaymentStatus] ?? STATUS_CFG.pending;
-  const Icon = cfg.icon;
+  const Icon = cfg.icon as any;
   return (
     <span className={cn('inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border', cfg.classes)}>
       <Icon size={11} />

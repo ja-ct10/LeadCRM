@@ -24,7 +24,7 @@ const STATUS_CONFIG: Record<PaymentStatus, { label: string; icon: React.ElementT
 
 function StatusBadge({ status }: { status: PaymentStatus }) {
   const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.pending;
-  const Icon = cfg.icon;
+  const Icon = cfg.icon as any;
   return (
     <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border', cfg.classes)}>
       <Icon size={11} />

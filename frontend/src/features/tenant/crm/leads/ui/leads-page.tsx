@@ -14,6 +14,8 @@ import { ClientDetailSheet } from "./lead-detail-sheet";
 import { toast } from "sonner";
 import { usePagination } from '@/shared/hooks/use-pagination';
 import { Pagination } from '@/shared/components/ui/pagination';
+import { Button } from '@/shared/components/ui/button';
+import { motion } from 'motion/react';
 
 export default function LeadsPage() {
   const {
@@ -297,38 +299,20 @@ export default function LeadsPage() {
   }
 
   return (
-    <div className="w-full space-y-4">
-      {/* 1. Standardized Header Row */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1 border-b border-slate-200 dark:border-slate-800">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">
-              Client Profiles
-            </h1>
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
-              {filteredLeads.length} total
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Manage all your customer profiles, active leads, and corporate accounts in one place.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={handleAddNew}
-                  aria-label="Add Profile"
-                  className="h-9 w-9 flex items-center justify-center bg-blue-600 text-white rounded-md hover:bg-blue-700 active:scale-95 transition-all shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 cursor-pointer"
-                >
-                  <Plus size={15} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Add Profile</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+    <motion.div 
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      className="p-4 lg:p-6 space-y-6"
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-semibold px-2.5 py-1 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-gray-200 dark:border-white/[0.08]">
+            {filteredLeads.length} total
+          </span>
+          <Button size="sm" onClick={handleAddNew}>
+            <Plus size={16} /> New Lead
+          </Button>
         </div>
       </div>
 
@@ -462,6 +446,6 @@ export default function LeadsPage() {
           }}
         />
       )}
-    </div>
+      </motion.div>
   );
 }

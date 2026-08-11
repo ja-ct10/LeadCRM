@@ -1,4 +1,5 @@
 import express from 'express';
+import compression from 'compression';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
@@ -35,6 +36,9 @@ app.use(
     credentials: true,
   }),
 );
+
+// ── Response Compression (gzip/brotli) ─────────────────
+app.use(compression());
 
 // ── Body Parsing ─────────────────────────────────────
 // Stripe webhooks require a raw body Buffer for signature verification.
