@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import React, { useState, useMemo } from 'react';
+import { motion } from 'motion/react';
 import type { Campaign, Template } from '@/store/types';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
@@ -456,7 +457,12 @@ export default function CampaignsPage() {
   }
 
   return (
-    <div className="w-full space-y-4">
+    <motion.div 
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      className="w-full space-y-4"
+    >
 
       {/* 1. Standardized Header Row */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1 border-b border-slate-200 dark:border-slate-800">
@@ -1585,6 +1591,6 @@ export default function CampaignsPage() {
           </div>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

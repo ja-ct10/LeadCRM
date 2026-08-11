@@ -1,8 +1,7 @@
 import { createHash } from 'crypto';
-import { PrismaClient } from '@prisma/client';
 import { AppError } from '../../shared/errors/app-error';
 
-const prisma = new PrismaClient();
+import prisma from '../../config/database.config';
 
 /**
  * Hash a JWT token for safe storage.
@@ -57,11 +56,15 @@ export async function validateSession(token: string): Promise<{ userId: string; 
     throw new AppError('Session has expired — please log in again', 401);
   }
 
-  // Update last active timestamp (fire-and-forget — don't block the request)
-  prisma.session
-    .update({ where: { tokenHash }, data: { lastActiveAt: new Date() } })
-    .catch(() => {/* non-critical */});
-
+  // Throttle lastActiveAt writes to at most once per 5 minutes.
+  // The session record was already fetched above — reuse it to avoid
+  // an extra DB read. Only write if the timestamp is stale.
+  const LAST_ACTIVE_THROTTLE_MS = 5 * 60 * 1000; // 5 minutes
+  if (Date.now() - session.lastActiveAt.getTime() > LAST_ACTIVE_THROTTLE_MS) {
+    prisma.session
+      .update({ where: { tokenHash }, data: { lastActiveAt: new Date() } })
+      .catch(() => {/* non-critical */});
+  }
   return { userId: session.userId, tenantId: session.tenantId };
 }
 

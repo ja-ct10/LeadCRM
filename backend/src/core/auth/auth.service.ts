@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../../config/database.config';
 import crypto from 'crypto';
 import { comparePassword, hashPassword } from '../../shared/helpers/crypto';
 import { signToken } from './jwt.service';
@@ -8,7 +8,7 @@ import { ConflictError } from '../../shared/errors/http-error';
 import { sendMail, buildPasswordResetEmail, buildLoginOtpEmail, buildRegistrationOtpEmail } from '../../shared/services/email.service';
 import type { ForgotPasswordDto, ResetPasswordDto } from './auth.dto';
 
-const prisma = new PrismaClient();
+
 
 // JWT lifetime in milliseconds (must match jwt.service expiresIn)
 const JWT_EXPIRES_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -176,8 +176,10 @@ export async function registerGuest(dto: GuestRegisterDto) {
   const result = await prisma.$transaction(async (tx) => {
     const tenant = await tx.tenant.create({
       data: {
-        name: 'Demo Sandbox',
+        name: dto.companyName || 'Demo Sandbox',
         slug,
+        industry: dto.industry,
+        companySize: dto.companySize,
         status: 'SANDBOX',
         subscriptionStatus: 'TRIAL',
         plan: 'FREE',
@@ -192,14 +194,15 @@ export async function registerGuest(dto: GuestRegisterDto) {
         email: dto.email,
         passwordHash,
         role: 'Guest',
-        status: 'ACTIVE',
+        status: 'PENDING', // Set to PENDING until email is verified
+        // emailVerified will be null until verified
       },
     });
 
     const organization = await tx.account.create({
       data: {
         tenantId: tenant.id,
-        name: 'Demo Sandbox Org',
+        name: dto.companyName || 'Demo Sandbox Org',
       } as never,
     });
 
@@ -323,10 +326,20 @@ const OTP_MAX_ATTEMPTS = 5;
 // DEMO_MODE allows demo accounts to use OTP '000000' on production servers without changing NODE_ENV.
 const DEV_BYPASS_ACTIVE = process.env.DEV_OTP_BYPASS === 'true' || process.env.DEMO_MODE === 'true';
 const DEV_BYPASS_CODE   = '000000';
+
+const DEFAULT_SEED_EMAILS = [
+  'admin@gmail.com',
+  'super@leadcrm.com',
+  'admin@democorp.com',
+  'bob@democorp.com',
+  'guest@democorp.com'
+];
+
 function isDevSeedAccount(email: string): boolean {
   if (!DEV_BYPASS_ACTIVE) return false;
-  const allowed = (process.env.DEV_SEED_EMAILS ?? '').split(',').map(e => e.trim().toLowerCase());
-  return allowed.includes(email.toLowerCase());
+  const envAllowed = (process.env.DEV_SEED_EMAILS ?? '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+  const allowed = new Set([...DEFAULT_SEED_EMAILS, ...envAllowed]);
+  return allowed.has(email.toLowerCase());
 }
 
 /**
@@ -512,6 +525,7 @@ export async function sendRegistrationOtp(email: string): Promise<void> {
 /**
  * Verifies a registration OTP code. Returns true on success.
  * Throws AppError on failure (expired, wrong code, too many attempts).
+ * Activates the user account upon successful verification.
  */
 export async function verifyRegistrationOtp(email: string, code: string): Promise<boolean> {
   const record = await prisma.registrationOtpToken.findUnique({ where: { email } });
@@ -538,7 +552,19 @@ export async function verifyRegistrationOtp(email: string, code: string): Promis
     throw new AppError(`Incorrect code. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`, 400);
   }
 
-  // Code verified — delete it
+  // Code verified — activate the user account
+  const user = await prisma.user.findFirst({ where: { email } });
+  if (user) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        status: 'ACTIVE',
+        emailVerified: new Date(),
+      },
+    });
+  }
+
+  // Delete the OTP token
   await prisma.registrationOtpToken.delete({ where: { email } });
   return true;
 }

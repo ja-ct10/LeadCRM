@@ -4,26 +4,26 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 disabled:pointer-events-none disabled:opacity-50 cursor-pointer [&_svg]:pointer-events-none [&_svg]:size-3.5 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-pointer [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
         default:
-          "bg-blue-600 text-white shadow-xs hover:bg-blue-700",
+          "rounded-xl shadow-sm active:scale-95 text-white",
         destructive:
-          "bg-rose-600 text-white shadow-xs hover:bg-rose-700",
+          "rounded-xl shadow-sm active:scale-95 bg-rose-600 text-white hover:bg-rose-700 dark:bg-rose-700 dark:hover:bg-rose-800",
         outline:
-          "border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xs hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200",
+          "border bg-transparent rounded-lg transition-colors active:scale-98 border-gray-200 dark:border-white/[0.08] text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800",
         secondary:
-          "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700",
+          "rounded-lg active:scale-98 border border-gray-200 dark:border-white/[0.08] bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-900",
         ghost:
-          "hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200",
-        link: "text-blue-600 dark:text-blue-400 underline-offset-4 hover:underline",
+          "bg-transparent rounded-lg transition-colors active:scale-98 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100",
+        link: "underline-offset-4 hover:underline text-[var(--primary)] hover:text-[var(--primary-hover)]",
       },
       size: {
-        default: "h-9 px-3 py-1.5",
-        sm: "h-8 rounded-md px-2.5 text-xs",
-        lg: "h-10 rounded-md px-4 text-sm",
+        default: "h-9 px-4",
+        sm: "h-8 px-3 text-xs gap-1.5",
+        lg: "h-10 px-5 text-base",
         icon: "h-9 w-9",
       },
     },
@@ -41,11 +41,35 @@ export interface ButtonProps
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
+  ({ className, variant, size, asChild = false, style, ...props }, ref) => {
     const Comp = asChild ? Slot : "button"
+    
+    // Apply primary color CSS variable to default variant
+    const variantStyle = variant === "default" || !variant
+      ? {
+          backgroundColor: 'var(--primary)',
+          ...style,
+        }
+      : variant === "link"
+        ? {
+            color: 'var(--primary)',
+            ...style,
+          }
+        : style;
+
+    const hoverStyle = variant === "default" || !variant
+      ? {
+          '--hover-bg': 'var(--primary-hover)',
+        }
+      : {};
+    
     return (
       <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
+        className={cn(
+          buttonVariants({ variant, size, className }),
+          (variant === "default" || !variant) && "hover:brightness-110"
+        )}
+        style={{ ...variantStyle, ...hoverStyle } as React.CSSProperties}
         ref={ref}
         {...props}
       />
