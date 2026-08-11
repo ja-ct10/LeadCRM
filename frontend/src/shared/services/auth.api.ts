@@ -74,4 +74,10 @@ export const authApi = {
     country?:     string;
   }) =>
     apiClient.patch<{ success: boolean }>('/auth/oauth/complete-profile', payload),
+
+  /**
+   * Get sandbox email configuration for testing.
+   */
+  getSandboxInfo: () =>
+    apiClient.get<{ success: boolean; data: { isSandboxMode: boolean; allowedEmails: string[]; isDevelopment: boolean } }>('/auth/sandbox-info'),
 };

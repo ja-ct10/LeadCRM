@@ -21,6 +21,10 @@ export default function Home() {
       router.push('/login');
     } else if (path === 'register') {
       router.push('/register');
+    } else if (path === 'privacy-policy') {
+      router.push('/privacy-policy');
+    } else if (path === 'terms-of-service') {
+      router.push('/terms-of-service');
     } else {
       router.push(`/${path}`);
     }

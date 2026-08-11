@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LeadCRM Font Verification</title>
+
+    <!-- Font imports -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Poppins:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://api.fontshare.com/v2/css?f[]=neue-machina@400,500,700&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      body {
+        margin: 0;
+        padding: 40px;
+        background: #f5f5f5;
+        font-family: "Poppins", sans-serif;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        background: white;
+        padding: 60px;
+        border-radius: 20px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+      }
+
+      .heading {
+        font-family: "Archivo Black", sans-serif;
+        font-size: 64px;
+        line-height: 1.1;
+        color: #0f172a;
+        margin-bottom: 20px;
+      }
+
+      .subtitle {
+        font-family: "Neue Machina", sans-serif;
+        font-size: 24px;
+        color: #475569;
+        margin-bottom: 30px;
+      }
+
+      .body {
+        font-family: "Poppins", sans-serif;
+        font-size: 16px;
+        line-height: 1.6;
+        color: #64748b;
+      }
+
+      .status {
+        margin-top: 40px;
+        padding: 20px;
+        background: #f0fdf4;
+        border-left: 4px solid #10b981;
+        border-radius: 8px;
+      }
+
+      .font-test {
+        margin-top: 40px;
+        padding: 30px;
+        background: #f8fafc;
+        border-radius: 12px;
+      }
+
+      .font-sample {
+        margin: 20px 0;
+        padding: 20px;
+        background: white;
+        border-radius: 8px;
+        border: 2px solid #e2e8f0;
+      }
+
+      .font-name {
+        font-size: 14px;
+        font-weight: 600;
+        color: #2563eb;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1 class="heading">
+        Manage Leads Smarter,<br />
+        <span style="color: #2563eb">Close Deals Faster</span>
+      </h1>
+
+      <p class="subtitle">
+        The all-in-one CRM platform that helps sales teams organize leads,
+        automate workflows, and accelerate revenue growth.
+      </p>
+
+      <p class="body">
+        This is a test page to verify that all three custom fonts are loading
+        correctly in your LeadCRM landing page. If you can see distinct
+        differences between the heading, subtitle, and body text styles, the
+        fonts are working perfectly!
+      </p>
+
+      <div class="status">
+        <strong>✅ Font Loading Status:</strong> If this page displays correctly
+        with three distinct font styles, your fonts are working!
+      </div>
+
+      <div class="font-test">
+        <h3 style="margin-top: 0">Font Test Samples:</h3>
+
+        <div class="font-sample">
+          <div class="font-name">Font 1: Archivo Black</div>
+          <div
+            style="
+              font-family: &quot;Archivo Black&quot;, sans-serif;
+              font-size: 48px;
+              color: #0f172a;
+            "
+          >
+            The Quick Brown Fox Jumps
+          </div>
+        </div>
+
+        <div class="font-sample">
+          <div class="font-name">Font 2: Neue Machina</div>
+          <div
+            style="
+              font-family: &quot;Neue Machina&quot;, sans-serif;
+              font-size: 32px;
+              color: #475569;
+            "
+          >
+            Modern Geometric Typography
+          </div>
+        </div>
+
+        <div class="font-sample">
+          <div class="font-name">Font 3: Poppins</div>
+          <div
+            style="
+              font-family: &quot;Poppins&quot;, sans-serif;
+              font-size: 18px;
+              color: #64748b;
+              line-height: 1.6;
+            "
+          >
+            Poppins is a geometric sans-serif typeface with a friendly and
+            approachable personality. It works beautifully for body text and
+            maintains excellent readability at all sizes.
+          </div>
+        </div>
+      </div>
+
+      <div
+        style="
+          margin-top: 40px;
+          padding: 20px;
+          background: #fef3c7;
+          border-left: 4px solid #f59e0b;
+          border-radius: 8px;
+        "
+      >
+        <strong>⚠️ Not seeing the fonts?</strong><br />
+        Try these steps:
+        <ol>
+          <li>
+            Hard refresh: <strong>Ctrl + Shift + R</strong> (Windows) or
+            <strong>Cmd + Shift + R</strong> (Mac)
+          </li>
+          <li>Clear browser cache and reload</li>
+          <li>Check browser console for font loading errors (F12)</li>
+          <li>Verify your internet connection (fonts load from CDN)</li>
+        </ol>
+      </div>
+
+      <div
+        style="
+          margin-top: 30px;
+          text-align: center;
+          color: #94a3b8;
+          font-size: 14px;
+        "
+      >
+        <p>LeadCRM Typography System Test Page</p>
+        <p>
+          Open your landing page at <strong>localhost:3000</strong> after
+          verifying fonts here
+        </p>
+      </div>
+    </div>
+
+    <script>
+      // Check if fonts are loaded
+      document.fonts.ready.then(function () {
+        console.log("✅ All fonts loaded successfully!");
+        console.log(
+          "Archivo Black available:",
+          document.fonts.check("1em 'Archivo Black'"),
+        );
+        console.log(
+          "Neue Machina available:",
+          document.fonts.check("1em 'Neue Machina'"),
+        );
+        console.log(
+          "Poppins available:",
+          document.fonts.check("1em 'Poppins'"),
+        );
+      });
+    </script>
+  </body>
+</html>

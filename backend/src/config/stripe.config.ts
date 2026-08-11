@@ -20,11 +20,15 @@ if (!STRIPE_WEBHOOK_SECRET || STRIPE_WEBHOOK_SECRET.startsWith('whsec_your')) {
 /**
  * Singleton Stripe SDK instance.
  * Import this everywhere rather than creating new Stripe() instances.
+ * Returns null if Stripe is not configured (dev mode without real keys).
  */
-export const stripe = new Stripe(STRIPE_SECRET_KEY, {
-  typescript: true,
-  maxNetworkRetries: 2,       // automatic retry on transient 5xx / network errors
-});
+export const stripe = 
+  !STRIPE_SECRET_KEY || STRIPE_SECRET_KEY.startsWith('sk_test_your')
+    ? null
+    : new Stripe(STRIPE_SECRET_KEY, {
+        typescript: true,
+        maxNetworkRetries: 2,       // automatic retry on transient 5xx / network errors
+      });
 
 export { STRIPE_WEBHOOK_SECRET };
 

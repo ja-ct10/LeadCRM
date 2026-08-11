@@ -13,6 +13,7 @@ import {
 import { revokeSession } from './session.service';
 import prisma from '../../config/database.config';
 import { hashPassword } from '../../shared/helpers/crypto';
+import { getSandboxEmails } from '../../shared/services/email.service';
 import {
   ForgotPasswordSchema,
   ResetPasswordSchema,
@@ -29,6 +30,23 @@ const COOKIE_OPTIONS = {
   sameSite: (process.env.NODE_ENV === 'production' ? 'none' : 'lax') as 'none' | 'lax',
   maxAge:   7 * 24 * 60 * 60 * 1000, // 7 days
 };
+
+/**
+ * GET /api/v1/auth/sandbox-info
+ * Returns sandbox configuration for development/testing.
+ * Public endpoint — no authentication required.
+ */
+export async function getSandboxInfo(req: Request, res: Response): Promise<void> {
+  const sandboxEmails = getSandboxEmails();
+  res.json({
+    success: true,
+    data: {
+      isSandboxMode: sandboxEmails.length > 0,
+      allowedEmails: sandboxEmails,
+      isDevelopment: process.env.NODE_ENV !== 'production',
+    },
+  });
+}
 
 export async function login(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {

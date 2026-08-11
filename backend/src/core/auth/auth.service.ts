@@ -176,8 +176,10 @@ export async function registerGuest(dto: GuestRegisterDto) {
   const result = await prisma.$transaction(async (tx) => {
     const tenant = await tx.tenant.create({
       data: {
-        name: 'Demo Sandbox',
+        name: dto.companyName || 'Demo Sandbox',
         slug,
+        industry: dto.industry,
+        companySize: dto.companySize,
         status: 'SANDBOX',
         subscriptionStatus: 'TRIAL',
         plan: 'FREE',
@@ -192,14 +194,15 @@ export async function registerGuest(dto: GuestRegisterDto) {
         email: dto.email,
         passwordHash,
         role: 'Guest',
-        status: 'ACTIVE',
+        status: 'PENDING', // Set to PENDING until email is verified
+        // emailVerified will be null until verified
       },
     });
 
     const organization = await tx.account.create({
       data: {
         tenantId: tenant.id,
-        name: 'Demo Sandbox Org',
+        name: dto.companyName || 'Demo Sandbox Org',
       } as never,
     });
 
@@ -512,6 +515,7 @@ export async function sendRegistrationOtp(email: string): Promise<void> {
 /**
  * Verifies a registration OTP code. Returns true on success.
  * Throws AppError on failure (expired, wrong code, too many attempts).
+ * Activates the user account upon successful verification.
  */
 export async function verifyRegistrationOtp(email: string, code: string): Promise<boolean> {
   const record = await prisma.registrationOtpToken.findUnique({ where: { email } });
@@ -538,7 +542,19 @@ export async function verifyRegistrationOtp(email: string, code: string): Promis
     throw new AppError(`Incorrect code. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`, 400);
   }
 
-  // Code verified — delete it
+  // Code verified — activate the user account
+  const user = await prisma.user.findFirst({ where: { email } });
+  if (user) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        status: 'ACTIVE',
+        emailVerified: new Date(),
+      },
+    });
+  }
+
+  // Delete the OTP token
   await prisma.registrationOtpToken.delete({ where: { email } });
   return true;
 }

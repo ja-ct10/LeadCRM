@@ -23,6 +23,9 @@ import * as authController from '../../core/auth/auth.controller';
 
 const router = Router();
 
+// GET /api/v1/auth/sandbox-info — returns sandbox configuration (public, no auth required)
+router.get('/sandbox-info', authController.getSandboxInfo);
+
 // POST /api/v1/auth/login — rate-limited, validated
 router.post('/login', authRateLimiter, validate(LoginSchema), authController.login);
 

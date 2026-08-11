@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useMemo } from 'react';
 import { X, ChevronLeft, ChevronRight, Settings } from 'lucide-react';
@@ -56,7 +56,7 @@ export default function SidebarNav({
       className={cn(
         'fixed lg:static inset-y-0 left-0 z-50',
         'bg-white dark:bg-slate-900',
-        'border-r border-slate-200 dark:border-slate-800',
+        'border-r border-gray-200 dark:border-white/[0.08]',
         'transform transition-all duration-200 ease-in-out',
         'flex flex-col shadow-lg lg:shadow-none',
         // Mobile: slide in/out
@@ -68,16 +68,17 @@ export default function SidebarNav({
     >
       {/* ── Logo + collapse button ───────────────────────────────── */}
       <div className={cn(
-        'border-b border-slate-200 dark:border-slate-800 shrink-0',
+        'border-b shrink-0 transition-all',
+        'border-slate-200 dark:border-slate-800',
         'flex items-center justify-between',
-        isCollapsed ? 'lg:flex-col lg:gap-1 px-1.5 py-2' : 'px-3 py-3',
+        isCollapsed ? 'lg:flex-col lg:gap-1 px-1.5 py-3' : 'px-4 py-4',
       )}>
         {/* Logo */}
         <div
-          className={cn('flex items-center gap-2.5 min-w-0', isCollapsed && 'lg:justify-center')}
+          className={cn('flex items-center gap-3 min-w-0', isCollapsed && 'lg:justify-center')}
           title={isCollapsed ? 'LeadCRM' : undefined}
         >
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-white ring-1 ring-slate-200 dark:ring-slate-700 overflow-hidden shrink-0">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg overflow-hidden shrink-0 ring-1 ring-slate-200 dark:ring-slate-700 bg-white dark:bg-slate-800">
             <img
               src="/leadcrm_logo.png"
               alt="LeadCRM"
@@ -86,8 +87,8 @@ export default function SidebarNav({
             />
           </div>
           {!isCollapsed && (
-            <h1 className="text-sm font-bold tracking-tight text-slate-900 dark:text-white truncate">
-              LeadCRM
+            <h1 className="font-display text-base font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
+              Lead<span className="text-[#4A9EFF]">CRM</span>
             </h1>
           )}
         </div>
@@ -98,81 +99,180 @@ export default function SidebarNav({
           onClick={onCloseSidebar}
           aria-label="Close sidebar"
         >
-          <X size={17} />
+          <X size={18} />
         </button>
 
         {/* Desktop collapse toggle */}
         <button
           className={cn(
-            'hidden lg:flex items-center justify-center rounded-md transition-colors cursor-pointer',
+            'hidden lg:flex items-center justify-center rounded-lg transition-all cursor-pointer',
             'text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800',
-            isCollapsed ? 'w-8 h-8 shrink-0' : 'w-6 h-6 shrink-0',
+            isCollapsed ? 'w-8 h-8 shrink-0' : 'w-7 h-7 shrink-0',
           )}
           onClick={onToggleCollapse}
           aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
-          {isCollapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+          {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
         </button>
       </div>
 
       {/* ── Main navigation ──────────────────────────────────────── */}
-      <nav className="flex-1 flex flex-col gap-0.5 px-2 py-2 overflow-y-auto custom-scrollbar">
-        {filteredNav.map((item) => {
-          const Icon = item.icon;
-          const isActive = currentPath === item.path;
-          const showOverdueBadge = item.path === 'tasks' && overdueCount > 0;
+      <nav className="flex-1 flex flex-col gap-1 px-2 py-3 overflow-y-auto custom-scrollbar">
+        {(() => {
+          const groups: Record<string, typeof filteredNav> = {};
+          const ungrouped: typeof filteredNav = [];
+
+          filteredNav.forEach((item) => {
+            const group = (item as any).group;
+            if (group) {
+              if (!groups[group]) groups[group] = [];
+              groups[group].push(item);
+            } else {
+              ungrouped.push(item);
+            }
+          });
+
+          const groupOrder = ['CRM', 'Operations', 'Marketing', 'Automation', 'Billing', 'Administration'];
+          const orderedGroups = groupOrder.filter(g => groups[g]);
 
           return (
-            <button
-              key={item.path + item.name}
-              onClick={() => { navigate(item.path); onCloseSidebar(); }}
-              title={isCollapsed ? item.name : undefined}
-              className={cn(
-                'w-full flex items-center rounded-md py-2 text-xs font-medium transition-colors cursor-pointer',
-                isCollapsed ? 'lg:justify-center px-1.5' : 'gap-2.5 px-2.5',
-                isActive
-                  ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800/60'
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white border border-transparent',
-              )}
-            >
-              <div className="relative shrink-0">
-                <Icon className="h-4 w-4" />
-                {/* Dot badge when collapsed */}
-                {isCollapsed && showOverdueBadge && (
-                  <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-red-500" />
-                )}
-              </div>
-              {!isCollapsed && (
-                <>
-                  <span className="truncate flex-1 text-left">{item.name}</span>
-                  {showOverdueBadge && (
-                    <span className="shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
-                      {overdueCount}
-                    </span>
+            <>
+              {/* Ungrouped items (Dashboard, My Jobs, etc.) */}
+              {ungrouped.map((item) => {
+                const Icon = item.icon;
+                const isActive = currentPath === item.path;
+                const showOverdueBadge = item.path === 'tasks' && overdueCount > 0;
+
+                return (
+                  <button
+                    key={item.path + item.name}
+                    onClick={() => { navigate(item.path); onCloseSidebar(); }}
+                    title={isCollapsed ? item.name : undefined}
+                    className={cn(
+                      'relative w-full flex items-center rounded-lg py-2.5 text-xs font-medium transition-all cursor-pointer',
+                      isCollapsed ? 'lg:justify-center px-2' : 'gap-2.5 px-3',
+                      isActive
+                        ? 'text-white'
+                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white',
+                    )}
+                    style={isActive ? { backgroundColor: 'var(--primary)' } : undefined}
+                  >
+                    {/* Active rail accent */}
+                    {isActive && !isCollapsed && (
+                      <div 
+                        className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full"
+                        style={{ backgroundColor: 'var(--primary-dark)' }}
+                      />
+                    )}
+                    <div className="relative shrink-0">
+                      <Icon className="h-4 w-4" />
+                      {isCollapsed && showOverdueBadge && (
+                        <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-red-500" />
+                      )}
+                    </div>
+                    {!isCollapsed && (
+                      <>
+                        <span className="truncate flex-1 text-left">{item.name}</span>
+                        {showOverdueBadge && (
+                          <span className="shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                            {overdueCount}
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </button>
+                );
+              })}
+
+              {/* Grouped sections */}
+              {orderedGroups.map((groupName) => (
+                <div key={groupName} className="mt-4">
+                  {!isCollapsed && (
+                    <div className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-600">
+                      {groupName}
+                    </div>
                   )}
-                </>
-              )}
-            </button>
+                  {isCollapsed && (
+                    <div className="h-px bg-slate-200 dark:bg-slate-800 my-2 mx-2" />
+                  )}
+                  <div className="flex flex-col gap-0.5">
+                    {groups[groupName].map((item) => {
+                      const Icon = item.icon;
+                      const isActive = currentPath === item.path;
+                      const showOverdueBadge = item.path === 'tasks' && overdueCount > 0;
+
+                      return (
+                        <button
+                          key={item.path + item.name}
+                          onClick={() => { navigate(item.path); onCloseSidebar(); }}
+                          title={isCollapsed ? item.name : undefined}
+                          className={cn(
+                            'relative w-full flex items-center rounded-lg py-2.5 text-xs font-medium transition-all cursor-pointer',
+                            isCollapsed ? 'lg:justify-center px-2' : 'gap-2.5 px-3',
+                            isActive
+                              ? 'text-white'
+                              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white',
+                          )}
+                          style={isActive ? { backgroundColor: 'var(--primary)' } : undefined}
+                        >
+                          {/* Active rail accent */}
+                          {isActive && !isCollapsed && (
+                            <div 
+                              className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full"
+                              style={{ backgroundColor: 'var(--primary-dark)' }}
+                            />
+                          )}
+                          <div className="relative shrink-0">
+                            <Icon className="h-4 w-4" />
+                            {isCollapsed && showOverdueBadge && (
+                              <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-red-500" />
+                            )}
+                          </div>
+                          {!isCollapsed && (
+                            <>
+                              <span className="truncate flex-1 text-left">{item.name}</span>
+                              {showOverdueBadge && (
+                                <span className="shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                                  {overdueCount}
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </>
           );
-        })}
+        })()}
       </nav>
 
       {/* ── Footer: Settings + Account ───────────────────────────── */}
-      <div className="shrink-0">
+      <div className="shrink-0 border-t border-slate-200 dark:border-slate-800 pt-2">
         {/* Settings button */}
         <div className="px-2 pb-1">
           <button
             onClick={() => { navigate('settings'); onCloseSidebar(); }}
             title={isCollapsed ? 'Settings' : undefined}
             className={cn(
-              'w-full flex items-center rounded-md py-2 text-xs font-medium transition-colors cursor-pointer',
-              isCollapsed ? 'lg:justify-center px-1.5' : 'gap-2.5 px-2.5',
+              'relative w-full flex items-center rounded-lg py-2.5 text-xs font-medium transition-all cursor-pointer',
+              isCollapsed ? 'lg:justify-center px-2' : 'gap-2.5 px-3',
               isSettingsActive
-                ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800/60'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white border border-transparent',
+                ? 'text-white'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white',
             )}
+            style={isSettingsActive ? { backgroundColor: 'var(--primary)' } : undefined}
           >
+            {/* Active rail accent */}
+            {isSettingsActive && !isCollapsed && (
+              <div 
+                className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full"
+                style={{ backgroundColor: 'var(--primary-dark)' }}
+              />
+            )}
             <Settings className="h-4 w-4 shrink-0" />
             {!isCollapsed && <span className="truncate flex-1 text-left">Settings</span>}
           </button>
