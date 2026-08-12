@@ -173,11 +173,10 @@ export const authOptions: NextAuthOptions = {
             maxAge: 7 * 24 * 60 * 60,
           });
 
-          if (!result.data.requiresProfileCompletion) {
-            const role = result.data.user.role;
-            const destination = role === 'System Admin' ? '/admin/tenants' : '/dashboard';
-            lcUser.callbackUrl = destination;
-          }
+          // Do NOT override callbackUrl here.
+          // loginWithGoogle() sets callbackUrl: '/' so app/page.tsx handles
+          // the post-login routing (onboarding gate, role-based default, etc.).
+          // Setting callbackUrl on the user object here would bypass that gate.
 
           return true;
         } catch (err) {
@@ -189,7 +188,13 @@ export const authOptions: NextAuthOptions = {
       return true;
     },
 
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
+      // Handle session.update() calls — e.g. after company profile is completed,
+      // we clear requiresProfileCompletion to prevent the onboarding gate loop.
+      if (trigger === 'update' && session?.requiresProfileCompletion === false) {
+        token.requiresProfileCompletion = false;
+      }
+
       if (user) {
         const lcUser = user as unknown as LeadCRMUser;
         token.id                        = lcUser.id;
@@ -223,9 +228,10 @@ export const authOptions: NextAuthOptions = {
   },
 
   pages: {
-    signIn:  '/login',
-    error:   '/login',
-    newUser: '/auth/complete-profile',
+    signIn: '/login',
+    error:  '/login',
+    // newUser intentionally omitted — routing handled by AuthGuard
+    // via requiresProfileCompletion flag (→ /onboarding → /company-setup)
   },
 
   session: {

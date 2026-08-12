@@ -16,8 +16,9 @@ import { getToken } from 'next-auth/jwt';
  * 2. GOOGLE OAUTH — NEW USER PROFILE COMPLETION
  *    After a first-time Google sign-in, the NextAuth JWT contains
  *    `requiresProfileCompletion: true`. We intercept any navigation to a
- *    protected route and redirect to /auth/complete-profile so the user
- *    fills in their company details before reaching the CRM.
+ *    protected route and redirect to /onboarding (feature tour) followed by
+ *    /company-setup so the user fills in their company details before
+ *    reaching the CRM.
  *
  * 3. PROTECTED ROUTES
  *    Paths under /dashboard, /contacts, /deals, /pipeline, /reports,
@@ -56,7 +57,8 @@ const AUTH_ROUTES = ['/login', '/register'];
 
 // Routes that are always public (no redirect ever)
 const PUBLIC_ROUTES = [
-  '/auth/complete-profile',
+  '/onboarding',
+  '/company-setup',
   '/reset-password',
   '/',
 ];
@@ -117,8 +119,8 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
 
   if (isProtected && isGoogleSession) {
     // Authenticated Google user but profile not complete
-    if (requiresCompletion && !pathname.startsWith('/auth/complete-profile')) {
-      return NextResponse.redirect(new URL('/auth/complete-profile', req.url));
+    if (requiresCompletion && !pathname.startsWith('/onboarding') && !pathname.startsWith('/company-setup')) {
+      return NextResponse.redirect(new URL('/onboarding', req.url));
     }
   }
 

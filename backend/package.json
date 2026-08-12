@@ -20,7 +20,8 @@
     "test:email-infrastructure": "ts-node src/scripts/test-email-infrastructure.ts",
     "verify:production-architecture": "ts-node src/scripts/verify-production-architecture.ts",
     "test:gmail-connection": "ts-node src/scripts/test-gmail-connection.ts",
-    "audit:hardcoded-data": "ts-node src/scripts/audit-hardcoded-data.ts"
+    "audit:hardcoded-data": "ts-node src/scripts/audit-hardcoded-data.ts",
+    "gmail:setup-system-sender": "ts-node src/scripts/setup-gmail-system-sender.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

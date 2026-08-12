@@ -1,46 +1,49 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 
 type Theme = 'Light' | 'Dark';
 
+const THEME_KEY = 'app_theme';
+const THEME_CONTAINER_ATTR = 'data-theme';
+
 /**
- * Manages dark/light theme state and accent color.
- * Extracted from CrmLayout so any component can use theme logic without coupling to the layout.
+ * Manages dark/light theme for the tenant CRM area only.
+ * Applies the `dark` class to the nearest ancestor element with
+ * [data-theme-container] instead of <html>, so public pages are unaffected.
  */
 export function useTheme() {
-  const [theme, setTheme] = useState<Theme>('Dark');
+  const [theme, setTheme] = useState<Theme>('Light');
 
   useEffect(() => {
-    const syncTheme = () => {
-      const saved = localStorage.getItem('app_theme');
-      if (saved === 'Light' || saved === 'Dark') {
-        setTheme(saved);
-      } else {
-        const isDark = document.documentElement.classList.contains('dark');
-        setTheme(isDark ? 'Dark' : 'Light');
-      }
-    };
-
-    syncTheme();
-    window.addEventListener('themechange', syncTheme);
-    return () => window.removeEventListener('themechange', syncTheme);
+    const saved = localStorage.getItem(THEME_KEY) as Theme | null;
+    const initial = saved === 'Dark' ? 'Dark' : 'Light';
+    setTheme(initial);
   }, []);
 
-  const toggleTheme = () => {
+  const applyTheme = useCallback((next: Theme) => {
+    // Apply dark class on the CRM container, not <html>
+    const container = document.querySelector('[data-theme-container]');
+    if (container) {
+      if (next === 'Dark') {
+        container.classList.add('dark');
+      } else {
+        container.classList.remove('dark');
+      }
+    }
+    window.dispatchEvent(new Event('themechange'));
+  }, []);
+
+  // Apply on mount and when theme changes
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme, applyTheme]);
+
+  const toggleTheme = useCallback(() => {
     const next: Theme = theme === 'Light' ? 'Dark' : 'Light';
     setTheme(next);
-    localStorage.setItem('app_theme', next);
-
-    if (next === 'Light') {
-      document.documentElement.classList.remove('dark');
-      document.documentElement.classList.add('light');
-    } else {
-      document.documentElement.classList.remove('light');
-      document.documentElement.classList.add('dark');
-    }
-
-    window.dispatchEvent(new Event('themechange'));
-  };
+    localStorage.setItem(THEME_KEY, next);
+    applyTheme(next);
+  }, [theme, applyTheme]);
 
   const isDark = theme === 'Dark';
 

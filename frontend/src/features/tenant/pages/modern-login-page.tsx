@@ -1,9 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/store/AuthContext';
-import { authApi } from '@/shared/services/auth.api';
-import { ArrowLeft, CheckCircle2, RefreshCw, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { GoogleSignInButton } from '@/shared/components/google-sign-in-button';
 import { z } from 'zod';
@@ -13,69 +12,42 @@ const loginSchema = z.object({
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
-const RESEND_COOLDOWN = 30;
-
-interface ResendOtpButtonProps {
-  email: string;
-  password: string;
-  onResend: () => Promise<unknown>;
+interface ResendPasswordButtonProps {
+  forgotEmail: string;
+  requestPasswordReset: (email: string) => Promise<boolean>;
 }
 
-function ResendOtpButton({ email, password, onResend }: ResendOtpButtonProps): React.ReactElement {
-  const [countdown, setCountdown] = useState(RESEND_COOLDOWN);
+function ResendPasswordButton({ forgotEmail, requestPasswordReset }: ResendPasswordButtonProps): React.ReactElement {
   const [isSending, setIsSending] = useState(false);
-  const [canResend, setCanResend] = useState(false);
 
-  useEffect(() => {
-    if (countdown <= 0) {
-      setCanResend(true);
-      return;
-    }
-    const timer = setTimeout(() => setCountdown((prev) => prev - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [countdown]);
-
-  const handleResend = useCallback(async () => {
-    if (!canResend || isSending) return;
+  const handleResend = async () => {
+    if (isSending) return;
     setIsSending(true);
     try {
-      const result = await onResend();
-      // Check if onResend returned a boolean indicating success
-      if (result === false) {
-        toast.error('Failed to resend code. Please check your credentials and try again.');
+      const ok = await requestPasswordReset(forgotEmail);
+      if (ok) {
+        toast.success('Password reset link resent.');
       } else {
-        toast.success(`New code sent to ${email}`);
-        setCountdown(RESEND_COOLDOWN);
-        setCanResend(false);
+        toast.error('Failed to resend. Please try again.');
       }
-    } catch (error) {
-      toast.error('Failed to resend code. Please try again.');
+    } catch {
+      toast.error('Failed to resend. Please try again.');
     } finally {
       setIsSending(false);
     }
-  }, [canResend, isSending, onResend, email]);
+  };
 
   return (
     <div className="flex items-center justify-center gap-1.5 text-sm">
       <span className="text-slate-500 dark:text-slate-400">Didn&apos;t receive it?</span>
-      {canResend ? (
-        <button
-          type="button"
-          onClick={handleResend}
-          disabled={isSending}
-          className="flex items-center gap-1 text-blue-600 hover:text-blue-700 font-medium transition-colors disabled:opacity-50"
-        >
-          {isSending ? (
-            <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Sending...</>
-          ) : (
-            'Resend code'
-          )}
-        </button>
-      ) : (
-        <span className="text-slate-400 dark:text-slate-500 tabular-nums">
-          Resend in <span className="text-slate-600 dark:text-slate-300 font-semibold">{countdown}s</span>
-        </span>
-      )}
+      <button
+        type="button"
+        onClick={handleResend}
+        disabled={isSending}
+        className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium transition-colors disabled:opacity-50"
+      >
+        {isSending ? 'Sending...' : 'Resend link'}
+      </button>
     </div>
   );
 }
@@ -86,7 +58,7 @@ interface ModernLoginPageProps {
 }
 
 export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginPageProps): React.ReactElement {
-  const { login, verifyOtp, loginWithGoogle, requestPasswordReset, confirmPasswordReset } = useAuth();
+  const { login, loginWithGoogle, requestPasswordReset, confirmPasswordReset } = useAuth();
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -103,8 +75,7 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
-  const [showOTP, setShowOTP] = useState(false);
-  const [otp, setOtp] = useState('');
+  const [isSigningIn, setIsSigningIn] = useState(false);
 
   // OAuth error mapping
   const OAUTH_ERROR_MESSAGES: Record<string, string> = {
@@ -139,6 +110,7 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setIsSigningIn(true);
     
     try {
       loginSchema.parse({ email, password });
@@ -146,29 +118,22 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
       const zodErr = err as { errors?: Array<{message: string}> };
       const errorMessage = zodErr.errors?.[0]?.message || 'Validation failed';
       toast.error(errorMessage);
-      return;
-    }
-
-    if (!showOTP) {
-      const sent = await login(email, password);
-      if (sent) {
-        setShowOTP(true);
-        setError('');
-      } else {
-        toast.error('Invalid credentials or account inactive.');
-      }
+      setIsSigningIn(false);
       return;
     }
 
     try {
-      const success = await verifyOtp(email, otp);
+      const success = await login(email, password);
       if (success) {
-        onNavigate('dashboard');
+        const hasSeenOnboarding = localStorage.getItem('leadcrm_onboarding_complete');
+        onNavigate(hasSeenOnboarding ? 'dashboard' : 'onboarding');
       } else {
-        toast.error('Verification failed. Please try again.');
+        toast.error('Invalid credentials or account inactive.');
       }
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Invalid or expired code.');
+      toast.error(err instanceof Error ? err.message : 'Sign in failed. Please try again.');
+    } finally {
+      setIsSigningIn(false);
     }
   };
 
@@ -376,14 +341,7 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
               </p>
             </div>
 
-            <ResendOtpButton
-              email={forgotEmail}
-              password=""
-              onResend={async () => { 
-                const result = await requestPasswordReset(forgotEmail);
-                return result;
-              }}
-            />
+            <ResendPasswordButton forgotEmail={forgotEmail} requestPasswordReset={requestPasswordReset} />
 
             <button
               onClick={() => setAuthView('login')}
@@ -569,10 +527,8 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
             </p>
           </div>
 
-          {!showOTP ? (
-            <>
-              {/* Login form */}
-              <form onSubmit={handleLogin} className="space-y-5">
+          {/* Login form */}
+          <form onSubmit={handleLogin} className="space-y-5">
                 <div>
                   <label htmlFor="email" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
                     Email address
@@ -635,9 +591,10 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
 
                 <button
                   type="submit"
-                  className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold transition-colors active:scale-95"
+                  disabled={isSigningIn}
+                  className="w-full h-11 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl font-semibold transition-colors active:scale-95"
                 >
-                  Login
+                  {isSigningIn ? 'Signing in…' : 'Login'}
                 </button>
               </form>
 
@@ -666,52 +623,6 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
                   Sign up
                 </button>
               </p>
-            </>
-          ) : (
-            // OTP verification
-            <div className="space-y-5">
-              <div className="text-sm text-slate-500 dark:text-slate-400 text-center">
-                A 6-digit verification code was sent to{' '}
-                <span className="font-semibold text-slate-700 dark:text-slate-300">{email}</span>
-              </div>
-              <div>
-                <label htmlFor="otp" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                  Verification Code
-                </label>
-                <input
-                  id="otp"
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  className="w-full h-11 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-xl px-4 text-slate-900 dark:text-white text-center text-lg tracking-[0.5em] font-semibold focus:outline-none focus:border-blue-500 transition-colors"
-                  required
-                  maxLength={6}
-                  placeholder="000000"
-                  autoFocus
-                />
-              </div>
-              <ResendOtpButton
-                email={email}
-                password={password}
-                onResend={async () => { await login(email, password); }}
-              />
-              <button
-                onClick={handleLogin}
-                className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold transition-colors active:scale-95"
-              >
-                Verify & Sign In
-              </button>
-              <button
-                type="button"
-                onClick={() => { setShowOTP(false); setOtp(''); setError(''); }}
-                className="w-full text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 text-center transition-colors"
-              >
-                Back to Login
-              </button>
-            </div>
-          )}
         </div>
       </div>
     </div>
