@@ -5,20 +5,16 @@ import {
   registerGuest as registerGuestService,
   requestPasswordReset,
   resetPasswordWithToken,
-  sendLoginOtp,
-  verifyLoginOtp,
   sendRegistrationOtp,
   verifyRegistrationOtp,
 } from './auth.service';
 import { revokeSession } from './session.service';
 import prisma from '../../config/database.config';
 import { hashPassword } from '../../shared/helpers/crypto';
-import { getSandboxEmails } from '../../shared/services/email.service';
+import { AppError } from '../../shared/errors/app-error';
 import {
   ForgotPasswordSchema,
   ResetPasswordSchema,
-  SendOtpSchema,
-  VerifyOtpSchema,
   SendRegistrationOtpSchema,
   VerifyRegistrationOtpSchema,
 } from './auth.dto';
@@ -37,12 +33,12 @@ const COOKIE_OPTIONS = {
  * Public endpoint — no authentication required.
  */
 export async function getSandboxInfo(req: Request, res: Response): Promise<void> {
-  const sandboxEmails = getSandboxEmails();
+  // Sandbox mode was Resend-specific — Gmail API sends to any address without restrictions.
   res.json({
     success: true,
     data: {
-      isSandboxMode: sandboxEmails.length > 0,
-      allowedEmails: sandboxEmails,
+      isSandboxMode: false,
+      allowedEmails: [],
       isDevelopment: process.env.NODE_ENV !== 'production',
     },
   });
@@ -176,11 +172,6 @@ export async function registerGuest(req: Request, res: Response, next: NextFunct
   }
 }
 
-export async function verifyEmail(_req: Request, res: Response, _next: NextFunction): Promise<void> {
-  // Placeholder — email verification during registration now uses the OTP flow below
-  res.status(501).json({ success: false, error: 'Use /auth/send-registration-otp and /auth/verify-registration-otp instead.' });
-}
-
 export async function sendRegOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const parsed = SendRegistrationOtpSchema.safeParse(req.body);
@@ -233,41 +224,6 @@ export async function resetPassword(req: Request, res: Response, next: NextFunct
     }
     await resetPasswordWithToken(parsed.data);
     res.json({ success: true, message: 'Password has been reset successfully. You can now log in.' });
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function sendOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const parsed = SendOtpSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ success: false, error: parsed.error.errors[0]?.message ?? 'Invalid input' });
-      return;
-    }
-    await sendLoginOtp(parsed.data, {
-      userAgent: req.headers['user-agent'],
-      ipAddress: req.ip,
-    });
-    res.json({ success: true, message: 'OTP sent to your email address.' });
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function verifyOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const parsed = VerifyOtpSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ success: false, error: parsed.error.errors[0]?.message ?? 'Invalid input' });
-      return;
-    }
-    const result = await verifyLoginOtp(parsed.data.email, parsed.data.code, {
-      userAgent: req.headers['user-agent'],
-      ipAddress: req.ip,
-    });
-    res.cookie(COOKIE_NAME, result.token, COOKIE_OPTIONS);
-    res.json({ success: true, data: { user: result.user, token: result.token } });
   } catch (err) {
     next(err);
   }

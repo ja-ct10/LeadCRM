@@ -53,10 +53,7 @@ export default function ProfileSettingsPage({
 
   // Appearance state
   const [appTheme, setAppTheme] = useState(
-    localStorage.getItem("app_theme") || "Dark",
-  );
-  const [appAccent, setAppAccent] = useState(
-    localStorage.getItem("app_accent_color") || "#3B82F6",
+    localStorage.getItem("app_theme") || "Light",
   );
   const [appFontSize, setAppFontSize] = useState(
     localStorage.getItem("app_font_size") || "Medium",
@@ -64,7 +61,7 @@ export default function ProfileSettingsPage({
 
   React.useEffect(() => {
     const handleSync = () => {
-      setAppTheme(localStorage.getItem("app_theme") || "Dark");
+      setAppTheme(localStorage.getItem("app_theme") || "Light");
     };
     window.addEventListener("themechange", handleSync);
     return () => window.removeEventListener("themechange", handleSync);
@@ -72,45 +69,20 @@ export default function ProfileSettingsPage({
 
   const handleSaveAppearance = () => {
     localStorage.setItem("app_theme", appTheme);
-    localStorage.setItem("app_accent_color", appAccent);
     localStorage.setItem("app_font_size", appFontSize);
 
-    // Apply theme
-    if (appTheme === "Light") {
-      document.documentElement.classList.remove("dark");
-      document.documentElement.classList.add("light");
-    } else if (appTheme === "Dark") {
-      document.documentElement.classList.remove("light");
-      document.documentElement.classList.add("dark");
-    } else {
-      if (
-        window.matchMedia &&
-        window.matchMedia("(prefers-color-scheme: dark)").matches
-      ) {
-        document.documentElement.classList.add("dark");
-        document.documentElement.classList.remove("light");
+    const container = document.querySelector('[data-theme-container]');
+    if (container) {
+      if (appTheme === "Light") {
+        container.classList.remove("dark");
+      } else if (appTheme === "Dark") {
+        container.classList.add("dark");
       } else {
-        document.documentElement.classList.add("light");
-        document.documentElement.classList.remove("dark");
+        const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        container.classList.toggle("dark", prefersDark);
       }
     }
 
-    // Apply accent
-    document.documentElement.style.setProperty(
-      "--color-blue-400",
-      `color-mix(in srgb, ${appAccent} 85%, white)`,
-    );
-    document.documentElement.style.setProperty("--color-blue-500", appAccent);
-    document.documentElement.style.setProperty(
-      "--color-blue-600",
-      `color-mix(in srgb, ${appAccent} 85%, black)`,
-    );
-    document.documentElement.style.setProperty(
-      "--color-blue-700",
-      `color-mix(in srgb, ${appAccent} 70%, black)`,
-    );
-
-    // Apply font size
     let size = "16px";
     if (appFontSize === "Small") size = "14px";
     if (appFontSize === "Large") size = "18px";
@@ -919,48 +891,6 @@ export default function ProfileSettingsPage({
                       </button>
                     );
                   })}
-                </div>
-              </div>
-
-              {/* Accent Color picker */}
-              <div className="pt-5 border-t border-slate-100 dark:border-white/[0.02] space-y-3">
-                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Primary Accent Color
-                </label>
-                <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                  Select a unique highlight color used across interactive
-                  buttons, active menu elements, and charts.
-                </p>
-                <div className="flex flex-wrap gap-3 pt-1">
-                  {[
-                    { name: "Blue", color: "#3B82F6" },
-                    { name: "Indigo", color: "#6366f1" },
-                    { name: "Violet", color: "#8b5cf6" },
-                    { name: "Emerald", color: "#10b981" },
-                    { name: "Rose", color: "#f43f5e" },
-                    { name: "Amber", color: "#f59e0b" },
-                    { name: "Slate", color: "#64748b" },
-                  ].map((accent) => (
-                    <button
-                      key={accent.color}
-                      type="button"
-                      onClick={() => setAppAccent(accent.color)}
-                      className={`w-9 h-9 rounded-full flex items-center justify-center transition-all cursor-pointer relative ${
-                        appAccent === accent.color
-                          ? "scale-110 shadow-sm ring-2 ring-slate-900 dark:ring-white ring-offset-2 ring-offset-white dark:ring-offset-slate-900"
-                          : "hover:scale-105 opacity-80 hover:opacity-100"
-                      }`}
-                      style={{ backgroundColor: accent.color }}
-                      title={accent.name}
-                    >
-                      {appAccent === accent.color && (
-                        <Check
-                          size={14}
-                          className="text-white drop-shadow-sm font-bold"
-                        />
-                      )}
-                    </button>
-                  ))}
                 </div>
               </div>
 

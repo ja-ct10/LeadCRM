@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import SidebarNav from './sidebar-nav';
 import Topbar from './topbar';
 import { useLayout } from './use-layout';
@@ -11,9 +11,12 @@ const SIDEBAR_COLLAPSED_KEY = 'leadcrm_sidebar_collapsed';
  * CrmLayout — tenant portal shell.
  * Composes sidebar, topbar, and content area.
  * Navigation items and permissions are owned by `use-layout.ts`.
+ * Dark mode is scoped to this container via [data-theme-container] so
+ * public pages (login, landing, onboarding) always render in light mode.
  */
 export default function CrmLayout({ children }: { children: React.ReactNode }) {
   const { navigate } = useLayout();
+  const containerRef = useRef<HTMLDivElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);       // mobile overlay open
   const [isCollapsed, setIsCollapsed] = useState(false);       // desktop collapsed
   const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState(false);
@@ -26,6 +29,32 @@ export default function CrmLayout({ children }: { children: React.ReactNode }) {
     } catch { /* noop */ }
   }, []);
 
+  // Sync dark/light theme to this container (not <html>)
+  useEffect(() => {
+    const saved = localStorage.getItem('app_theme');
+    if (containerRef.current) {
+      if (saved === 'Dark') {
+        containerRef.current.classList.add('dark');
+      } else {
+        containerRef.current.classList.remove('dark');
+      }
+    }
+
+    const handleThemeChange = () => {
+      const current = localStorage.getItem('app_theme');
+      if (containerRef.current) {
+        if (current === 'Dark') {
+          containerRef.current.classList.add('dark');
+        } else {
+          containerRef.current.classList.remove('dark');
+        }
+      }
+    };
+
+    window.addEventListener('themechange', handleThemeChange);
+    return () => window.removeEventListener('themechange', handleThemeChange);
+  }, []);
+
   const handleToggleCollapse = () => {
     setIsCollapsed((prev) => {
       const next = !prev;
@@ -35,7 +64,7 @@ export default function CrmLayout({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-[#030712]">
+    <div ref={containerRef} data-theme-container className="flex h-screen overflow-hidden bg-slate-50 dark:bg-[#030712]">
       <SidebarNav
         sidebarOpen={sidebarOpen}
         onCloseSidebar={() => setSidebarOpen(false)}

@@ -50,7 +50,7 @@ export default function EmailVerificationPage({ email, onNavigate }: EmailVerifi
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    
+
     if (code.length !== 6) {
       setError('Please enter a valid 6-digit code.');
       return;
@@ -59,10 +59,9 @@ export default function EmailVerificationPage({ email, onNavigate }: EmailVerifi
     setIsVerifying(true);
     try {
       const response = await authApi.verifyRegistrationOtp(email, code);
-      if (response?.success || (response as any)?.data?.success) {
+      if (response?.success) {
         setVerificationSuccess(true);
         toast.success('Email verified successfully!');
-        // Redirect to login after 2 seconds
         setTimeout(() => {
           onNavigate('login');
         }, 2000);
@@ -77,7 +76,6 @@ export default function EmailVerificationPage({ email, onNavigate }: EmailVerifi
   };
 
   const handleCodeChange = (value: string) => {
-    // Only allow digits and limit to 6 characters
     const digits = value.replace(/\D/g, '').slice(0, 6);
     setCode(digits);
     if (error) setError('');
@@ -94,7 +92,7 @@ export default function EmailVerificationPage({ email, onNavigate }: EmailVerifi
             Email Verified!
           </h2>
           <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed mb-6">
-            Your email has been successfully verified. You can now log in to your sandbox account.
+            Your email has been successfully verified. You can now log in to your account.
           </p>
           <div className="text-sm text-slate-400 dark:text-slate-500">
             Redirecting to login...
@@ -106,31 +104,22 @@ export default function EmailVerificationPage({ email, onNavigate }: EmailVerifi
 
   return (
     <div className="min-h-screen flex">
-      {/* Left side - Blue gradient section */}
+      {/* Left side - Blue gradient */}
       <div className="hidden lg:flex lg:w-1/2 bg-linear-to-br from-blue-600 via-blue-700 to-blue-800 relative overflow-hidden">
-        {/* Geometric pattern overlay */}
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-20 left-20 w-64 h-64 bg-white rounded-full blur-3xl"></div>
           <div className="absolute bottom-20 right-20 w-96 h-96 bg-blue-300 rounded-full blur-3xl"></div>
         </div>
-        
         <div className="relative z-10 flex flex-col justify-between p-12 text-white w-full">
-          {/* Logo */}
-          <button 
+          <button
             onClick={() => onNavigate('landing')}
             className="flex items-center gap-3 hover:opacity-80 transition-opacity w-fit"
           >
             <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shadow-lg">
-              <img 
-                src="/leadcrm_logo.png" 
-                alt="LeadCRM Logo" 
-                className="w-6 h-6"
-              />
+              <img src="/leadcrm_logo.png" alt="LeadCRM Logo" className="w-6 h-6" />
             </div>
             <span className="text-xl font-bold">LeadCRM</span>
           </button>
-
-          {/* Center content */}
           <div className="space-y-6">
             <div className="w-16 h-16 bg-white/10 backdrop-blur-sm rounded-2xl flex items-center justify-center mb-6">
               <Mail className="text-white" size={32} />
@@ -139,10 +128,9 @@ export default function EmailVerificationPage({ email, onNavigate }: EmailVerifi
               Check Your Email
             </h1>
             <p className="text-blue-100 text-lg max-w-md">
-              We've sent a 6-digit verification code to your email address. Enter it below to complete your registration.
+              We&apos;ve sent a 6-digit verification code to your email. Enter it below to activate your account.
             </p>
           </div>
-
           <div></div>
         </div>
       </div>
@@ -150,7 +138,6 @@ export default function EmailVerificationPage({ email, onNavigate }: EmailVerifi
       {/* Right side - Verification form */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-white dark:bg-slate-950">
         <div className="w-full max-w-md space-y-6">
-          {/* Header */}
           <div>
             <h2 className="font-display text-3xl font-bold text-slate-900 dark:text-white mb-2">
               Verify Your Email
@@ -167,7 +154,6 @@ export default function EmailVerificationPage({ email, onNavigate }: EmailVerifi
             </div>
           )}
 
-          {/* Verification form */}
           <form onSubmit={handleVerify} className="space-y-6">
             <div>
               <label htmlFor="code" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
@@ -188,9 +174,8 @@ export default function EmailVerificationPage({ email, onNavigate }: EmailVerifi
               />
             </div>
 
-            {/* Resend section */}
             <div className="flex items-center justify-center gap-1.5 text-sm">
-              <span className="text-slate-500 dark:text-slate-400">Didn't receive it?</span>
+              <span className="text-slate-500 dark:text-slate-400">Didn&apos;t receive it?</span>
               {canResend ? (
                 <button
                   type="button"
@@ -199,9 +184,7 @@ export default function EmailVerificationPage({ email, onNavigate }: EmailVerifi
                   className="flex items-center gap-1 text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium transition-colors disabled:opacity-50"
                 >
                   {isResending ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Sending...
-                    </>
+                    <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Sending...</>
                   ) : (
                     'Resend code'
                   )}
@@ -222,7 +205,6 @@ export default function EmailVerificationPage({ email, onNavigate }: EmailVerifi
             </button>
           </form>
 
-          {/* Back to login link */}
           <p className="text-center text-sm text-slate-500 dark:text-slate-400">
             Wrong email?{' '}
             <button

@@ -35,7 +35,9 @@ ChartJS.register(
 // ─── Shared style defaults ────────────────────────────────────
 function isDarkMode() {
   if (typeof document === 'undefined') return true;
-  return document.documentElement.classList.contains('dark');
+  // Check the tenant CRM container, not <html>
+  const container = document.querySelector('[data-theme-container]');
+  return container ? container.classList.contains('dark') : false;
 }
 
 function getTooltipStyle() {

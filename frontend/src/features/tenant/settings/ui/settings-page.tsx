@@ -22,7 +22,6 @@ import {
   Clock,
   DollarSign,
   Link,
-  Check,
   Palette,
   Moon,
   Sun,
@@ -142,8 +141,7 @@ export default function SettingsPage(): React.ReactElement {
   const [orgDomain, setOrgDomain] = useState(tenant?.domain || "");
 
   // Appearance state
-  const [appTheme, setAppTheme] = useState(localStorage.getItem("app_theme") || "Dark");
-  const [appAccent, setAppAccent] = useState(localStorage.getItem("app_accent_color") || "#3B82F6");
+  const [appTheme, setAppTheme] = useState(localStorage.getItem("app_theme") || "Light");
   const [appFontSize, setAppFontSize] = useState(localStorage.getItem("app_font_size") || "Medium");
 
   // Account (profile) state
@@ -160,34 +158,29 @@ export default function SettingsPage(): React.ReactElement {
   const [archivedFilter, setArchivedFilter] = useState<string>("All");
 
   useEffect(() => {
-    const handleSync = () => { setAppTheme(localStorage.getItem("app_theme") || "Dark"); };
+    const handleSync = () => { setAppTheme(localStorage.getItem("app_theme") || "Light"); };
     window.addEventListener("themechange", handleSync);
     return () => window.removeEventListener("themechange", handleSync);
   }, []);
 
   const handleSaveAppearance = (): void => {
     localStorage.setItem("app_theme", appTheme);
-    localStorage.setItem("app_accent_color", appAccent);
     localStorage.setItem("app_font_size", appFontSize);
-    if (appTheme === "Light") {
-      document.documentElement.classList.remove("dark");
-      document.documentElement.classList.add("light");
-    } else if (appTheme === "Dark") {
-      document.documentElement.classList.remove("light");
-      document.documentElement.classList.add("dark");
-    } else {
-      if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
-        document.documentElement.classList.add("dark");
-        document.documentElement.classList.remove("light");
+
+    // Apply theme to the CRM container (not <html>) so public pages stay light
+    const container = document.querySelector('[data-theme-container]');
+    if (container) {
+      if (appTheme === "Light") {
+        container.classList.remove("dark");
+      } else if (appTheme === "Dark") {
+        container.classList.add("dark");
       } else {
-        document.documentElement.classList.add("light");
-        document.documentElement.classList.remove("dark");
+        // System preference
+        const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        container.classList.toggle("dark", prefersDark);
       }
     }
-    document.documentElement.style.setProperty("--color-blue-400", `color-mix(in srgb, ${appAccent} 85%, white)`);
-    document.documentElement.style.setProperty("--color-blue-500", appAccent);
-    document.documentElement.style.setProperty("--color-blue-600", `color-mix(in srgb, ${appAccent} 85%, black)`);
-    document.documentElement.style.setProperty("--color-blue-700", `color-mix(in srgb, ${appAccent} 70%, black)`);
+
     let size = "16px";
     if (appFontSize === "Small") size = "14px";
     if (appFontSize === "Large") size = "18px";
@@ -475,18 +468,6 @@ export default function SettingsPage(): React.ReactElement {
                   <div className="text-xs font-bold text-slate-900 dark:text-white">{theme.id}</div>
                   <div className="text-[10px] text-slate-500 dark:text-slate-400">{theme.desc}</div>
                 </div>
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="pt-4 border-t border-gray-200 dark:border-white/[0.06]">
-          <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-3">Accent Color</label>
-          <div className="flex flex-wrap gap-3">
-            {[{ name: "Blue", color: "#3B82F6" }, { name: "Indigo", color: "#6366f1" }, { name: "Violet", color: "#8b5cf6" }, { name: "Emerald", color: "#10b981" }, { name: "Rose", color: "#f43f5e" }, { name: "Amber", color: "#f59e0b" }, { name: "Slate", color: "#64748b" }].map((accent) => (
-              <button key={accent.color} onClick={() => setAppAccent(accent.color)} title={accent.name}
-                className={`w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer ${appAccent === accent.color ? "ring-2 ring-offset-2 ring-offset-white dark:ring-offset-slate-900 scale-110" : "hover:scale-105"}`}
-                style={{ backgroundColor: accent.color } as React.CSSProperties}>
-                {appAccent === accent.color && <Check className="w-4 h-4 text-white" />}
               </button>
             ))}
           </div>

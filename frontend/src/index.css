@@ -1,52 +1,61 @@
 ﻿@import "tailwindcss";
-@import url('https://api.fontshare.com/v2/css?f[]=neue-machina@200,300,400,500,700,800,900&display=swap');
+@import url("https://api.fontshare.com/v2/css?f[]=neue-machina@200,300,400,500,700,800,900&display=swap");
 
-@custom-variant dark (&:is(.dark, .dark *));
+@custom-variant dark (&:is(.dark *));
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  --font-heading: var(--font-heading), "League Spartan", ui-sans-serif, system-ui, sans-serif;
-  --font-subtitle: "Neue Machina", "League Spartan", ui-sans-serif, system-ui, sans-serif;
-  --font-body: var(--font-body), "Poppins", ui-sans-serif, system-ui, sans-serif;
-  
-  /* Ultra vibrant, electric blue color scale */
-  --color-blue-300: #7dd3fc;
-  --color-blue-400: #38bdf8;
-  --color-blue-500: #0ea5e9;
-  --color-blue-600: #0284c7;
+  --font-heading:
+    var(--font-heading), "League Spartan", ui-sans-serif, system-ui, sans-serif;
+  --font-subtitle:
+    "Neue Machina", "League Spartan", ui-sans-serif, system-ui, sans-serif;
+  --font-body:
+    var(--font-body), "Poppins", ui-sans-serif, system-ui, sans-serif;
+
+  /* Brand blue — bright, vibrant (Tailwind blue-600 base) */
+  --color-blue-300: #93c5fd;
+  --color-blue-400: #60a5fa;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
+  --color-blue-700: #1d4ed8;
 }
 
 @layer base {
   /* Apply Poppins as default body font */
   body {
-    font-family: var(--font-body), "Poppins", ui-sans-serif, system-ui, sans-serif;
+    font-family:
+      var(--font-body), "Poppins", ui-sans-serif, system-ui, sans-serif;
   }
-  
+
   /* Force Neue Machina font loading */
   @font-face {
-    font-family: 'Neue Machina Fallback';
-    src: local('Neue Machina');
+    font-family: "Neue Machina Fallback";
+    src: local("Neue Machina");
   }
 }
 
 @layer utilities {
   .font-heading {
-    font-family: var(--font-heading), "League Spartan", ui-sans-serif, system-ui, sans-serif !important;
+    font-family:
+      var(--font-heading), "League Spartan", ui-sans-serif, system-ui,
+      sans-serif !important;
     font-weight: 900 !important;
     letter-spacing: -0.02em;
   }
-  
+
   .font-subtitle {
-    font-family: "Neue Machina", ui-sans-serif, system-ui, sans-serif !important;
+    font-family:
+      "Neue Machina", ui-sans-serif, system-ui, sans-serif !important;
     font-weight: 400 !important;
     letter-spacing: -0.01em;
     font-feature-settings: "ss01", "ss02";
   }
-  
+
   .font-body {
-    font-family: var(--font-body), "Poppins", ui-sans-serif, system-ui, sans-serif !important;
+    font-family:
+      var(--font-body), "Poppins", ui-sans-serif, system-ui, sans-serif !important;
   }
 }
 
@@ -240,11 +249,15 @@
   }
 
   /* Inputs, selects, textareas */
-  input, select, textarea {
+  input,
+  select,
+  textarea {
     color: var(--text-primary);
     background-color: var(--surface);
   }
-  input:focus, select:focus, textarea:focus {
+  input:focus,
+  select:focus,
+  textarea:focus {
     border-color: var(--primary) !important;
     box-shadow: var(--focus-ring) !important;
     outline: none !important;
@@ -259,7 +272,7 @@
     background-color: var(--surface);
     color: var(--text-primary);
   }
-  
+
   ::selection {
     background-color: var(--primary) !important;
     color: var(--primary-foreground) !important;
@@ -291,13 +304,14 @@
   }
 }
 
-
 /* ── Theme-safe select options ─────────────────────────────── */
-select, select option {
+select,
+select option {
   background-color: var(--surface);
   color: var(--text-primary);
 }
-html.dark select, html.dark select option {
+html.dark select,
+html.dark select option {
   background-color: var(--surface);
   color: var(--text-primary);
 }
@@ -348,71 +362,116 @@ html.dark .modal-bg {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 [data-sonner-toaster] {
-  font-family: var(--font-body), "Poppins", ui-sans-serif, system-ui, sans-serif !important;
+  font-family:
+    var(--font-body), "Poppins", ui-sans-serif, system-ui, sans-serif !important;
 }
 
 [data-sonner-toast] {
   @apply rounded-xl border backdrop-blur-xl;
   padding: 16px 20px !important;
   gap: 12px !important;
-  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05) !important;
+  box-shadow:
+    0 10px 40px -10px rgba(0, 0, 0, 0.15),
+    0 0 0 1px rgba(0, 0, 0, 0.05) !important;
   transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
 [data-sonner-toast]:hover {
   transform: translateY(-2px);
-  box-shadow: 0 12px 48px -12px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.08) !important;
+  box-shadow:
+    0 12px 48px -12px rgba(0, 0, 0, 0.2),
+    0 0 0 1px rgba(0, 0, 0, 0.08) !important;
 }
 
 /* Light mode toast backgrounds */
 [data-sonner-toast][data-type="success"] {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.95) 0%, rgba(5, 150, 105, 0.95) 100%) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(16, 185, 129, 0.95) 0%,
+    rgba(5, 150, 105, 0.95) 100%
+  ) !important;
   border-color: rgba(16, 185, 129, 0.3) !important;
 }
 
 [data-sonner-toast][data-type="error"] {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.95) 0%, rgba(220, 38, 38, 0.95) 100%) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(239, 68, 68, 0.95) 0%,
+    rgba(220, 38, 38, 0.95) 100%
+  ) !important;
   border-color: rgba(239, 68, 68, 0.3) !important;
 }
 
 [data-sonner-toast][data-type="warning"] {
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.95) 0%, rgba(217, 119, 6, 0.95) 100%) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(245, 158, 11, 0.95) 0%,
+    rgba(217, 119, 6, 0.95) 100%
+  ) !important;
   border-color: rgba(245, 158, 11, 0.3) !important;
 }
 
 [data-sonner-toast][data-type="info"] {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.95) 0%, rgba(37, 99, 235, 0.95) 100%) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(59, 130, 246, 0.95) 0%,
+    rgba(37, 99, 235, 0.95) 100%
+  ) !important;
   border-color: rgba(59, 130, 246, 0.3) !important;
 }
 
 [data-sonner-toast]:not([data-type]) {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.98) 100%) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(248, 250, 252, 0.98) 100%
+  ) !important;
   border-color: rgba(226, 232, 240, 0.5) !important;
 }
 
 /* Dark mode toast backgrounds */
 .dark [data-sonner-toast][data-type="success"] {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(5, 150, 105, 0.15) 100%) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(16, 185, 129, 0.15) 0%,
+    rgba(5, 150, 105, 0.15) 100%
+  ) !important;
   border-color: rgba(16, 185, 129, 0.3) !important;
 }
 
 .dark [data-sonner-toast][data-type="error"] {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(220, 38, 38, 0.15) 100%) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(239, 68, 68, 0.15) 0%,
+    rgba(220, 38, 38, 0.15) 100%
+  ) !important;
   border-color: rgba(239, 68, 68, 0.3) !important;
 }
 
 .dark [data-sonner-toast][data-type="warning"] {
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(217, 119, 6, 0.15) 100%) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(245, 158, 11, 0.15) 0%,
+    rgba(217, 119, 6, 0.15) 100%
+  ) !important;
   border-color: rgba(245, 158, 11, 0.3) !important;
 }
 
 .dark [data-sonner-toast][data-type="info"] {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(37, 99, 235, 0.15) 100%) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(59, 130, 246, 0.15) 0%,
+    rgba(37, 99, 235, 0.15) 100%
+  ) !important;
   border-color: rgba(59, 130, 246, 0.3) !important;
 }
 
 .dark [data-sonner-toast]:not([data-type]) {
-  background: linear-gradient(135deg, rgba(18, 24, 38, 0.95) 0%, rgba(15, 23, 42, 0.95) 100%) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(18, 24, 38, 0.95) 0%,
+    rgba(15, 23, 42, 0.95) 100%
+  ) !important;
   border-color: rgba(255, 255, 255, 0.1) !important;
 }
 

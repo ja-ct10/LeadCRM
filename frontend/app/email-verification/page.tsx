@@ -9,7 +9,7 @@ function EmailVerificationPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const email = searchParams.get('email') || '';
-  
+
   const navigate = (path: string) => {
     if (path === 'login') return router.push('/login');
     if (path === 'register') return router.push('/register');
@@ -18,11 +18,10 @@ function EmailVerificationPageContent() {
   };
 
   if (!email) {
-    // Redirect to register if no email provided
     router.push('/register');
     return null;
   }
-  
+
   return <EmailVerificationPage email={email} onNavigate={navigate} />;
 }
 
