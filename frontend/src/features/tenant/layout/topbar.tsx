@@ -1,12 +1,16 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Menu, Bell, Mail, Sun, Moon, Search, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
+import { useNotifications } from '@/features/tenant/notifications/hooks/use-notifications';
 import { useTheme } from '@/shared/hooks/use-theme';
 import { getGmailStatus, fetchGmailEmails } from '@/features/tenant/inbox/services/gmail.service';
 import { useLayout, NAV_ITEMS } from './use-layout';
+import { useRouter } from 'next/navigation';
+import NotificationsDropdown from '@/features/tenant/notifications/ui/notifications-dropdown';
+import { cn } from '@/lib/utils';
 
 interface TopbarProps {
   onOpenSidebar: () => void;
@@ -16,13 +20,18 @@ interface TopbarProps {
 export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps) {
   const { user, switchRole } = useAuth();
   const { resetDemoData, roles } = useData();
+  const { unreadCount: notificationCount } = useNotifications();
   const { theme, toggleTheme, isDark } = useTheme();
   const { currentPath } = useLayout();
   const [inboxCount, setInboxCount] = useState(0);
-  const [searchOpen, setSearchOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const notificationButtonRef = useRef<HTMLButtonElement>(null!);
+  const router = useRouter();
 
   // Get current module name from navigation
-  const currentModule = NAV_ITEMS.find(item => item.path === currentPath)?.name || 'Dashboard';
+  const currentModule = NAV_ITEMS.find(item => item.path === currentPath)?.name || 
+    (currentPath === 'notifications' ? 'Notifications' : 
+     currentPath === 'inbox' ? 'Messages' : 'Dashboard');
 
   // Fetch unread email count for badge
   useEffect(() => {
@@ -75,7 +84,6 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps) {
             type="text"
             placeholder="Search contacts, deals, campaigns..."
             className="w-full h-9 pl-9 pr-3 rounded-lg border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 dark:focus:border-blue-400 transition-all"
-            onFocus={() => setSearchOpen(true)}
           />
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
         </div>
@@ -122,7 +130,12 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps) {
         {/* Inbox */}
         <button 
           onClick={onOpenInbox}
-          className="relative p-2 transition-all rounded-lg cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-950/40 text-blue-600 dark:text-blue-400 active:scale-95"
+          className={cn(
+            "relative p-2 transition-all rounded-lg cursor-pointer active:scale-95",
+            currentPath === 'inbox'
+              ? "bg-blue-100 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400"
+              : "hover:bg-blue-50 dark:hover:bg-blue-950/40 text-blue-600 dark:text-blue-400"
+          )}
           title="Open Inbox"
           aria-label="Open Inbox"
         >
@@ -135,11 +148,32 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps) {
         </button>
 
         {/* Notifications */}
-        <button className="relative p-2 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-all rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer active:scale-95">
+        <button 
+          ref={notificationButtonRef}
+          onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+          className={cn(
+            "relative p-2 transition-all rounded-lg cursor-pointer active:scale-95",
+            isNotificationsOpen || currentPath === 'notifications'
+              ? "bg-blue-100 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400"
+              : "text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800"
+          )}
+          aria-label="Notifications"
+          aria-expanded={isNotificationsOpen}
+          aria-haspopup="dialog"
+        >
           <Bell size={16} />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-blue-500" />
+          {notificationCount > 0 && (
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-blue-500" aria-label={`${notificationCount} unread notifications`} />
+          )}
         </button>
       </div>
+
+      {/* Notifications Dropdown */}
+      <NotificationsDropdown
+        isOpen={isNotificationsOpen}
+        onClose={() => setIsNotificationsOpen(false)}
+        triggerRef={notificationButtonRef}
+      />
     </header>
   );
 }

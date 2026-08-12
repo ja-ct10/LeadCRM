@@ -29,10 +29,10 @@ export default function CrmLayout({ children }: { children: React.ReactNode }) {
     } catch { /* noop */ }
   }, []);
 
-  // Sync dark/light theme to this container (not <html>)
+  // Sync theme to this container on mount (useTheme hook handles updates via themechange event)
   useEffect(() => {
-    const saved = localStorage.getItem('app_theme');
     if (containerRef.current) {
+      const saved = localStorage.getItem('app_theme');
       if (saved === 'Dark') {
         containerRef.current.classList.add('dark');
       } else {
@@ -40,10 +40,11 @@ export default function CrmLayout({ children }: { children: React.ReactNode }) {
       }
     }
 
-    const handleThemeChange = () => {
-      const current = localStorage.getItem('app_theme');
+    // Listen for theme changes from useTheme hook
+    const handleThemeChange = (e: Event) => {
+      const customEvent = e as CustomEvent<{ theme: 'Light' | 'Dark' }>;
       if (containerRef.current) {
-        if (current === 'Dark') {
+        if (customEvent.detail?.theme === 'Dark') {
           containerRef.current.classList.add('dark');
         } else {
           containerRef.current.classList.remove('dark');
@@ -64,7 +65,7 @@ export default function CrmLayout({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div ref={containerRef} data-theme-container className="flex h-screen overflow-hidden bg-slate-50 dark:bg-[#030712]">
+    <div ref={containerRef} data-theme-container className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
       <SidebarNav
         sidebarOpen={sidebarOpen}
         onCloseSidebar={() => setSidebarOpen(false)}

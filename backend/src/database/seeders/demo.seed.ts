@@ -212,6 +212,15 @@ export async function seedDemoAccounts(): Promise<void> {
     }
   }
   
+  // ── Seed Notifications ──────────────────────────────────────────────────
+  // Import notifications seed dynamically to avoid circular dependencies
+  try {
+    const { seedNotifications } = await import('./notifications.seed');
+    await seedNotifications();
+  } catch (error) {
+    console.error('[Seed] Failed to seed notifications:', error);
+  }
+
   console.log('[Seed] Demo accounts seeded successfully.');
 }
 

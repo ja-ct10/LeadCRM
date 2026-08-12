@@ -117,41 +117,41 @@
 
 .dark {
   /* ── Backgrounds ─────────────────────────────────────────────────────── */
-  --background: #080616;
-  --surface: #121826;
-  --surface-secondary: #1a1953;
+  --background: #020617;        /* slate-950 — deep, neutral dark */
+  --surface: #0f172a;           /* slate-900 — cards, panels */
+  --surface-secondary: #1e293b; /* slate-800 — elevated surfaces */
 
   /* ── Brand ───────────────────────────────────────────────────────────── */
-  --primary: #2f2fe4;
-  --primary-dark: #162e93;
-  --primary-hover: #4545e8;
-  --primary-foreground: #f8fafc;
+  --primary: #3b82f6;           /* blue-500 — bright, accessible */
+  --primary-dark: #1d4ed8;      /* blue-700 — deeper variant */
+  --primary-hover: #2563eb;     /* blue-600 — hover state */
+  --primary-foreground: #ffffff;
 
   /* ── Neutrals ────────────────────────────────────────────────────────── */
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-tertiary: #64748b;
-  --border: #27324a;
-  --border-subtle: #1e293b;
+  --text-primary: #f1f5f9;      /* slate-100 — high contrast text */
+  --text-secondary: #cbd5e1;    /* slate-300 — secondary text */
+  --text-tertiary: #94a3b8;     /* slate-400 — tertiary text */
+  --border: #334155;            /* slate-700 — visible borders */
+  --border-subtle: #1e293b;     /* slate-800 — subtle dividers */
 
   /* ── Semantic (adjusted for dark) ────────────────────────────────────── */
-  --success: #34d399;
-  --success-bg: rgba(52, 211, 153, 0.1);
-  --warning: #fbbf24;
-  --warning-bg: rgba(251, 191, 36, 0.1);
-  --error: #f87171;
-  --error-bg: rgba(248, 113, 113, 0.1);
-  --info: #60a5fa;
-  --info-bg: rgba(96, 165, 250, 0.1);
+  --success: #10b981;           /* emerald-500 */
+  --success-bg: rgba(16, 185, 129, 0.1);
+  --warning: #f59e0b;           /* amber-500 */
+  --warning-bg: rgba(245, 158, 11, 0.1);
+  --error: #ef4444;             /* red-500 */
+  --error-bg: rgba(239, 68, 68, 0.1);
+  --info: #3b82f6;              /* blue-500 */
+  --info-bg: rgba(59, 130, 246, 0.1);
 
   /* ── Shadows ─────────────────────────────────────────────────────────── */
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.3);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.3);
-  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.35);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.5);
 
   /* ── Focus Ring ──────────────────────────────────────────────────────── */
-  --focus-ring: 0 0 0 3px rgba(47, 47, 228, 0.3);
+  --focus-ring: 0 0 0 3px rgba(59, 130, 246, 0.3);
 }
 
 /* React Grid Layout Styles */
@@ -241,9 +241,9 @@
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 
-  /* Dark theme base — applied when html.dark */
-  html.dark,
-  html.dark body {
+  /* Dark theme base — applied when .dark ancestor exists */
+  .dark,
+  .dark body {
     background-color: var(--background);
     color: var(--text-primary);
   }
@@ -263,12 +263,12 @@
     outline: none !important;
   }
 
-  /* Light mode: select option readable */
+  /* Select options */
   select option {
     background-color: var(--surface);
     color: var(--text-primary);
   }
-  html.dark select option {
+  .dark select option {
     background-color: var(--surface);
     color: var(--text-primary);
   }
@@ -310,8 +310,8 @@ select option {
   background-color: var(--surface);
   color: var(--text-primary);
 }
-html.dark select,
-html.dark select option {
+.dark select,
+.dark select option {
   background-color: var(--surface);
   color: var(--text-primary);
 }
@@ -320,7 +320,7 @@ html.dark select option {
 .modal-bg {
   background-color: var(--surface);
 }
-html.dark .modal-bg {
+.dark .modal-bg {
   background-color: var(--surface);
 }
 

@@ -4,21 +4,23 @@ import { useEffect, useState, useCallback } from 'react';
 type Theme = 'Light' | 'Dark';
 
 const THEME_KEY = 'app_theme';
-const THEME_CONTAINER_ATTR = 'data-theme';
 
 /**
  * Manages dark/light theme for the tenant CRM area only.
  * Applies the `dark` class to the nearest ancestor element with
  * [data-theme-container] instead of <html>, so public pages are unaffected.
+ * 
+ * Default: Light mode
  */
 export function useTheme() {
-  const [theme, setTheme] = useState<Theme>('Light');
-
-  useEffect(() => {
-    const saved = localStorage.getItem(THEME_KEY) as Theme | null;
-    const initial = saved === 'Dark' ? 'Dark' : 'Light';
-    setTheme(initial);
-  }, []);
+  // Initialize immediately from localStorage to prevent flicker
+  const [theme, setTheme] = useState<Theme>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(THEME_KEY) as Theme | null;
+      return saved === 'Dark' ? 'Dark' : 'Light';
+    }
+    return 'Light';
+  });
 
   const applyTheme = useCallback((next: Theme) => {
     // Apply dark class on the CRM container, not <html>
@@ -30,10 +32,11 @@ export function useTheme() {
         container.classList.remove('dark');
       }
     }
-    window.dispatchEvent(new Event('themechange'));
+    // Dispatch event for any listeners (CrmLayout)
+    window.dispatchEvent(new CustomEvent('themechange', { detail: { theme: next } }));
   }, []);
 
-  // Apply on mount and when theme changes
+  // Apply theme on mount and when it changes
   useEffect(() => {
     applyTheme(theme);
   }, [theme, applyTheme]);
@@ -42,8 +45,7 @@ export function useTheme() {
     const next: Theme = theme === 'Light' ? 'Dark' : 'Light';
     setTheme(next);
     localStorage.setItem(THEME_KEY, next);
-    applyTheme(next);
-  }, [theme, applyTheme]);
+  }, [theme]);
 
   const isDark = theme === 'Dark';
 

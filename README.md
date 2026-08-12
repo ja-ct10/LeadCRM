@@ -25,17 +25,21 @@ Built upon a modern **Turborepo monorepo** architecture powered by Next.js 15 (A
 ## 🎯 Mission, Vision & Core Objectives
 
 ### Mission
+
 To empower growing IT service providers, MSPs, security agencies, and telecom firms with an enterprise-grade, automated CRM ecosystem that streamlines sales pipelines, automates repetitive operational workflows, and eliminates cross-departmental data silos.
 
 ### Vision
+
 To become the benchmark open-architecture CRM and workflow automation platform for technology service enterprises, delivering seamless scalability, strict multi-tenant security, and real-time operational intelligence.
 
 ### Core Objectives
 
 #### General Objective
+
 Design, develop, and deploy a secure, high-performance multi-tenant CRM and workflow automation platform capable of managing complex enterprise customer lifecycles from lead capture to invoice settlement.
 
 #### Specific Objectives
+
 1. **Automated Pipeline Management**: Implement Kanban, table, and list pipeline views with automated stage progression, aging metrics, and revenue forecasting.
 2. **Event-Driven Workflow Automation**: Engineer a visual Trigger → Condition → Action workflow builder capable of automated deal assignments, task dispatch, email notifications, and SLA escalations.
 3. **Dual-Portal Isolation**: Enforce physical and logical architectural separation between client tenant operations and platform operator administration.
@@ -47,14 +51,18 @@ Design, develop, and deploy a secure, high-performance multi-tenant CRM and work
 ## 💡 Problem Statement & Proposed Solution
 
 ### The Problem
+
 Small-to-medium IT solutions providers, security agencies, and telecom firms frequently struggle with fragmented software stacks:
+
 - **Disjointed Tools**: Using separate tools for lead tracking, task management, email marketing, and technician service dispatches leading to lost context.
 - **Manual Overhead**: Sales reps waste hours manually assigning leads, updating pipeline stages, sending follow-up emails, and logging service orders.
 - **Lack of Visibility**: Managers lack real-time visibility into deal velocity, sales rep leaderboards, campaign attribution, and technician job completion rates.
 - **Data Security Concerns**: Multi-tenant data leakage risks when using poorly isolated systems or single-tenant legacy tools.
 
 ### The Proposed Solution
+
 LeadCRM solves these challenges by providing a single, unified platform:
+
 - **Unified Operational Hub**: Consolidates CRM, marketing automation, service order management, asset tracking, and billing in one platform.
 - **Rule-Based Automation Engine**: Automates lead scoring, deal assignment, follow-ups, and service order creation via visual workflow rules.
 - **Multi-Tenant Data Isolation**: Ensures database-level `tenantId` query scoping and strict JWT authorization across every request.
@@ -65,31 +73,38 @@ LeadCRM solves these challenges by providing a single, unified platform:
 ## 🚀 Key Modules & Feature Highlights
 
 ### 1. 🏢 Tenant CRM Portal (`(tenant)`)
+
 - **Contacts & Companies**: Full customer profiles, demographic details, communication logs, and customer journey timeline tracking.
 - **Deals & Pipeline Engine**: Interactive Kanban board (via `@dnd-kit`), table, and list views. Supports multi-pipeline switching, 14-filter search system, stage history trail, deal aging, and probability forecasting.
 - **Unified Deal Details Drawer**: Reusable 7-tab drawer (`Overview`, `Activities`, `Tasks`, `Emails`, `Files`, `History`, `Automation`) with inline task creation and stage change audit trail.
 - **Task Management**: Multi-view Taskboard (Kanban / Table), priority flags, overdue badges, user assignment, and `TaskDetailsDrawer`.
 
 ### 2. ⚡ Workflow Automation Engine
+
 - **Visual Workflow Builder**: Full-screen canvas builder to construct custom automation trees using `Trigger → Condition → Action` logic.
-- **Recipe Templates**: Pre-configured workflow recipes for instant activation (e.g., *Stale Deal Escalation*, *New Lead Auto-Assignment*, *High-Value Deal Alert*).
+- **Recipe Templates**: Pre-configured workflow recipes for instant activation (e.g., _Stale Deal Escalation_, _New Lead Auto-Assignment_, _High-Value Deal Alert_).
 - **Execution Log Inspector**: Real-time modal inspecting execution history, trigger inputs, step outcomes, and error tracebacks.
 
 ### 3. 📢 Marketing & Campaigns
+
 - **Multi-Channel Campaigns**: Email and SMS campaign creation, target audience condition builder, and template library.
 - **Campaign Performance Analytics**: Real-time delivery, open rate, click-through rate, and lead attribution tracking via interactive charts.
 
 ### 4. 🛠️ Operations & Field Services
+
 - **Service Orders & Technician Dashboard**: Field service order tracking, technician assignment, job status updates, and mobile-friendly task interfaces.
 - **Asset & Inventory Management**: Tracking hardware assets, stock levels, equipment locations, and serial numbers tied to client accounts.
 
 ### 5. 📊 Reporting & Analytics
+
 - **Executive Dashboards**: Real-time KPI summary widgets, revenue trends, pipeline distribution charts, lead attribution breakdowns, and sales rep leaderboards powered by Chart.js.
 
 ### 6. 💳 Billing & Subscriptions
+
 - **Contracts & Invoices**: Invoice generation, contract tracking, payment method management, and PayMongo payment gateway integration hooks.
 
 ### 7. 🛡️ System Administration (`(system-admin)`)
+
 - **System Admin Console**: Operator-level multi-tenant management (`/admin/dashboard`, `/admin/clients`, `/admin/billing`, `/admin/pricing`, `/admin/environments`).
 - **Tenant Management**: Provisioning client accounts, monitoring active environments, adjusting subscription plans, and managing global system pricing.
 - **RBAC & Security Audit**: Configurable module permissions (`contacts`, `deals`, `workflows`, `marketing`, etc.) and system-wide immutable audit logging.
@@ -100,33 +115,33 @@ LeadCRM solves these challenges by providing a single, unified platform:
 
 LeadCRM enforces strict visual standards and reusable navigation primitives across all modules:
 
-| Component | Path | Description |
-|---|---|---|
-| **`BackButton`** | [`frontend/src/shared/components/ui/BackButton.tsx`](./frontend/src/shared/components/ui/BackButton.tsx) | Accessible navigation back button with `ChevronLeft` icon, custom labels, hover states, router fallback, and glassmorphism styling. |
+| Component              | Path                                                                                                                 | Description                                                                                                                                      |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **`BackButton`**       | [`frontend/src/shared/components/ui/BackButton.tsx`](./frontend/src/shared/components/ui/BackButton.tsx)             | Accessible navigation back button with `ChevronLeft` icon, custom labels, hover states, router fallback, and glassmorphism styling.              |
 | **`ModalCloseButton`** | [`frontend/src/shared/components/ui/ModalCloseButton.tsx`](./frontend/src/shared/components/ui/ModalCloseButton.tsx) | Standardized `X` close button component for modals, side sheets, and drawers, ensuring consistent sizing, aria-labels, and keyboard interaction. |
-| **`PageHeader`** | [`frontend/src/shared/components/ui/PageHeader.tsx`](./frontend/src/shared/components/ui/PageHeader.tsx) | Unified page header container supporting title, subtitle description, optional embedded `BackButton`, status badges, and action buttons. |
-| **`SlidingDrawer`** | [`frontend/src/shared/components/SlidingDrawer.tsx`](./frontend/src/shared/components/SlidingDrawer.tsx) | Animated side drawer container (via `motion/react`) with backdrop blur overlay, ESC key handlers, and `ModalCloseButton`. |
-| **`SideSheet`** | [`frontend/src/shared/components/SideSheet.tsx`](./frontend/src/shared/components/SideSheet.tsx) | Standard right-side slide-out panel for quick details and contextual editing. |
+| **`PageHeader`**       | [`frontend/src/shared/components/ui/PageHeader.tsx`](./frontend/src/shared/components/ui/PageHeader.tsx)             | Unified page header container supporting title, subtitle description, optional embedded `BackButton`, status badges, and action buttons.         |
+| **`SlidingDrawer`**    | [`frontend/src/shared/components/SlidingDrawer.tsx`](./frontend/src/shared/components/SlidingDrawer.tsx)             | Animated side drawer container (via `motion/react`) with backdrop blur overlay, ESC key handlers, and `ModalCloseButton`.                        |
+| **`SideSheet`**        | [`frontend/src/shared/components/SideSheet.tsx`](./frontend/src/shared/components/SideSheet.tsx)                     | Standard right-side slide-out panel for quick details and contextual editing.                                                                    |
 
 ---
 
 ## 🛠️ Technology Stack
 
-| Layer | Technology | Version | Description |
-|---|---|---|---|
-| **Monorepo Framework** | Turborepo | `v2.x` | High-performance build system & workspace runner |
-| **Frontend Framework** | Next.js (App Router) | `v15.5` | React 19 framework with SSR/SSG & Client SPA capabilities |
-| **Language** | TypeScript | `v5.8` | Strict type safety across frontend, backend, and shared packages |
-| **Styling** | Tailwind CSS | `v4.x` | Modern utility-first CSS framework with native CSS `@import` |
-| **UI Components** | ShadCN UI / Radix | Latest | Accessible, unstyled primitive components |
-| **Animations** | Motion (`motion/react`) | `v12.x` | Smooth layout transitions and hardware-accelerated animations |
-| **Drag and Drop** | `@dnd-kit` | `v6.x` | Modern drag-and-drop toolkit for Kanban pipeline boards |
-| **Charts & Graphs** | Chart.js / `react-chartjs-2` | `v4.x` | Canvas-based analytics and metric visualization |
-| **Toasts** | Sonner | `v2.x` | Stackable, custom-styled toast notification system |
-| **Backend API** | Node.js / Express.js | `v4.x` | Modular REST API server handling 85+ route endpoints |
-| **ORM & Database** | Prisma ORM / PostgreSQL | `v5.x` / `16+` | Type-safe query engine and relational database |
-| **Authentication** | JWT + HttpOnly Cookies | Standard | Secure stateless sessions with automatic cookie storage |
-| **Integrations** | PayMongo / Gmail API | — | Payment processing and email integration |
+| Layer                  | Technology                   | Version        | Description                                                      |
+| ---------------------- | ---------------------------- | -------------- | ---------------------------------------------------------------- |
+| **Monorepo Framework** | Turborepo                    | `v2.x`         | High-performance build system & workspace runner                 |
+| **Frontend Framework** | Next.js (App Router)         | `v15.5`        | React 19 framework with SSR/SSG & Client SPA capabilities        |
+| **Language**           | TypeScript                   | `v5.8`         | Strict type safety across frontend, backend, and shared packages |
+| **Styling**            | Tailwind CSS                 | `v4.x`         | Modern utility-first CSS framework with native CSS `@import`     |
+| **UI Components**      | ShadCN UI / Radix            | Latest         | Accessible, unstyled primitive components                        |
+| **Animations**         | Motion (`motion/react`)      | `v12.x`        | Smooth layout transitions and hardware-accelerated animations    |
+| **Drag and Drop**      | `@dnd-kit`                   | `v6.x`         | Modern drag-and-drop toolkit for Kanban pipeline boards          |
+| **Charts & Graphs**    | Chart.js / `react-chartjs-2` | `v4.x`         | Canvas-based analytics and metric visualization                  |
+| **Toasts**             | Sonner                       | `v2.x`         | Stackable, custom-styled toast notification system               |
+| **Backend API**        | Node.js / Express.js         | `v4.x`         | Modular REST API server handling 85+ route endpoints             |
+| **ORM & Database**     | Prisma ORM / PostgreSQL      | `v5.x` / `16+` | Type-safe query engine and relational database                   |
+| **Authentication**     | JWT + HttpOnly Cookies       | Standard       | Secure stateless sessions with automatic cookie storage          |
+| **Integrations**       | PayMongo / Gmail API         | —              | Payment processing and email integration                         |
 
 ---
 
@@ -172,7 +187,9 @@ LeadCRM enforces strict visual standards and reusable navigation primitives acro
 ```
 
 ### Data Layer Modes (`NEXT_PUBLIC_USE_MOCK_DATA`)
+
 LeadCRM frontend features a dual-mode data layer configured via `frontend/.env.local`:
+
 - **Mock Mode (`NEXT_PUBLIC_USE_MOCK_DATA=true`)**: Runs the frontend standalone with rich mock data persisted in `localStorage`. Ideal for client demos, UI development, and offline evaluation.
 - **Live API Mode (`NEXT_PUBLIC_USE_MOCK_DATA=false`)**: Connects seamlessly to the Express.js API (`http://localhost:4000/api/v1`) backed by PostgreSQL.
 
@@ -233,12 +250,12 @@ leadcrm/                                 ← Monorepo Root (Turborepo)
 
 ### Prerequisites
 
-| Requirement | Required Version | Verification Command |
-|---|---|---|
-| **Node.js** | `v20.0.0` or higher | `node --version` |
-| **npm** | `v9.0.0` or higher | `npm --version` |
-| **PostgreSQL** | `v16.0` or higher | `psql --version` |
-| **Git** | Any modern version | `git --version` |
+| Requirement    | Required Version    | Verification Command |
+| -------------- | ------------------- | -------------------- |
+| **Node.js**    | `v20.0.0` or higher | `node --version`     |
+| **npm**        | `v9.0.0` or higher  | `npm --version`      |
+| **PostgreSQL** | `v16.0` or higher   | `psql --version`     |
+| **Git**        | Any modern version  | `git --version`      |
 
 > [!IMPORTANT]
 > Always execute `npm` commands from the **monorepo root** directory (`OWN-CRM-1`). npm workspaces hoist dependencies automatically.
@@ -248,12 +265,14 @@ leadcrm/                                 ← Monorepo Root (Turborepo)
 ### Step-by-Step Setup
 
 #### 1. Clone the Repository
+
 ```bash
 git clone https://github.com/reymarkjpanes/OWN-CRM-1.git
 cd OWN-CRM-1
 ```
 
 #### 2. Install Workspace Dependencies
+
 ```bash
 # Installs dependencies for frontend, backend, and shared packages in one step
 npm install
@@ -262,11 +281,13 @@ npm install
 #### 3. Configure Environment Variables
 
 **Backend (`backend/.env`):**
+
 ```bash
 cp backend/.env.example backend/.env
 ```
 
 Ensure `backend/.env` contains your PostgreSQL credentials:
+
 ```env
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/leadcrm_dev?schema=public"
 JWT_SECRET="leadcrm_super_secret_jwt_key_min_32_characters_long"
@@ -278,6 +299,7 @@ SYSTEM_ADMIN_PASSWORD="admin123_secure_password"
 ```
 
 **Frontend (`frontend/.env.local`):**
+
 ```bash
 # Create frontend/.env.local
 echo "NEXT_PUBLIC_API_URL=http://localhost:4000/api/v1" > frontend/.env.local
@@ -288,6 +310,7 @@ echo "NEXT_PUBLIC_USE_MOCK_DATA=false" >> frontend/.env.local
 > Set `NEXT_PUBLIC_USE_MOCK_DATA=false` to connect to the Express API and use the PostgreSQL database (Recommended for full-stack). Set to `true` to run the frontend independently using localStorage data (no backend required).
 
 #### 4. Initialize Database & Run Seed
+
 ```bash
 cd backend
 
@@ -309,6 +332,7 @@ cd ..
 ```
 
 #### 5. Launch Development Servers
+
 ```bash
 # From monorepo root — runs frontend (port 3000) and backend (port 4000) in parallel via Turborepo
 npm run dev
@@ -318,27 +342,28 @@ npm run dev
 
 ## 🌐 Application Access & Port Reference
 
-| Component | URL / Endpoint | Target Audience / Credentials |
-|---|---|---|
-| **Tenant CRM Portal** | `http://localhost:3000` | Client Admins, Sales Reps, Viewers, Technicians |
-| **System Admin Console** | `http://localhost:3000/admin` | System Admin Operators (`admin@leadcrm.io`) |
-| **Backend REST API** | `http://localhost:4000/api/v1` | Developer API Endpoints |
-| **Prisma Studio** | `http://localhost:5555` | Database Inspection UI (`npx prisma studio` in `backend/`) |
+| Component                | URL / Endpoint                 | Target Audience / Credentials                              |
+| ------------------------ | ------------------------------ | ---------------------------------------------------------- |
+| **Tenant CRM Portal**    | `http://localhost:3000`        | Client Admins, Sales Reps, Viewers, Technicians            |
+| **System Admin Console** | `http://localhost:3000/admin`  | System Admin Operators (`admin@leadcrm.io`)                |
+| **Backend REST API**     | `http://localhost:4000/api/v1` | Developer API Endpoints                                    |
+| **Prisma Studio**        | `http://localhost:5555`        | Database Inspection UI (`npx prisma studio` in `backend/`) |
 
 ### Demo Accounts (Mock Mode)
 
-| Role | Email | Password | Access Scope |
-|---|---|---|---|
-| **System Admin** | `admin@leadcrm.io` | `admin123` | Cross-tenant platform management (`/admin/*`) |
+| Role             | Email                | Password   | Access Scope                                  |
+| ---------------- | -------------------- | ---------- | --------------------------------------------- |
+| **System Admin** | `admin@leadcrm.io`   | `admin123` | Cross-tenant platform management (`/admin/*`) |
 | **Client Admin** | `client@example.com` | `password` | Full organization administration & CRM access |
-| **Sales Rep** | `rep@example.com` | `password` | Sales pipeline, contacts, deals, tasks |
-| **Viewer** | `viewer@example.com` | `password` | Read-only CRM & reporting inspection |
+| **Sales Rep**    | `rep@example.com`    | `password` | Sales pipeline, contacts, deals, tasks        |
+| **Viewer**       | `viewer@example.com` | `password` | Read-only CRM & reporting inspection          |
 
 ---
 
 ## 📱 Mobile & PWA Setup
 
 LeadCRM is fully optimized as a **Progressive Web App (PWA)**:
+
 1. Ensure your computer and mobile device are connected to the **same local Wi-Fi network**.
 2. Find your local IP address:
    - **Windows**: `ipconfig`
@@ -352,16 +377,16 @@ LeadCRM is fully optimized as a **Progressive Web App (PWA)**:
 
 LeadCRM implements module-level permission guards (`module.action`) evaluated against the authenticated user's role:
 
-| Module | Action | Client Admin | Sales Rep | Viewer | Technician | System Admin |
-|---|---|:---:|:---:|:---:|:---:|:---:|
-| **Contacts & Companies** | View / Create / Edit / Delete | ✅ | ✅ | 👁️ View Only | ❌ | ✅ Cross-Tenant |
-| **Deals & Pipelines** | Manage / Move Stages | ✅ | ✅ | 👁️ View Only | ❌ | ✅ Cross-Tenant |
-| **Tasks & Activities** | Create / Assign / Complete | ✅ | ✅ | 👁️ View Only | ✅ Assigned Only | ✅ Cross-Tenant |
-| **Workflows & Automation** | Create / Edit / Trigger | ✅ | ❌ | 👁️ View Only | ❌ | ✅ Cross-Tenant |
-| **Marketing Campaigns** | Build / Dispatch / View | ✅ | 👁️ View Only | 👁️ View Only | ❌ | ✅ Cross-Tenant |
-| **Service Orders & Assets** | Create / Dispatch / Complete | ✅ | ❌ | 👁️ View Only | ✅ Full Operations | ✅ Cross-Tenant |
-| **Invoices & Billing** | Manage / Process Payments | ✅ | ❌ | ❌ | ❌ | ✅ Platform Billing |
-| **User Administration** | Invite Users / Assign Roles | ✅ | ❌ | ❌ | ❌ | ✅ Platform Tenants |
+| Module                      | Action                        | Client Admin |  Sales Rep   |    Viewer    |     Technician     |    System Admin     |
+| --------------------------- | ----------------------------- | :----------: | :----------: | :----------: | :----------------: | :-----------------: |
+| **Contacts & Companies**    | View / Create / Edit / Delete |      ✅      |      ✅      | 👁️ View Only |         ❌         |   ✅ Cross-Tenant   |
+| **Deals & Pipelines**       | Manage / Move Stages          |      ✅      |      ✅      | 👁️ View Only |         ❌         |   ✅ Cross-Tenant   |
+| **Tasks & Activities**      | Create / Assign / Complete    |      ✅      |      ✅      | 👁️ View Only |  ✅ Assigned Only  |   ✅ Cross-Tenant   |
+| **Workflows & Automation**  | Create / Edit / Trigger       |      ✅      |      ❌      | 👁️ View Only |         ❌         |   ✅ Cross-Tenant   |
+| **Marketing Campaigns**     | Build / Dispatch / View       |      ✅      | 👁️ View Only | 👁️ View Only |         ❌         |   ✅ Cross-Tenant   |
+| **Service Orders & Assets** | Create / Dispatch / Complete  |      ✅      |      ❌      | 👁️ View Only | ✅ Full Operations |   ✅ Cross-Tenant   |
+| **Invoices & Billing**      | Manage / Process Payments     |      ✅      |      ❌      |      ❌      |         ❌         | ✅ Platform Billing |
+| **User Administration**     | Invite Users / Assign Roles   |      ✅      |      ❌      |      ❌      |         ❌         | ✅ Platform Tenants |
 
 ---
 
@@ -379,21 +404,21 @@ LeadCRM implements module-level permission guards (`module.action`) evaluated ag
 
 For detailed architectural specifications and guidelines, consult the files in [`docs/`](./docs/):
 
-| Document | Purpose |
-|---|---|
-| [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | In-depth technical architecture, state model, chart rules, and state guards |
-| [`docs/STRUCTURE.md`](./docs/STRUCTURE.md) | Exhaustive folder map, module anatomy, and file directory standards |
-| [`docs/PORTAL-SEPARATION.md`](./docs/PORTAL-SEPARATION.md) | Deep dive into physical dual-portal separation philosophy |
-| [`docs/API.md`](./docs/API.md) | Full REST API specification (85+ endpoints) |
-| [`docs/authentication.md`](./docs/authentication.md) | Authentication Architecture & NextAuth integration |
-| [`docs/user-roles.md`](./docs/user-roles.md) | Role-Based Access Control (RBAC) overview |
-| [`docs/registration-flow.md`](./docs/registration-flow.md) | Client vs. Guest Registration flows |
-| [`docs/demo-accounts.md`](./docs/demo-accounts.md) | Database seeder & demo credentials |
-| [`docs/database/erd.md`](./docs/database/erd.md) | Database Schema v2 Mermaid ERD & entity descriptions |
-| [`docs/security/permission-matrix.md`](./docs/security/permission-matrix.md) | Exhaustive RBAC permission matrix and role specifications |
-| [`docs/setup/local-dev.md`](./docs/setup/local-dev.md) | Advanced local development, debugging, and setup guide |
-| [`docs/setup/deployment.md`](./docs/setup/deployment.md) | Full production deployment guide (Vercel + Railway / Render + PostgreSQL) |
-| [`docs/setup/environment-variables.md`](./docs/setup/environment-variables.md) | Full environment variable reference table |
+| Document                                                                       | Purpose                                                                     |
+| ------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md)                               | In-depth technical architecture, state model, chart rules, and state guards |
+| [`docs/STRUCTURE.md`](./docs/STRUCTURE.md)                                     | Exhaustive folder map, module anatomy, and file directory standards         |
+| [`docs/PORTAL-SEPARATION.md`](./docs/PORTAL-SEPARATION.md)                     | Deep dive into physical dual-portal separation philosophy                   |
+| [`docs/API.md`](./docs/API.md)                                                 | Full REST API specification (85+ endpoints)                                 |
+| [`docs/authentication.md`](./docs/authentication.md)                           | Authentication Architecture & NextAuth integration                          |
+| [`docs/user-roles.md`](./docs/user-roles.md)                                   | Role-Based Access Control (RBAC) overview                                   |
+| [`docs/registration-flow.md`](./docs/registration-flow.md)                     | Client vs. Guest Registration flows                                         |
+| [`docs/demo-accounts.md`](./docs/demo-accounts.md)                             | Database seeder & demo credentials                                          |
+| [`docs/database/erd.md`](./docs/database/erd.md)                               | Database Schema v2 Mermaid ERD & entity descriptions                        |
+| [`docs/security/permission-matrix.md`](./docs/security/permission-matrix.md)   | Exhaustive RBAC permission matrix and role specifications                   |
+| [`docs/setup/local-dev.md`](./docs/setup/local-dev.md)                         | Advanced local development, debugging, and setup guide                      |
+| [`docs/setup/deployment.md`](./docs/setup/deployment.md)                       | Full production deployment guide (Vercel + Railway / Render + PostgreSQL)   |
+| [`docs/setup/environment-variables.md`](./docs/setup/environment-variables.md) | Full environment variable reference table                                   |
 
 ---
 
@@ -413,7 +438,9 @@ npm run lint
 ```
 
 ### Pre-Commit Quality Checklist
+
 Before committing or opening a pull request, run the verification loop:
+
 ```bash
 # 1. Verify TypeScript type safety across all packages (must return 0 errors)
 npx tsc --noEmit
@@ -424,23 +451,6 @@ npm run lint
 # 3. Test production build
 npm run build
 ```
-
----
-
-## 🤝 Capstone Team & Credits
-
-**LeadCRM** is developed as an academic capstone project at **STI College Global City**.
-
-### Core Development Team
-- **Reymark J. Panes** — * Core Developer, Systems Architect & Full-Stack Engineer*
-- **Mica Pauline P. Calingo** — *Backend Developer*
-- **Nicolette Lei Marc T. Cuison** — *Frontend Developer*
-- **Julie Ann C. Tiron** — *Backend Developer*
-
-### Capstone Adviser
-- **Prof. Dexter B. Oseña** — *Capstone Project Adviser, STI College Global City*
-
----
 
 ## ⚖️ License & Intellectual Property
 
