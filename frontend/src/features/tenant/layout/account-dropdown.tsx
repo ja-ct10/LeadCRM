@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React from 'react';
 import { Shield, LogOut, Check } from 'lucide-react';
@@ -6,7 +6,7 @@ import { useAuth } from '@/store/AuthContext';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface SwitchAccount {
   email: string;
@@ -24,8 +24,8 @@ interface AccountDropdownProps {
   collapsed?: boolean;
 }
 
-// ── Canonical demo accounts ───────────────────────────────────────────────────
-// Exactly 5 — matches backend seed + MOCK_USERS + DEMO_EMAILS allowlist.
+// â”€â”€ Canonical demo accounts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Exactly 5 â€” matches backend seed + MOCK_USERS + DEMO_EMAILS allowlist.
 // Passwords are the seeded values; OTP is always '000000' in DEMO_MODE.
 
 const SWITCH_ACCOUNTS: SwitchAccount[] = [
@@ -36,7 +36,7 @@ const SWITCH_ACCOUNTS: SwitchAccount[] = [
   { email: 'guest@democorp.com', password: 'guest123', label: 'Guest User',    role: 'Guest',        initials: 'GU' },
 ];
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// â”€â”€ Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function AccountDropdown({
   isOpen,
@@ -62,15 +62,15 @@ export default function AccountDropdown({
 
   const initials = `${user?.firstName?.charAt(0) ?? 'U'}${user?.lastName?.charAt(0) ?? ''}`.toUpperCase();
 
-  // ── Collapsed mode ─────────────────────────────────────────────────
+  // â”€â”€ Collapsed mode â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   if (collapsed) {
     return (
       <div className="relative flex justify-center pb-2">
         <button
           onClick={onToggle}
-          title={`${user?.firstName ?? ''} ${user?.lastName ?? ''} · ${user?.role ?? ''}`}
-          className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-[11px] cursor-pointer hover:ring-2 hover:ring-blue-400/60 transition-all"
+          title={`${user?.firstName ?? ''} ${user?.lastName ?? ''} Â· ${user?.role ?? ''}`}
+          className="w-8 h-8 rounded-full bg-gradient-to-br from-[#D94F4F] to-[#25313D] flex items-center justify-center text-white font-bold text-[11px] cursor-pointer hover:ring-2 hover:ring-[#D94F4F]/40 transition-all"
         >
           {initials}
         </button>
@@ -89,7 +89,7 @@ export default function AccountDropdown({
     );
   }
 
-  // ── Full mode ──────────────────────────────────────────────────────
+  // â”€â”€ Full mode â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   return (
     <div className="shrink-0 border-t border-gray-200 dark:border-white/[0.08] px-3 pt-2 pb-3 relative">
@@ -109,7 +109,7 @@ export default function AccountDropdown({
         onClick={onToggle}
         className="w-full flex items-center gap-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/[0.04] p-2 transition-all cursor-pointer border border-transparent active:scale-[0.98]"
       >
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-extrabold text-[11px] shrink-0">
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#D94F4F] to-[#25313D] flex items-center justify-center text-white font-extrabold text-[11px] shrink-0">
           {initials}
         </div>
         <div className="min-w-0 flex-1 text-left">
@@ -125,7 +125,7 @@ export default function AccountDropdown({
   );
 }
 
-// ── Shared inner dropdown content ─────────────────────────────────────────────
+// â”€â”€ Shared inner dropdown content â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface DropdownContentProps {
   user: ReturnType<typeof useAuth>['user'];
@@ -140,7 +140,7 @@ function DropdownContent({ user, initials, onSwitch, onLogout }: DropdownContent
       {/* Current user summary */}
       <div className="px-4 py-3 bg-slate-50/60 dark:bg-white/[0.02] border-b border-slate-100 dark:border-white/[0.05] mb-1">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-[11px] shrink-0">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#D94F4F] to-[#25313D] flex items-center justify-center text-white font-bold text-[11px] shrink-0">
             {initials}
           </div>
           <div className="min-w-0 flex-1">
@@ -174,7 +174,7 @@ function DropdownContent({ user, initials, onSwitch, onLogout }: DropdownContent
               className={cn(
                 'w-full text-left px-4 py-2 transition-colors flex items-center justify-between gap-2 cursor-pointer',
                 isCurrent
-                  ? 'bg-blue-500/5 dark:bg-blue-500/10'
+                  ? 'bg-[#D94F4F]/5 dark:bg-[#D94F4F]/10'
                   : 'hover:bg-slate-50 dark:hover:bg-white/[0.03]',
               )}
             >
@@ -182,7 +182,7 @@ function DropdownContent({ user, initials, onSwitch, onLogout }: DropdownContent
                 <div className={cn(
                   'w-7 h-7 rounded-full flex items-center justify-center font-bold text-[11px] shrink-0',
                   isCurrent
-                    ? 'bg-blue-600 text-white'
+                    ? 'bg-[#D94F4F] text-white'
                     : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300',
                 )}>
                   {acc.initials}
@@ -190,14 +190,14 @@ function DropdownContent({ user, initials, onSwitch, onLogout }: DropdownContent
                 <div className="min-w-0">
                   <p className={cn(
                     'text-xs font-semibold truncate',
-                    isCurrent ? 'text-blue-600 dark:text-blue-400' : 'text-slate-800 dark:text-slate-200',
+                    isCurrent ? 'text-[#D94F4F] dark:text-[#E05A5A]' : 'text-slate-800 dark:text-slate-200',
                   )}>
                     {acc.label}
                   </p>
                   <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">{acc.role}</p>
                 </div>
               </div>
-              {isCurrent && <Check size={12} className="text-blue-600 dark:text-blue-400 shrink-0" />}
+              {isCurrent && <Check size={12} className="text-[#D94F4F] dark:text-[#E05A5A] shrink-0" />}
             </button>
           );
         })}

@@ -33,7 +33,7 @@ const NAV_ITEMS = [
  */
 export default function AdminLayout({ children, currentPath, navigate }: AdminLayoutProps) {
   const { user, logout } = useAuth();
-  const { theme, toggleTheme } = useTheme();
+  const { mode, toggleTheme } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const handleLogout = () => {
@@ -144,9 +144,9 @@ export default function AdminLayout({ children, currentPath, navigate }: AdminLa
           <button
             onClick={toggleTheme}
             className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors rounded-full hover:bg-slate-100 dark:hover:bg-slate-800"
-            title={`Switch to ${theme === 'Light' ? 'Dark' : 'Light'} Mode`}
+            title={`Switch to ${mode === 'Light' ? 'Dark' : 'Light'} Mode`}
           >
-            {theme === 'Light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5 text-amber-400" />}
+            {mode === 'Light' || mode === 'Classic' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5 text-amber-400" />}
           </button>
         </header>
 

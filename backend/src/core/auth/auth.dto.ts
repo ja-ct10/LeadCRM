@@ -51,30 +51,17 @@ export const ResetPasswordSchema = z.object({
 export type ForgotPasswordDto = z.infer<typeof ForgotPasswordSchema>;
 export type ResetPasswordDto = z.infer<typeof ResetPasswordSchema>;
 
-export const SendOtpSchema = z.object({
-  email: z.string().email('Valid email required'),
-  password: z.string().min(1, 'Password is required'),
-});
-
-export const VerifyOtpSchema = z.object({
-  email: z.string().email('Valid email required'),
-  code: z.string().length(6, 'OTP must be 6 digits'),
-});
-
 export const SendRegistrationOtpSchema = z.object({
   email: z.string().email('Valid email required'),
 });
 
 export const VerifyRegistrationOtpSchema = z.object({
   email: z.string().email('Valid email required'),
-  code: z.string().length(6, 'OTP must be 6 digits'),
+  code: z.string().length(6, 'Verification code must be 6 digits'),
 });
 
-export type SendOtpDto = z.infer<typeof SendOtpSchema>;
-export type VerifyOtpDto = z.infer<typeof VerifyOtpSchema>;
 export type SendRegistrationOtpDto = z.infer<typeof SendRegistrationOtpSchema>;
 export type VerifyRegistrationOtpDto = z.infer<typeof VerifyRegistrationOtpSchema>;
-
 
 // ─── OAuth (Google Sign-In) ───────────────────────────────────────────────────
 // Posted by the NextAuth signIn callback to the backend bridge endpoint.

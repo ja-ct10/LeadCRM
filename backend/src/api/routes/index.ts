@@ -8,6 +8,7 @@ import administrationRoutes from './administration.routes';
 import billingRoutes from './billing.routes';
 import reportingRoutes from './reporting.routes';
 import integrationsRoutes from './integrations.routes';
+import notificationsRoutes from './notifications.routes';
 import adminRoutes from './admin.routes';
 
 const router = Router();
@@ -21,6 +22,7 @@ router.use('/administration', administrationRoutes);
 router.use('/billing', billingRoutes);
 router.use('/reporting', reportingRoutes);
 router.use('/integrations', integrationsRoutes);
+router.use('/notifications', notificationsRoutes);
 
 // ── System Admin routes (protected by systemAdminMiddleware) ──────────────────
 // /api/v1/admin/*   — all billing, subscription, and plan management

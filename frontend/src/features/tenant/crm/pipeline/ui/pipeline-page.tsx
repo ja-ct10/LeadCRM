@@ -1494,70 +1494,223 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className="h-full flex flex-col space-y-4 relative overflow-hidden"
+      className="h-full flex flex-col relative overflow-hidden"
     >
-      <div className="flex items-center gap-2 flex-wrap justify-end">
-          <TooltipProvider>
-            {/* Automation Mode toggle */}
-            <UITooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={toggleAutomatedOnly}
-                  aria-label={isAutomatedOnly ? 'Automation Mode: Active' : 'Automation Mode: Off'}
-                  className={`h-9 w-9 flex items-center justify-center rounded-md border transition-all cursor-pointer active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 ${
-                    isAutomatedOnly
-                      ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800/60 shadow-xs'
-                      : 'bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  <Shield size={14} className={isAutomatedOnly ? 'text-blue-500' : 'text-slate-400'} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {isAutomatedOnly ? 'Automation Mode: Active (Workflows)' : 'Automation Mode: Off (Manual)'}
-              </TooltipContent>
-            </UITooltip>
+      {/* ── Redesigned Header ─────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <div>
+          <h1 className="text-[28px] font-extrabold text-[#0F172A] dark:text-white tracking-tight leading-tight">
+            Deals
+          </h1>
+          <p className="text-[13px] text-[#5A6B85] dark:text-slate-400 mt-0.5">
+            One workspace for the pipeline board, deal table and weighted forecast.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Pipeline Selector */}
+          {pipelines.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] font-medium text-[#5A6B85] dark:text-slate-400">Pipeline</span>
+              <select
+                value={activePipelineId}
+                onChange={(e) => setActivePipelineId(e.target.value)}
+                className="h-9 px-3 pr-8 text-[13px] font-semibold text-[#0F172A] dark:text-white bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 cursor-pointer appearance-none"
+                style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%235A6B85\' stroke-width=\'2\'%3E%3Cpath d=\'m6 9 6 6 6-6\'/%3E%3C/svg%3E")', backgroundPosition: 'right 10px center', backgroundRepeat: 'no-repeat' }}
+              >
+                {pipelines.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
-            {canManagePipelines && (
-              <UITooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={() => setIsManagePipelinesModalOpen(true)}
-                    aria-label="Manage Pipelines"
-                    className="h-9 w-9 flex items-center justify-center text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800 active:scale-95 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
-                  >
-                    <Settings size={14} className="text-slate-500 dark:text-slate-400" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>Manage Pipelines</TooltipContent>
-              </UITooltip>
-            )}
+          {/* Manage Pipelines */}
+          {canManagePipelines && (
+            <button
+              onClick={() => setIsManagePipelinesModalOpen(true)}
+              aria-label="Manage Pipelines"
+              className="h-9 w-9 flex items-center justify-center text-[#5A6B85] dark:text-slate-400 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+            >
+              <Settings size={15} />
+            </button>
+          )}
 
-            {canCreateDeal && activePipeline && (
-              <UITooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={() => {
-                      setNewDeal({ ...newDeal, stageId: activePipeline?.stages?.[0]?.id || '' });
-                      setDealTitleTouched(false);
-                      setDealValueTouched(false);
-                      setIsModalOpen(true);
-                    }}
-                    aria-label="Add Deal/Ticket"
-                    className="h-9 w-9 flex items-center justify-center bg-blue-600 text-white rounded-md hover:bg-blue-700 active:scale-95 transition-all shadow-xs cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
-                  >
-                    <Plus size={15} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>Add Deal/Ticket</TooltipContent>
-              </UITooltip>
-            )}
-          </TooltipProvider>
+          {/* Import */}
+          <button className="inline-flex items-center gap-1.5 h-9 px-3.5 text-[13px] font-medium text-[#0F172A] dark:text-slate-200 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+            Import
+          </button>
+
+          {/* New Deal */}
+          {canCreateDeal && activePipeline && (
+            <button
+              onClick={() => {
+                setNewDeal({ ...newDeal, stageId: activePipeline?.stages?.[0]?.id || '' });
+                setDealTitleTouched(false);
+                setDealValueTouched(false);
+                setIsModalOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-semibold text-white bg-[#2563EB] hover:bg-[#1D4ED8] rounded-lg transition-colors shadow-sm"
+            >
+              <Plus size={14} /> New Deal
+              <ChevronDown size={13} className="ml-0.5 opacity-60" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Saved View Tabs ───────────────────────────────────── */}
+      <div className="flex items-center gap-1 mb-3 border-b border-[#E4E9F0] dark:border-slate-700">
+        <button className="px-3 py-2 text-[13px] font-medium text-[#2563EB] dark:text-blue-400 relative">
+          All Deals
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#2563EB] dark:bg-blue-400 rounded-full" />
+        </button>
+        <button className="px-3 py-2 text-[13px] font-medium text-[#5A6B85] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-white transition-colors">
+          My Deals
+        </button>
+        <button className="px-2 py-2 text-[#5A6B85] hover:text-[#0F172A] dark:hover:text-white transition-colors">
+          <span className="text-lg leading-none">···</span>
+        </button>
+      </div>
+
+      {/* ── Toolbar ───────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        {/* Filter Toggle */}
+        <button
+          onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
+          className={`inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-semibold rounded-lg border transition-colors ${
+            isFilterPanelOpen
+              ? 'bg-[#2563EB] text-white border-[#2563EB]'
+              : 'bg-white dark:bg-slate-800 text-[#5A6B85] dark:text-slate-300 border-[#E4E9F0] dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
+          }`}
+        >
+          <SlidersHorizontal size={13} />
+          Filter
+        </button>
+
+        {/* Sort */}
+        <button className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium text-[#5A6B85] dark:text-slate-300 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+          <ArrowRight size={13} className="rotate-90" />
+          Sort
+        </button>
+
+        {/* View Switcher */}
+        <div className="inline-flex items-center bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg p-0.5">
+          <button
+            onClick={() => handleViewModeChange('kanban')}
+            title="Kanban View"
+            className={`p-1.5 rounded-md transition-colors ${viewMode === 'kanban' ? 'bg-[#2563EB] text-white shadow-sm' : 'text-[#5A6B85] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-white'}`}
+          >
+            <LayoutGrid size={15} />
+          </button>
+          <button
+            onClick={() => handleViewModeChange('list')}
+            title="List View"
+            className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-[#2563EB] text-white shadow-sm' : 'text-[#5A6B85] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-white'}`}
+          >
+            <List size={15} />
+          </button>
+          <button
+            onClick={() => handleViewModeChange('table')}
+            title="Table View"
+            className={`p-1.5 rounded-md transition-colors ${viewMode === 'table' ? 'bg-[#2563EB] text-white shadow-sm' : 'text-[#5A6B85] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-white'}`}
+          >
+            <Table size={15} />
+          </button>
         </div>
 
-      {/* Revenue Forecast Bar */}
-      <ForecastBar deals={deals} pipelines={pipelines} />
+        {/* Automation Mode */}
+        <button
+          type="button"
+          onClick={toggleAutomatedOnly}
+          aria-label={isAutomatedOnly ? 'Automation Mode: Active' : 'Automation Mode: Off'}
+          className={`h-8 w-8 flex items-center justify-center rounded-lg border transition-all ${
+            isAutomatedOnly
+              ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 border-blue-200 dark:border-blue-800/60'
+              : 'bg-white dark:bg-slate-800 border-[#E4E9F0] dark:border-slate-700 text-[#5A6B85] hover:bg-slate-50'
+          }`}
+        >
+          <Shield size={13} />
+        </button>
+
+        {/* Refresh */}
+        <button className="p-1.5 text-[#5A6B85] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" aria-label="Refresh">
+          <RotateCcw size={15} />
+        </button>
+
+        <div className="flex-1" />
+
+        {/* Search */}
+        <div className="relative">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search deals..."
+            className="h-8 w-48 lg:w-56 pl-8 pr-3 text-[12px] rounded-lg border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0F172A] dark:text-slate-200 placeholder:text-[#5A6B85] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] transition-all"
+          />
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#5A6B85]" />
+        </div>
+
+        <button className="p-1.5 text-[#5A6B85] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" aria-label="Manage columns">
+          <SlidersHorizontal size={15} />
+        </button>
+      </div>
+
+      {/* ── KPI Strip ─────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        <div className="bg-white dark:bg-slate-800/60 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-3.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#5A6B85] dark:text-slate-400 mb-1">OPEN PIPELINE</p>
+          <p className="text-xl font-extrabold text-[#0F172A] dark:text-white tabular-nums">
+            ${(() => {
+              const openStages = activePipeline?.stages.filter((s: Stage) => !s.isWon && !s.isLost) ?? [];
+              const openValue = pipelineDeals.filter(d => openStages.some((s: Stage) => s.id === d.stageId)).reduce((sum, d) => sum + (d.value ?? 0), 0);
+              return openValue >= 1000000 ? `${(openValue / 1000000).toFixed(2)}M` : openValue >= 1000 ? `${Math.round(openValue / 1000)}k` : openValue.toLocaleString();
+            })()}
+          </p>
+          <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 mt-0.5">{pipelineDeals.filter(d => { const s = activePipeline?.stages.find((st: Stage) => st.id === d.stageId); return s && !s.isWon && !s.isLost; }).length} deals</p>
+        </div>
+        <div className="bg-white dark:bg-slate-800/60 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-3.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#5A6B85] dark:text-slate-400 mb-1">WEIGHTED FORECAST</p>
+          <p className="text-xl font-extrabold text-[#0F172A] dark:text-white tabular-nums">
+            ${(() => {
+              const weighted = pipelineDeals.reduce((sum, d) => {
+                const stage = activePipeline?.stages.find((s: Stage) => s.id === d.stageId);
+                const prob = (stage?.probability ?? 50) / 100;
+                return sum + ((d.value ?? 0) * prob);
+              }, 0);
+              return weighted >= 1000000 ? `${(weighted / 1000000).toFixed(2)}M` : weighted >= 1000 ? `${(weighted / 1000).toFixed(1)}k` : weighted.toLocaleString();
+            })()}
+          </p>
+          <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 mt-0.5">Probability adjusted</p>
+        </div>
+        <div className="bg-white dark:bg-slate-800/60 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-3.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#5A6B85] dark:text-slate-400 mb-1">WON THIS PERIOD</p>
+          <p className="text-xl font-extrabold text-[#0F172A] dark:text-white tabular-nums">
+            ${(() => {
+              const wonStages = activePipeline?.stages.filter((s: Stage) => s.isWon) ?? [];
+              const wonValue = pipelineDeals.filter(d => wonStages.some((s: Stage) => s.id === d.stageId)).reduce((sum, d) => sum + (d.value ?? 0), 0);
+              return wonValue >= 1000000 ? `${(wonValue / 1000000).toFixed(2)}M` : wonValue >= 1000 ? `${(wonValue / 1000).toFixed(1)}k` : wonValue.toLocaleString();
+            })()}
+          </p>
+          <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 mt-0.5">{pipelineDeals.filter(d => activePipeline?.stages.find((s: Stage) => s.id === d.stageId)?.isWon).length} closed won</p>
+        </div>
+        <div className="bg-white dark:bg-slate-800/60 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-3.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#5A6B85] dark:text-slate-400 mb-1">AT RISK</p>
+          <p className="text-xl font-extrabold text-[#0F172A] dark:text-white tabular-nums">
+            {pipelineDeals.filter(d => {
+              const stageDateStr = d.lastStageChangeDate || d.updatedAt || d.createdAt;
+              if (!stageDateStr) return false;
+              const daysSince = Math.floor((Date.now() - new Date(stageDateStr).getTime()) / (1000 * 3600 * 24));
+              const stage = activePipeline?.stages.find((s: Stage) => s.id === d.stageId);
+              return stage && !stage.isWon && !stage.isLost && daysSince >= (stage.rottenAfterDays ?? 14);
+            }).length}
+          </p>
+          <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 mt-0.5">Past stage rotting limit</p>
+        </div>
+      </div>
+
+      {/* ── Main Content (existing views below) ───────────────── */}
+      <div className="flex-1 min-h-0 flex flex-col space-y-4 overflow-hidden">
 
       {/* Manage Pipelines Modal */}
       {isManagePipelinesModalOpen && (
@@ -2688,6 +2841,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
         />
       )}
 
+      </div>{/* end main content wrapper */}
     </motion.div>
   );
 }

@@ -4,7 +4,6 @@ import React, { useMemo } from 'react';
 import { X, ChevronLeft, ChevronRight, Settings } from 'lucide-react';
 import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
-import AccountDropdown from './account-dropdown';
 import { useLayout } from './use-layout';
 import { cn } from '@/lib/utils';
 
@@ -26,99 +25,80 @@ export default function SidebarNav({
   sidebarOpen,
   onCloseSidebar,
   navigate,
-  isAccountDropdownOpen,
-  onToggleAccountDropdown,
   isCollapsed,
   onToggleCollapse,
 }: SidebarNavProps): React.ReactElement {
   const { currentPath, filteredNav } = useLayout();
   const { user } = useAuth();
-  const { tasks } = useData();
+  const { contacts, deals, organizations } = useData();
 
-  const overdueCount = useMemo(
-    () =>
-      tasks.filter(
-        (t) =>
-          t.assignedUserId === user?.id &&
-          t.status !== 'completed' &&
-          t.status !== 'cancelled' &&
-          !!t.dueDate &&
-          new Date(t.dueDate) < new Date(),
-      ).length,
-    [tasks, user?.id],
-  );
+  // Record counts for CRM badge display
+  const recordCounts = useMemo(() => ({
+    leads: contacts.filter(c => !c.isArchived).length,
+    contacts: contacts.filter(c => !c.isArchived).length,
+    customers: contacts.filter(c => c.customerType === 'Active Customer' && !c.isArchived).length,
+    accounts: organizations.filter(o => !o.isArchived).length,
+    pipeline: deals.filter(d => !d.isArchived).length,
+  }), [contacts, deals, organizations]);
+
+  const getBadgeCount = (path: string): number | undefined => {
+    const counts: Record<string, number | undefined> = {
+      leads: recordCounts.leads,
+      contacts: recordCounts.contacts,
+      customers: recordCounts.customers,
+      accounts: recordCounts.accounts,
+      pipeline: recordCounts.pipeline,
+    };
+    return counts[path];
+  };
 
   const isSettingsActive = currentPath === 'settings';
 
-  // On mobile, sidebar is always full-width when open; isCollapsed only applies on lg+
   return (
     <aside
       className={cn(
         'fixed lg:static inset-y-0 left-0 z-50',
-        'bg-white dark:bg-slate-900',
-        'border-r border-gray-200 dark:border-white/[0.08]',
+        'bg-[var(--sidebar-bg)] border-r border-[var(--sidebar-border)]',
         'transform transition-all duration-200 ease-in-out',
-        'flex flex-col shadow-lg lg:shadow-none',
+        'flex flex-col',
         // Mobile: slide in/out
         sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
-        // Width: mobile always 240px, desktop collapses to icon-strip
-        'w-60',
-        isCollapsed && 'lg:w-14',
+        // Width
+        'w-[220px]',
+        isCollapsed && 'lg:w-[56px]',
       )}
     >
-      {/* ── Logo + collapse button ───────────────────────────────── */}
+      {/* ── Logo area ─────────────────────────────────────────── */}
       <div className={cn(
-        'border-b shrink-0 transition-all',
-        'border-slate-200 dark:border-slate-800',
-        'flex items-center justify-between',
-        isCollapsed ? 'lg:flex-col lg:gap-1 px-1.5 py-3' : 'px-4 py-4',
+        'shrink-0 flex items-center border-b border-[var(--sidebar-border)]',
+        isCollapsed ? 'lg:justify-center px-2 py-4' : 'justify-between px-4 py-4',
       )}>
-        {/* Logo */}
         <div
-          className={cn('flex items-center gap-3 min-w-0', isCollapsed && 'lg:justify-center')}
+          className={cn('flex items-center gap-2.5', isCollapsed && 'lg:justify-center')}
           title={isCollapsed ? 'LeadCRM' : undefined}
         >
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg overflow-hidden shrink-0 ring-1 ring-slate-200 dark:ring-slate-700 bg-white dark:bg-slate-800">
-            <img
-              src="/leadcrm_logo.png"
-              alt="LeadCRM"
-              className="h-full w-full object-cover"
-              referrerPolicy="no-referrer"
-            />
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg overflow-hidden shrink-0 bg-[#D94F4F]">
+            <span className="text-white font-extrabold text-[11px]">L</span>
           </div>
           {!isCollapsed && (
-            <h1 className="font-display text-base font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
-              Lead<span className="text-[#4A9EFF]">CRM</span>
-            </h1>
+            <span className="text-[14px] font-bold text-[var(--sidebar-text)] tracking-tight">
+              Lead<span className="text-[#D94F4F]">CRM</span>
+            </span>
           )}
         </div>
 
-        {/* Mobile close button */}
+        {/* Mobile close */}
         <button
-          className="lg:hidden text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors p-1.5 rounded-md cursor-pointer shrink-0"
+          className="lg:hidden text-[var(--sidebar-text-muted)] hover:text-[var(--sidebar-text)] p-1.5 rounded-md transition-colors"
           onClick={onCloseSidebar}
           aria-label="Close sidebar"
         >
-          <X size={18} />
-        </button>
-
-        {/* Desktop collapse toggle */}
-        <button
-          className={cn(
-            'hidden lg:flex items-center justify-center rounded-lg transition-all cursor-pointer',
-            'text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800',
-            isCollapsed ? 'w-8 h-8 shrink-0' : 'w-7 h-7 shrink-0',
-          )}
-          onClick={onToggleCollapse}
-          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          <X size={16} />
         </button>
       </div>
 
-      {/* ── Main navigation ──────────────────────────────────────── */}
-      <nav className="flex-1 flex flex-col gap-1 px-2 py-3 overflow-y-auto custom-scrollbar">
+      {/* ── Navigation ────────────────────────────────────────── */}
+      <nav className="flex-1 flex flex-col gap-0.5 px-2 py-3 overflow-y-auto custom-scrollbar">
         {(() => {
           const groups: Record<string, typeof filteredNav> = {};
           const ungrouped: typeof filteredNav = [];
@@ -134,114 +114,66 @@ export default function SidebarNav({
           });
 
           const groupOrder = ['CRM', 'Operations', 'Marketing', 'Automation', 'Billing', 'Administration'];
-          const orderedGroups = groupOrder.filter(g => groups[g]);
+
+          // Merge Operations/Marketing/Automation/Billing into "WORKSPACE"
+          const mergedGroups: { label: string; items: typeof filteredNav }[] = [];
+          const workspaceItems: typeof filteredNav = [];
+          const systemItems: typeof filteredNav = [];
+
+          groupOrder.forEach((g) => {
+            if (!groups[g]) return;
+            if (g === 'CRM') {
+              mergedGroups.push({ label: 'CRM', items: groups[g] });
+            } else if (['Operations', 'Marketing', 'Automation', 'Billing'].includes(g)) {
+              workspaceItems.push(...groups[g]);
+            } else {
+              systemItems.push(...groups[g]);
+            }
+          });
+
+          if (workspaceItems.length > 0) {
+            mergedGroups.push({ label: 'WORKSPACE', items: workspaceItems });
+          }
+          if (systemItems.length > 0) {
+            mergedGroups.push({ label: 'SYSTEM', items: systemItems });
+          }
 
           return (
             <>
-              {/* Ungrouped items (Dashboard, My Jobs, etc.) */}
-              {ungrouped.map((item) => {
-                const Icon = item.icon;
-                const isActive = currentPath === item.path;
-                const showOverdueBadge = item.path === 'tasks' && overdueCount > 0;
-
-                return (
-                  <button
-                    key={item.path + item.name}
-                    onClick={() => { navigate(item.path); onCloseSidebar(); }}
-                    title={isCollapsed ? item.name : undefined}
-                    className={cn(
-                      'relative w-full flex items-center rounded-lg py-2.5 text-xs font-medium transition-all cursor-pointer',
-                      isCollapsed ? 'lg:justify-center px-2' : 'gap-2.5 px-3',
-                      isActive
-                        ? 'text-white'
-                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white',
-                    )}
-                    style={isActive ? { backgroundColor: 'var(--primary)' } : undefined}
-                  >
-                    {/* Active rail accent */}
-                    {isActive && !isCollapsed && (
-                      <div 
-                        className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full"
-                        style={{ backgroundColor: 'var(--primary-dark)' }}
-                      />
-                    )}
-                    <div className="relative shrink-0">
-                      <Icon className="h-4 w-4" />
-                      {isCollapsed && showOverdueBadge && (
-                        <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-red-500" />
-                      )}
-                    </div>
-                    {!isCollapsed && (
-                      <>
-                        <span className="truncate flex-1 text-left">{item.name}</span>
-                        {showOverdueBadge && (
-                          <span className="shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
-                            {overdueCount}
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </button>
-                );
-              })}
+              {/* Ungrouped (Dashboard) */}
+              {ungrouped.map((item) => (
+                <NavButton
+                  key={item.path + item.name}
+                  item={item as any}
+                  isActive={currentPath === item.path}
+                  isCollapsed={isCollapsed}
+                  badgeCount={getBadgeCount(item.path)}
+                  onClick={() => { navigate(item.path); onCloseSidebar(); }}
+                />
+              ))}
 
               {/* Grouped sections */}
-              {orderedGroups.map((groupName) => (
-                <div key={groupName} className="mt-4">
+              {mergedGroups.map((group) => (
+                <div key={group.label} className="mt-4">
                   {!isCollapsed && (
-                    <div className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-600">
-                      {groupName}
-                    </div>
+                    <p className="px-3 mb-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--sidebar-group-label)]">
+                      {group.label}
+                    </p>
                   )}
                   {isCollapsed && (
-                    <div className="h-px bg-slate-200 dark:bg-slate-800 my-2 mx-2" />
+                    <div className="h-px bg-[var(--sidebar-border)] my-2 mx-2" />
                   )}
                   <div className="flex flex-col gap-0.5">
-                    {groups[groupName].map((item) => {
-                      const Icon = item.icon;
-                      const isActive = currentPath === item.path;
-                      const showOverdueBadge = item.path === 'tasks' && overdueCount > 0;
-
-                      return (
-                        <button
-                          key={item.path + item.name}
-                          onClick={() => { navigate(item.path); onCloseSidebar(); }}
-                          title={isCollapsed ? item.name : undefined}
-                          className={cn(
-                            'relative w-full flex items-center rounded-lg py-2.5 text-xs font-medium transition-all cursor-pointer',
-                            isCollapsed ? 'lg:justify-center px-2' : 'gap-2.5 px-3',
-                            isActive
-                              ? 'text-white'
-                              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white',
-                          )}
-                          style={isActive ? { backgroundColor: 'var(--primary)' } : undefined}
-                        >
-                          {/* Active rail accent */}
-                          {isActive && !isCollapsed && (
-                            <div 
-                              className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full"
-                              style={{ backgroundColor: 'var(--primary-dark)' }}
-                            />
-                          )}
-                          <div className="relative shrink-0">
-                            <Icon className="h-4 w-4" />
-                            {isCollapsed && showOverdueBadge && (
-                              <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-red-500" />
-                            )}
-                          </div>
-                          {!isCollapsed && (
-                            <>
-                              <span className="truncate flex-1 text-left">{item.name}</span>
-                              {showOverdueBadge && (
-                                <span className="shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
-                                  {overdueCount}
-                                </span>
-                              )}
-                            </>
-                          )}
-                        </button>
-                      );
-                    })}
+                    {group.items.map((item) => (
+                      <NavButton
+                        key={item.path + item.name}
+                        item={item as any}
+                        isActive={currentPath === item.path}
+                        isCollapsed={isCollapsed}
+                        badgeCount={getBadgeCount(item.path)}
+                        onClick={() => { navigate(item.path); onCloseSidebar(); }}
+                      />
+                    ))}
                   </div>
                 </div>
               ))}
@@ -250,55 +182,96 @@ export default function SidebarNav({
         })()}
       </nav>
 
-      {/* ── Footer: Settings + Account ───────────────────────────── */}
-      <div className="shrink-0 border-t border-slate-200 dark:border-slate-800 pt-2">
-        {/* Settings button */}
-        <div className="px-2 pb-1">
-          <button
+      {/* ── Footer ────────────────────────────────────────────── */}
+      <div className="shrink-0 border-t border-[var(--sidebar-border)]">
+        {/* Settings */}
+        <div className="px-2 pt-2">
+          <NavButton
+            item={{ name: 'Settings', path: 'settings', icon: Settings } as any}
+            isActive={isSettingsActive}
+            isCollapsed={isCollapsed}
             onClick={() => { navigate('settings'); onCloseSidebar(); }}
-            title={isCollapsed ? 'Settings' : undefined}
-            className={cn(
-              'relative w-full flex items-center rounded-lg py-2.5 text-xs font-medium transition-all cursor-pointer',
-              isCollapsed ? 'lg:justify-center px-2' : 'gap-2.5 px-3',
-              isSettingsActive
-                ? 'text-white'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white',
-            )}
-            style={isSettingsActive ? { backgroundColor: 'var(--primary)' } : undefined}
-          >
-            {/* Active rail accent */}
-            {isSettingsActive && !isCollapsed && (
-              <div 
-                className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full"
-                style={{ backgroundColor: 'var(--primary-dark)' }}
-              />
-            )}
-            <Settings className="h-4 w-4 shrink-0" />
-            {!isCollapsed && <span className="truncate flex-1 text-left">Settings</span>}
-          </button>
-        </div>
-
-        {/* Account dropdown — full mode on mobile & expanded desktop; collapsed avatar on lg collapsed */}
-        <div className={cn(isCollapsed && 'lg:hidden')}>
-          <AccountDropdown
-            isOpen={isAccountDropdownOpen}
-            onToggle={onToggleAccountDropdown}
-            navigate={navigate}
           />
         </div>
 
-        {/* Collapsed avatar-only version — only shows on desktop collapsed */}
-        {isCollapsed && (
-          <div className="hidden lg:flex justify-center px-1 pb-2">
-            <AccountDropdown
-              isOpen={isAccountDropdownOpen}
-              onToggle={onToggleAccountDropdown}
-              navigate={navigate}
-              collapsed
-            />
-          </div>
-        )}
+        {/* User card + Collapse control */}
+        <div className="px-3 py-3 flex items-center gap-2">
+          {!isCollapsed && (
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#D94F4F] to-[#25313D] flex items-center justify-center text-white font-bold text-[10px] shrink-0">
+                {`${user?.firstName?.charAt(0) ?? 'U'}${user?.lastName?.charAt(0) ?? ''}`.toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[11.5px] font-semibold text-[var(--sidebar-text)] truncate leading-tight">
+                  {user?.firstName} {user?.lastName}
+                </p>
+                <p className="text-[10px] text-[var(--sidebar-text-muted)] truncate">
+                  {user?.role ?? 'User'}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Collapse toggle */}
+          <button
+            onClick={onToggleCollapse}
+            className={cn(
+              'hidden lg:flex items-center justify-center rounded-md text-[var(--sidebar-text-muted)] hover:text-[var(--sidebar-text)] hover:bg-[var(--sidebar-hover)] transition-all',
+              isCollapsed ? 'w-8 h-8 mx-auto' : 'w-7 h-7 shrink-0',
+            )}
+            aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={isCollapsed ? 'Expand' : 'Collapse'}
+          >
+            {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+          </button>
+        </div>
       </div>
     </aside>
+  );
+}
+
+// ── Nav Button Sub-component ───────────────────────────────────────────────────
+
+interface NavButtonProps {
+  item: { name: string; path: string; icon: React.ComponentType<{ className?: string }> };
+  isActive: boolean;
+  isCollapsed: boolean;
+  badgeCount?: number;
+  onClick: () => void;
+}
+
+function NavButton({ item, isActive, isCollapsed, badgeCount, onClick }: NavButtonProps): React.ReactElement {
+  const Icon = item.icon;
+
+  return (
+    <button
+      onClick={onClick}
+      title={isCollapsed ? item.name : undefined}
+      className={cn(
+        'relative w-full flex items-center rounded-lg text-[12.5px] font-medium transition-all cursor-pointer',
+        isCollapsed ? 'lg:justify-center px-2 py-2.5' : 'gap-2.5 px-3 py-2',
+        isActive
+          ? 'bg-[var(--sidebar-active-bg)] text-[var(--sidebar-active-text)]'
+          : 'text-[var(--sidebar-text-muted)] hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-text)]',
+      )}
+    >
+      {/* 3px left brand bar for active state */}
+      {isActive && !isCollapsed && (
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-[#D94F4F] rounded-r-full" />
+      )}
+
+      <Icon className="h-[16px] w-[16px] shrink-0" />
+
+      {!isCollapsed && (
+        <>
+          <span className="truncate flex-1 text-left">{item.name}</span>
+          {badgeCount !== undefined && badgeCount > 0 && (
+            <span className="shrink-0 min-w-[20px] h-[18px] px-1 rounded-md bg-[var(--sidebar-badge-bg)] text-[var(--sidebar-badge-text)] text-[10px] font-bold flex items-center justify-center tabular-nums">
+              {badgeCount}
+            </span>
+          )}
+        </>
+      )}
+    </button>
   );
 }

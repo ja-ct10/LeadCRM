@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ChevronRight, CheckCircle2, Users, Zap, BarChart3, Settings } from 'lucide-react';
+import { ChevronRight, CheckCircle2, Users, Zap, BarChart3 } from 'lucide-react';
+import { ONBOARDING_COMPLETE_KEY } from '@/shared/providers/auth-guard';
 
 interface OnboardingPageProps {
   onNavigate: (path: string) => void;
@@ -82,6 +83,8 @@ export default function OnboardingPage({ onNavigate, needsCompanySetup = false }
   };
 
   const handleFinish = () => {
+    // Mark onboarding as complete so it's not shown again on subsequent logins
+    localStorage.setItem(ONBOARDING_COMPLETE_KEY, 'true');
     // If the user needs company setup (OAuth users), redirect there
     // Otherwise, go to dashboard
     if (needsCompanySetup) {
@@ -187,20 +190,32 @@ export default function OnboardingPage({ onNavigate, needsCompanySetup = false }
 
           {/* Navigation buttons */}
           <div className="flex items-center gap-4 pt-4">
-            <button
-              onClick={handleSkip}
-              className="px-6 h-11 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-semibold transition-colors"
-            >
-              {isLastStep ? 'Skip to Dashboard' : 'Skip Tour'}
-            </button>
+            {/* Hide Skip button when company setup is required */}
+            {!needsCompanySetup && (
+              <button
+                onClick={handleSkip}
+                className="px-6 h-11 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-semibold transition-colors"
+              >
+                Skip
+              </button>
+            )}
             <button
               onClick={handleNext}
               className="flex-1 h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold transition-colors active:scale-95 flex items-center justify-center gap-2"
             >
-              {isLastStep ? 'Get Started' : 'Next'}
+              {isLastStep ? (needsCompanySetup ? 'Continue to Setup' : 'Get Started') : 'Next'}
               <ChevronRight size={18} />
             </button>
           </div>
+
+          {/* Company setup required notice */}
+          {needsCompanySetup && (
+            <div className="bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 rounded-xl p-4">
+              <p className="text-sm text-blue-900 dark:text-blue-100 text-center">
+                <span className="font-semibold">Company profile required:</span> You'll need to complete your company details before accessing your dashboard.
+              </p>
+            </div>
+          )}
 
           {/* Step indicators */}
           <div className="flex items-center justify-center gap-2 pt-4">
