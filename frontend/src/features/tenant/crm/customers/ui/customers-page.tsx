@@ -1,180 +1,330 @@
 ﻿'use client';
 
-import React, { useState, useMemo } from 'react';
-import { motion } from 'motion/react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
-import { Customer } from '@/store/types';
-import { ClientTable } from '@/features/tenant/crm/leads/ui/leads-table';
-import { ClientDetailSheet } from '@/features/tenant/crm/leads/ui/lead-detail-sheet';
-import { LeadFormSheet as CustomerFormSheet } from '@/features/tenant/crm/leads/ui/lead-form';
-import { usePagination } from '@/shared/hooks/use-pagination';
-import { Pagination } from '@/shared/components/ui/pagination';
+import { Contact } from '@/store/types';
+import { ModuleWorkspace, ViewType, StatusBadge } from '@/shared/components/crm';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
-import { UserCheck, Plus } from 'lucide-react';
-import { Button } from '@/shared/components/ui/button';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
-/**
- * Customers Page — shows only customers with customerType = 'Active Customer'.
- * Set by the won-deal handoff. Status is human-owned and independent (REQ131).
- * Reuses the existing customers table and detail sheet — no duplication.
- */
-export default function CustomersPage() {
-  const { contacts, organizations, users, tasks, deals, campaigns, addContact: addCustomer, updateContact: updateCustomer, deleteContact: deleteCustomer, restoreRecord, addTask, updateTask } = useData({ includeArchived: false });
-  const customers = contacts; // alias — filtering happens below
+// ── Customers Page ────────────────────────────────────────────────────────────
+// Shows contacts with customerType = 'Active Customer' (set by won-deal handoff)
+
+export default function CustomersPage(): React.ReactElement {
+  const { contacts, organizations, deals, users } = useData();
   const { user } = useAuth();
-
   const canCreate = useHasPermission('contacts.create');
 
-  const [searchTerm, setSearchTerm]         = useState('');
-  const [isFormOpen, setIsFormOpen]         = useState(false);
-  const [editingCustomer, setEditingCustomer] = useState<Customer | undefined>();
-  const [detailSheetClient, setDetailSheetClient] = useState<Customer | null>(null);
+  // ── State ────────────────────────────────────────────────────────────
+  const [activeView, setActiveView] = useState<ViewType>('list');
+  const [activeTab, setActiveTab] = useState('all');
+  const [showFilters, setShowFilters] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterSearchTerm, setFilterSearchTerm] = useState('');
 
-  // BW-2 fix: filter on customerType (set by won-deal handoff), NOT status
-  // REQ131: status is human-owned and unrelated to customer standing
+  // ── Data ─────────────────────────────────────────────────────────────
+  const customers = useMemo(
+    () => contacts.filter((c) => c.customerType === 'Active Customer' && !c.isArchived),
+    [contacts],
+  );
+
   const filteredCustomers = useMemo(() => {
-    return customers.filter(c => {
-      const isCustomer = c.customerType === 'Active Customer';
-      if (!isCustomer) return false;
-      if (!searchTerm) return true;
-      const q = searchTerm.toLowerCase();
-      return (
-        c.firstName?.toLowerCase().includes(q) ||
-        c.lastName?.toLowerCase().includes(q) ||
-        c.email?.toLowerCase().includes(q) ||
-        c.phone?.toLowerCase().includes(q) ||
-        c.jobTitle?.toLowerCase().includes(q)
-      );
-    });
-  }, [customers, searchTerm]);
-
-  const { currentPage, pageSize, totalPages, goToPage, setPageSize, paginateItems } = usePagination({
-    totalItems: filteredCustomers.length,
-    initialPageSize: 25,
-    pageSizeOptions: [10, 25, 50, 100],
-    resetDeps: [searchTerm],
-  });
-
-  const paginatedCustomers = paginateItems(filteredCustomers);
-
-  const handleOpenCreate = () => { setEditingCustomer(undefined); setIsFormOpen(true); };
-  const handleOpenEdit   = (c: Customer) => { setEditingCustomer(c); setIsFormOpen(true); };
-  const handleCloseForm  = () => { setIsFormOpen(false); setEditingCustomer(undefined); };
-
-  const handleSubmit = (data: any) => {
-    if (editingCustomer) {
-      updateCustomer(editingCustomer.id, data);
-      toast.success('Customer updated');
-    } else {
-      addCustomer({ ...data, customerType: 'Active Customer' });
-      toast.success('Customer added');
+    let result = customers;
+    if (activeTab === 'my') {
+      result = result.filter((c) => c.assignedUserId === user?.id);
     }
-    handleCloseForm();
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter(
+        (c) =>
+          (c.contactPerson ?? c.leadPerson ?? '').toLowerCase().includes(term) ||
+          (c.email ?? '').toLowerCase().includes(term) ||
+          (c.companyName ?? '').toLowerCase().includes(term),
+      );
+    }
+    return result;
+  }, [customers, activeTab, user?.id, searchTerm]);
+
+  // ── KPI ──────────────────────────────────────────────────────────────
+  const kpiCards = useMemo(() => {
+    const totalDeals = deals.filter((d) =>
+      !d.isArchived && customers.some((c) => c.id === d.contactId || (d.contactIds ?? []).includes(c.id)),
+    );
+    const totalRevenue = totalDeals.reduce((sum, d) => sum + (d.value ?? 0), 0);
+
+    return [
+      { label: 'TOTAL CUSTOMERS', value: String(customers.length), subtitle: 'Active customer records' },
+      { label: 'ACTIVE CUSTOMERS', value: String(customers.length), subtitle: 'Currently engaged' },
+      { label: 'TOTAL REVENUE', value: formatCurrency(totalRevenue), subtitle: 'Closed value to date' },
+      { label: 'TOTAL DEALS', value: String(totalDeals.length), subtitle: 'Open across customers' },
+    ];
+  }, [customers, deals]);
+
+  // ── Helpers ──────────────────────────────────────────────────────────
+  const getInitials = (contact: Contact): string => {
+    const name = contact.contactPerson ?? contact.leadPerson ?? contact.firstName ?? '';
+    const parts = name.split(' ');
+    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    return name.slice(0, 2).toUpperCase();
   };
 
-  const handleDelete = (id: string) => {
-    deleteCustomer(id);
-    toast.success('Customer removed');
+  const getName = (contact: Contact): string => {
+    return contact.contactPerson ?? contact.leadPerson ?? (`${contact.firstName ?? ''} ${contact.lastName ?? ''}`.trim() || 'Unknown');
   };
+
+  const getOrgName = (contact: Contact): string => {
+    if (contact.organizationId) {
+      const org = organizations.find((o) => o.id === contact.organizationId);
+      return org?.name ?? contact.companyName ?? '—';
+    }
+    return contact.companyName ?? '—';
+  };
+
+  const getOwnerName = (userId?: string): string => {
+    if (!userId) return '—';
+    const u = users.find((usr) => usr.id === userId);
+    return u ? `${u.firstName} ${u.lastName}` : '—';
+  };
+
+  const getContactDeals = (contactId: string): number => {
+    return deals.filter((d) =>
+      !d.isArchived && (d.contactId === contactId || (d.contactIds ?? []).includes(contactId)),
+    ).length;
+  };
+
+  const getContactValue = (contactId: string): number => {
+    return deals
+      .filter((d) => !d.isArchived && (d.contactId === contactId || (d.contactIds ?? []).includes(contactId)))
+      .reduce((sum, d) => sum + (d.value ?? 0), 0);
+  };
+
+  // ── Filter Groups ────────────────────────────────────────────────────
+  const filterGroups = useMemo(() => [
+    {
+      id: 'system',
+      label: 'System Defined Filters',
+      isExpanded: true,
+      items: [
+        { id: 'my-customers', label: 'My Customers', count: customers.filter((c) => c.assignedUserId === user?.id).length, isChecked: false },
+        { id: 'renewal', label: 'Renewal This Quarter', count: 0, isChecked: false },
+      ],
+    },
+    {
+      id: 'fields',
+      label: 'Filter By Fields',
+      isExpanded: true,
+      items: [
+        { id: 'account-name', label: 'Account Name', isChecked: false },
+        { id: 'customer-owner', label: 'Customer Owner', isChecked: false },
+        { id: 'status', label: 'Status', isChecked: false },
+        { id: 'customer-since', label: 'Customer Since', isChecked: false },
+        { id: 'active-products', label: 'Active Products', isChecked: false },
+        { id: 'last-activity', label: 'Last Activity Time', isChecked: false },
+      ],
+    },
+    {
+      id: 'related',
+      label: 'Filter By Related Modules',
+      isExpanded: false,
+      items: [],
+    },
+  ], [customers, user?.id]);
 
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 15 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
-      className="space-y-6"
+    <ModuleWorkspace
+      title="Customers"
+      description="Contacts with customerType = Active Customer, grouped under their account."
+      primaryActionLabel="Add Customer"
+      onPrimaryAction={() => toast.info('Customer creation coming soon')}
+      canCreate={canCreate}
+      availableViews={['list', 'tile', 'table', 'grid']}
+      activeView={activeView}
+      onViewChange={setActiveView}
+      savedTabs={[
+        { id: 'all', label: 'All Customers' },
+        { id: 'my', label: 'My Customers' },
+      ]}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      filterGroups={filterGroups}
+      showFilters={showFilters}
+      onToggleFilters={() => setShowFilters(!showFilters)}
+      filterSearchTerm={filterSearchTerm}
+      onFilterSearch={setFilterSearchTerm}
+      totalRecords={filteredCustomers.length}
+      searchTerm={searchTerm}
+      onSearch={setSearchTerm}
+      searchPlaceholder="Search customers..."
+      onSort={() => toast.info('Sort coming soon')}
+      onRefresh={() => toast.success('Refreshed')}
+      kpiCards={kpiCards}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <UserCheck className="w-6 h-6 text-emerald-500" />
-            Customers
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            {customers.length} active {customers.length === 1 ? 'customer' : 'customers'}
-          </p>
+      {/* List / Table View */}
+      {(activeView === 'list' || activeView === 'table') && (
+        <div className="bg-white dark:bg-slate-800/40 border border-[#E4E9F0] dark:border-slate-700 rounded-xl overflow-hidden">
+          {/* Header */}
+          <div className="grid grid-cols-[40px_1.3fr_1fr_1fr_80px_80px_100px_100px] items-center h-11 px-3 border-b border-[#E4E9F0] dark:border-slate-700 bg-[#F6F8FB] dark:bg-slate-800/60 text-[11.5px] font-semibold uppercase tracking-wide text-[#5A6B85] dark:text-slate-400">
+            <span />
+            <span className="px-3">CUSTOMER</span>
+            <span className="px-3">ACCOUNT</span>
+            <span className="px-3">CUSTOMER TYPE</span>
+            <span className="px-3">STATUS</span>
+            <span className="px-3 text-center">DEALS</span>
+            <span className="px-3 text-right">TOTAL VALUE</span>
+            <span className="px-3 text-right">OWNER</span>
+          </div>
+
+          {/* Rows */}
+          <div className="divide-y divide-[#E4E9F0] dark:divide-slate-700">
+            {filteredCustomers.map((customer) => (
+              <div
+                key={customer.id}
+                className="grid grid-cols-[40px_1.3fr_1fr_1fr_80px_80px_100px_100px] items-center h-[52px] px-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors group"
+              >
+                <label className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-[#2563EB] focus:ring-[#2563EB]/20 cursor-pointer"
+                    aria-label={`Select ${getName(customer)}`}
+                  />
+                </label>
+
+                {/* Name */}
+                <div className="flex items-center gap-2.5 px-3 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white font-bold text-[10px] shrink-0">
+                    {getInitials(customer)}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-semibold text-[#0F172A] dark:text-white truncate group-hover:text-[#2563EB] transition-colors">
+                      {getName(customer)}
+                    </p>
+                    <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 truncate">
+                      {customer.jobTitle ?? ''}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Account */}
+                <div className="px-3">
+                  <p className="text-[12.5px] text-[#2563EB] dark:text-blue-400 font-medium truncate">
+                    {getOrgName(customer)}
+                  </p>
+                </div>
+
+                {/* Customer Type */}
+                <div className="px-3">
+                  <StatusBadge label="Active Customer" variant="success" dot={false} />
+                </div>
+
+                {/* Status */}
+                <div className="px-3">
+                  <StatusBadge label={customer.status ?? 'Active'} variant="success" />
+                </div>
+
+                {/* Deals */}
+                <div className="px-3 text-center">
+                  <span className="text-[13px] font-semibold text-[#0F172A] dark:text-white tabular-nums">
+                    {getContactDeals(customer.id)}
+                  </span>
+                </div>
+
+                {/* Total Value */}
+                <div className="px-3 text-right">
+                  <span className="text-[13px] font-semibold text-[#0F172A] dark:text-white tabular-nums">
+                    {formatCurrency(getContactValue(customer.id))}
+                  </span>
+                </div>
+
+                {/* Owner */}
+                <div className="px-3 text-right">
+                  <span className="text-[11.5px] text-[#5A6B85] dark:text-slate-400 truncate">
+                    {getOwnerName(customer.assignedUserId)}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-center justify-between px-4 py-2.5 border-t border-[#E4E9F0] dark:border-slate-700 bg-[#F6F8FB] dark:bg-slate-800/60">
+            <span className="text-[12px] text-[#5A6B85]">
+              Total records <strong className="font-semibold text-[#0F172A] dark:text-white">{filteredCustomers.length}</strong>
+            </span>
+            <div className="flex items-center gap-2 text-[12px] text-[#5A6B85]">
+              <span>1 to {Math.min(filteredCustomers.length, 25)}</span>
+              <button className="p-1 hover:text-[#0F172A] dark:hover:text-white transition-colors" aria-label="Previous page">&lt;</button>
+              <button className="p-1 hover:text-[#0F172A] dark:hover:text-white transition-colors" aria-label="Next page">&gt;</button>
+            </div>
+          </div>
         </div>
-        {canCreate && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  onClick={handleOpenCreate}
-                  size="icon"
-                  aria-label="Add Customer"
-                >
-                  <Plus className="w-4 h-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Add Customer</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-      </div>
-
-      {/* Search */}
-      <div className="flex items-center gap-3">
-        <input
-          type="text"
-          placeholder="Search customers..."
-          value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value)}
-          className="h-9 w-full max-w-sm rounded-md border border-gray-200 dark:border-white/8 bg-white dark:bg-white/2 px-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
-        />
-      </div>
-
-      {/* Table — reuses customers table */}
-      <ClientTable
-        data={paginatedCustomers}
-        viewMode="leads"
-        onEdit={handleOpenEdit}
-        onView={(c) => setDetailSheetClient(c)}
-        onArchive={(c) => handleDelete(c.id)}
-        organizations={organizations}
-      />
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <Pagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          totalItems={customers.length}
-          pageSize={pageSize}
-          onPageChange={goToPage}
-          onPageSizeChange={setPageSize}
-        />
       )}
 
-      {/* Detail Sheet */}
-      {detailSheetClient && (
-        <ClientDetailSheet
-          isOpen={!!detailSheetClient}
-          onClose={() => setDetailSheetClient(null)}
-          client={detailSheetClient}
-          clientType="individual"
-          onEdit={() => {
-            setEditingCustomer(detailSheetClient);
-            setIsFormOpen(true);
-            setDetailSheetClient(null);
-          }}
-          onArchive={(id) => { handleDelete(id); setDetailSheetClient(null); }}
-        />
+      {/* Tile View */}
+      {activeView === 'tile' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {filteredCustomers.map((customer) => (
+            <div
+              key={customer.id}
+              className="bg-white dark:bg-slate-800/60 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-4 cursor-pointer hover:shadow-md hover:border-[#2563EB]/30 transition-all"
+            >
+              <div className="flex items-start gap-3 mb-3">
+                <div className="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center text-white font-bold text-[11px] shrink-0">
+                  {getInitials(customer)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-semibold text-[#0F172A] dark:text-white truncate">
+                    {getName(customer)}
+                  </p>
+                  <p className="text-[11.5px] text-[#2563EB] dark:text-blue-400 truncate font-medium">
+                    {getOrgName(customer)}
+                  </p>
+                </div>
+                <StatusBadge label="Active Customer" variant="success" dot={false} />
+              </div>
+              <div className="flex items-center justify-between pt-3 border-t border-[#E4E9F0] dark:border-slate-700">
+                <span className="text-[12px] text-[#5A6B85]">
+                  {getContactDeals(customer.id)} deals
+                </span>
+                <span className="text-[13px] font-semibold text-[#0F172A] dark:text-white tabular-nums">
+                  {formatCurrency(getContactValue(customer.id))}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
-      {/* Form Sheet */}
-      {isFormOpen && (
-        <CustomerFormSheet
-          isOpen={isFormOpen}
-          onClose={handleCloseForm}
-          onSave={handleSubmit}
-          initialData={editingCustomer}
-        />
+      {/* Grid View */}
+      {activeView === 'grid' && (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5">
+          {filteredCustomers.map((customer) => (
+            <div
+              key={customer.id}
+              className="bg-white dark:bg-slate-800/60 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-3 cursor-pointer hover:shadow-md transition-all flex items-center gap-2.5"
+            >
+              <div className="w-9 h-9 rounded-full bg-emerald-500 flex items-center justify-center text-white font-bold text-[10px] shrink-0">
+                {getInitials(customer)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[12px] font-semibold text-[#0F172A] dark:text-white truncate">
+                  {getName(customer)}
+                </p>
+                <p className="text-[10.5px] text-[#5A6B85] dark:text-slate-400 truncate">
+                  {getOrgName(customer)}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
-    </motion.div>
+    </ModuleWorkspace>
   );
 }
 
+function formatCurrency(value: number): string {
+  if (value >= 1000000) return `$${(value / 1000000).toFixed(value >= 10000000 ? 1 : 2)}M`;
+  if (value >= 1000) return `$${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}k`;
+  return `$${value.toLocaleString()}`;
+}

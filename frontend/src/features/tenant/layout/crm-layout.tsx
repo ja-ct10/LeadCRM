@@ -32,28 +32,67 @@ export default function CrmLayout({ children }: { children: React.ReactNode }) {
   // Sync theme to this container on mount (useTheme hook handles updates via themechange event)
   useEffect(() => {
     if (containerRef.current) {
-      const saved = localStorage.getItem('app_theme');
+      const saved = localStorage.getItem('app_theme') || 'Light';
+      // Remove all theme classes first
+      containerRef.current.classList.remove('dark', 'theme-classic', 'theme-light', 'theme-dark');
+
       if (saved === 'Dark') {
-        containerRef.current.classList.add('dark');
+        containerRef.current.classList.add('dark', 'theme-dark');
+      } else if (saved === 'Classic') {
+        containerRef.current.classList.add('theme-classic');
+      } else if (saved === 'System') {
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (prefersDark) {
+          containerRef.current.classList.add('dark', 'theme-dark');
+        } else {
+          containerRef.current.classList.add('theme-light');
+        }
       } else {
-        containerRef.current.classList.remove('dark');
+        containerRef.current.classList.add('theme-light');
       }
     }
 
     // Listen for theme changes from useTheme hook
     const handleThemeChange = (e: Event) => {
-      const customEvent = e as CustomEvent<{ theme: 'Light' | 'Dark' }>;
+      const customEvent = e as CustomEvent<{ theme: string; mode: string }>;
       if (containerRef.current) {
-        if (customEvent.detail?.theme === 'Dark') {
-          containerRef.current.classList.add('dark');
+        containerRef.current.classList.remove('dark', 'theme-classic', 'theme-light', 'theme-dark');
+        const resolved = customEvent.detail?.theme;
+        if (resolved === 'dark') {
+          containerRef.current.classList.add('dark', 'theme-dark');
+        } else if (resolved === 'classic') {
+          containerRef.current.classList.add('theme-classic');
         } else {
-          containerRef.current.classList.remove('dark');
+          containerRef.current.classList.add('theme-light');
         }
       }
     };
 
     window.addEventListener('themechange', handleThemeChange);
     return () => window.removeEventListener('themechange', handleThemeChange);
+  }, []);
+
+  // Listen for OS preference changes when theme is "System"
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+    const handleOsChange = () => {
+      // Only respond if current theme is System
+      const current = localStorage.getItem('app_theme');
+      if (current !== 'System') return;
+
+      if (containerRef.current) {
+        containerRef.current.classList.remove('dark', 'theme-classic', 'theme-light', 'theme-dark');
+        if (mediaQuery.matches) {
+          containerRef.current.classList.add('dark', 'theme-dark');
+        } else {
+          containerRef.current.classList.add('theme-light');
+        }
+      }
+    };
+
+    mediaQuery.addEventListener('change', handleOsChange);
+    return () => mediaQuery.removeEventListener('change', handleOsChange);
   }, []);
 
   const handleToggleCollapse = () => {
@@ -65,7 +104,7 @@ export default function CrmLayout({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div ref={containerRef} data-theme-container className="flex h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
+    <div ref={containerRef} data-theme-container className="flex h-screen overflow-hidden bg-[var(--background)] transition-colors duration-200">
       <SidebarNav
         sidebarOpen={sidebarOpen}
         onCloseSidebar={() => setSidebarOpen(false)}

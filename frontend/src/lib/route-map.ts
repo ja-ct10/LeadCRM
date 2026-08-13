@@ -7,6 +7,7 @@ export const PATHNAME_TO_PATH: Record<string, string> = {
   '/onboarding':                   'onboarding',
   '/dashboard':                    'dashboard',
   '/crm/leads':                    'leads',
+  '/crm/contacts':                 'contacts',
   '/crm/customers':                'customers',
   '/crm/accounts':                 'accounts',
   '/crm/deals':                    'deals',
@@ -43,7 +44,7 @@ export const PATHNAME_TO_PATH: Record<string, string> = {
 export const PATH_TO_PATHNAME: Record<string, string> = {
   'onboarding':          '/onboarding',
   'dashboard':           '/dashboard',
-  'contacts':            '/crm/leads',
+  'contacts':            '/crm/contacts',
   'leads':               '/crm/leads',
   'customers':           '/crm/customers',
   'accounts':            '/crm/accounts',

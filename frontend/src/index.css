@@ -4,22 +4,51 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", "Inter Tight", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Inter Tight", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   --font-heading:
-    var(--font-heading), "League Spartan", ui-sans-serif, system-ui, sans-serif;
+    "Inter Tight", "League Spartan", ui-sans-serif, system-ui, sans-serif;
   --font-subtitle:
     "Neue Machina", "League Spartan", ui-sans-serif, system-ui, sans-serif;
   --font-body:
-    var(--font-body), "Poppins", ui-sans-serif, system-ui, sans-serif;
+    "Inter", "Poppins", ui-sans-serif, system-ui, sans-serif;
 
-  /* Brand blue — bright, vibrant (Tailwind blue-600 base) */
-  --color-blue-300: #93c5fd;
-  --color-blue-400: #60a5fa;
-  --color-blue-500: #3b82f6;
-  --color-blue-600: #2563eb;
-  --color-blue-700: #1d4ed8;
+  /* ═══════════════════════════════════════════════════════════════
+     LeadCRM 5-Color Brand Palette
+     1. Brand Red     #D94F4F — primary actions, active states
+     2. Deep Slate    #25313D — dark surfaces, sidebar, primary text
+     3. Soft Neutral  #F5F6F7 — light backgrounds
+     4. Pure Surface  #FFFFFF — cards, tables, dialogs
+     5. Muted Teal    #5F8F88 — success, positive indicators
+     ═══════════════════════════════════════════════════════════════ */
+
+  --color-brand: #D94F4F;
+  --color-brand-hover: #C24545;
+  --color-brand-light: rgba(217, 79, 79, 0.08);
+  --color-brand-border: rgba(217, 79, 79, 0.2);
+
+  --color-deep-slate: #25313D;
+  --color-deep-slate-light: #2E3B48;
+  --color-deep-slate-lighter: #384653;
+
+  --color-soft-neutral: #F5F6F7;
+  --color-soft-neutral-darker: #ECEEF0;
+
+  --color-pure-surface: #FFFFFF;
+
+  --color-muted-teal: #5F8F88;
+  --color-muted-teal-hover: #4F7F78;
+  --color-muted-teal-light: rgba(95, 143, 136, 0.1);
+
+  /* Sidebar */
+  --color-sidebar: #25313D;
+  --color-canvas: #F5F6F7;
+  --color-surface: #FFFFFF;
+  --color-surface-border: #E4E9F0;
+  --color-text-primary: #25313D;
+  --color-text-muted: #5A6B85;
+  --color-card-shadow: 0 1px 2px rgba(37, 49, 61, 0.06);
 }
 
 @layer base {
@@ -65,41 +94,53 @@
 
 :root {
   /* ── Backgrounds ─────────────────────────────────────────────────────── */
-  --background: #f7fafc;
-  --surface: #ffffff;
-  --surface-secondary: #e3f2fd;
+  --background: #F5F6F7;
+  --surface: #FFFFFF;
+  --surface-secondary: #ECEEF0;
 
-  /* ── Brand (User-Customizable Accent) ───────────────────────────────── */
-  --primary: #2196f3;
-  --primary-dark: #0d47a1;
-  --primary-hover: #1976d2;
-  --primary-foreground: #ffffff;
+  /* ── Brand (LeadCRM Red) ────────────────────────────────────────────── */
+  --primary: #D94F4F;
+  --primary-dark: #B83D3D;
+  --primary-hover: #C24545;
+  --primary-foreground: #FFFFFF;
 
-  /* ── Neutrals ────────────────────────────────────────────────────────── */
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-tertiary: #94a3b8;
-  --border: #d7e3f4;
-  --border-subtle: #e2e8f0;
+  /* ── Neutrals (Deep Slate based) ─────────────────────────────────────── */
+  --text-primary: #25313D;
+  --text-secondary: #4A5968;
+  --text-tertiary: #8494A7;
+  --border: #E4E9F0;
+  --border-subtle: #ECEEF0;
+
+  /* ── Sidebar (Light default = light sidebar) ─────────────────────────── */
+  --sidebar-bg: #FFFFFF;
+  --sidebar-text: #25313D;
+  --sidebar-text-muted: #5A6B85;
+  --sidebar-hover: rgba(37, 49, 61, 0.05);
+  --sidebar-active-bg: rgba(217, 79, 79, 0.08);
+  --sidebar-active-text: #D94F4F;
+  --sidebar-border: #E4E9F0;
+  --sidebar-badge-bg: rgba(37, 49, 61, 0.06);
+  --sidebar-badge-text: #4A5968;
+  --sidebar-group-label: #8494A7;
 
   /* ── Semantic ────────────────────────────────────────────────────────── */
-  --success: #10b981;
-  --success-bg: #d1fae5;
-  --warning: #f59e0b;
-  --warning-bg: #fef3c7;
-  --error: #ef4444;
-  --error-bg: #fee2e2;
-  --info: #3b82f6;
-  --info-bg: #dbeafe;
+  --success: #5F8F88;
+  --success-bg: rgba(95, 143, 136, 0.1);
+  --warning: #E5A84B;
+  --warning-bg: rgba(229, 168, 75, 0.1);
+  --error: #D94F4F;
+  --error-bg: rgba(217, 79, 79, 0.08);
+  --info: #5A8FBF;
+  --info-bg: rgba(90, 143, 191, 0.08);
 
   /* ── Shadows ─────────────────────────────────────────────────────────── */
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
-  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1);
+  --shadow-sm: 0 1px 2px 0 rgba(37, 49, 61, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(37, 49, 61, 0.07);
+  --shadow-lg: 0 10px 15px -3px rgba(37, 49, 61, 0.08);
+  --shadow-xl: 0 20px 25px -5px rgba(37, 49, 61, 0.1);
 
   /* ── Focus Ring ──────────────────────────────────────────────────────── */
-  --focus-ring: 0 0 0 3px rgba(33, 150, 243, 0.2);
+  --focus-ring: 0 0 0 3px rgba(217, 79, 79, 0.15);
 
   /* ── Spacing Scale (8px base) ────────────────────────────────────────── */
   --space-1: 4px;
@@ -115,43 +156,125 @@
   --space-20: 80px;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   DARK THEME — everything dark
+   ═══════════════════════════════════════════════════════════════════════════ */
 .dark {
-  /* ── Backgrounds ─────────────────────────────────────────────────────── */
-  --background: #020617;        /* slate-950 — deep, neutral dark */
-  --surface: #0f172a;           /* slate-900 — cards, panels */
-  --surface-secondary: #1e293b; /* slate-800 — elevated surfaces */
+  --background: #1B252F;
+  --surface: #25313D;
+  --surface-secondary: #2E3B48;
 
-  /* ── Brand ───────────────────────────────────────────────────────────── */
-  --primary: #3b82f6;           /* blue-500 — bright, accessible */
-  --primary-dark: #1d4ed8;      /* blue-700 — deeper variant */
-  --primary-hover: #2563eb;     /* blue-600 — hover state */
-  --primary-foreground: #ffffff;
+  --primary: #D94F4F;
+  --primary-dark: #B83D3D;
+  --primary-hover: #E05A5A;
+  --primary-foreground: #FFFFFF;
 
-  /* ── Neutrals ────────────────────────────────────────────────────────── */
-  --text-primary: #f1f5f9;      /* slate-100 — high contrast text */
-  --text-secondary: #cbd5e1;    /* slate-300 — secondary text */
-  --text-tertiary: #94a3b8;     /* slate-400 — tertiary text */
-  --border: #334155;            /* slate-700 — visible borders */
-  --border-subtle: #1e293b;     /* slate-800 — subtle dividers */
+  --text-primary: #E8ECF0;
+  --text-secondary: #A8B5C4;
+  --text-tertiary: #6B7D92;
+  --border: #384653;
+  --border-subtle: #2E3B48;
 
-  /* ── Semantic (adjusted for dark) ────────────────────────────────────── */
-  --success: #10b981;           /* emerald-500 */
-  --success-bg: rgba(16, 185, 129, 0.1);
-  --warning: #f59e0b;           /* amber-500 */
-  --warning-bg: rgba(245, 158, 11, 0.1);
-  --error: #ef4444;             /* red-500 */
-  --error-bg: rgba(239, 68, 68, 0.1);
-  --info: #3b82f6;              /* blue-500 */
-  --info-bg: rgba(59, 130, 246, 0.1);
+  /* Sidebar is dark in Dark mode */
+  --sidebar-bg: #1B252F;
+  --sidebar-text: #E8ECF0;
+  --sidebar-text-muted: #A8B5C4;
+  --sidebar-hover: rgba(255, 255, 255, 0.05);
+  --sidebar-active-bg: rgba(217, 79, 79, 0.12);
+  --sidebar-active-text: #E05A5A;
+  --sidebar-border: #384653;
+  --sidebar-badge-bg: rgba(255, 255, 255, 0.08);
+  --sidebar-badge-text: #A8B5C4;
+  --sidebar-group-label: #6B7D92;
 
-  /* ── Shadows ─────────────────────────────────────────────────────────── */
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.35);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4);
-  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.5);
+  --success: #5F8F88;
+  --success-bg: rgba(95, 143, 136, 0.12);
+  --warning: #E5A84B;
+  --warning-bg: rgba(229, 168, 75, 0.12);
+  --error: #D94F4F;
+  --error-bg: rgba(217, 79, 79, 0.1);
+  --info: #5A8FBF;
+  --info-bg: rgba(90, 143, 191, 0.1);
 
-  /* ── Focus Ring ──────────────────────────────────────────────────────── */
-  --focus-ring: 0 0 0 3px rgba(59, 130, 246, 0.3);
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.35);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.4);
+
+  --focus-ring: 0 0 0 3px rgba(217, 79, 79, 0.2);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIGHT THEME — everything light including sidebar
+   ═══════════════════════════════════════════════════════════════════════════ */
+.theme-light {
+  --background: #F5F6F7;
+  --surface: #FFFFFF;
+  --surface-secondary: #ECEEF0;
+  --text-primary: #25313D;
+  --text-secondary: #4A5968;
+  --text-tertiary: #8494A7;
+  --border: #E4E9F0;
+  --border-subtle: #ECEEF0;
+
+  --sidebar-bg: #FFFFFF;
+  --sidebar-text: #25313D;
+  --sidebar-text-muted: #5A6B85;
+  --sidebar-hover: rgba(37, 49, 61, 0.04);
+  --sidebar-active-bg: rgba(217, 79, 79, 0.08);
+  --sidebar-active-text: #D94F4F;
+  --sidebar-border: #E4E9F0;
+  --sidebar-badge-bg: rgba(37, 49, 61, 0.06);
+  --sidebar-badge-text: #4A5968;
+  --sidebar-group-label: #8494A7;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CLASSIC THEME — dark sidebar + light content (premium CRM hybrid)
+   ═══════════════════════════════════════════════════════════════════════════ */
+.theme-classic {
+  --background: #F5F6F7;
+  --surface: #FFFFFF;
+  --surface-secondary: #ECEEF0;
+
+  --primary: #D94F4F;
+  --primary-dark: #B83D3D;
+  --primary-hover: #C24545;
+  --primary-foreground: #FFFFFF;
+
+  --text-primary: #25313D;
+  --text-secondary: #4A5968;
+  --text-tertiary: #8494A7;
+  --border: #E4E9F0;
+  --border-subtle: #ECEEF0;
+
+  /* Classic: DARK sidebar — the premium CRM look */
+  --sidebar-bg: #25313D;
+  --sidebar-text: #FFFFFF;
+  --sidebar-text-muted: rgba(255, 255, 255, 0.7);
+  --sidebar-hover: rgba(255, 255, 255, 0.06);
+  --sidebar-active-bg: rgba(217, 79, 79, 0.12);
+  --sidebar-active-text: #FFFFFF;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-badge-bg: rgba(255, 255, 255, 0.12);
+  --sidebar-badge-text: rgba(255, 255, 255, 0.8);
+  --sidebar-group-label: rgba(255, 255, 255, 0.4);
+
+  --success: #5F8F88;
+  --success-bg: rgba(95, 143, 136, 0.1);
+  --warning: #E5A84B;
+  --warning-bg: rgba(229, 168, 75, 0.1);
+  --error: #D94F4F;
+  --error-bg: rgba(217, 79, 79, 0.08);
+  --info: #5A8FBF;
+  --info-bg: rgba(90, 143, 191, 0.08);
+
+  --shadow-sm: 0 1px 2px 0 rgba(37, 49, 61, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(37, 49, 61, 0.07);
+  --shadow-lg: 0 10px 15px -3px rgba(37, 49, 61, 0.08);
+  --shadow-xl: 0 20px 25px -5px rgba(37, 49, 61, 0.1);
+
+  --focus-ring: 0 0 0 3px rgba(217, 79, 79, 0.15);
 }
 
 /* React Grid Layout Styles */
