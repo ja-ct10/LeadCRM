@@ -17,7 +17,6 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password?: string) => Promise<boolean>;
   loginWithGoogle: () => Promise<void>;
-  verifyOtp: (email: string, code: string) => Promise<boolean>;
   logout: () => Promise<void>;
   registerTenant: (tenantData: any, adminData: any) => Promise<boolean>;
   registerGuestAccount: (guestData: any) => Promise<boolean>;
@@ -28,7 +27,7 @@ interface AuthContextType {
   /**
    * Switch to a demo/seeded account by email.
    * - Mock mode: direct login — no password or OTP needed.
-   * - Real API mode: sends OTP with the account password, then auto-verifies with '000000' (DEMO_MODE bypass).
+   * - Real API mode: calls login directly with credentials.
    * Returns true on success, false on failure.
    */
   switchDemoAccount: (email: string, password: string) => Promise<boolean>;
@@ -90,25 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      // Step 1: verify credentials + send OTP
-      await authApi.sendOtp(email, password ?? '');
-      return true; // signals OTP was sent — UI should show OTP step
-    } catch (err: unknown) {
-      if (process.env.NODE_ENV !== 'production') {
-        // eslint-disable-next-line no-console
-        console.error('[AuthContext] login failed:', err instanceof Error ? err.message : err);
-      }
-      return false;
-    }
-  };
-
-  // ── Verify OTP + complete login ────────────────────────────────────
-  const verifyOtp = async (email: string, code: string): Promise<boolean> => {
-    if (USE_MOCK_AUTH) {
-      return mockLogin(email);
-    }
-    try {
-      const res = await authApi.verifyOtp(email, code);
+      const res = await authApi.login({ email, password: password ?? '' });
       if (res?.data?.user) {
         const apiUser = res.data.user as unknown as User;
         setUser(apiUser);
@@ -121,9 +102,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (err: unknown) {
       if (process.env.NODE_ENV !== 'production') {
         // eslint-disable-next-line no-console
-        console.error('[AuthContext] verifyOtp failed:', err instanceof Error ? err.message : err);
+        console.error('[AuthContext] login failed:', err instanceof Error ? err.message : err);
       }
-      throw err; // re-throw so UI can show the specific error message
+      return false;
     }
   };
 
@@ -186,7 +167,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (USE_MOCK_AUTH) return;
     // callbackUrl is a fallback — the NextAuth redirect callback overrides it
     // based on role once the OAuth bridge returns the user's role.
-    await nextAuthSignIn('google', { callbackUrl: '/dashboard' });
+    // callbackUrl must be '/' so AuthGuard intercepts it and applies the
+    // onboarding gate before redirecting to /dashboard or /onboarding.
+    await nextAuthSignIn('google', { callbackUrl: '/' });
   };
 
   // ── Logout ────────────────────────────────────────────────────────
@@ -201,6 +184,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setTenant(null);
     localStorage.removeItem('leadcrm_user');
     localStorage.removeItem('leadcrm_tenant');
+    // Clear onboarding flags so the next user on this browser sees the
+    // full onboarding flow (keys must not leak across accounts).
+    localStorage.removeItem('leadcrm_onboarding_complete');
+    localStorage.removeItem('leadcrm_needs_company_setup');
     // Clear any saved post-login redirect so a new user doesn't inherit the
     // previous session's destination (e.g. System Admin → /admin/dashboard).
     sessionStorage.removeItem('leadcrm_redirect_after_login');
@@ -283,14 +270,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           companySize: guestData.companySize,
           businessWebsite: guestData.businessWebsite,
         });
-        
-        // Send verification email
+
+        // Send email verification OTP
         await authApi.sendRegistrationOtp(guestData.email);
-        
+
         return true;
       } catch (err: unknown) {
         // eslint-disable-next-line no-console
-        console.error('[AuthContext] registerGuestAccount failed:', err);
+        console.error('[AuthContext] registerGuestAccount failed:', err instanceof Error ? err.message : err);
         // Re-throw the error so the UI can display it
         throw err;
       }
@@ -340,18 +327,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   // ── Switch demo account (works both mock + real API) ───────────────
-  // Mock mode  → direct mockLogin (no OTP, instant switch).
-  // Real API   → sendOtp with password, then auto-verify with '000000'
-  //              (requires DEMO_MODE=true + DEV_SEED_EMAILS on the server).
+  // Mock mode  → direct mockLogin (no password needed, instant switch).
+  // Real API   → calls login() directly with credentials.
   const switchDemoAccount = async (email: string, password: string): Promise<boolean> => {
     if (USE_MOCK_AUTH) {
       return mockLogin(email);
     }
     try {
-      // Step 1: request OTP
-      await authApi.sendOtp(email, password);
-      // Step 2: auto-verify with fixed bypass code
-      const ok = await verifyOtp(email, '000000');
+      const ok = await login(email, password);
       return ok;
     } catch (err: unknown) {
       if (process.env.NODE_ENV !== 'production') {
@@ -378,7 +361,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, tenant, isLoading, login, loginWithGoogle, verifyOtp, logout, registerTenant, registerGuestAccount, requestPasswordReset, confirmPasswordReset, switchRole, updateProfile, switchDemoAccount }}>
+    <AuthContext.Provider value={{ user, tenant, isLoading, login, loginWithGoogle, logout, registerTenant, registerGuestAccount, requestPasswordReset, confirmPasswordReset, switchRole, updateProfile, switchDemoAccount }}>
       {children}
     </AuthContext.Provider>
   );

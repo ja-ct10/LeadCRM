@@ -1,48 +1,104 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 
-type Theme = 'Light' | 'Dark';
+export type ThemeMode = 'Classic' | 'Light' | 'Dark' | 'System';
+type ResolvedTheme = 'light' | 'dark' | 'classic';
+
+const THEME_KEY = 'app_theme';
+
+function getSystemPreference(): 'light' | 'dark' {
+  if (typeof window === 'undefined') return 'light';
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function resolveTheme(mode: ThemeMode): ResolvedTheme {
+  switch (mode) {
+    case 'Dark':
+      return 'dark';
+    case 'Light':
+      return 'light';
+    case 'Classic':
+      return 'classic';
+    case 'System':
+      return getSystemPreference() === 'dark' ? 'dark' : 'light';
+    default:
+      return 'light';
+  }
+}
 
 /**
- * Manages dark/light theme state and accent color.
- * Extracted from CrmLayout so any component can use theme logic without coupling to the layout.
+ * Manages the LeadCRM appearance system.
+ * Supports 4 modes: Classic | Light | Dark | System
+ * Applies theme classes to `[data-theme-container]` so public pages remain unaffected.
+ * System mode dynamically tracks OS `prefers-color-scheme` changes.
  */
 export function useTheme() {
-  const [theme, setTheme] = useState<Theme>('Dark');
-
-  useEffect(() => {
-    const syncTheme = () => {
-      const saved = localStorage.getItem('app_theme');
-      if (saved === 'Light' || saved === 'Dark') {
-        setTheme(saved);
-      } else {
-        const isDark = document.documentElement.classList.contains('dark');
-        setTheme(isDark ? 'Dark' : 'Light');
+  const [mode, setMode] = useState<ThemeMode>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(THEME_KEY) as ThemeMode | null;
+      if (saved && ['Classic', 'Light', 'Dark', 'System'].includes(saved)) {
+        return saved;
       }
-    };
+    }
+    return 'Light';
+  });
 
-    syncTheme();
-    window.addEventListener('themechange', syncTheme);
-    return () => window.removeEventListener('themechange', syncTheme);
-  }, []);
+  const [resolved, setResolved] = useState<ResolvedTheme>(() => resolveTheme(mode));
 
-  const toggleTheme = () => {
-    const next: Theme = theme === 'Light' ? 'Dark' : 'Light';
-    setTheme(next);
-    localStorage.setItem('app_theme', next);
+  const applyTheme = useCallback((resolvedTheme: ResolvedTheme) => {
+    const container = document.querySelector('[data-theme-container]');
+    if (!container) return;
 
-    if (next === 'Light') {
-      document.documentElement.classList.remove('dark');
-      document.documentElement.classList.add('light');
+    // Remove all theme classes
+    container.classList.remove('dark', 'theme-classic', 'theme-light', 'theme-dark');
+
+    // Apply appropriate classes
+    if (resolvedTheme === 'dark') {
+      container.classList.add('dark', 'theme-dark');
+    } else if (resolvedTheme === 'classic') {
+      container.classList.add('theme-classic');
     } else {
-      document.documentElement.classList.remove('light');
-      document.documentElement.classList.add('dark');
+      container.classList.add('theme-light');
     }
 
-    window.dispatchEvent(new Event('themechange'));
-  };
+    // Dispatch event for other components to react
+    window.dispatchEvent(
+      new CustomEvent('themechange', { detail: { theme: resolvedTheme, mode } })
+    );
+  }, [mode]);
 
-  const isDark = theme === 'Dark';
+  // Apply theme whenever resolved value changes
+  useEffect(() => {
+    applyTheme(resolved);
+  }, [resolved, applyTheme]);
 
-  return { theme, isDark, toggleTheme };
+  // Listen for OS preference changes when in System mode
+  useEffect(() => {
+    if (mode !== 'System') return;
+
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = () => {
+      const next = resolveTheme('System');
+      setResolved(next);
+    };
+
+    mediaQuery.addEventListener('change', handler);
+    return () => mediaQuery.removeEventListener('change', handler);
+  }, [mode]);
+
+  const setTheme = useCallback((newMode: ThemeMode) => {
+    setMode(newMode);
+    const next = resolveTheme(newMode);
+    setResolved(next);
+    localStorage.setItem(THEME_KEY, newMode);
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    const next: ThemeMode = mode === 'Light' ? 'Dark' : 'Light';
+    setTheme(next);
+  }, [mode, setTheme]);
+
+  const isDark = resolved === 'dark';
+
+  return { mode, resolved, isDark, setTheme, toggleTheme };
 }

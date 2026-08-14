@@ -13,6 +13,7 @@ function LoginPageInner() {
   const navigate = (path: string) => {
     if (path === 'register') return router.push('/register');
     if (path === 'landing' || path === '/') return router.push('/');
+    if (path === 'onboarding') return router.push('/onboarding');
     return router.push(PATH_TO_PATHNAME[path] ?? '/dashboard');
   };
   

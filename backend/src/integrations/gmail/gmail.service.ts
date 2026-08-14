@@ -1,12 +1,14 @@
 import prisma from '../../config/database.config';
 import { refreshAccessToken, getUserInfo } from './gmail.oauth';
 import { GmailEmail, GmailThread } from './gmail.types';
+import { encryptToken, decryptToken } from '../../core/encryption/crypto.service';
 
 
 
 /**
  * Ensures the access token is still valid; refreshes if expired.
- * Returns a valid access token or throws if refresh fails.
+ * Decrypts stored tokens before use and re-encrypts after refresh.
+ * Returns a valid plaintext access token or throws if refresh fails.
  */
 export async function getValidAccessToken(tenantId: string, userId: string): Promise<string> {
   const account = await prisma.emailAccount.findUnique({
@@ -17,6 +19,9 @@ export async function getValidAccessToken(tenantId: string, userId: string): Pro
     throw new Error('Gmail account not connected');
   }
 
+  // Decrypt access token from DB (stored encrypted)
+  const decryptedAccessToken = decryptToken(account.accessToken);
+
   // Check if token is still valid (with 5-minute buffer)
   const now = new Date();
   const bufferMs = 5 * 60 * 1000;
@@ -25,7 +30,7 @@ export async function getValidAccessToken(tenantId: string, userId: string): Pro
     : true;
 
   if (!isExpired) {
-    return account.accessToken;
+    return decryptedAccessToken;
   }
 
   // Token expired — refresh it
@@ -33,20 +38,115 @@ export async function getValidAccessToken(tenantId: string, userId: string): Pro
     throw new Error('No refresh token available. Please reconnect your Gmail account.');
   }
 
-  const tokens = await refreshAccessToken(account.refreshToken);
+  // Decrypt refresh token before passing to OAuth client
+  const decryptedRefreshToken = decryptToken(account.refreshToken);
+  const tokens = await refreshAccessToken(decryptedRefreshToken);
 
   const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
+
+  // Re-encrypt new tokens before persisting
+  const newEncryptedAccessToken = encryptToken(tokens.access_token);
+  const newEncryptedRefreshToken = tokens.refresh_token
+    ? encryptToken(tokens.refresh_token)
+    : undefined;
 
   await prisma.emailAccount.update({
     where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } },
     data: {
-      accessToken: tokens.access_token,
+      accessToken: newEncryptedAccessToken,
       tokenExpiresAt: expiresAt,
-      ...(tokens.refresh_token ? { refreshToken: tokens.refresh_token } : {}),
+      ...(newEncryptedRefreshToken ? { refreshToken: newEncryptedRefreshToken } : {}),
     },
   });
 
   return tokens.access_token;
+}
+
+/**
+ * Retrieves a valid access token for the system Gmail sender account.
+ * Looks up EmailAccount where tenantId='system' and userId=GMAIL_SYSTEM_SENDER_USER_ID.
+ * Returns null if no system sender is configured or if the account is inactive.
+ */
+export async function getSystemAccessToken(): Promise<string | null> {
+  const systemUserId = process.env.GMAIL_SYSTEM_SENDER_USER_ID;
+  if (!systemUserId) return null;
+
+  const account = await prisma.emailAccount.findUnique({
+    where: { tenantId_userId_provider: { tenantId: 'system', userId: systemUserId, provider: 'gmail' } },
+  });
+
+  if (!account || !account.isActive) return null;
+
+  const decryptedAccessToken = decryptToken(account.accessToken);
+
+  const now = new Date();
+  const bufferMs = 5 * 60 * 1000;
+  const isExpired = account.tokenExpiresAt
+    ? account.tokenExpiresAt.getTime() - bufferMs < now.getTime()
+    : true;
+
+  if (!isExpired) {
+    return decryptedAccessToken;
+  }
+
+  if (!account.refreshToken) return null;
+
+  try {
+    const decryptedRefreshToken = decryptToken(account.refreshToken);
+    const tokens = await refreshAccessToken(decryptedRefreshToken);
+
+    const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
+    const newEncryptedAccessToken = encryptToken(tokens.access_token);
+    const newEncryptedRefreshToken = tokens.refresh_token
+      ? encryptToken(tokens.refresh_token)
+      : undefined;
+
+    await prisma.emailAccount.update({
+      where: { tenantId_userId_provider: { tenantId: 'system', userId: systemUserId, provider: 'gmail' } },
+      data: {
+        accessToken: newEncryptedAccessToken,
+        tokenExpiresAt: expiresAt,
+        ...(newEncryptedRefreshToken ? { refreshToken: newEncryptedRefreshToken } : {}),
+      },
+    });
+
+    return tokens.access_token;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Sends an email via Gmail API using a pre-provided plaintext access token.
+ * Used for system-level sending (e.g., auth OTPs) where no userId context exists.
+ */
+export async function sendEmailWithToken(
+  accessToken: string,
+  to: string,
+  subject: string,
+  body: string,
+): Promise<{ messageId: string; threadId: string }> {
+  const rawMessage = createRawMessage(to, subject, body);
+
+  const response = await fetch(
+    'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ raw: rawMessage }),
+    },
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Failed to send email via Gmail: ${response.status} — ${errorBody}`);
+  }
+
+  const result = await response.json() as { id: string; threadId: string };
+  return { messageId: result.id, threadId: result.threadId };
 }
 
 /**

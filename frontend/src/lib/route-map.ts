@@ -4,8 +4,10 @@
  */
 
 export const PATHNAME_TO_PATH: Record<string, string> = {
+  '/onboarding':                   'onboarding',
   '/dashboard':                    'dashboard',
   '/crm/leads':                    'leads',
+  '/crm/contacts':                 'contacts',
   '/crm/customers':                'customers',
   '/crm/accounts':                 'accounts',
   '/crm/deals':                    'deals',
@@ -26,6 +28,7 @@ export const PATHNAME_TO_PATH: Record<string, string> = {
   '/administration/audit':         'audit-log',
   '/operations/taskboard':         'tasks',
   '/inbox':                        'inbox',
+  '/notifications':                'notifications',
   '/admin/dashboard':              'admin-dashboard',
   '/admin/clients':                'admin-clients',
   '/admin/pricing':                'admin-pricing',
@@ -39,8 +42,9 @@ export const PATHNAME_TO_PATH: Record<string, string> = {
 
 // Reverse map — canonical pathname for each path (first match wins)
 export const PATH_TO_PATHNAME: Record<string, string> = {
+  'onboarding':          '/onboarding',
   'dashboard':           '/dashboard',
-  'contacts':            '/crm/leads',
+  'contacts':            '/crm/contacts',
   'leads':               '/crm/leads',
   'customers':           '/crm/customers',
   'accounts':            '/crm/accounts',
@@ -62,6 +66,7 @@ export const PATH_TO_PATHNAME: Record<string, string> = {
   'audit-log':           '/administration/audit',
   'tasks':               '/operations/taskboard',
   'inbox':               '/inbox',
+  'notifications':       '/notifications',
   'admin-dashboard':     '/admin/dashboard',
   'admin-clients':       '/admin/clients',
   'admin-pricing':       '/admin/pricing',

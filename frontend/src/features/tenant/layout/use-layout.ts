@@ -16,9 +16,10 @@ export const NAV_ITEMS = [
   { name: 'My Jobs',           path: 'technician-jobs',   icon: Wrench,          permission: null,             roles: ['Technician'] as const, group: null },
   // ── CRM ─────────────────────────────────────────────
   { name: 'Leads',             path: 'leads',             icon: Target,          permission: 'contacts.view',  roles: null,          group: 'CRM' },
-  { name: 'Customers',         path: 'customers',         icon: UserCheck,       permission: 'contacts.view',  roles: null,          group: 'CRM' },
+  { name: 'Contacts',          path: 'contacts',          icon: UserCheck,       permission: 'contacts.view',  roles: null,          group: 'CRM' },
   { name: 'Accounts',          path: 'accounts',          icon: Building,        permission: 'accounts.view',  roles: null,          group: 'CRM' },
-  { name: 'Pipeline',          path: 'pipeline',          icon: Briefcase,       permission: 'deals.view',     roles: null,          group: 'CRM' },
+  { name: 'Customers',         path: 'customers',         icon: UserCheck,       permission: 'contacts.view',  roles: null,          group: 'CRM' },
+  { name: 'Deals',             path: 'pipeline',          icon: Briefcase,       permission: 'deals.view',     roles: null,          group: 'CRM' },
   // ── Operations ──────────────────────────────────────
   { name: 'Tasks',             path: 'tasks',             icon: ListTodo,        permission: 'contacts.view',  roles: null,          group: 'Operations' },
   { name: 'Service Orders',    path: 'service-orders',    icon: Wrench,          permission: 'deals.view',     roles: null,          group: 'Operations', featureFlag: 'service' as const },
@@ -78,9 +79,8 @@ export function useLayout() {
     }
     if (isSuper) return true;
     if (user?.role === 'Guest') {
-      const guestAllowed = ['Dashboard', 'Leads', 'Pipeline', 'Workflows', 'Campaigns'];
-      const module = item.permission ? item.permission.split('.')[0] : 'dashboard';
-      return guestAllowed.some(a => a.toLowerCase() === module.toLowerCase() || module === 'dashboard');
+      // Sandbox accounts have read access to all modules except Audit Trail
+      return (item as any).path !== 'audit-log';
     }
     if (!item.permission) return true;
     const legacyIds = (PERMISSION_BRIDGE as Record<string, string[]>)[item.permission] ?? [];

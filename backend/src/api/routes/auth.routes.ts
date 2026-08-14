@@ -12,8 +12,6 @@ import {
   LoginSchema,
   ClientAdminRegisterSchema,
   GuestRegisterSchema,
-  SendOtpSchema,
-  VerifyOtpSchema,
   ForgotPasswordSchema,
   ResetPasswordSchema,
   SendRegistrationOtpSchema,
@@ -41,20 +39,11 @@ router.post('/register/client-admin', registerRateLimiter, validate(ClientAdminR
 // POST /api/v1/auth/register/guest
 router.post('/register/guest', registerRateLimiter, validate(GuestRegisterSchema), authController.registerGuest);
 
-// POST /api/v1/auth/verify-email (deprecated — use send-registration-otp + verify-registration-otp)
-router.post('/verify-email', authRateLimiter, authController.verifyEmail);
-
-// POST /api/v1/auth/send-registration-otp — sends 6-digit code to email (registration step)
+// POST /api/v1/auth/send-registration-otp — sends 6-digit verification code (registration step)
 router.post('/send-registration-otp', registerRateLimiter, validate(SendRegistrationOtpSchema), authController.sendRegOtp);
 
-// POST /api/v1/auth/verify-registration-otp — verify the code before completing registration
+// POST /api/v1/auth/verify-registration-otp — verifies the code and activates the account
 router.post('/verify-registration-otp', registerRateLimiter, validate(VerifyRegistrationOtpSchema), authController.verifyRegOtp);
-
-// POST /api/v1/auth/send-otp — verify credentials + send 6-digit OTP (rate-limited, validated)
-router.post('/send-otp', authRateLimiter, validate(SendOtpSchema), authController.sendOtp);
-
-// POST /api/v1/auth/verify-otp — verify OTP + issue JWT session (rate-limited, validated)
-router.post('/verify-otp', authRateLimiter, validate(VerifyOtpSchema), authController.verifyOtp);
 
 // POST /api/v1/auth/forgot-password — request reset link (strict rate-limited, validated)
 router.post('/forgot-password', passwordResetRateLimiter, validate(ForgotPasswordSchema), authController.forgotPassword);
