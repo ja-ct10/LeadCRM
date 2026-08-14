@@ -30,10 +30,17 @@ export default function ContactsPage(): React.ReactElement {
     [contacts],
   );
 
+  const activeCustomersCount = useMemo(
+    () => activeContacts.filter((c) => c.customerType === 'Active Customer').length,
+    [activeContacts],
+  );
+
   const filteredContacts = useMemo(() => {
     let result = activeContacts;
     if (activeTab === 'my') {
       result = result.filter((c) => c.assignedUserId === user?.id);
+    } else if (activeTab === 'active-customers') {
+      result = result.filter((c) => c.customerType === 'Active Customer');
     }
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
@@ -122,6 +129,7 @@ export default function ContactsPage(): React.ReactElement {
       label: 'System Defined Filters',
       isExpanded: true,
       items: [
+        { id: 'active-customers', label: 'Active Customers', count: activeCustomersCount, isChecked: activeTab === 'active-customers' },
         { id: 'touched', label: 'Touched Records', count: touchedCount, isChecked: false },
         { id: 'untouched', label: 'Untouched Records', count: untouchedCount, isChecked: false },
         { id: 'record-action', label: 'Record Action', isChecked: false },
@@ -149,12 +157,16 @@ export default function ContactsPage(): React.ReactElement {
       isExpanded: false,
       items: [],
     },
-  ], [touchedCount, untouchedCount]);
+  ], [activeCustomersCount, activeTab, touchedCount, untouchedCount]);
 
   return (
     <ModuleWorkspace
       title="Contacts"
-      description="Every person you sell to, nested under their account and deals."
+      description={
+        activeTab === 'active-customers'
+          ? 'Contacts with customerType = Active Customer, grouped under their account.'
+          : 'Every person you sell to, nested under their account and deals.'
+      }
       primaryActionLabel="Create Contact"
       onPrimaryAction={() => toast.info('Contact creation coming soon')}
       onImport={() => toast.info('Import coming soon')}
@@ -165,6 +177,7 @@ export default function ContactsPage(): React.ReactElement {
       savedTabs={[
         { id: 'all', label: 'All Contacts' },
         { id: 'my', label: 'My Contacts' },
+        { id: 'active-customers', label: 'Active Customers' },
       ]}
       activeTab={activeTab}
       onTabChange={setActiveTab}

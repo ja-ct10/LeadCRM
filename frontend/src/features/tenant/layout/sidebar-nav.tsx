@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useMemo } from 'react';
 import { X, ChevronLeft, ChevronRight, Settings } from 'lucide-react';
@@ -36,7 +36,6 @@ export default function SidebarNav({
   const recordCounts = useMemo(() => ({
     leads: contacts.filter(c => !c.isArchived).length,
     contacts: contacts.filter(c => !c.isArchived).length,
-    customers: contacts.filter(c => c.customerType === 'Active Customer' && !c.isArchived).length,
     accounts: organizations.filter(o => !o.isArchived).length,
     pipeline: deals.filter(d => !d.isArchived).length,
   }), [contacts, deals, organizations]);
@@ -45,7 +44,6 @@ export default function SidebarNav({
     const counts: Record<string, number | undefined> = {
       leads: recordCounts.leads,
       contacts: recordCounts.contacts,
-      customers: recordCounts.customers,
       accounts: recordCounts.accounts,
       pipeline: recordCounts.pipeline,
     };
