@@ -6,6 +6,8 @@ import { useAuth } from '@/store/AuthContext';
 import { useNotifications } from '@/features/tenant/notifications/hooks/use-notifications';
 import { useLayout, NAV_ITEMS } from './use-layout';
 import NotificationsDropdown from '@/features/tenant/notifications/ui/notifications-dropdown';
+import { GlobalOmnibox } from '@/shared/components/global-omnibox';
+import { UserProfileDropdown } from './user-profile-dropdown';
 import { cn } from '@/lib/utils';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -20,7 +22,7 @@ interface TopbarProps {
 export default function Topbar({ onOpenSidebar }: TopbarProps): React.ReactElement {
   const { user } = useAuth();
   const { unreadCount: notificationCount } = useNotifications();
-  const { currentPath } = useLayout();
+  const { currentPath, navigate } = useLayout();
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const notificationButtonRef = useRef<HTMLButtonElement>(null!);
 
@@ -65,19 +67,9 @@ export default function Topbar({ onOpenSidebar }: TopbarProps): React.ReactEleme
         </div>
       </div>
 
-      {/* Center: Global Search */}
-      <div className="hidden md:flex flex-1 max-w-[380px] mx-4 justify-center">
-        <div className="relative w-full">
-          <input
-            type="text"
-            placeholder="Search records..."
-            className="w-full h-8 pl-8 pr-12 rounded-lg border border-[var(--border)] bg-[var(--surface-secondary)] text-[12.5px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[#D94F4F]/15 focus:border-[#D94F4F]/50 focus:bg-[var(--surface)] transition-all"
-          />
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" />
-          <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-medium text-[var(--text-tertiary)] opacity-60 bg-[var(--surface)] border border-[var(--border)] rounded px-1 py-0.5">
-            ⌘K
-          </kbd>
-        </div>
+      {/* Center: Global Search Omnibox */}
+      <div className="hidden md:flex flex-1 max-w-[460px] mx-4 justify-center">
+        <GlobalOmnibox />
       </div>
 
       {/* Right: Actions */}
@@ -112,6 +104,7 @@ export default function Topbar({ onOpenSidebar }: TopbarProps): React.ReactEleme
 
         {/* Settings */}
         <button
+          onClick={() => navigate('settings')}
           className="w-8 h-8 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)] flex items-center justify-center transition-colors"
           aria-label="Settings"
           title="Settings"
@@ -119,14 +112,10 @@ export default function Topbar({ onOpenSidebar }: TopbarProps): React.ReactEleme
           <Settings size={16} />
         </button>
 
-        {/* Avatar */}
-        <button
-          className="w-8 h-8 rounded-full bg-gradient-to-br from-[#D94F4F] to-[#25313D] flex items-center justify-center text-white font-bold text-[10px] ml-1"
-          aria-label="User menu"
-          title={`${user?.firstName ?? ''} ${user?.lastName ?? ''}`}
-        >
-          {initials}
-        </button>
+        {/* User Profile Dropdown */}
+        <div className="ml-1">
+          <UserProfileDropdown />
+        </div>
       </div>
 
       {/* Notifications Dropdown */}

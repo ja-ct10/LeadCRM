@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, Users, Briefcase, LayoutDashboard, Workflow, Mail, Settings, ShieldAlert, Wrench, Package, Receipt, Activity, Book } from 'lucide-react';
@@ -49,7 +49,6 @@ export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandP
     { name: 'My Jobs', path: 'technician-jobs', icon: Wrench, roles: ['Technician'] },
     { name: 'Client Profiles', path: 'contacts', icon: Users, permissions: ['contacts.view', 'p2', 'p2_own'] },
     { name: 'Leads', path: 'leads', icon: Users, permissions: ['contacts.view', 'p2', 'p2_own'] },
-    { name: 'Customers', path: 'customers', icon: Users, permissions: ['contacts.view', 'p2', 'p2_own'] },
     { name: 'Accounts', path: 'accounts', icon: Users, permissions: ['accounts.view', 'p2', 'p2_own'] },
     { name: 'Deals', path: 'deals', icon: Briefcase, permissions: ['deals.view', 'p7', 'p7_own'] },
     { name: 'Service Orders', path: 'service-orders', icon: Wrench, permissions: ['deals.view', 'p7', 'p7_own'], enabled: isServiceModuleEnabled },

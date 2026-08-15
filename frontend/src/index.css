@@ -1,5 +1,5 @@
-﻿@import "tailwindcss";
 @import url("https://api.fontshare.com/v2/css?f[]=neue-machina@200,300,400,500,700,800,900&display=swap");
+@import "tailwindcss";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -157,51 +157,51 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   DARK THEME — everything dark
+   DARK THEME — Close CRM Inspired Dark Theme
    ═══════════════════════════════════════════════════════════════════════════ */
 .dark {
-  --background: #1B252F;
-  --surface: #25313D;
-  --surface-secondary: #2E3B48;
+  --background: #0D0E11;
+  --surface: #16191E;
+  --surface-secondary: #1C2027;
 
-  --primary: #D94F4F;
-  --primary-dark: #B83D3D;
-  --primary-hover: #E05A5A;
+  --primary: #2563EB;
+  --primary-dark: #1D4ED8;
+  --primary-hover: #3B82F6;
   --primary-foreground: #FFFFFF;
 
-  --text-primary: #E8ECF0;
-  --text-secondary: #A8B5C4;
-  --text-tertiary: #6B7D92;
-  --border: #384653;
-  --border-subtle: #2E3B48;
+  --text-primary: #F1F5F9;
+  --text-secondary: #94A3B8;
+  --text-tertiary: #64748B;
+  --border: #262A33;
+  --border-subtle: #1C2027;
 
-  /* Sidebar is dark in Dark mode */
-  --sidebar-bg: #1B252F;
-  --sidebar-text: #E8ECF0;
-  --sidebar-text-muted: #A8B5C4;
+  /* Sidebar is deep obsidian in Dark mode */
+  --sidebar-bg: #08090B;
+  --sidebar-text: #F1F5F9;
+  --sidebar-text-muted: #94A3B8;
   --sidebar-hover: rgba(255, 255, 255, 0.05);
-  --sidebar-active-bg: rgba(217, 79, 79, 0.12);
-  --sidebar-active-text: #E05A5A;
-  --sidebar-border: #384653;
+  --sidebar-active-bg: rgba(37, 99, 235, 0.15);
+  --sidebar-active-text: #3B82F6;
+  --sidebar-border: #262A33;
   --sidebar-badge-bg: rgba(255, 255, 255, 0.08);
-  --sidebar-badge-text: #A8B5C4;
-  --sidebar-group-label: #6B7D92;
+  --sidebar-badge-text: #94A3B8;
+  --sidebar-group-label: #64748B;
 
-  --success: #5F8F88;
-  --success-bg: rgba(95, 143, 136, 0.12);
-  --warning: #E5A84B;
-  --warning-bg: rgba(229, 168, 75, 0.12);
-  --error: #D94F4F;
-  --error-bg: rgba(217, 79, 79, 0.1);
-  --info: #5A8FBF;
-  --info-bg: rgba(90, 143, 191, 0.1);
+  --success: #10B981;
+  --success-bg: rgba(16, 185, 129, 0.12);
+  --warning: #F59E0B;
+  --warning-bg: rgba(245, 158, 11, 0.12);
+  --error: #EF4444;
+  --error-bg: rgba(239, 68, 68, 0.1);
+  --info: #3B82F6;
+  --info-bg: rgba(59, 130, 246, 0.1);
 
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.2);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.35);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.7);
 
-  --focus-ring: 0 0 0 3px rgba(217, 79, 79, 0.2);
+  --focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.25);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -233,48 +233,48 @@
    CLASSIC THEME — dark sidebar + light content (premium CRM hybrid)
    ═══════════════════════════════════════════════════════════════════════════ */
 .theme-classic {
-  --background: #F5F6F7;
+  --background: #F8FAFC;
   --surface: #FFFFFF;
-  --surface-secondary: #ECEEF0;
+  --surface-secondary: #F1F5F9;
 
-  --primary: #D94F4F;
-  --primary-dark: #B83D3D;
-  --primary-hover: #C24545;
+  --primary: #2563EB;
+  --primary-dark: #1D4ED8;
+  --primary-hover: #1D4ED8;
   --primary-foreground: #FFFFFF;
 
-  --text-primary: #25313D;
-  --text-secondary: #4A5968;
-  --text-tertiary: #8494A7;
-  --border: #E4E9F0;
-  --border-subtle: #ECEEF0;
+  --text-primary: #0F172A;
+  --text-secondary: #475569;
+  --text-tertiary: #94A3B8;
+  --border: #E2E8F0;
+  --border-subtle: #F1F5F9;
 
-  /* Classic: DARK sidebar — the premium CRM look */
-  --sidebar-bg: #25313D;
-  --sidebar-text: #FFFFFF;
-  --sidebar-text-muted: rgba(255, 255, 255, 0.7);
+  /* Classic: DARK sidebar — Close CRM deep obsidian */
+  --sidebar-bg: #08090B;
+  --sidebar-text: #F1F5F9;
+  --sidebar-text-muted: #94A3B8;
   --sidebar-hover: rgba(255, 255, 255, 0.06);
-  --sidebar-active-bg: rgba(217, 79, 79, 0.12);
-  --sidebar-active-text: #FFFFFF;
-  --sidebar-border: rgba(255, 255, 255, 0.08);
-  --sidebar-badge-bg: rgba(255, 255, 255, 0.12);
-  --sidebar-badge-text: rgba(255, 255, 255, 0.8);
-  --sidebar-group-label: rgba(255, 255, 255, 0.4);
+  --sidebar-active-bg: rgba(37, 99, 235, 0.15);
+  --sidebar-active-text: #3B82F6;
+  --sidebar-border: #262A33;
+  --sidebar-badge-bg: rgba(255, 255, 255, 0.1);
+  --sidebar-badge-text: #F1F5F9;
+  --sidebar-group-label: #64748B;
 
-  --success: #5F8F88;
-  --success-bg: rgba(95, 143, 136, 0.1);
-  --warning: #E5A84B;
-  --warning-bg: rgba(229, 168, 75, 0.1);
-  --error: #D94F4F;
-  --error-bg: rgba(217, 79, 79, 0.08);
-  --info: #5A8FBF;
-  --info-bg: rgba(90, 143, 191, 0.08);
+  --success: #10B981;
+  --success-bg: rgba(16, 185, 129, 0.1);
+  --warning: #F59E0B;
+  --warning-bg: rgba(245, 158, 11, 0.1);
+  --error: #EF4444;
+  --error-bg: rgba(239, 68, 68, 0.08);
+  --info: #3B82F6;
+  --info-bg: rgba(59, 130, 246, 0.08);
 
-  --shadow-sm: 0 1px 2px 0 rgba(37, 49, 61, 0.04);
-  --shadow-md: 0 4px 6px -1px rgba(37, 49, 61, 0.07);
-  --shadow-lg: 0 10px 15px -3px rgba(37, 49, 61, 0.08);
-  --shadow-xl: 0 20px 25px -5px rgba(37, 49, 61, 0.1);
+  --shadow-sm: 0 1px 2px 0 rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.07);
+  --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.08);
+  --shadow-xl: 0 20px 25px -5px rgba(15, 23, 42, 0.1);
 
-  --focus-ring: 0 0 0 3px rgba(217, 79, 79, 0.15);
+  --focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
 /* React Grid Layout Styles */

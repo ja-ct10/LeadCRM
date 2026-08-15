@@ -10,8 +10,7 @@ export type LeadType = typeof CONTACT_TYPES[number];
 export const CONTACT_SMART_VIEWS = [
   'All Profiles',
   'Leads',
-  'Customers',
-  'Individual Customers',
-  'Organization Customers',
+  'Individual Profiles',
+  'Organization Profiles',
   'Archived',
 ] as const;

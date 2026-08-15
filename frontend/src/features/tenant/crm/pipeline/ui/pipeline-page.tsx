@@ -2,9 +2,11 @@
 
 import { uuid } from '@/lib/utils';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
+import { useFilterUrlSync } from '@/shared/hooks/use-filter-url-sync';
+import { useDebounce } from '@/shared/hooks/use-debounce';
 import { toast } from 'sonner';
 import { 
   Plus, MoreHorizontal, X, Building, Calendar, 
@@ -49,7 +51,6 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell
 } from '@/shared/components/charts/ChartComponents';
 import { TrendingUp, AlertTriangle } from 'lucide-react';
-import { TrelloFilter } from '@/shared/components/trello-filter';
 import EmptyState from '@/shared/components/empty-state';
 import ForecastBar from './forecast-bar';
 import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
@@ -202,34 +203,6 @@ const SortableDealCard = ({ deal, assignedUser, onClick, canDrag = true, isAutom
         listeners={listeners} 
       />
     </div>
-  );
-};
-
-const DroppableTab = ({ pipeline, isActive, count, dotColor, onClick }: any) => {
-  const { isOver, setNodeRef } = useDroppable({
-    id: pipeline.id,
-    data: {
-      type: 'Pipeline',
-      pipeline,
-    },
-  });
-
-  return (
-    <button 
-      ref={setNodeRef}
-      onClick={onClick}
-      className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap border ${
-        isActive 
-          ? 'bg-gray-50 dark:bg-white/[0.05] text-slate-900 dark:text-white border-gray-300 dark:border-white/[0.1] shadow-sm' 
-          : isOver 
-            ? 'bg-blue-500/20 text-blue-400 border-blue-500/30 scale-105' 
-            : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-white/[0.02] border-transparent'
-      }`}
-    >
-      <div className={`w-2 h-2 rounded-full ${dotColor}`}></div>
-      {pipeline.name}
-      <span className="bg-gray-50 dark:bg-white/[0.05] text-slate-700 dark:text-slate-300 text-xs px-2 py-0.5 rounded-full">{count}</span>
-    </button>
   );
 };
 
@@ -482,7 +455,11 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
   }, [pipelines, activePipelineId]);
   
   // Modern Deal Views & Advanced Funnel Filtering System
+  const { getParam, getArrayParam, updateParams } = useFilterUrlSync();
+
   const [viewMode, setViewMode] = useState<'kanban' | 'table' | 'list'>(() => {
+    const urlView = getParam('view') as 'kanban' | 'table' | 'list';
+    if (urlView) return urlView;
     return (localStorage.getItem('pipeline_view_mode') as any) || 'kanban';
   });
   const handleViewModeChange = (mode: 'kanban' | 'table' | 'list') => {
@@ -494,9 +471,9 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
   const [collapsedSwimlanes] = useState<string[]>([]);
   
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
-  const [filterStatus, setFilterStatus] = useState<string>('all'); // all, open, won, lost
-  const [filterStages, setFilterStages] = useState<string[]>([]);
-  const [filterStaff, setFilterStaff] = useState<string[]>([]);
+  const [filterStatus, setFilterStatus] = useState<string>(() => getParam('status') || 'all'); // all, open, won, lost
+  const [filterStages, setFilterStages] = useState<string[]>(() => getArrayParam('stages'));
+  const [filterStaff, setFilterStaff] = useState<string[]>(() => getArrayParam('staff'));
   const [filterLeadSource, setFilterLeadSource] = useState<string>('');
   const [filterLeadSourceOp, setFilterLeadSourceOp] = useState<string>('contains'); // equals, contains, starts, ends, notequals
   
@@ -528,13 +505,26 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
   const [filterTags, setFilterTags] = useState<string>('');
   const [filterTagsOp, setFilterTagsOp] = useState<string>('contains');
 
-  const [filterPriority, setFilterPriority] = useState<string[]>([]);
+  const [filterPriority, setFilterPriority] = useState<string[]>(() => getArrayParam('priority'));
   
   // Table sorting states
   const [tableSortField, setTableSortField] = useState<string>('title');
   const [tableSortAsc, setTableSortAsc] = useState<boolean>(true);
   
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(() => getParam('search'));
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+
+  // Sync state to URL
+  useEffect(() => {
+    updateParams({
+      view: viewMode !== 'kanban' ? viewMode : null,
+      search: debouncedSearchQuery || null,
+      status: filterStatus !== 'all' ? filterStatus : null,
+      stages: filterStages,
+      staff: filterStaff,
+      priority: filterPriority,
+    });
+  }, [viewMode, debouncedSearchQuery, filterStatus, filterStages, filterStaff, filterPriority, updateParams]);
 
   const getActiveFiltersCount = () => {
     let count = 0;
@@ -753,8 +743,8 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
     let result = [...allPipelineDeals].filter(d => !d.isArchived);
 
     // 1. Live Search query (Title, Company, Contact)
-    if (searchQuery.trim()) {
-      const q = searchQuery.trim().toLowerCase();
+    if (debouncedSearchQuery.trim()) {
+      const q = debouncedSearchQuery.trim().toLowerCase();
       result = result.filter(d => 
         (d.title || '').toLowerCase().includes(q) || 
         (d.companyName || '').toLowerCase().includes(q) ||
@@ -1524,10 +1514,28 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
             </div>
           )}
 
+          {/* New Pipeline */}
+          {canManagePipelines && (
+            <button
+              onClick={() => {
+                setPipelineModalStep('template');
+                setSelectedTemplateId('inquiry');
+                setNewPipelineName('');
+                setIsPipelineModalOpen(true);
+              }}
+              title="Create New Pipeline"
+              className="inline-flex items-center gap-1.5 h-9 px-3 text-[13px] font-medium text-[#0F172A] dark:text-slate-200 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+            >
+              <Plus size={14} />
+              <span className="hidden sm:inline">New Pipeline</span>
+            </button>
+          )}
+
           {/* Manage Pipelines */}
           {canManagePipelines && (
             <button
               onClick={() => setIsManagePipelinesModalOpen(true)}
+              title="Manage Pipelines"
               aria-label="Manage Pipelines"
               className="h-9 w-9 flex items-center justify-center text-[#5A6B85] dark:text-slate-400 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
             >
@@ -1656,59 +1664,6 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
         </button>
       </div>
 
-      {/* ── KPI Strip ─────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-        <div className="bg-white dark:bg-slate-800/60 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-3.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#5A6B85] dark:text-slate-400 mb-1">OPEN PIPELINE</p>
-          <p className="text-xl font-extrabold text-[#0F172A] dark:text-white tabular-nums">
-            ${(() => {
-              const openStages = activePipeline?.stages.filter((s: Stage) => !s.isWon && !s.isLost) ?? [];
-              const openValue = pipelineDeals.filter(d => openStages.some((s: Stage) => s.id === d.stageId)).reduce((sum, d) => sum + (d.value ?? 0), 0);
-              return openValue >= 1000000 ? `${(openValue / 1000000).toFixed(2)}M` : openValue >= 1000 ? `${Math.round(openValue / 1000)}k` : openValue.toLocaleString();
-            })()}
-          </p>
-          <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 mt-0.5">{pipelineDeals.filter(d => { const s = activePipeline?.stages.find((st: Stage) => st.id === d.stageId); return s && !s.isWon && !s.isLost; }).length} deals</p>
-        </div>
-        <div className="bg-white dark:bg-slate-800/60 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-3.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#5A6B85] dark:text-slate-400 mb-1">WEIGHTED FORECAST</p>
-          <p className="text-xl font-extrabold text-[#0F172A] dark:text-white tabular-nums">
-            ${(() => {
-              const weighted = pipelineDeals.reduce((sum, d) => {
-                const stage = activePipeline?.stages.find((s: Stage) => s.id === d.stageId);
-                const prob = (stage?.probability ?? 50) / 100;
-                return sum + ((d.value ?? 0) * prob);
-              }, 0);
-              return weighted >= 1000000 ? `${(weighted / 1000000).toFixed(2)}M` : weighted >= 1000 ? `${(weighted / 1000).toFixed(1)}k` : weighted.toLocaleString();
-            })()}
-          </p>
-          <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 mt-0.5">Probability adjusted</p>
-        </div>
-        <div className="bg-white dark:bg-slate-800/60 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-3.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#5A6B85] dark:text-slate-400 mb-1">WON THIS PERIOD</p>
-          <p className="text-xl font-extrabold text-[#0F172A] dark:text-white tabular-nums">
-            ${(() => {
-              const wonStages = activePipeline?.stages.filter((s: Stage) => s.isWon) ?? [];
-              const wonValue = pipelineDeals.filter(d => wonStages.some((s: Stage) => s.id === d.stageId)).reduce((sum, d) => sum + (d.value ?? 0), 0);
-              return wonValue >= 1000000 ? `${(wonValue / 1000000).toFixed(2)}M` : wonValue >= 1000 ? `${(wonValue / 1000).toFixed(1)}k` : wonValue.toLocaleString();
-            })()}
-          </p>
-          <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 mt-0.5">{pipelineDeals.filter(d => activePipeline?.stages.find((s: Stage) => s.id === d.stageId)?.isWon).length} closed won</p>
-        </div>
-        <div className="bg-white dark:bg-slate-800/60 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-3.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#5A6B85] dark:text-slate-400 mb-1">AT RISK</p>
-          <p className="text-xl font-extrabold text-[#0F172A] dark:text-white tabular-nums">
-            {pipelineDeals.filter(d => {
-              const stageDateStr = d.lastStageChangeDate || d.updatedAt || d.createdAt;
-              if (!stageDateStr) return false;
-              const daysSince = Math.floor((Date.now() - new Date(stageDateStr).getTime()) / (1000 * 3600 * 24));
-              const stage = activePipeline?.stages.find((s: Stage) => s.id === d.stageId);
-              return stage && !stage.isWon && !stage.isLost && daysSince >= (stage.rottenAfterDays ?? 14);
-            }).length}
-          </p>
-          <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 mt-0.5">Past stage rotting limit</p>
-        </div>
-      </div>
-
       {/* ── Main Content (existing views below) ───────────────── */}
       <div className="flex-1 min-h-0 flex flex-col space-y-4 overflow-hidden">
 
@@ -1809,47 +1764,6 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
           </div>
         </div>
       )}
-
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2">
-        <div className="flex bg-white dark:bg-white/[0.02] p-1 rounded-full border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl overflow-x-auto max-w-full custom-scrollbar">
-          {pipelines.map((p, index) => {
-            const count = deals.filter(d => {
-              if (d.pipelineId !== p.id) return false;
-              if (!searchQuery.trim()) return true;
-              const q = searchQuery.toLowerCase().trim();
-              return (d.title || '').toLowerCase().includes(q) || 
-                     (d.companyName || '').toLowerCase().includes(q) ||
-                     (d.contactPerson || '').toLowerCase().includes(q);
-            }).length;
-            const colors = ['bg-blue-500', 'bg-emerald-500', 'bg-purple-500', 'bg-pink-500'];
-            const dotColor = colors[index % colors.length];
-            
-            return (
-              <DroppableTab 
-                key={p.id}
-                pipeline={p}
-                isActive={activePipelineId === p.id}
-                count={count}
-                dotColor={dotColor}
-                onClick={() => setActivePipelineId(p.id)}
-              />
-            )
-          })}
-        </div>
-        {canManagePipelines && (
-          <button 
-            onClick={() => {
-              setPipelineModalStep('template');
-              setSelectedTemplateId('inquiry');
-              setNewPipelineName('');
-              setIsPipelineModalOpen(true);
-            }}
-            className="flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white text-sm font-medium transition-colors whitespace-nowrap"
-          >
-            <Plus size={16} /> New Pipeline
-          </button>
-        )}
-      </div>
 
       {/* New Pipeline Modal — Template Picker */}
       {isPipelineModalOpen && (
@@ -2031,123 +1945,6 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
           </motion.div>
         </div>
       )}
-
-      {/* View Options & Advanced Funnel Filtering Bar */}
-      <div className="flex flex-col gap-4 p-4 bg-white dark:bg-slate-950/40 rounded-2xl border border-gray-200 dark:border-white/[0.05] shadow-sm">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="flex items-center gap-4 flex-1">
-            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-white/[0.02] p-1 rounded-xl border border-gray-200/50 dark:border-white/[0.05] w-fit">
-              <TooltipProvider>
-                <UITooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() => handleViewModeChange('kanban')}
-                      aria-label="Kanban View"
-                      className={`h-8 w-8 flex items-center justify-center rounded-lg transition-all ${
-                        viewMode === 'kanban'
-                          ? 'bg-white dark:bg-slate-950 text-blue-500 dark:text-blue-400 shadow-sm border border-gray-200 dark:border-white/[0.05]'
-                          : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
-                      }`}
-                    >
-                      <LayoutGrid size={13} />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>Kanban View</TooltipContent>
-                </UITooltip>
-                <UITooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() => handleViewModeChange('table')}
-                      aria-label="Table View"
-                      className={`h-8 w-8 flex items-center justify-center rounded-lg transition-all ${
-                        viewMode === 'table'
-                          ? 'bg-white dark:bg-slate-950 text-blue-500 dark:text-blue-400 shadow-sm border border-gray-200 dark:border-white/[0.05]'
-                          : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
-                      }`}
-                    >
-                      <Table size={13} />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>Table View</TooltipContent>
-                </UITooltip>
-                <UITooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() => handleViewModeChange('list')}
-                      aria-label="List View"
-                      className={`h-8 w-8 flex items-center justify-center rounded-lg transition-all ${
-                        viewMode === 'list'
-                          ? 'bg-white dark:bg-slate-950 text-blue-500 dark:text-blue-400 shadow-sm border border-gray-200 dark:border-white/[0.05]'
-                          : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
-                      }`}
-                    >
-                      <List size={13} />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>List View</TooltipContent>
-                </UITooltip>
-              </TooltipProvider>
-            </div>
-
-
-          </div>
-
-          {/* Core Pipeline Search query */}
-          <div className="flex-1 w-full lg:w-[32rem] flex items-center justify-end gap-3 shrink-0">
-            <div className="flex-1 w-full relative flex items-center bg-slate-50 dark:bg-slate-900/50 hover:bg-white dark:hover:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl transition-all duration-200 focus-within:bg-white dark:focus-within:bg-slate-900 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/80 shadow-sm">
-              <div className="pl-3.5 flex items-center gap-2 shrink-0 py-2.5">
-                <Search size={15} className="text-slate-400 dark:text-slate-500" />
-              </div>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search pipeline deals, clients, or contacts..."
-                className="w-full pl-1.5 pr-10 py-2 text-sm bg-transparent text-slate-800 dark:text-slate-200 focus:outline-none placeholder-slate-400 dark:placeholder-slate-500"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
-            
-            <div className="shrink-0">
-               <TrelloFilter
-                 searchTerm={searchQuery}
-                 setSearchTerm={setSearchQuery}
-                 statuses={[
-                   { id: 'open', label: 'Open', color: 'bg-emerald-500' },
-                   { id: 'won', label: 'Won', color: 'bg-blue-500' },
-                   { id: 'lost', label: 'Lost', color: 'bg-amber-500' }
-                 ]}
-                 selectedStatuses={filterStatus === 'all' ? [] : [filterStatus]}
-                 setSelectedStatuses={(s) => setFilterStatus(s.length > 0 ? s[0] : 'all')}
-                 members={users.filter(u => u.role === 'Sales Rep' || u.role === 'Client Admin').map(u => ({ id: u.id, label: `${u.firstName} ${u.lastName}` }))}
-                 selectedMembers={filterStaff}
-                 setSelectedMembers={setFilterStaff}
-                 labelsTitle="Priority"
-                 labels={[
-                   { id: 'High', label: 'High Priority', color: 'bg-rose-500' },
-                   { id: 'Medium', label: 'Medium Priority', color: 'bg-amber-500' },
-                   { id: 'Low', label: 'Low Priority', color: 'bg-blue-500' }
-                 ]}
-                 selectedLabels={filterPriority}
-                 setSelectedLabels={setFilterPriority}
-               />
-            </div>
-          </div>
-        </div>
-
-      </div>
-
 
       {/* Conditional Rendering of Views: Kanban, Table, or List */}
 
