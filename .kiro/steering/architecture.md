@@ -1,111 +1,183 @@
----
-description: LeadCRM architecture rules — layer contracts, RBAC, Six-Pillar Rule, module boundaries, migration strategy. Always loaded.
-inclusion: always
----
-
 # LeadCRM — Architecture
 
-## Application Layers
+## Application Flow
 
 ```
-Next.js Shell (routing, layout, metadata)
+Next.js App Router (thin route shells — 3-line dynamic imports, ssr: false)
   ↓
-SPA Entry — app/page.tsx (dynamic import, ssr: false)
+React SPA (client-side only — no SSR for CRM pages)
   ↓
-React Application — src/App.tsx
+Feature UI Components (features/tenant/[module]/ui/)
   ↓
-Custom Hooks (useContacts, useDeals, etc.)
+Custom Hooks + Feature Services
   ↓
-DataContext (state + data ops — USE_MOCK_DATA=false uses real API)
+DataContext (central state — dual mode: mock localStorage OR real API)
+  ↓  (when USE_MOCK_DATA=false)
+apiClient (fetch with credentials: 'include') → Express API
   ↓
-Express + PostgreSQL API (backend)
+Express Middleware Chain (auth → tenant → rbac → validate → controller)
+  ↓
+Service Layer (business logic) → Repository Layer (Prisma + tenantId)
+  ↓
+PostgreSQL 16
 ```
 
 ## Backend Layer Contracts
 
-```
-Route        → URL + middleware registration only
-Controller   → HTTP parse/respond only (no DB, no business logic)
-Service      → business rules, orchestration (no req/res)
-Repository   → Prisma only (always include tenantId)
-```
+| Layer | Responsibility | Forbidden |
+|---|---|---|
+| Route | URL registration + middleware chain | Business logic, DB calls |
+| Controller | HTTP parse/respond, call service | Direct DB, business logic |
+| Service | Business rules, orchestration | `req`/`res`, direct Prisma calls |
+| Repository | Prisma queries (always `tenantId`) | HTTP concerns, business logic |
 
-Never cross layers. No direct DB calls in controllers. No req/res in services.
+Never cross layers.
 
-## Route Files (Frontend)
+## Frontend Route Files (App Router)
 
-Route files in `app/(tenant)/` are **3-line import shells only** — no logic, no JSX, no data fetching:
+Every `app/(tenant)/*/page.tsx` is a 3-line shell only:
 
 ```tsx
-// app/(tenant)/contacts/page.tsx
 'use client';
 import dynamic from 'next/dynamic';
-const ContactsPage = dynamic(() => import('../../../src/features/tenant/crm/contacts/ui/contacts-page'), { ssr: false });
-export default ContactsPage;
+const Page = dynamic(() => import('../../../src/features/tenant/crm/leads/ui/leads-page'), { ssr: false });
+export default Page;
 ```
 
-Page components always live in `[module]/ui/` — the import path must include `/ui/`.
+Page components live in `[module]/ui/`. Static imports forbidden — causes SSR failures.
+
+## Authentication Architecture (Dual-Path)
+
+Two independent auth paths coexist:
+
+### Path 1: Credentials Login (primary)
+```
+Frontend AuthContext.login(email, password)
+  → POST /api/v1/auth/login
+  → Backend validates credentials, issues JWT
+  → Sets HttpOnly cookie `leadcrm_token` (7-day maxAge)
+  → Frontend calls GET /auth/me to hydrate user state
+```
+
+### Path 2: Google OAuth (via NextAuth v4)
+```
+Frontend calls signIn('google') from next-auth/react
+  → NextAuth Google provider redirects to Google
+  → Google returns to NextAuth callback
+  → signIn callback POSTs to /api/v1/auth/oauth/google
+  → Backend creates/links user, issues JWT, returns token
+  → NextAuth callback sets leadcrm_token cookie
+  → Frontend AuthContext hydrates from GET /auth/me
+```
+
+### Session Validation
+- Every protected request: JWT verified + Session table lookup (SHA-256 token hash)
+- Revoked sessions immediately rejected (logout, forced logout, deactivation)
+- JWT payload: `userId`, `tenantId`, `role`, `email`
+
+### Frontend Middleware (Edge)
+- Only gates Google OAuth sessions (reads NextAuth JWT, not leadcrm_token)
+- In mock auth mode: completely bypassed
+- Standard credentials auth: protected client-side by AuthGuard component
 
 ## RBAC Model
 
-- `RolePermission` table: one row per module per role with `canView / canCreate / canEdit / canDelete`
-- Modules: `contacts · deals · organizations · campaigns · workflows · tasks · service_orders · reports · billing · users · settings · audit`
-- Client Admin bypasses all permission checks
-- System Admin (`tenantId: 'system'`) is cross-tenant only for admin views
-- Backend middleware: `rbac('contacts', 'canCreate')`
-- Frontend guard: `{userCan('contacts', 'canDelete') && <Button>Delete</Button>}`
+### Backend Middleware
+```typescript
+router.post('/leads', authMiddleware, tenantMiddleware, authorize('contacts.create'), validate(Schema), controller.create);
+```
 
-## Six-Pillar Rule
+- Permission format: `module.action` — e.g. `contacts.view`, `deals.create`, `accounts.edit`
+- Super roles bypass all checks: `Admin`, `Super User`, `Client Admin`, `System Admin`
+- Non-super roles: resolved from `DEFAULT_ROLE_PERMISSIONS` static registry
 
-Every business object (Contact, Deal, Organization, ServiceOrder) **must** support all six:
+### Database (RolePermission table)
+- One row per module per role: `canView`, `canCreate`, `canEdit`, `canDelete`
+- Unique constraint: `[roleId, module]`
+- Note: Current runtime uses static registry, not DB lookups (migration pending)
 
-| Pillar | Implementation |
-|---|---|
-| 1. Activity History | `addActivity()` on every observable mutation |
-| 2. Task Assignment | Tasks linkable via `contactId` / `dealId` |
-| 3. Workflow Automation | Entity changes evaluated by WorkflowTrigger engine |
-| 4. Audit Trail | `addAuditLog()` on every create/update/delete |
-| 5. Notifications | `Notification` record for assigned users |
-| 6. File Attachments | `TenantDocument` or object storage URL |
+### Frontend Guard
+```tsx
+{userCan('contacts', 'canDelete') && <Button>Delete</Button>}
+```
 
-Missing any pillar = incomplete implementation.
+## DataContext (Central State Store)
 
-## Workflow Execution Rule (3 records per execution)
+DataContext holds ALL business data in React state with dual-mode operation:
 
-Every workflow execution creates exactly:
-1. `WorkflowExecutionRun` — the container
-2. N × `WorkflowExecutionStep` — one per action
-3. 1 × `Activity` — for the unified timeline
+- `USE_MOCK_DATA=true` → localStorage (development without backend)
+- `USE_MOCK_DATA=false` → real API via `apiClient`
+
+Load strategy (real API mode):
+1. **Batch 1** (immediate): leads, accounts, deals, pipelines, activities, users, roles
+2. **Batch 2** (deferred via setTimeout): tasks, service-orders, workflows, campaigns, templates, invoices, audit
+
+Data flow: apiClient → adapters (transform shapes) → DataContext state → hooks → components
+
+### Known Limitation
+DataContext is a god object. Future migration path: split by domain into TanStack Query per feature.
+
+## API Client
+
+```typescript
+// frontend/src/lib/api/client.ts
+const res = await fetch(`${API_URL}${path}`, {
+  method,
+  headers: { 'Content-Type': 'application/json' },
+  credentials: 'include',  // sends HttpOnly leadcrm_token cookie
+  body: JSON.stringify(body),
+});
+```
+
+Never use `Authorization: Bearer` header — cookie-based auth only.
+
+## Tenant Isolation
+
+- Every DB query filters by `tenantId` — enforced at repository layer
+- `tenantId` derived from JWT (set by `tenantMiddleware`) — never from request body/params
+- Cross-tenant access → 404 (never 403 — don't reveal existence)
+- Frontend: `tenant.id` from `AuthContext` — never user-supplied
 
 ## Module Boundaries
 
-Modules may reference each other's IDs. Modules may **not** directly mutate another module's data. Cross-module changes must flow through the service layer.
+Modules may reference each other's IDs. Modules may NOT directly mutate another module's data. Cross-module changes flow through the service layer:
 
 ```
 Workflow Engine → Contacts Service → Contacts Repository → DB
 ```
 
-Never create hidden dependencies. If module A calls module B, that dependency is explicit and owned.
-
-## DataContext → API Migration Rule
-
-Function signatures stay identical. Only internals change. Every component and hook that calls `addContact()` requires zero changes when migrating from localStorage to real API.
+## API Response Envelope
 
 ```typescript
-// CURRENT
-const addContact = (data: CreateContactInput): void => { /* localStorage */ };
+// Success
+{ success: true, data: T, meta?: { page, limit, total } }
 
-// FUTURE — same signature
-const addContact = async (data: CreateContactInput): Promise<void> => { /* fetch API */ };
+// Error
+{ success: false, error: { code: string, message: string, details?: Array<{ field, reason }> } }
 ```
 
-## Key Architectural Patterns
+## Error Handling
 
-- `deal.contactIds` is `string[]` via `ContactDeal` junction — never singular `contactId` for new code
-- `DealDetailsModal` from `features/tenant/crm/pipeline/ui/deal-details-modal.tsx` — single reusable deal modal
-- `TargetAudience` has NO junction table — contacts resolved dynamically via `TargetAudienceCondition`
-- `Subscription` is billing source of truth — `Tenant.plan` is a denormalized cache only
-- `AuditLog.category` required: `auth | crm | billing | workflow | admin | system`
-- Task status: `pending | in-progress | blocked | completed | cancelled`
-- `store/types.ts` is a re-export shim only — never define types there; use `store/types/`
-- `DealStageHistory.timeInPrevStage` computed on insert (diff against previous row's `movedAt`)
+- Backend: `AppError(message, statusCode)` — never plain `new Error()`
+- Frontend: toast notifications for operation failures, Error Boundaries at page level
+- Network failures: optimistic rollback + user notification
+
+## Database (Prisma Schema)
+
+40+ models. Key entities: Tenant, User, RoleDefinition, RolePermission, UserRole, Session, OAuthAccount, Account (Organization), Lead, Customer, Deal, Pipeline, Stage, LeadDeal, CustomerDeal, DealStageHistory, DealAction, Task, Activity, Campaign, Template, TargetAudience, Workflow, WorkflowTriggerRecord, WorkflowExecutionRun, WorkflowExecutionStep, Invoice, Subscription, PaymentMethod, ServiceOrder, Asset, InventoryItem, Notification, AuditLog, PricingPlan, SystemAdmin, EmailDeliveryLog.
+
+### Key Schema Facts
+- `Lead` and `Customer` are separate models (not unified "Contact")
+- `Account` = Organization/Company
+- `LeadDeal` / `CustomerDeal` = junction tables for deal associations
+- `Stage` has NO `tenantId` column — scoped only through Pipeline join (known gap)
+- `Subscription` = billing source of truth; `Tenant.plan` is denormalized cache
+- `TargetAudience` has NO junction table — contacts resolved dynamically via conditions
+- `DealStageHistory.timeInPrevStage` computed on insert
+
+## Performance Patterns
+
+- All queries paginated: max 100 per page, default 25
+- Batch related fetches with `Promise.all`
+- Index every `tenantId` + frequent filter combination
+- Frontend: `useMemo` for filtered lists > 50 items, debounce search at 300ms
