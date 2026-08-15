@@ -422,6 +422,7 @@ export function ModuleWorkspace({
                     <FilterGroupSection
                       key={group.id}
                       group={group}
+                      filterSearchTerm={filterSearchTerm}
                       onToggle={onFilterToggle}
                     />
                   ))}
@@ -471,11 +472,22 @@ export function ModuleWorkspace({
 
 interface FilterGroupSectionProps {
   group: FilterGroup;
+  filterSearchTerm?: string;
   onToggle?: (groupId: string, itemId: string) => void;
 }
 
-function FilterGroupSection({ group, onToggle }: FilterGroupSectionProps): React.ReactElement {
+function FilterGroupSection({ group, filterSearchTerm = '', onToggle }: FilterGroupSectionProps): React.ReactElement | null {
   const [isExpanded, setIsExpanded] = useState(group.isExpanded ?? true);
+
+  const visibleItems = React.useMemo(() => {
+    if (!filterSearchTerm.trim()) return group.items;
+    const term = filterSearchTerm.toLowerCase().trim();
+    return group.items.filter((item) => item.label.toLowerCase().includes(term));
+  }, [group.items, filterSearchTerm]);
+
+  if (visibleItems.length === 0 && filterSearchTerm.trim()) {
+    return null;
+  }
 
   return (
     <div className="mb-3">
@@ -504,7 +516,7 @@ function FilterGroupSection({ group, onToggle }: FilterGroupSectionProps): React
             className="overflow-hidden"
           >
             <div className="flex flex-col gap-0.5 pl-1">
-              {group.items.map((item) => (
+              {visibleItems.map((item) => (
                 <label
                   key={item.id}
                   className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer group"

@@ -1,11 +1,13 @@
 'use client';
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
 import { Lead } from '@/store/types';
 import { ModuleWorkspace, ViewType, RecordDrawer, StatusBadge, AvatarCell, ActivityFlag } from '@/shared/components/crm';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
+import { useFilterUrlSync } from '@/shared/hooks/use-filter-url-sync';
+import { useDebounce } from '@/shared/hooks/use-debounce';
 import { LeadFormSheet } from './lead-form';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -26,12 +28,13 @@ export default function LeadsPage(): React.ReactElement {
   const canCreate = useHasPermission('contacts.create');
   const canEdit = useHasPermission('contacts.edit');
   const canDelete = useHasPermission('contacts.delete');
+  const { getParam, getArrayParam, updateParams } = useFilterUrlSync();
 
   // ── State ────────────────────────────────────────────────────────────
-  const [activeView, setActiveView] = useState<ViewType>('list');
-  const [activeTab, setActiveTab] = useState('all');
+  const [activeView, setActiveView] = useState<ViewType>(() => (getParam('view') as ViewType) || 'list');
+  const [activeTab, setActiveTab] = useState(() => getParam('tab') || 'all');
   const [showFilters, setShowFilters] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(() => getParam('search'));
   const [filterSearchTerm, setFilterSearchTerm] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | undefined>();
@@ -39,10 +42,28 @@ export default function LeadsPage(): React.ReactElement {
   const [drawerTab, setDrawerTab] = useState('overview');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  // Filter state
-  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
-  const [selectedSources, setSelectedSources] = useState<string[]>([]);
-  const [selectedOwners, setSelectedOwners] = useState<string[]>([]);
+  // Multi-criteria filter state
+  const [selectedSystemFilters, setSelectedSystemFilters] = useState<string[]>(() => getArrayParam('system'));
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>(() => getArrayParam('statuses'));
+  const [selectedSources, setSelectedSources] = useState<string[]>(() => getArrayParam('sources'));
+  const [selectedOwners, setSelectedOwners] = useState<string[]>(() => getArrayParam('owners'));
+  const [selectedRelated, setSelectedRelated] = useState<string[]>(() => getArrayParam('related'));
+
+  const debouncedSearch = useDebounce(searchTerm, 300);
+
+  // Sync to URL
+  useEffect(() => {
+    updateParams({
+      tab: activeTab !== 'all' ? activeTab : null,
+      search: debouncedSearch || null,
+      view: activeView !== 'list' ? activeView : null,
+      system: selectedSystemFilters,
+      statuses: selectedStatuses,
+      sources: selectedSources,
+      owners: selectedOwners,
+      related: selectedRelated,
+    });
+  }, [activeTab, debouncedSearch, activeView, selectedSystemFilters, selectedStatuses, selectedSources, selectedOwners, selectedRelated, updateParams]);
 
   // ── Filtered Data ────────────────────────────────────────────────────
   const activeLeads = useMemo(
@@ -59,14 +80,22 @@ export default function LeadsPage(): React.ReactElement {
     }
 
     // Search
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
+    if (debouncedSearch) {
+      const term = debouncedSearch.toLowerCase();
       result = result.filter(
         (l) =>
           (l.leadPerson ?? l.displayName ?? '').toLowerCase().includes(term) ||
           (l.email ?? '').toLowerCase().includes(term) ||
           (l.companyName ?? '').toLowerCase().includes(term),
       );
+    }
+
+    // System Filters
+    if (selectedSystemFilters.includes('touched')) {
+      result = result.filter((l) => l.lastUpdated || l.updateStatus);
+    }
+    if (selectedSystemFilters.includes('untouched')) {
+      result = result.filter((l) => !l.lastUpdated && !l.updateStatus);
     }
 
     // Status filter
@@ -84,8 +113,16 @@ export default function LeadsPage(): React.ReactElement {
       result = result.filter((l) => selectedOwners.includes(l.assignedUserId ?? ''));
     }
 
+    // Related filter
+    if (selectedRelated.includes('has_email')) {
+      result = result.filter((l) => Boolean(l.email));
+    }
+    if (selectedRelated.includes('has_phone')) {
+      result = result.filter((l) => Boolean(l.phone));
+    }
+
     return result;
-  }, [activeLeads, activeTab, user?.id, searchTerm, selectedStatuses, selectedSources, selectedOwners]);
+  }, [activeLeads, activeTab, user?.id, debouncedSearch, selectedSystemFilters, selectedStatuses, selectedSources, selectedOwners, selectedRelated]);
 
   // ── Helpers ──────────────────────────────────────────────────────────
   const getInitials = (lead: Lead): string => {
@@ -144,16 +181,20 @@ export default function LeadsPage(): React.ReactElement {
   const touchedCount = activeLeads.filter((l) => l.lastUpdated || l.updateStatus).length;
   const untouchedCount = activeLeads.length - touchedCount;
 
+  const distinctSources = useMemo(() => {
+    const set = new Set<string>();
+    activeLeads.forEach((l) => { if (l.leadSource) set.add(l.leadSource); });
+    return Array.from(set);
+  }, [activeLeads]);
+
   const filterGroups = useMemo(() => [
     {
       id: 'system',
       label: 'System Defined Filters',
       isExpanded: true,
       items: [
-        { id: 'touched', label: 'Touched Records', count: touchedCount, isChecked: false },
-        { id: 'untouched', label: 'Untouched Records', count: untouchedCount, isChecked: false },
-        { id: 'record-action', label: 'Record Action', count: 0, isChecked: false },
-        { id: 'related-action', label: 'Related Records Action', count: 0, isChecked: false },
+        { id: 'touched', label: 'Touched Records', count: touchedCount, isChecked: selectedSystemFilters.includes('touched') },
+        { id: 'untouched', label: 'Untouched Records', count: untouchedCount, isChecked: selectedSystemFilters.includes('untouched') },
       ],
     },
     {
@@ -161,23 +202,65 @@ export default function LeadsPage(): React.ReactElement {
       label: 'Filter By Fields',
       isExpanded: true,
       items: [
-        { id: 'lead-owner', label: 'Lead Owner', isChecked: selectedOwners.length > 0 },
-        { id: 'lead-status', label: 'Lead Status', isChecked: selectedStatuses.length > 0 },
-        { id: 'lead-source', label: 'Lead Source', isChecked: selectedSources.length > 0 },
-        { id: 'company', label: 'Company', isChecked: false },
-        { id: 'industry', label: 'Industry', isChecked: false },
-        { id: 'score', label: 'Score', isChecked: false },
-        { id: 'created-time', label: 'Created Time', isChecked: false },
-        { id: 'email-opt-out', label: 'Email Opt Out', isChecked: false },
+        ...Object.entries(statusCounts).map(([status, count]) => ({
+          id: `status:${status}`,
+          label: `Status: ${status}`,
+          count,
+          isChecked: selectedStatuses.includes(status),
+        })),
+        ...distinctSources.map((source) => ({
+          id: `source:${source}`,
+          label: `Source: ${source}`,
+          count: activeLeads.filter((l) => l.leadSource === source).length,
+          isChecked: selectedSources.includes(source),
+        })),
+        ...users.slice(0, 5).map((u) => ({
+          id: `owner:${u.id}`,
+          label: `Owner: ${u.firstName} ${u.lastName}`,
+          count: activeLeads.filter((l) => l.assignedUserId === u.id).length,
+          isChecked: selectedOwners.includes(u.id),
+        })),
       ],
     },
     {
       id: 'related',
       label: 'Filter By Related Modules',
-      isExpanded: false,
-      items: [],
+      isExpanded: true,
+      items: [
+        { id: 'has_email', label: 'Leads with Email', count: activeLeads.filter((l) => Boolean(l.email)).length, isChecked: selectedRelated.includes('has_email') },
+        { id: 'has_phone', label: 'Leads with Phone', count: activeLeads.filter((l) => Boolean(l.phone)).length, isChecked: selectedRelated.includes('has_phone') },
+      ],
     },
-  ], [touchedCount, untouchedCount, selectedOwners, selectedStatuses, selectedSources]);
+  ], [touchedCount, untouchedCount, selectedSystemFilters, statusCounts, selectedStatuses, distinctSources, activeLeads, selectedSources, users, selectedOwners, selectedRelated]);
+
+  const handleFilterToggle = useCallback((groupId: string, itemId: string) => {
+    if (groupId === 'system') {
+      setSelectedSystemFilters((prev) =>
+        prev.includes(itemId) ? prev.filter((x) => x !== itemId) : [...prev, itemId],
+      );
+    } else if (groupId === 'fields') {
+      if (itemId.startsWith('status:')) {
+        const status = itemId.replace('status:', '');
+        setSelectedStatuses((prev) =>
+          prev.includes(status) ? prev.filter((x) => x !== status) : [...prev, status],
+        );
+      } else if (itemId.startsWith('source:')) {
+        const source = itemId.replace('source:', '');
+        setSelectedSources((prev) =>
+          prev.includes(source) ? prev.filter((x) => x !== source) : [...prev, source],
+        );
+      } else if (itemId.startsWith('owner:')) {
+        const ownerId = itemId.replace('owner:', '');
+        setSelectedOwners((prev) =>
+          prev.includes(ownerId) ? prev.filter((x) => x !== ownerId) : [...prev, ownerId],
+        );
+      }
+    } else if (groupId === 'related') {
+      setSelectedRelated((prev) =>
+        prev.includes(itemId) ? prev.filter((x) => x !== itemId) : [...prev, itemId],
+      );
+    }
+  }, []);
 
   // ── Handlers ─────────────────────────────────────────────────────────
   const handleCreate = useCallback(() => {
@@ -223,6 +306,7 @@ export default function LeadsPage(): React.ReactElement {
         activeTab={activeTab}
         onTabChange={setActiveTab}
         filterGroups={filterGroups}
+        onFilterToggle={handleFilterToggle}
         showFilters={showFilters}
         onToggleFilters={() => setShowFilters(!showFilters)}
         filterSearchTerm={filterSearchTerm}

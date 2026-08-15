@@ -2,9 +2,11 @@
 
 import { uuid } from '@/lib/utils';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
+import { useFilterUrlSync } from '@/shared/hooks/use-filter-url-sync';
+import { useDebounce } from '@/shared/hooks/use-debounce';
 import { toast } from 'sonner';
 import { 
   Plus, MoreHorizontal, X, Building, Calendar, 
@@ -453,7 +455,11 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
   }, [pipelines, activePipelineId]);
   
   // Modern Deal Views & Advanced Funnel Filtering System
+  const { getParam, getArrayParam, updateParams } = useFilterUrlSync();
+
   const [viewMode, setViewMode] = useState<'kanban' | 'table' | 'list'>(() => {
+    const urlView = getParam('view') as 'kanban' | 'table' | 'list';
+    if (urlView) return urlView;
     return (localStorage.getItem('pipeline_view_mode') as any) || 'kanban';
   });
   const handleViewModeChange = (mode: 'kanban' | 'table' | 'list') => {
@@ -465,9 +471,9 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
   const [collapsedSwimlanes] = useState<string[]>([]);
   
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
-  const [filterStatus, setFilterStatus] = useState<string>('all'); // all, open, won, lost
-  const [filterStages, setFilterStages] = useState<string[]>([]);
-  const [filterStaff, setFilterStaff] = useState<string[]>([]);
+  const [filterStatus, setFilterStatus] = useState<string>(() => getParam('status') || 'all'); // all, open, won, lost
+  const [filterStages, setFilterStages] = useState<string[]>(() => getArrayParam('stages'));
+  const [filterStaff, setFilterStaff] = useState<string[]>(() => getArrayParam('staff'));
   const [filterLeadSource, setFilterLeadSource] = useState<string>('');
   const [filterLeadSourceOp, setFilterLeadSourceOp] = useState<string>('contains'); // equals, contains, starts, ends, notequals
   
@@ -499,13 +505,26 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
   const [filterTags, setFilterTags] = useState<string>('');
   const [filterTagsOp, setFilterTagsOp] = useState<string>('contains');
 
-  const [filterPriority, setFilterPriority] = useState<string[]>([]);
+  const [filterPriority, setFilterPriority] = useState<string[]>(() => getArrayParam('priority'));
   
   // Table sorting states
   const [tableSortField, setTableSortField] = useState<string>('title');
   const [tableSortAsc, setTableSortAsc] = useState<boolean>(true);
   
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(() => getParam('search'));
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+
+  // Sync state to URL
+  useEffect(() => {
+    updateParams({
+      view: viewMode !== 'kanban' ? viewMode : null,
+      search: debouncedSearchQuery || null,
+      status: filterStatus !== 'all' ? filterStatus : null,
+      stages: filterStages,
+      staff: filterStaff,
+      priority: filterPriority,
+    });
+  }, [viewMode, debouncedSearchQuery, filterStatus, filterStages, filterStaff, filterPriority, updateParams]);
 
   const getActiveFiltersCount = () => {
     let count = 0;
@@ -724,8 +743,8 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
     let result = [...allPipelineDeals].filter(d => !d.isArchived);
 
     // 1. Live Search query (Title, Company, Contact)
-    if (searchQuery.trim()) {
-      const q = searchQuery.trim().toLowerCase();
+    if (debouncedSearchQuery.trim()) {
+      const q = debouncedSearchQuery.trim().toLowerCase();
       result = result.filter(d => 
         (d.title || '').toLowerCase().includes(q) || 
         (d.companyName || '').toLowerCase().includes(q) ||
@@ -1643,59 +1662,6 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
         <button className="p-1.5 text-[#5A6B85] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" aria-label="Manage columns">
           <SlidersHorizontal size={15} />
         </button>
-      </div>
-
-      {/* ── KPI Strip ─────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-        <div className="bg-white dark:bg-slate-800/60 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-3.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#5A6B85] dark:text-slate-400 mb-1">OPEN PIPELINE</p>
-          <p className="text-xl font-extrabold text-[#0F172A] dark:text-white tabular-nums">
-            ${(() => {
-              const openStages = activePipeline?.stages.filter((s: Stage) => !s.isWon && !s.isLost) ?? [];
-              const openValue = pipelineDeals.filter(d => openStages.some((s: Stage) => s.id === d.stageId)).reduce((sum, d) => sum + (d.value ?? 0), 0);
-              return openValue >= 1000000 ? `${(openValue / 1000000).toFixed(2)}M` : openValue >= 1000 ? `${Math.round(openValue / 1000)}k` : openValue.toLocaleString();
-            })()}
-          </p>
-          <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 mt-0.5">{pipelineDeals.filter(d => { const s = activePipeline?.stages.find((st: Stage) => st.id === d.stageId); return s && !s.isWon && !s.isLost; }).length} deals</p>
-        </div>
-        <div className="bg-white dark:bg-slate-800/60 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-3.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#5A6B85] dark:text-slate-400 mb-1">WEIGHTED FORECAST</p>
-          <p className="text-xl font-extrabold text-[#0F172A] dark:text-white tabular-nums">
-            ${(() => {
-              const weighted = pipelineDeals.reduce((sum, d) => {
-                const stage = activePipeline?.stages.find((s: Stage) => s.id === d.stageId);
-                const prob = (stage?.probability ?? 50) / 100;
-                return sum + ((d.value ?? 0) * prob);
-              }, 0);
-              return weighted >= 1000000 ? `${(weighted / 1000000).toFixed(2)}M` : weighted >= 1000 ? `${(weighted / 1000).toFixed(1)}k` : weighted.toLocaleString();
-            })()}
-          </p>
-          <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 mt-0.5">Probability adjusted</p>
-        </div>
-        <div className="bg-white dark:bg-slate-800/60 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-3.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#5A6B85] dark:text-slate-400 mb-1">WON THIS PERIOD</p>
-          <p className="text-xl font-extrabold text-[#0F172A] dark:text-white tabular-nums">
-            ${(() => {
-              const wonStages = activePipeline?.stages.filter((s: Stage) => s.isWon) ?? [];
-              const wonValue = pipelineDeals.filter(d => wonStages.some((s: Stage) => s.id === d.stageId)).reduce((sum, d) => sum + (d.value ?? 0), 0);
-              return wonValue >= 1000000 ? `${(wonValue / 1000000).toFixed(2)}M` : wonValue >= 1000 ? `${(wonValue / 1000).toFixed(1)}k` : wonValue.toLocaleString();
-            })()}
-          </p>
-          <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 mt-0.5">{pipelineDeals.filter(d => activePipeline?.stages.find((s: Stage) => s.id === d.stageId)?.isWon).length} closed won</p>
-        </div>
-        <div className="bg-white dark:bg-slate-800/60 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-3.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#5A6B85] dark:text-slate-400 mb-1">AT RISK</p>
-          <p className="text-xl font-extrabold text-[#0F172A] dark:text-white tabular-nums">
-            {pipelineDeals.filter(d => {
-              const stageDateStr = d.lastStageChangeDate || d.updatedAt || d.createdAt;
-              if (!stageDateStr) return false;
-              const daysSince = Math.floor((Date.now() - new Date(stageDateStr).getTime()) / (1000 * 3600 * 24));
-              const stage = activePipeline?.stages.find((s: Stage) => s.id === d.stageId);
-              return stage && !stage.isWon && !stage.isLost && daysSince >= (stage.rottenAfterDays ?? 14);
-            }).length}
-          </p>
-          <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 mt-0.5">Past stage rotting limit</p>
-        </div>
       </div>
 
       {/* ── Main Content (existing views below) ───────────────── */}

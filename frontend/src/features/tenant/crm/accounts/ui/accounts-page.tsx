@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { ModuleWorkspace, ViewType, RecordDrawer, StatusBadge } from '@/shared/components/crm';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useAccounts } from '../hooks/use-accounts';
 import { useData } from '@/store/DataContext';
+import { useFilterUrlSync } from '@/shared/hooks/use-filter-url-sync';
+import { useDebounce } from '@/shared/hooks/use-debounce';
 import AccountForm from '../ui/account-form';
 import { SideSheet } from '@/shared/components/side-sheet';
 import { toast } from 'sonner';
@@ -34,28 +36,73 @@ export default function AccountsPage(): React.ReactElement {
   } = useAccounts();
 
   const { deals, users } = useData();
+  const { getParam, getArrayParam, updateParams } = useFilterUrlSync();
 
-  // ── State ────────────────────────────────────────────────────────────
-  const [activeView, setActiveView] = useState<ViewType>('list');
-  const [activeTab, setActiveTab] = useState('all');
+  // ── State (Synced with URL) ──────────────────────────────────────────
+  const [activeView, setActiveView] = useState<ViewType>(() => (getParam('view') as ViewType) || 'list');
+  const [activeTab, setActiveTab] = useState(() => getParam('tab') || 'all');
   const [showFilters, setShowFilters] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(() => getParam('search'));
   const [filterSearchTerm, setFilterSearchTerm] = useState('');
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [drawerTab, setDrawerTab] = useState('overview');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
+  // Multi-criteria filter state
+  const [selectedSystemFilters, setSelectedSystemFilters] = useState<string[]>(() => getArrayParam('system'));
+  const [selectedIndustries, setSelectedIndustries] = useState<string[]>(() => getArrayParam('industries'));
+  const [selectedTypes, setSelectedTypes] = useState<string[]>(() => getArrayParam('types'));
+  const [selectedOwners, setSelectedOwners] = useState<string[]>(() => getArrayParam('owners'));
+  const [selectedRelated, setSelectedRelated] = useState<string[]>(() => getArrayParam('related'));
+
+  const debouncedSearch = useDebounce(searchTerm, 300);
+
+  // Sync to URL
+  useEffect(() => {
+    updateParams({
+      tab: activeTab !== 'all' ? activeTab : null,
+      search: debouncedSearch || null,
+      view: activeView !== 'list' ? activeView : null,
+      system: selectedSystemFilters,
+      industries: selectedIndustries,
+      types: selectedTypes,
+      owners: selectedOwners,
+      related: selectedRelated,
+    });
+  }, [activeTab, debouncedSearch, activeView, selectedSystemFilters, selectedIndustries, selectedTypes, selectedOwners, selectedRelated, updateParams]);
+
   // ── Filtered list ────────────────────────────────────────────────────
   const filteredAccounts = useMemo(() => {
-    if (!searchTerm) return accounts;
-    const term = searchTerm.toLowerCase();
-    return accounts.filter(
-      (a) =>
-        a.name.toLowerCase().includes(term) ||
-        (a.industry ?? '').toLowerCase().includes(term) ||
-        (a.city ?? '').toLowerCase().includes(term),
-    );
-  }, [accounts, searchTerm]);
+    let result = accounts;
+
+    if (debouncedSearch) {
+      const term = debouncedSearch.toLowerCase();
+      result = result.filter(
+        (a) =>
+          a.name.toLowerCase().includes(term) ||
+          (a.industry ?? '').toLowerCase().includes(term) ||
+          (a.city ?? '').toLowerCase().includes(term),
+      );
+    }
+
+    if (selectedIndustries.length > 0) {
+      result = result.filter((a) => selectedIndustries.includes(a.industry ?? ''));
+    }
+
+    if (selectedTypes.length > 0) {
+      result = result.filter((a) => selectedTypes.includes(a.size ?? ''));
+    }
+
+    if (selectedOwners.length > 0) {
+      result = result.filter((a) => selectedOwners.includes(a.assignedUserId ?? ''));
+    }
+
+    if (selectedRelated.includes('has_deals')) {
+      result = result.filter((a) => deals.some((d) => d.organizationId === a.id && !d.isArchived));
+    }
+
+    return result;
+  }, [accounts, debouncedSearch, selectedIndustries, selectedTypes, selectedOwners, selectedRelated, deals]);
 
   // ── Helpers ──────────────────────────────────────────────────────────
   const getInitials = (name: string): string => {
@@ -89,14 +136,28 @@ export default function AccountsPage(): React.ReactElement {
   };
 
   // ── Filter groups ────────────────────────────────────────────────────
+  const distinctIndustries = useMemo(() => {
+    const set = new Set<string>();
+    accounts.forEach((a) => { if (a.industry) set.add(a.industry); });
+    return Array.from(set);
+  }, [accounts]);
+
+  const distinctSizes = useMemo(() => {
+    const set = new Set<string>();
+    accounts.forEach((a) => {
+      if (a.size) set.add(a.size);
+    });
+    return Array.from(set);
+  }, [accounts]);
+
   const filterGroups = useMemo(() => [
     {
       id: 'system',
       label: 'System Defined Filters',
       isExpanded: true,
       items: [
-        { id: 'touched', label: 'Touched Records', count: accounts.length, isChecked: false },
-        { id: 'untouched', label: 'Untouched Records', count: 0, isChecked: false },
+        { id: 'touched', label: 'Touched Records', count: accounts.length, isChecked: selectedSystemFilters.includes('touched') },
+        { id: 'untouched', label: 'Untouched Records', count: 0, isChecked: selectedSystemFilters.includes('untouched') },
       ],
     },
     {
@@ -104,23 +165,64 @@ export default function AccountsPage(): React.ReactElement {
       label: 'Filter By Fields',
       isExpanded: true,
       items: [
-        { id: 'account-owner', label: 'Account Owner', isChecked: false },
-        { id: 'account-type', label: 'Account Type', isChecked: false },
-        { id: 'industry', label: 'Industry', isChecked: false },
-        { id: 'employees', label: 'Employees', isChecked: false },
-        { id: 'status', label: 'Status', isChecked: false },
-        { id: 'billing-country', label: 'Billing Country', isChecked: false },
-        { id: 'website', label: 'Website', isChecked: false },
-        { id: 'created-time', label: 'Created Time', isChecked: false },
+        ...distinctIndustries.map((ind) => ({
+          id: `industry:${ind}`,
+          label: `Industry: ${ind}`,
+          count: accounts.filter((a) => a.industry === ind).length,
+          isChecked: selectedIndustries.includes(ind),
+        })),
+        ...distinctSizes.map((sz) => ({
+          id: `size:${sz}`,
+          label: `Size: ${sz}`,
+          count: accounts.filter((a) => a.size === sz).length,
+          isChecked: selectedTypes.includes(sz),
+        })),
+        ...users.slice(0, 5).map((u) => ({
+          id: `owner:${u.id}`,
+          label: `Owner: ${u.firstName} ${u.lastName}`,
+          count: accounts.filter((a) => a.assignedUserId === u.id).length,
+          isChecked: selectedOwners.includes(u.id),
+        })),
       ],
     },
     {
       id: 'related',
       label: 'Filter By Related Modules',
-      isExpanded: false,
-      items: [],
+      isExpanded: true,
+      items: [
+        { id: 'has_deals', label: 'Accounts with Deals', count: accounts.filter((a) => deals.some((d) => d.organizationId === a.id && !d.isArchived)).length, isChecked: selectedRelated.includes('has_deals') },
+      ],
     },
-  ], [accounts]);
+  ], [accounts, distinctIndustries, distinctSizes, selectedSystemFilters, selectedIndustries, selectedTypes, users, selectedOwners, selectedRelated, deals]);
+
+  const handleFilterToggle = useCallback((groupId: string, itemId: string) => {
+    if (groupId === 'system') {
+      setSelectedSystemFilters((prev) =>
+        prev.includes(itemId) ? prev.filter((x) => x !== itemId) : [...prev, itemId],
+      );
+    } else if (groupId === 'fields') {
+      if (itemId.startsWith('industry:')) {
+        const ind = itemId.replace('industry:', '');
+        setSelectedIndustries((prev) =>
+          prev.includes(ind) ? prev.filter((x) => x !== ind) : [...prev, ind],
+        );
+      } else if (itemId.startsWith('type:')) {
+        const typ = itemId.replace('type:', '');
+        setSelectedTypes((prev) =>
+          prev.includes(typ) ? prev.filter((x) => x !== typ) : [...prev, typ],
+        );
+      } else if (itemId.startsWith('owner:')) {
+        const ownerId = itemId.replace('owner:', '');
+        setSelectedOwners((prev) =>
+          prev.includes(ownerId) ? prev.filter((x) => x !== ownerId) : [...prev, ownerId],
+        );
+      }
+    } else if (groupId === 'related') {
+      setSelectedRelated((prev) =>
+        prev.includes(itemId) ? prev.filter((x) => x !== itemId) : [...prev, itemId],
+      );
+    }
+  }, []);
 
   // ── Handlers ─────────────────────────────────────────────────────────
   const handleRowClick = useCallback((account: Account) => {
@@ -154,6 +256,7 @@ export default function AccountsPage(): React.ReactElement {
         activeTab={activeTab}
         onTabChange={setActiveTab}
         filterGroups={filterGroups}
+        onFilterToggle={handleFilterToggle}
         showFilters={showFilters}
         onToggleFilters={() => setShowFilters(!showFilters)}
         filterSearchTerm={filterSearchTerm}
@@ -162,7 +265,7 @@ export default function AccountsPage(): React.ReactElement {
         searchTerm={searchTerm}
         onSearch={setSearchTerm}
         searchPlaceholder="Search accounts..."
-        onSort={() => toast.info('Sort options coming soon')}
+        onSort={() => toast.info('Sort feature coming soon')}
         onRefresh={() => toast.success('Refreshed')}
       >
         {/* List View */}

@@ -6,6 +6,7 @@ import { useAuth } from '@/store/AuthContext';
 import { useNotifications } from '@/features/tenant/notifications/hooks/use-notifications';
 import { useLayout, NAV_ITEMS } from './use-layout';
 import NotificationsDropdown from '@/features/tenant/notifications/ui/notifications-dropdown';
+import { GlobalOmnibox } from '@/shared/components/global-omnibox';
 import { cn } from '@/lib/utils';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -65,19 +66,9 @@ export default function Topbar({ onOpenSidebar }: TopbarProps): React.ReactEleme
         </div>
       </div>
 
-      {/* Center: Global Search */}
-      <div className="hidden md:flex flex-1 max-w-[380px] mx-4 justify-center">
-        <div className="relative w-full">
-          <input
-            type="text"
-            placeholder="Search records..."
-            className="w-full h-8 pl-8 pr-12 rounded-lg border border-[var(--border)] bg-[var(--surface-secondary)] text-[12.5px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[#D94F4F]/15 focus:border-[#D94F4F]/50 focus:bg-[var(--surface)] transition-all"
-          />
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" />
-          <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-medium text-[var(--text-tertiary)] opacity-60 bg-[var(--surface)] border border-[var(--border)] rounded px-1 py-0.5">
-            ⌘K
-          </kbd>
-        </div>
+      {/* Center: Global Search Omnibox */}
+      <div className="hidden md:flex flex-1 max-w-[460px] mx-4 justify-center">
+        <GlobalOmnibox />
       </div>
 
       {/* Right: Actions */}

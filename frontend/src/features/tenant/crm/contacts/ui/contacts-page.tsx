@@ -1,11 +1,13 @@
 'use client';
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
 import { Contact } from '@/store/types';
 import { ModuleWorkspace, ViewType, StatusBadge } from '@/shared/components/crm';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
+import { useFilterUrlSync } from '@/shared/hooks/use-filter-url-sync';
+import { useDebounce } from '@/shared/hooks/use-debounce';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -16,13 +18,35 @@ export default function ContactsPage(): React.ReactElement {
   const { contacts, organizations, deals, users } = useData();
   const { user } = useAuth();
   const canCreate = useHasPermission('contacts.create');
+  const { getParam, getArrayParam, updateParams } = useFilterUrlSync();
 
-  // ── State ────────────────────────────────────────────────────────────
-  const [activeView, setActiveView] = useState<ViewType>('list');
-  const [activeTab, setActiveTab] = useState('all');
+  // ── State (Synced with URL) ──────────────────────────────────────────
+  const [activeView, setActiveView] = useState<ViewType>(() => (getParam('view') as ViewType) || 'list');
+  const [activeTab, setActiveTab] = useState(() => getParam('tab') || 'all');
   const [showFilters, setShowFilters] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(() => getParam('search'));
   const [filterSearchTerm, setFilterSearchTerm] = useState('');
+
+  // Multi-select stacked criteria
+  const [selectedSystemFilters, setSelectedSystemFilters] = useState<string[]>(() => getArrayParam('system'));
+  const [selectedCustomerTypes, setSelectedCustomerTypes] = useState<string[]>(() => getArrayParam('types'));
+  const [selectedOwners, setSelectedOwners] = useState<string[]>(() => getArrayParam('owners'));
+  const [selectedRelated, setSelectedRelated] = useState<string[]>(() => getArrayParam('related'));
+
+  const debouncedSearch = useDebounce(searchTerm, 300);
+
+  // Sync to URL
+  useEffect(() => {
+    updateParams({
+      tab: activeTab !== 'all' ? activeTab : null,
+      search: debouncedSearch || null,
+      view: activeView !== 'list' ? activeView : null,
+      system: selectedSystemFilters,
+      types: selectedCustomerTypes,
+      owners: selectedOwners,
+      related: selectedRelated,
+    });
+  }, [activeTab, debouncedSearch, activeView, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, updateParams]);
 
   // ── Data ─────────────────────────────────────────────────────────────
   const activeContacts = useMemo(
@@ -37,13 +61,17 @@ export default function ContactsPage(): React.ReactElement {
 
   const filteredContacts = useMemo(() => {
     let result = activeContacts;
+
+    // Tab filter
     if (activeTab === 'my') {
       result = result.filter((c) => c.assignedUserId === user?.id);
     } else if (activeTab === 'active-customers') {
       result = result.filter((c) => c.customerType === 'Active Customer');
     }
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
+
+    // Search query
+    if (debouncedSearch) {
+      const term = debouncedSearch.toLowerCase();
       result = result.filter(
         (c) =>
           (c.contactPerson ?? c.leadPerson ?? '').toLowerCase().includes(term) ||
@@ -51,8 +79,32 @@ export default function ContactsPage(): React.ReactElement {
           (c.companyName ?? '').toLowerCase().includes(term),
       );
     }
+
+    // System Filters
+    if (selectedSystemFilters.includes('touched')) {
+      result = result.filter((c) => c.lastUpdated || c.updateStatus);
+    }
+    if (selectedSystemFilters.includes('untouched')) {
+      result = result.filter((c) => !c.lastUpdated && !c.updateStatus);
+    }
+
+    // Customer Types
+    if (selectedCustomerTypes.length > 0) {
+      result = result.filter((c) => selectedCustomerTypes.includes(c.customerType ?? 'Prospect'));
+    }
+
+    // Owners
+    if (selectedOwners.length > 0) {
+      result = result.filter((c) => selectedOwners.includes(c.assignedUserId ?? ''));
+    }
+
+    // Related (e.g. Has Deals)
+    if (selectedRelated.includes('has_deals')) {
+      result = result.filter((c) => deals.some(d => !d.isArchived && (d.contactId === c.id || (d.contactIds ?? []).includes(c.id))));
+    }
+
     return result;
-  }, [activeContacts, activeTab, user?.id, searchTerm]);
+  }, [activeContacts, activeTab, user?.id, debouncedSearch, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, deals]);
 
   // ── Helpers ──────────────────────────────────────────────────────────
   const getInitials = (contact: Contact): string => {
@@ -129,10 +181,8 @@ export default function ContactsPage(): React.ReactElement {
       label: 'System Defined Filters',
       isExpanded: true,
       items: [
-        { id: 'active-customers', label: 'Active Customers', count: activeCustomersCount, isChecked: activeTab === 'active-customers' },
-        { id: 'touched', label: 'Touched Records', count: touchedCount, isChecked: false },
-        { id: 'untouched', label: 'Untouched Records', count: untouchedCount, isChecked: false },
-        { id: 'record-action', label: 'Record Action', isChecked: false },
+        { id: 'touched', label: 'Touched Records', count: touchedCount, isChecked: selectedSystemFilters.includes('touched') },
+        { id: 'untouched', label: 'Untouched Records', count: untouchedCount, isChecked: selectedSystemFilters.includes('untouched') },
       ],
     },
     {
@@ -140,24 +190,50 @@ export default function ContactsPage(): React.ReactElement {
       label: 'Filter By Fields',
       isExpanded: true,
       items: [
-        { id: 'account-name', label: 'Account Name', isChecked: false },
-        { id: 'contact-owner', label: 'Contact Owner', isChecked: false },
-        { id: 'customer-type', label: 'Customer Type', isChecked: false },
-        { id: 'department', label: 'Department', isChecked: false },
-        { id: 'email', label: 'Email', isChecked: false },
-        { id: 'job-title', label: 'Job Title', isChecked: false },
-        { id: 'lead-source', label: 'Lead Source', isChecked: false },
-        { id: 'last-activity', label: 'Last Activity Time', isChecked: false },
-        { id: 'lifecycle-stage', label: 'Lifecycle Stage', isChecked: false },
+        { id: 'type:Active Customer', label: 'Type: Active Customer', count: activeContacts.filter(c => c.customerType === 'Active Customer').length, isChecked: selectedCustomerTypes.includes('Active Customer') },
+        { id: 'type:Prospect', label: 'Type: Prospect', count: activeContacts.filter(c => c.customerType === 'Prospect').length, isChecked: selectedCustomerTypes.includes('Prospect') },
+        { id: 'type:Evaluator', label: 'Type: Evaluator', count: activeContacts.filter(c => c.customerType === 'Evaluator').length, isChecked: selectedCustomerTypes.includes('Evaluator') },
+        ...users.slice(0, 5).map(u => ({
+          id: `owner:${u.id}`,
+          label: `Owner: ${u.firstName} ${u.lastName}`,
+          count: activeContacts.filter(c => c.assignedUserId === u.id).length,
+          isChecked: selectedOwners.includes(u.id),
+        })),
       ],
     },
     {
       id: 'related',
       label: 'Filter By Related Modules',
-      isExpanded: false,
-      items: [],
+      isExpanded: true,
+      items: [
+        { id: 'has_deals', label: 'Contacts with Deals', count: activeContacts.filter(c => deals.some(d => !d.isArchived && (d.contactId === c.id || (d.contactIds ?? []).includes(c.id)))).length, isChecked: selectedRelated.includes('has_deals') },
+      ],
     },
-  ], [activeCustomersCount, activeTab, touchedCount, untouchedCount]);
+  ], [activeContacts, touchedCount, untouchedCount, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, users, deals]);
+
+  const handleFilterToggle = useCallback((groupId: string, itemId: string) => {
+    if (groupId === 'system') {
+      setSelectedSystemFilters(prev =>
+        prev.includes(itemId) ? prev.filter(x => x !== itemId) : [...prev, itemId]
+      );
+    } else if (groupId === 'fields') {
+      if (itemId.startsWith('type:')) {
+        const type = itemId.replace('type:', '');
+        setSelectedCustomerTypes(prev =>
+          prev.includes(type) ? prev.filter(x => x !== type) : [...prev, type]
+        );
+      } else if (itemId.startsWith('owner:')) {
+        const ownerId = itemId.replace('owner:', '');
+        setSelectedOwners(prev =>
+          prev.includes(ownerId) ? prev.filter(x => x !== ownerId) : [...prev, ownerId]
+        );
+      }
+    } else if (groupId === 'related') {
+      setSelectedRelated(prev =>
+        prev.includes(itemId) ? prev.filter(x => x !== itemId) : [...prev, itemId]
+      );
+    }
+  }, []);
 
   return (
     <ModuleWorkspace
@@ -177,6 +253,7 @@ export default function ContactsPage(): React.ReactElement {
       activeTab={activeTab}
       onTabChange={setActiveTab}
       filterGroups={filterGroups}
+      onFilterToggle={handleFilterToggle}
       showFilters={showFilters}
       onToggleFilters={() => setShowFilters(!showFilters)}
       filterSearchTerm={filterSearchTerm}
