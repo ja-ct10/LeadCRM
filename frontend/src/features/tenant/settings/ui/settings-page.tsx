@@ -33,10 +33,12 @@ import {
   Building,
   CreditCard,
   Zap,
+  Check,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { ACCENT_COLORS, applyAccentColor, ACCENT_KEY } from "@/lib/accent-colors";
 import { FormsTab } from './forms-tab';
 import { TeamManagement } from './team-management';
 import { RolesPermissions } from './roles-permissions';
@@ -144,6 +146,7 @@ export default function SettingsPage(): React.ReactElement {
   // Appearance state
   const [appTheme, setAppTheme] = useState(localStorage.getItem("app_theme") || "Light");
   const [appFontSize, setAppFontSize] = useState(localStorage.getItem("app_font_size") || "Medium");
+  const [appAccentColor, setAppAccentColor] = useState(localStorage.getItem(ACCENT_KEY) || "blue");
 
   // Account (profile) state
   const [firstName, setFirstName] = useState(user?.firstName || "");
@@ -152,21 +155,29 @@ export default function SettingsPage(): React.ReactElement {
   const [phone, setPhone] = useState(user?.phone || "");
   const [jobTitle, setJobTitle] = useState(user?.role === "Client Admin" ? "System Administrator" : user?.role || "");
   const [department, setDepartment] = useState("IT");
-  const [timezone, setTimezone] = useState("UTC-5  Â· Eastern Time");
+  const [timezone, setTimezone] = useState("UTC-5  · Eastern Time");
   const [language, setLanguage] = useState("English (US)");
 
   // Archived filter
   const [archivedFilter, setArchivedFilter] = useState<string>("All");
 
   useEffect(() => {
-    const handleSync = () => { setAppTheme(localStorage.getItem("app_theme") || "Light"); };
+    const handleSync = () => {
+      setAppTheme(localStorage.getItem("app_theme") || "Light");
+      setAppAccentColor(localStorage.getItem(ACCENT_KEY) || "blue");
+    };
     window.addEventListener("themechange", handleSync);
-    return () => window.removeEventListener("themechange", handleSync);
+    window.addEventListener("accentcolorchange", handleSync);
+    return () => {
+      window.removeEventListener("themechange", handleSync);
+      window.removeEventListener("accentcolorchange", handleSync);
+    };
   }, []);
 
   const handleSaveAppearance = (): void => {
     localStorage.setItem("app_theme", appTheme);
     localStorage.setItem("app_font_size", appFontSize);
+    applyAccentColor(appAccentColor);
 
     // Apply theme to the CRM container
     const container = document.querySelector('[data-theme-container]');
@@ -539,6 +550,50 @@ export default function SettingsPage(): React.ReactElement {
               </button>
             );
           })}
+        </div>
+
+        {/* Accent Color */}
+        <div className="pt-5 border-t border-gray-200 dark:border-white/[0.06]">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">Accent Color</label>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Customize the primary brand and highlight color across the entire application.</p>
+            </div>
+            <span className="text-xs font-medium text-slate-500 dark:text-slate-400 capitalize">
+              {ACCENT_COLORS.find(c => c.id === appAccentColor)?.name || 'Blue'}
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            {ACCENT_COLORS.map((color) => {
+              const isSelected = appAccentColor === color.id;
+              return (
+                <button
+                  key={color.id}
+                  type="button"
+                  onClick={() => {
+                    setAppAccentColor(color.id);
+                    applyAccentColor(color.id);
+                  }}
+                  title={color.name}
+                  aria-label={`Select ${color.name} accent color`}
+                  aria-pressed={isSelected}
+                  className={cn(
+                    'w-8 h-8 rounded-full flex items-center justify-center transition-all duration-150 cursor-pointer shadow-xs',
+                    color.previewClass,
+                    'hover:scale-110 active:scale-95',
+                    isSelected
+                      ? 'ring-2 ring-offset-2 ring-offset-white dark:ring-offset-slate-900 ring-slate-900 dark:ring-white scale-105'
+                      : 'hover:opacity-90'
+                  )}
+                >
+                  {isSelected && (
+                    <Check size={14} className="text-white drop-shadow-xs stroke-[3]" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Interface Density */}
