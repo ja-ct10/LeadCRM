@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect } from "react";
 import { useData } from "@/store/DataContext";
@@ -863,9 +863,6 @@ export default function SettingsPage(): React.ReactElement {
             {!isFullPane && !hasOwnHeader && (
               <div className="mb-5">
                 <h1 className="text-xl font-bold text-slate-900 dark:text-white">{activeItem?.label ?? 'Settings'}</h1>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  {activeGroup?.label ?? ''}{activeGroup && activeItem ? ' Â· ' : ''}{activeItem?.label ?? ''}
-                </p>
               </div>
             )}
             {activeTab === 'forms'

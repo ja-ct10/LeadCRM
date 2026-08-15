@@ -45,21 +45,6 @@ export default function AccountsPage(): React.ReactElement {
   const [drawerTab, setDrawerTab] = useState('overview');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  // ── KPI Calculations ─────────────────────────────────────────────────
-  const kpiCards = useMemo(() => {
-    const activeCount = accounts.length;
-    const openDeals = deals.filter((d) => !d.isArchived && accounts.some((a) => a.id === d.organizationId));
-    const totalRevenue = openDeals.reduce((sum, d) => sum + (d.value ?? 0), 0);
-    const avgDealSize = openDeals.length > 0 ? totalRevenue / openDeals.length : 0;
-
-    return [
-      { label: 'TOTAL ACCOUNTS', value: String(totalCount), subtitle: 'All statuses' },
-      { label: 'ACTIVE ACCOUNTS', value: String(activeCount), subtitle: 'Currently trading' },
-      { label: 'TOTAL REVENUE', value: formatCurrency(totalRevenue), subtitle: 'Closed + open value' },
-      { label: 'AVG DEAL SIZE', value: formatCurrency(avgDealSize), subtitle: `${openDeals.length} open deals` },
-    ];
-  }, [accounts, totalCount, deals]);
-
   // ── Filtered list ────────────────────────────────────────────────────
   const filteredAccounts = useMemo(() => {
     if (!searchTerm) return accounts;
@@ -155,7 +140,6 @@ export default function AccountsPage(): React.ReactElement {
     <>
       <ModuleWorkspace
         title="Accounts"
-        description="Organizations you sell to — the parent record for contacts and deals."
         primaryActionLabel="Add Account"
         onPrimaryAction={handleOpenCreate}
         onImport={() => toast.info('Import feature coming soon')}
@@ -180,7 +164,6 @@ export default function AccountsPage(): React.ReactElement {
         searchPlaceholder="Search accounts..."
         onSort={() => toast.info('Sort options coming soon')}
         onRefresh={() => toast.success('Refreshed')}
-        kpiCards={kpiCards}
       >
         {/* List View */}
         {(activeView === 'list' || activeView === 'table') && (

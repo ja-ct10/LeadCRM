@@ -49,7 +49,7 @@ interface ModuleWorkspaceProps {
   /** Module title e.g. "Leads" */
   title: string;
   /** One-line module description */
-  description: string;
+  description?: string;
   /** Primary action button label e.g. "Create Lead" */
   primaryActionLabel: string;
   /** Primary action callback */
@@ -162,9 +162,11 @@ export function ModuleWorkspace({
           <h1 className="text-[28px] font-extrabold text-[#0F172A] dark:text-white tracking-tight leading-tight">
             {title}
           </h1>
-          <p className="text-[13px] text-[#5A6B85] dark:text-slate-400 mt-0.5">
-            {description}
-          </p>
+          {description && (
+            <p className="text-[13px] text-[#5A6B85] dark:text-slate-400 mt-0.5">
+              {description}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {onImport && (

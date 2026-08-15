@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useMemo, useCallback } from 'react';
 import { useData } from '@/store/DataContext';
@@ -209,7 +209,6 @@ export default function LeadsPage(): React.ReactElement {
     <>
       <ModuleWorkspace
         title="Leads"
-        description="Inbound and outbound leads waiting to be qualified into contacts."
         primaryActionLabel="Create Lead"
         onPrimaryAction={handleCreate}
         onImport={() => toast.info('Import feature coming soon')}

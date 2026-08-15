@@ -162,11 +162,6 @@ export default function ContactsPage(): React.ReactElement {
   return (
     <ModuleWorkspace
       title="Contacts"
-      description={
-        activeTab === 'active-customers'
-          ? 'Contacts with customerType = Active Customer, grouped under their account.'
-          : 'Every person you sell to, nested under their account and deals.'
-      }
       primaryActionLabel="Create Contact"
       onPrimaryAction={() => toast.info('Contact creation coming soon')}
       onImport={() => toast.info('Import coming soon')}
