@@ -6,7 +6,7 @@ import { useData } from '@/store/DataContext';
 import type { PermissionKey } from '@leadcrm/shared';
 
 // Roles that bypass all permission checks
-const SUPER_ROLES = ['Client Admin', 'System Admin'] as const;
+const SUPER_ROLES = ['Admin', 'Super User', 'Client Admin', 'System Admin'] as const;
 type SuperRole = typeof SUPER_ROLES[number];
 
 /**

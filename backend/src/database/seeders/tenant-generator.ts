@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { faker } from '@faker-js/faker';
 import { hashPassword } from '../../shared/helpers/crypto';
+import { seedSystemRoles } from './roles.seed';
 
 const prisma = new PrismaClient();
 
@@ -77,6 +78,8 @@ export async function generateTenants(count: number = 10) {
       }
     });
 
+    await seedSystemRoles(tenant.id);
+
     // Create Subscription
     await prisma.subscription.create({
       data: {
@@ -91,9 +94,9 @@ export async function generateTenants(count: number = 10) {
 
     // 2. Roles & Permissions
     const rolesData = [
-      { name: 'Client Admin', isSystemRole: true, perms: { canView: true, canCreate: true, canEdit: true, canDelete: true } },
+      { name: 'Admin', isSystemRole: true, perms: { canView: true, canCreate: true, canEdit: true, canDelete: true } },
       { name: 'Sales Manager', isSystemRole: false, perms: { canView: true, canCreate: true, canEdit: true, canDelete: false } },
-      { name: 'Sales Rep', isSystemRole: false, perms: { canView: true, canCreate: true, canEdit: true, canDelete: false } },
+      { name: 'User', isSystemRole: true, perms: { canView: true, canCreate: true, canEdit: true, canDelete: false } },
       { name: 'Marketing', isSystemRole: false, perms: { canView: true, canCreate: true, canEdit: true, canDelete: false } },
       { name: 'Support Agent', isSystemRole: false, perms: { canView: true, canCreate: true, canEdit: true, canDelete: false } },
       { name: 'Finance', isSystemRole: false, perms: { canView: true, canCreate: false, canEdit: false, canDelete: false } },
@@ -103,8 +106,10 @@ export async function generateTenants(count: number = 10) {
     const modules = ['contacts', 'deals', 'organizations', 'campaigns', 'tasks', 'invoices', 'users', 'reports'];
 
     for (const rd of rolesData) {
-      const roleDef = await prisma.roleDefinition.create({
-        data: {
+      const roleDef = await prisma.roleDefinition.upsert({
+        where: { tenantId_name: { tenantId: tenant.id, name: rd.name } },
+        update: {}, // seedSystemRoles already inserted System ones
+        create: {
           tenantId: tenant.id,
           name: rd.name,
           isSystemRole: rd.isSystemRole,
@@ -150,11 +155,11 @@ export async function generateTenants(count: number = 10) {
     };
 
     // Create the team
-    const clientAdmin = await createUser('Client Admin', 'Admin', 'User', `admin@${slug}.com`);
+    const clientAdmin = await createUser('Admin', 'Admin', 'User', `admin@${slug}.com`);
     await createUser('Sales Manager');
     const salesReps: { id: string; role: string }[] = [];
     const numSalesReps = faker.number.int({ min: 3, max: 6 });
-    for(let j=0; j<numSalesReps; j++) salesReps.push(await createUser('Sales Rep'));
+    for(let j=0; j<numSalesReps; j++) salesReps.push(await createUser('User'));
     await createUser('Marketing');
     await createUser('Support Agent');
     await createUser('Finance');

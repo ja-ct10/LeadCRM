@@ -222,7 +222,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         firstName: adminData.firstName,
         lastName:  adminData.lastName,
         email:     adminData.email,
-        role:      'Client Admin',
+        role:      'Admin',
         status:    'active',
       };
 

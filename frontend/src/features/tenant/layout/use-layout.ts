@@ -57,6 +57,7 @@ export function useLayout() {
   };
 
   const isSuper = userPermissions.includes('*');
+  const isSystemAdminUser = user?.role === 'System Admin' || user?.tenantId === 'system' || user?.tenantId === 'leadcrm-system-demo';
 
   const featureEnabled = (flag?: 'service' | 'asset' | 'billing') => {
     if (!flag) return true;
@@ -71,7 +72,7 @@ export function useLayout() {
 
     const itemRoles = (item as any).roles as string[] | null | undefined;
 
-    if (user?.role === 'System Admin') return itemRoles?.includes('System Admin') ?? false;
+    if (isSystemAdminUser) return itemRoles?.includes('System Admin') ?? false;
     if (itemRoles?.includes('System Admin')) return false;
     if (itemRoles && !itemRoles.includes('System Admin')) {
       return itemRoles.includes(user?.role ?? '');

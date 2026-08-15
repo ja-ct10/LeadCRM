@@ -456,7 +456,7 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
     addRole({
       name: `${role.name} (Copy)`,
       description: role.description,
-      permissions: [...role.permissions],
+      permissions: role.permissions ? [...role.permissions] : [],
       isSystemRole: false,
       userCount: 0,
     });
@@ -537,7 +537,7 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {visibleRoles.map((role, index) => {
             const roleUserCount = users.filter((u) => !u.isArchived && u.role === role.name).length;
-            const enabledCount = role.permissions.length;
+            const enabledCount = role.permissions?.length ?? 0;
             const isDropdownOpen = openDropdownId === role.id;
             
             return (
