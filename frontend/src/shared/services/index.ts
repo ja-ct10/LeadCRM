@@ -7,7 +7,7 @@ export * from './companies.api';
 export * from './deals.api';
 export * from './pipelines.api';
 export * from './tasks.api';
-export * from './service-orders.api';
+
 export * from './campaigns.api';
 export * from './templates.api';
 export * from './workflows.api';

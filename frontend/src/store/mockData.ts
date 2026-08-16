@@ -33,12 +33,6 @@ export {
 } from './mockData/campaigns.mock';
 
 export {
-  MOCK_SERVICE_ORDERS,
-  MOCK_ASSETS,
-  MOCK_INVENTORY,
-} from './mockData/service-orders.mock';
-
-export {
   MOCK_TENANTS,
   MOCK_USERS,
   MOCK_PERMISSIONS,

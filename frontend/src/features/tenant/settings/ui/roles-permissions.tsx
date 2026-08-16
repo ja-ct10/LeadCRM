@@ -62,12 +62,6 @@ const PERM_GROUPS: PermGroup[] = [
     description: 'Access and customize the main dashboard',
     permIds: ['p1', 'p34'],
   },
-  {
-    id: 'operations',
-    label: 'Operations',
-    description: 'Service orders, assets, and inventory management',
-    permIds: ['p35', 'p36', 'p37', 'p38'],
-  },
 ];
 
 // ── Toggle component ──────────────────────────────────────────────────────────

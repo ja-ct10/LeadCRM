@@ -18,7 +18,6 @@ import {
   HelpCircle,
   Save,
   Wrench,
-  Package,
   Receipt,
   Send,
   Palette,
@@ -38,10 +37,6 @@ export default function ProfileSettingsPage({
 }: ProfileSettingsPageProps) {
   const { user, tenant, updateProfile } = useAuth();
   const {
-    isServiceModuleEnabled,
-    toggleServiceModule,
-    isAssetModuleEnabled,
-    toggleAssetModule,
     isBillingModuleEnabled,
     toggleBillingModule,
   } = useData();
@@ -614,133 +609,7 @@ export default function ProfileSettingsPage({
 
               {/* Grid of Modules */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {/* Module 1: Service Orders */}
-                <div
-                  className={`p-4 rounded-xl border transition-all flex flex-col justify-between gap-4 h-36 ${
-                    isServiceModuleEnabled
-                      ? "bg-blue-50/20 dark:bg-blue-500/[0.02] border-blue-500/20 dark:border-blue-500/30"
-                      : "bg-white dark:bg-slate-900 border-slate-200 dark:border-white/[0.06]"
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div
-                      className={`p-2 rounded-lg shrink-0 ${
-                        isServiceModuleEnabled
-                          ? "bg-blue-500/10 text-blue-500"
-                          : "bg-slate-100 dark:bg-slate-800 text-slate-400"
-                      }`}
-                    >
-                      <Wrench size={16} />
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                        <span>Service Orders</span>
-                        {isServiceModuleEnabled && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        )}
-                      </h4>
-                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-snug">
-                        Manage technical installations, dispatches, and
-                        maintenance jobs.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-white/[0.02]">
-                    <span
-                      className={`text-[10px] font-bold ${isServiceModuleEnabled ? "text-blue-500" : "text-slate-400"}`}
-                    >
-                      {isServiceModuleEnabled ? "Enabled" : "Disabled"}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        toggleServiceModule();
-                        toast.success(
-                          `Service Orders module is now ${!isServiceModuleEnabled ? "ENABLED" : "DISABLED"}`,
-                        );
-                      }}
-                      className={`w-10 h-5.5 rounded-full transition-colors flex items-center p-0.5 cursor-pointer shrink-0 ${
-                        isServiceModuleEnabled
-                          ? "bg-blue-500"
-                          : "bg-slate-300 dark:bg-slate-800"
-                      }`}
-                    >
-                      <div
-                        className={`w-4 h-4 rounded-full bg-white transition-all transform ${
-                          isServiceModuleEnabled
-                            ? "translate-x-4.5"
-                            : "translate-x-0"
-                        }`}
-                      />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Module 2: Asset Tracking */}
-                <div
-                  className={`p-4 rounded-xl border transition-all flex flex-col justify-between gap-4 h-36 ${
-                    isAssetModuleEnabled
-                      ? "bg-blue-50/20 dark:bg-blue-500/[0.02] border-blue-500/20 dark:border-blue-500/30"
-                      : "bg-white dark:bg-slate-900 border-slate-200 dark:border-white/[0.06]"
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div
-                      className={`p-2 rounded-lg shrink-0 ${
-                        isAssetModuleEnabled
-                          ? "bg-blue-500/10 text-blue-500"
-                          : "bg-slate-100 dark:bg-slate-800 text-slate-400"
-                      }`}
-                    >
-                      <Package size={16} />
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                        <span>Asset Tracking</span>
-                        {isAssetModuleEnabled && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        )}
-                      </h4>
-                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-snug">
-                        Track installed devices, client hardware, and product
-                        warranties.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-white/[0.02]">
-                    <span
-                      className={`text-[10px] font-bold ${isAssetModuleEnabled ? "text-blue-500" : "text-slate-400"}`}
-                    >
-                      {isAssetModuleEnabled ? "Enabled" : "Disabled"}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        toggleAssetModule();
-                        toast.success(
-                          `Asset Tracking module is now ${!isAssetModuleEnabled ? "ENABLED" : "DISABLED"}`,
-                        );
-                      }}
-                      className={`w-10 h-5.5 rounded-full transition-colors flex items-center p-0.5 cursor-pointer shrink-0 ${
-                        isAssetModuleEnabled
-                          ? "bg-blue-500"
-                          : "bg-slate-300 dark:bg-slate-800"
-                      }`}
-                    >
-                      <div
-                        className={`w-4 h-4 rounded-full bg-white transition-all transform ${
-                          isAssetModuleEnabled
-                            ? "translate-x-4.5"
-                            : "translate-x-0"
-                        }`}
-                      />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Module 3: Contract Billing */}
+                {/* Module: Contract Billing */}
                 <div
                   className={`p-4 rounded-xl border transition-all flex flex-col justify-between gap-4 h-36 sm:col-span-2 lg:col-span-1 ${
                     isBillingModuleEnabled

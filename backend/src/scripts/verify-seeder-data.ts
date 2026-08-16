@@ -50,7 +50,6 @@ async function verifySeederData() {
       taskCount,
       activityCount,
       campaignCount,
-      serviceOrderCount,
       auditLogCount,
       rolePermissionCount,
     ] = await Promise.all([
@@ -63,7 +62,6 @@ async function verifySeederData() {
       prisma.task.count({ where: { tenantId: tenant.id } }),
       prisma.activity.count({ where: { tenantId: tenant.id } }),
       prisma.campaign.count({ where: { tenantId: tenant.id } }),
-      prisma.serviceOrder.count({ where: { tenantId: tenant.id } }),
       prisma.auditLog.count({ where: { tenantId: tenant.id } }),
       prisma.rolePermission.count({ where: { tenantId: tenant.id } }),
     ]);
@@ -78,7 +76,6 @@ async function verifySeederData() {
     console.log(`   Tasks:           ${taskCount} (expected: 5)`);
     console.log(`   Activities:      ${activityCount} (expected: 5)`);
     console.log(`   Campaigns:       ${campaignCount} (expected: 3)`);
-    console.log(`   Service Orders:  ${serviceOrderCount} (expected: 3)`);
     console.log(`   Audit Logs:      ${auditLogCount} (expected: 5+)`);
     console.log(`   Role Permissions: ${rolePermissionCount} (expected: 12)`);
 
@@ -123,7 +120,6 @@ async function verifySeederData() {
     if (taskCount !== 5) errors.push(`Tasks: expected 5, got ${taskCount}`);
     if (activityCount !== 5) errors.push(`Activities: expected 5, got ${activityCount}`);
     if (campaignCount !== 3) errors.push(`Campaigns: expected 3, got ${campaignCount}`);
-    if (serviceOrderCount !== 3) errors.push(`Service Orders: expected 3, got ${serviceOrderCount}`);
     if (rolePermissionCount !== 12) errors.push(`Role Permissions: expected 12, got ${rolePermissionCount}`);
 
     if (errors.length > 0) {
