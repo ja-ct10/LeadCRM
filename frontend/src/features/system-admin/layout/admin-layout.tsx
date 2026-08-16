@@ -50,7 +50,7 @@ export default function AdminLayout({ children, currentPath, navigate }: AdminLa
 
       {/* -- Sidebar ----------------------------------------------- */}
       <aside className={`
-        fixed lg:static inset-y-0 left-0 z-50 w-64
+        fixed lg:sticky inset-y-0 lg:top-0 left-0 z-50 w-64 lg:h-screen
         bg-white dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800
         flex flex-col shadow-xl lg:shadow-none
         transform transition-transform duration-300 ease-in-out

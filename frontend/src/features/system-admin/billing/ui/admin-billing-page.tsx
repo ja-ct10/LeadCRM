@@ -79,54 +79,93 @@ export default function AdminBillingPage() {
       </div>
 
       {/* Invoice table */}
-      <div className="bg-white dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-        <div className="p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20">
+      <div className="bg-white dark:bg-white/[0.02] rounded-2xl border border-gray-200 dark:border-white/[0.05] shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-gray-200 dark:border-white/[0.05] bg-gray-50/50 dark:bg-white/[0.01]">
           <div className="relative max-w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input type="text" placeholder="Search invoices by client, plan, or invoice number…" value={searchQuery}
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            <input
+              type="text"
+              placeholder="Search invoices by client, plan, or invoice number…"
+              value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-100 dark:bg-slate-800/50 border-none rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] rounded-xl text-sm focus:outline-none focus:border-blue-500 transition-colors placeholder:text-slate-400 text-slate-900 dark:text-white"
+            />
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-600 dark:text-slate-400">
-            <thead className="bg-white dark:bg-slate-950 text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-700">
-              <tr>
-                {['Invoice #', 'Client', 'Plan', 'Amount', 'Date', 'Payment Method', 'Status', ''].map((h) => (
-                  <th key={h} className={`px-6 py-4 font-semibold ${!h ? 'text-right' : ''}`}>{h}</th>
-                ))}
+        <div className="overflow-x-hidden">
+          <table className="w-full text-left border-collapse table-fixed">
+            <thead>
+              <tr className="border-b border-gray-200 dark:border-white/[0.05] bg-gray-50/50 dark:bg-white/[0.01] text-[9px] sm:text-[10px] uppercase text-slate-500 tracking-wider">
+                <th className="p-2 sm:p-4 py-2 sm:py-3 font-semibold w-[18%] hidden sm:table-cell">Invoice #</th>
+                <th className="p-2 sm:p-4 py-2 sm:py-3 font-semibold w-[22%]">Client</th>
+                <th className="p-2 sm:p-4 py-2 sm:py-3 font-semibold w-[10%]">Plan</th>
+                <th className="p-2 sm:p-4 py-2 sm:py-3 font-semibold w-[10%]">Amount</th>
+                <th className="p-2 sm:p-4 py-2 sm:py-3 font-semibold w-[12%] hidden md:table-cell">Date</th>
+                <th className="p-2 sm:p-4 py-2 sm:py-3 font-semibold w-[16%] hidden lg:table-cell">Payment Method</th>
+                <th className="p-2 sm:p-4 py-2 sm:py-3 font-semibold w-[10%]">Status</th>
+                <th className="p-2 sm:p-4 py-2 sm:py-3 font-semibold w-[10%] text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+            <tbody className="divide-y divide-gray-100 dark:divide-white/[0.04] text-[10px] sm:text-[11px] text-slate-700 dark:text-slate-300">
               {paginatedInvoices.map((inv) => (
-                <tr key={inv.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                  <td className="px-6 py-4 font-mono text-xs">{inv.id}</td>
-                  <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">{inv.client}</td>
-                  <td className="px-6 py-4">{inv.plan}</td>
-                  <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">${inv.amount}</td>
-                  <td className="px-6 py-4 text-slate-500">{inv.date}</td>
-                  <td className="px-6 py-4 flex items-center gap-2">
-                    {inv.method.includes('Card') ? <CreditCard size={14} className="text-slate-400" /> : <Building2 size={14} className="text-slate-400" />}
-                    {inv.method}
+                <tr key={inv.id} className="hover:bg-gray-50 dark:hover:bg-white/[0.01] transition-colors">
+                  <td className="p-2 sm:p-4 font-mono text-[9px] text-slate-500 hidden sm:table-cell truncate">{inv.id}</td>
+                  <td className="p-2 sm:p-4">
+                    <span className="font-semibold text-slate-900 dark:text-white block truncate" title={inv.client}>{inv.client}</span>
+                    <span className="text-[9px] text-slate-400 font-mono sm:hidden block">{inv.id}</span>
                   </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${STATUS_STYLES[inv.status]}`}>{inv.status}</span>
+                  <td className="p-2 sm:p-4">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                      {inv.plan}
+                    </span>
                   </td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end gap-3">
-                      <button onClick={() => setSelectedInvoice(inv)} className="text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"><Eye size={16} /></button>
-                      <button onClick={() => handleDownload(inv.id)} className="text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"><Download size={16} /></button>
+                  <td className="p-2 sm:p-4">
+                    <span className="font-semibold text-slate-900 dark:text-white">${inv.amount}</span>
+                    <span className="text-[9px] text-slate-400 font-mono md:hidden block mt-1">{inv.date}</span>
+                  </td>
+                  <td className="p-2 sm:p-4 text-slate-500 font-mono text-[10px] hidden md:table-cell">{inv.date}</td>
+                  <td className="p-2 sm:p-4 hidden lg:table-cell">
+                    <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
+                      {inv.method.includes('Card') ? <CreditCard size={11} className="text-slate-400 shrink-0" /> : <Building2 size={11} className="text-slate-400 shrink-0" />}
+                      <span className="truncate">{inv.method}</span>
+                    </span>
+                  </td>
+                  <td className="p-2 sm:p-4">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold uppercase border ${
+                      inv.status === 'paid'    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' :
+                      inv.status === 'pending' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20' :
+                                                 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20'
+                    }`}>{inv.status}</span>
+                  </td>
+                  <td className="p-2 sm:p-4 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => setSelectedInvoice(inv)}
+                        aria-label={`View invoice ${inv.id}`}
+                        className="text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+                      >
+                        <Eye size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleDownload(inv.id)}
+                        aria-label={`Download invoice ${inv.id}`}
+                        className="text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+                      >
+                        <Download size={14} />
+                      </button>
                     </div>
                   </td>
                 </tr>
               ))}
               {paginatedInvoices.length === 0 && (
-                <tr><td colSpan={8} className="px-6 py-12 text-center text-slate-500">No invoices found matching your search.</td></tr>
+                <tr>
+                  <td colSpan={8} className="px-4 py-12 text-center text-slate-500 text-sm">No invoices found matching your search.</td>
+                </tr>
               )}
             </tbody>
           </table>
         </div>
-        <div className="p-4 border-t border-slate-200 dark:border-slate-800">
+        <div className="p-4 border-t border-gray-200 dark:border-white/[0.05]">
           <Pagination
             currentPage={currentPage}
             totalPages={totalPages}

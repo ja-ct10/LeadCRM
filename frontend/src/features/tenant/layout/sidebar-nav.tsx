@@ -38,7 +38,7 @@ export default function SidebarNav({
 
   return (
     <aside className={`
-      fixed lg:static inset-y-0 left-0 z-50 w-60 bg-white dark:bg-slate-900
+      fixed lg:sticky inset-y-0 lg:top-0 left-0 z-50 w-60 lg:h-screen bg-white dark:bg-slate-900
       border-r border-slate-200 dark:border-slate-800
       transform transition-transform duration-200 ease-in-out flex flex-col shadow-lg lg:shadow-none
       ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
