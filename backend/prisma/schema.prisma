@@ -217,9 +217,6 @@ model Tenant {
   wfExecutionSteps   WorkflowExecutionStep[]
   invoices           Invoice[]
   paymentTxns        PaymentTransaction[]
-  serviceOrders      ServiceOrder[]
-  assets             Asset[]
-  inventoryItems     InventoryItem[]
   notifications      Notification[]
   auditLogs          AuditLog[]
   emailDeliveryLogs  EmailDeliveryLog[]
@@ -228,6 +225,8 @@ model Tenant {
   SMSQueue           SMSQueue[]
   EmailEvent         EmailEvent[]
   AutomationRule     AutomationRule[]
+  userPreferences    UserPreference[]
+  tenantPreferences  TenantPreference[]
 }
 
 // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -320,10 +319,10 @@ model User {
   tasksAssignedByMe    Task[]             @relation("TaskAssignedBy")
   completedTasks       Task[]             @relation("TaskCompletedBy")
   activitiesCreated    Activity[]
-  serviceOrders        ServiceOrder[]
   notifications        Notification[]
   auditLogs            AuditLog[]
   oauthAccounts        OAuthAccount[]
+  userPreferences      UserPreference[]
 
   @@unique([tenantId, email])
   @@index([tenantId, status])
@@ -542,8 +541,6 @@ model Account {
   customers     Customer[]
   deals         Deal[]
   activities    Activity[]
-  serviceOrders ServiceOrder[]
-  assets        Asset[]
 
   @@index([tenantId, isArchived])
   @@index([tenantId, name])
@@ -585,7 +582,6 @@ model Lead {
   emailDeliveryLogs EmailDeliveryLog[]
   SMSQueue          SMSQueue[]
   invoices          Invoice[]
-  serviceOrders     ServiceOrder[]
 
   @@index([tenantId, status])
   @@index([tenantId, assignedUserId])
@@ -594,9 +590,9 @@ model Lead {
   @@index([tenantId, accountId])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─────────────────────────────────────────────────────
 // CUSTOMER
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─────────────────────────────────────────────────────
 model Customer {
   id              String   @id @default(uuid())
   tenantId        String
@@ -625,7 +621,6 @@ model Customer {
   emailDeliveryLogs EmailDeliveryLog[]
   SMSQueue          SMSQueue[]
   invoices          Invoice[]
-  serviceOrders     ServiceOrder[]
 
   @@index([tenantId, status])
   @@index([tenantId, assignedUserId])
@@ -730,7 +725,6 @@ model Deal {
   tasks          Task[]
   activities     Activity[]
   invoices       Invoice[]
-  serviceOrders  ServiceOrder[]
 
   @@index([tenantId, stageId])
   @@index([tenantId, pipelineId])
@@ -1238,87 +1232,7 @@ model PaymentTransaction {
   @@index([stripeEventId])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-// SERVICE ORDER
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-model ServiceOrder {
-  id                   String    @id @default(uuid())
-  tenantId             String
-  assignedTechnicianId String?
-  leadId               String?
-  customerId           String?
-  accountId            String?
-  dealId               String?
-  invoiceId            String?
-  title                String
-  description          String?
-  status               String    @default("pending") // pending|in_progress|completed|cancelled
-  scheduledDate        DateTime
-  completedAt          DateTime?
-  actualDurationMins   Int?
-  photos               Json? // { before: [url], after: [url] } ΓÇö object storage URLs, NOT base64
-  signature            String? // URL to signed document in object storage
-  notes                String?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
-
-  tenant       Tenant    @relation(fields: [tenantId], references: [id])
-  technician   User?     @relation(fields: [assignedTechnicianId], references: [id])
-  lead         Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  customer     Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  organization Account?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
-  deal         Deal?     @relation(fields: [dealId], references: [id], onDelete: SetNull)
-
-  @@index([tenantId, status, assignedTechnicianId])
-  @@index([tenantId, scheduledDate])
-}
-
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-// ASSET & INVENTORY
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-model Asset {
-  id             String   @id @default(uuid())
-  tenantId       String
-  accountId      String?
-  name           String
-  category       String // Security|Telecom|IT|Infrastructure
-  serialNumber   String
-  client         String
-  status         String   @default("Active") // Active|Maintenance|Retired|Faulty
-  installDate    DateTime
-  warrantyExpiry DateTime
-  location       String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  tenant       Tenant   @relation(fields: [tenantId], references: [id])
-  organization Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
-
-  @@index([tenantId, status])
-  @@index([tenantId, accountId])
-}
-
-model InventoryItem {
-  id            String    @id @default(uuid())
-  tenantId      String
-  name          String
-  sku           String
-  category      String
-  quantity      Int
-  minQuantity   Int
-  unitPrice     Float
-  supplier      String?
-  lastRestocked DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-
-  @@unique([tenantId, sku])
-  @@index([tenantId, category])
-}
-
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─────────────────────────────────────────────────────
 // AUDIT LOG
 // Mentor: "Audit Log is needed, logs of all actions with categorization"
 // severity: INFO | WARNING | CRITICAL
@@ -1514,4 +1428,44 @@ model AutomationRule {
 
   @@index([tenantId, isActive])
   @@index([tenantId, triggerType])
+}
+
+// ─────────────────────────────────────────────────────
+// USER PREFERENCE (per-user, per-module, per-key)
+// Generic preference storage for column configs, filters, sorts, etc.
+// ─────────────────────────────────────────────────────
+model UserPreference {
+  id        String   @id @default(uuid())
+  tenantId  String
+  userId    String
+  module    String   @db.VarChar(64)
+  key       String   @db.VarChar(128)
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId, module, key])
+  @@index([tenantId, module])
+}
+
+// ─────────────────────────────────────────────────────
+// TENANT PREFERENCE (per-tenant, per-module, per-key)
+// Tenant-level defaults managed by Client Admins.
+// ─────────────────────────────────────────────────────
+model TenantPreference {
+  id        String   @id @default(uuid())
+  tenantId  String
+  module    String   @db.VarChar(64)
+  key       String   @db.VarChar(128)
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, module, key])
+  @@index([tenantId, module])
 }

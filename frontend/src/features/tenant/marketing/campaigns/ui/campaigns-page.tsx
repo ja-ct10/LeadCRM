@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useMemo } from 'react';
 import { motion } from 'motion/react';
@@ -475,9 +475,6 @@ export default function CampaignsPage() {
               {filteredCampaigns.length} total
             </span>
           </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Manage your marketing campaigns, sequence automation, and lead generation analytics.
-          </p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -598,7 +595,6 @@ export default function CampaignsPage() {
             <EmptyState
               type="campaigns"
               title="No Campaigns Created Yet"
-              description="Launch targeted email or SMS marketing campaigns to follow up with your contacts, educate prospects, and drive sales automatically."
               actionLabel="Create Campaign"
               onAction={() => setShowBuilder(true)}
               secondaryActionLabel={templates.filter(t => t.type === 'Email').length === 0 ? undefined : "Browse Templates"}

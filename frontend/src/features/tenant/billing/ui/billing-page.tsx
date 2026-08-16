@@ -98,10 +98,10 @@ export default function BillingPage() {
   const overdueAmount  = invoices.filter(i => i.paymentStatus === 'Overdue').reduce((s, i) => s + i.amount, 0);
 
   const stats = [
-    { label: 'Monthly Recurring Revenue', value: '?' + mrr.toLocaleString('en-PH'),        icon: TrendingUp,  color: 'text-emerald-400' },
+    { label: 'Monthly Recurring Revenue', value: '$' + mrr.toLocaleString('en-US'),        icon: TrendingUp,  color: 'text-emerald-400' },
     { label: 'Active Contracts',           value: String(activeCount),                       icon: FileText,    color: 'text-blue-400' },
     { label: 'Pending Renewals',           value: String(renewalCount),                      icon: RefreshCw,   color: 'text-amber-400' },
-    { label: 'Overdue Payments',           value: '?' + overdueAmount.toLocaleString('en-PH'), icon: AlertCircle, color: 'text-red-400' },
+    { label: 'Overdue Payments',           value: '$' + overdueAmount.toLocaleString('en-US'), icon: AlertCircle, color: 'text-red-400' },
   ];
 
   return (

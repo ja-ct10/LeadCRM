@@ -55,7 +55,7 @@ export function ClientFilters({
   const activeTermCount = searchTerm ? 1 : 0;
   const activeFilterCount = activeStatusesCount + activeOwnersCount + activeSourcesCount + activeTypeCount + activeTermCount + activeSmartViewCount;
 
-  const viewOptions: FilterOption[] = ['All Profiles', 'Leads', 'Customers', 'Individual Customers', 'Organization Customers', 'Archived'].map(v => ({
+  const viewOptions: FilterOption[] = ['All Profiles', 'Leads', 'Individual Profiles', 'Organization Profiles', 'Archived'].map(v => ({
     id: v,
     label: v
   }));

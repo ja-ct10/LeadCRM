@@ -24,7 +24,7 @@ export default function ClientBillingPage() {
   // Prediction calculation math
   const basePrice = 9999;
   const userCost = extraUsers * 200;
-  const storageCost = extraStorage * 50; // Each extra GB costs ?50
+  const storageCost = extraStorage * 50; // Each extra GB costs $50
   const supportCost = premiumSupport ? 1500 : 0;
   const apiCost = advancedAPI ? 2500 : 0;
 
@@ -41,9 +41,9 @@ export default function ClientBillingPage() {
   const estimatedNextMonthlyAmount = rawSubtotal - discountAmount;
 
   const invoices = [
-    { id: 'INV-2026-001', date: 'Apr 01, 2026', amount: '?9,999.00', status: 'Paid', method: '?·?·?·?· 4242' },
-    { id: 'INV-2026-002', date: 'Mar 01, 2026', amount: '?9,999.00', status: 'Paid', method: '?·?·?·?· 4242' },
-    { id: 'INV-2026-003', date: 'Feb 01, 2026', amount: '?9,999.00', status: 'Paid', method: '?·?·?·?· 4242' },
+    { id: 'INV-2026-001', date: 'Apr 01, 2026', amount: '$9,999.00', status: 'Paid', method: '•••• 4242' },
+    { id: 'INV-2026-002', date: 'Mar 01, 2026', amount: '$9,999.00', status: 'Paid', method: '•••• 4242' },
+    { id: 'INV-2026-003', date: 'Feb 01, 2026', amount: '$9,999.00', status: 'Paid', method: '•••• 4242' },
   ];
 
   return (
@@ -57,7 +57,7 @@ export default function ClientBillingPage() {
         <div className="flex items-center gap-3">
           <button 
             onClick={() => toast.success('Redirecting to upgrade flow...')}
-            className="px-4 py-2 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition-colors shadow-sm"
+            className="px-4 py-2 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition-colors shadow-sm cursor-pointer"
           >
             Upgrade Plan
           </button>
@@ -74,8 +74,8 @@ export default function ClientBillingPage() {
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id as any)}
-            className={`px-6 py-4 text-sm font-semibold transition-all relative ${
-              activeTab === tab.id ? 'text-blue-600' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white dark:text-white'
+            className={`px-6 py-4 text-sm font-semibold transition-all relative cursor-pointer ${
+              activeTab === tab.id ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             {tab.label}
@@ -97,10 +97,10 @@ export default function ClientBillingPage() {
               <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 shadow-sm">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-lg font-bold text-slate-900 dark:text-white">Current Plan</h3>
-                  <span className="px-3 py-1 bg-blue-50 text-blue-700 text-xs font-bold rounded-full border border-blue-100">Professional</span>
+                  <span className="px-3 py-1 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 text-xs font-bold rounded-full border border-blue-100 dark:border-blue-800">Professional</span>
                 </div>
                 <div className="flex items-end gap-2 mb-6">
-                  <span className="text-4xl font-extrabold text-slate-900 dark:text-white">?9,999</span>
+                  <span className="text-4xl font-extrabold text-slate-900 dark:text-white">$9,999</span>
                   <span className="text-slate-500 dark:text-slate-400 mb-1">/ month</span>
                 </div>
                 <div className="space-y-3 mb-6">
@@ -117,7 +117,7 @@ export default function ClientBillingPage() {
                 <div className="pt-6 border-t border-slate-100 dark:border-slate-800 flex gap-3">
                   <button 
                     onClick={() => toast.success('Cancellation request submitted. A representative will contact you shortly.')}
-                    className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl font-medium text-sm hover:bg-slate-200 transition-colors"
+                    className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl font-medium text-sm hover:bg-slate-200 transition-colors cursor-pointer"
                   >
                     Cancel Subscription
                   </button>
@@ -128,7 +128,7 @@ export default function ClientBillingPage() {
               <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 shadow-sm">
                 <h3 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-4">Next Payment</h3>
                 <div className="text-2xl font-bold text-slate-900 dark:text-white mb-1">May 01, 2026</div>
-                <div className="text-sm text-slate-500 dark:text-slate-400 mb-4">Amount: ?9,999.00</div>
+                <div className="text-sm text-slate-500 dark:text-slate-400 mb-4">Amount: $9,999.00</div>
                 <div className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-100 dark:border-slate-800">
                   <CreditCard size={16} className="text-slate-500 dark:text-slate-400" />
                   Visa ending in 4242
@@ -163,7 +163,7 @@ export default function ClientBillingPage() {
                         type="button"
                         onClick={() => {
                           setFrequency(freq.id as any);
-                          toast.success(`Frequency updated to ${freq.label}! =···`);
+                          toast.success(`Frequency updated to ${freq.label}!`);
                         }}
                         className={`py-1.5 px-1 rounded-lg text-[10px] font-bold transition-all text-center cursor-pointer ${
                           frequency === freq.id
@@ -183,7 +183,7 @@ export default function ClientBillingPage() {
                 {/* Additional Users */}
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center text-xs">
-                    <span className="font-semibold text-slate-500 dark:text-slate-400">Extra Users (+?200/ea)</span>
+                    <span className="font-semibold text-slate-500 dark:text-slate-400">Extra Users (+$200/ea)</span>
                     <span className="font-bold text-slate-800 dark:text-slate-200">+{extraUsers} Users</span>
                   </div>
                   <input
@@ -204,7 +204,7 @@ export default function ClientBillingPage() {
                 {/* Extra storage */}
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center text-xs">
-                    <span className="font-semibold text-slate-500 dark:text-slate-400">Extra Storage (+?50/GB)</span>
+                    <span className="font-semibold text-slate-500 dark:text-slate-400">Extra Storage (+$50/GB)</span>
                     <span className="font-bold text-slate-800 dark:text-slate-200">+{extraStorage} GB</span>
                   </div>
                   <input
@@ -232,12 +232,12 @@ export default function ClientBillingPage() {
                       checked={premiumSupport}
                       onChange={(e) => {
                         setPremiumSupport(e.target.checked);
-                        if (e.target.checked) toast.success('Added Premium 24/7 SLA Support! ?·');
+                        if (e.target.checked) toast.success('Added Premium 24/7 SLA Support!');
                       }}
                       className="rounded border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-blue-500 h-4 w-4 mt-0.5"
                     />
                     <div>
-                      <div className="font-bold text-slate-800 dark:text-slate-200">Premium SLA Support (+?1,500)</div>
+                      <div className="font-bold text-slate-800 dark:text-slate-200">Premium SLA Support (+$1,500)</div>
                       <p className="text-[10px] text-slate-400 leading-normal mt-0.5">Priority routing, guaranteed sub-hour responses</p>
                     </div>
                   </label>
@@ -248,12 +248,12 @@ export default function ClientBillingPage() {
                       checked={advancedAPI}
                       onChange={(e) => {
                         setAdvancedAPI(e.target.checked);
-                        if (e.target.checked) toast.success('Unlocked unlimited API and CRM webhooks! =···');
+                        if (e.target.checked) toast.success('Unlocked unlimited API and CRM webhooks!');
                       }}
                       className="rounded border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-blue-500 h-4 w-4 mt-0.5"
                     />
                     <div>
-                      <div className="font-bold text-slate-800 dark:text-slate-200">Unlimited API Access (+?2,500)</div>
+                      <div className="font-bold text-slate-800 dark:text-slate-200">Unlimited API Access (+$2,500)</div>
                       <p className="text-[10px] text-slate-400 leading-normal mt-0.5">Integration tokens, raw database sync, custom endpoints</p>
                     </div>
                   </label>
@@ -263,36 +263,36 @@ export default function ClientBillingPage() {
                 <div className="pt-3.5 border-t border-slate-150 dark:border-slate-800 space-y-1.5 text-xs">
                   <div className="flex justify-between text-slate-500 dark:text-slate-400 font-mono text-[11px]">
                     <span>Professional Plan:</span>
-                    <span className="text-slate-750 dark:text-slate-200">?9,999.00</span>
+                    <span className="text-slate-700 dark:text-slate-200">$9,999.00</span>
                   </div>
                   {extraUsers > 0 && (
                     <div className="flex justify-between text-slate-500 dark:text-slate-400 font-mono text-[11px]">
                       <span>Extra Users ({extraUsers}):</span>
-                      <span className="text-slate-755 dark:text-slate-200">+?{userCost.toLocaleString()}</span>
+                      <span className="text-slate-700 dark:text-slate-200">+${userCost.toLocaleString()}</span>
                     </div>
                   )}
                   {extraStorage > 0 && (
                     <div className="flex justify-between text-slate-500 dark:text-slate-400 font-mono text-[11px]">
                       <span>Extra Storage ({extraStorage} GB):</span>
-                      <span className="text-slate-755 dark:text-slate-200">+?{storageCost.toLocaleString()}</span>
+                      <span className="text-slate-700 dark:text-slate-200">+${storageCost.toLocaleString()}</span>
                     </div>
                   )}
                   {premiumSupport && (
                     <div className="flex justify-between text-slate-500 dark:text-slate-400 font-mono text-[11px]">
                       <span>Premium Support SLA:</span>
-                      <span className="text-slate-755 dark:text-slate-200">+?1,500.00</span>
+                      <span className="text-slate-700 dark:text-slate-200">+$1,500.00</span>
                     </div>
                   )}
                   {advancedAPI && (
                     <div className="flex justify-between text-slate-500 dark:text-slate-400 font-mono text-[11px]">
                       <span>Enterprise API Access:</span>
-                      <span className="text-slate-755 dark:text-slate-200">+?2,500.00</span>
+                      <span className="text-slate-700 dark:text-slate-200">+$2,500.00</span>
                     </div>
                   )}
                   {discountAmount > 0 && (
                     <div className="flex justify-between text-rose-500 dark:text-rose-400 font-bold font-mono text-[11px]">
                       <span>{frequency === 'annual' ? '20%' : '10%'} Frequency Disc:</span>
-                      <span>-?{discountAmount.toLocaleString()}</span>
+                      <span>-${discountAmount.toLocaleString()}</span>
                     </div>
                   )}
                 </div>
@@ -306,14 +306,14 @@ export default function ClientBillingPage() {
                     </span>
                   </div>
                   <div className="text-3xl font-extrabold text-slate-900 dark:text-white flex items-baseline justify-center sm:justify-start gap-1">
-                    <span>?{estimatedNextMonthlyAmount.toLocaleString()}</span>
+                    <span>${estimatedNextMonthlyAmount.toLocaleString()}</span>
                     <span className="text-xs text-slate-400 normal-case font-normal font-mono">/ month</span>
                   </div>
                   
                   {frequency !== 'monthly' ? (
                     <p className="text-[10px] text-teal-600 dark:text-teal-400 font-bold mt-2 flex items-center gap-1 justify-center sm:justify-start bg-teal-50 ml-[-4px] mr-[-4px] dark:bg-teal-900/10 px-2 py-1.5 rounded-lg border border-teal-100/40 dark:border-teal-900/20">
                       <Sparkles size={11} className="shrink-0 animate-pulse text-teal-500" />
-                      Dynamic Cycle: ?{(estimatedNextMonthlyAmount * (frequency === 'annual' ? 12 : 6)).toLocaleString()} billed every {frequency === 'annual' ? '12' : '6'} months.
+                      Dynamic Cycle: ${(estimatedNextMonthlyAmount * (frequency === 'annual' ? 12 : 6)).toLocaleString()} billed every {frequency === 'annual' ? '12' : '6'} months.
                     </p>
                   ) : (
                     <p className="text-[10px] text-slate-400 font-medium mt-1 leading-normal italic">
@@ -342,21 +342,21 @@ export default function ClientBillingPage() {
                     <th className="px-6 py-4 font-medium text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {invoices.map((inv) => (
-                    <tr key={inv.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 dark:bg-slate-800/50 transition-colors">
-                      <td className="px-6 py-4 font-mono text-blue-600">{inv.id}</td>
+                    <tr key={inv.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                      <td className="px-6 py-4 font-mono text-blue-600 dark:text-blue-400">{inv.id}</td>
                       <td className="px-6 py-4 text-slate-900 dark:text-white">{inv.date}</td>
                       <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">{inv.amount}</td>
                       <td className="px-6 py-4">
-                        <span className="text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-full text-xs font-medium">
+                        <span className="text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950/40 px-2.5 py-1 rounded-full text-xs font-medium border border-emerald-200 dark:border-emerald-800/60">
                           {inv.status}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <button 
                           onClick={() => handleDownloadInvoice(inv.id)}
-                          className="text-slate-600 dark:text-slate-400 hover:text-blue-600 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors inline-flex items-center gap-1.5"
+                          className="text-slate-600 dark:text-slate-400 hover:text-blue-600 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
                         >
                           <Download size={14} /> Download
                         </button>
@@ -375,28 +375,28 @@ export default function ClientBillingPage() {
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">Payment Methods</h3>
               <button 
                 onClick={() => toast.success('Opening payment method modal...')}
-                className="px-4 py-2 bg-blue-50 text-blue-600 rounded-xl font-medium text-sm hover:bg-blue-100 transition-colors"
+                className="px-4 py-2 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 rounded-xl font-medium text-sm hover:bg-blue-100 transition-colors cursor-pointer"
               >
                 Add New Method
               </button>
             </div>
             <div className="p-6 space-y-4">
-              <div className="flex items-center justify-between p-4 border border-blue-200 bg-blue-50/50 rounded-xl">
+              <div className="flex items-center justify-between p-4 border border-blue-200 dark:border-blue-800/60 bg-blue-50/50 dark:bg-blue-950/20 rounded-xl">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-8 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded flex items-center justify-center font-bold text-blue-900 italic">
+                  <div className="w-12 h-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded flex items-center justify-center font-bold text-blue-900 dark:text-blue-400 italic text-xs">
                     VISA
                   </div>
                   <div>
                     <div className="font-medium text-slate-900 dark:text-white flex items-center gap-2">
                       Visa ending in 4242
-                      <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold uppercase tracking-wider rounded-full">Default</span>
+                      <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 text-[10px] font-bold uppercase tracking-wider rounded-full">Default</span>
                     </div>
                     <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Expires 12/2028</div>
                   </div>
                 </div>
                 <button 
                   onClick={() => toast.success('Removing payment method...')}
-                  className="text-slate-500 dark:text-slate-400 dark:text-slate-400 hover:text-red-600 p-2 transition-colors"
+                  className="text-slate-500 dark:text-slate-400 hover:text-red-600 p-2 transition-colors cursor-pointer"
                 >
                   <AlertCircle size={18} />
                 </button>

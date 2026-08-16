@@ -9,6 +9,8 @@ import billingRoutes from './billing.routes';
 import reportingRoutes from './reporting.routes';
 import integrationsRoutes from './integrations.routes';
 import notificationsRoutes from './notifications.routes';
+import preferencesRoutes from '../../modules/preferences/preferences.routes';
+import tablePreferencesRoutes from '../../modules/preferences/table-preferences.routes';
 import adminRoutes from './admin.routes';
 
 const router = Router();
@@ -23,6 +25,8 @@ router.use('/billing', billingRoutes);
 router.use('/reporting', reportingRoutes);
 router.use('/integrations', integrationsRoutes);
 router.use('/notifications', notificationsRoutes);
+router.use('/preferences/columns', preferencesRoutes);
+router.use('/preferences/table', tablePreferencesRoutes);
 
 // ── System Admin routes (protected by systemAdminMiddleware) ──────────────────
 // /api/v1/admin/*   — all billing, subscription, and plan management

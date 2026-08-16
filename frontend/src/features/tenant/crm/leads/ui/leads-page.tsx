@@ -1,14 +1,21 @@
-﻿'use client';
+'use client';
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
 import { Lead } from '@/store/types';
-import { ModuleWorkspace, ViewType, RecordDrawer, StatusBadge, AvatarCell, ActivityFlag } from '@/shared/components/crm';
+import { ModuleWorkspace, ViewType, RecordDrawer, StatusBadge } from '@/shared/components/crm';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
+import { useFilterUrlSync } from '@/shared/hooks/use-filter-url-sync';
+import { useDebounce } from '@/shared/hooks/use-debounce';
+import { useColumnPreferences } from '../hooks/use-column-preferences';
+import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
+import { migrateLocalStorageColumns } from '../services/local-storage-migration';
+import { ManageColumnsDrawer } from './manage-columns-drawer';
+import { LeadsListView } from './leads-list-view';
 import { LeadFormSheet } from './lead-form';
+import { LEADS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
 import { Edit, Phone, Mail, ListTodo, MoreHorizontal } from 'lucide-react';
 
 // ── Leads Page ────────────────────────────────────────────────────────────────
@@ -18,20 +25,61 @@ export default function LeadsPage(): React.ReactElement {
     contacts: leads,
     addContact: addLead,
     updateContact: updateLead,
-    deleteContact: deleteLead,
     users,
     organizations,
   } = useData();
   const { user } = useAuth();
   const canCreate = useHasPermission('contacts.create');
   const canEdit = useHasPermission('contacts.edit');
-  const canDelete = useHasPermission('contacts.delete');
+  const { getParam, getArrayParam, updateParams } = useFilterUrlSync();
+
+  // ── Column Preferences ────────────────────────────────────────────────
+  const {
+    effectiveColumns,
+    isLoading: isColumnsLoading,
+    saveColumns,
+    resetColumns,
+  } = useColumnPreferences('leads');
+
+  const [isManageColumnsOpen, setIsManageColumnsOpen] = useState(false);
+
+  // ── Table Preferences (pageSize, viewMode, sort) ──────────────────────
+  const {
+    pageSize,
+    viewMode,
+    sort,
+    setPageSize,
+    setViewMode,
+    setSort,
+  } = useTablePreferences('leads');
+
+  // ── Pagination state ──────────────────────────────────────────────────
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // ── One-time localStorage migration (fire-and-forget) ─────────────────
+  useEffect(() => {
+    migrateLocalStorageColumns();
+  }, []);
+
+  /** Visible columns sorted by order — drives table rendering */
+  const visibleColumns = useMemo(() => {
+    if (effectiveColumns.length === 0) {
+      // Fallback to system default when no preferences loaded yet
+      return LEADS_COLUMN_REGISTRY
+        .filter((col) => col.defaultVisible)
+        .sort((a, b) => a.defaultOrder - b.defaultOrder)
+        .map((col) => ({ id: col.id, visible: true, order: col.defaultOrder }));
+    }
+    return [...effectiveColumns]
+      .filter((col) => col.visible)
+      .sort((a, b) => a.order - b.order);
+  }, [effectiveColumns]);
 
   // ── State ────────────────────────────────────────────────────────────
-  const [activeView, setActiveView] = useState<ViewType>('list');
-  const [activeTab, setActiveTab] = useState('all');
+  const [activeView, setActiveView] = useState<ViewType>(() => (getParam('view') as ViewType) || 'list');
+  const [activeTab, setActiveTab] = useState(() => getParam('tab') || 'all');
   const [showFilters, setShowFilters] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(() => getParam('search'));
   const [filterSearchTerm, setFilterSearchTerm] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | undefined>();
@@ -39,10 +87,28 @@ export default function LeadsPage(): React.ReactElement {
   const [drawerTab, setDrawerTab] = useState('overview');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  // Filter state
-  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
-  const [selectedSources, setSelectedSources] = useState<string[]>([]);
-  const [selectedOwners, setSelectedOwners] = useState<string[]>([]);
+  // Multi-criteria filter state
+  const [selectedSystemFilters, setSelectedSystemFilters] = useState<string[]>(() => getArrayParam('system'));
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>(() => getArrayParam('statuses'));
+  const [selectedSources, setSelectedSources] = useState<string[]>(() => getArrayParam('sources'));
+  const [selectedOwners, setSelectedOwners] = useState<string[]>(() => getArrayParam('owners'));
+  const [selectedRelated, setSelectedRelated] = useState<string[]>(() => getArrayParam('related'));
+
+  const debouncedSearch = useDebounce(searchTerm, 300);
+
+  // Sync to URL
+  useEffect(() => {
+    updateParams({
+      tab: activeTab !== 'all' ? activeTab : null,
+      search: debouncedSearch || null,
+      view: activeView !== 'list' ? activeView : null,
+      system: selectedSystemFilters,
+      statuses: selectedStatuses,
+      sources: selectedSources,
+      owners: selectedOwners,
+      related: selectedRelated,
+    });
+  }, [activeTab, debouncedSearch, activeView, selectedSystemFilters, selectedStatuses, selectedSources, selectedOwners, selectedRelated, updateParams]);
 
   // ── Filtered Data ────────────────────────────────────────────────────
   const activeLeads = useMemo(
@@ -59,14 +125,22 @@ export default function LeadsPage(): React.ReactElement {
     }
 
     // Search
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
+    if (debouncedSearch) {
+      const term = debouncedSearch.toLowerCase();
       result = result.filter(
         (l) =>
           (l.leadPerson ?? l.displayName ?? '').toLowerCase().includes(term) ||
           (l.email ?? '').toLowerCase().includes(term) ||
           (l.companyName ?? '').toLowerCase().includes(term),
       );
+    }
+
+    // System Filters
+    if (selectedSystemFilters.includes('touched')) {
+      result = result.filter((l) => l.lastUpdated || l.updateStatus);
+    }
+    if (selectedSystemFilters.includes('untouched')) {
+      result = result.filter((l) => !l.lastUpdated && !l.updateStatus);
     }
 
     // Status filter
@@ -84,8 +158,48 @@ export default function LeadsPage(): React.ReactElement {
       result = result.filter((l) => selectedOwners.includes(l.assignedUserId ?? ''));
     }
 
+    // Related filter
+    if (selectedRelated.includes('has_email')) {
+      result = result.filter((l) => Boolean(l.email));
+    }
+    if (selectedRelated.includes('has_phone')) {
+      result = result.filter((l) => Boolean(l.phone));
+    }
+
     return result;
-  }, [activeLeads, activeTab, user?.id, searchTerm, selectedStatuses, selectedSources, selectedOwners]);
+  }, [activeLeads, activeTab, user?.id, debouncedSearch, selectedSystemFilters, selectedStatuses, selectedSources, selectedOwners, selectedRelated]);
+
+  // ── Sorted Data ──────────────────────────────────────────────────────
+  const sortedLeads = useMemo(() => {
+    if (!sort) return filteredLeads;
+
+    const { field, direction } = sort;
+    const sorted = [...filteredLeads].sort((a, b) => {
+      const aVal = getFieldValue(a, field);
+      const bVal = getFieldValue(b, field);
+
+      if (aVal === bVal) return 0;
+      if (aVal == null) return 1;
+      if (bVal == null) return -1;
+
+      const comparison = String(aVal).localeCompare(String(bVal), undefined, { numeric: true, sensitivity: 'base' });
+      return direction === 'asc' ? comparison : -comparison;
+    });
+    return sorted;
+  }, [filteredLeads, sort]);
+
+  // ── Paginated Data ───────────────────────────────────────────────────
+  const totalPages = Math.max(1, Math.ceil(sortedLeads.length / pageSize));
+
+  // Reset page when filters/sort/pageSize change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, activeTab, selectedSystemFilters, selectedStatuses, selectedSources, selectedOwners, selectedRelated, pageSize, sort]);
+
+  const paginatedLeads = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return sortedLeads.slice(start, start + pageSize);
+  }, [sortedLeads, currentPage, pageSize]);
 
   // ── Helpers ──────────────────────────────────────────────────────────
   const getInitials = (lead: Lead): string => {
@@ -132,6 +246,38 @@ export default function LeadsPage(): React.ReactElement {
     return `$${value.toLocaleString()}`;
   };
 
+  /** Extract a sortable value from a lead by field id */
+  const getFieldValue = (lead: Lead, field: string): string | number | null => {
+    switch (field) {
+      case 'firstName':
+        return lead.leadPerson ?? lead.displayName ?? lead.firstName ?? '';
+      case 'lastName':
+        return lead.lastName ?? '';
+      case 'email':
+        return lead.email ?? '';
+      case 'phone':
+        return lead.phone ?? '';
+      case 'companyName':
+        return lead.companyName ?? '';
+      case 'status':
+        return lead.status ?? '';
+      case 'source':
+        return lead.leadSource ?? '';
+      case 'createdAt':
+        return lead.createdAt ?? '';
+      case 'updatedAt':
+        return (lead as unknown as Record<string, unknown>).updatedAt as string ?? '';
+      case 'city':
+      case 'address':
+      case 'primaryAddressCityState':
+        return lead.city ?? '';
+      case 'assignedUserId':
+        return getOwnerName(lead.assignedUserId);
+      default:
+        return (lead as unknown as Record<string, unknown>)[field] as string ?? '';
+    }
+  };
+
   // ── Filter groups for the rail ───────────────────────────────────────
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -144,16 +290,20 @@ export default function LeadsPage(): React.ReactElement {
   const touchedCount = activeLeads.filter((l) => l.lastUpdated || l.updateStatus).length;
   const untouchedCount = activeLeads.length - touchedCount;
 
+  const distinctSources = useMemo(() => {
+    const set = new Set<string>();
+    activeLeads.forEach((l) => { if (l.leadSource) set.add(l.leadSource); });
+    return Array.from(set);
+  }, [activeLeads]);
+
   const filterGroups = useMemo(() => [
     {
       id: 'system',
       label: 'System Defined Filters',
       isExpanded: true,
       items: [
-        { id: 'touched', label: 'Touched Records', count: touchedCount, isChecked: false },
-        { id: 'untouched', label: 'Untouched Records', count: untouchedCount, isChecked: false },
-        { id: 'record-action', label: 'Record Action', count: 0, isChecked: false },
-        { id: 'related-action', label: 'Related Records Action', count: 0, isChecked: false },
+        { id: 'touched', label: 'Touched Records', count: touchedCount, isChecked: selectedSystemFilters.includes('touched') },
+        { id: 'untouched', label: 'Untouched Records', count: untouchedCount, isChecked: selectedSystemFilters.includes('untouched') },
       ],
     },
     {
@@ -161,23 +311,65 @@ export default function LeadsPage(): React.ReactElement {
       label: 'Filter By Fields',
       isExpanded: true,
       items: [
-        { id: 'lead-owner', label: 'Lead Owner', isChecked: selectedOwners.length > 0 },
-        { id: 'lead-status', label: 'Lead Status', isChecked: selectedStatuses.length > 0 },
-        { id: 'lead-source', label: 'Lead Source', isChecked: selectedSources.length > 0 },
-        { id: 'company', label: 'Company', isChecked: false },
-        { id: 'industry', label: 'Industry', isChecked: false },
-        { id: 'score', label: 'Score', isChecked: false },
-        { id: 'created-time', label: 'Created Time', isChecked: false },
-        { id: 'email-opt-out', label: 'Email Opt Out', isChecked: false },
+        ...Object.entries(statusCounts).map(([status, count]) => ({
+          id: `status:${status}`,
+          label: `Status: ${status}`,
+          count,
+          isChecked: selectedStatuses.includes(status),
+        })),
+        ...distinctSources.map((source) => ({
+          id: `source:${source}`,
+          label: `Source: ${source}`,
+          count: activeLeads.filter((l) => l.leadSource === source).length,
+          isChecked: selectedSources.includes(source),
+        })),
+        ...users.slice(0, 5).map((u) => ({
+          id: `owner:${u.id}`,
+          label: `Owner: ${u.firstName} ${u.lastName}`,
+          count: activeLeads.filter((l) => l.assignedUserId === u.id).length,
+          isChecked: selectedOwners.includes(u.id),
+        })),
       ],
     },
     {
       id: 'related',
       label: 'Filter By Related Modules',
-      isExpanded: false,
-      items: [],
+      isExpanded: true,
+      items: [
+        { id: 'has_email', label: 'Leads with Email', count: activeLeads.filter((l) => Boolean(l.email)).length, isChecked: selectedRelated.includes('has_email') },
+        { id: 'has_phone', label: 'Leads with Phone', count: activeLeads.filter((l) => Boolean(l.phone)).length, isChecked: selectedRelated.includes('has_phone') },
+      ],
     },
-  ], [touchedCount, untouchedCount, selectedOwners, selectedStatuses, selectedSources]);
+  ], [touchedCount, untouchedCount, selectedSystemFilters, statusCounts, selectedStatuses, distinctSources, activeLeads, selectedSources, users, selectedOwners, selectedRelated]);
+
+  const handleFilterToggle = useCallback((groupId: string, itemId: string) => {
+    if (groupId === 'system') {
+      setSelectedSystemFilters((prev) =>
+        prev.includes(itemId) ? prev.filter((x) => x !== itemId) : [...prev, itemId],
+      );
+    } else if (groupId === 'fields') {
+      if (itemId.startsWith('status:')) {
+        const status = itemId.replace('status:', '');
+        setSelectedStatuses((prev) =>
+          prev.includes(status) ? prev.filter((x) => x !== status) : [...prev, status],
+        );
+      } else if (itemId.startsWith('source:')) {
+        const source = itemId.replace('source:', '');
+        setSelectedSources((prev) =>
+          prev.includes(source) ? prev.filter((x) => x !== source) : [...prev, source],
+        );
+      } else if (itemId.startsWith('owner:')) {
+        const ownerId = itemId.replace('owner:', '');
+        setSelectedOwners((prev) =>
+          prev.includes(ownerId) ? prev.filter((x) => x !== ownerId) : [...prev, ownerId],
+        );
+      }
+    } else if (groupId === 'related') {
+      setSelectedRelated((prev) =>
+        prev.includes(itemId) ? prev.filter((x) => x !== itemId) : [...prev, itemId],
+      );
+    }
+  }, []);
 
   // ── Handlers ─────────────────────────────────────────────────────────
   const handleCreate = useCallback(() => {
@@ -197,19 +389,19 @@ export default function LeadsPage(): React.ReactElement {
   }, []);
 
   const handleSelectAll = useCallback(() => {
-    if (selectedIds.length === filteredLeads.length) {
+    if (selectedIds.length === paginatedLeads.length) {
       setSelectedIds([]);
     } else {
-      setSelectedIds(filteredLeads.map((l) => l.id));
+      setSelectedIds(paginatedLeads.map((l) => l.id));
     }
-  }, [selectedIds.length, filteredLeads]);
+  }, [selectedIds.length, paginatedLeads]);
 
   // ── Render ───────────────────────────────────────────────────────────
   return (
     <>
       <ModuleWorkspace
+        moduleId="leads"
         title="Leads"
-        description="Inbound and outbound leads waiting to be qualified into contacts."
         primaryActionLabel="Create Lead"
         onPrimaryAction={handleCreate}
         onImport={() => toast.info('Import feature coming soon')}
@@ -224,16 +416,28 @@ export default function LeadsPage(): React.ReactElement {
         activeTab={activeTab}
         onTabChange={setActiveTab}
         filterGroups={filterGroups}
+        onFilterToggle={handleFilterToggle}
         showFilters={showFilters}
         onToggleFilters={() => setShowFilters(!showFilters)}
         filterSearchTerm={filterSearchTerm}
         onFilterSearch={setFilterSearchTerm}
-        totalRecords={filteredLeads.length}
+        totalRecords={sortedLeads.length}
         searchTerm={searchTerm}
         onSearch={setSearchTerm}
         searchPlaceholder="Search leads..."
-        onSort={() => toast.info('Sort options coming soon')}
+        sortableFields={LEADS_COLUMN_REGISTRY.map((col) => ({ id: col.id, label: col.label }))}
+        sort={sort}
+        onSortChange={setSort}
+        pageSize={pageSize}
+        onPageSizeChange={setPageSize}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
         onRefresh={() => toast.success('Refreshed')}
+        onManageColumns={() => setIsManageColumnsOpen(true)}
+        onResetColumns={() => {
+          resetColumns();
+          toast.success('Columns reset to default');
+        }}
         bulkSelection={
           selectedIds.length > 0
             ? {
@@ -249,26 +453,23 @@ export default function LeadsPage(): React.ReactElement {
         }
       >
         {/* ── List View ─────────────────────────────────────────── */}
-        {activeView === 'list' && (
-          <LeadsListView
-            leads={filteredLeads}
-            selectedIds={selectedIds}
-            onToggleSelect={handleToggleSelect}
-            onSelectAll={handleSelectAll}
-            onRowClick={handleRowClick}
-            getInitials={getInitials}
-            getLeadName={getLeadName}
-            getOwnerName={getOwnerName}
-            getOwnerInitials={getOwnerInitials}
-            getStatusVariant={getStatusVariant}
-            formatCurrency={formatCurrency}
-          />
+        {(activeView === 'list' || activeView === 'table') && isColumnsLoading && (
+          <div className="bg-white dark:bg-slate-800/40 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-8">
+            <div className="flex items-center justify-center gap-2 text-[13px] text-[#5A6B85] dark:text-slate-400">
+              <div className="w-4 h-4 border-2 border-[#2563EB] border-t-transparent rounded-full animate-spin" />
+              Loading leads...
+            </div>
+          </div>
         )}
-
-        {/* ── Table View ────────────────────────────────────────── */}
-        {activeView === 'table' && (
+        {(activeView === 'list' || activeView === 'table') && !isColumnsLoading && (
           <LeadsListView
-            leads={filteredLeads}
+            leads={paginatedLeads}
+            totalRecords={sortedLeads.length}
+            currentPage={currentPage}
+            pageSize={pageSize}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+            viewMode={viewMode}
             selectedIds={selectedIds}
             onToggleSelect={handleToggleSelect}
             onSelectAll={handleSelectAll}
@@ -278,8 +479,8 @@ export default function LeadsPage(): React.ReactElement {
             getOwnerName={getOwnerName}
             getOwnerInitials={getOwnerInitials}
             getStatusVariant={getStatusVariant}
-            formatCurrency={formatCurrency}
-            dense
+            visibleColumns={visibleColumns}
+            registry={LEADS_COLUMN_REGISTRY}
           />
         )}
 
@@ -412,195 +613,21 @@ export default function LeadsPage(): React.ReactElement {
           setEditingLead(undefined);
         }}
       />
+
+      {/* ── Manage Columns Drawer ───────────────────────────────── */}
+      <ManageColumnsDrawer
+        isOpen={isManageColumnsOpen}
+        onClose={() => setIsManageColumnsOpen(false)}
+        module="leads"
+        registry={LEADS_COLUMN_REGISTRY}
+        effectiveColumns={effectiveColumns}
+        onSave={saveColumns}
+        onReset={resetColumns}
+      />
     </>
   );
 }
 
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Sub-components — List View
-// ═══════════════════════════════════════════════════════════════════════════════
-
-interface LeadsListViewProps {
-  leads: Lead[];
-  selectedIds: string[];
-  onToggleSelect: (id: string) => void;
-  onSelectAll: () => void;
-  onRowClick: (lead: Lead) => void;
-  getInitials: (lead: Lead) => string;
-  getLeadName: (lead: Lead) => string;
-  getOwnerName: (userId?: string) => string;
-  getOwnerInitials: (userId?: string) => string;
-  getStatusVariant: (status: string) => 'success' | 'info' | 'warn' | 'danger' | 'purple' | 'neutral';
-  formatCurrency: (value?: number) => string;
-  dense?: boolean;
-}
-
-function LeadsListView({
-  leads,
-  selectedIds,
-  onToggleSelect,
-  onSelectAll,
-  onRowClick,
-  getInitials,
-  getLeadName,
-  getOwnerName,
-  getOwnerInitials,
-  getStatusVariant,
-  formatCurrency,
-  dense = false,
-}: LeadsListViewProps): React.ReactElement {
-  if (leads.length === 0) {
-    return (
-      <div className="flex items-center justify-center py-16 text-[13px] text-[#5A6B85] dark:text-slate-400">
-        No leads found. Adjust your filters or create a new lead.
-      </div>
-    );
-  }
-
-  return (
-    <div className="bg-white dark:bg-slate-800/40 border border-[#E4E9F0] dark:border-slate-700 rounded-xl overflow-hidden">
-      {/* Table header */}
-      <div className={cn(
-        'grid items-center border-b border-[#E4E9F0] dark:border-slate-700 bg-[#F6F8FB] dark:bg-slate-800/60 sticky top-0 z-10',
-        'text-[11.5px] font-semibold uppercase tracking-wide text-[#5A6B85] dark:text-slate-400',
-        dense
-          ? 'grid-cols-[40px_1fr_1fr_120px_80px_100px_100px_80px] h-10 px-3'
-          : 'grid-cols-[40px_1.2fr_1fr_120px_80px_100px_100px_80px] h-11 px-3',
-      )}>
-        <label className="flex items-center justify-center">
-          <input
-            type="checkbox"
-            checked={selectedIds.length === leads.length && leads.length > 0}
-            onChange={onSelectAll}
-            className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-[#2563EB] focus:ring-[#2563EB]/20 cursor-pointer"
-            aria-label="Select all leads"
-          />
-        </label>
-        <span className="px-3">LEAD NAME</span>
-        <span className="px-3">COMPANY</span>
-        <span className="px-3">STATUS</span>
-        <span className="px-3 text-center">SCORE</span>
-        <span className="px-3">SOURCE</span>
-        <span className="px-3 text-right">EST. VALUE</span>
-        <span className="px-3 text-right">OWNER</span>
-      </div>
-
-      {/* Rows */}
-      <div className="divide-y divide-[#E4E9F0] dark:divide-slate-700">
-        {leads.map((lead) => {
-          const isSelected = selectedIds.includes(lead.id);
-          const scorePercent = Math.min((lead.score ?? 0), 100);
-
-          return (
-            <div
-              key={lead.id}
-              onClick={() => onRowClick(lead)}
-              className={cn(
-                'grid items-center cursor-pointer transition-colors group',
-                dense
-                  ? 'grid-cols-[40px_1fr_1fr_120px_80px_100px_100px_80px] h-[44px] px-3'
-                  : 'grid-cols-[40px_1.2fr_1fr_120px_80px_100px_100px_80px] h-[52px] px-3',
-                isSelected
-                  ? 'bg-blue-50/60 dark:bg-blue-500/5'
-                  : 'hover:bg-slate-50 dark:hover:bg-slate-800/40',
-              )}
-            >
-              {/* Checkbox */}
-              <label className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
-                <input
-                  type="checkbox"
-                  checked={isSelected}
-                  onChange={() => onToggleSelect(lead.id)}
-                  className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-[#2563EB] focus:ring-[#2563EB]/20 cursor-pointer"
-                  aria-label={`Select ${getLeadName(lead)}`}
-                />
-              </label>
-
-              {/* Lead name + avatar */}
-              <div className="flex items-center gap-2.5 px-3 min-w-0">
-                <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-[10px] shrink-0">
-                  {getInitials(lead)}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[13px] font-semibold text-[#0F172A] dark:text-white truncate leading-tight group-hover:text-[#2563EB] transition-colors">
-                    {getLeadName(lead)}
-                  </p>
-                  {lead.city && (
-                    <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 truncate mt-0.5">
-                      {lead.city}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Company */}
-              <div className="px-3 min-w-0">
-                <p className="text-[13px] text-[#0F172A] dark:text-slate-200 truncate">
-                  {lead.companyName ?? '—'}
-                </p>
-              </div>
-
-              {/* Status */}
-              <div className="px-3">
-                <StatusBadge label={lead.status} variant={getStatusVariant(lead.status)} />
-              </div>
-
-              {/* Score */}
-              <div className="px-3 flex items-center gap-2 justify-center">
-                <div className="w-10 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-[#2563EB] rounded-full transition-all"
-                    style={{ width: `${scorePercent}%` }}
-                  />
-                </div>
-                <span className="text-[12px] font-semibold text-[#0F172A] dark:text-white tabular-nums w-6 text-right">
-                  {lead.score ?? 0}
-                </span>
-              </div>
-
-              {/* Source */}
-              <div className="px-3">
-                <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-                  {lead.leadSource ?? '—'}
-                </p>
-              </div>
-
-              {/* Est. Value */}
-              <div className="px-3 text-right">
-                <p className="text-[13px] font-semibold text-[#0F172A] dark:text-white tabular-nums">
-                  {formatCurrency(lead.estimatedValue)}
-                </p>
-              </div>
-
-              {/* Owner */}
-              <div className="px-3 flex items-center justify-end gap-1.5">
-                <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-[9px] font-bold text-slate-600 dark:text-slate-300">
-                  {getOwnerInitials(lead.assignedUserId)}
-                </div>
-                <span className="text-[11px] text-[#5A6B85] dark:text-slate-400 truncate max-w-[60px] hidden xl:inline">
-                  {getOwnerName(lead.assignedUserId).split(' ')[0]}
-                </span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Footer */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-t border-[#E4E9F0] dark:border-slate-700 bg-[#F6F8FB] dark:bg-slate-800/60">
-        <span className="text-[12px] text-[#5A6B85] dark:text-slate-400">
-          Total records <strong className="font-semibold text-[#0F172A] dark:text-white">{leads.length}</strong>
-        </span>
-        <div className="flex items-center gap-2 text-[12px] text-[#5A6B85]">
-          <span>1 to {Math.min(leads.length, 25)}</span>
-          <button className="p-1 hover:text-[#0F172A] dark:hover:text-white transition-colors" aria-label="Previous page">&lt;</button>
-          <button className="p-1 hover:text-[#0F172A] dark:hover:text-white transition-colors" aria-label="Next page">&gt;</button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Tile View

@@ -49,6 +49,7 @@ export const Permission = {
 
   // Settings / Roles
   SETTINGS_VIEW: 'settings.view',
+  SETTINGS_EDIT: 'settings.edit',
   ROLES_MANAGE: 'roles.manage',
 
   // Audit

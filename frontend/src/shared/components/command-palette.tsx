@@ -1,7 +1,7 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Users, Briefcase, LayoutDashboard, Workflow, Mail, Settings, ShieldAlert, Wrench, Package, Receipt, Activity, Book } from 'lucide-react';
+import { Search, Users, Briefcase, LayoutDashboard, Workflow, Mail, Settings, ShieldAlert, Receipt, Activity, Book } from 'lucide-react';
 import { useData } from '../../store/DataContext';
 import { useAuth } from '../../store/AuthContext';
 
@@ -13,7 +13,7 @@ interface CommandPaletteProps {
 
 export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandPaletteProps) {
   const [query, setQuery] = useState('');
-  const { contacts, deals, isServiceModuleEnabled, isAssetModuleEnabled, isBillingModuleEnabled, roles } = useData();
+  const { contacts, deals, isBillingModuleEnabled, roles } = useData();
   const { user } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -46,14 +46,10 @@ export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandP
 
   const navItems = [
     { name: 'Dashboard', path: 'dashboard', icon: LayoutDashboard, permissions: ['p1'] },
-    { name: 'My Jobs', path: 'technician-jobs', icon: Wrench, roles: ['Technician'] },
     { name: 'Client Profiles', path: 'contacts', icon: Users, permissions: ['contacts.view', 'p2', 'p2_own'] },
     { name: 'Leads', path: 'leads', icon: Users, permissions: ['contacts.view', 'p2', 'p2_own'] },
-    { name: 'Customers', path: 'customers', icon: Users, permissions: ['contacts.view', 'p2', 'p2_own'] },
     { name: 'Accounts', path: 'accounts', icon: Users, permissions: ['accounts.view', 'p2', 'p2_own'] },
     { name: 'Deals', path: 'deals', icon: Briefcase, permissions: ['deals.view', 'p7', 'p7_own'] },
-    { name: 'Service Orders', path: 'service-orders', icon: Wrench, permissions: ['deals.view', 'p7', 'p7_own'], enabled: isServiceModuleEnabled },
-    { name: 'Asset Tracking', path: 'assets', icon: Package, permissions: ['audit.view', 'p7', 'p7_own'], enabled: isAssetModuleEnabled },
     { name: 'Contract Billing', path: 'billing', icon: Receipt, permissions: ['billing.view', 'p29'], enabled: isBillingModuleEnabled },
     { name: 'Workflows', path: 'workflows', icon: Workflow, permissions: ['workflows.view', 'p12'] },
     { name: 'Campaigns', path: 'campaigns', icon: Mail, permissions: ['campaigns.view', 'p17'] },

@@ -1,17 +1,24 @@
 'use client';
 
-import React, { useState, useCallback, ReactNode } from 'react';
+import React, { useState, useCallback, useRef, useEffect, ReactNode } from 'react';
 import {
   List, LayoutGrid, Table2, Columns3, Grid3X3,
-  TrendingUp, Filter, ArrowUpDown, RefreshCw, Search,
-  SlidersHorizontal, ChevronDown, X, Upload,
+  TrendingUp, Filter, ArrowUpDown, ArrowUp, ArrowDown, RefreshCw, Search,
+  Settings2, ChevronDown, ChevronRight, X, Upload,
+  ListOrdered, Eye, Check,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
+import type { SortPreference, ViewMode } from '@/shared/hooks/use-table-preferences';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type ViewType = 'list' | 'tile' | 'table' | 'kanban' | 'grid' | 'forecast';
+
+export interface SortableField {
+  id: string;
+  label: string;
+}
 
 interface ViewOption {
   id: ViewType;
@@ -45,11 +52,13 @@ interface KpiCard {
   subtitle?: string;
 }
 
-interface ModuleWorkspaceProps {
+export interface ModuleWorkspaceProps {
+  /** Module ID (informational — not used internally, use for debugging) */
+  moduleId: string;
   /** Module title e.g. "Leads" */
   title: string;
   /** One-line module description */
-  description: string;
+  description?: string;
   /** Primary action button label e.g. "Create Lead" */
   primaryActionLabel: string;
   /** Primary action callback */
@@ -90,8 +99,20 @@ interface ModuleWorkspaceProps {
   onSearch?: (term: string) => void;
   /** Search placeholder */
   searchPlaceholder?: string;
-  /** Sort handler */
-  onSort?: () => void;
+  /** Sortable fields for the sort dropdown (dynamic per module) */
+  sortableFields?: SortableField[];
+  /** Current sort preference (controlled) */
+  sort?: SortPreference | null;
+  /** Sort change handler */
+  onSortChange?: (sort: SortPreference | null) => void;
+  /** Current records per page (controlled) */
+  pageSize?: number;
+  /** Page size change handler */
+  onPageSizeChange?: (size: number) => void;
+  /** Current view mode (controlled) */
+  viewMode?: ViewMode;
+  /** View mode change handler */
+  onViewModeChange?: (mode: ViewMode) => void;
   /** Refresh handler */
   onRefresh?: () => void;
   /** KPI strip cards (Accounts, Deals) */
@@ -102,6 +123,10 @@ interface ModuleWorkspaceProps {
   children: ReactNode;
   /** Bulk selection bar */
   bulkSelection?: { count: number; onClear: () => void; actions: ReactNode };
+  /** Handler for "Manage Columns" (opens ManageColumnsDrawer in parent) */
+  onManageColumns?: () => void;
+  /** Handler for "Reset Column Size" */
+  onResetColumns?: () => void;
 }
 
 // ── View Icons Map ─────────────────────────────────────────────────────────────
@@ -115,9 +140,12 @@ const VIEW_OPTIONS: Record<ViewType, ViewOption> = {
   forecast: { id: 'forecast', label: 'Forecast View', icon: TrendingUp },
 };
 
+const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50] as const;
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function ModuleWorkspace({
+  moduleId,
   title,
   description,
   primaryActionLabel,
@@ -140,12 +168,20 @@ export function ModuleWorkspace({
   searchTerm = '',
   onSearch,
   searchPlaceholder = 'Search records...',
-  onSort,
+  sortableFields,
+  sort = null,
+  onSortChange,
+  pageSize = 10,
+  onPageSizeChange,
+  viewMode = 'wrap',
+  onViewModeChange,
   onRefresh,
   kpiCards,
   toolbarExtra,
   children,
   bulkSelection,
+  onManageColumns,
+  onResetColumns,
 }: ModuleWorkspaceProps): React.ReactElement {
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
 
@@ -162,9 +198,11 @@ export function ModuleWorkspace({
           <h1 className="text-[28px] font-extrabold text-[#0F172A] dark:text-white tracking-tight leading-tight">
             {title}
           </h1>
-          <p className="text-[13px] text-[#5A6B85] dark:text-slate-400 mt-0.5">
-            {description}
-          </p>
+          {description && (
+            <p className="text-[13px] text-[#5A6B85] dark:text-slate-400 mt-0.5">
+              {description}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {onImport && (
@@ -231,15 +269,13 @@ export function ModuleWorkspace({
           Filter
         </button>
 
-        {/* Sort */}
-        {onSort && (
-          <button
-            onClick={onSort}
-            className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium text-[#5A6B85] dark:text-slate-300 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-          >
-            <ArrowUpDown size={13} />
-            Sort
-          </button>
+        {/* Sort Dropdown (dynamic per module) */}
+        {sortableFields && sortableFields.length > 0 && onSortChange && (
+          <SortDropdownInline
+            sort={sort ?? null}
+            onSortChange={onSortChange}
+            fields={sortableFields}
+          />
         )}
 
         {/* View Switcher (segmented) */}
@@ -340,13 +376,15 @@ export function ModuleWorkspace({
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#5A6B85]" />
         </div>
 
-        {/* Manage columns */}
-        <button
-          className="p-1.5 text-[#5A6B85] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-          aria-label="Manage columns"
-        >
-          <SlidersHorizontal size={15} />
-        </button>
+        {/* Table Settings Menu (Manage Columns, Records Per Page, View Mode) */}
+        <TableSettingsMenuInline
+          pageSize={pageSize}
+          onPageSizeChange={onPageSizeChange}
+          viewMode={viewMode}
+          onViewModeChange={onViewModeChange}
+          onManageColumns={onManageColumns}
+          onResetColumns={onResetColumns}
+        />
       </div>
 
       {/* ── KPI Strip ───────────────────────────────────────────────── */}
@@ -420,6 +458,7 @@ export function ModuleWorkspace({
                     <FilterGroupSection
                       key={group.id}
                       group={group}
+                      filterSearchTerm={filterSearchTerm}
                       onToggle={onFilterToggle}
                     />
                   ))}
@@ -465,15 +504,305 @@ export function ModuleWorkspace({
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// Sort Dropdown (inline sub-component)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface SortDropdownInlineProps {
+  sort: SortPreference | null;
+  onSortChange: (sort: SortPreference | null) => void;
+  fields: SortableField[];
+}
+
+function SortDropdownInline({ sort, onSortChange, fields }: SortDropdownInlineProps): React.ReactElement {
+  const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent): void {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    if (isOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  const handleFieldClick = (fieldId: string): void => {
+    if (sort?.field === fieldId) {
+      onSortChange({ field: fieldId, direction: sort.direction === 'asc' ? 'desc' : 'asc' });
+    } else {
+      onSortChange({ field: fieldId, direction: 'asc' });
+    }
+    setIsOpen(false);
+  };
+
+  const handleClearSort = (): void => {
+    onSortChange(null);
+    setIsOpen(false);
+  };
+
+  const activeLabel = sort ? fields.find((f) => f.id === sort.field)?.label ?? sort.field : null;
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <button
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={cn(
+          'inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium rounded-lg border transition-colors',
+          sort
+            ? 'bg-[#2563EB]/10 text-[#2563EB] dark:text-blue-400 border-[#2563EB]/30 hover:bg-[#2563EB]/20'
+            : 'text-[#5A6B85] dark:text-slate-300 bg-white dark:bg-slate-800 border-[#E4E9F0] dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700',
+        )}
+        aria-expanded={isOpen}
+        aria-haspopup="true"
+        aria-label="Sort"
+      >
+        <ArrowUpDown size={13} />
+        Sort
+        {sort && (
+          <span className="text-[11px] opacity-80">
+            · {activeLabel} {sort.direction === 'asc' ? '↑' : '↓'}
+          </span>
+        )}
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 mt-1 w-52 max-h-72 overflow-y-auto bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-xl shadow-lg z-50 py-1.5">
+          {sort && (
+            <>
+              <button
+                onClick={handleClearSort}
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+              >
+                <X size={13} />
+                Clear Sort
+              </button>
+              <div className="my-1 border-t border-[#E4E9F0] dark:border-slate-700" />
+            </>
+          )}
+          {fields.map((field) => {
+            const isActive = sort?.field === field.id;
+            return (
+              <button
+                key={field.id}
+                onClick={() => handleFieldClick(field.id)}
+                className={cn(
+                  'w-full flex items-center gap-2 px-3 py-2 text-[13px] font-medium transition-colors',
+                  isActive
+                    ? 'text-[#2563EB] dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10'
+                    : 'text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700',
+                )}
+              >
+                <span className="flex-1 text-left truncate">{field.label}</span>
+                {isActive && sort!.direction === 'asc' && <ArrowUp size={13} />}
+                {isActive && sort!.direction === 'desc' && <ArrowDown size={13} />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Table Settings Menu (inline sub-component)
+// Manage Columns | Reset Column Size | Records Per Page ▸ | View Mode ▸
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface TableSettingsMenuInlineProps {
+  pageSize: number;
+  onPageSizeChange?: (size: number) => void;
+  viewMode: ViewMode;
+  onViewModeChange?: (mode: ViewMode) => void;
+  onManageColumns?: () => void;
+  onResetColumns?: () => void;
+}
+
+function TableSettingsMenuInline({
+  pageSize,
+  onPageSizeChange,
+  viewMode,
+  onViewModeChange,
+  onManageColumns,
+  onResetColumns,
+}: TableSettingsMenuInlineProps): React.ReactElement {
+  const [isOpen, setIsOpen] = useState(false);
+  const [activeSubmenu, setActiveSubmenu] = useState<'pageSize' | 'viewMode' | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent): void {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+        setActiveSubmenu(null);
+      }
+    }
+    if (isOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  useEffect(() => {
+    function handleEscape(e: KeyboardEvent): void {
+      if (e.key === 'Escape') {
+        setIsOpen(false);
+        setActiveSubmenu(null);
+      }
+    }
+    if (isOpen) document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isOpen]);
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <button
+        onClick={() => { setIsOpen((prev) => !prev); setActiveSubmenu(null); }}
+        className="inline-flex items-center gap-1.5 h-8 px-2.5 text-[12px] font-medium text-[#5A6B85] dark:text-slate-300 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+        aria-label="Table settings"
+        aria-expanded={isOpen}
+        aria-haspopup="true"
+      >
+        <Settings2 size={14} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full right-0 mt-1 w-56 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-xl shadow-lg z-50 py-1.5 overflow-visible">
+          {/* Manage Columns */}
+          {onManageColumns && (
+            <button
+              onClick={() => { onManageColumns(); setIsOpen(false); }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+            >
+              <Settings2 size={14} className="text-[#5A6B85] dark:text-slate-400" />
+              Manage Columns
+            </button>
+          )}
+
+          {/* Reset Column Size */}
+          {onResetColumns && (
+            <button
+              onClick={() => { onResetColumns(); setIsOpen(false); }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+            >
+              <Columns3 size={14} className="text-[#5A6B85] dark:text-slate-400" />
+              Reset Column Size
+            </button>
+          )}
+
+          {/* Separator */}
+          <div className="my-1.5 border-t border-[#E4E9F0] dark:border-slate-700" />
+
+          {/* Records Per Page */}
+          <div
+            className="relative"
+            onMouseEnter={() => setActiveSubmenu('pageSize')}
+            onMouseLeave={() => setActiveSubmenu(null)}
+          >
+            <button
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+              aria-haspopup="true"
+            >
+              <ListOrdered size={14} className="text-[#5A6B85] dark:text-slate-400" />
+              <span className="flex-1 text-left">Records Per Page</span>
+              <span className="text-[12px] font-semibold text-[#0F172A] dark:text-slate-200 mr-1">{pageSize}</span>
+              <ChevronRight size={12} className="text-[#5A6B85] dark:text-slate-400" />
+            </button>
+
+            {activeSubmenu === 'pageSize' && (
+              <div className="absolute right-full top-0 mr-1 w-32 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-xl shadow-lg z-50 py-1.5">
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <button
+                    key={size}
+                    onClick={() => { onPageSizeChange?.(size); setIsOpen(false); setActiveSubmenu(null); }}
+                    className={cn(
+                      'w-full flex items-center gap-2 px-3 py-2 text-[13px] font-medium transition-colors',
+                      pageSize === size
+                        ? 'text-[#2563EB] dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10'
+                        : 'text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700',
+                    )}
+                  >
+                    {pageSize === size ? <Check size={13} className="shrink-0" /> : <span className="w-[13px] shrink-0" />}
+                    {size}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* View Mode */}
+          <div
+            className="relative"
+            onMouseEnter={() => setActiveSubmenu('viewMode')}
+            onMouseLeave={() => setActiveSubmenu(null)}
+          >
+            <button
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+              aria-haspopup="true"
+            >
+              <Eye size={14} className="text-[#5A6B85] dark:text-slate-400" />
+              <span className="flex-1 text-left">View Mode</span>
+              <span className="text-[12px] font-semibold text-[#0F172A] dark:text-slate-200 mr-1">
+                {viewMode === 'wrap' ? 'Wrap Text' : 'Clip Text'}
+              </span>
+              <ChevronRight size={12} className="text-[#5A6B85] dark:text-slate-400" />
+            </button>
+
+            {activeSubmenu === 'viewMode' && (
+              <div className="absolute right-full top-0 mr-1 w-36 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-xl shadow-lg z-50 py-1.5">
+                <button
+                  onClick={() => { onViewModeChange?.('wrap'); setIsOpen(false); setActiveSubmenu(null); }}
+                  className={cn(
+                    'w-full flex items-center gap-2 px-3 py-2 text-[13px] font-medium transition-colors',
+                    viewMode === 'wrap'
+                      ? 'text-[#2563EB] dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10'
+                      : 'text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700',
+                  )}
+                >
+                  {viewMode === 'wrap' ? <Check size={13} className="shrink-0" /> : <span className="w-[13px] shrink-0" />}
+                  Wrap Text
+                </button>
+                <button
+                  onClick={() => { onViewModeChange?.('clip'); setIsOpen(false); setActiveSubmenu(null); }}
+                  className={cn(
+                    'w-full flex items-center gap-2 px-3 py-2 text-[13px] font-medium transition-colors',
+                    viewMode === 'clip'
+                      ? 'text-[#2563EB] dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10'
+                      : 'text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700',
+                  )}
+                >
+                  {viewMode === 'clip' ? <Check size={13} className="shrink-0" /> : <span className="w-[13px] shrink-0" />}
+                  Clip Text
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Filter Group Sub-component ─────────────────────────────────────────────────
 
 interface FilterGroupSectionProps {
   group: FilterGroup;
+  filterSearchTerm?: string;
   onToggle?: (groupId: string, itemId: string) => void;
 }
 
-function FilterGroupSection({ group, onToggle }: FilterGroupSectionProps): React.ReactElement {
+function FilterGroupSection({ group, filterSearchTerm = '', onToggle }: FilterGroupSectionProps): React.ReactElement | null {
   const [isExpanded, setIsExpanded] = useState(group.isExpanded ?? true);
+
+  const visibleItems = React.useMemo(() => {
+    if (!filterSearchTerm.trim()) return group.items;
+    const term = filterSearchTerm.toLowerCase().trim();
+    return group.items.filter((item) => item.label.toLowerCase().includes(term));
+  }, [group.items, filterSearchTerm]);
+
+  if (visibleItems.length === 0 && filterSearchTerm.trim()) {
+    return null;
+  }
 
   return (
     <div className="mb-3">
@@ -502,7 +831,7 @@ function FilterGroupSection({ group, onToggle }: FilterGroupSectionProps): React
             className="overflow-hidden"
           >
             <div className="flex flex-col gap-0.5 pl-1">
-              {group.items.map((item) => (
+              {visibleItems.map((item) => (
                 <label
                   key={item.id}
                   className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer group"

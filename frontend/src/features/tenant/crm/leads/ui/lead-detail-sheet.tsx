@@ -5,7 +5,7 @@ import { SlidingDrawer } from '@/shared/components/sliding-drawer';
 import { Lead, Organization } from '@/store/types';
 import { useData } from '@/store/DataContext';
 import { getCRMStatusStyles } from '@/lib/utils';
-import { AlertTriangle, Archive, Building, Briefcase, Calendar, Edit2, FileText, Mail, MapPin, Package, Phone, Tag, TrendingUp, User } from 'lucide-react';
+import { AlertTriangle, Archive, Building, Briefcase, Calendar, Edit2, FileText, Mail, MapPin, Phone, Tag, TrendingUp, User } from 'lucide-react';
 
 const formatDate = (dateString: string) => {
   if (!dateString) return '--';
@@ -29,7 +29,7 @@ export function ClientDetailSheet({
   onArchive,
   onEdit,
 }: ClientDetailSheetProps) {
-  const { deals, serviceOrders, pipelines } = useData();
+  const { deals, pipelines } = useData();
 
   const clientName = React.useMemo(() => {
     if (!client) return '';
@@ -61,13 +61,6 @@ export function ClientDetailSheet({
   }, [client, clientType, clientName, deals]);
 
   const activeDeals = associatedDeals.filter(d => !d.isArchived);
-
-  const historicalServiceOrders = useMemo(() => {
-    if (!client || !serviceOrders) return [];
-    return serviceOrders.filter(order => 
-      order.clientName?.toLowerCase() === clientName.toLowerCase()
-    );
-  }, [client, clientName, serviceOrders]);
 
   if (!client) return null;
 
@@ -254,43 +247,6 @@ export function ClientDetailSheet({
 
           {/* Right Column: Active Deals & History */}
           <div className="space-y-8">
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-sm">
-              <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
-                <h3 className="font-bold flex items-center gap-2">
-                  <Package size={18} className="text-indigo-500" />
-                  Historical Service Orders ({historicalServiceOrders.length})
-                </h3>
-              </div>
-              <div className="p-0">
-                {historicalServiceOrders.length > 0 ? (
-                  <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {historicalServiceOrders.map(order => (
-                      <div key={order.id} className="p-4 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-                        <div className="flex justify-between items-start mb-2">
-                          <h4 className="font-bold text-sm truncate">{order.title}</h4>
-                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
-                            order.status === 'completed' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
-                            order.status === 'in-progress' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
-                            'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                          }`}>
-                            {order.status}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-500 line-clamp-2 mb-2">{order.description}</p>
-                        <div className="text-xs text-slate-400 flex items-center gap-3">
-                          <span className="flex items-center gap-1"><Calendar size={12} /> {formatDate(order.scheduledDate || order.createdAt)}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="p-8 text-center text-slate-500 text-sm">
-                    No historical service orders.
-                  </div>
-                )}
-              </div>
-            </div>
-            
             <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30 rounded-2xl overflow-hidden shadow-sm">
               <div className="px-5 py-4 border-b border-red-200 dark:border-red-900/30 bg-red-100/50 dark:bg-red-900/20">
                 <h3 className="font-bold flex items-center gap-2 text-red-700 dark:text-red-400">

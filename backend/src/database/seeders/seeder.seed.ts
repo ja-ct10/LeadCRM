@@ -39,7 +39,6 @@ async function main() {
   await prisma.emailDeliveryLog.deleteMany({ where: { tenantId: tenant.id } });
   await prisma.campaignContact.deleteMany({ where: { tenantId: tenant.id } });
   await prisma.campaign.deleteMany({ where: { tenantId: tenant.id } });
-  await prisma.serviceOrder.deleteMany({ where: { tenantId: tenant.id } });
   await prisma.activity.deleteMany({ where: { tenantId: tenant.id } });
   await prisma.task.deleteMany({ where: { tenantId: tenant.id } });
   await prisma.leadDeal.deleteMany({ where: { tenantId: tenant.id } });
@@ -551,40 +550,6 @@ async function main() {
     ],
   });
   console.log('[Seed] ✓ 3 Campaigns created');
-
-  // ── 13. Create Service Orders ───────────────────────────────────────────
-  await prisma.serviceOrder.createMany({
-    data: [
-      {
-        tenantId: tenant.id,
-        assignedTechnicianId: user.id,
-        customerId: customers[0].id,
-        accountId: accounts[3].id,
-        title: 'CRM Enterprise Implementation',
-        status: 'completed',
-        scheduledDate: new Date(Date.now() - 5 * 86400000),
-      },
-      {
-        tenantId: tenant.id,
-        assignedTechnicianId: user.id,
-        leadId: leads[0].id,
-        accountId: accounts[0].id,
-        title: 'Technical Training Session',
-        status: 'pending',
-        scheduledDate: new Date(Date.now() + 10 * 86400000),
-      },
-      {
-        tenantId: tenant.id,
-        assignedTechnicianId: user.id,
-        leadId: leads[1].id,
-        accountId: accounts[0].id,
-        title: 'API Integration Setup',
-        status: 'in_progress',
-        scheduledDate: new Date(Date.now() + 3 * 86400000),
-      },
-    ],
-  });
-  console.log('[Seed] ✓ 3 Service Orders created');
 
   // ── 14. Create Audit Logs ───────────────────────────────────────────────
   await prisma.auditLog.createMany({

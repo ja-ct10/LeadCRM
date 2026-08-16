@@ -1,5 +1,5 @@
 ---
-description: LeadCRM deployment and infrastructure standards — Docker, CI/CD, environment config, production safety. Load manually when working on infrastructure.
+description: LeadCRM deployment, Docker, CI/CD, environment config. Load manually when working on infrastructure.
 inclusion: manual
 ---
 
@@ -7,64 +7,38 @@ inclusion: manual
 
 ## Service Architecture
 
-Three Docker services: `db` (PostgreSQL 16), `backend` (Express, port 4000), `frontend` (Next.js, port 3000).
+Three services: PostgreSQL 16 (db), Express backend (port 4000), Next.js frontend (port 3000).
+
+## Docker Commands
 
 ```bash
-# Start all services
-docker compose -f infrastructure/docker/docker-compose.yml up -d
-
-# Rebuild after Dockerfile changes
-docker compose -f infrastructure/docker/docker-compose.yml up -d --build
-
-# Run migrations inside running backend container
-docker compose exec backend npx prisma migrate deploy
-
-# Seed database
-docker compose exec backend npm run db:seed
-
-# View logs
-docker compose logs -f backend
-
-# Stop (keep volumes)
-docker compose down
-
-# Stop + wipe database
-docker compose down -v
+docker compose -f infrastructure/docker/docker-compose.yml up -d         # start all
+docker compose -f infrastructure/docker/docker-compose.yml up -d --build # rebuild
+docker compose exec backend npx prisma migrate deploy                    # migrations
+docker compose exec backend npm run db:seed                              # seed
+docker compose logs -f backend                                           # logs
+docker compose down                                                      # stop (keep data)
+docker compose down -v                                                   # stop + wipe DB
 ```
 
 ## Docker Rules
 
-- Non-root user in all Dockerfiles — never run as `root`
-- Image versions pinned — never use `latest` tags
-- No `.env` or secrets copied into images — inject at runtime
-- `node_modules` in anonymous volume (prevents host override)
-- Database has healthcheck; backend `depends_on: condition: service_healthy`
-- Multi-stage builds for production images (smaller + more secure)
-- `.dockerignore` excludes: `node_modules`, `.env`, `.git`, `dist`
+- Non-root user in all Dockerfiles
+- Image versions pinned — never `latest`
+- No `.env` or secrets in images — inject at runtime
+- Database has healthcheck; backend depends_on with condition
+- Multi-stage builds for production
 
 ## Environment Variables
 
-```bash
-# .env (gitignored — real secrets)
-DB_USER=leadcrm
-DB_PASSWORD=strongpassword
-JWT_SECRET=minimum-32-char-secret-here
+Secrets in `.env` (gitignored). Only `.env.example` committed with placeholders.
+Never hardcode secrets in docker-compose.yml.
 
-# docker-compose.yml references them
-environment:
-  JWT_SECRET: ${JWT_SECRET}
-```
-
-Never hardcode secrets in `docker-compose.yml`. Only `.env.example` is committed.
-
-## Production Migration Safety
+## Migrations
 
 ```bash
-# LOCAL only — resets DB if schema conflicts
-npx prisma migrate dev
-
-# PRODUCTION — safe incremental deploy
-npx prisma migrate deploy
+npx prisma migrate dev     # LOCAL only — interactive, may reset DB
+npx prisma migrate deploy  # PRODUCTION — safe incremental apply
 ```
 
 Never run `migrate dev` in production. Always `migrate deploy`.
@@ -72,13 +46,12 @@ Never run `migrate dev` in production. Always `migrate deploy`.
 ## CI/CD (GitHub Actions)
 
 Runs on push to `main` and `dev-copy-1`:
-- TypeScript check: `npx tsc --noEmit`
-- Lint: `npm run lint --max-warnings 0`
+1. TypeScript check: `npx tsc --noEmit`
+2. Lint: `npm run lint`
 
-Both must pass before merge. Failing locally is faster than failing in CI — run before pushing.
+Both must pass before merge.
 
-## Networking
+## Docker Networking
 
-Services communicate via Docker DNS (service name):
 - Backend → DB: `postgresql://user:pass@db:5432/leadcrm_dev`
 - Frontend → Backend: `http://backend:4000/api/v1`

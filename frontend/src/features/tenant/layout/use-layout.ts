@@ -6,25 +6,20 @@ import { useData } from '@/store/DataContext';
 import { usePermissions, PERMISSION_BRIDGE } from '@/shared/hooks/use-permissions';
 import { PATHNAME_TO_PATH, PATH_TO_PATHNAME } from '@/lib/route-map';
 import {
-  LayoutDashboard, Briefcase, Workflow, Mail, Wrench,
-  Package, Receipt, Building2, CreditCard, Activity, ListTodo, Layers, Settings,
+  LayoutDashboard, Briefcase, Workflow, Mail,
+  Receipt, Building2, CreditCard, Activity, ListTodo, Settings,
   UserCheck, Building, Target,
 } from 'lucide-react';
 
 export const NAV_ITEMS = [
   { name: 'Dashboard',         path: 'dashboard',         icon: LayoutDashboard, permission: null,             roles: null,          group: null },
-  { name: 'My Jobs',           path: 'technician-jobs',   icon: Wrench,          permission: null,             roles: ['Technician'] as const, group: null },
   // ── CRM ─────────────────────────────────────────────
   { name: 'Leads',             path: 'leads',             icon: Target,          permission: 'contacts.view',  roles: null,          group: 'CRM' },
   { name: 'Contacts',          path: 'contacts',          icon: UserCheck,       permission: 'contacts.view',  roles: null,          group: 'CRM' },
   { name: 'Accounts',          path: 'accounts',          icon: Building,        permission: 'accounts.view',  roles: null,          group: 'CRM' },
-  { name: 'Customers',         path: 'customers',         icon: UserCheck,       permission: 'contacts.view',  roles: null,          group: 'CRM' },
   { name: 'Deals',             path: 'pipeline',          icon: Briefcase,       permission: 'deals.view',     roles: null,          group: 'CRM' },
   // ── Operations ──────────────────────────────────────
   { name: 'Tasks',             path: 'tasks',             icon: ListTodo,        permission: 'contacts.view',  roles: null,          group: 'Operations' },
-  { name: 'Service Orders',    path: 'service-orders',    icon: Wrench,          permission: 'deals.view',     roles: null,          group: 'Operations', featureFlag: 'service' as const },
-  { name: 'Asset Tracking',    path: 'assets',            icon: Package,         permission: 'audit.view',     roles: null,          group: 'Operations', featureFlag: 'asset' as const },
-  { name: 'Inventory',         path: 'inventory',         icon: Layers,          permission: 'settings.view',  roles: null,          group: 'Operations', featureFlag: 'asset' as const },
   // ── Marketing ───────────────────────────────────────
   { name: 'Campaigns',         path: 'campaigns',         icon: Mail,            permission: 'campaigns.view', roles: null,          group: 'Marketing' },
   // ── Automation ──────────────────────────────────────
@@ -47,7 +42,7 @@ export function useLayout() {
   const router = useRouter();
   const pathname = usePathname();
   const { user } = useAuth();
-  const { isServiceModuleEnabled, isAssetModuleEnabled, isBillingModuleEnabled } = useData();
+  const { isBillingModuleEnabled } = useData();
   const userPermissions = usePermissions();
 
   const currentPath = PATHNAME_TO_PATH[pathname] ?? 'dashboard';
@@ -58,11 +53,10 @@ export function useLayout() {
   };
 
   const isSuper = userPermissions.includes('*');
+  const isSystemAdminUser = user?.role === 'System Admin' || user?.tenantId === 'system' || user?.tenantId === 'leadcrm-system-demo';
 
-  const featureEnabled = (flag?: 'service' | 'asset' | 'billing') => {
+  const featureEnabled = (flag?: 'billing') => {
     if (!flag) return true;
-    if (flag === 'service') return isServiceModuleEnabled;
-    if (flag === 'asset') return isAssetModuleEnabled;
     if (flag === 'billing') return isBillingModuleEnabled;
     return true;
   };
@@ -72,7 +66,7 @@ export function useLayout() {
 
     const itemRoles = (item as any).roles as string[] | null | undefined;
 
-    if (user?.role === 'System Admin') return itemRoles?.includes('System Admin') ?? false;
+    if (isSystemAdminUser) return itemRoles?.includes('System Admin') ?? false;
     if (itemRoles?.includes('System Admin')) return false;
     if (itemRoles && !itemRoles.includes('System Admin')) {
       return itemRoles.includes(user?.role ?? '');

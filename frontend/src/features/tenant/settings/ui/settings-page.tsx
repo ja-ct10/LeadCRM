@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect } from "react";
 import { useData } from "@/store/DataContext";
@@ -33,13 +33,19 @@ import {
   Building,
   CreditCard,
   Zap,
+  Check,
+  Banknote,
+  PhoneCall,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { ACCENT_COLORS, applyAccentColor, ACCENT_KEY } from "@/lib/accent-colors";
 import { FormsTab } from './forms-tab';
 import { TeamManagement } from './team-management';
 import { RolesPermissions } from './roles-permissions';
+import { PlanUsageTab } from './plan-usage-tab';
+import { TelephonyUsageTab } from './telephony-usage-tab';
 
 type SettingsTab =
   | 'profile'
@@ -52,12 +58,15 @@ type SettingsTab =
   | 'archived'
   | 'account-details'
   | 'plan'
+  | 'telephony-usage'
   | 'billing'
   | 'forms';
 
 interface NavGroup {
   label: string;
-  items: { id: SettingsTab; label: string; icon: React.ElementType }[];
+  icon?: React.ElementType;
+  isTree?: boolean;
+  items: { id: SettingsTab; label: string; icon?: React.ElementType }[];
 }
 
 const NAV_GROUPS: NavGroup[] = [
@@ -94,8 +103,16 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'ACCOUNT',
     items: [
       { id: 'account-details', label: 'Account Details', icon: Shield },
-      { id: 'plan', label: 'Plan & Usage', icon: CreditCard },
-      { id: 'billing', label: 'Payment Methods', icon: Receipt },
+    ],
+  },
+  {
+    label: 'BILLING',
+    icon: Banknote,
+    isTree: true,
+    items: [
+      { id: 'plan', label: 'Plan' },
+      { id: 'telephony-usage', label: 'Telephony Usage' },
+      { id: 'billing', label: 'Payment Methods' },
     ],
   },
 ];
@@ -113,10 +130,6 @@ export default function SettingsPage(): React.ReactElement {
     users,
     roles,
     restoreRecord,
-    isServiceModuleEnabled,
-    toggleServiceModule,
-    isAssetModuleEnabled,
-    toggleAssetModule,
     isBillingModuleEnabled,
     toggleBillingModule,
     updateTenant,
@@ -144,6 +157,7 @@ export default function SettingsPage(): React.ReactElement {
   // Appearance state
   const [appTheme, setAppTheme] = useState(localStorage.getItem("app_theme") || "Light");
   const [appFontSize, setAppFontSize] = useState(localStorage.getItem("app_font_size") || "Medium");
+  const [appAccentColor, setAppAccentColor] = useState(localStorage.getItem(ACCENT_KEY) || "blue");
 
   // Account (profile) state
   const [firstName, setFirstName] = useState(user?.firstName || "");
@@ -152,21 +166,29 @@ export default function SettingsPage(): React.ReactElement {
   const [phone, setPhone] = useState(user?.phone || "");
   const [jobTitle, setJobTitle] = useState(user?.role === "Client Admin" ? "System Administrator" : user?.role || "");
   const [department, setDepartment] = useState("IT");
-  const [timezone, setTimezone] = useState("UTC-5  Â· Eastern Time");
+  const [timezone, setTimezone] = useState("UTC-5  · Eastern Time");
   const [language, setLanguage] = useState("English (US)");
 
   // Archived filter
   const [archivedFilter, setArchivedFilter] = useState<string>("All");
 
   useEffect(() => {
-    const handleSync = () => { setAppTheme(localStorage.getItem("app_theme") || "Light"); };
+    const handleSync = () => {
+      setAppTheme(localStorage.getItem("app_theme") || "Light");
+      setAppAccentColor(localStorage.getItem(ACCENT_KEY) || "blue");
+    };
     window.addEventListener("themechange", handleSync);
-    return () => window.removeEventListener("themechange", handleSync);
+    window.addEventListener("accentcolorchange", handleSync);
+    return () => {
+      window.removeEventListener("themechange", handleSync);
+      window.removeEventListener("accentcolorchange", handleSync);
+    };
   }, []);
 
   const handleSaveAppearance = (): void => {
     localStorage.setItem("app_theme", appTheme);
     localStorage.setItem("app_font_size", appFontSize);
+    applyAccentColor(appAccentColor);
 
     // Apply theme to the CRM container
     const container = document.querySelector('[data-theme-container]');
@@ -216,7 +238,7 @@ export default function SettingsPage(): React.ReactElement {
   const renderProfileTab = (): React.ReactElement => (
     <form onSubmit={handleSaveAccount} className="space-y-6 max-w-2xl">
       {/* Profile Banner */}
-      <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.06] rounded-2xl overflow-hidden">
+      <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl overflow-hidden">
         <div className="h-20 bg-gradient-to-r from-[#25313D] via-[#2E3B48] to-[#384653] relative" />
         <div className="p-5 pt-0 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <div className="flex flex-col sm:flex-row gap-3 -mt-8 sm:items-end">
@@ -242,7 +264,7 @@ export default function SettingsPage(): React.ReactElement {
       </div>
 
       {/* Personal Info */}
-      <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-4">
+      <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-4">
         <div>
           <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Personal Information</h3>
           <p className="text-xs text-slate-400 mt-0.5">Your name and contact details visible to teammates</p>
@@ -251,12 +273,12 @@ export default function SettingsPage(): React.ReactElement {
           <div>
             <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="profile-first-name">First Name</label>
             <input id="profile-first-name" type="text" required value={firstName} onChange={(e) => setFirstName(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full bg-slate-50 dark:bg-[#1B252F] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#D94F4F] transition-colors" />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="profile-last-name">Last Name</label>
             <input id="profile-last-name" type="text" required value={lastName} onChange={(e) => setLastName(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full bg-slate-50 dark:bg-[#1B252F] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#D94F4F] transition-colors" />
           </div>
         </div>
         <div>
@@ -264,7 +286,7 @@ export default function SettingsPage(): React.ReactElement {
           <div className="relative">
             <Mail size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input id="profile-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg pl-8 pr-3 py-2 text-xs focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full bg-slate-50 dark:bg-[#1B252F] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg pl-8 pr-3 py-2 text-xs focus:outline-none focus:border-[#D94F4F] transition-colors" />
           </div>
         </div>
         <div>
@@ -272,42 +294,42 @@ export default function SettingsPage(): React.ReactElement {
           <div className="relative">
             <Phone size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input id="profile-phone" type="text" value={phone} onChange={(e) => setPhone(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg pl-8 pr-3 py-2 text-xs focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full bg-slate-50 dark:bg-[#1B252F] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg pl-8 pr-3 py-2 text-xs focus:outline-none focus:border-[#D94F4F] transition-colors" />
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="profile-job-title">Job Title</label>
             <input id="profile-job-title" type="text" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full bg-slate-50 dark:bg-[#1B252F] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#D94F4F] transition-colors" />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="profile-department">Department</label>
             <input id="profile-department" type="text" value={department} onChange={(e) => setDepartment(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full bg-slate-50 dark:bg-[#1B252F] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#D94F4F] transition-colors" />
           </div>
         </div>
       </div>
 
       {/* Security */}
-      <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-4">
+      <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-4">
         <div>
           <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
             <Lock size={14} className="text-[#D94F4F]" /> Security
           </h3>
           <p className="text-xs text-slate-400 mt-0.5">Manage your password and two-factor authentication</p>
         </div>
-        <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-100 dark:border-slate-800">
+        <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-[#1B252F] rounded-xl border border-slate-100 dark:border-slate-700/60">
           <div>
             <p className="text-xs font-semibold text-slate-900 dark:text-white">Password</p>
             <p className="text-[10px] text-slate-400">Last changed: Never</p>
           </div>
           <button type="button" onClick={() => toast.info("Password change simulated.")}
-            className="px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors cursor-pointer">
+            className="px-3 py-1.5 bg-white dark:bg-[#2E3B48] border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold hover:bg-slate-50 dark:hover:bg-[#384653] transition-colors cursor-pointer">
             Change Password
           </button>
         </div>
-        <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-100 dark:border-slate-800">
+        <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-[#1B252F] rounded-xl border border-slate-100 dark:border-slate-700/60">
           <div>
             <p className="text-xs font-semibold text-slate-900 dark:text-white">Two-Factor Authentication</p>
             <p className="text-[10px] text-slate-400">Adds an extra layer of security</p>
@@ -324,47 +346,47 @@ export default function SettingsPage(): React.ReactElement {
     </form>
   );
 
-  // â”€â”€ Account Details Tab (Admin only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Account Details Tab (Admin only) ───────────────────────────────────────
   const renderAccountDetailsTab = (): React.ReactElement => (
     <div className="max-w-2xl space-y-4">
-      <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-4">
+      <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-4">
         <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
           <Shield className="w-4 h-4 text-[#D94F4F]" /> Account Details
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-100 dark:border-slate-800">
+          <div className="p-3 bg-slate-50 dark:bg-[#1B252F] rounded-xl border border-slate-100 dark:border-slate-700/60">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Account Name</p>
             <p className="text-xs font-semibold text-slate-900 dark:text-white">{tenant?.name || 'N/A'}</p>
           </div>
-          <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-100 dark:border-slate-800">
+          <div className="p-3 bg-slate-50 dark:bg-[#1B252F] rounded-xl border border-slate-100 dark:border-slate-700/60">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Account ID</p>
             <p className="text-xs font-mono text-slate-700 dark:text-slate-300">{tenant?.id || 'N/A'}</p>
           </div>
-          <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-100 dark:border-slate-800">
+          <div className="p-3 bg-slate-50 dark:bg-[#1B252F] rounded-xl border border-slate-100 dark:border-slate-700/60">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Subscription Plan</p>
             <span className="px-2 py-0.5 bg-[#D94F4F]/10 text-[#D94F4F] dark:text-[#E05A5A] text-[10px] font-bold rounded-full border border-[#D94F4F]/20">Professional</span>
           </div>
-          <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-100 dark:border-slate-800">
+          <div className="p-3 bg-slate-50 dark:bg-[#1B252F] rounded-xl border border-slate-100 dark:border-slate-700/60">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Status</p>
             <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold rounded-full border border-emerald-500/20">Active</span>
           </div>
-          <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-100 dark:border-slate-800">
+          <div className="p-3 bg-slate-50 dark:bg-[#1B252F] rounded-xl border border-slate-100 dark:border-slate-700/60">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Industry</p>
             <p className="text-xs font-semibold text-slate-900 dark:text-white">{tenant?.industry || 'Not set'}</p>
           </div>
-          <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-100 dark:border-slate-800">
+          <div className="p-3 bg-slate-50 dark:bg-[#1B252F] rounded-xl border border-slate-100 dark:border-slate-700/60">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Domain</p>
             <p className="text-xs font-semibold text-slate-900 dark:text-white">{tenant?.domain || 'Not configured'}</p>
           </div>
         </div>
       </div>
-      <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-3">
+      <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-3">
         <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
           <CreditCard className="w-4 h-4 text-[#D94F4F]" /> Billing Summary
         </h3>
         <div className="flex items-center justify-between p-4 bg-[#D94F4F]/5 border border-[#D94F4F]/20 rounded-xl">
           <div>
-            <p className="text-xs font-bold text-slate-900 dark:text-white">Professional Plan Â· Monthly</p>
+            <p className="text-xs font-bold text-slate-900 dark:text-white">Professional Plan · Monthly</p>
             <p className="text-[10px] text-slate-400 mt-0.5">Next billing: September 8, 2026</p>
           </div>
           <p className="text-sm font-bold text-slate-900 dark:text-white">$99<span className="text-[10px] text-slate-400 font-normal">/mo</span></p>
@@ -377,7 +399,7 @@ export default function SettingsPage(): React.ReactElement {
   const renderAccountTab = (): React.ReactElement => (
     <form onSubmit={handleSaveAccount} className="space-y-6 max-w-2xl">
       {/* Profile Banner */}
-      <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.06] rounded-2xl overflow-hidden">
+      <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl overflow-hidden">
         <div className="h-20 bg-gradient-to-r from-slate-200 via-slate-150 to-slate-100 dark:from-slate-800 dark:to-slate-850 relative" />
         <div className="p-5 pt-0 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <div className="flex flex-col sm:flex-row gap-3 -mt-8 sm:items-end">
@@ -541,6 +563,50 @@ export default function SettingsPage(): React.ReactElement {
           })}
         </div>
 
+        {/* Accent Color */}
+        <div className="pt-5 border-t border-gray-200 dark:border-white/[0.06]">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">Accent Color</label>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Customize the primary brand and highlight color across the entire application.</p>
+            </div>
+            <span className="text-xs font-medium text-slate-500 dark:text-slate-400 capitalize">
+              {ACCENT_COLORS.find(c => c.id === appAccentColor)?.name || 'Blue'}
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            {ACCENT_COLORS.map((color) => {
+              const isSelected = appAccentColor === color.id;
+              return (
+                <button
+                  key={color.id}
+                  type="button"
+                  onClick={() => {
+                    setAppAccentColor(color.id);
+                    applyAccentColor(color.id);
+                  }}
+                  title={color.name}
+                  aria-label={`Select ${color.name} accent color`}
+                  aria-pressed={isSelected}
+                  className={cn(
+                    'w-8 h-8 rounded-full flex items-center justify-center transition-all duration-150 cursor-pointer shadow-xs',
+                    color.previewClass,
+                    'hover:scale-110 active:scale-95',
+                    isSelected
+                      ? 'ring-2 ring-offset-2 ring-offset-white dark:ring-offset-slate-900 ring-slate-900 dark:ring-white scale-105'
+                      : 'hover:opacity-90'
+                  )}
+                >
+                  {isSelected && (
+                    <Check size={14} className="text-white drop-shadow-xs stroke-[3]" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Interface Density */}
         <div className="pt-5 border-t border-gray-200 dark:border-white/[0.06]">
           <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-3">Interface Density</label>
@@ -571,15 +637,15 @@ export default function SettingsPage(): React.ReactElement {
     </div>
   );
 
-  // â”€â”€ Memberships Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Memberships Tab ─────────────────────────────────────────────────────────
   const renderMembershipsTab = (): React.ReactElement => (
     <div className="max-w-2xl space-y-4">
-      <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5">
+      <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5">
         <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
           <Building size={14} className="text-[#D94F4F]" /> Organization Membership
         </h3>
-        <div className="p-4 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400">
+        <div className="p-4 bg-slate-50 dark:bg-[#1B252F] rounded-xl border border-slate-100 dark:border-slate-700/60 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-white dark:bg-[#2E3B48] border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400">
             <Building2 size={16} />
           </div>
           <div>
@@ -592,7 +658,7 @@ export default function SettingsPage(): React.ReactElement {
     </div>
   );
 
-  // â”€â”€ Org General Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Org General Tab ─────────────────────────────────────────────────────────
   const renderOrgGeneralTab = (): React.ReactElement => (
     <div className="max-w-2xl space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -601,7 +667,7 @@ export default function SettingsPage(): React.ReactElement {
           <div className="relative">
             <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
             <input id="org-name" type="text" value={orgName} onChange={(e) => setOrgName(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#D94F4F] transition-colors" />
           </div>
         </div>
         <div className="space-y-1.5">
@@ -609,7 +675,7 @@ export default function SettingsPage(): React.ReactElement {
           <div className="relative">
             <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
             <input id="org-industry" type="text" value={orgIndustry} onChange={(e) => setOrgIndustry(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#D94F4F] transition-colors" />
           </div>
         </div>
         <div className="space-y-1.5">
@@ -617,7 +683,7 @@ export default function SettingsPage(): React.ReactElement {
           <div className="relative">
             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
             <input id="org-email" type="email" value={orgEmail} onChange={(e) => setOrgEmail(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#D94F4F] transition-colors" />
           </div>
         </div>
         <div className="space-y-1.5">
@@ -625,7 +691,7 @@ export default function SettingsPage(): React.ReactElement {
           <div className="relative">
             <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
             <input id="org-phone" type="text" value={orgPhone} onChange={(e) => setOrgPhone(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#D94F4F] transition-colors" />
           </div>
         </div>
         <div className="space-y-1.5">
@@ -633,7 +699,7 @@ export default function SettingsPage(): React.ReactElement {
           <div className="relative">
             <Link className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
             <input id="org-domain" type="text" value={orgDomain} onChange={(e) => setOrgDomain(e.target.value)} placeholder="e.g., example.com"
-              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#D94F4F] transition-colors" />
           </div>
         </div>
         <div className="space-y-1.5">
@@ -641,7 +707,7 @@ export default function SettingsPage(): React.ReactElement {
           <div className="relative">
             <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
             <select id="org-timezone" value={orgTimezone} onChange={(e) => setOrgTimezone(e.target.value)}
-              className="w-full pl-9 pr-8 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#D94F4F] transition-colors appearance-none">
+              className="w-full pl-9 pr-8 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#D94F4F] transition-colors appearance-none">
               <option value="UTC">UTC</option>
               <option value="America/New_York">Eastern Time (ET)</option>
               <option value="America/Chicago">Central Time (CT)</option>
@@ -658,11 +724,11 @@ export default function SettingsPage(): React.ReactElement {
           <div className="relative">
             <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
             <select id="org-currency" value={orgCurrency} onChange={(e) => setOrgCurrency(e.target.value)}
-              className="w-full pl-9 pr-8 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#D94F4F] transition-colors appearance-none">
+              className="w-full pl-9 pr-8 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#D94F4F] transition-colors appearance-none">
               <option value="USD">USD ($)</option>
-              <option value="EUR">EUR (â‚¬)</option>
-              <option value="GBP">GBP (Â£)</option>
-              <option value="PHP">PHP (â‚±)</option>
+              <option value="EUR">EUR (€)</option>
+              <option value="GBP">GBP (£)</option>
+              <option value="PHP">PHP (₱)</option>
               <option value="AUD">AUD ($)</option>
             </select>
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
@@ -673,7 +739,7 @@ export default function SettingsPage(): React.ReactElement {
           <div className="relative">
             <MapPin className="absolute left-3 top-3 w-3.5 h-3.5 text-slate-500" />
             <textarea id="org-address" value={orgAddress} onChange={(e) => setOrgAddress(e.target.value)} rows={2}
-              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#D94F4F] transition-colors resize-none" />
+              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#D94F4F] transition-colors resize-none" />
           </div>
         </div>
       </div>
@@ -688,10 +754,10 @@ export default function SettingsPage(): React.ReactElement {
     </div>
   );
 
-  // â”€â”€ Users (Team Management) Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Users (Team Management) Tab ─────────────────────────────────────────────
   const renderUsersTab = (): React.ReactElement => <TeamManagement />;
 
-  // â”€â”€ Archived Data Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Archived Data Tab ───────────────────────────────────────────────────────
   const renderArchivedTab = (): React.ReactElement => {
     const allArchived = [
       ...organizations.filter((o) => o.isArchived).map((o) => ({ type: "Organization", id: o.id, name: o.name })),
@@ -717,20 +783,20 @@ export default function SettingsPage(): React.ReactElement {
         <div className="flex gap-1.5 flex-wrap">
           {["All", "Contact", "Organization", "Deal", "Pipeline", "User", "Role", "Workflow", "Campaign", "Template"].map((type) => (
             <button key={type} onClick={() => setArchivedFilter(type)}
-              className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${archivedFilter === type ? "bg-[#D94F4F] text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"}`}>
+              className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${archivedFilter === type ? "bg-[#D94F4F] text-white" : "bg-slate-100 dark:bg-[#1B252F] text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"}`}>
               {type}
             </button>
           ))}
         </div>
         <div className="space-y-2">
           {filteredArchived.length === 0 ? (
-            <div className="text-center py-10 bg-slate-50 dark:bg-slate-900 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
+            <div className="text-center py-10 bg-slate-50 dark:bg-[#25313D] rounded-xl border border-dashed border-slate-200 dark:border-slate-700/60">
               <Archive className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
               <p className="text-xs text-slate-400">No archived records found.</p>
             </div>
           ) : (
             filteredArchived.map((item) => (
-              <div key={item.id} className="flex items-center justify-between p-3 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.06] rounded-xl">
+              <div key={item.id} className="flex items-center justify-between p-3 bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-xl">
                 <div>
                   <span className="text-[10px] font-bold text-[#D94F4F] uppercase tracking-wider">{item.type}</span>
                   <p className="text-xs font-semibold text-slate-900 dark:text-white mt-0.5">{item.name}</p>
@@ -747,45 +813,34 @@ export default function SettingsPage(): React.ReactElement {
     );
   };
 
-  // â”€â”€ Plan & Billing Tabs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Plan & Billing Tabs ─────────────────────────────────────────────────────
   const renderPlanTab = (): React.ReactElement => (
-    <div className="max-w-2xl space-y-4">
-      <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-4">
-        <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-          <CreditCard className="w-4 h-4 text-[#D94F4F]" /> Plan & Usage
-        </h3>
-        <div className="flex items-center justify-between p-4 bg-[#D94F4F]/5 dark:bg-[#D94F4F]/10 border border-[#D94F4F]/20 rounded-xl">
-          <div>
-            <p className="text-xs font-bold text-slate-900 dark:text-white">Professional Plan</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">Active subscription</p>
-          </div>
-          <span className="px-2.5 py-1 bg-emerald-500/10 text-emerald-500 text-[10px] font-bold rounded-full border border-emerald-500/20 uppercase">Active</span>
-        </div>
-        <div className="grid grid-cols-3 gap-3">
-          {[{ label: "Users", used: users.filter((u) => !u.isArchived).length, limit: 25 }, { label: "Contacts", used: contacts.filter((c) => !c.isArchived).length, limit: 10000 }, { label: "Campaigns", used: campaigns.filter((c) => !c.isArchived).length, limit: 50 }].map((item) => (
-            <div key={item.label} className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-100 dark:border-white/[0.05]">
-              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">{item.label}</p>
-              <p className="text-sm font-bold text-slate-900 dark:text-white">{item.used}<span className="text-xs text-slate-400 font-normal"> / {item.limit}</span></p>
-              <div className="mt-2 h-1 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                <div className="h-full bg-[#D94F4F] rounded-full" style={{ width: `${Math.min(100, Math.round((item.used / item.limit) * 100))}%` }} />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
+    <PlanUsageTab />
+  );
+
+  const renderTelephonyUsageTab = (): React.ReactElement => (
+    <TelephonyUsageTab />
   );
 
   const renderBillingTab = (): React.ReactElement => (
     <div className="max-w-2xl space-y-4">
-      <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-4">
+      <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-4">
         <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-          <Receipt className="w-4 h-4 text-[#D94F4F]" /> Payment Methods
+          <Receipt className="w-4 h-4 text-[#D94F4F]" /> Payment Methods & Billing Profile
         </h3>
-        <div className="p-4 border border-dashed border-gray-200 dark:border-slate-700 rounded-xl text-center">
-          <Receipt className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
-          <p className="text-xs text-slate-400">No payment methods on file.</p>
-          <button className="mt-3 px-4 py-2 bg-[#D94F4F] hover:bg-[#C24545] text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer">Add Payment Method</button>
+        <div className="p-4 border border-dashed border-gray-200 dark:border-slate-700 rounded-xl text-center space-y-3">
+          <Receipt className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto" />
+          <div>
+            <p className="text-xs font-semibold text-slate-900 dark:text-white">Primary Payment Card</p>
+            <p className="text-xs text-slate-400">Visa ending in •••• 4242 (Expires 12/28)</p>
+          </div>
+          <button 
+            type="button"
+            onClick={() => toast.success('Payment method update link generated!')}
+            className="px-4 py-2 bg-[#D94F4F] hover:bg-[#C24545] text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+          >
+            Update Payment Method
+          </button>
         </div>
       </div>
     </div>
@@ -793,7 +848,7 @@ export default function SettingsPage(): React.ReactElement {
 
   const renderCustomFieldsTab = (): React.ReactElement => (
     <div className="max-w-2xl space-y-4">
-      <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5">
+      <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5">
         <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
           <Zap className="w-4 h-4 text-[#D94F4F]" /> Custom Fields
         </h3>
@@ -815,37 +870,79 @@ export default function SettingsPage(): React.ReactElement {
     'archived': renderArchivedTab,
     'account-details': renderAccountDetailsTab,
     'plan': renderPlanTab,
+    'telephony-usage': renderTelephonyUsageTab,
     'billing': renderBillingTab,
   };
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab');
+      if (tabParam && tabParam in tabContentMap) {
+        setActiveTab(tabParam as SettingsTab);
+      }
+    }
+  }, []);
 
   const activeGroup = NAV_GROUPS.find((g) => g.items.some((i) => i.id === activeTab));
   const activeItem = activeGroup?.items.find((i) => i.id === activeTab);
 
   return (
     <div className="flex h-full -m-4 lg:-m-8 min-h-[calc(100vh-4rem)]">
-      {/* Left Sub-Nav */}
-      <aside className="w-52 shrink-0 border-r border-gray-200 dark:border-white/[0.05] bg-white dark:bg-[#0a0c0f] overflow-y-auto custom-scrollbar py-4">
+      {/* Left Sub-Nav (Close CRM #121418) */}
+      <aside className="w-52 shrink-0 border-r border-gray-200 dark:border-[#262A33] bg-white dark:bg-[#121418] overflow-y-auto custom-scrollbar py-4 transition-colors">
         {NAV_GROUPS.map((group) => (
           <div key={group.label} className="mb-4">
-            <p className="px-4 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">{group.label}</p>
-            {group.items.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => { setActiveTab(item.id); setIsFormBuilderActive(false); setIsRolesViewActive(false); }}
-                  className={`w-full flex items-center gap-2 px-4 py-1.5 text-xs font-medium transition-colors cursor-pointer text-left
-                    ${isActive
-                      ? 'border-l-2 border-[#D94F4F] pl-[14px] bg-[#D94F4F]/5 dark:bg-[#D94F4F]/[0.08] text-[#D94F4F] dark:text-[#E05A5A]'
-                      : 'border-l-2 border-transparent text-slate-500 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-white/[0.03]'
-                    }`}
-                >
-                  {React.createElement(Icon as any, { className: "w-3.5 h-3.5 shrink-0" })}
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
+            {group.isTree ? (
+              <div>
+                <div className="flex items-center gap-1.5 px-4 py-1.5 text-[11px] font-bold text-slate-700 dark:text-[#CBD5E1] uppercase tracking-wider">
+                  {group.icon && React.createElement(group.icon, { className: "w-4 h-4 text-slate-500 dark:text-slate-400 shrink-0" })}
+                  <span>{group.label}</span>
+                </div>
+                <div className="relative ml-6 pl-2.5 border-l border-slate-200 dark:border-slate-700/60 my-1 space-y-0.5">
+                  {group.items.map((item) => {
+                    const isActive = activeTab === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => { setActiveTab(item.id); setIsFormBuilderActive(false); setIsRolesViewActive(false); }}
+                        className={cn(
+                          'w-full flex items-center justify-between px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer text-left',
+                          isActive
+                            ? 'border-l-2 -ml-[11px] border-[#2563EB] pl-2.5 text-[#2563EB] dark:text-[#3B82F6] font-semibold'
+                            : 'text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-[#F1F5F9] hover:bg-slate-50 dark:hover:bg-[#1C2027]'
+                        )}
+                      >
+                        <span>{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div>
+                <p className="px-4 py-1.5 text-[10px] font-bold text-slate-400 dark:text-[#64748B] uppercase tracking-widest">{group.label}</p>
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => { setActiveTab(item.id); setIsFormBuilderActive(false); setIsRolesViewActive(false); }}
+                      className={cn(
+                        'w-full flex items-center gap-2.5 px-4 py-1.5 text-xs font-medium transition-colors cursor-pointer text-left',
+                        isActive
+                          ? 'border-l-2 border-[var(--primary)] pl-[14px] bg-[var(--color-brand-light)] text-[var(--primary)] font-semibold'
+                          : 'border-l-2 border-transparent text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-[#F1F5F9] hover:bg-slate-50 dark:hover:bg-[#1C2027]'
+                      )}
+                    >
+                      {Icon && React.createElement(Icon as any, { className: "w-3.5 h-3.5 shrink-0" })}
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         ))}
       </aside>
@@ -855,17 +952,19 @@ export default function SettingsPage(): React.ReactElement {
         const isFullPane =
           (activeTab === 'forms' && isFormBuilderActive) ||
           (activeTab === 'roles' && isRolesViewActive);
-        // Tabs that render their own title/header internally â€” suppress the page header
-        const hasOwnHeader = activeTab === 'users' || activeTab === 'roles' || (activeTab === 'forms' && isFormBuilderActive);
+        // Tabs that render their own title/header internally — suppress the page header
+        const hasOwnHeader =
+          activeTab === 'users' ||
+          activeTab === 'roles' ||
+          activeTab === 'plan' ||
+          activeTab === 'telephony-usage' ||
+          (activeTab === 'forms' && isFormBuilderActive);
 
         return (
           <div className={`flex-1 overflow-y-auto custom-scrollbar ${isFullPane ? '' : 'px-6 py-5'}`}>
             {!isFullPane && !hasOwnHeader && (
               <div className="mb-5">
                 <h1 className="text-xl font-bold text-slate-900 dark:text-white">{activeItem?.label ?? 'Settings'}</h1>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  {activeGroup?.label ?? ''}{activeGroup && activeItem ? ' Â· ' : ''}{activeItem?.label ?? ''}
-                </p>
               </div>
             )}
             {activeTab === 'forms'

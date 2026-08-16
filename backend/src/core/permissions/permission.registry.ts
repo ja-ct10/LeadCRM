@@ -15,7 +15,7 @@ import { Role } from '../../shared/constants/roles';
  *   3. Add the mapping here — zero other files change.
  */
 export const DEFAULT_ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
-  [Role.SALES_REP]: [
+  [Role.USER]: [
     Permission.CONTACTS_VIEW,
     Permission.CONTACTS_CREATE,
     Permission.CONTACTS_EDIT,
@@ -30,12 +30,31 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     Permission.SETTINGS_VIEW,
   ],
 
-  [Role.TECHNICIAN]: [
+  [Role.RESTRICTED_USER]: [
     Permission.CONTACTS_VIEW,
     Permission.DEALS_VIEW,
   ],
-
-  [Role.VIEWER]: [
+  
+  // Legacy mappings to support existing JWT tokens before users log out
+  'Sales Rep': [
+    Permission.CONTACTS_VIEW,
+    Permission.CONTACTS_CREATE,
+    Permission.CONTACTS_EDIT,
+    Permission.CONTACTS_EXPORT,
+    Permission.DEALS_VIEW,
+    Permission.DEALS_CREATE,
+    Permission.DEALS_EDIT,
+    Permission.CAMPAIGNS_VIEW,
+    Permission.WORKFLOWS_VIEW,
+    Permission.WORKFLOWS_ACTIVATE,
+    Permission.REPORTS_VIEW,
+    Permission.SETTINGS_VIEW,
+  ],
+  'Technician': [
+    Permission.CONTACTS_VIEW,
+    Permission.DEALS_VIEW,
+  ],
+  'Viewer': [
     Permission.CONTACTS_VIEW,
     Permission.DEALS_VIEW,
     Permission.CAMPAIGNS_VIEW,

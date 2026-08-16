@@ -1,15 +1,23 @@
 'use client';
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { ModuleWorkspace, ViewType, RecordDrawer, StatusBadge } from '@/shared/components/crm';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
+import { useColumnPreferences } from '@/shared/hooks/use-column-preferences';
 import { useAccounts } from '../hooks/use-accounts';
 import { useData } from '@/store/DataContext';
+import { useFilterUrlSync } from '@/shared/hooks/use-filter-url-sync';
+import { useDebounce } from '@/shared/hooks/use-debounce';
+import { ManageColumnsDrawer } from '@/shared/components/manage-columns-drawer';
+import { ACCOUNTS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
+import { getResponsiveColumnClass, getColumnLabel, getDefaultVisibleColumns } from '@/shared/components/column-table-helpers';
 import AccountForm from '../ui/account-form';
 import { SideSheet } from '@/shared/components/side-sheet';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { SlidersHorizontal } from 'lucide-react';
 import type { Account } from '../types/account.types';
+import type { ColumnConfigItem } from '@leadcrm/shared';
 
 // ── Accounts Page ─────────────────────────────────────────────────────────────
 
@@ -34,43 +42,94 @@ export default function AccountsPage(): React.ReactElement {
   } = useAccounts();
 
   const { deals, users } = useData();
+  const { getParam, getArrayParam, updateParams } = useFilterUrlSync();
 
-  // ── State ────────────────────────────────────────────────────────────
-  const [activeView, setActiveView] = useState<ViewType>('list');
-  const [activeTab, setActiveTab] = useState('all');
+  // ── Column Preferences ────────────────────────────────────────────────
+  const {
+    effectiveColumns,
+    isLoading: isColumnsLoading,
+    saveColumns,
+    resetColumns,
+  } = useColumnPreferences('accounts');
+
+  const [isManageColumnsOpen, setIsManageColumnsOpen] = useState(false);
+  const manageColumnsButtonRef = useRef<HTMLButtonElement>(null);
+
+  /** Visible columns sorted by order — drives table rendering */
+  const visibleColumns = useMemo((): ColumnConfigItem[] => {
+    if (effectiveColumns.length === 0) {
+      return getDefaultVisibleColumns(ACCOUNTS_COLUMN_REGISTRY);
+    }
+    return [...effectiveColumns]
+      .filter((col) => col.visible)
+      .sort((a, b) => a.order - b.order);
+  }, [effectiveColumns]);
+
+  // ── State (Synced with URL) ──────────────────────────────────────────
+  const [activeView, setActiveView] = useState<ViewType>(() => (getParam('view') as ViewType) || 'list');
+  const [activeTab, setActiveTab] = useState(() => getParam('tab') || 'all');
   const [showFilters, setShowFilters] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(() => getParam('search'));
   const [filterSearchTerm, setFilterSearchTerm] = useState('');
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [drawerTab, setDrawerTab] = useState('overview');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  // ── KPI Calculations ─────────────────────────────────────────────────
-  const kpiCards = useMemo(() => {
-    const activeCount = accounts.length;
-    const openDeals = deals.filter((d) => !d.isArchived && accounts.some((a) => a.id === d.organizationId));
-    const totalRevenue = openDeals.reduce((sum, d) => sum + (d.value ?? 0), 0);
-    const avgDealSize = openDeals.length > 0 ? totalRevenue / openDeals.length : 0;
+  // Multi-criteria filter state
+  const [selectedSystemFilters, setSelectedSystemFilters] = useState<string[]>(() => getArrayParam('system'));
+  const [selectedIndustries, setSelectedIndustries] = useState<string[]>(() => getArrayParam('industries'));
+  const [selectedTypes, setSelectedTypes] = useState<string[]>(() => getArrayParam('types'));
+  const [selectedOwners, setSelectedOwners] = useState<string[]>(() => getArrayParam('owners'));
+  const [selectedRelated, setSelectedRelated] = useState<string[]>(() => getArrayParam('related'));
 
-    return [
-      { label: 'TOTAL ACCOUNTS', value: String(totalCount), subtitle: 'All statuses' },
-      { label: 'ACTIVE ACCOUNTS', value: String(activeCount), subtitle: 'Currently trading' },
-      { label: 'TOTAL REVENUE', value: formatCurrency(totalRevenue), subtitle: 'Closed + open value' },
-      { label: 'AVG DEAL SIZE', value: formatCurrency(avgDealSize), subtitle: `${openDeals.length} open deals` },
-    ];
-  }, [accounts, totalCount, deals]);
+  const debouncedSearch = useDebounce(searchTerm, 300);
+
+  // Sync to URL
+  useEffect(() => {
+    updateParams({
+      tab: activeTab !== 'all' ? activeTab : null,
+      search: debouncedSearch || null,
+      view: activeView !== 'list' ? activeView : null,
+      system: selectedSystemFilters,
+      industries: selectedIndustries,
+      types: selectedTypes,
+      owners: selectedOwners,
+      related: selectedRelated,
+    });
+  }, [activeTab, debouncedSearch, activeView, selectedSystemFilters, selectedIndustries, selectedTypes, selectedOwners, selectedRelated, updateParams]);
 
   // ── Filtered list ────────────────────────────────────────────────────
   const filteredAccounts = useMemo(() => {
-    if (!searchTerm) return accounts;
-    const term = searchTerm.toLowerCase();
-    return accounts.filter(
-      (a) =>
-        a.name.toLowerCase().includes(term) ||
-        (a.industry ?? '').toLowerCase().includes(term) ||
-        (a.city ?? '').toLowerCase().includes(term),
-    );
-  }, [accounts, searchTerm]);
+    let result = accounts;
+
+    if (debouncedSearch) {
+      const term = debouncedSearch.toLowerCase();
+      result = result.filter(
+        (a) =>
+          a.name.toLowerCase().includes(term) ||
+          (a.industry ?? '').toLowerCase().includes(term) ||
+          (a.city ?? '').toLowerCase().includes(term),
+      );
+    }
+
+    if (selectedIndustries.length > 0) {
+      result = result.filter((a) => selectedIndustries.includes(a.industry ?? ''));
+    }
+
+    if (selectedTypes.length > 0) {
+      result = result.filter((a) => selectedTypes.includes(a.size ?? ''));
+    }
+
+    if (selectedOwners.length > 0) {
+      result = result.filter((a) => selectedOwners.includes(a.assignedUserId ?? ''));
+    }
+
+    if (selectedRelated.includes('has_deals')) {
+      result = result.filter((a) => deals.some((d) => d.organizationId === a.id && !d.isArchived));
+    }
+
+    return result;
+  }, [accounts, debouncedSearch, selectedIndustries, selectedTypes, selectedOwners, selectedRelated, deals]);
 
   // ── Helpers ──────────────────────────────────────────────────────────
   const getInitials = (name: string): string => {
@@ -104,14 +163,28 @@ export default function AccountsPage(): React.ReactElement {
   };
 
   // ── Filter groups ────────────────────────────────────────────────────
+  const distinctIndustries = useMemo(() => {
+    const set = new Set<string>();
+    accounts.forEach((a) => { if (a.industry) set.add(a.industry); });
+    return Array.from(set);
+  }, [accounts]);
+
+  const distinctSizes = useMemo(() => {
+    const set = new Set<string>();
+    accounts.forEach((a) => {
+      if (a.size) set.add(a.size);
+    });
+    return Array.from(set);
+  }, [accounts]);
+
   const filterGroups = useMemo(() => [
     {
       id: 'system',
       label: 'System Defined Filters',
       isExpanded: true,
       items: [
-        { id: 'touched', label: 'Touched Records', count: accounts.length, isChecked: false },
-        { id: 'untouched', label: 'Untouched Records', count: 0, isChecked: false },
+        { id: 'touched', label: 'Touched Records', count: accounts.length, isChecked: selectedSystemFilters.includes('touched') },
+        { id: 'untouched', label: 'Untouched Records', count: 0, isChecked: selectedSystemFilters.includes('untouched') },
       ],
     },
     {
@@ -119,23 +192,64 @@ export default function AccountsPage(): React.ReactElement {
       label: 'Filter By Fields',
       isExpanded: true,
       items: [
-        { id: 'account-owner', label: 'Account Owner', isChecked: false },
-        { id: 'account-type', label: 'Account Type', isChecked: false },
-        { id: 'industry', label: 'Industry', isChecked: false },
-        { id: 'employees', label: 'Employees', isChecked: false },
-        { id: 'status', label: 'Status', isChecked: false },
-        { id: 'billing-country', label: 'Billing Country', isChecked: false },
-        { id: 'website', label: 'Website', isChecked: false },
-        { id: 'created-time', label: 'Created Time', isChecked: false },
+        ...distinctIndustries.map((ind) => ({
+          id: `industry:${ind}`,
+          label: `Industry: ${ind}`,
+          count: accounts.filter((a) => a.industry === ind).length,
+          isChecked: selectedIndustries.includes(ind),
+        })),
+        ...distinctSizes.map((sz) => ({
+          id: `size:${sz}`,
+          label: `Size: ${sz}`,
+          count: accounts.filter((a) => a.size === sz).length,
+          isChecked: selectedTypes.includes(sz),
+        })),
+        ...users.slice(0, 5).map((u) => ({
+          id: `owner:${u.id}`,
+          label: `Owner: ${u.firstName} ${u.lastName}`,
+          count: accounts.filter((a) => a.assignedUserId === u.id).length,
+          isChecked: selectedOwners.includes(u.id),
+        })),
       ],
     },
     {
       id: 'related',
       label: 'Filter By Related Modules',
-      isExpanded: false,
-      items: [],
+      isExpanded: true,
+      items: [
+        { id: 'has_deals', label: 'Accounts with Deals', count: accounts.filter((a) => deals.some((d) => d.organizationId === a.id && !d.isArchived)).length, isChecked: selectedRelated.includes('has_deals') },
+      ],
     },
-  ], [accounts]);
+  ], [accounts, distinctIndustries, distinctSizes, selectedSystemFilters, selectedIndustries, selectedTypes, users, selectedOwners, selectedRelated, deals]);
+
+  const handleFilterToggle = useCallback((groupId: string, itemId: string) => {
+    if (groupId === 'system') {
+      setSelectedSystemFilters((prev) =>
+        prev.includes(itemId) ? prev.filter((x) => x !== itemId) : [...prev, itemId],
+      );
+    } else if (groupId === 'fields') {
+      if (itemId.startsWith('industry:')) {
+        const ind = itemId.replace('industry:', '');
+        setSelectedIndustries((prev) =>
+          prev.includes(ind) ? prev.filter((x) => x !== ind) : [...prev, ind],
+        );
+      } else if (itemId.startsWith('type:')) {
+        const typ = itemId.replace('type:', '');
+        setSelectedTypes((prev) =>
+          prev.includes(typ) ? prev.filter((x) => x !== typ) : [...prev, typ],
+        );
+      } else if (itemId.startsWith('owner:')) {
+        const ownerId = itemId.replace('owner:', '');
+        setSelectedOwners((prev) =>
+          prev.includes(ownerId) ? prev.filter((x) => x !== ownerId) : [...prev, ownerId],
+        );
+      }
+    } else if (groupId === 'related') {
+      setSelectedRelated((prev) =>
+        prev.includes(itemId) ? prev.filter((x) => x !== itemId) : [...prev, itemId],
+      );
+    }
+  }, []);
 
   // ── Handlers ─────────────────────────────────────────────────────────
   const handleRowClick = useCallback((account: Account) => {
@@ -154,8 +268,8 @@ export default function AccountsPage(): React.ReactElement {
   return (
     <>
       <ModuleWorkspace
+        moduleId="accounts"
         title="Accounts"
-        description="Organizations you sell to — the parent record for contacts and deals."
         primaryActionLabel="Add Account"
         onPrimaryAction={handleOpenCreate}
         onImport={() => toast.info('Import feature coming soon')}
@@ -170,6 +284,7 @@ export default function AccountsPage(): React.ReactElement {
         activeTab={activeTab}
         onTabChange={setActiveTab}
         filterGroups={filterGroups}
+        onFilterToggle={handleFilterToggle}
         showFilters={showFilters}
         onToggleFilters={() => setShowFilters(!showFilters)}
         filterSearchTerm={filterSearchTerm}
@@ -178,23 +293,44 @@ export default function AccountsPage(): React.ReactElement {
         searchTerm={searchTerm}
         onSearch={setSearchTerm}
         searchPlaceholder="Search accounts..."
-        onSort={() => toast.info('Sort options coming soon')}
         onRefresh={() => toast.success('Refreshed')}
-        kpiCards={kpiCards}
+        toolbarExtra={
+          <button
+            ref={manageColumnsButtonRef}
+            onClick={() => setIsManageColumnsOpen(true)}
+            className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium text-[#5A6B85] dark:text-slate-300 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+            aria-label="Manage columns"
+          >
+            <SlidersHorizontal size={13} />
+            Columns
+          </button>
+        }
       >
-        {/* List View */}
+        {/* List View — Dynamic Columns */}
         {(activeView === 'list' || activeView === 'table') && (
-          <div className="bg-white dark:bg-slate-800/40 border border-[#E4E9F0] dark:border-slate-700 rounded-xl overflow-hidden">
+          <div className="bg-white dark:bg-slate-800/40 border border-[#E4E9F0] dark:border-slate-700 rounded-xl overflow-hidden overflow-x-auto">
             {/* Header */}
-            <div className="grid grid-cols-[40px_1.5fr_1fr_1fr_1fr_100px_100px_100px] items-center h-11 px-3 border-b border-[#E4E9F0] dark:border-slate-700 bg-[#F6F8FB] dark:bg-slate-800/60 text-[11.5px] font-semibold uppercase tracking-wide text-[#5A6B85] dark:text-slate-400">
-              <span />
-              <span className="px-3">ACCOUNT NAME</span>
-              <span className="px-3">INDUSTRY</span>
-              <span className="px-3">ACCOUNT TYPE</span>
-              <span className="px-3">STATUS</span>
-              <span className="px-3 text-center">OPEN DEALS</span>
-              <span className="px-3 text-right">TOTAL VALUE</span>
-              <span className="px-3 text-right">OWNER</span>
+            <div
+              className={cn(
+                'flex items-center border-b border-[#E4E9F0] dark:border-slate-700 bg-[#F6F8FB] dark:bg-slate-800/60 sticky top-0 z-10',
+                'text-[11.5px] font-semibold uppercase tracking-wide text-[#5A6B85] dark:text-slate-400 h-11 px-3',
+              )}
+            >
+              <label className="flex items-center justify-center w-10 shrink-0">
+                <input
+                  type="checkbox"
+                  className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-[#2563EB] focus:ring-[#2563EB]/20 cursor-pointer"
+                  aria-label="Select all accounts"
+                />
+              </label>
+              {visibleColumns.map((col) => {
+                const responsiveClass = getResponsiveColumnClass(col.id, visibleColumns, ACCOUNTS_COLUMN_REGISTRY);
+                return (
+                  <span key={col.id} className={cn('px-3 truncate flex-1 min-w-0', responsiveClass)}>
+                    {getColumnLabel(col.id, ACCOUNTS_COLUMN_REGISTRY)}
+                  </span>
+                );
+              })}
             </div>
 
             {/* Rows */}
@@ -203,9 +339,9 @@ export default function AccountsPage(): React.ReactElement {
                 <div
                   key={account.id}
                   onClick={() => handleRowClick(account)}
-                  className="grid grid-cols-[40px_1.5fr_1fr_1fr_1fr_100px_100px_100px] items-center h-[52px] px-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors group"
+                  className="flex items-center h-[52px] px-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors group"
                 >
-                  <label className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                  <label className="flex items-center justify-center w-10 shrink-0" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
                       className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-[#2563EB] focus:ring-[#2563EB]/20 cursor-pointer"
@@ -213,65 +349,14 @@ export default function AccountsPage(): React.ReactElement {
                     />
                   </label>
 
-                  {/* Name + avatar */}
-                  <div className="flex items-center gap-2.5 px-3 min-w-0">
-                    <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white font-bold text-[10px] shrink-0">
-                      {getInitials(account.name)}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[13px] font-semibold text-[#0F172A] dark:text-white truncate group-hover:text-[#2563EB] transition-colors">
-                        {account.name}
-                      </p>
-                      <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 truncate">
-                        {[account.city, account.country].filter(Boolean).join(', ')}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Industry */}
-                  <div className="px-3">
-                    <p className="text-[12.5px] text-[#0F172A] dark:text-slate-200 truncate">
-                      {account.industry ?? '—'}
-                    </p>
-                  </div>
-
-                  {/* Account Type */}
-                  <div className="px-3">
-                    <StatusBadge
-                      label="Customer"
-                      variant="success"
-                      dot={false}
-                    />
-                  </div>
-
-                  {/* Status */}
-                  <div className="px-3">
-                    <StatusBadge
-                      label="Active"
-                      variant="success"
-                    />
-                  </div>
-
-                  {/* Open Deals */}
-                  <div className="px-3 text-center">
-                    <span className="text-[13px] font-semibold text-[#0F172A] dark:text-white tabular-nums">
-                      {getAccountDeals(account.id)}
-                    </span>
-                  </div>
-
-                  {/* Total Value */}
-                  <div className="px-3 text-right">
-                    <span className="text-[13px] font-semibold text-[#0F172A] dark:text-white tabular-nums">
-                      {formatCurrency(getAccountValue(account.id))}
-                    </span>
-                  </div>
-
-                  {/* Owner */}
-                  <div className="px-3 text-right">
-                    <span className="text-[11.5px] text-[#5A6B85] dark:text-slate-400 truncate">
-                      {getOwnerName(account.assignedUserId)}
-                    </span>
-                  </div>
+                  {visibleColumns.map((col) => {
+                    const responsiveClass = getResponsiveColumnClass(col.id, visibleColumns, ACCOUNTS_COLUMN_REGISTRY);
+                    return (
+                      <div key={col.id} className={cn('px-3 min-w-0 flex-1', responsiveClass)}>
+                        {renderAccountCell(col.id, account)}
+                      </div>
+                    );
+                  })}
                 </div>
               ))}
             </div>
@@ -358,8 +443,104 @@ export default function AccountsPage(): React.ReactElement {
           onCancel={handleCloseForm}
         />
       </SideSheet>
+
+      {/* ── Manage Columns Drawer ───────────────────────────────── */}
+      <ManageColumnsDrawer
+        isOpen={isManageColumnsOpen}
+        onClose={() => setIsManageColumnsOpen(false)}
+        module="accounts"
+        registry={ACCOUNTS_COLUMN_REGISTRY}
+        effectiveColumns={effectiveColumns}
+        onSave={saveColumns}
+        onReset={resetColumns}
+        triggerRef={manageColumnsButtonRef}
+      />
     </>
   );
+
+  // ── Dynamic cell renderer ────────────────────────────────────────────
+  function renderAccountCell(colId: string, account: Account): React.ReactNode {
+    switch (colId) {
+      case 'name':
+        return (
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white font-bold text-[10px] shrink-0">
+              {getInitials(account.name)}
+            </div>
+            <div className="min-w-0">
+              <p className="text-[13px] font-semibold text-[#0F172A] dark:text-white truncate group-hover:text-[#2563EB] transition-colors">
+                {account.name}
+              </p>
+              <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 truncate">
+                {[account.city, account.country].filter(Boolean).join(', ')}
+              </p>
+            </div>
+          </div>
+        );
+      case 'industry':
+        return (
+          <p className="text-[12.5px] text-[#0F172A] dark:text-slate-200 truncate">
+            {account.industry ?? '—'}
+          </p>
+        );
+      case 'customerType':
+        return (
+          <StatusBadge
+            label={account.customerType ?? 'Prospect'}
+            variant={getStatusVariant(account.customerType)}
+            dot={false}
+          />
+        );
+      case 'size':
+        return (
+          <p className="text-[12.5px] text-[#0F172A] dark:text-slate-200 truncate">
+            {account.size ?? '—'}
+          </p>
+        );
+      case 'city':
+        return (
+          <p className="text-[12.5px] text-[#0F172A] dark:text-slate-200 truncate">
+            {account.city ?? '—'}
+          </p>
+        );
+      case 'country':
+        return (
+          <p className="text-[12.5px] text-[#0F172A] dark:text-slate-200 truncate">
+            {account.country ?? '—'}
+          </p>
+        );
+      case 'assignedUserId':
+        return (
+          <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
+            {getOwnerName(account.assignedUserId)}
+          </p>
+        );
+      case 'website':
+        return (
+          <p className="text-[12px] text-[#2563EB] dark:text-blue-400 truncate">
+            {account.website ?? '—'}
+          </p>
+        );
+      case 'tags':
+        return (
+          <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
+            {account.tags && account.tags.length > 0
+              ? account.tags.join(', ')
+              : '—'}
+          </p>
+        );
+      case 'createdAt':
+        return (
+          <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
+            {account.createdAt
+              ? new Date(account.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+              : '—'}
+          </p>
+        );
+      default:
+        return <span className="text-[12px] text-[#5A6B85]">—</span>;
+    }
+  }
 }
 
 // ── Currency formatter ─────────────────────────────────────────────────────────

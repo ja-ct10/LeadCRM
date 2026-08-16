@@ -13,7 +13,6 @@ export type {
   AuditLog,
   ActivityType, Activity,
   Task, TaskStatus, TaskAssignmentRecord,
-  ServiceOrder, Asset, InventoryItem,
   Invoice,
   Lead, CreateLeadRequest, UpdateLeadRequest,
   Customer,
