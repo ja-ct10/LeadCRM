@@ -5,8 +5,8 @@ const prisma = new PrismaClient();
 /**
  * Full rich-data seeder for the Demo Corp tenant.
  * Covers: Organizations, Contacts, Pipeline+Stages, Deals, Tasks, Activities,
- *         Campaigns+Templates+TargetAudiences, Workflows, ServiceOrders,
- *         Assets, InventoryItems, Invoices, Notifications, AuditLogs.
+ *         Campaigns+Templates+TargetAudiences, Workflows,
+ *         Invoices, Notifications, AuditLogs.
  *
  * Run: npm run db:seed:full
  * Safe to re-run — uses upsert where possible, skips if data already exists.
@@ -167,41 +167,6 @@ export async function seedDemoFullData() {
   ]});
   console.log('[Seed:Full] 5 workflows seeded.');
 
-  // ── Service Orders ─────────────────────────────────────────────────
-  console.log('[Seed:Full] Seeding service orders...');
-  await prisma.serviceOrder.createMany({ skipDuplicates: true, data: [
-    { id: 'df-so-1', tenantId: tId, assignedTechnicianId: bId, contactId: contacts[7].id, organizationId: orgs[5].id, dealId: deals[4].id, title: 'CRM Enterprise Onboarding',      description: 'Full onboarding and configuration for SecureNet team.',     status: 'in_progress', scheduledDate: new Date(Date.now() + 1 * 86400000) },
-    { id: 'df-so-2', tenantId: tId, assignedTechnicianId: aId, contactId: contacts[0].id, organizationId: orgs[0].id,                      title: 'CRM Training Session — Antigravity',  description: '3-hour user training session for sales team.',              status: 'pending',     scheduledDate: new Date(Date.now() + 7 * 86400000) },
-    { id: 'df-so-3', tenantId: tId, assignedTechnicianId: bId, contactId: contacts[2].id, organizationId: orgs[2].id,                      title: 'API Integration Support — CloudPH',   description: 'Integrate LeadCRM with CloudPH billing system.',            status: 'pending',     scheduledDate: new Date(Date.now() + 2 * 86400000) },
-    { id: 'df-so-4', tenantId: tId, assignedTechnicianId: aId, contactId: contacts[7].id, organizationId: orgs[5].id,                      title: 'Quarterly Maintenance — SecureNet',    description: 'System health check and performance tuning.',               status: 'completed',   scheduledDate: new Date(Date.now() - 5 * 86400000), completedAt: new Date(Date.now() - 4 * 86400000) },
-    { id: 'df-so-5', tenantId: tId, assignedTechnicianId: bId, contactId: contacts[6].id, organizationId: orgs[0].id, dealId: deals[6].id, title: 'Workflow Setup — Antigravity Add-on', description: 'Configure automation workflows per client spec.',            status: 'pending',     scheduledDate: new Date(Date.now() + 10 * 86400000) },
-  ]});
-  console.log('[Seed:Full] 5 service orders seeded.');
-
-  // ── Assets ─────────────────────────────────────────────────────────
-  console.log('[Seed:Full] Seeding assets...');
-  await prisma.asset.createMany({ skipDuplicates: true, data: [
-    { id: 'df-asset-1', tenantId: tId, organizationId: orgs[5].id, name: 'Cisco Firewall FTD 2100',   category: 'Security',      serialNumber: 'CSC-FTD-001', client: 'SecureNet Security',      status: 'Active',      installDate: new Date('2024-01-10'), warrantyExpiry: new Date('2027-01-10'), location: 'Server Room A, Quezon City' },
-    { id: 'df-asset-2', tenantId: tId, organizationId: orgs[2].id, name: 'Cisco IP PBX System',       category: 'Telecom',       serialNumber: 'CSC-PBX-002', client: 'CloudPH Telecom',         status: 'Active',      installDate: new Date('2023-06-15'), warrantyExpiry: new Date('2026-06-15'), location: 'Main Office, Makati' },
-    { id: 'df-asset-3', tenantId: tId, organizationId: orgs[0].id, name: 'HP ProLiant Server DL380',  category: 'IT',            serialNumber: 'HP-SRV-003',  client: 'Antigravity Solutions',   status: 'Maintenance', installDate: new Date('2022-03-20'), warrantyExpiry: new Date('2025-03-20'), location: 'Data Center, BGC' },
-    { id: 'df-asset-4', tenantId: tId, organizationId: orgs[2].id, name: 'Ubiquiti Network Switch',   category: 'IT',            serialNumber: 'UBQ-SW-004',  client: 'CloudPH Telecom',         status: 'Active',      installDate: new Date('2024-02-01'), warrantyExpiry: new Date('2027-02-01'), location: 'Network Room, Makati' },
-    { id: 'df-asset-5', tenantId: tId, organizationId: orgs[5].id, name: 'CCTV Surveillance System',  category: 'Security',      serialNumber: 'CCTV-005',    client: 'SecureNet Security',      status: 'Active',      installDate: new Date('2024-03-15'), warrantyExpiry: new Date('2027-03-15'), location: 'Perimeter, Quezon City' },
-    { id: 'df-asset-6', tenantId: tId, organizationId: orgs[0].id, name: 'Dell PowerEdge R740',       category: 'IT',            serialNumber: 'DEL-R740-006', client: 'Antigravity Solutions',  status: 'Faulty',      installDate: new Date('2021-11-05'), warrantyExpiry: new Date('2024-11-05'), location: 'Data Center, BGC' },
-  ]});
-  console.log('[Seed:Full] 6 assets seeded.');
-
-  // ── Inventory ──────────────────────────────────────────────────────
-  console.log('[Seed:Full] Seeding inventory...');
-  await prisma.inventoryItem.createMany({ skipDuplicates: true, data: [
-    { id: 'df-inv-1', tenantId: tId, name: 'Cat6 Ethernet Cable (1m)',     sku: 'CAB-CAT6-1M',  category: 'Network',   quantity: 150, minQuantity: 20,  unitPrice: 85,    supplier: 'DataCom PH' },
-    { id: 'df-inv-2', tenantId: tId, name: 'Cisco SFP Module 1G',          sku: 'CSC-SFP-1G',   category: 'Network',   quantity: 24,  minQuantity: 5,   unitPrice: 1200,  supplier: 'Cisco Philippines' },
-    { id: 'df-inv-3', tenantId: tId, name: 'Hikvision IP Camera DS-2CD',   sku: 'HIK-CAM-2CD',  category: 'Security',  quantity: 12,  minQuantity: 3,   unitPrice: 4500,  supplier: 'Hikvision PH' },
-    { id: 'df-inv-4', tenantId: tId, name: 'APC UPS 1500VA',               sku: 'APC-UPS-1500', category: 'Power',     quantity: 8,   minQuantity: 2,   unitPrice: 8900,  supplier: 'APC Philippines' },
-    { id: 'df-inv-5', tenantId: tId, name: 'Thermal Paste (5g)',            sku: 'PASTE-5G',     category: 'IT',        quantity: 30,  minQuantity: 10,  unitPrice: 120,   supplier: 'TechWorld PH' },
-    { id: 'df-inv-6', tenantId: tId, name: 'Network Rack 12U',             sku: 'RACK-12U',     category: 'Network',   quantity: 4,   minQuantity: 1,   unitPrice: 12500, supplier: 'Rack Solutions PH' },
-  ]});
-  console.log('[Seed:Full] 6 inventory items seeded.');
-
   // ── Invoices ───────────────────────────────────────────────────────
   console.log('[Seed:Full] Seeding invoices...');
   await prisma.invoice.createMany({ skipDuplicates: true, data: [
@@ -240,7 +205,7 @@ export async function seedDemoFullData() {
   console.log('[Seed:Full] 8 audit logs seeded.');
 
   console.log('[Seed:Full] ✅ All demo data seeded successfully!');
-  console.log('[Seed:Full] Summary: 6 orgs · 10 contacts · 1 pipeline · 8 deals · 10 tasks · 10 activities · 6 templates · 3 audiences · 5 campaigns · 5 workflows · 5 service orders · 6 assets · 6 inventory · 5 invoices · 6 notifications · 8 audit logs');
+  console.log('[Seed:Full] Summary: 6 orgs · 10 contacts · 1 pipeline · 8 deals · 10 tasks · 10 activities · 6 templates · 3 audiences · 5 campaigns · 5 workflows · 5 invoices · 6 notifications · 8 audit logs');
 }
 
 // ── Standalone runner ─────────────────────────────────────────────────────

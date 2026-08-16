@@ -1414,9 +1414,6 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
       try {
         await moveDealStage(dealBeingWon.id, targetWonStageId, undefined, undefined, payload.handoff);
         toast.success(`Deal won! ${dealBeingWon.companyName || dealBeingWon.title} is now a customer.`);
-        if (payload.handoff.createServiceOrder) {
-          toast.success('Service Order created for onboarding.');
-        }
       } catch (error) {
         toast.error('Failed to move deal to won stage');
       }

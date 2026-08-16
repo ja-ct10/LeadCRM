@@ -92,7 +92,7 @@ export async function moveDealStage(
   newStageId: string,
   movedById: string,
   note?: string,
-  handoff?: { assignOwnerId?: string; kickoffDate?: string; notes?: string; createServiceOrder?: boolean },
+  handoff?: { assignOwnerId?: string; kickoffDate?: string; notes?: string },
 ) {
   const deal = await prisma.deal.findFirst({
     where: { id, tenantId },
@@ -164,20 +164,6 @@ export async function moveDealStage(
         await tx.lead.updateMany({
           where: { id: { in: deal.leadDeals.map((ld) => ld.leadId) } },
           data: { status: 'Active Customer' },
-        });
-      }
-
-      if (handoff?.createServiceOrder) {
-        await tx.serviceOrder.create({
-          data: {
-            tenantId, dealId: deal.id,
-            accountId:             deal.accountId,
-            assignedTechnicianId:  handoff.assignOwnerId || movedById,
-            title:       `Onboarding: ${deal.title}`,
-            description: handoff.notes || `Post-sale onboarding for Deal: ${deal.title}`,
-            status:        'pending',
-            scheduledDate: handoff.kickoffDate ? new Date(handoff.kickoffDate) : now,
-          },
         });
       }
     }

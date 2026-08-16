@@ -31,7 +31,6 @@ export const DealHandoffSchema = z.object({
   assignOwnerId:      id().optional(),
   kickoffDate:        z.string().datetime().optional(),
   notes:              z.string().optional(),
-  createServiceOrder: z.boolean().default(false),
 });
 
 export const MoveDealStageSchema = z.object({

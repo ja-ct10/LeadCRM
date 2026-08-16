@@ -29,10 +29,7 @@ import {
   WorkflowExecutionStep,
   WorkflowTriggerRecord,
   PendingAction,
-  ServiceOrder,
   AuditLog,
-  Asset,
-  InventoryItem,
   Activity,
   Invoice,
 } from "./types";
@@ -49,9 +46,6 @@ import {
   MOCK_PERMISSIONS,
   MOCK_TASKS,
   MOCK_WORKFLOW_EXECUTIONS,
-  MOCK_SERVICE_ORDERS,
-  MOCK_ASSETS,
-  MOCK_INVENTORY,
   MOCK_INVOICES,
 } from "./mockData/index";
 import { evaluateWorkflowCondition } from "@/features/tenant/automation/workflows/services/workflow-condition-evaluator";
@@ -69,7 +63,6 @@ import { tasksApi } from "@/shared/services/tasks.api";
 import { workflowsApi } from "@/shared/services/workflows.api";
 import { campaignsApi } from "@/shared/services/campaigns.api";
 import { templatesApi } from "@/shared/services/templates.api";
-import { serviceOrdersApi } from "@/shared/services/service-orders.api";
 import { invoicesApi } from "@/shared/services/invoices.api";
 import { auditApi } from "@/shared/services/audit.api";
 import { preferencesApi } from "@/shared/services/preferences.api";
@@ -117,9 +110,6 @@ interface DataContextType {
   updateInvoice: (id: string, updates: Partial<Invoice>) => void;
   removeInvoice: (id: string) => void;
   pendingActions: PendingAction[];
-  serviceOrders: ServiceOrder[];
-  assets: Asset[];
-  inventoryItems: InventoryItem[];
   auditLogs: AuditLog[];
   addContact: (
     contact: Omit<Contact, "id" | "tenantId" | "createdAt" | "score">,
@@ -141,8 +131,6 @@ interface DataContextType {
   addTask: (task: Omit<Task, "id" | "tenantId" | "createdAt">) => Promise<void>;
   updateTask: (id: string, updates: Partial<Task>) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
-  addServiceOrder: (so: Omit<ServiceOrder, "id" | "tenantId" | "createdAt">) => Promise<void>;
-  updateServiceOrder: (id: string, updates: Partial<ServiceOrder>) => Promise<void>;
   addWorkflow: (
     workflow: Omit<Workflow, "id" | "tenantId" | "executionCount">,
   ) => Promise<void>;
@@ -195,10 +183,6 @@ interface DataContextType {
   suspendTenant: (id: string) => void;
   updateTenant: (id: string, updates: Partial<Tenant>) => void;
   addAuditLog: (action: string, details: string) => void;
-  isServiceModuleEnabled: boolean;
-  toggleServiceModule: () => void;
-  isAssetModuleEnabled: boolean;
-  toggleAssetModule: () => void;
   isBillingModuleEnabled: boolean;
   toggleBillingModule: () => void;
 
@@ -328,14 +312,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [pendingActions, setPendingActions] = useState<PendingAction[]>([]);
-  const [serviceOrders, setServiceOrders] = useState<ServiceOrder[]>([]);
-  const [assets, setAssets] = useState<Asset[]>([]);
-  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
-  const [isServiceModuleEnabled, setIsServiceModuleEnabled] =
-    useState<boolean>(false);
-  const [isAssetModuleEnabled, setIsAssetModuleEnabled] =
-    useState<boolean>(false);
   const [isBillingModuleEnabled, setIsBillingModuleEnabled] =
     useState<boolean>(false);
 
@@ -409,22 +386,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
 
       // Batch 2 — deferred after initial paint so Batch 1 data renders first
-      // Assets & Inventory (localStorage) and module flags are synchronous — load them now
-      const ast = safeParse("leadcrm_assets", MOCK_ASSETS ?? []);
-      const inv = safeParse("leadcrm_inventory", MOCK_INVENTORY ?? []);
-      setAssets(ast as Asset[]);
-      setInventoryItems(inv);
-      setIsServiceModuleEnabled(safeParse("leadcrm_service_enabled", true));
-      setIsAssetModuleEnabled(safeParse("leadcrm_asset_enabled", true));
+      // Module flags are synchronous — load them now
       setIsBillingModuleEnabled(safeParse("leadcrm_billing_enabled", true));
 
       // Defer network-heavy secondary modules to the next event-loop tick
       // so Batch 1 data (contacts, deals, pipelines) is painted first.
       setTimeout(async () => {
         try {
-          const [tasksRes, soRes, workflowsRes, campaignsRes, templatesRes, invoicesRes, auditRes] = await Promise.all([
+          const [tasksRes, workflowsRes, campaignsRes, templatesRes, invoicesRes, auditRes] = await Promise.all([
             tasksApi.list({ limit: 100 }),
-            serviceOrdersApi.list({ limit: 100 }),
             workflowsApi.list({ limit: 200 }),
             campaignsApi.list({ limit: 100 }),
             templatesApi.list({ limit: 100 }),
@@ -433,7 +403,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
           ]);
 
           setTasks((tasksRes?.data ?? []) as Task[]);
-          setServiceOrders((soRes?.data ?? []) as ServiceOrder[]);
           setWorkflows((workflowsRes?.data ?? []) as Workflow[]);
           setCampaigns((campaignsRes?.data ?? []) as Campaign[]);
           setTemplates((templatesRes?.data ?? []) as Template[]);
@@ -588,23 +557,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const tsk = safeParse("leadcrm_tasks", MOCK_TASKS ?? []);
     const execs = safeParse("leadcrm_workflow_executions", MOCK_WORKFLOW_EXECUTIONS ?? []);
     const pending = safeParse("leadcrm_pending_actions", [] as PendingAction[]);
-    const so = safeParse("leadcrm_service_orders", MOCK_SERVICE_ORDERS ?? []);
-    const ast = safeParse("leadcrm_assets", MOCK_ASSETS ?? []);
-    const inv = safeParse("leadcrm_inventory", MOCK_INVENTORY ?? []);
     const logs = safeParse("leadcrm_audit_logs", [] as AuditLog[]);
     if (!localStorage.getItem("leadcrm_audit_logs")) {
       localStorage.setItem("leadcrm_audit_logs", JSON.stringify([]));
     }
-    const serviceEnabled = safeParse("leadcrm_service_enabled", false);
-    const assetEnabled = safeParse("leadcrm_asset_enabled", false);
     const billingEnabled = safeParse("leadcrm_billing_enabled", false);
     const activityData = safeParse("leadcrm_activities", [] as Activity[]);
     const execRuns = safeParse("leadcrm_workflow_execution_runs", [] as WorkflowExecutionRun[]);
     const execSteps = safeParse("leadcrm_workflow_execution_steps", [] as WorkflowExecutionStep[]);
     const invoiceData = safeParse("leadcrm_invoices", MOCK_INVOICES);
 
-    setIsServiceModuleEnabled(serviceEnabled);
-    setIsAssetModuleEnabled(assetEnabled);
     setIsBillingModuleEnabled(billingEnabled);
 
     // Column preferences: use system default in mock mode
@@ -625,9 +587,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setTenants(t);
       setTasks(tsk);
       setWorkflowExecutions(execs);
-      setServiceOrders(so);
-      setAssets(ast as Asset[]);
-      setInventoryItems(inv);
       setActivities(activityData);
       setWorkflowExecutionRuns(execRuns);
       setWorkflowExecutionSteps(execSteps);
@@ -687,9 +646,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setTasks(tsk.filter((x: any) => x.tenantId === tenant.id));
       setWorkflowExecutions(execs.filter((x: any) => x.tenantId === tenant.id));
       setPendingActions(pending.filter((x: any) => x.tenantId === tenant.id));
-      setServiceOrders(so.filter((x: any) => x.tenantId === tenant.id));
-      setAssets((ast as Asset[]).filter((x: any) => x.tenantId === tenant.id));
-      setInventoryItems(inv.filter((x: any) => x.tenantId === tenant.id));
       setActivities(activityData.filter((x: any) => x.tenantId === tenant.id));
       setWorkflowExecutionRuns(execRuns.filter((x: any) => x.tenantId === tenant.id));
       setWorkflowExecutionSteps(execSteps.filter((x: any) => x.tenantId === tenant.id));
@@ -1877,55 +1833,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     addAuditLog("Task Deleted", `Deleted task '${original?.title || id}'.`);
   };
 
-  const addServiceOrder = async (soData: Omit<ServiceOrder, "id" | "tenantId" | "createdAt">) => {
-    if (!tenant) return;
-    if (!USE_MOCK_DATA) {
-      try {
-        const dto: Record<string, unknown> = { ...soData };
-        if (dto.scheduledDate && typeof dto.scheduledDate === 'string' && !dto.scheduledDate.includes('T')) {
-          dto.scheduledDate = `${dto.scheduledDate}T00:00:00.000Z`;
-        }
-        const res = await serviceOrdersApi.create(dto as any);
-        const created = res?.data ?? res;
-        setServiceOrders((prev) => [created as ServiceOrder, ...prev]);
-        addAuditLog("Service Order Created", `Created service order '${(created as any).title || 'new'}'.`);
-      } catch (err: unknown) {
-        toast.error(err instanceof Error ? err.message : "Failed to create service order");
-      }
-      return;
-    }
-    const newSO: ServiceOrder = {
-      ...soData,
-      id: uuid(),
-      tenantId: tenant.id,
-      createdAt: new Date().toISOString(),
-    } as ServiceOrder;
-    saveAndSet("leadcrm_service_orders", [...serviceOrders, newSO], setServiceOrders);
-    addAuditLog("Service Order Created", `Created service order '${newSO.title || 'new'}'.`);
-  };
-
-  const updateServiceOrder = async (id: string, updates: Partial<ServiceOrder>) => {
-    if (!USE_MOCK_DATA) {
-      try {
-        const dto: Record<string, unknown> = { ...updates };
-        if (dto.scheduledDate && typeof dto.scheduledDate === 'string' && !dto.scheduledDate.includes('T')) {
-          dto.scheduledDate = `${dto.scheduledDate}T00:00:00.000Z`;
-        }
-        const res = await serviceOrdersApi.update(id, dto as any);
-        const updated = res?.data ?? res;
-        setServiceOrders((prev) => prev.map((so) => (so.id === id ? (updated as ServiceOrder) : so)));
-        addAuditLog("Service Order Updated", `Updated service order '${(updated as any).title || id}'.`);
-      } catch (err: unknown) {
-        toast.error(err instanceof Error ? err.message : "Failed to update service order");
-      }
-      return;
-    }
-    const original = serviceOrders.find((so) => so.id === id);
-    const newOrders = serviceOrders.map((so) => so.id === id ? { ...so, ...updates } : so);
-    saveAndSet("leadcrm_service_orders", newOrders, setServiceOrders);
-    if (original) addAuditLog("Service Order Updated", `Updated service order '${original.title || id}'.`);
-  };
-
   const addWorkflow = async (workflowData: any) => {
     if (!tenant) return;
     if (!USE_MOCK_DATA) {
@@ -2724,22 +2631,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("leadcrm_users", JSON.stringify(MOCK_USERS));
     localStorage.setItem("leadcrm_tenants", JSON.stringify(MOCK_TENANTS));
     localStorage.setItem("leadcrm_tasks", JSON.stringify(MOCK_TASKS));
-    localStorage.setItem("leadcrm_service_enabled", "false");
-    localStorage.setItem("leadcrm_asset_enabled", "false");
     localStorage.setItem("leadcrm_billing_enabled", "false");
     loadData();
-  };
-
-  const toggleServiceModule = () => {
-    const newState = !isServiceModuleEnabled;
-    localStorage.setItem("leadcrm_service_enabled", JSON.stringify(newState));
-    setIsServiceModuleEnabled(newState);
-  };
-
-  const toggleAssetModule = () => {
-    const newState = !isAssetModuleEnabled;
-    localStorage.setItem("leadcrm_asset_enabled", JSON.stringify(newState));
-    setIsAssetModuleEnabled(newState);
   };
 
   const toggleBillingModule = () => {
@@ -2801,9 +2694,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     updateInvoice,
     removeInvoice,
     pendingActions,
-    serviceOrders,
-    assets,
-    inventoryItems,
     auditLogs,
     addOrganization,
     updateOrganization,
@@ -2830,8 +2720,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     addTask,
     updateTask,
     deleteTask,
-    addServiceOrder,
-    updateServiceOrder,
     addWorkflow,
     updateWorkflow,
     deleteWorkflow,
@@ -2842,10 +2730,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     addTemplate,
     updateTemplate,
     deleteTemplate,
-    isServiceModuleEnabled,
-    toggleServiceModule,
-    isAssetModuleEnabled,
-    toggleAssetModule,
     isBillingModuleEnabled,
     toggleBillingModule,
     addUser,
@@ -2861,9 +2745,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     organizations, contacts, deals, pipelines, workflows, campaigns,
     templates, roles, permissions, users, tenants, tasks,
     workflowExecutions, workflowExecutionRuns, workflowExecutionSteps,
-    activities, invoices, pendingActions, serviceOrders, assets,
-    inventoryItems, auditLogs,
-    isServiceModuleEnabled, isAssetModuleEnabled, isBillingModuleEnabled,
+    activities, invoices, pendingActions, auditLogs,
+    isBillingModuleEnabled,
     columnPreferences, columnPreferencesLoading,
   ]);
 
@@ -2897,9 +2780,6 @@ export const useData = (options?: { includeArchived?: boolean }) => {
       roles: context.roles.filter((r) => !r.isArchived),
       users: context.users.filter((u) => !u.isArchived),
       tasks: context.tasks ? context.tasks.filter((t) => !("isArchived" in t) || !(t as any).isArchived) : [],
-      serviceOrders: context.serviceOrders ? context.serviceOrders.filter((s) => !("isArchived" in s) || !(s as any).isArchived) : [],
-      assets: context.assets ? context.assets.filter((a) => !("isArchived" in a) || !(a as any).isArchived) : [],
-      inventoryItems: context.inventoryItems ? context.inventoryItems.filter((i) => !("isArchived" in i) || !(i as any).isArchived) : []
     };
   }, [context, includeArchived]);
 };
