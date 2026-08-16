@@ -35,21 +35,43 @@ export const authApi = {
   registerGuest: (payload: any) =>
     apiClient.post<AuthResponse>('/auth/register/guest', payload),
 
+  sendRegistrationOtp: (email: string) =>
+    apiClient.post<{ success: boolean; message: string }>('/auth/send-registration-otp', { email }),
+
+  verifyRegistrationOtp: (email: string, code: string) =>
+    apiClient.post<{ success: boolean; message: string }>('/auth/verify-registration-otp', { email, code }),
+
   forgotPassword: (email: string) =>
     apiClient.post<{ success: boolean; message: string }>('/auth/forgot-password', { email }),
 
   resetPassword: (token: string, password: string) =>
     apiClient.post<{ success: boolean; message: string }>('/auth/reset-password', { token, password }),
 
-  sendOtp: (email: string, password: string) =>
-    apiClient.post<{ success: boolean; message: string }>('/auth/send-otp', { email, password }),
+  /**
+   * Called after NextAuth completes the Google OAuth flow.
+   * The backend /auth/oauth/google endpoint already set the LeadCRM
+   * HttpOnly cookie during the NextAuth signIn callback — this call
+   * to /auth/me simply re-hydrates the AuthContext state from that cookie.
+   */
+  refreshSession: () =>
+    apiClient.get<AuthResponse>('/auth/me'),
 
-  verifyOtp: (email: string, code: string) =>
-    apiClient.post<AuthResponse>('/auth/verify-otp', { email, code }),
+  /**
+   * Patches the tenant record for a new Google OAuth user who needs to
+   * complete their company profile. tenantId is read from the server-side
+   * session cookie — never from the request body.
+   */
+  completeOAuthProfile: (payload: {
+    companyName:  string;
+    industry:     string;
+    companySize:  string;
+    country?:     string;
+  }) =>
+    apiClient.patch<{ success: boolean }>('/auth/oauth/complete-profile', payload),
 
-  sendRegistrationOtp: (email: string) =>
-    apiClient.post<{ success: boolean; message: string }>('/auth/send-registration-otp', { email }),
-
-  verifyRegistrationOtp: (email: string, code: string) =>
-    apiClient.post<{ success: boolean; message: string }>('/auth/verify-registration-otp', { email, code }),
+  /**
+   * Get sandbox email configuration for testing.
+   */
+  getSandboxInfo: () =>
+    apiClient.get<{ success: boolean; data: { isSandboxMode: boolean; allowedEmails: string[]; isDevelopment: boolean } }>('/auth/sandbox-info'),
 };

@@ -5,12 +5,11 @@
     "module": "Node16",
     "moduleResolution": "node16",
     "outDir": "./dist",
-    "rootDir": "./src",
     "noEmit": false,
     "paths": {
       "@leadcrm/shared": ["../shared/src/index.ts"]
     }
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/database/seeders", "check-users.ts"]
+  "exclude": ["node_modules", "dist", "src/database/seeders", "src/scripts", "check-users.ts"]
 }

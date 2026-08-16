@@ -1,37 +1,27 @@
 'use client';
 
 import { useEffect } from 'react';
+import { applyAccentColor, ACCENT_KEY } from '@/lib/accent-colors';
 
 /**
- * ThemeProvider — applies saved theme/accent/font-size settings on mount.
- * Extracted from App.tsx. Renders no UI, only applies DOM effects.
+ * ThemeProvider — applies saved font-size and accent color settings on mount.
+ * Dark mode is scoped to the tenant CRM layout container (not <html>),
+ * so public pages (landing, login, register, onboarding) always stay light.
+ * Theme is managed by the `useTheme` hook and stored in localStorage.
  */
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const apply = () => {
-      const savedTheme = localStorage.getItem('app_theme') || 'Dark';
-      const savedAccent = localStorage.getItem('app_accent_color') || '#3B82F6';
       const savedFontSize = localStorage.getItem('app_font_size') || 'Medium';
-
-      if (savedTheme === 'Light') {
-        document.documentElement.classList.remove('dark');
-        document.documentElement.classList.add('light');
-      } else if (savedTheme === 'Dark') {
-        document.documentElement.classList.remove('light');
-        document.documentElement.classList.add('dark');
-      } else {
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        document.documentElement.classList.toggle('dark', prefersDark);
-        document.documentElement.classList.toggle('light', !prefersDark);
-      }
-
-      document.documentElement.style.setProperty('--color-blue-400', `color-mix(in srgb, ${savedAccent} 85%, white)`);
-      document.documentElement.style.setProperty('--color-blue-500', savedAccent);
-      document.documentElement.style.setProperty('--color-blue-600', `color-mix(in srgb, ${savedAccent} 85%, black)`);
-      document.documentElement.style.setProperty('--color-blue-700', `color-mix(in srgb, ${savedAccent} 70%, black)`);
-
       const sizeMap: Record<string, string> = { Small: '14px', Medium: '16px', Large: '18px' };
       document.documentElement.style.fontSize = sizeMap[savedFontSize] ?? '16px';
+
+      const savedAccent = localStorage.getItem(ACCENT_KEY) || 'blue';
+      applyAccentColor(savedAccent);
+
+      // Remove any dark/theme class from <html> — dark mode is tenant-only (applied on
+      // the CrmLayout wrapper element, not documentElement).
+      document.documentElement.classList.remove('dark', 'light', 'theme-classic', 'theme-light', 'theme-dark');
     };
 
     apply();

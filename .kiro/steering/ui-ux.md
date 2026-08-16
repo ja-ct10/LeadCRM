@@ -1,82 +1,73 @@
 ---
-description: LeadCRM UI/UX principles — design tokens, typography, component specs, layout rules, motion system. Always loaded.
-inclusion: always
+description: LeadCRM UI/UX design tokens, typography, component specs, layout rules. Auto-loaded for frontend files.
+inclusion: fileMatch
+fileMatchPattern: "**/*.tsx,**/*.css"
 ---
 
 # LeadCRM — UI/UX Standards
 
-## Design Token Quick Reference
+## Brand Palette (from index.css @theme)
 
-### Backgrounds
-```
-body dark:     #030712   → bg-[#030712]
-cards dark:    #0F172A   → bg-slate-900
-body light:    #F8FAFC   → bg-slate-50
-surface light: #FFFFFF   → bg-white
-surface dark:  rgba(255,255,255,0.02) → bg-white/[0.02]
-```
+| Token | Hex | Usage |
+|---|---|---|
+| `--color-brand` | #D94F4F | Primary actions, active states, CTA buttons |
+| `--color-brand-hover` | #C24545 | Hover state for primary |
+| `--color-brand-light` | rgba(217,79,79,0.08) | Subtle brand backgrounds |
+| `--color-deep-slate` | #25313D | Dark surfaces, sidebar, primary text |
+| `--color-soft-neutral` | #F5F6F7 | Light backgrounds (canvas) |
+| `--color-pure-surface` | #FFFFFF | Cards, tables, dialogs |
+| `--color-muted-teal` | #5F8F88 | Success, positive indicators |
 
-### Borders
-```
-light:  #E5E7EB   → border-gray-200
-dark:   rgba(255,255,255,0.05) → border-white/[0.05]
-subtle: rgba(255,255,255,0.03) → border-white/[0.03]
-```
+## Semantic Colors
 
-### Brand & Semantic Colors
-```
-primary blue:   #3B82F6  → text-blue-500 / bg-blue-500
-primary CTA:    #2563EB  → bg-blue-600
-success / won:  #10B981  → text-emerald-500
-danger / lost:  #EF4444  → text-red-500
-warning:        #F59E0B  → text-amber-500
-```
+| Purpose | Light Mode | Dark Mode |
+|---|---|---|
+| Success / Won | emerald-500 #10B981 | Same |
+| Danger / Lost | red-500 #EF4444 | Same |
+| Warning | amber-500 #F59E0B | Same |
+| Info | blue-500 #3B82F6 | Same |
 
-### Text
-```
-light primary:   text-slate-900
-light secondary: text-slate-500
-dark primary:    text-white
-dark secondary:  text-slate-400
-```
+## Typography
 
-## Typography Scale
+| Role | Class |
+|---|---|
+| Page title | `font-heading text-2xl font-bold tracking-tight` |
+| Section heading | `text-base font-semibold` |
+| Card title | `text-sm font-semibold tracking-tight` |
+| Body | `text-sm` |
+| Label / meta | `text-xs font-medium text-slate-500` |
+| Micro label | `text-[10px] font-bold uppercase tracking-[0.05em]` |
 
-| Role | Size | Weight | Class |
-|---|---|---|---|
-| Page title | 24px | Bold | `font-display text-2xl font-bold tracking-tight` |
-| Section heading | 16px | SemiBold | `text-base font-semibold` |
-| Card title | 14px | SemiBold | `text-sm font-semibold tracking-tight` |
-| Body | 14px | Regular | `text-sm` |
-| Label / meta | 12px | Medium | `text-xs font-medium text-slate-500` |
-| Micro label | 10px | Bold | `text-[10px] font-bold uppercase tracking-[0.05em]` |
+Fonts (from @theme):
+- Body: Inter / Poppins (`--font-body`)
+- Display/Headings: Inter Tight / League Spartan (`--font-heading`)
+- Subtitle: Neue Machina (`--font-subtitle`)
+- Code: JetBrains Mono (`--font-mono`)
 
-Fonts: **Inter** (body/UI) · **Space Grotesk** (page `<h1>` titles only) · **JetBrains Mono** (code)
-
-## Component Shell Standards
+## Component Standards
 
 ```tsx
 // Card
-<div className="rounded-2xl border border-gray-200 dark:border-white/[0.05]
-  bg-white dark:bg-white/[0.02] shadow-lg backdrop-blur-xl p-6">
+<div className="rounded-2xl border border-[var(--color-surface-border)]
+  bg-[var(--color-surface)] shadow-[var(--color-card-shadow)] p-6
+  dark:bg-white/[0.02] dark:border-white/[0.05]">
 
-// Input
-<input className="h-9 w-full rounded-md border border-gray-200 dark:border-white/[0.08]
-  bg-white dark:bg-white/[0.02] px-3 text-sm text-slate-900 dark:text-white
-  placeholder:text-slate-400 focus:outline-none focus:border-blue-500 transition-colors">
-
-// Primary Button
-<button className="h-9 px-4 rounded-xl bg-blue-600 hover:bg-blue-700
-  text-white text-sm font-semibold shadow-md shadow-blue-500/20
-  active:scale-95 transition-all">
+// Primary Button (brand red)
+<button className="h-9 px-4 rounded-xl bg-[var(--color-brand)] hover:bg-[var(--color-brand-hover)]
+  text-white text-sm font-semibold active:scale-95 transition-all">
 
 // Outline Button
 <button className="h-9 px-4 rounded-lg border border-gray-200 dark:border-white/[0.08]
   bg-white dark:bg-transparent text-slate-700 dark:text-slate-300
   text-sm font-medium hover:bg-slate-50 dark:hover:bg-white/[0.05] transition-colors">
+
+// Input
+<input className="h-9 w-full rounded-md border border-gray-200 dark:border-white/[0.08]
+  bg-white dark:bg-white/[0.02] px-3 text-sm text-slate-900 dark:text-white
+  placeholder:text-slate-400 focus:outline-none focus:border-[var(--color-brand)] transition-colors">
 ```
 
-## Status Badge Color Map
+## Status Badge Map
 
 | Status | Classes |
 |---|---|
@@ -88,14 +79,15 @@ Fonts: **Inter** (body/UI) · **Space Grotesk** (page `<h1>` titles only) · **J
 | Cancelled / Inactive | `bg-slate-500/10 border-slate-500/20 text-slate-500` |
 | Pending / In Progress | `bg-amber-500/10 border-amber-500/20 text-amber-500` |
 
-## Motion Specs (Canonical)
+## Motion Specs
 
 ```typescript
-// Side Sheet (drawer) — slides from right
-{ type: 'spring', damping: 25, stiffness: 200 }
-// initial: { x: '100%' } → animate: { x: 0 }
+import { motion, useReducedMotion } from 'motion/react'; // NEVER framer-motion
 
-// Modal (centered) — scale + fade
+// Side Sheet — spring slide from right
+{ type: 'spring', damping: 25, stiffness: 200 }
+
+// Modal — scale + fade
 { type: 'spring', damping: 30, stiffness: 280 }
 // initial: { opacity: 0, scale: 0.97, y: 8 }
 
@@ -105,37 +97,28 @@ Fonts: **Inter** (body/UI) · **Space Grotesk** (page `<h1>` titles only) · **J
 // Page content entry
 { duration: 0.4 }
 // initial: { opacity: 0, y: 15 }
-
-// Empty state float loop
-animate={{ y: [0, -6, 0] }}
-transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
 ```
 
-**Import:** `motion/react` only — never `framer-motion`. Always use `useReducedMotion()`.
+Always use `useReducedMotion()` and respect user preference.
 
-## Dark Mode Rule
+## Dark Mode
 
-Every element must have paired dark mode classes. No light-only components ever ship.
+Every element requires paired dark mode classes. No light-only components ship.
 
-```tsx
-// Required pattern
-<div className="bg-white dark:bg-white/[0.02] text-slate-900 dark:text-white
-  border border-gray-200 dark:border-white/[0.05]">
-```
+## Layout
 
-## Layout Rules
-
-- Sidebar: `w-64 fixed left-0 top-0 h-full`
-- Topbar: `h-16 sticky top-0 z-30`
-- Page header: `flex items-center justify-between mb-6` with `font-display text-2xl font-bold`
-- Detail views (contacts, deals, users): **drawers/sheets only** — no `[id]` routes
+- Sidebar: fixed left, full height (`--color-sidebar` = #25313D)
+- Canvas background: `--color-soft-neutral` (#F5F6F7)
+- Topbar: sticky, z-30
+- Page header: `flex items-center justify-between mb-6`
+- Detail views: drawers/sheets only — no `[id]` routes
 
 ## Accessibility Minimums
 
-- All icon-only buttons must have `aria-label`
-- Color contrast AA (4.5:1 text, 3:1 large/UI)
-- Status conveyed with text/icon alongside color — never color alone
-- Focus rings visible on all interactive elements
-- Modals trap focus while open, return focus to trigger on close
+- Icon-only buttons: `aria-label` required
+- Color contrast: AA (4.5:1 text, 3:1 UI)
+- Status: text/icon alongside color — never color alone
+- Focus rings on all interactive elements
+- Modals: trap focus, return focus on close
 - Form inputs: explicit `<label htmlFor>` — no placeholder-only labels
-- Animations respect `useReducedMotion()`
+- Animations: respect `useReducedMotion()`

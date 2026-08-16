@@ -69,11 +69,4 @@ router.post('/deals', authenticate, rbac('deals', 'canCreate'),
   validate(CreateDealSchema), dealController.create);
 ```
 
-## Severity Classification
-
-| Severity | Examples | Action |
-|---|---|---|
-| CRITICAL | Auth bypass, cross-tenant leak, exposed secrets | Stop all work — fix immediately |
-| HIGH | Missing RBAC, unvalidated API input | Block merge |
-| MEDIUM | Missing rate limit, broad permissions | Fix before release |
-| LOW | Missing audit log, verbose error | Schedule cleanup |
+> Severity classification (CRITICAL → stop work / HIGH → block merge / MEDIUM → fix before release / LOW → schedule cleanup) is defined in `.kiro/steering/security.md`.

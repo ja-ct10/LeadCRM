@@ -19,11 +19,13 @@ export default function ServiceOrdersPage() {
   const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
 
   const filteredOrders = serviceOrders.filter(order => {
-    const matchesSearch = 
-      order.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.title.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = filterStatuses.length === 0 || filterStatuses.some(s => order.status.toLowerCase() === s.toLowerCase());
+    const searchLower = searchQuery.toLowerCase();
+    const matchesSearch = !searchQuery ||
+      (order.clientName ?? '').toLowerCase().includes(searchLower) ||
+      (order.id ?? '').toLowerCase().includes(searchLower) ||
+      (order.title ?? '').toLowerCase().includes(searchLower);
+    const matchesStatus = filterStatuses.length === 0 ||
+      filterStatuses.some(s => (order.status ?? '').toLowerCase() === s.toLowerCase());
     return matchesSearch && matchesStatus;
   });
 
@@ -42,8 +44,8 @@ export default function ServiceOrdersPage() {
     resetDeps: [searchQuery, filterStatuses],
   });
 
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
+  const getStatusColor = (status: string | undefined) => {
+    switch ((status ?? '').toLowerCase()) {
       case 'scheduled':
       case 'pending': return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
       case 'in-progress': return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
@@ -153,38 +155,38 @@ export default function ServiceOrdersPage() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col">
-                        <span className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-blue-400 transition-colors">{order.clientName}</span>
+                        <span className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-blue-400 transition-colors">{order.clientName ?? '—'}</span>
                         <div className="flex items-center gap-1.5 mt-1">
-                          {order.title.includes('CCTV') && <Shield size={12} className="text-slate-500" />}
-                          {order.title.includes('Network') && <HardDrive size={12} className="text-slate-500" />}
-                          {order.title.includes('IPBX') && <Phone size={12} className="text-slate-500" />}
-                          <span className="text-xs text-slate-500">{order.title}</span>
+                          {(order.title ?? '').includes('CCTV') && <Shield size={12} className="text-slate-500" />}
+                          {(order.title ?? '').includes('Network') && <HardDrive size={12} className="text-slate-500" />}
+                          {(order.title ?? '').includes('IPBX') && <Phone size={12} className="text-slate-500" />}
+                          <span className="text-xs text-slate-500">{order.title ?? '—'}</span>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-900 dark:text-white border border-gray-200 dark:border-white/[0.05]">
-                          {order.assignedTechnicianId.substring(0, 2).toUpperCase()}
+                          {(order.assignedTechnicianId ?? 'NA').substring(0, 2).toUpperCase()}
                         </div>
-                        <span className="text-sm text-slate-700 dark:text-slate-300">{order.assignedTechnicianId}</span>
+                        <span className="text-sm text-slate-700 dark:text-slate-300">{order.assignedTechnicianId ?? '—'}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-300">
                           <Calendar size={12} className="text-slate-500" />
-                          {new Date(order.scheduledDate).toLocaleDateString()}
+                          {order.scheduledDate ? new Date(order.scheduledDate).toLocaleDateString() : '—'}
                         </div>
                         <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
                           <MapPin size={10} />
-                          {order.address}
+                          {order.address ?? '—'}
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${getStatusColor(order.status)} uppercase`}>
-                        {order.status}
+                        {order.status ?? 'pending'}
                       </span>
                     </td>
                     <td className="px-6 py-4">

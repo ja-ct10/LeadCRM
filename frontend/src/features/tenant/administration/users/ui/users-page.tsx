@@ -1714,9 +1714,9 @@ export default function UsersPage() {
   const filteredUsers = users.filter((user) => {
     if (user.isArchived) return false;
     const matchesSearch =
-      user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.role.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (user.name ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (user.email ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (user.role ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (user.phone && user.phone.includes(searchQuery));
 
     const matchesRole =

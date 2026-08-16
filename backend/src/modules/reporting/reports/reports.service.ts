@@ -57,14 +57,17 @@ export async function getDealVelocity(tenantId: string) {
   };
 }
 
-/** Contact count by status */
+/** Lead count by status */
 export async function getContactStatusBreakdown(tenantId: string) {
-  const groups = await prisma.contact.groupBy({
+  const groups = await prisma.lead.groupBy({
     by:    ['status'],
-    where: { tenantId, isArchived: false },
+    where: { tenantId },
     _count: { status: true },
   });
-  return groups.map((g) => ({ status: g.status, count: g._count.status }));
+  return groups.map((g: { status: string; _count: { status: number } }) => ({
+    status: g.status,
+    count:  g._count.status,
+  }));
 }
 
 /** Task completion stats */

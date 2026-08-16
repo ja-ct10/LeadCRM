@@ -1,13 +1,13 @@
 {
   "name": "Activate AgentOS on Every Task",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "enabled": true,
-  "description": "Before any spec task begins, runs a context scan and Phase 0 analysis.",
+  "description": "Before any spec task begins, reads the files to be changed and checks for downstream impact. Lean prompt — no Phase 0 theater.",
   "when": {
     "type": "preTaskExecution"
   },
   "then": {
     "type": "askAgent",
-    "prompt": "Before starting this task:\n1) UNDERSTAND FIRST — read every file you intend to change. For each: identify its purpose, who calls it, what interface it exposes, and what breaks if it changes.\n2) Print activation header: active skills, severity classification, task type.\n3) Run Phase 0 — map dependencies, identify risks, list downstream consumers.\n4) Classify severity: LOW | MEDIUM | HIGH | CRITICAL.\n5) If HIGH or CRITICAL — write an Architecture Decision block before writing any code.\n6) Proceed with implementation following .kiro/steering/ standards."
+    "prompt": "Before starting: read every file you plan to change. Identify its purpose, who calls it, and what breaks if it changes. If the task is HIGH or CRITICAL severity, write a one-paragraph Architecture Decision before writing any code. Then proceed."
   }
 }

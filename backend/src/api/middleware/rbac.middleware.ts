@@ -3,8 +3,8 @@ import { AppError } from '../../shared/errors/app-error';
 import { DEFAULT_ROLE_PERMISSIONS } from '../../core/permissions/permission.registry';
 import type { PermissionKey } from '../../shared/constants/permissions';
 
-// These roles bypass all permission checks
-const SUPER_ROLES = ['Client Admin', 'System Admin'];
+// These roles bypass all permission checks (including legacy roles for active sessions)
+const SUPER_ROLES = ['Admin', 'Super User', 'Client Admin', 'System Admin'];
 
 /**
  * authorize(permission) — RBAC middleware factory.

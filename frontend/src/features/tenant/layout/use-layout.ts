@@ -6,8 +6,8 @@ import { useData } from '@/store/DataContext';
 import { usePermissions, PERMISSION_BRIDGE } from '@/shared/hooks/use-permissions';
 import { PATHNAME_TO_PATH, PATH_TO_PATHNAME } from '@/lib/route-map';
 import {
-  LayoutDashboard, Users, Briefcase, Workflow, Mail, Wrench,
-  Package, Receipt, Building2, CreditCard, Activity, ListTodo, Layers, Shield, Settings,
+  LayoutDashboard, Briefcase, Workflow, Mail, Wrench,
+  Package, Receipt, Building2, CreditCard, Activity, ListTodo, Layers, Settings,
   UserCheck, Building, Target,
 } from 'lucide-react';
 
@@ -16,9 +16,9 @@ export const NAV_ITEMS = [
   { name: 'My Jobs',           path: 'technician-jobs',   icon: Wrench,          permission: null,             roles: ['Technician'] as const, group: null },
   // ── CRM ─────────────────────────────────────────────
   { name: 'Leads',             path: 'leads',             icon: Target,          permission: 'contacts.view',  roles: null,          group: 'CRM' },
-  { name: 'Customers',         path: 'customers',         icon: UserCheck,       permission: 'contacts.view',  roles: null,          group: 'CRM' },
+  { name: 'Contacts',          path: 'contacts',          icon: UserCheck,       permission: 'contacts.view',  roles: null,          group: 'CRM' },
   { name: 'Accounts',          path: 'accounts',          icon: Building,        permission: 'accounts.view',  roles: null,          group: 'CRM' },
-  { name: 'Pipeline',          path: 'pipeline',          icon: Briefcase,       permission: 'deals.view',     roles: null,          group: 'CRM' },
+  { name: 'Deals',             path: 'pipeline',          icon: Briefcase,       permission: 'deals.view',     roles: null,          group: 'CRM' },
   // ── Operations ──────────────────────────────────────
   { name: 'Tasks',             path: 'tasks',             icon: ListTodo,        permission: 'contacts.view',  roles: null,          group: 'Operations' },
   { name: 'Service Orders',    path: 'service-orders',    icon: Wrench,          permission: 'deals.view',     roles: null,          group: 'Operations', featureFlag: 'service' as const },
@@ -31,9 +31,6 @@ export const NAV_ITEMS = [
   // ── Billing ─────────────────────────────────────────
   { name: 'Contract Billing',  path: 'billing',           icon: Receipt,         permission: 'billing.view',   roles: null,          group: 'Billing', featureFlag: 'billing' as const },
   // ── Administration ──────────────────────────────────
-  { name: 'Users',             path: 'users',             icon: Users,           permission: 'users.view',     roles: null,          group: 'Administration' },
-  { name: 'Account Details',   path: 'account-details',   icon: Shield,          permission: null,             roles: ['Client Admin'] as const, group: 'Administration' },
-  { name: 'Settings',          path: 'settings',          icon: Settings,        permission: null,             roles: null,          group: 'Administration' },
   { name: 'Audit Trail',       path: 'audit-log',         icon: Activity,        permission: 'audit.view',     roles: null,          group: 'Administration' },
   // ── System Admin (separate portal) ──────────────────
   { name: 'Dashboard',         path: 'admin-dashboard',   icon: LayoutDashboard, permission: null,             roles: ['System Admin'] as const, group: null },
@@ -60,6 +57,7 @@ export function useLayout() {
   };
 
   const isSuper = userPermissions.includes('*');
+  const isSystemAdminUser = user?.role === 'System Admin' || user?.tenantId === 'system' || user?.tenantId === 'leadcrm-system-demo';
 
   const featureEnabled = (flag?: 'service' | 'asset' | 'billing') => {
     if (!flag) return true;
@@ -74,16 +72,15 @@ export function useLayout() {
 
     const itemRoles = (item as any).roles as string[] | null | undefined;
 
-    if (user?.role === 'System Admin') return itemRoles?.includes('System Admin') ?? false;
+    if (isSystemAdminUser) return itemRoles?.includes('System Admin') ?? false;
     if (itemRoles?.includes('System Admin')) return false;
     if (itemRoles && !itemRoles.includes('System Admin')) {
       return itemRoles.includes(user?.role ?? '');
     }
     if (isSuper) return true;
     if (user?.role === 'Guest') {
-      const guestAllowed = ['Dashboard', 'Leads', 'Pipeline', 'Workflows', 'Campaigns'];
-      const module = item.permission ? item.permission.split('.')[0] : 'dashboard';
-      return guestAllowed.some(a => a.toLowerCase() === module.toLowerCase() || module === 'dashboard');
+      // Sandbox accounts have read access to all modules except Audit Trail
+      return (item as any).path !== 'audit-log';
     }
     if (!item.permission) return true;
     const legacyIds = (PERMISSION_BRIDGE as Record<string, string[]>)[item.permission] ?? [];

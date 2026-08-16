@@ -89,10 +89,11 @@ export default function AssetsPage() {
   const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
 
   const filteredAssets = MOCK_ASSETS.filter(asset => {
-    const matchesSearch = 
-      asset.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      asset.serialNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      asset.client.toLowerCase().includes(searchQuery.toLowerCase());
+    const searchLower = searchQuery.toLowerCase();
+    const matchesSearch = !searchQuery ||
+      (asset.name ?? '').toLowerCase().includes(searchLower) ||
+      (asset.serialNumber ?? '').toLowerCase().includes(searchLower) ||
+      (asset.client ?? '').toLowerCase().includes(searchLower);
     const matchesCategory = filterCategories.length === 0 || filterCategories.includes(asset.category);
     const matchesStatus = filterStatuses.length === 0 || filterStatuses.includes(asset.status);
     return matchesSearch && matchesCategory && matchesStatus;

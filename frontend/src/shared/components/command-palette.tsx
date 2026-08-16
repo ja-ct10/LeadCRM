@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, Users, Briefcase, LayoutDashboard, Workflow, Mail, Settings, ShieldAlert, Wrench, Package, Receipt, Activity, Book } from 'lucide-react';
@@ -49,7 +49,6 @@ export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandP
     { name: 'My Jobs', path: 'technician-jobs', icon: Wrench, roles: ['Technician'] },
     { name: 'Client Profiles', path: 'contacts', icon: Users, permissions: ['contacts.view', 'p2', 'p2_own'] },
     { name: 'Leads', path: 'leads', icon: Users, permissions: ['contacts.view', 'p2', 'p2_own'] },
-    { name: 'Customers', path: 'customers', icon: Users, permissions: ['contacts.view', 'p2', 'p2_own'] },
     { name: 'Accounts', path: 'accounts', icon: Users, permissions: ['accounts.view', 'p2', 'p2_own'] },
     { name: 'Deals', path: 'deals', icon: Briefcase, permissions: ['deals.view', 'p7', 'p7_own'] },
     { name: 'Service Orders', path: 'service-orders', icon: Wrench, permissions: ['deals.view', 'p7', 'p7_own'], enabled: isServiceModuleEnabled },
@@ -80,8 +79,8 @@ export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandP
   );
 
   const filteredLeads = contacts.filter(l => 
-    l.companyName.toLowerCase().includes(query.toLowerCase()) || 
-    l.contactPerson.toLowerCase().includes(query.toLowerCase())
+    (l.companyName ?? '').toLowerCase().includes(query.toLowerCase()) || 
+    (l.contactPerson ?? '').toLowerCase().includes(query.toLowerCase())
   ).slice(0, 5);
 
   const filteredDeals = deals.filter(d => 
@@ -95,10 +94,10 @@ export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandP
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh]">
+    <div className="fixed inset-0 z-100 flex items-start justify-center pt-[15vh]">
       <div className="fixed inset-0 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-sm" onClick={() => setIsOpen(false)} />
-      <div className="relative w-full max-w-2xl bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/[0.1] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[70vh]">
-        <div className="flex items-center px-4 py-4 border-b border-gray-200 dark:border-white/[0.05]">
+      <div className="relative w-full max-w-2xl bg-white dark:bg-slate-950 border border-gray-300 dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[70vh]">
+        <div className="flex items-center px-4 py-4 border-b border-gray-200 dark:border-white/5">
           <Search className="text-slate-500 dark:text-slate-400 mr-3" size={20} />
           <input
             ref={inputRef}
@@ -108,7 +107,7 @@ export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandP
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
-          <div className="text-xs text-slate-500 font-mono bg-gray-50 dark:bg-white/[0.05] px-2 py-1 rounded border border-gray-300 dark:border-white/[0.1]">ESC</div>
+          <div className="text-xs text-slate-500 font-mono bg-gray-50 dark:bg-white/5 px-2 py-1 rounded border border-gray-300 dark:border-white/10">ESC</div>
         </div>
         
         <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
@@ -125,7 +124,7 @@ export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandP
                   <button
                     key={item.path}
                     onClick={() => handleSelect(item.path)}
-                    className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-white/[0.04] text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors text-left"
+                    className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-white/4 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors text-left"
                   >
                     <Icon size={18} className="text-slate-500 dark:text-slate-400" />
                     <span>{item.name}</span>
@@ -142,7 +141,7 @@ export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandP
                 <button
                   key={contact.id}
                   onClick={() => handleSelect('contacts')}
-                  className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-white/[0.04] text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors text-left"
+                  className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-white/4 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors text-left"
                 >
                   <Users size={18} className="text-blue-400" />
                   <div>
@@ -161,7 +160,7 @@ export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandP
                 <button
                   key={deal.id}
                   onClick={() => handleSelect('pipeline')}
-                  className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-white/[0.04] text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors text-left"
+                  className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-white/4 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors text-left"
                 >
                   <Briefcase size={18} className="text-purple-400" />
                   <div>

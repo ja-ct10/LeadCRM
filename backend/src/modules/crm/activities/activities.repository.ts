@@ -53,19 +53,23 @@ export async function createActivity(tenantId: string, createdById: string, dto:
 }
 
 export async function updateActivity(id: string, tenantId: string, dto: UpdateActivityDto) {
-  const existing = await prisma.activity.findFirst({ where: { id, tenantId } });
-  if (!existing) return null;
-  return prisma.activity.update({
-    where: { id },
-    data: dto,
-    include: {
-      createdBy: { select: { id: true, firstName: true, lastName: true, email: true } },
-    },
-  });
+  try {
+    return await prisma.activity.update({
+      where: { id, tenantId },
+      data: dto,
+      include: {
+        createdBy: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
+    });
+  } catch {
+    return null;
+  }
 }
 
 export async function deleteActivity(id: string, tenantId: string) {
-  const existing = await prisma.activity.findFirst({ where: { id, tenantId } });
-  if (!existing) return null;
-  return prisma.activity.delete({ where: { id } });
+  try {
+    return await prisma.activity.delete({ where: { id, tenantId } });
+  } catch {
+    return null;
+  }
 }

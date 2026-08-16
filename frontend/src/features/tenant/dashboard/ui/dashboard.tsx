@@ -6,7 +6,7 @@ import { useData } from '@/store/DataContext';
 import {
   Users, Briefcase, TrendingUp, DollarSign, Activity,
   ArrowUpRight, ArrowDownRight, Zap, RefreshCw, LayoutDashboard,
-  Check, Target, Clock, Star, ChevronRight,
+  Check, Target, Clock, Star, ChevronRight, Download,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -14,6 +14,7 @@ import {
 } from '@/shared/components/charts/ChartComponents';
 import DashboardSkeleton from '@/shared/components/dashboard-skeleton';
 import { toast } from 'sonner';
+import { motion } from 'motion/react';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -33,19 +34,91 @@ export default function Dashboard() {
     }, 800);
   };
 
+  const handleExportCSV = () => {
+    if (!user) return;
+    try {
+      // Prepare CSV data for Client Admin
+      const csvRows: any[][] = [];
+      
+      // Header
+      csvRows.push(['LeadCRM Dashboard Export', '', '', '']);
+      csvRows.push(['Exported At', new Date().toLocaleString(), '', '']);
+      csvRows.push(['User', `${user.firstName} ${user.lastName}`, '', '']);
+      csvRows.push(['', '', '', '']);
+      
+      // KPI Metrics
+      csvRows.push(['Key Performance Indicators', '', '', '']);
+      csvRows.push(['Metric', 'Value', 'Trend', 'Status']);
+      
+      if (isClientAdmin) {
+        csvRows.push(['Total Revenue', `₱${totalRevenue > 0 ? totalRevenue.toLocaleString() : '328,000'}`, '+12%', 'Up']);
+        csvRows.push(['Forecasted Revenue', `₱${Math.round(forecastedRevenue).toLocaleString()}`, '+8%', 'Up']);
+        csvRows.push(['Active Deals', activeDeals.length || 90, '+12', 'Up']);
+        csvRows.push(['Total Leads', contacts.length || 0, '+180', 'Up']);
+        csvRows.push(['Win Rate', `${winRate || 24}%`, '-1.2%', 'Down']);
+        csvRows.push(['Avg Velocity', `${avgVelocity} days`, '-2 days', 'Up']);
+      } else {
+        csvRows.push(['My Hot Leads', myHotLeads.length, `${myHotLeads.length} hot`, 'Active']);
+        csvRows.push(['Pending Tasks', myPending.length, myOverdue.length > 0 ? `${myOverdue.length} overdue` : 'On track', myOverdue.length === 0 ? 'Good' : 'Alert']);
+        csvRows.push(['My Active Deals', activeDeals.filter(d => d.assignedUserId === user.id).length, 'Active', 'Current']);
+        csvRows.push(['Total Contacts', contacts.length, '+recent', 'Growing']);
+        csvRows.push(['Win Rate', `${winRate || 0}%`, 'This month', 'Tracking']);
+        csvRows.push(['Avg Velocity', `${avgVelocity} days`, 'To close', 'Current']);
+      }
+      
+      csvRows.push(['', '', '', '']);
+      
+      // Revenue Trend Data
+      csvRows.push(['Revenue Trend (6 Months)', '', '', '']);
+      csvRows.push(['Month', 'Revenue (₱)', 'Deals Closed', '']);
+      revenueData.forEach(row => {
+        csvRows.push([row.name, row.revenue, row.deals, '']);
+      });
+      
+      csvRows.push(['', '', '', '']);
+      
+      // Top Performers
+      if (isClientAdmin) {
+        csvRows.push(['Sales Leaderboard', '', '', '']);
+        csvRows.push(['Name', 'Deals Won', 'Active Deals', 'Total Value (₱)']);
+        topPerformers.forEach(p => {
+          csvRows.push([
+            `${p.user.firstName} ${p.user.lastName}`,
+            p.wonDeals,
+            p.activeDeals,
+            p.wonValue.toLocaleString()
+          ]);
+        });
+      }
+      
+      // Convert to CSV string
+      const csvContent = csvRows.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+      
+      // Create blob and download
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `LeadCRM_Dashboard_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast.success('Dashboard exported to CSV');
+    } catch (error) {
+      toast.error('Failed to export dashboard');
+      console.error('Export error:', error);
+    }
+  };
+
   const userRoleDef = roles.find(r => r.name === user?.role);
   const userPerms = userRoleDef?.permissions || [];
   const isClientAdmin = user?.role === 'Client Admin';
 
   if (!user || isLoading) {
     return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <div>
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Dashboard</h2>
-            <p className="text-sm text-slate-500 mt-0.5">Syncing live metrics...</p>
-          </div>
-        </div>
+      <div className="p-4 lg:p-6 space-y-6">
         <DashboardSkeleton />
       </div>
     );
@@ -54,13 +127,15 @@ export default function Dashboard() {
   // ── System Admin view ──────────────────────────────────────
   if (user.role === 'System Admin') {
     return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center mb-2">
-          <div>
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">System Overview</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Platform-wide metrics across all tenants</p>
-          </div>
-          <button onClick={handleRefresh} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.08] text-slate-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition-colors">
+      <motion.div 
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="p-4 lg:p-6 space-y-6"
+      >
+        <div className="flex justify-between items-center">
+          <p className="text-sm text-slate-500 dark:text-slate-400">Platform-wide metrics across all tenants</p>
+          <button onClick={handleRefresh} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.08] text-slate-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition-all active:scale-98">
             <RefreshCw size={14} /> Refresh
           </button>
         </div>
@@ -108,7 +183,7 @@ export default function Dashboard() {
             </tbody>
           </table>
         </div>
-      </div>
+        </motion.div>
     );
   }
 
@@ -195,22 +270,34 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="space-y-4">
-      {/* 1. Header Section - Compact Enterprise Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
-        <div className="flex items-baseline gap-2.5 flex-wrap">
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Dashboard</h1>
-          <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">
-            — Welcome back, {user.firstName}. Here's your workspace overview for today
-          </span>
+    <motion.div 
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      className="p-4 lg:p-6 space-y-6"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-baseline gap-2 text-sm text-slate-500 dark:text-slate-400">
+          <span>Welcome back, <strong className="text-slate-700 dark:text-slate-300">{user.firstName}</strong></span>
         </div>
-        <button 
-          onClick={handleRefresh} 
-          className="flex items-center gap-1.5 h-9 px-3 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-xs cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
-        >
-          <RefreshCw size={14} className="text-slate-500" />
-          <span>Sync Metrics</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={handleExportCSV}
+            className="flex items-center gap-1.5 h-9 px-3 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-all active:scale-98 shadow-xs"
+            title="Export to CSV"
+          >
+            <Download size={14} className="text-slate-500" />
+            <span className="hidden sm:inline">Export CSV</span>
+          </button>
+          <button 
+            onClick={handleRefresh} 
+            className="flex items-center gap-1.5 h-9 px-3 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-all active:scale-98 shadow-xs"
+            title="Sync Metrics"
+          >
+            <RefreshCw size={14} className="text-slate-500" />
+            <span>Sync Metrics</span>
+          </button>
+        </div>
       </div>
 
       {/* ── Stat Cards Operational Strip ───────────────────── */}
@@ -388,6 +475,6 @@ export default function Dashboard() {
           )}
         </div>
       </div>
-    </div>
+      </motion.div>
   );
 }

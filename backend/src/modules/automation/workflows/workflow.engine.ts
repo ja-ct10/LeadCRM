@@ -128,8 +128,8 @@ async function actionCreateTask(
       priority:       String(config.priority ?? 'Medium'),
       dueDate:        new Date(Date.now() + Number(config.dueDaysFromNow ?? 3) * 86400000),
       assignedUserId,
-      dealId:         context['deal.id'] ? String(context['deal.id']) : undefined,
-      contactId:      context['contact.id'] ? String(context['contact.id']) : undefined,
+      dealId:         context['deal.id']     ? String(context['deal.id'])     : undefined,
+      leadId:         context['contact.id']  ? String(context['contact.id'])  : undefined,
     },
   });
   return { success: true, output: { taskId: task.id } };
@@ -167,7 +167,7 @@ async function actionUpdateField(
   if (!entityId) return { success: false, error: `No ${entity}.id in context` };
 
   if (entity === 'contact') {
-    await prisma.contact.update({ where: { id: entityId }, data: { [field]: value } });
+    await prisma.lead.update({ where: { id: entityId }, data: { [field]: value } as never });
   } else if (entity === 'deal') {
     await prisma.deal.update({ where: { id: entityId }, data: { [field]: value } });
   }

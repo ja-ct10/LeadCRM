@@ -1,18 +1,65 @@
 import { PrismaClient } from '@prisma/client';
+import { Role } from '../../shared/constants/roles';
 
 const prisma = new PrismaClient();
 
-// Default roles seeded for every new tenant
-// Client Admin is always created automatically on tenant provisioning
-export const DEFAULT_ROLES = [
-  { name: 'Client Admin', description: 'Full access to all CRM modules for this tenant' },
-  { name: 'Sales Rep', description: 'Manage contacts, deals, and campaigns' },
-  { name: 'Technician', description: 'View contacts and service orders only' },
-  { name: 'Viewer', description: 'Read-only access to all modules' },
-];
+export async function seedSystemRoles(tenantId: string) {
+  console.log(`[Seed] Seeding system roles for tenant ${tenantId}...`);
 
-export async function seedRoles(tenantId: string): Promise<void> {
-  console.log(`[Seed] Creating default roles for tenant: ${tenantId}`);
-  // TODO: insert DEFAULT_ROLES into a Roles table once schema is extended
-  // For now, roles are stored as strings on the User model
+  const systemRoles = [
+    {
+      name: Role.ADMIN,
+      description: 'Full administrative access to all features and settings within the tenant.',
+      isSystemRole: true,
+    },
+    {
+      name: Role.SUPER_USER,
+      description: 'Advanced user with access to most features and settings, excluding sensitive billing operations.',
+      isSystemRole: true,
+    },
+    {
+      name: Role.USER,
+      description: 'Standard access for everyday operations, sales, and reporting.',
+      isSystemRole: true,
+    },
+    {
+      name: Role.RESTRICTED_USER,
+      description: 'Limited access, typically view-only or restricted to specific assigned records.',
+      isSystemRole: true,
+    },
+  ];
+
+  for (const role of systemRoles) {
+    await prisma.roleDefinition.upsert({
+      where: {
+        tenantId_name: {
+          tenantId,
+          name: role.name,
+        },
+      },
+      update: {
+        description: role.description,
+        isSystemRole: role.isSystemRole,
+      },
+      create: {
+        tenantId,
+        name: role.name,
+        description: role.description,
+        isSystemRole: role.isSystemRole,
+      },
+    });
+  }
+}
+
+// ── Standalone runner ─────────────────────────────────────────────────────
+if (require.main === module) {
+  const tenantId = process.argv[2];
+  if (!tenantId) {
+    console.error('Usage: ts-node roles.seed.ts <tenantId>');
+    process.exit(1);
+  }
+  
+  seedSystemRoles(tenantId)
+    .catch((err) => { console.error('[Seed] Error:', err); process.exit(1); })
+    .finally(() => prisma.$disconnect());
 }

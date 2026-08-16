@@ -1,0 +1,41 @@
+# render.yaml — Render deployment configuration for LeadCRM backend
+# Docs: https://render.com/docs/infrastructure-as-code
+#
+# IMPORTANT: Set the following env vars in the Render dashboard (not here):
+#   DATABASE_URL             — Render Internal DB URL (postgresql://...@<internal-host>/...)
+#   JWT_SECRET               — strong random string, min 32 chars
+#   ALLOWED_ORIGINS          — https://lead-crm-frontend-pi.vercel.app
+#   APP_URL                  — https://lead-crm-frontend-pi.vercel.app
+#   NODE_ENV                 — production
+#   SYSTEM_ADMIN_EMAIL       — admin@gmail.com
+#   SYSTEM_ADMIN_PASSWORD    — admin123
+#   DEMO_MODE                — true
+#   DEV_SEED_EMAILS          — admin@gmail.com,super@leadcrm.com,admin@democorp.com,bob@democorp.com,guest@democorp.com
+#   SKIP_DEMO_TENANTS        — true  (skip faker tenant generation in production)
+#   RESEND_API_KEY           — (optional) your Resend API key for email delivery
+
+services:
+  - type: web
+    name: leadcrm-backend
+    runtime: node
+    rootDir: backend
+
+    # Install deps, generate Prisma client, compile TypeScript
+    buildCommand: >
+      npm install &&
+      npx prisma generate &&
+      npx tsc
+
+    # Apply migrations then seed demo accounts then start the server
+    # - prisma migrate deploy: safe for production (no data loss, no resets)
+    # - prisma db seed: idempotent — upserts only, safe on every deploy
+    # - SKIP_DEMO_TENANTS=true: skip the faker 10-tenant generator in production
+    startCommand: >
+      npx prisma migrate deploy &&
+      SKIP_DEMO_TENANTS=true npx prisma db seed &&
+      node dist/server.js
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # All secret env vars must be set in the Render dashboard — never committed here

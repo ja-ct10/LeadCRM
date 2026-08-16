@@ -1,10 +1,12 @@
-﻿'use client';
+'use client';
 
 import { uuid } from '@/lib/utils';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
+import { useFilterUrlSync } from '@/shared/hooks/use-filter-url-sync';
+import { useDebounce } from '@/shared/hooks/use-debounce';
 import { toast } from 'sonner';
 import { 
   Plus, MoreHorizontal, X, Building, Calendar, 
@@ -19,7 +21,9 @@ import {
 import {
   DndContext,
   DragOverlay,
-  closestCorners,
+  closestCenter,
+  pointerWithin,
+  rectIntersection,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -29,6 +33,7 @@ import {
   DragEndEvent,
   defaultDropAnimationSideEffects,
   useDroppable,
+  type CollisionDetection,
 } from '@dnd-kit/core';
 import {
   arrayMove,
@@ -46,7 +51,6 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell
 } from '@/shared/components/charts/ChartComponents';
 import { TrendingUp, AlertTriangle } from 'lucide-react';
-import { TrelloFilter } from '@/shared/components/trello-filter';
 import EmptyState from '@/shared/components/empty-state';
 import ForecastBar from './forecast-bar';
 import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
@@ -100,8 +104,7 @@ const DealCardContent = ({ deal, assignedUser, canDrag = false, isAutomatedOnly 
       <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
         {deal.value > 0 && (
           <span className="inline-flex items-center gap-1 bg-green-50 text-green-700 dark:bg-green-500/10 dark:text-green-400 border border-green-200 dark:border-green-500/20 px-2 py-0.5 rounded text-xs font-semibold shrink-0">
-            <DollarSign size={12} />
-            {deal.value.toLocaleString()}
+            ₱{deal.value.toLocaleString()}
           </span>
         )}
         <span className={`inline-flex items-center text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0
@@ -161,10 +164,11 @@ const SortableDealCard = ({ deal, assignedUser, onClick, canDrag = true, isAutom
   });
 
   const style = {
-    transform: CSS.Translate.toString(transform),
-    transition,
-    opacity: isDragging ? 0.3 : 1,
-    zIndex: isDragging ? 0 : 1,
+    transform: CSS.Transform.toString(transform),
+    transition: isDragging ? 'none' : transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 999 : 1,
+    cursor: isDragging ? 'grabbing' : 'pointer',
   };
 
   const daysSinceUpdate = Math.floor((new Date().getTime() - new Date(deal.lastStageChangeDate || deal.updatedAt || deal.createdAt || Date.now()).getTime()) / (1000 * 3600 * 24));
@@ -180,16 +184,14 @@ const SortableDealCard = ({ deal, assignedUser, onClick, canDrag = true, isAutom
   }
 
   return (
-    <motion.div
+    <div
       ref={setNodeRef}
       style={style}
-      layoutId={`deal-card-${deal.id}`}
-      transition={{ type: 'spring', damping: 26, stiffness: 180 }}
       onClick={() => onClick(deal)}
-      className={`p-4 rounded-xl border transition-all cursor-pointer group relative ${
+      className={`p-4 rounded-xl border transition-colors cursor-pointer group relative select-none ${
         isDragging 
-          ? 'border-blue-500/50 bg-blue-500/5 ring-2 ring-blue-500/20' 
-          : `${isRotting || isAging ? '' : 'bg-white dark:bg-slate-950'} ${borderStyle} shadow-sm hover:shadow-md hover:-translate-y-0.5`
+          ? 'border-blue-500/50 bg-blue-500/5 ring-2 ring-blue-500/20 shadow-2xl' 
+          : `${isRotting || isAging ? '' : 'bg-white dark:bg-slate-950'} ${borderStyle} shadow-sm hover:shadow-md`
       }`}
     >
       <DealCardContent 
@@ -200,35 +202,7 @@ const SortableDealCard = ({ deal, assignedUser, onClick, canDrag = true, isAutom
         attributes={attributes} 
         listeners={listeners} 
       />
-    </motion.div>
-  );
-};
-
-const DroppableTab = ({ pipeline, isActive, count, dotColor, onClick }: any) => {
-  const { isOver, setNodeRef } = useDroppable({
-    id: pipeline.id,
-    data: {
-      type: 'Pipeline',
-      pipeline,
-    },
-  });
-
-  return (
-    <button 
-      ref={setNodeRef}
-      onClick={onClick}
-      className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap border ${
-        isActive 
-          ? 'bg-gray-50 dark:bg-white/[0.05] text-slate-900 dark:text-white border-gray-300 dark:border-white/[0.1] shadow-sm' 
-          : isOver 
-            ? 'bg-blue-500/20 text-blue-400 border-blue-500/30 scale-105' 
-            : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-white/[0.02] border-transparent'
-      }`}
-    >
-      <div className={`w-2 h-2 rounded-full ${dotColor}`}></div>
-      {pipeline.name}
-      <span className="bg-gray-50 dark:bg-white/[0.05] text-slate-700 dark:text-slate-300 text-xs px-2 py-0.5 rounded-full">{count}</span>
-    </button>
+    </div>
   );
 };
 
@@ -245,11 +219,11 @@ const DroppableStage = ({ stage, children, stageValue, count, isDraggingAny, isA
   return (
     <div 
       ref={setNodeRef} 
-      className={`w-80 flex flex-col bg-white dark:bg-white/[0.02] rounded-2xl border flex-shrink-0 max-h-full backdrop-blur-sm transition-all duration-300 ${
+      className={`w-80 flex flex-col bg-white dark:bg-white/[0.02] rounded-2xl border flex-shrink-0 max-h-full backdrop-blur-sm transition-all duration-200 ${
         isOver 
-          ? 'border-blue-500/60 bg-blue-500/[0.08] shadow-[0_0_30px_rgba(59,130,246,0.15)] scale-[1.02] z-10' 
+          ? 'border-blue-500/60 bg-blue-500/[0.08] shadow-[0_0_30px_rgba(59,130,246,0.2)] scale-[1.02] z-10 ring-2 ring-blue-500/30' 
           : isDraggingAny
-            ? 'border-blue-500/20 bg-blue-500/[0.02] ring-2 ring-blue-500/10'
+            ? 'border-blue-500/20 bg-blue-500/[0.02]'
             : 'border-gray-200 dark:border-white/[0.05]'
       }`}
     >
@@ -259,7 +233,9 @@ const DroppableStage = ({ stage, children, stageValue, count, isDraggingAny, isA
             <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: stage.color }} aria-hidden="true" />
           )}
           <div>
-            <h3 className="font-semibold text-slate-900 dark:text-white text-base group-hover:text-blue-400 transition-colors">{stage.name}</h3>
+            <h3 className={`font-semibold text-base transition-colors ${isOver ? 'text-blue-600 dark:text-blue-400' : 'text-slate-900 dark:text-white'}`}>
+              {stage.name}
+            </h3>
             {stageValue > 0 && (
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">₱{stageValue.toLocaleString()}</p>
             )}
@@ -479,7 +455,11 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
   }, [pipelines, activePipelineId]);
   
   // Modern Deal Views & Advanced Funnel Filtering System
+  const { getParam, getArrayParam, updateParams } = useFilterUrlSync();
+
   const [viewMode, setViewMode] = useState<'kanban' | 'table' | 'list'>(() => {
+    const urlView = getParam('view') as 'kanban' | 'table' | 'list';
+    if (urlView) return urlView;
     return (localStorage.getItem('pipeline_view_mode') as any) || 'kanban';
   });
   const handleViewModeChange = (mode: 'kanban' | 'table' | 'list') => {
@@ -491,9 +471,9 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
   const [collapsedSwimlanes] = useState<string[]>([]);
   
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
-  const [filterStatus, setFilterStatus] = useState<string>('all'); // all, open, won, lost
-  const [filterStages, setFilterStages] = useState<string[]>([]);
-  const [filterStaff, setFilterStaff] = useState<string[]>([]);
+  const [filterStatus, setFilterStatus] = useState<string>(() => getParam('status') || 'all'); // all, open, won, lost
+  const [filterStages, setFilterStages] = useState<string[]>(() => getArrayParam('stages'));
+  const [filterStaff, setFilterStaff] = useState<string[]>(() => getArrayParam('staff'));
   const [filterLeadSource, setFilterLeadSource] = useState<string>('');
   const [filterLeadSourceOp, setFilterLeadSourceOp] = useState<string>('contains'); // equals, contains, starts, ends, notequals
   
@@ -525,13 +505,26 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
   const [filterTags, setFilterTags] = useState<string>('');
   const [filterTagsOp, setFilterTagsOp] = useState<string>('contains');
 
-  const [filterPriority, setFilterPriority] = useState<string[]>([]);
+  const [filterPriority, setFilterPriority] = useState<string[]>(() => getArrayParam('priority'));
   
   // Table sorting states
   const [tableSortField, setTableSortField] = useState<string>('title');
   const [tableSortAsc, setTableSortAsc] = useState<boolean>(true);
   
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(() => getParam('search'));
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
+
+  // Sync state to URL
+  useEffect(() => {
+    updateParams({
+      view: viewMode !== 'kanban' ? viewMode : null,
+      search: debouncedSearchQuery || null,
+      status: filterStatus !== 'all' ? filterStatus : null,
+      stages: filterStages,
+      staff: filterStaff,
+      priority: filterPriority,
+    });
+  }, [viewMode, debouncedSearchQuery, filterStatus, filterStages, filterStaff, filterPriority, updateParams]);
 
   const getActiveFiltersCount = () => {
     let count = 0;
@@ -635,6 +628,9 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
   const [editingPipeline, setEditingPipeline] = useState<Pipeline | null>(null);
   const [newPipelineName, setNewPipelineName] = useState('');
   const [activeDeal, setActiveDeal] = useState<Deal | null>(null);
+  // Maps dealId → stageId for optimistic column position during drag
+  // Cleared on dragEnd so the real data takes over after persistence
+  const [optimisticStageMap, setOptimisticStageMap] = useState<Record<string, string>>({});
   const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
   const [dealToDelete, setDealToDelete] = useState<any>(null);
   const [isDeleteDealModalOpen, setIsDeleteDealModalOpen] = useState(false);
@@ -656,13 +652,39 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 5,
+        // Require 8px movement before initiating drag — prevents accidental drags on click
+        distance: 8,
       },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  /**
+   * Custom collision detection for a multi-container kanban.
+   *
+   * Strategy (per dnd-kit best-practice for kanban boards):
+   *  1. First, try pointerWithin — if the pointer is inside a droppable, use that.
+   *     This gives accurate column-level targeting when dragging to an empty column.
+   *  2. Fall back to rectIntersection — catches cases where the pointer exits a
+   *     container boundary but the drag rect still overlaps a target.
+   *  3. Fall back to closestCenter as a last resort so something always matches.
+   *
+   * This avoids the main `closestCorners` issue: on wide kanban columns, corners
+   * can be geometrically closer to the wrong column, causing cards to jump columns
+   * unexpectedly when dragging near edges.
+   */
+  const customCollisionDetection: CollisionDetection = React.useCallback((args) => {
+    // Pointer-within check first (most accurate for column drops)
+    const pointerCollisions = pointerWithin(args);
+    if (pointerCollisions.length > 0) return pointerCollisions;
+    // Rect intersection fallback
+    const intersections = rectIntersection(args);
+    if (intersections.length > 0) return intersections;
+    // Closest center as final fallback
+    return closestCenter(args);
+  }, []);
 
   const activePipeline = pipelines.find(p => p.id === activePipelineId);
   const allPipelineDeals = React.useMemo(() => {
@@ -721,8 +743,8 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
     let result = [...allPipelineDeals].filter(d => !d.isArchived);
 
     // 1. Live Search query (Title, Company, Contact)
-    if (searchQuery.trim()) {
-      const q = searchQuery.trim().toLowerCase();
+    if (debouncedSearchQuery.trim()) {
+      const q = debouncedSearchQuery.trim().toLowerCase();
       result = result.filter(d => 
         (d.title || '').toLowerCase().includes(q) || 
         (d.companyName || '').toLowerCase().includes(q) ||
@@ -732,10 +754,16 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
 
     // 2. Deal Status (Open, Won, Lost)
     if (filterStatus !== 'all') {
+      // Build flag map from stage definitions — never use name substring matching
+      const stageFlagMap: Record<string, { isWon: boolean; isLost: boolean }> = {};
+      activePipeline?.stages.forEach((s: Stage) => {
+        stageFlagMap[s.id] = { isWon: !!s.isWon, isLost: !!s.isLost };
+      });
       result = result.filter(d => {
-        const isWon = d.stageId === 'stage_won' || d.stageId.toLowerCase().includes('won');
-        const isLost = d.stageId === 'stage_lost' || d.stageId.toLowerCase().includes('lost');
-        if (filterStatus === 'won') return isWon;
+        const flags = stageFlagMap[d.stageId];
+        const isWon  = flags?.isWon  ?? false;
+        const isLost = flags?.isLost ?? false;
+        if (filterStatus === 'won')  return isWon;
         if (filterStatus === 'lost') return isLost;
         if (filterStatus === 'open') return !isWon && !isLost;
         return true;
@@ -821,6 +849,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
     return result;
   }, [
     allPipelineDeals, 
+    activePipeline,  // Added: needed for stage flag lookup in filterStatus
     searchQuery, 
     filterStatus, 
     filterStages, 
@@ -1063,32 +1092,128 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
     if (isAutomatedOnly) return;
     const { active } = event;
     const deal = deals.find(d => d.id === active.id);
-    if (deal && canEditDeal(deal)) setActiveDeal(deal);
+    if (deal && canEditDeal(deal)) {
+      setActiveDeal(deal);
+      // Clear any previous optimistic state
+      setOptimisticStageMap({});
+    }
   };
 
   const handleDragOver = (event: DragOverEvent) => {
-    // handleDragOver is intentionally a no-op for API calls.
-    // All actual persistence happens in handleDragEnd to avoid spamming
-    // the backend on every intermediate hover position during a drag.
-    // Visual feedback (drag overlay) is handled by DndContext / drag state.
     if (isAutomatedOnly) return;
     const { active, over } = event;
-    if (!over) return;
-    if (active.id === over.id) return;
+    if (!over || active.id === over.id) return;
+
+    const activeId = String(active.id);
+    const overId   = String(over.id);
+
+    const dragged = deals.find(d => d.id === activeId);
+    if (!dragged || !canEditDeal(dragged)) return;
+
+    // Resolve the target stage from either a stage droppable or a card in that stage
+    let targetStageId: string | null = null;
+
+    // First check if hovering over a stage column itself
+    const stageMatch = activePipeline?.stages.find((s: Stage) => s.id === overId);
+    if (stageMatch) {
+      targetStageId = stageMatch.id;
+    } else {
+      // Otherwise check if hovering over a deal card in a different column
+      const overDeal = deals.find(d => d.id === overId);
+      if (overDeal && overDeal.stageId !== dragged.stageId) {
+        targetStageId = overDeal.stageId;
+      }
+    }
+
+    // Apply optimistic update if target stage is different
+    if (targetStageId && targetStageId !== dragged.stageId) {
+      // Skip terminal stages — those open modals in dragEnd, not during drag
+      const targetStage = activePipeline?.stages.find((s: Stage) => s.id === targetStageId);
+      if (targetStage?.isWon || targetStage?.isLost) return;
+      
+      // Update optimistic map to show card in new column during drag
+      setOptimisticStageMap(prev => {
+        // Only update if different from current optimistic state
+        if (prev[activeId] !== targetStageId) {
+          return { ...prev, [activeId]: targetStageId! };
+        }
+        return prev;
+      });
+    }
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     if (isAutomatedOnly) return;
     const { active, over } = event;
-    setActiveDeal(null);
-
-    if (!over) return;
-
+    
     const activeId = active.id;
+    const activeDeal = deals.find(d => d.id === activeId);
+    
+    // Capture the optimistic target stage BEFORE clearing state
+    const optimisticTargetStage = activeDeal && optimisticStageMap[String(activeId)] 
+      ? optimisticStageMap[String(activeId)]
+      : null;
+    
+    setActiveDeal(null);
+    setOptimisticStageMap({});
+
+    if (!over) {
+      console.log('[Pipeline DnD] Drop cancelled - no target');
+      return;
+    }
+
     const overId = over.id;
 
-    const activeDeal = deals.find(d => d.id === activeId);
-    if (!activeDeal || !canEditDeal(activeDeal)) return;
+    if (!activeDeal || !canEditDeal(activeDeal)) {
+      console.log('[Pipeline DnD] Drop rejected - no deal or no permission');
+      return;
+    }
+
+    console.log('[Pipeline DnD] Dropping deal:', {
+      dealId: activeId,
+      dealTitle: activeDeal.title,
+      currentStage: activeDeal.stageId,
+      targetId: overId,
+      optimisticTargetStage,
+    });
+
+    // If dropped on itself AND we have an optimistic target, use that instead
+    if (activeId === overId && optimisticTargetStage && optimisticTargetStage !== activeDeal.stageId) {
+      console.log('[Pipeline DnD] Dropped on self but using optimistic target:', optimisticTargetStage);
+      const targetStage = activePipeline?.stages.find(s => s.id === optimisticTargetStage);
+      if (targetStage) {
+        // Handle terminal stages
+        if (targetStage.isLost || targetStage.name === 'Closed Lost') {
+          setDealBeingLost(activeDeal);
+          setIsLostReasonModalOpen(true);
+          setLostReason('');
+          return;
+        }
+        if (targetStage.isWon || targetStage.name === 'Closed Won') {
+          setDealBeingWon(activeDeal);
+          setTargetWonStageId(targetStage.id);
+          setIsHandoffModalOpen(true);
+          return;
+        }
+        // Move to the optimistic target stage
+        moveDealStage(String(activeId), optimisticTargetStage)
+          .then(() => {
+            const stageName = targetStage.name;
+            toast.success(`Deal moved to ${stageName}`);
+          })
+          .catch((err: unknown) => {
+            console.error('[Pipeline DnD] moveDealStage failed (optimistic):', err);
+            toast.error(err instanceof Error ? err.message : 'Failed to move deal');
+          });
+        return;
+      }
+    }
+
+    // If dropped on itself with no stage change, do nothing
+    if (activeId === overId) {
+      console.log('[Pipeline DnD] Dropped on self - no action');
+      return;
+    }
 
     const overIdStr = String(overId);
     let targetStageId = overIdStr;
@@ -1110,9 +1235,13 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
       // Cross-pipeline move: update pipeline first, then use moveDealStage for the stage change
       // Since pipelineId is no longer in UpdateDealSchema, we handle this as a special case
       // The backend moveDealStage already handles the deal update, so we call it directly
-      moveDealStage(String(activeId), firstStage.id).catch((err: unknown) => {
-        toast.error(err instanceof Error ? err.message : 'Failed to move deal to new pipeline');
-      });
+      moveDealStage(String(activeId), firstStage.id)
+        .then(() => {
+          toast.success(`Deal moved to ${targetPipeline.name} pipeline`);
+        })
+        .catch((err: unknown) => {
+          toast.error(err instanceof Error ? err.message : 'Failed to move deal to new pipeline');
+        });
       setActivePipelineId(targetPipeline.id);
       return;
     }
@@ -1150,9 +1279,14 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
           }
         }
 
-        moveDealStage(String(activeId), String(targetStageId)).catch((err: unknown) => {
-          toast.error(err instanceof Error ? err.message : 'Failed to move deal');
-        });
+        moveDealStage(String(activeId), String(targetStageId))
+          .then(() => {
+            toast.success(`Deal moved to ${overStage.name}`);
+          })
+          .catch((err: unknown) => {
+            console.error('[Pipeline DnD] moveDealStage failed:', err);
+            toast.error(err instanceof Error ? err.message : 'Failed to move deal');
+          });
       }
 
       // Handle swimlane property changes (priority, client) separately — these are NOT stage changes
@@ -1235,9 +1369,14 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
           }
         }
 
-        moveDealStage(String(activeId), overStageId).catch((err: unknown) => {
-          toast.error(err instanceof Error ? err.message : 'Failed to move deal');
-        });
+        moveDealStage(String(activeId), overStageId)
+          .then(() => {
+            toast.success(`Deal moved to ${overStage?.name}`);
+          })
+          .catch((err: unknown) => {
+            console.error('[Pipeline DnD] moveDealStage failed (cross-deal drop):', err);
+            toast.error(err instanceof Error ? err.message : 'Failed to move deal');
+          });
 
         // Swimlane property changes are separate from stage changes
         if (Object.keys(updates).length > 0) {
@@ -1341,79 +1480,192 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
 
 
   return (
-    <div className="h-full flex flex-col space-y-4 relative overflow-hidden">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
-        <div className="flex items-baseline gap-2.5 flex-wrap">
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Pipeline Management</h1>
-          <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">
-            — Track deals and stage velocity across sales pipelines
-          </span>
+    <motion.div 
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      className="h-full flex flex-col relative overflow-hidden"
+    >
+      {/* ── Redesigned Header ─────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <div>
+          <h1 className="text-[28px] font-extrabold text-[#0F172A] dark:text-white tracking-tight leading-tight">
+            Deals
+          </h1>
+          <p className="text-[13px] text-[#5A6B85] dark:text-slate-400 mt-0.5">
+            One workspace for the pipeline board, deal table and weighted forecast.
+          </p>
         </div>
-        
-        <div className="flex items-center gap-2 flex-wrap w-full md:w-auto justify-start md:justify-end">
-          <TooltipProvider>
-            {/* Automation Mode toggle */}
-            <UITooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={toggleAutomatedOnly}
-                  aria-label={isAutomatedOnly ? 'Automation Mode: Active' : 'Automation Mode: Off'}
-                  className={`h-9 w-9 flex items-center justify-center rounded-md border transition-all cursor-pointer active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 ${
-                    isAutomatedOnly
-                      ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800/60 shadow-xs'
-                      : 'bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  <Shield size={14} className={isAutomatedOnly ? 'text-blue-500' : 'text-slate-400'} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {isAutomatedOnly ? 'Automation Mode: Active (Workflows)' : 'Automation Mode: Off (Manual)'}
-              </TooltipContent>
-            </UITooltip>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Pipeline Selector */}
+          {pipelines.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] font-medium text-[#5A6B85] dark:text-slate-400">Pipeline</span>
+              <select
+                value={activePipelineId}
+                onChange={(e) => setActivePipelineId(e.target.value)}
+                className="h-9 px-3 pr-8 text-[13px] font-semibold text-[#0F172A] dark:text-white bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 cursor-pointer appearance-none"
+                style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%235A6B85\' stroke-width=\'2\'%3E%3Cpath d=\'m6 9 6 6 6-6\'/%3E%3C/svg%3E")', backgroundPosition: 'right 10px center', backgroundRepeat: 'no-repeat' }}
+              >
+                {pipelines.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
-            {canManagePipelines && (
-              <UITooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={() => setIsManagePipelinesModalOpen(true)}
-                    aria-label="Manage Pipelines"
-                    className="h-9 w-9 flex items-center justify-center text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-md hover:bg-slate-50 dark:hover:bg-slate-800 active:scale-95 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
-                  >
-                    <Settings size={14} className="text-slate-500 dark:text-slate-400" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>Manage Pipelines</TooltipContent>
-              </UITooltip>
-            )}
+          {/* New Pipeline */}
+          {canManagePipelines && (
+            <button
+              onClick={() => {
+                setPipelineModalStep('template');
+                setSelectedTemplateId('inquiry');
+                setNewPipelineName('');
+                setIsPipelineModalOpen(true);
+              }}
+              title="Create New Pipeline"
+              className="inline-flex items-center gap-1.5 h-9 px-3 text-[13px] font-medium text-[#0F172A] dark:text-slate-200 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+            >
+              <Plus size={14} />
+              <span className="hidden sm:inline">New Pipeline</span>
+            </button>
+          )}
 
-            {canCreateDeal && activePipeline && (
-              <UITooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={() => {
-                      setNewDeal({ ...newDeal, stageId: activePipeline?.stages?.[0]?.id || '' });
-                      setDealTitleTouched(false);
-                      setDealValueTouched(false);
-                      setIsModalOpen(true);
-                    }}
-                    aria-label="Add Deal/Ticket"
-                    className="h-9 w-9 flex items-center justify-center bg-blue-600 text-white rounded-md hover:bg-blue-700 active:scale-95 transition-all shadow-xs cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
-                  >
-                    <Plus size={15} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>Add Deal/Ticket</TooltipContent>
-              </UITooltip>
-            )}
-          </TooltipProvider>
+          {/* Manage Pipelines */}
+          {canManagePipelines && (
+            <button
+              onClick={() => setIsManagePipelinesModalOpen(true)}
+              title="Manage Pipelines"
+              aria-label="Manage Pipelines"
+              className="h-9 w-9 flex items-center justify-center text-[#5A6B85] dark:text-slate-400 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+            >
+              <Settings size={15} />
+            </button>
+          )}
+
+          {/* Import */}
+          <button className="inline-flex items-center gap-1.5 h-9 px-3.5 text-[13px] font-medium text-[#0F172A] dark:text-slate-200 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+            Import
+          </button>
+
+          {/* New Deal */}
+          {canCreateDeal && activePipeline && (
+            <button
+              onClick={() => {
+                setNewDeal({ ...newDeal, stageId: activePipeline?.stages?.[0]?.id || '' });
+                setDealTitleTouched(false);
+                setDealValueTouched(false);
+                setIsModalOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-semibold text-white bg-[#2563EB] hover:bg-[#1D4ED8] rounded-lg transition-colors shadow-sm"
+            >
+              <Plus size={14} /> New Deal
+              <ChevronDown size={13} className="ml-0.5 opacity-60" />
+            </button>
+          )}
         </div>
       </div>
 
+      {/* ── Saved View Tabs ───────────────────────────────────── */}
+      <div className="flex items-center gap-1 mb-3 border-b border-[#E4E9F0] dark:border-slate-700">
+        <button className="px-3 py-2 text-[13px] font-medium text-[#2563EB] dark:text-blue-400 relative">
+          All Deals
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#2563EB] dark:bg-blue-400 rounded-full" />
+        </button>
+        <button className="px-3 py-2 text-[13px] font-medium text-[#5A6B85] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-white transition-colors">
+          My Deals
+        </button>
+        <button className="px-2 py-2 text-[#5A6B85] hover:text-[#0F172A] dark:hover:text-white transition-colors">
+          <span className="text-lg leading-none">···</span>
+        </button>
+      </div>
 
-      {/* Revenue Forecast Bar */}
-      <ForecastBar deals={deals} pipelines={pipelines} />
+      {/* ── Toolbar ───────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        {/* Filter Toggle */}
+        <button
+          onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
+          className={`inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-semibold rounded-lg border transition-colors ${
+            isFilterPanelOpen
+              ? 'bg-[#2563EB] text-white border-[#2563EB]'
+              : 'bg-white dark:bg-slate-800 text-[#5A6B85] dark:text-slate-300 border-[#E4E9F0] dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
+          }`}
+        >
+          <SlidersHorizontal size={13} />
+          Filter
+        </button>
+
+        {/* Sort */}
+        <button className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium text-[#5A6B85] dark:text-slate-300 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+          <ArrowRight size={13} className="rotate-90" />
+          Sort
+        </button>
+
+        {/* View Switcher */}
+        <div className="inline-flex items-center bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg p-0.5">
+          <button
+            onClick={() => handleViewModeChange('kanban')}
+            title="Kanban View"
+            className={`p-1.5 rounded-md transition-colors ${viewMode === 'kanban' ? 'bg-[#2563EB] text-white shadow-sm' : 'text-[#5A6B85] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-white'}`}
+          >
+            <LayoutGrid size={15} />
+          </button>
+          <button
+            onClick={() => handleViewModeChange('list')}
+            title="List View"
+            className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-[#2563EB] text-white shadow-sm' : 'text-[#5A6B85] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-white'}`}
+          >
+            <List size={15} />
+          </button>
+          <button
+            onClick={() => handleViewModeChange('table')}
+            title="Table View"
+            className={`p-1.5 rounded-md transition-colors ${viewMode === 'table' ? 'bg-[#2563EB] text-white shadow-sm' : 'text-[#5A6B85] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-white'}`}
+          >
+            <Table size={15} />
+          </button>
+        </div>
+
+        {/* Automation Mode */}
+        <button
+          type="button"
+          onClick={toggleAutomatedOnly}
+          aria-label={isAutomatedOnly ? 'Automation Mode: Active' : 'Automation Mode: Off'}
+          className={`h-8 w-8 flex items-center justify-center rounded-lg border transition-all ${
+            isAutomatedOnly
+              ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 border-blue-200 dark:border-blue-800/60'
+              : 'bg-white dark:bg-slate-800 border-[#E4E9F0] dark:border-slate-700 text-[#5A6B85] hover:bg-slate-50'
+          }`}
+        >
+          <Shield size={13} />
+        </button>
+
+        {/* Refresh */}
+        <button className="p-1.5 text-[#5A6B85] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" aria-label="Refresh">
+          <RotateCcw size={15} />
+        </button>
+
+        <div className="flex-1" />
+
+        {/* Search */}
+        <div className="relative">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search deals..."
+            className="h-8 w-48 lg:w-56 pl-8 pr-3 text-[12px] rounded-lg border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0F172A] dark:text-slate-200 placeholder:text-[#5A6B85] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] transition-all"
+          />
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#5A6B85]" />
+        </div>
+
+        <button className="p-1.5 text-[#5A6B85] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" aria-label="Manage columns">
+          <SlidersHorizontal size={15} />
+        </button>
+      </div>
+
+      {/* ── Main Content (existing views below) ───────────────── */}
+      <div className="flex-1 min-h-0 flex flex-col space-y-4 overflow-hidden">
 
       {/* Manage Pipelines Modal */}
       {isManagePipelinesModalOpen && (
@@ -1512,47 +1764,6 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
           </div>
         </div>
       )}
-
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2">
-        <div className="flex bg-white dark:bg-white/[0.02] p-1 rounded-full border border-gray-200 dark:border-white/[0.05] backdrop-blur-xl overflow-x-auto max-w-full custom-scrollbar">
-          {pipelines.map((p, index) => {
-            const count = deals.filter(d => {
-              if (d.pipelineId !== p.id) return false;
-              if (!searchQuery.trim()) return true;
-              const q = searchQuery.toLowerCase().trim();
-              return (d.title || '').toLowerCase().includes(q) || 
-                     (d.companyName || '').toLowerCase().includes(q) ||
-                     (d.contactPerson || '').toLowerCase().includes(q);
-            }).length;
-            const colors = ['bg-blue-500', 'bg-emerald-500', 'bg-purple-500', 'bg-pink-500'];
-            const dotColor = colors[index % colors.length];
-            
-            return (
-              <DroppableTab 
-                key={p.id}
-                pipeline={p}
-                isActive={activePipelineId === p.id}
-                count={count}
-                dotColor={dotColor}
-                onClick={() => setActivePipelineId(p.id)}
-              />
-            )
-          })}
-        </div>
-        {canManagePipelines && (
-          <button 
-            onClick={() => {
-              setPipelineModalStep('template');
-              setSelectedTemplateId('inquiry');
-              setNewPipelineName('');
-              setIsPipelineModalOpen(true);
-            }}
-            className="flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white text-sm font-medium transition-colors whitespace-nowrap"
-          >
-            <Plus size={16} /> New Pipeline
-          </button>
-        )}
-      </div>
 
       {/* New Pipeline Modal — Template Picker */}
       {isPipelineModalOpen && (
@@ -1735,123 +1946,6 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
         </div>
       )}
 
-      {/* View Options & Advanced Funnel Filtering Bar */}
-      <div className="flex flex-col gap-4 p-4 bg-white dark:bg-slate-950/40 rounded-2xl border border-gray-200 dark:border-white/[0.05] shadow-sm">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="flex items-center gap-4 flex-1">
-            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-white/[0.02] p-1 rounded-xl border border-gray-200/50 dark:border-white/[0.05] w-fit">
-              <TooltipProvider>
-                <UITooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() => handleViewModeChange('kanban')}
-                      aria-label="Kanban View"
-                      className={`h-8 w-8 flex items-center justify-center rounded-lg transition-all ${
-                        viewMode === 'kanban'
-                          ? 'bg-white dark:bg-slate-950 text-blue-500 dark:text-blue-400 shadow-sm border border-gray-200 dark:border-white/[0.05]'
-                          : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
-                      }`}
-                    >
-                      <LayoutGrid size={13} />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>Kanban View</TooltipContent>
-                </UITooltip>
-                <UITooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() => handleViewModeChange('table')}
-                      aria-label="Table View"
-                      className={`h-8 w-8 flex items-center justify-center rounded-lg transition-all ${
-                        viewMode === 'table'
-                          ? 'bg-white dark:bg-slate-950 text-blue-500 dark:text-blue-400 shadow-sm border border-gray-200 dark:border-white/[0.05]'
-                          : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
-                      }`}
-                    >
-                      <Table size={13} />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>Table View</TooltipContent>
-                </UITooltip>
-                <UITooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() => handleViewModeChange('list')}
-                      aria-label="List View"
-                      className={`h-8 w-8 flex items-center justify-center rounded-lg transition-all ${
-                        viewMode === 'list'
-                          ? 'bg-white dark:bg-slate-950 text-blue-500 dark:text-blue-400 shadow-sm border border-gray-200 dark:border-white/[0.05]'
-                          : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
-                      }`}
-                    >
-                      <List size={13} />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>List View</TooltipContent>
-                </UITooltip>
-              </TooltipProvider>
-            </div>
-
-
-          </div>
-
-          {/* Core Pipeline Search query */}
-          <div className="flex-1 w-full lg:w-[32rem] flex items-center justify-end gap-3 shrink-0">
-            <div className="flex-1 w-full relative flex items-center bg-slate-50 dark:bg-slate-900/50 hover:bg-white dark:hover:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl transition-all duration-200 focus-within:bg-white dark:focus-within:bg-slate-900 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/80 shadow-sm">
-              <div className="pl-3.5 flex items-center gap-2 shrink-0 py-2.5">
-                <Search size={15} className="text-slate-400 dark:text-slate-500" />
-              </div>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search pipeline deals, clients, or contacts..."
-                className="w-full pl-1.5 pr-10 py-2 text-sm bg-transparent text-slate-800 dark:text-slate-200 focus:outline-none placeholder-slate-400 dark:placeholder-slate-500"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
-            
-            <div className="shrink-0">
-               <TrelloFilter
-                 searchTerm={searchQuery}
-                 setSearchTerm={setSearchQuery}
-                 statuses={[
-                   { id: 'open', label: 'Open', color: 'bg-emerald-500' },
-                   { id: 'won', label: 'Won', color: 'bg-blue-500' },
-                   { id: 'lost', label: 'Lost', color: 'bg-amber-500' }
-                 ]}
-                 selectedStatuses={filterStatus === 'all' ? [] : [filterStatus]}
-                 setSelectedStatuses={(s) => setFilterStatus(s.length > 0 ? s[0] : 'all')}
-                 members={users.filter(u => u.role === 'Sales Rep' || u.role === 'Client Admin').map(u => ({ id: u.id, label: `${u.firstName} ${u.lastName}` }))}
-                 selectedMembers={filterStaff}
-                 setSelectedMembers={setFilterStaff}
-                 labelsTitle="Priority"
-                 labels={[
-                   { id: 'High', label: 'High Priority', color: 'bg-rose-500' },
-                   { id: 'Medium', label: 'Medium Priority', color: 'bg-amber-500' },
-                   { id: 'Low', label: 'Low Priority', color: 'bg-blue-500' }
-                 ]}
-                 selectedLabels={filterPriority}
-                 setSelectedLabels={setFilterPriority}
-               />
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-
       {/* Conditional Rendering of Views: Kanban, Table, or List */}
 
       {/* Apply Template Banner — shown when pipeline has only generic/blank stages */}
@@ -1897,7 +1991,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
       {viewMode === 'kanban' && (
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCorners}
+          collisionDetection={customCollisionDetection}
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
@@ -1906,7 +2000,10 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
             <div className="flex-1 overflow-x-auto pb-4 custom-scrollbar">
               <div className="flex gap-6 h-full min-w-max items-start">
                 {(activePipeline?.stages || []).map((stage: any) => {
-                  const stageDeals = pipelineDeals.filter(d => d.stageId === stage.id);
+                  // Apply optimistic stage override for visual feedback during drag
+                  const stageDeals = pipelineDeals
+                    .map(d => optimisticStageMap[d.id] ? { ...d, stageId: optimisticStageMap[d.id] } : d)
+                    .filter(d => d.stageId === stage.id);
                   const stageValue = stageDeals.reduce((acc, d) => acc + d.value, 0);
                   
                   return (
@@ -1935,8 +2032,12 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                             />
                           ))}
                           {stageDeals.length === 0 && (
-                            <div className="h-24 border-2 border-dashed border-gray-200 dark:border-white/[0.05] rounded-xl flex items-center justify-center text-slate-500 text-sm bg-white/[0.01]">
-                              Drop deals here
+                            <div className={`h-24 border-2 border-dashed rounded-xl flex items-center justify-center text-sm transition-all ${
+                              !!activeDeal 
+                                ? 'border-blue-400 dark:border-blue-500/50 bg-blue-50 dark:bg-blue-500/5 text-blue-600 dark:text-blue-400 font-medium' 
+                                : 'border-gray-200 dark:border-white/[0.05] bg-white/[0.01] text-slate-500'
+                            }`}>
+                              {!!activeDeal ? '↓ Drop deal here' : 'No deals in this stage'}
                             </div>
                           )}
                         </div>
@@ -1948,17 +2049,17 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
             </div>
           ) : null}
 
-          <DragOverlay dropAnimation={{
-            sideEffects: defaultDropAnimationSideEffects({
-              styles: {
-                active: {
-                  opacity: '0.5',
-                },
-              },
-            }),
-          }}>
+          <DragOverlay
+            dropAnimation={{
+              duration: 200,
+              easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)',
+              sideEffects: defaultDropAnimationSideEffects({
+                styles: { active: { opacity: '0.4' } },
+              }),
+            }}
+          >
             {activeDeal ? (
-              <div className="bg-white dark:bg-slate-950 p-4 rounded-xl border border-blue-500/50 shadow-2xl flex flex-col gap-3 w-80 scale-105 rotate-2">
+              <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border-2 border-blue-500/60 shadow-[0_20px_60px_rgba(0,0,0,0.3)] flex flex-col gap-3 w-80 rotate-1 cursor-grabbing">
                 <DealCardContent 
                   deal={activeDeal} 
                   assignedUser={users?.find((u: any) => u.id === activeDeal.assignedUserId)} 
@@ -2027,11 +2128,14 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                         <div className="font-semibold text-slate-905 dark:text-white text-xs group-hover:text-blue-500 transition-colors">
                           {deal.title}
                         </div>
-                        {deal.tags && (
-                          <div className="flex gap-1 mt-1">
-                            {(deal.tags || '').split(',').map((t: string) => t.trim() && (
+                        {deal.tags && deal.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {(Array.isArray(deal.tags)
+                              ? deal.tags
+                              : String(deal.tags).split(',')
+                            ).map((t: string) => t.trim()).filter(Boolean).map((t: string) => (
                               <span key={t} className="bg-slate-100 dark:bg-white/[0.05] text-slate-500 text-[9px] font-bold tracking-wide uppercase px-1.5 py-0.5 rounded">
-                                {t.trim()}
+                                {t}
                               </span>
                             ))}
                           </div>
@@ -2534,7 +2638,8 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
         />
       )}
 
-    </div>
+      </div>{/* end main content wrapper */}
+    </motion.div>
   );
 }
 

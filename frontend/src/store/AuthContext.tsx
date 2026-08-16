@@ -2,6 +2,7 @@
 
 import { uuid } from '@/lib/utils';
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { signIn as nextAuthSignIn, signOut as nextAuthSignOut } from 'next-auth/react';
 import { User, Tenant } from './types';
 import { MOCK_USERS, MOCK_TENANTS } from './mockData';
 import { authApi } from '@/shared/services/auth.api';
@@ -15,7 +16,7 @@ interface AuthContextType {
   tenant: Tenant | null;
   isLoading: boolean;
   login: (email: string, password?: string) => Promise<boolean>;
-  verifyOtp: (email: string, code: string) => Promise<boolean>;
+  loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   registerTenant: (tenantData: any, adminData: any) => Promise<boolean>;
   registerGuestAccount: (guestData: any) => Promise<boolean>;
@@ -23,6 +24,13 @@ interface AuthContextType {
   confirmPasswordReset: (token: string, password: string) => Promise<boolean>;
   switchRole: (role: string) => void;
   updateProfile: (profileData: Partial<User>) => void;
+  /**
+   * Switch to a demo/seeded account by email.
+   * - Mock mode: direct login — no password or OTP needed.
+   * - Real API mode: calls login directly with credentials.
+   * Returns true on success, false on failure.
+   */
+  switchDemoAccount: (email: string, password: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -81,25 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      // Step 1: verify credentials + send OTP
-      await authApi.sendOtp(email, password ?? '');
-      return true; // signals OTP was sent — UI should show OTP step
-    } catch (err: unknown) {
-      if (process.env.NODE_ENV !== 'production') {
-        // eslint-disable-next-line no-console
-        console.error('[AuthContext] login failed:', err instanceof Error ? err.message : err);
-      }
-      return false;
-    }
-  };
-
-  // ── Verify OTP + complete login ────────────────────────────────────
-  const verifyOtp = async (email: string, code: string): Promise<boolean> => {
-    if (USE_MOCK_AUTH) {
-      return mockLogin(email);
-    }
-    try {
-      const res = await authApi.verifyOtp(email, code);
+      const res = await authApi.login({ email, password: password ?? '' });
       if (res?.data?.user) {
         const apiUser = res.data.user as unknown as User;
         setUser(apiUser);
@@ -112,9 +102,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (err: unknown) {
       if (process.env.NODE_ENV !== 'production') {
         // eslint-disable-next-line no-console
-        console.error('[AuthContext] verifyOtp failed:', err instanceof Error ? err.message : err);
+        console.error('[AuthContext] login failed:', err instanceof Error ? err.message : err);
       }
-      throw err; // re-throw so UI can show the specific error message
+      return false;
     }
   };
 
@@ -126,7 +116,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let foundUser = allUsers.find((u: User) => u.email === email);
 
     // Fallback: reset to mock data if demo account not found
-    const DEMO_EMAILS = ['admin@democorp.com', 'bob@democorp.com', 'super@leadcrm.com', 'guest@democorp.com'];
+    const DEMO_EMAILS = [
+      'admin@gmail.com',
+      'super@leadcrm.com',
+      'admin@democorp.com',
+      'bob@democorp.com',
+      'guest@democorp.com',
+    ];
     if (!foundUser && DEMO_EMAILS.includes(email)) {
       allUsers   = MOCK_USERS;
       allTenants = MOCK_TENANTS;
@@ -153,15 +149,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
+  // ── Login with Google (NextAuth OAuth flow) ──────────────────────
+  /**
+   * Triggers the NextAuth Google OAuth redirect flow.
+   * NextAuth will:
+   *   1. Redirect to Google consent screen
+   *   2. On success, call our signIn callback which posts to /auth/oauth/google
+   *   3. The backend sets the LeadCRM HttpOnly JWT cookie
+   *   4. NextAuth redirects to callbackUrl
+   *
+   * After the redirect completes, the page re-mounts and restoreSession()
+   * re-hydrates AuthContext from the new cookie via /auth/me.
+   *
+   * In mock mode, Google sign-in is not available.
+   */
+  const loginWithGoogle = async (): Promise<void> => {
+    if (USE_MOCK_AUTH) return;
+    // callbackUrl is a fallback — the NextAuth redirect callback overrides it
+    // based on role once the OAuth bridge returns the user's role.
+    // callbackUrl must be '/' so AuthGuard intercepts it and applies the
+    // onboarding gate before redirecting to /dashboard or /onboarding.
+    await nextAuthSignIn('google', { callbackUrl: '/' });
+  };
+
   // ── Logout ────────────────────────────────────────────────────────
   const logout = async (): Promise<void> => {
     if (!USE_MOCK_AUTH) {
+      // Revoke the LeadCRM backend session + clear HttpOnly JWT cookie
       try { await authApi.logout(); } catch { /* ignore — clear local state regardless */ }
+      // Also clear the NextAuth JWT cookie (used by Google OAuth flow)
+      try { await nextAuthSignOut({ redirect: false }); } catch { /* non-critical */ }
     }
     setUser(null);
     setTenant(null);
     localStorage.removeItem('leadcrm_user');
     localStorage.removeItem('leadcrm_tenant');
+    // Clear onboarding flags so the next user on this browser sees the
+    // full onboarding flow (keys must not leak across accounts).
+    localStorage.removeItem('leadcrm_onboarding_complete');
+    localStorage.removeItem('leadcrm_needs_company_setup');
+    // Clear any saved post-login redirect so a new user doesn't inherit the
+    // previous session's destination (e.g. System Admin → /admin/dashboard).
+    sessionStorage.removeItem('leadcrm_redirect_after_login');
   };
 
   // ── Register tenant ────────────────────────────────────────────────
@@ -193,7 +222,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         firstName: adminData.firstName,
         lastName:  adminData.lastName,
         email:     adminData.email,
-        role:      'Client Admin',
+        role:      'Admin',
         status:    'active',
       };
 
@@ -230,19 +259,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return true; // Simplified mock
     } else {
       try {
+        // Register the guest account
         await authApi.registerGuest({
           firstName: guestData.firstName,
           lastName: guestData.lastName,
           email: guestData.email,
           password: guestData.password,
+          companyName: guestData.companyName,
+          industry: guestData.industry,
+          companySize: guestData.companySize,
+          businessWebsite: guestData.businessWebsite,
         });
+
+        // Send email verification OTP
+        await authApi.sendRegistrationOtp(guestData.email);
+
         return true;
       } catch (err: unknown) {
-        if (process.env.NODE_ENV !== 'production') {
-          // eslint-disable-next-line no-console
-          console.error('[AuthContext] registerGuestAccount failed:', err instanceof Error ? err.message : err);
-        }
-        return false;
+        // eslint-disable-next-line no-console
+        console.error('[AuthContext] registerGuestAccount failed:', err instanceof Error ? err.message : err);
+        // Re-throw the error so the UI can display it
+        throw err;
       }
     }
   };
@@ -289,6 +326,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('leadcrm_user', JSON.stringify(updated));
   };
 
+  // ── Switch demo account (works both mock + real API) ───────────────
+  // Mock mode  → direct mockLogin (no password needed, instant switch).
+  // Real API   → calls login() directly with credentials.
+  const switchDemoAccount = async (email: string, password: string): Promise<boolean> => {
+    if (USE_MOCK_AUTH) {
+      return mockLogin(email);
+    }
+    try {
+      const ok = await login(email, password);
+      return ok;
+    } catch (err: unknown) {
+      if (process.env.NODE_ENV !== 'production') {
+        // eslint-disable-next-line no-console
+        console.error('[AuthContext] switchDemoAccount failed:', err instanceof Error ? err.message : err);
+      }
+      return false;
+    }
+  };
+
   // ── Update profile ────────────────────────────────────────────────
   const updateProfile = (profileData: Partial<User>): void => {
     if (!user) return;
@@ -305,7 +361,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, tenant, isLoading, login, verifyOtp, logout, registerTenant, registerGuestAccount, requestPasswordReset, confirmPasswordReset, switchRole, updateProfile }}>
+    <AuthContext.Provider value={{ user, tenant, isLoading, login, loginWithGoogle, logout, registerTenant, registerGuestAccount, requestPasswordReset, confirmPasswordReset, switchRole, updateProfile, switchDemoAccount }}>
       {children}
     </AuthContext.Provider>
   );

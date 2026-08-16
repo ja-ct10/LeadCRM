@@ -4,14 +4,13 @@
  */
 
 export const PATHNAME_TO_PATH: Record<string, string> = {
+  '/onboarding':                   'onboarding',
   '/dashboard':                    'dashboard',
-  '/crm/contacts':                 'contacts',
   '/crm/leads':                    'leads',
-  '/crm/customers':                'customers',
+  '/crm/contacts':                 'contacts',
   '/crm/accounts':                 'accounts',
-  '/crm/companies':                'accounts',  // legacy redirect — same module
   '/crm/deals':                    'deals',
-  '/crm/pipeline':                 'pipeline',  // legacy — redirects to deals board view
+  '/crm/pipeline':                 'pipeline',
   '/automation/workflows':         'workflows',
   '/marketing/campaigns':          'campaigns',
   '/reporting':                    'reports',
@@ -27,20 +26,25 @@ export const PATHNAME_TO_PATH: Record<string, string> = {
   '/billing/client':               'client-billing',
   '/administration/audit':         'audit-log',
   '/operations/taskboard':         'tasks',
+  '/inbox':                        'inbox',
+  '/notifications':                'notifications',
   '/admin/dashboard':              'admin-dashboard',
   '/admin/clients':                'admin-clients',
   '/admin/pricing':                'admin-pricing',
   '/admin/billing':                'admin-billing',
   '/admin/environments':           'admin-environments',
   '/admin/audit':                  'admin-audit-log',
+  '/admin/payments':               'admin-payments',
+  '/admin/revenue':                'admin-revenue',
+  '/admin/refunds':                'admin-refunds',
 };
 
 // Reverse map — canonical pathname for each path (first match wins)
 export const PATH_TO_PATHNAME: Record<string, string> = {
+  'onboarding':          '/onboarding',
   'dashboard':           '/dashboard',
   'contacts':            '/crm/contacts',
   'leads':               '/crm/leads',
-  'customers':           '/crm/customers',
   'accounts':            '/crm/accounts',
   'deals':               '/crm/deals',
   'pipeline':            '/crm/pipeline',
@@ -59,10 +63,15 @@ export const PATH_TO_PATHNAME: Record<string, string> = {
   'client-billing':      '/billing/client',
   'audit-log':           '/administration/audit',
   'tasks':               '/operations/taskboard',
+  'inbox':               '/inbox',
+  'notifications':       '/notifications',
   'admin-dashboard':     '/admin/dashboard',
   'admin-clients':       '/admin/clients',
   'admin-pricing':       '/admin/pricing',
   'admin-billing':       '/admin/billing',
   'admin-environments':  '/admin/environments',
   'admin-audit-log':     '/admin/audit',
+  'admin-payments':      '/admin/payments',
+  'admin-revenue':       '/admin/revenue',
+  'admin-refunds':       '/admin/refunds',
 };

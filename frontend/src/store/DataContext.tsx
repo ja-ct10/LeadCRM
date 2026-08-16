@@ -1,10 +1,13 @@
-﻿'use client';
+'use client';
 
 import React, {
   createContext,
   useContext,
   useState,
   useEffect,
+  useCallback,
+  useRef,
+  useMemo,
   ReactNode,
 } from "react";
 import { useAuth } from "./AuthContext";
@@ -58,8 +61,8 @@ import { uuid } from "@/lib/utils";
 import { toast } from 'sonner';
 import { usersService } from "@/features/tenant/administration/users/services/users.service";
 import { USE_MOCK_DATA } from "@/lib/config";
-import { contactsService } from "@/features/tenant/crm/contacts/services/contacts.service";
-import { organizationsService } from "@/features/tenant/crm/companies/services/organizations.service";
+import { leadsService as contactsService } from "@/features/tenant/crm/leads/services/leads.service";
+import { accountsService as organizationsService } from "@/features/tenant/crm/accounts/services/accounts.service";
 import { pipelineService } from "@/features/tenant/crm/pipeline/services/pipeline.service";
 import { activitiesService } from "@/features/tenant/crm/activities/services/activities.service";
 import { tasksApi } from "@/shared/services/tasks.api";
@@ -69,6 +72,8 @@ import { templatesApi } from "@/shared/services/templates.api";
 import { serviceOrdersApi } from "@/shared/services/service-orders.api";
 import { invoicesApi } from "@/shared/services/invoices.api";
 import { auditApi } from "@/shared/services/audit.api";
+import { preferencesApi } from "@/shared/services/preferences.api";
+import type { ColumnConfigItem } from '@leadcrm/shared';
 import {
   toBackendCreateContact,
   toBackendUpdateContact,
@@ -135,6 +140,7 @@ interface DataContextType {
   deletePipeline: (id: string) => Promise<void>;
   addTask: (task: Omit<Task, "id" | "tenantId" | "createdAt">) => Promise<void>;
   updateTask: (id: string, updates: Partial<Task>) => Promise<void>;
+  deleteTask: (id: string) => Promise<void>;
   addServiceOrder: (so: Omit<ServiceOrder, "id" | "tenantId" | "createdAt">) => Promise<void>;
   updateServiceOrder: (id: string, updates: Partial<ServiceOrder>) => Promise<void>;
   addWorkflow: (
@@ -195,6 +201,12 @@ interface DataContextType {
   toggleAssetModule: () => void;
   isBillingModuleEnabled: boolean;
   toggleBillingModule: () => void;
+
+  // Column Preferences
+  columnPreferences: Record<string, ColumnConfigItem[]>;
+  columnPreferencesLoading: boolean;
+  saveColumnPreference: (module: string, columns: ColumnConfigItem[]) => Promise<void>;
+  resetColumnPreference: (module: string) => Promise<void>;
 }
 
 const MOCK_AUDIT_LO·S: AuditLog[] = [
@@ -277,6 +289,22 @@ const MOCK_AUDIT_LO·S: AuditLog[] = [
   },
 ];
 
+// ── Column Preferences: System Default (fallback when API unavailable) ────────
+const LEADS_SYSTEM_DEFAULT: ColumnConfigItem[] = [
+  { id: 'firstName', visible: true, order: 0 },
+  { id: 'lastName', visible: true, order: 1 },
+  { id: 'email', visible: true, order: 2 },
+  { id: 'phone', visible: true, order: 3 },
+  { id: 'companyName', visible: true, order: 4 },
+  { id: 'status', visible: true, order: 5 },
+  { id: 'source', visible: true, order: 6 },
+  { id: 'assignedUserId', visible: true, order: 7 },
+  { id: 'productInterest', visible: false, order: 8 },
+  { id: 'address', visible: false, order: 9 },
+  { id: 'createdAt', visible: true, order: 10 },
+  { id: 'accountId', visible: false, order: 11 },
+];
+
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export function DataProvider({ children }: { children: ReactNode }) {
@@ -311,6 +339,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [isBillingModuleEnabled, setIsBillingModuleEnabled] =
     useState<boolean>(false);
 
+  // ── Column Preferences State ───────────────────────────────────────────────
+  const [columnPreferences, setColumnPreferences] = useState<Record<string, ColumnConfigItem[]>>({});
+  const [columnPreferencesLoading, setColumnPreferencesLoading] = useState(false);
+  const columnPreferencesRef = useRef(columnPreferences);
+  columnPreferencesRef.current = columnPreferences;
+
   // Safely parse a localStorage value, falling back to `fallback` if the
   // stored value is missing, "undefined", or otherwise unparseable.
   const safeParse = <T,>(key: string, fallback: T): T => {
@@ -332,12 +366,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       try {
         // Batch 1 — core CRM (already migrated)
         const [contactsRes, orgsRes, dealsRes, pipelinesRes, activitiesRes, usersRes, rolesRes] = await Promise.all([
-          contactsService.getAll({ limit: 500 }),
-          organizationsService.getAll({ limit: 500 }),
-          pipelineService.getDeals(),
+          contactsService.getAll({ limit: 100 }),
+          organizationsService.getAll({ limit: 100 }),
+          pipelineService.getDeals(undefined, 100),
           pipelineService.getPipelines(),
-          activitiesService.getAll({ limit: 1000 }),
-          usersService.getAll({ limit: 500 }),
+          activitiesService.getAll({ limit: 50 }),
+          usersService.getAll({ limit: 200 }),
           usersService.getRoles(),
         ]);
 
@@ -362,55 +396,70 @@ export function DataProvider({ children }: { children: ReactNode }) {
         console.error('[DataContext] Failed to load CRM data from API:', err);
       }
 
-      // Batch 2 — operations, marketing, automation, billing, audit
+      // ── Column Preferences (Batch 1 addition) ─────────────────────────────
       try {
-        const [tasksRes, soRes, workflowsRes, campaignsRes, templatesRes, invoicesRes, auditRes] = await Promise.all([
-          tasksApi.list({ limit: 500 }),
-          serviceOrdersApi.list({ limit: 500 }),
-          workflowsApi.list({ limit: 500 }),
-          campaignsApi.list({ limit: 500 }),
-          templatesApi.list({ limit: 500 }),
-          invoicesApi.list({ limit: 500 }),
-          auditApi.list({ limit: 200 }),
-        ]);
-
-        setTasks((tasksRes?.data ?? []) as Task[]);
-        setServiceOrders((soRes?.data ?? []) as ServiceOrder[]);
-        setWorkflows((workflowsRes?.data ?? []) as Workflow[]);
-        setCampaigns((campaignsRes?.data ?? []) as Campaign[]);
-        setTemplates((templatesRes?.data ?? []) as Template[]);
-        setInvoices((invoicesRes?.data ?? []) as Invoice[]);
-
-        // Map backend audit shape → frontend AuditLog shape
-        const mappedLogs: AuditLog[] = (auditRes?.data ?? []).map((entry: any) => ({
-          id:        entry.id,
-          tenantId:  entry.tenantId ?? '',
-          userId:    entry.userId ?? entry.user?.id ?? 'system',
-          userEmail: entry.user?.email ?? '',
-          action:    entry.action,
-          details:   entry.changeset
-            ? JSON.stringify(entry.changeset)
-            : (entry.metadata ? JSON.stringify(entry.metadata) : entry.action),
-          timestamp: entry.createdAt,
-          ipAddress: entry.ipAddress ?? '',
-        }));
-        setAuditLogs(mappedLogs);
-      } catch (err) {
-        console.error('[DataContext] Failed to load secondary modules from API:', err);
+        setColumnPreferencesLoading(true);
+        const colResponse = await preferencesApi.getEffectiveColumns('leads');
+        setColumnPreferences(prev => ({ ...prev, leads: colResponse.data.columns }));
+      } catch {
+        // Fallback to system default — don't block table render
+        setColumnPreferences(prev => ({ ...prev, leads: LEADS_SYSTEM_DEFAULT }));
+      } finally {
+        setColumnPreferencesLoading(false);
       }
 
-      // Assets & Inventory have no backend yet — use localStorage fallback
+      // Batch 2 — deferred after initial paint so Batch 1 data renders first
+      // Assets & Inventory (localStorage) and module flags are synchronous — load them now
       const ast = safeParse("leadcrm_assets", MOCK_ASSETS ?? []);
       const inv = safeParse("leadcrm_inventory", MOCK_INVENTORY ?? []);
       setAssets(ast as Asset[]);
       setInventoryItems(inv);
-
-      // Module feature flags from localStorage
       setIsServiceModuleEnabled(safeParse("leadcrm_service_enabled", true));
       setIsAssetModuleEnabled(safeParse("leadcrm_asset_enabled", true));
       setIsBillingModuleEnabled(safeParse("leadcrm_billing_enabled", true));
 
+      // Defer network-heavy secondary modules to the next event-loop tick
+      // so Batch 1 data (contacts, deals, pipelines) is painted first.
+      setTimeout(async () => {
+        try {
+          const [tasksRes, soRes, workflowsRes, campaignsRes, templatesRes, invoicesRes, auditRes] = await Promise.all([
+            tasksApi.list({ limit: 100 }),
+            serviceOrdersApi.list({ limit: 100 }),
+            workflowsApi.list({ limit: 200 }),
+            campaignsApi.list({ limit: 100 }),
+            templatesApi.list({ limit: 100 }),
+            invoicesApi.list({ limit: 100 }),
+            auditApi.list({ limit: 50 }),
+          ]);
+
+          setTasks((tasksRes?.data ?? []) as Task[]);
+          setServiceOrders((soRes?.data ?? []) as ServiceOrder[]);
+          setWorkflows((workflowsRes?.data ?? []) as Workflow[]);
+          setCampaigns((campaignsRes?.data ?? []) as Campaign[]);
+          setTemplates((templatesRes?.data ?? []) as Template[]);
+          setInvoices((invoicesRes?.data ?? []) as Invoice[]);
+
+          // Map backend audit shape → frontend AuditLog shape
+          const mappedLogs: AuditLog[] = (auditRes?.data ?? []).map((entry: any) => ({
+            id:        entry.id,
+            tenantId:  entry.tenantId ?? '',
+            userId:    entry.userId ?? entry.user?.id ?? 'system',
+            userEmail: entry.user?.email ?? '',
+            action:    entry.action,
+            details:   entry.changeset
+              ? JSON.stringify(entry.changeset)
+              : (entry.metadata ? JSON.stringify(entry.metadata) : entry.action),
+            timestamp: entry.createdAt,
+            ipAddress: entry.ipAddress ?? '',
+          }));
+          setAuditLogs(mappedLogs);
+        } catch (err) {
+          console.error('[DataContext] Failed to load secondary modules from API:', err);
+        }
+      }, 0);
+
       return; // Exit — mock path below is skipped in real mode
+
     }
     // ── MOCK / LOCALSTORAGE MODE (unchanged below) ─────────────────────────────
 
@@ -558,6 +607,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setIsAssetModuleEnabled(assetEnabled);
     setIsBillingModuleEnabled(billingEnabled);
 
+    // Column preferences: use system default in mock mode
+    setColumnPreferences(prev => ({ ...prev, leads: LEADS_SYSTEM_DEFAULT }));
+
     if (user?.role === "System Admin") {
       setAuditLogs(logs);
       setOrganizations(orgs);
@@ -649,7 +701,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     // Only load data when we have a confirmed authenticated user
     if (!USE_MOCK_DATA && !user) return;
     loadData();
-  }, [user, tenant]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, tenant?.id]);
 
   // Delegates to extracted pure service: src/modules/workflows/services/workflowConditionEvaluator.ts
   const evaluateWorkflowConditionDirectly = (
@@ -901,7 +954,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }, 10000); // Check every 10 seconds
 
     return () => clearInterval(interval);
-  }, [pendingActions, workflows, deals, contacts]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingActions.length, workflows.length]);
 
   const saveAndSet = (key: string, data: any[], setter: any) => {
     const allData = JSON.parse(localStorage.getItem(key) || "[]");
@@ -1806,6 +1860,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (original) addAuditLog("Task Updated", `Modified task '${original.title}'.`);
   };
 
+  const deleteTask = async (id: string) => {
+    const original = tasks.find((t) => t.id === id);
+    if (!USE_MOCK_DATA) {
+      try {
+        await tasksApi.archive(id);
+        setTasks((prev) => prev.filter((t) => t.id !== id));
+        addAuditLog("Task Deleted", `Deleted task '${original?.title || id}'.`);
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Failed to delete task");
+      }
+      return;
+    }
+    const newTasks = tasks.filter((t) => t.id !== id);
+    saveAndSet("leadcrm_tasks", newTasks, setTasks);
+    addAuditLog("Task Deleted", `Deleted task '${original?.title || id}'.`);
+  };
+
   const addServiceOrder = async (soData: Omit<ServiceOrder, "id" | "tenantId" | "createdAt">) => {
     if (!tenant) return;
     if (!USE_MOCK_DATA) {
@@ -2677,83 +2748,127 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setIsBillingModuleEnabled(newState);
   };
 
+  // ── Column Preferences: Save & Reset ───────────────────────────────────────
+  const saveColumnPreference = useCallback(async (module: string, columns: ColumnConfigItem[]): Promise<void> => {
+    const previous = columnPreferencesRef.current[module];
+    // Optimistic update
+    setColumnPreferences(prev => ({ ...prev, [module]: columns }));
+    try {
+      const response = await preferencesApi.saveUserPreference(module, columns);
+      // Server response overwrites cache (cache subordination)
+      setColumnPreferences(prev => ({ ...prev, [module]: response.data.columns }));
+    } catch (err: unknown) {
+      // Rollback on failure
+      setColumnPreferences(prev => ({ ...prev, [module]: previous ?? [] }));
+      throw err instanceof Error ? err : new Error('Failed to save column preference');
+    }
+  }, []);
+
+  const resetColumnPreference = useCallback(async (module: string): Promise<void> => {
+    const previous = columnPreferencesRef.current[module];
+    try {
+      const response = await preferencesApi.deleteUserPreference(module);
+      // Server sends back fallback (tenant or system default)
+      setColumnPreferences(prev => ({ ...prev, [module]: response.data.columns }));
+    } catch (err: unknown) {
+      // Keep current state on failure
+      setColumnPreferences(prev => ({ ...prev, [module]: previous ?? [] }));
+      throw err instanceof Error ? err : new Error('Failed to reset column preference');
+    }
+  }, []);
+
+  // ── Memoize provider value to prevent re-render cascade to 38 consumers ──
+  const contextValue = useMemo(() => ({
+    organizations,
+    contacts,
+    deals,
+    pipelines,
+    workflows,
+    campaigns,
+    templates,
+    roles,
+    permissions,
+    users,
+    tenants,
+    tasks,
+    workflowExecutions,
+    workflowExecutionRuns,
+    workflowExecutionSteps,
+    activities,
+    addActivity,
+    invoices,
+    addInvoice,
+    updateInvoice,
+    removeInvoice,
+    pendingActions,
+    serviceOrders,
+    assets,
+    inventoryItems,
+    auditLogs,
+    addOrganization,
+    updateOrganization,
+    deleteOrganization,
+    addContact,
+    updateContact,
+    deleteContact,
+    addDeal,
+    updateDeal,
+    moveDealStage,
+    deleteDeal,
+    addPipeline,
+    updatePipeline,
+    deletePipeline,
+    addRole,
+    updateRole,
+    deleteRole,
+    resetDemoData,
+    approveTenant,
+    rejectTenant,
+    suspendTenant,
+    updateTenant,
+    addAuditLog,
+    addTask,
+    updateTask,
+    deleteTask,
+    addServiceOrder,
+    updateServiceOrder,
+    addWorkflow,
+    updateWorkflow,
+    deleteWorkflow,
+    reorderDeals,
+    addCampaign,
+    updateCampaign,
+    deleteCampaign,
+    addTemplate,
+    updateTemplate,
+    deleteTemplate,
+    isServiceModuleEnabled,
+    toggleServiceModule,
+    isAssetModuleEnabled,
+    toggleAssetModule,
+    isBillingModuleEnabled,
+    toggleBillingModule,
+    addUser,
+    updateUser,
+    deleteUser,
+    restoreRecord,
+    columnPreferences,
+    columnPreferencesLoading,
+    saveColumnPreference,
+    resetColumnPreference,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [
+    organizations, contacts, deals, pipelines, workflows, campaigns,
+    templates, roles, permissions, users, tenants, tasks,
+    workflowExecutions, workflowExecutionRuns, workflowExecutionSteps,
+    activities, invoices, pendingActions, serviceOrders, assets,
+    inventoryItems, auditLogs,
+    isServiceModuleEnabled, isAssetModuleEnabled, isBillingModuleEnabled,
+    columnPreferences, columnPreferencesLoading,
+  ]);
+
   return (
-    <DataContext.Provider
-      value={{
-        organizations,
-        contacts,
-        deals,
-        pipelines,
-        workflows,
-        campaigns,
-        templates,
-        roles,
-        permissions,
-        users,
-        tenants,
-        tasks,
-        workflowExecutions,
-        workflowExecutionRuns,
-        workflowExecutionSteps,
-        activities,
-        addActivity,
-        invoices,
-        addInvoice,
-        updateInvoice,
-        removeInvoice,
-        pendingActions,
-        serviceOrders,
-        assets,
-        inventoryItems,
-        auditLogs,
-        addOrganization,
-        updateOrganization,
-        deleteOrganization,
-        addContact,
-        updateContact,
-        deleteContact,
-        addDeal,
-        updateDeal,
-        moveDealStage,
-        deleteDeal,
-        addPipeline,
-        updatePipeline,
-        deletePipeline,
-        addRole,
-        updateRole,
-        deleteRole,
-        resetDemoData,
-        approveTenant,
-        rejectTenant,
-        suspendTenant,
-        updateTenant,
-        addAuditLog,
-        addTask,
-        updateTask,
-        addServiceOrder,
-        updateServiceOrder,
-        addWorkflow,
-        updateWorkflow,
-        deleteWorkflow,
-        reorderDeals,
-        addCampaign,
-        updateCampaign,
-        deleteCampaign,
-        addTemplate,
-        updateTemplate,
-        deleteTemplate,
-        isServiceModuleEnabled,
-        toggleServiceModule,
-        isAssetModuleEnabled,
-        toggleAssetModule,
-        isBillingModuleEnabled,
-        toggleBillingModule,
-        addUser,
-        updateUser,
-        deleteUser,
-        restoreRecord,
-      }}
-    >
+    <DataContext.Provider value={contextValue}>
       {children}
     </DataContext.Provider>
   );
@@ -2763,25 +2878,29 @@ export const useData = (options?: { includeArchived?: boolean }) => {
   const context = useContext(DataContext);
   if (context === undefined)
     throw new Error("useData must be used within a DataProvider");
-    
-  if (options?.includeArchived) {
-    return context;
-  }
 
-  return {
-    ...context,
-    contacts: context.contacts.filter((c) => !c.isArchived),
-    organizations: context.organizations.filter((o) => !o.isArchived),
-    deals: context.deals.filter((d) => !d.isArchived),
-    pipelines: context.pipelines.filter((p) => !p.isArchived),
-    workflows: context.workflows.filter((w) => !w.isArchived),
-    campaigns: context.campaigns.filter((c) => !c.isArchived),
-    templates: context.templates.filter((t) => !t.isArchived),
-    roles: context.roles.filter((r) => !r.isArchived),
-    users: context.users.filter((u) => !u.isArchived),
-    tasks: context.tasks ? context.tasks.filter((t) => !("isArchived" in t) || !(t as any).isArchived) : [],
-    serviceOrders: context.serviceOrders ? context.serviceOrders.filter((s) => !("isArchived" in s) || !(s as any).isArchived) : [],
-    assets: context.assets ? context.assets.filter((a) => !("isArchived" in a) || !(a as any).isArchived) : [],
-    inventoryItems: context.inventoryItems ? context.inventoryItems.filter((i) => !("isArchived" in i) || !(i as any).isArchived) : []
-  };
+  const includeArchived = options?.includeArchived ?? false;
+
+  // Memoize filtered views so consumers don't recompute on every render
+  return useMemo(() => {
+    if (includeArchived) return context;
+
+    return {
+      ...context,
+      contacts: context.contacts.filter((c) => !c.isArchived),
+      organizations: context.organizations.filter((o) => !o.isArchived),
+      deals: context.deals.filter((d) => !d.isArchived),
+      pipelines: context.pipelines.filter((p) => !p.isArchived),
+      workflows: context.workflows.filter((w) => !w.isArchived),
+      campaigns: context.campaigns.filter((c) => !c.isArchived),
+      templates: context.templates.filter((t) => !t.isArchived),
+      roles: context.roles.filter((r) => !r.isArchived),
+      users: context.users.filter((u) => !u.isArchived),
+      tasks: context.tasks ? context.tasks.filter((t) => !("isArchived" in t) || !(t as any).isArchived) : [],
+      serviceOrders: context.serviceOrders ? context.serviceOrders.filter((s) => !("isArchived" in s) || !(s as any).isArchived) : [],
+      assets: context.assets ? context.assets.filter((a) => !("isArchived" in a) || !(a as any).isArchived) : [],
+      inventoryItems: context.inventoryItems ? context.inventoryItems.filter((i) => !("isArchived" in i) || !(i as any).isArchived) : []
+    };
+  }, [context, includeArchived]);
 };
+

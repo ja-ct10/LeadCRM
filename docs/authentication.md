@@ -1,46 +1,114 @@
 # LeadCRM Authentication Architecture
 
-LeadCRM utilizes a decoupled authentication system designed for modern multi-tenant SaaS applications, emphasizing security, scalability, and seamless user experience.
+> **Last updated:** 2026-08-09
+> This document reflects the current implementation — OTP-based login, JWT in HttpOnly cookies, custom `AuthContext`. NextAuth is **not** used.
 
 ## Overview
 
-The authentication architecture is split between a **Next.js Frontend (NextAuth.js)** and an **Express.js Backend**, ensuring that session management is handled efficiently by the frontend framework, while business logic and data security remain firmly in the backend.
+Authentication uses a two-step OTP flow. Credentials are verified first, then a one-time code is emailed for the user to confirm. On success, the backend issues a JWT stored in an HttpOnly cookie. All session state lives in `AuthContext` — not in NextAuth.
 
-### Core Components
+## Auth Stack
 
-1. **NextAuth.js (Frontend Session Management)**
-   - Responsible for maintaining the user session in the browser.
-   - Uses the NextAuth `CredentialsProvider`.
-   - Stores a secure JWT containing basic user info (`id`, `email`, `role`, `tenantId`, `firstName`, `lastName`).
-   - Handles route protection via Next.js Middleware.
+| Concern | Implementation |
+|---|---|
+| Session token | JWT in HttpOnly cookie (`leadcrm_token`) |
+| Password hashing | `bcryptjs` (12 salt rounds) |
+| OTP storage | `LoginOtpToken` model — bcrypt hash of code, `attempts` counter, upsert on resend |
+| Email delivery | Resend (`onboarding@resend.dev` until custom domain verified) |
+| Frontend state | `AuthContext` (`store/AuthContext.tsx`) |
+| Route protection | `AuthGuard` component (client-side) — no Next.js middleware |
 
-2. **Express API (Backend Single Source of Truth)**
-   - Handles the actual authentication logic, password hashing (Argon2), and database lookups.
-   - Manages role-based access control (RBAC), tenant isolation, and security logging.
-   - Provides a stateless JWT for API authorization.
+## Login Flow (Two-Step OTP)
 
-## Authentication Flow
+```
+1. POST /auth/send-otp   { email, password }
+   → Validates credentials against DB
+   → Creates/updates LoginOtpToken (bcrypt hash, 5-minute expiry, upsert)
+   → Emails OTP code via Resend
+   → Returns { success: true } — no JWT yet
+   → AuthContext.login() returns true to mean "OTP sent"
 
-### 1. Login Process
-1. User submits credentials (email/password) on the `/login` page.
-2. NextAuth `signIn('credentials')` is triggered.
-3. NextAuth sends a request to the Express backend (`POST /api/v1/auth/login`).
-4. The Express backend verifies credentials against the database.
-5. If successful, the backend returns a payload containing user details and an API JWT.
-6. NextAuth serializes this payload into its own secure session JWT.
-7. User is redirected to the `/dashboard`.
+2. POST /auth/verify-otp  { email, otp }
+   → Validates code against LoginOtpToken.hash
+   → Increments attempts on failure (max 5)
+   → On success: issues JWT, sets HttpOnly cookie, returns full user object
+   → AuthContext.verifyOtp() sets user + tenant state
+```
 
-### 2. Protected API Requests
-When the Next.js frontend makes a request to the Express backend, it must include the API JWT (received during login) in the `Authorization` header. The backend validates this token before processing any request.
+## Session Restore
 
-## Security Practices
+```
+GET /auth/me
+  → Reads leadcrm_token cookie
+  → Queries User table by userId + tenantId from JWT (not raw JWT payload)
+  → Returns full user: id, email, role, firstName, lastName, tenantId
+  → AuthContext.restoreSession() called on app mount
+```
 
-- **Password Hashing:** Passwords are never stored in plain text. We utilize `argon2` for secure password hashing.
-- **Session Tokens:** NextAuth stores session data in HTTP-only, secure cookies, mitigating XSS attacks.
-- **Tenant Isolation:** Every user belongs to a specific `tenantId`. Backend queries are strictly scoped by this `tenantId` to prevent cross-tenant data leakage.
-- **Rate Limiting (Planned):** Prevents brute-force attacks on the login and registration endpoints.
+The `/auth/me` endpoint queries the database — it never returns the raw JWT payload. This confirms the user still exists and returns `firstName`/`lastName` which the JWT does not carry.
+
+## Frontend API Client
+
+All requests must include `credentials: 'include'` so the browser sends the HttpOnly cookie:
+
+```typescript
+// CORRECT — cookie sent automatically
+const res = await fetch(`${API_URL}${path}`, {
+  credentials: 'include',
+  headers: { 'Content-Type': 'application/json' },
+});
+
+// WRONG — no session is established without the cookie
+const res = await fetch(`${API_URL}${path}`);
+```
+
+## Password Reset Flow
+
+```
+POST /auth/forgot-password  { email }
+  → Creates PasswordResetToken (bcrypt hash, 1-hour expiry)
+  → Emails link: /reset-password?token=...
+  → app/reset-password/page.tsx must exist (Next.js returns 404 otherwise)
+
+POST /auth/reset-password   { token, newPassword }
+  → Validates token hash
+  → Updates User.passwordHash with new bcryptjs hash
+  → Invalidates token
+```
+
+**Dev note:** If `RESEND_FROM` / SMTP is unconfigured, the reset URL is logged to console in development and the flow continues — it does not crash.
+
+## Security Rules
+
+- JWT payload contains only: `userId`, `tenantId`, `role` — no PII
+- Logout invalidates the server-side session (cookie cleared)
+- Login rate-limited: 5 attempts / 15 min
+- Password reset rate-limited: 3 requests / hour
+- OTP brute-force: 5 attempts before token invalidated
+- Passwords never stored in plain text — bcryptjs 12 rounds
+- `tenantId` is included in the login response (`res.data.user.tenantId`) — required for `AuthContext` to set the `tenant` state
+
+## Required Backend Response Shape (Login)
+
+```typescript
+// /auth/verify-otp response — must include tenantId
+{
+  success: true,
+  data: {
+    user: {
+      id: string,
+      email: string,
+      role: string,
+      firstName: string,
+      lastName: string,
+      tenantId: string   // required — AuthContext reads this to set tenant
+    }
+  }
+}
+```
 
 ## Dependencies
 
-- **Frontend:** `next-auth`, `zod` (validation)
-- **Backend:** `jsonwebtoken`, `argon2`, `prisma`
+- **Backend:** `jsonwebtoken`, `bcryptjs`, `@prisma/client`, `resend`
+- **Frontend:** `AuthContext` (`store/AuthContext.tsx`), `AuthGuard` (`shared/providers/auth-guard.tsx`)
+- **Not used:** `next-auth`, `argon2`, `next-auth/react`, `getSession()`

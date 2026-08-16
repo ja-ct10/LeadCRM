@@ -13,9 +13,13 @@ export async function findAllTasks(tenantId: string, query: Record<string, unkno
     ...(query.priority       ? { priority:       String(query.priority) }       : {}),
     ...(query.assignedUserId ? { assignedUserId: String(query.assignedUserId) } : {}),
     ...(query.dealId         ? { dealId:         String(query.dealId) }         : {}),
-    ...(query.contactId      ? { contactId:      String(query.contactId) }      : {}),
-    ...(query.overdue === 'true' ? { dueDate: { lt: new Date() }, status: { notIn: ['completed', 'cancelled'] } } : {}),
-    ...(query.search ? { title: { contains: String(query.search), mode: 'insensitive' as const } } : {}),
+    ...(query.leadId         ? { leadId:         String(query.leadId) }         : {}),
+    ...(query.overdue === 'true'
+      ? { dueDate: { lt: new Date() }, status: { notIn: ['completed', 'cancelled'] } }
+      : {}),
+    ...(query.search
+      ? { title: { contains: String(query.search), mode: 'insensitive' as const } }
+      : {}),
   };
 
   const [data, total] = await Promise.all([
@@ -25,7 +29,7 @@ export async function findAllTasks(tenantId: string, query: Record<string, unkno
         assignedUser: { select: { id: true, firstName: true, lastName: true } },
         assignedBy:   { select: { id: true, firstName: true, lastName: true } },
         deal:         { select: { id: true, title: true } },
-        contact:      { select: { id: true, firstName: true, lastName: true } },
+        lead:         { select: { id: true, firstName: true, lastName: true } },
       },
     }),
     prisma.task.count({ where }),
@@ -42,7 +46,7 @@ export async function findTaskById(id: string, tenantId: string) {
       assignedBy:   { select: { id: true, firstName: true, lastName: true } },
       completedBy:  { select: { id: true, firstName: true, lastName: true } },
       deal:         { select: { id: true, title: true } },
-      contact:      { select: { id: true, firstName: true, lastName: true } },
+      lead:         { select: { id: true, firstName: true, lastName: true } },
     },
   });
 }
@@ -54,22 +58,28 @@ export async function createTask(tenantId: string, assignedById: string, dto: Cr
 }
 
 export async function updateTask(id: string, tenantId: string, dto: UpdateTaskDto) {
-  const existing = await prisma.task.findFirst({ where: { id, tenantId } });
-  if (!existing) return null;
-  return prisma.task.update({ where: { id }, data: dto });
+  try {
+    return await prisma.task.update({ where: { id, tenantId }, data: dto });
+  } catch {
+    return null;
+  }
 }
 
 export async function completeTask(id: string, tenantId: string, completedById: string) {
-  const existing = await prisma.task.findFirst({ where: { id, tenantId } });
-  if (!existing) return null;
-  return prisma.task.update({
-    where: { id },
-    data: { status: 'completed', completedAt: new Date(), completedById },
-  });
+  try {
+    return await prisma.task.update({
+      where: { id, tenantId },
+      data: { status: 'completed', completedAt: new Date(), completedById },
+    });
+  } catch {
+    return null;
+  }
 }
 
 export async function archiveTask(id: string, tenantId: string) {
-  const existing = await prisma.task.findFirst({ where: { id, tenantId } });
-  if (!existing) return null;
-  return prisma.task.update({ where: { id }, data: { isArchived: true } });
+  try {
+    return await prisma.task.update({ where: { id, tenantId }, data: { isArchived: true } });
+  } catch {
+    return null;
+  }
 }

@@ -115,10 +115,10 @@ export default function AuditLogsPage() {
   const filteredLogs = useMemo(() => {
     return auditLogs.filter(log => {
       // Search matching
-      const matchesSearch = 
-        log.action.toLowerCase().includes(search.toLowerCase()) ||
-        log.details.toLowerCase().includes(search.toLowerCase()) ||
-        log.userEmail.toLowerCase().includes(search.toLowerCase());
+      const matchesSearch = !search ||
+        (log.action ?? '').toLowerCase().includes(search.toLowerCase()) ||
+        (log.details ?? '').toLowerCase().includes(search.toLowerCase()) ||
+        (log.userEmail ?? '').toLowerCase().includes(search.toLowerCase());
 
       // Category matching
       let matchesCategory = true;
@@ -425,9 +425,6 @@ export default function AuditLogsPage() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
         <div className="flex items-baseline gap-2.5 flex-wrap">
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Audit Trail & Activity Log</h1>
-          <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">
-            — Track user mutations, state transitions, security changes, and system operations
-          </span>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           {/* Real-time Toggle Switch */}

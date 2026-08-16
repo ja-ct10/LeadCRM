@@ -2,7 +2,8 @@
 import React, { useState } from 'react';
 import {
   LayoutDashboard, Building2, CreditCard, Receipt,
-  Activity, LogOut, Shield, Sun, Moon, Menu, X
+  Activity, LogOut, Shield, Sun, Moon, Menu, X,
+  DollarSign, RotateCcw, BarChart2, Server,
 } from 'lucide-react';
 import { useAuth } from '@/store/AuthContext';
 import { useTheme } from '@/shared/hooks/use-theme';
@@ -19,7 +20,11 @@ const NAV_ITEMS = [
   { name: 'Client Management',  path: 'admin-clients',      icon: Building2 },
   { name: 'Pricing',            path: 'admin-pricing',      icon: CreditCard },
   { name: 'Billing',            path: 'admin-billing',      icon: Receipt },
-  { name: 'Audit Trail',        path: 'admin-audit-log',          icon: Activity },
+  { name: 'Payments',           path: 'admin-payments',     icon: DollarSign },
+  { name: 'Revenue',            path: 'admin-revenue',      icon: BarChart2 },
+  { name: 'Refunds',            path: 'admin-refunds',      icon: RotateCcw },
+  { name: 'Environments',       path: 'admin-environments', icon: Server },
+  { name: 'Audit Trail',        path: 'admin-audit-log',    icon: Activity },
 ];
 
 /**
@@ -28,7 +33,7 @@ const NAV_ITEMS = [
  */
 export default function AdminLayout({ children, currentPath, navigate }: AdminLayoutProps) {
   const { user, logout } = useAuth();
-  const { theme, toggleTheme } = useTheme();
+  const { mode, toggleTheme } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const handleLogout = () => {
@@ -139,9 +144,9 @@ export default function AdminLayout({ children, currentPath, navigate }: AdminLa
           <button
             onClick={toggleTheme}
             className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors rounded-full hover:bg-slate-100 dark:hover:bg-slate-800"
-            title={`Switch to ${theme === 'Light' ? 'Dark' : 'Light'} Mode`}
+            title={`Switch to ${mode === 'Light' ? 'Dark' : 'Light'} Mode`}
           >
-            {theme === 'Light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5 text-amber-400" />}
+            {mode === 'Light' || mode === 'Classic' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5 text-amber-400" />}
           </button>
         </header>
 

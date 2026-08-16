@@ -1,467 +1,543 @@
-﻿'use client';
+'use client';
 
-import React, { useState, useMemo } from "react";
-import { useData } from "@/store/DataContext";
-import { useAuth } from "@/store/AuthContext";
-import { Plus } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/shared/components/ui/tooltip";
-import { Contact, Organization } from "@/store/types";
-import { ClientTable } from "./contacts-table";
-import { ClientFilters } from "./contact-filters";
-import { ContactFormSheet } from "./contact-form";
-import { UnifiedDetailView } from "./contact-detail-view";
-import { ClientDetailSheet } from "./contact-detail-sheet";
-import { toast } from "sonner";
-import { usePagination } from '@/shared/hooks/use-pagination';
-import { Pagination } from '@/shared/components/ui/pagination';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useData } from '@/store/DataContext';
+import { useAuth } from '@/store/AuthContext';
+import { Contact } from '@/store/types';
+import { ModuleWorkspace, ViewType, StatusBadge } from '@/shared/components/crm';
+import { useHasPermission } from '@/shared/hooks/use-permissions';
+import { useColumnPreferences } from '@/shared/hooks/use-column-preferences';
+import { useFilterUrlSync } from '@/shared/hooks/use-filter-url-sync';
+import { useDebounce } from '@/shared/hooks/use-debounce';
+import { ManageColumnsDrawer } from '@/shared/components/manage-columns-drawer';
+import { CONTACTS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
+import { getResponsiveColumnClass, getColumnLabel, getDefaultVisibleColumns } from '@/shared/components/column-table-helpers';
+import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+import { SlidersHorizontal } from 'lucide-react';
+import type { ColumnConfigItem } from '@leadcrm/shared';
 
-export default function ContactsPage() {
-  const {
-    contacts,
-    addContact,
-    updateContact,
-    deleteContact,
-    deleteOrganization,
-    restoreRecord,
-    organizations,
-    users,
-    tasks,
-    deals,
-    campaigns,
-    addTask,
-    updateTask,
-  } = useData({ includeArchived: true });
+// ── Contacts Page ─────────────────────────────────────────────────────────────
+// Shows all contacts with activity flags, customer type, account links, deals
+
+export default function ContactsPage(): React.ReactElement {
+  const { contacts, organizations, deals, users } = useData();
   const { user } = useAuth();
+  const canCreate = useHasPermission('contacts.create');
+  const { getParam, getArrayParam, updateParams } = useFilterUrlSync();
 
-  // State
-  const [smartView, setSmartView] = useState("All Profiles");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [customerTypeFilter, setCustomerTypeFilter] = useState<
-    "All" | "Individual" | "Organization"
-  >("All");
-  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
-  const [selectedOwners, setSelectedOwners] = useState<string[]>([]);
-  const [selectedSources, setSelectedSources] = useState<string[]>([]);
-
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingLead, setEditingLead] = useState<Contact | undefined>();
-  const [viewingLead, setViewingLead] = useState<Contact | undefined>();
-  const [activeDetailTab, setActiveDetailTab] = useState<string>("overview");
-  const [detailSheetClient, setDetailSheetClient] = useState<{ client: Contact | Organization, type: 'individual' | 'organization' } | null>(null);
-
-  // Filter Data
-  const filteredLeads = useMemo(() => {
-    return contacts
-      .filter((l) => {
-        // Archived filter
-        if (smartView === "Archived") {
-          if (!l.isArchived) return false;
-        } else {
-          if (l.isArchived) return false;
-        }
-
-        // Smart View Filter
-        if (
-          smartView === "Leads" &&
-          !["Hot", "Warm", "Cold"].includes(l.status)
-        )
-          return false;
-        if (smartView === "Customers" && l.status !== "Closed") return false;
-        if (
-          smartView === "Individual Customers" &&
-          l.recordType !== "Individual"
-        )
-          return false;
-        if (
-          smartView === "Organization Customers" &&
-          l.recordType !== "Organization"
-        )
-          return false;
-
-        // CustomerType category filter
-        const type =
-          l.recordType ||
-          (l.organizationId || l.companyName ? "Organization" : "Individual");
-        if (customerTypeFilter !== "All" && type !== customerTypeFilter)
-          return false;
-
-        // Pipeline status filter mutli-select
-        if (selectedStatuses.length > 0 && !selectedStatuses.includes(l.status))
-          return false;
-
-        // Owner filter multi-select
-        if (selectedOwners.length > 0) {
-          let matched = false;
-          if (selectedOwners.includes("unassigned") && !l.assignedUserId) {
-            matched = true;
-          }
-          if (selectedOwners.includes("me") && l.assignedUserId === user?.id) {
-            matched = true;
-          }
-          if (l.assignedUserId && selectedOwners.includes(l.assignedUserId)) {
-            matched = true;
-          }
-          if (!matched) return false;
-        }
-
-        // Lead source filter multi-select
-        if (selectedSources.length > 0) {
-          const leadSrc = l.leadSource || "Other";
-          let matched = false;
-          for (const src of selectedSources) {
-            if (leadSrc.toLowerCase().includes(src.toLowerCase())) {
-              matched = true;
-              break;
-            }
-          }
-          if (!matched) return false;
-        }
-
-        // Search term
-        if (searchTerm) {
-          const search = searchTerm.toLowerCase();
-          const matchesName =
-            l.firstName?.toLowerCase().includes(search) ||
-            l.lastName?.toLowerCase().includes(search) ||
-            l.contactPerson?.toLowerCase().includes(search);
-          const matchesCompany = l.companyName?.toLowerCase().includes(search);
-          const matchesEmail = l.email?.toLowerCase().includes(search);
-          const matchesPhone = l.phone?.includes(search);
-          if (!matchesName && !matchesCompany && !matchesEmail && !matchesPhone)
-            return false;
-        }
-
-        return true;
-      })
-      .sort((a, b) => {
-        if (a.status === "Hot" && b.status !== "Hot") return -1;
-        if (b.status === "Hot" && a.status !== "Hot") return 1;
-        return (
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-      });
-  }, [
-    contacts,
-    customerTypeFilter,
-    searchTerm,
-    selectedStatuses,
-    selectedOwners,
-    selectedSources,
-    user?.id,
-    smartView,
-  ]);
-
+  // ── Column Preferences ────────────────────────────────────────────────
   const {
-    currentPage,
-    pageSize,
-    totalPages,
-    totalItems,
-    goToPage,
-    setPageSize,
-    paginateItems,
-  } = usePagination({
-    totalItems: filteredLeads.length,
-    initialPageSize: 25,
-    pageSizeOptions: [10, 25, 50, 100],
-    resetDeps: [searchTerm, customerTypeFilter, selectedStatuses, selectedOwners, selectedSources, smartView],
-  });
+    effectiveColumns,
+    isLoading: isColumnsLoading,
+    saveColumns,
+    resetColumns,
+  } = useColumnPreferences('contacts');
 
-  // Handlers
-  const handleAddNew = () => {
-    setEditingLead(undefined);
-    setIsFormOpen(true);
+  const [isManageColumnsOpen, setIsManageColumnsOpen] = useState(false);
+  const manageColumnsButtonRef = useRef<HTMLButtonElement>(null);
+
+  /** Visible columns sorted by order — drives table rendering */
+  const visibleColumns = useMemo((): ColumnConfigItem[] => {
+    if (effectiveColumns.length === 0) {
+      return getDefaultVisibleColumns(CONTACTS_COLUMN_REGISTRY);
+    }
+    return [...effectiveColumns]
+      .filter((col) => col.visible)
+      .sort((a, b) => a.order - b.order);
+  }, [effectiveColumns]);
+
+  // ── State (Synced with URL) ──────────────────────────────────────────
+  const [activeView, setActiveView] = useState<ViewType>(() => (getParam('view') as ViewType) || 'list');
+  const [activeTab, setActiveTab] = useState(() => getParam('tab') || 'all');
+  const [showFilters, setShowFilters] = useState(true);
+  const [searchTerm, setSearchTerm] = useState(() => getParam('search'));
+  const [filterSearchTerm, setFilterSearchTerm] = useState('');
+
+  // Multi-select stacked criteria
+  const [selectedSystemFilters, setSelectedSystemFilters] = useState<string[]>(() => getArrayParam('system'));
+  const [selectedCustomerTypes, setSelectedCustomerTypes] = useState<string[]>(() => getArrayParam('types'));
+  const [selectedOwners, setSelectedOwners] = useState<string[]>(() => getArrayParam('owners'));
+  const [selectedRelated, setSelectedRelated] = useState<string[]>(() => getArrayParam('related'));
+
+  const debouncedSearch = useDebounce(searchTerm, 300);
+
+  // Sync to URL
+  useEffect(() => {
+    updateParams({
+      tab: activeTab !== 'all' ? activeTab : null,
+      search: debouncedSearch || null,
+      view: activeView !== 'list' ? activeView : null,
+      system: selectedSystemFilters,
+      types: selectedCustomerTypes,
+      owners: selectedOwners,
+      related: selectedRelated,
+    });
+  }, [activeTab, debouncedSearch, activeView, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, updateParams]);
+
+  // ── Data ─────────────────────────────────────────────────────────────
+  const activeContacts = useMemo(
+    () => contacts.filter((c) => !c.isArchived),
+    [contacts],
+  );
+
+  const activeCustomersCount = useMemo(
+    () => activeContacts.filter((c) => c.customerType === 'Active Customer').length,
+    [activeContacts],
+  );
+
+  const filteredContacts = useMemo(() => {
+    let result = activeContacts;
+
+    // Tab filter
+    if (activeTab === 'my') {
+      result = result.filter((c) => c.assignedUserId === user?.id);
+    } else if (activeTab === 'active-customers') {
+      result = result.filter((c) => c.customerType === 'Active Customer');
+    }
+
+    // Search query
+    if (debouncedSearch) {
+      const term = debouncedSearch.toLowerCase();
+      result = result.filter(
+        (c) =>
+          (c.contactPerson ?? c.leadPerson ?? '').toLowerCase().includes(term) ||
+          (c.email ?? '').toLowerCase().includes(term) ||
+          (c.companyName ?? '').toLowerCase().includes(term),
+      );
+    }
+
+    // System Filters
+    if (selectedSystemFilters.includes('touched')) {
+      result = result.filter((c) => c.lastUpdated || c.updateStatus);
+    }
+    if (selectedSystemFilters.includes('untouched')) {
+      result = result.filter((c) => !c.lastUpdated && !c.updateStatus);
+    }
+
+    // Customer Types
+    if (selectedCustomerTypes.length > 0) {
+      result = result.filter((c) => selectedCustomerTypes.includes(c.customerType ?? 'Prospect'));
+    }
+
+    // Owners
+    if (selectedOwners.length > 0) {
+      result = result.filter((c) => selectedOwners.includes(c.assignedUserId ?? ''));
+    }
+
+    // Related (e.g. Has Deals)
+    if (selectedRelated.includes('has_deals')) {
+      result = result.filter((c) => deals.some(d => !d.isArchived && (d.contactId === c.id || (d.contactIds ?? []).includes(c.id))));
+    }
+
+    return result;
+  }, [activeContacts, activeTab, user?.id, debouncedSearch, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, deals]);
+
+  // ── Helpers ──────────────────────────────────────────────────────────
+  const getInitials = (contact: Contact): string => {
+    const name = contact.contactPerson ?? contact.leadPerson ?? contact.firstName ?? '';
+    const parts = name.split(' ');
+    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    return name.slice(0, 2).toUpperCase();
   };
 
-  const handleEdit = (contact: Contact) => {
-    setEditingLead(contact);
-    setIsFormOpen(true);
+  const getName = (contact: Contact): string => {
+    return contact.contactPerson ?? contact.leadPerson ?? (`${contact.firstName ?? ''} ${contact.lastName ?? ''}`.trim() || 'Unknown');
   };
 
-  const handleView = (contact: Contact, tab: string = "overview") => {
-    setActiveDetailTab(tab);
-    setViewingLead(contact);
+  const getSubtitle = (contact: Contact): string => {
+    return contact.jobTitle ?? '';
   };
 
-  const handleViewOrg = (org: Organization, tab: string = "overview") => {
-    setActiveDetailTab(tab);
-    setViewingLead({
-      id: org.id,
-      tenantId: org.tenantId,
-      companyName: org.name,
-      contactPerson: org.name,
-      recordType: "Organization",
-      status: "Active",
-      organizationId: org.id,
-      industry: org.industry,
-      size: org.size,
-      website: org.website,
-      taxId: org.taxId,
-      address: org.address,
-    } as any);
+  const getAccountName = (contact: Contact): string => {
+    if (contact.organizationId) {
+      const org = organizations.find((o) => o.id === contact.organizationId);
+      return org?.name ?? contact.companyName ?? '—';
+    }
+    return contact.companyName ?? '—';
   };
 
-  const handleSaveForm = async (data: Partial<Contact>) => {
-    try {
-      if (editingLead) {
-        await updateContact(editingLead.id, data);
-        toast.success("Profile updated successfully");
-        // Update viewing contact if it's the same one
-        if (viewingLead?.id === editingLead.id) {
-          setViewingLead({ ...viewingLead, ...data });
-        }
-      } else {
-        const contactPerson =
-          `${data.firstName || ""} ${data.lastName || ""}`.trim();
-        const newLeadParams: Omit<
-          Contact,
-          "id" | "tenantId" | "createdAt" | "score"
-        > = {
-          ...data,
-          recordType: data.recordType || "Individual",
-          companyName: data.companyName || "",
-          contactPerson: contactPerson || "Unnamed Lead",
-          jobTitle: data.jobTitle || "",
-          email: data.email || "",
-          phone: data.phone || "",
-          productInterests: data.productInterests || [],
-          leadSource: data.leadSource || "Added Manually",
-          estimatedValue: data.estimatedValue || 0,
-          assignedUserId: data.assignedUserId || "",
-          expectedCloseDate: data.expectedCloseDate || "",
-          notes: data.notes || "",
-          status: data.status || "Cold",
-        };
-        await addContact(newLeadParams);
-        toast.success("Profile created successfully");
+  const getCustomerType = (contact: Contact): string => {
+    return contact.customerType ?? 'Prospect';
+  };
+
+  const getCustomerTypeVariant = (type: string): 'success' | 'info' | 'purple' | 'neutral' => {
+    if (type === 'Active Customer') return 'success';
+    if (type === 'Prospect') return 'info';
+    if (type === 'Evaluator') return 'purple';
+    return 'neutral';
+  };
+
+  const getStatusVariant = (status: string): 'success' | 'info' | 'danger' | 'neutral' => {
+    if (status === 'Active') return 'success';
+    if (status === 'Inactive') return 'danger';
+    return 'neutral';
+  };
+
+  const getContactDeals = (contactId: string): number => {
+    return deals.filter((d) =>
+      !d.isArchived && (d.contactId === contactId || (d.contactIds ?? []).includes(contactId)),
+    ).length;
+  };
+
+  const getContactValue = (contactId: string): number => {
+    return deals
+      .filter((d) => !d.isArchived && (d.contactId === contactId || (d.contactIds ?? []).includes(contactId)))
+      .reduce((sum, d) => sum + (d.value ?? 0), 0);
+  };
+
+  // Activity flag helper - shows date when there's a recent task/activity
+  const getActivityDate = (contact: Contact): string | null => {
+    const created = contact.createdAt ? new Date(contact.createdAt) : null;
+    if (!created) return null;
+    const now = new Date();
+    const diffDays = Math.floor((now.getTime() - created.getTime()) / (1000 * 3600 * 24));
+    if (diffDays <= 14) {
+      return `${created.toLocaleDateString('en-US', { month: 'short' })} ${created.getDate()}`;
+    }
+    return null;
+  };
+
+  // ── Filter Groups ────────────────────────────────────────────────────
+  const touchedCount = activeContacts.filter((c) => c.lastUpdated || c.updateStatus).length;
+  const untouchedCount = activeContacts.length - touchedCount;
+
+  const filterGroups = useMemo(() => [
+    {
+      id: 'system',
+      label: 'System Defined Filters',
+      isExpanded: true,
+      items: [
+        { id: 'touched', label: 'Touched Records', count: touchedCount, isChecked: selectedSystemFilters.includes('touched') },
+        { id: 'untouched', label: 'Untouched Records', count: untouchedCount, isChecked: selectedSystemFilters.includes('untouched') },
+      ],
+    },
+    {
+      id: 'fields',
+      label: 'Filter By Fields',
+      isExpanded: true,
+      items: [
+        { id: 'type:Active Customer', label: 'Type: Active Customer', count: activeContacts.filter(c => c.customerType === 'Active Customer').length, isChecked: selectedCustomerTypes.includes('Active Customer') },
+        { id: 'type:Prospect', label: 'Type: Prospect', count: activeContacts.filter(c => c.customerType === 'Prospect').length, isChecked: selectedCustomerTypes.includes('Prospect') },
+        { id: 'type:Evaluator', label: 'Type: Evaluator', count: activeContacts.filter(c => c.customerType === 'Evaluator').length, isChecked: selectedCustomerTypes.includes('Evaluator') },
+        ...users.slice(0, 5).map(u => ({
+          id: `owner:${u.id}`,
+          label: `Owner: ${u.firstName} ${u.lastName}`,
+          count: activeContacts.filter(c => c.assignedUserId === u.id).length,
+          isChecked: selectedOwners.includes(u.id),
+        })),
+      ],
+    },
+    {
+      id: 'related',
+      label: 'Filter By Related Modules',
+      isExpanded: true,
+      items: [
+        { id: 'has_deals', label: 'Contacts with Deals', count: activeContacts.filter(c => deals.some(d => !d.isArchived && (d.contactId === c.id || (d.contactIds ?? []).includes(c.id)))).length, isChecked: selectedRelated.includes('has_deals') },
+      ],
+    },
+  ], [activeContacts, touchedCount, untouchedCount, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, users, deals]);
+
+  const handleFilterToggle = useCallback((groupId: string, itemId: string) => {
+    if (groupId === 'system') {
+      setSelectedSystemFilters(prev =>
+        prev.includes(itemId) ? prev.filter(x => x !== itemId) : [...prev, itemId]
+      );
+    } else if (groupId === 'fields') {
+      if (itemId.startsWith('type:')) {
+        const type = itemId.replace('type:', '');
+        setSelectedCustomerTypes(prev =>
+          prev.includes(type) ? prev.filter(x => x !== type) : [...prev, type]
+        );
+      } else if (itemId.startsWith('owner:')) {
+        const ownerId = itemId.replace('owner:', '');
+        setSelectedOwners(prev =>
+          prev.includes(ownerId) ? prev.filter(x => x !== ownerId) : [...prev, ownerId]
+        );
       }
-      setIsFormOpen(false);
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to save profile");
+    } else if (groupId === 'related') {
+      setSelectedRelated(prev =>
+        prev.includes(itemId) ? prev.filter(x => x !== itemId) : [...prev, itemId]
+      );
     }
-  };
-
-  const handleArchive = async (contact: Contact) => {
-    try {
-      await deleteContact(contact.id);
-      toast.success("Profile archived successfully");
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to archive profile");
-    }
-  };
-
-  const handleRestore = async (contact: Contact) => {
-    try {
-      await restoreRecord("Contact", contact.id);
-      toast.success("Profile restored successfully");
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to restore profile");
-    }
-  };
-
-  const handleArchiveOrg = async (org: any) => {
-    try {
-      await deleteOrganization(org.id);
-      toast.success("Organization archived successfully");
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to archive organization");
-    }
-  };
-
-  const handleRestoreOrg = (org: any) => {
-    restoreRecord("Organization", org.id);
-    toast.success("Organization restored successfully");
-  };
-
-  if (viewingLead) {
-    return (
-      <UnifiedDetailView
-        type={
-          viewingLead.recordType === "Organization"
-            ? "organization"
-            : "individual"
-        }
-        selectedItem={viewingLead}
-        initialTab={activeDetailTab}
-        users={users}
-        deals={deals}
-        tasks={tasks}
-        campaigns={campaigns || []}
-        currentUser={user}
-        updateContact={updateContact}
-        addTask={addTask}
-        updateTask={updateTask}
-        onClose={() => setViewingLead(undefined)}
-        handleSyncCompanyDetails={() => {}}
-      />
-    );
-  }
+  }, []);
 
   return (
-    <div className="w-full space-y-4">
-      {/* 1. Standardized Header Row */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1 border-b border-slate-200 dark:border-slate-800">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">
-              Client Profiles
-            </h1>
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
-              {filteredLeads.length} total
+    <>
+    <ModuleWorkspace
+      title="Contacts"
+      primaryActionLabel="Create Contact"
+      onPrimaryAction={() => toast.info('Contact creation coming soon')}
+      onImport={() => toast.info('Import coming soon')}
+      canCreate={canCreate}
+      availableViews={['list', 'tile', 'table', 'grid']}
+      activeView={activeView}
+      onViewChange={setActiveView}
+      savedTabs={[
+        { id: 'all', label: 'All Contacts' },
+        { id: 'my', label: 'My Contacts' },
+        { id: 'active-customers', label: 'Active Customers' },
+      ]}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      filterGroups={filterGroups}
+      onFilterToggle={handleFilterToggle}
+      showFilters={showFilters}
+      onToggleFilters={() => setShowFilters(!showFilters)}
+      filterSearchTerm={filterSearchTerm}
+      onFilterSearch={setFilterSearchTerm}
+      totalRecords={filteredContacts.length}
+      searchTerm={searchTerm}
+      onSearch={setSearchTerm}
+      searchPlaceholder="Search contacts..."
+      onSort={() => toast.info('Sort coming soon')}
+      onRefresh={() => toast.success('Refreshed')}
+      toolbarExtra={
+        <button
+          ref={manageColumnsButtonRef}
+          onClick={() => setIsManageColumnsOpen(true)}
+          className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium text-[#5A6B85] dark:text-slate-300 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+          aria-label="Manage columns"
+        >
+          <SlidersHorizontal size={13} />
+          Columns
+        </button>
+      }
+    >
+      {/* ── List / Table View — Dynamic Columns ─────────────────── */}
+      {(activeView === 'list' || activeView === 'table') && (
+        <div className="bg-white dark:bg-slate-800/40 border border-[#E4E9F0] dark:border-slate-700 rounded-xl overflow-hidden overflow-x-auto">
+          {/* Header */}
+          <div
+            className={cn(
+              'flex items-center border-b border-[#E4E9F0] dark:border-slate-700 bg-[#F6F8FB] dark:bg-slate-800/60 sticky top-0 z-10',
+              'text-[11.5px] font-semibold uppercase tracking-wide text-[#5A6B85] dark:text-slate-400 h-11 px-3',
+            )}
+          >
+            <label className="flex items-center justify-center w-10 shrink-0">
+              <input
+                type="checkbox"
+                className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-[#2563EB] focus:ring-[#2563EB]/20 cursor-pointer"
+                aria-label="Select all contacts"
+              />
+            </label>
+            {visibleColumns.map((col) => {
+              const responsiveClass = getResponsiveColumnClass(col.id, visibleColumns, CONTACTS_COLUMN_REGISTRY);
+              return (
+                <span key={col.id} className={cn('px-3 truncate flex-1 min-w-0', responsiveClass)}>
+                  {getColumnLabel(col.id, CONTACTS_COLUMN_REGISTRY)}
+                </span>
+              );
+            })}
+          </div>
+
+          {/* Rows */}
+          <div className="divide-y divide-[#E4E9F0] dark:divide-slate-700">
+            {filteredContacts.map((contact) => (
+              <div
+                key={contact.id}
+                className="flex items-center h-[52px] px-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors group"
+              >
+                {/* Checkbox */}
+                <label className="flex items-center justify-center w-10 shrink-0" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-[#2563EB] focus:ring-[#2563EB]/20 cursor-pointer"
+                    aria-label={`Select ${getName(contact)}`}
+                  />
+                </label>
+
+                {visibleColumns.map((col) => {
+                  const responsiveClass = getResponsiveColumnClass(col.id, visibleColumns, CONTACTS_COLUMN_REGISTRY);
+                  return (
+                    <div key={col.id} className={cn('px-3 min-w-0 flex-1', responsiveClass)}>
+                      {renderContactCell(col.id, contact)}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-center justify-between px-4 py-2.5 border-t border-[#E4E9F0] dark:border-slate-700 bg-[#F6F8FB] dark:bg-slate-800/60">
+            <span className="text-[12px] text-[#5A6B85]">
+              Total records <strong className="font-semibold text-[#0F172A] dark:text-white">{filteredContacts.length}</strong>
             </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Manage all your customer profiles, active leads, and corporate accounts in one place.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={handleAddNew}
-                  aria-label="Add Profile"
-                  className="h-9 w-9 flex items-center justify-center bg-blue-600 text-white rounded-md hover:bg-blue-700 active:scale-95 transition-all shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 cursor-pointer"
-                >
-                  <Plus size={15} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Add Profile</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-      </div>
-
-      {/* 2. Overview Operational KPI Strip */}
-      <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-lg p-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 text-xs">
-        <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
-          <span className="text-slate-500 dark:text-slate-400 font-medium">Total Profiles</span>
-          <div className="flex items-baseline gap-1.5 mt-1">
-            <span className="text-base font-bold text-slate-900 dark:text-white">{contacts.filter(c => !c.isArchived).length}</span>
-            <span className="text-[11px] text-slate-500">records</span>
+            <div className="flex items-center gap-2 text-[12px] text-[#5A6B85]">
+              <span>1 to {Math.min(filteredContacts.length, 25)}</span>
+              <button className="p-1 hover:text-[#0F172A] dark:hover:text-white transition-colors" aria-label="Previous page">&lt;</button>
+              <button className="p-1 hover:text-[#0F172A] dark:hover:text-white transition-colors" aria-label="Next page">&gt;</button>
+            </div>
           </div>
         </div>
-
-        <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
-          <span className="text-slate-500 dark:text-slate-400 font-medium">Active Leads</span>
-          <div className="flex items-baseline gap-1.5 mt-1">
-            <span className="text-base font-bold text-slate-900 dark:text-white">{contacts.filter(c => ['Hot', 'Warm', 'Cold'].includes(c.status) && !c.isArchived).length}</span>
-            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">In funnel</span>
-          </div>
-        </div>
-
-        <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
-          <span className="text-slate-500 dark:text-slate-400 font-medium">Converted Customers</span>
-          <div className="flex items-baseline gap-1 mt-1">
-            <span className="text-base font-bold text-slate-900 dark:text-white">{contacts.filter(c => c.status === 'Closed' && !c.isArchived).length}</span>
-            <span className="text-[11px] text-slate-500">closed</span>
-          </div>
-        </div>
-
-        <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
-          <span className="text-slate-500 dark:text-slate-400 font-medium">Individuals</span>
-          <div className="flex items-baseline gap-1 mt-1">
-            <span className="text-base font-bold text-slate-900 dark:text-white">{contacts.filter(c => (c.recordType === 'Individual' || (!c.recordType && !c.companyName)) && !c.isArchived).length}</span>
-            <span className="text-[11px] text-slate-500">accounts</span>
-          </div>
-        </div>
-
-        <div className="flex flex-col justify-between">
-          <span className="text-slate-500 dark:text-slate-400 font-medium">Organizations</span>
-          <div className="flex items-baseline gap-1.5 mt-1">
-            <span className="text-base font-bold text-purple-600 dark:text-purple-400">{contacts.filter(c => (c.recordType === 'Organization' || c.companyName) && !c.isArchived).length}</span>
-            <span className="text-[11px] text-slate-500">corporate</span>
-          </div>
-        </div>
-      </div>
-
-      {/* 3. Toolbar & Filters */}
-      <ClientFilters
-        searchTerm={searchTerm}
-        setSearchTerm={setSearchTerm}
-        customerTypeFilter={customerTypeFilter}
-        setCustomerTypeFilter={setCustomerTypeFilter}
-        selectedStatuses={selectedStatuses}
-        setSelectedStatuses={setSelectedStatuses}
-        selectedOwners={selectedOwners}
-        setSelectedOwners={setSelectedOwners}
-        selectedSources={selectedSources}
-        setSelectedSources={setSelectedSources}
-        usersList={users || []}
-        currentUserEmail={user?.email || ""}
-        smartView={smartView}
-        setSmartView={setSmartView}
-      />
-
-      {/* Table */}
-      <div className="bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
-        <ClientTable
-          data={paginateItems(filteredLeads)}
-          viewMode={smartView === "Organization Customers" ? "organizations" : "contacts"}
-          organizations={organizations}
-          onEdit={handleEdit}
-          onView={handleView}
-          onArchive={handleArchive}
-          onRestore={handleRestore}
-          onArchiveOrg={handleArchiveOrg}
-          onRestoreOrg={handleRestoreOrg}
-          onQuickView={(contact, tab) => handleView(contact, tab || 'overview')}
-          onQuickViewOrg={(org, tab) => handleViewOrg(org, tab || 'overview')}
-          showArchived={smartView === "Archived"}
-        />
-      </div>
-
-      <div className="mt-4">
-        <Pagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          pageSize={pageSize}
-          totalItems={totalItems}
-          pageSizeOptions={[10, 25, 50, 100]}
-          onPageChange={goToPage}
-          onPageSizeChange={setPageSize}
-        />
-      </div>
-
-
-      {/* Forms and Sheets */}
-      {isFormOpen && (
-        <ContactFormSheet
-          isOpen={isFormOpen}
-          initialData={editingLead}
-          onClose={() => setIsFormOpen(false)}
-          onSave={handleSaveForm}
-        />
       )}
 
-      {detailSheetClient && (
-        <ClientDetailSheet
-          isOpen={!!detailSheetClient}
-          onClose={() => setDetailSheetClient(null)}
-          client={detailSheetClient.client}
-          clientType={detailSheetClient.type}
-          onEdit={() => {
-            if (detailSheetClient.type === 'individual') {
-              setEditingLead(detailSheetClient.client as Contact);
-              setIsFormOpen(true);
-              setDetailSheetClient(null);
-            }
-          }}
-          onArchive={async (id, type) => {
-            try {
-              if (type === 'individual') {
-                await deleteContact(id);
-                toast.success("Profile archived successfully");
-              } else {
-                await deleteOrganization(id);
-                toast.success("Organization archived successfully");
-              }
-            } catch (err: unknown) {
-              toast.error(err instanceof Error ? err.message : "Failed to archive");
-            }
-          }}
-        />
+      {/* ── Tile View ─────────────────────────────────────────── */}
+      {activeView === 'tile' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {filteredContacts.map((contact) => (
+            <div
+              key={contact.id}
+              className="bg-white dark:bg-slate-800/60 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-4 cursor-pointer hover:shadow-md hover:border-[#2563EB]/30 transition-all"
+            >
+              <div className="flex items-start gap-3 mb-3">
+                <div className="w-10 h-10 rounded-full bg-teal-500 flex items-center justify-center text-white font-bold text-[11px] shrink-0">
+                  {getInitials(contact)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-semibold text-[#0F172A] dark:text-white truncate">
+                    {getName(contact)}
+                  </p>
+                  <p className="text-[11.5px] text-[#2563EB] dark:text-blue-400 truncate font-medium">
+                    {getAccountName(contact)}
+                  </p>
+                  <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 truncate mt-0.5">
+                    {contact.email ?? ''}
+                  </p>
+                </div>
+                <StatusBadge label={getCustomerType(contact)} variant={getCustomerTypeVariant(getCustomerType(contact))} dot={false} />
+              </div>
+              <div className="flex items-center justify-between pt-3 border-t border-[#E4E9F0] dark:border-slate-700">
+                <span className="text-[12px] text-[#5A6B85]">
+                  {getContactDeals(contact.id)} open · {formatCurrency(getContactValue(contact.id))}
+                </span>
+                <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-[9px] font-bold text-slate-500 dark:text-slate-300">
+                  {getInitials(contact).slice(0, 1)}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
-    </div>
+
+      {/* ── Grid View ─────────────────────────────────────────── */}
+      {activeView === 'grid' && (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5">
+          {filteredContacts.map((contact) => (
+            <div
+              key={contact.id}
+              className="bg-white dark:bg-slate-800/60 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-3 cursor-pointer hover:shadow-md transition-all flex items-center gap-2.5"
+            >
+              <div className="w-9 h-9 rounded-full bg-teal-500 flex items-center justify-center text-white font-bold text-[10px] shrink-0">
+                {getInitials(contact)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[12px] font-semibold text-[#0F172A] dark:text-white truncate">
+                  {getName(contact)}
+                </p>
+                <p className="text-[10.5px] text-[#5A6B85] dark:text-slate-400 truncate">
+                  {getAccountName(contact)}
+                </p>
+              </div>
+              <span className="shrink-0 text-[11px] font-semibold text-[#2563EB] bg-blue-50 dark:bg-blue-500/10 px-1.5 py-0.5 rounded-md">
+                {getContactDeals(contact.id)} deals
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </ModuleWorkspace>
+
+    {/* ── Manage Columns Drawer ───────────────────────────────── */}
+    <ManageColumnsDrawer
+      isOpen={isManageColumnsOpen}
+      onClose={() => setIsManageColumnsOpen(false)}
+      module="contacts"
+      registry={CONTACTS_COLUMN_REGISTRY}
+      effectiveColumns={effectiveColumns}
+      onSave={saveColumns}
+      onReset={resetColumns}
+      triggerRef={manageColumnsButtonRef}
+    />
+    </>
   );
+
+  // ── Dynamic cell renderer ──────────────────────────────────────────────
+  function renderContactCell(colId: string, contact: Contact): React.ReactNode {
+    switch (colId) {
+      case 'firstName':
+        return (
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center text-white font-bold text-[10px] shrink-0">
+              {getInitials(contact)}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-semibold text-[#0F172A] dark:text-white truncate group-hover:text-[#2563EB] transition-colors">
+                {contact.firstName ?? getName(contact).split(' ')[0] ?? '—'}
+              </p>
+            </div>
+          </div>
+        );
+      case 'lastName':
+        return (
+          <p className="text-[13px] text-[#0F172A] dark:text-slate-200 truncate">
+            {contact.lastName ?? getName(contact).split(' ').slice(1).join(' ') ?? '—'}
+          </p>
+        );
+      case 'email':
+        return (
+          <p className="text-[13px] text-[#0F172A] dark:text-slate-200 truncate">
+            {contact.email ?? '—'}
+          </p>
+        );
+      case 'phone':
+        return (
+          <p className="text-[13px] text-[#0F172A] dark:text-slate-200 truncate">
+            {contact.phone ?? '—'}
+          </p>
+        );
+      case 'companyName':
+        return (
+          <p className="text-[12.5px] text-[#2563EB] dark:text-blue-400 font-medium truncate">
+            {getAccountName(contact)}
+          </p>
+        );
+      case 'status':
+        return (
+          <StatusBadge
+            label={contact.status ?? 'Active'}
+            variant={getStatusVariant(contact.status ?? 'Active')}
+          />
+        );
+      case 'source':
+        return (
+          <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
+            {(contact as unknown as Record<string, unknown>).source as string ?? '—'}
+          </p>
+        );
+      case 'assignedUserId':
+        return (
+          <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
+            {contact.assignedUserId
+              ? (users.find((u) => u.id === contact.assignedUserId)
+                  ? `${users.find((u) => u.id === contact.assignedUserId)!.firstName} ${users.find((u) => u.id === contact.assignedUserId)!.lastName}`
+                  : '—')
+              : '—'}
+          </p>
+        );
+      case 'accountId':
+        return (
+          <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
+            {getAccountName(contact)}
+          </p>
+        );
+      case 'createdAt':
+        return (
+          <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
+            {contact.createdAt
+              ? new Date(contact.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+              : '—'}
+          </p>
+        );
+      default:
+        return <span className="text-[12px] text-[#5A6B85]">—</span>;
+    }
+  }
+}
+
+function formatCurrency(value: number): string {
+  if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`;
+  if (value >= 1000) return `$${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}k`;
+  return `$${value.toLocaleString()}`;
 }

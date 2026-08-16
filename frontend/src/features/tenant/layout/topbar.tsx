@@ -1,76 +1,167 @@
 'use client';
 
-import React from 'react';
-import { Menu, Bell, StickyNote, Sun, Moon } from 'lucide-react';
-import { useAuth } from '@/store/AuthContext';
-import { useData } from '@/store/DataContext';
-import { useTheme } from '@/shared/hooks/use-theme';
+import React, { useState, useEffect, useRef } from 'react';
+import { Menu, Bell, Mail, Settings, Plus } from 'lucide-react';
+import { useNotifications } from '@/features/tenant/notifications/hooks/use-notifications';
+import { getGmailStatus, fetchGmailEmails } from '@/features/tenant/inbox/services/gmail.service';
+import { useLayout, NAV_ITEMS } from './use-layout';
+import NotificationsDropdown from '@/features/tenant/notifications/ui/notifications-dropdown';
+import { GlobalOmnibox } from '@/shared/components/global-omnibox';
+import { UserProfileDropdown } from './user-profile-dropdown';
+import { cn } from '@/lib/utils';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface TopbarProps {
   onOpenSidebar: () => void;
-  onOpenNotes: () => void;
+  onOpenInbox: () => void;
 }
 
-export default function Topbar({ onOpenSidebar, onOpenNotes }: TopbarProps) {
-  const { user, switchRole } = useAuth();
-  const { resetDemoData, roles } = useData();
-  const { theme, toggleTheme, isDark } = useTheme();
+// ── Component ─────────────────────────────────────────────────────────────────
+
+export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): React.ReactElement {
+  const { unreadCount: notificationCount } = useNotifications();
+  const { currentPath, navigate } = useLayout();
+  const [inboxCount, setInboxCount] = useState(0);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const notificationButtonRef = useRef<HTMLButtonElement>(null!);
+
+  // Fetch unread email count for inbox badge
+  useEffect(() => {
+    let isMounted = true;
+    getGmailStatus()
+      .then((status) => {
+        if (status.isConnected) {
+          return fetchGmailEmails({ maxResults: 30, query: 'in:inbox is:unread' });
+        }
+        return null;
+      })
+      .then((result) => {
+        if (isMounted && result) {
+          setInboxCount(result.emails.length);
+        }
+      })
+      .catch(() => { /* silently ignore — Gmail may not be connected */ });
+
+    return () => { isMounted = false; };
+  }, []);
+
+  // Get current module name from navigation
+  const currentModule = NAV_ITEMS.find(item => item.path === currentPath)?.name ||
+    (currentPath === 'notifications' ? 'Notifications' :
+     currentPath === 'inbox' ? 'Messages' : 'Dashboard');
+
+  // Get parent group for breadcrumb
+  const currentGroup = NAV_ITEMS.find(item => item.path === currentPath);
+  const groupName = (currentGroup as any)?.group ?? '';
 
   return (
-    <header className="h-14 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 lg:px-6 shrink-0 sticky top-0 z-30 transition-colors duration-200">
-      <div className="flex items-center gap-4 flex-1">
+    <header className="h-[52px] bg-[var(--surface)] border-b border-[var(--border)] flex items-center justify-between px-4 lg:px-5 shrink-0 sticky top-0 z-40 transition-colors duration-200">
+      {/* Left: Mobile hamburger + Breadcrumb */}
+      <div className="flex items-center gap-3 flex-1 min-w-0">
         <button
-          className="lg:hidden text-slate-500 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-slate-800 p-2 rounded-md transition-colors cursor-pointer"
+          className="lg:hidden text-[var(--text-tertiary)] hover:text-[var(--text-primary)] p-1.5 rounded-lg transition-colors"
           onClick={onOpenSidebar}
+          aria-label="Open sidebar"
         >
           <Menu size={18} />
         </button>
+
+        {/* Breadcrumb */}
+        <div className="hidden lg:flex items-center gap-1.5 text-[13px] min-w-0">
+          {groupName && (
+            <>
+              <span className="text-[var(--text-tertiary)] font-medium">
+                {groupName}
+              </span>
+              <span className="text-[var(--text-tertiary)] opacity-50">
+                &gt;
+              </span>
+            </>
+          )}
+          <span className="text-[var(--text-primary)] font-semibold truncate">
+            {currentModule}
+          </span>
+        </div>
       </div>
 
-      <div className="flex items-center gap-3">
-        {user?.tenantId !== 'system' && (
-          <div className="hidden sm:flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700">
-            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Role:</span>
-            <select
-              value={user?.role}
-              onChange={(e) => switchRole(e.target.value)}
-              className="bg-transparent text-xs font-medium text-slate-900 dark:text-white focus:outline-none cursor-pointer"
-            >
-              {roles.map(r => (
-                <option key={r.id} value={r.name} className="dark:bg-slate-900">{r.name}</option>
-              ))}
-            </select>
-          </div>
-        )}
+      {/* Center: Global Search Omnibox */}
+      <div className="hidden md:flex flex-1 max-w-[460px] mx-4 justify-center">
+        <GlobalOmnibox />
+      </div>
 
-        {user?.role === 'System Admin' && (
-          <button onClick={resetDemoData}
-            className="text-xs bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 px-2.5 py-1 rounded-md hover:bg-rose-100 dark:hover:bg-rose-900/60 transition-colors font-medium border border-rose-200 dark:border-rose-800/60 cursor-pointer">
-            Reset Demo
-          </button>
-        )}
-
-        <button onClick={toggleTheme}
-          className="relative p-2 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-          title={`Switch to ${theme === 'Light' ? 'Dark' : 'Light'} Mode`}
-          id="header-theme-toggle">
-          {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
+      {/* Right: Actions */}
+      <div className="flex items-center gap-1.5 flex-1 justify-end">
+        {/* Quick Create */}
+        <button
+          className="w-8 h-8 rounded-lg bg-[#D94F4F] hover:bg-[#C24545] text-white flex items-center justify-center transition-colors shadow-sm active:scale-95"
+          aria-label="Quick create"
+          title="Quick create"
+        >
+          <Plus size={16} />
         </button>
 
-        <button onClick={onOpenNotes}
-          className="relative p-2 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors rounded-md hover:bg-blue-50 dark:hover:bg-blue-950/40 cursor-pointer"
-          title="Open Scratchpad Notes"
-          id="header-notes-toggle">
-          <StickyNote className="w-4 h-4" />
-          <span className="absolute top-1 right-1 w-2 h-2 bg-amber-500 rounded-full animate-bounce" />
+        {/* Inbox (Gmail) */}
+        <button
+          onClick={onOpenInbox}
+          className={cn(
+            'relative w-8 h-8 rounded-lg flex items-center justify-center transition-colors',
+            currentPath === 'inbox'
+              ? 'bg-[#D94F4F]/10 text-[#D94F4F]'
+              : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)]',
+          )}
+          aria-label="Open Inbox"
+          title="Messages"
+        >
+          <Mail size={16} />
+          {inboxCount > 0 && (
+            <span className="absolute top-1 right-1 min-w-[16px] h-[16px] px-0.5 rounded-full bg-emerald-500 text-white text-[9px] font-bold flex items-center justify-center leading-none">
+              {inboxCount > 99 ? '99+' : inboxCount}
+            </span>
+          )}
         </button>
 
-        <button className="relative p-2 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer">
+        {/* Notifications */}
+        <button
+          ref={notificationButtonRef}
+          onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+          className={cn(
+            'relative w-8 h-8 rounded-lg flex items-center justify-center transition-colors',
+            isNotificationsOpen
+              ? 'bg-[#D94F4F]/10 text-[#D94F4F]'
+              : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)]',
+          )}
+          aria-label="Notifications"
+          aria-expanded={isNotificationsOpen}
+        >
           <Bell size={16} />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-blue-600 rounded-full" />
+          {notificationCount > 0 && (
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#D94F4F]" />
+          )}
         </button>
-      </div>
-    </header>
 
+        {/* Settings */}
+        <button
+          onClick={() => navigate('settings')}
+          className="w-8 h-8 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)] flex items-center justify-center transition-colors"
+          aria-label="Settings"
+          title="Settings"
+        >
+          <Settings size={16} />
+        </button>
+
+        {/* User Profile Dropdown */}
+        <div className="ml-1">
+          <UserProfileDropdown />
+        </div>
+      </div>
+
+      {/* Notifications Dropdown */}
+      <NotificationsDropdown
+        isOpen={isNotificationsOpen}
+        onClose={() => setIsNotificationsOpen(false)}
+        triggerRef={notificationButtonRef}
+      />
+    </header>
   );
 }

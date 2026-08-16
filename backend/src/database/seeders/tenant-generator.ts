@@ -1,6 +1,7 @@
-import { PrismaClient, Prisma } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import { faker } from '@faker-js/faker';
 import { hashPassword } from '../../shared/helpers/crypto';
+import { seedSystemRoles } from './roles.seed';
 
 const prisma = new PrismaClient();
 
@@ -77,6 +78,8 @@ export async function generateTenants(count: number = 10) {
       }
     });
 
+    await seedSystemRoles(tenant.id);
+
     // Create Subscription
     await prisma.subscription.create({
       data: {
@@ -91,20 +94,22 @@ export async function generateTenants(count: number = 10) {
 
     // 2. Roles & Permissions
     const rolesData = [
-      { name: 'Client Admin', isSystemRole: true, perms: { canView: true, canCreate: true, canEdit: true, canDelete: true } },
+      { name: 'Admin', isSystemRole: true, perms: { canView: true, canCreate: true, canEdit: true, canDelete: true } },
       { name: 'Sales Manager', isSystemRole: false, perms: { canView: true, canCreate: true, canEdit: true, canDelete: false } },
-      { name: 'Sales Rep', isSystemRole: false, perms: { canView: true, canCreate: true, canEdit: true, canDelete: false } },
+      { name: 'User', isSystemRole: true, perms: { canView: true, canCreate: true, canEdit: true, canDelete: false } },
       { name: 'Marketing', isSystemRole: false, perms: { canView: true, canCreate: true, canEdit: true, canDelete: false } },
       { name: 'Support Agent', isSystemRole: false, perms: { canView: true, canCreate: true, canEdit: true, canDelete: false } },
       { name: 'Finance', isSystemRole: false, perms: { canView: true, canCreate: false, canEdit: false, canDelete: false } },
     ];
     
-    const roleEntities: Record<string, any> = {};
+    const roleEntities: Record<string, { id: string }> = {};
     const modules = ['contacts', 'deals', 'organizations', 'campaigns', 'tasks', 'invoices', 'users', 'reports'];
 
     for (const rd of rolesData) {
-      const roleDef = await prisma.roleDefinition.create({
-        data: {
+      const roleDef = await prisma.roleDefinition.upsert({
+        where: { tenantId_name: { tenantId: tenant.id, name: rd.name } },
+        update: {}, // seedSystemRoles already inserted System ones
+        create: {
           tenantId: tenant.id,
           name: rd.name,
           isSystemRole: rd.isSystemRole,
@@ -121,7 +126,7 @@ export async function generateTenants(count: number = 10) {
     }
 
     // 3. Users
-    const usersList: any[] = [];
+    const usersList: { id: string; role: string }[] = [];
     
     const createUser = async (roleName: string, fName?: string, lName?: string, e?: string) => {
       const firstName = fName || faker.person.firstName();
@@ -150,59 +155,60 @@ export async function generateTenants(count: number = 10) {
     };
 
     // Create the team
-    const clientAdmin = await createUser('Client Admin', 'Admin', 'User', `admin@${slug}.com`);
+    const clientAdmin = await createUser('Admin', 'Admin', 'User', `admin@${slug}.com`);
     await createUser('Sales Manager');
-    const salesReps: any[] = [];
+    const salesReps: { id: string; role: string }[] = [];
     const numSalesReps = faker.number.int({ min: 3, max: 6 });
-    for(let j=0; j<numSalesReps; j++) salesReps.push(await createUser('Sales Rep'));
+    for(let j=0; j<numSalesReps; j++) salesReps.push(await createUser('User'));
     await createUser('Marketing');
     await createUser('Support Agent');
     await createUser('Finance');
 
-    // 4. Organizations (Clients of this tenant)
+    // 4. Accounts (Clients of this tenant)
     const numOrgs = faker.number.int({ min: 20, max: 50 });
-    const organizations: any[] = [];
-    for(let j=0; j<numOrgs; j++) {
-      const org = await prisma.organization.create({
+    const orgEntities: { id: string }[] = [];
+    for (let j = 0; j < numOrgs; j++) {
+      const org = await prisma.account.create({
         data: {
-          tenantId: tenant.id,
-          name: faker.company.name(),
-          industry: faker.company.buzzNoun(),
-          size: faker.helpers.arrayElement(['1-10', '11-50', '51-200', '200+']),
-          website: faker.internet.url(),
-          address: faker.location.streetAddress(),
-          city: faker.location.city(),
-          country: faker.location.country(),
+          tenantId:      tenant.id,
+          name:          faker.company.name(),
+          industry:      faker.company.buzzNoun(),
+          size:          faker.helpers.arrayElement(['1-10', '11-50', '51-200', '200+']),
+          website:       faker.internet.url(),
+          address:       faker.location.streetAddress(),
+          city:          faker.location.city(),
+          country:       faker.location.country(),
           assignedUserId: faker.helpers.arrayElement(salesReps).id,
-          createdAt: randomDatePast(12)
-        }
+          createdAt:     randomDatePast(12),
+        },
       });
-      organizations.push(org);
+      orgEntities.push(org);
     }
 
-    // 5. Contacts
+    // 5. Leads
     const numContacts = faker.number.int({ min: 50, max: 150 });
-    const contacts: any[] = [];
-    for(let j=0; j<numContacts; j++) {
+    const leads: { id: string; lastName: string; accountId?: string | null }[] = [];
+    for (let j = 0; j < numContacts; j++) {
       const assigned = faker.helpers.arrayElement(salesReps);
-      const contact = await prisma.contact.create({
+      const account  = faker.helpers.maybe(
+        () => faker.helpers.arrayElement(orgEntities),
+        { probability: 0.8 },
+      );
+      const lead = await prisma.lead.create({
         data: {
-          tenantId: tenant.id,
-          organizationId: faker.helpers.maybe(() => faker.helpers.arrayElement(organizations).id, { probability: 0.8 }),
+          tenantId:       tenant.id,
+          accountId:      account?.id ?? null,
           assignedUserId: assigned.id,
-          ownerId: assigned.id,
-          firstName: faker.person.firstName(),
-          lastName: faker.person.lastName(),
-          email: faker.internet.email(),
-          phone: faker.phone.number(),
-          jobTitle: faker.person.jobTitle(),
-          status: faker.helpers.arrayElement(['HOT', 'WARM', 'COLD', 'CLOSED']),
-          score: faker.number.int({ min: 10, max: 100 }),
-          source: faker.helpers.arrayElement(['Website', 'Referral', 'Cold Call', 'Conference', 'LinkedIn']),
-          createdAt: randomDatePast(12)
-        }
+          firstName:      faker.person.firstName(),
+          lastName:       faker.person.lastName(),
+          email:          faker.internet.email(),
+          phone:          faker.phone.number(),
+          status:         faker.helpers.arrayElement(['Inquiry', 'Contacted', 'Qualified', 'Closed']),
+          source:         faker.helpers.arrayElement(['Website', 'Referral', 'Cold Call', 'Conference', 'LinkedIn']),
+          createdAt:      randomDatePast(12),
+        },
       });
-      contacts.push(contact);
+      leads.push(lead);
     }
 
     // 6. Pipelines & Stages
@@ -228,42 +234,43 @@ export async function generateTenants(count: number = 10) {
 
     // 7. Deals
     const numDeals = faker.number.int({ min: 30, max: 80 });
-    for(let j=0; j<numDeals; j++) {
-      const stage = faker.helpers.arrayElement(salesPipeline.stages);
+    for (let j = 0; j < numDeals; j++) {
+      const stage    = faker.helpers.arrayElement(salesPipeline.stages);
       const assigned = faker.helpers.arrayElement(salesReps);
-      const contact = faker.helpers.arrayElement(contacts);
-      const org = contact.organizationId ? organizations.find(o => o.id === contact.organizationId) : null;
-      
+      const lead     = faker.helpers.arrayElement(leads);
+      const account  = lead.accountId
+        ? orgEntities.find((o) => o.id === lead.accountId) ?? null
+        : null;
+
       const createdAt = randomDatePast(6);
-      const isClosed = stage.isWon || stage.isLost;
-      
+      const isClosed  = stage.isWon || stage.isLost;
+
       const deal = await prisma.deal.create({
         data: {
-          tenantId: tenant.id,
-          pipelineId: salesPipeline.id,
-          stageId: stage.id,
-          organizationId: org?.id,
-          assignedUserId: assigned.id,
-          ownerId: assigned.id,
-          title: `${contact.lastName || org?.name || 'Client'} - ${faker.commerce.productName()} Opportunity`,
-          value: faker.number.int({ min: 1000, max: 100000 }),
-          currency: 'USD',
-          priority: faker.helpers.arrayElement(['LOW', 'MEDIUM', 'HIGH']),
+          tenantId:          tenant.id,
+          pipelineId:        salesPipeline.id,
+          stageId:           stage.id,
+          accountId:         account?.id ?? null,
+          leadId:            lead.id,
+          assignedUserId:    assigned.id,
+          ownerId:           assigned.id,
+          title:             `${lead.lastName ?? account?.id ?? 'Client'} - ${faker.commerce.productName()} Opportunity`,
+          value:             faker.number.int({ min: 1000, max: 100000 }),
+          currency:          'USD',
+          priority:          faker.helpers.arrayElement(['LOW', 'MEDIUM', 'HIGH']) as 'LOW' | 'MEDIUM' | 'HIGH',
           expectedCloseDate: randomDateFuture(60),
-          closedAt: isClosed ? randomDatePast(1) : null,
+          closedAt:          isClosed ? randomDatePast(1) : null,
           createdAt,
-          updatedAt: randomDatePast(1),
-          // New Many-to-Many relationship (and keep legacy contactId for now just in case)
-          contactId: contact.id,
-          contactDeals: {
+          updatedAt:         randomDatePast(1),
+          leadDeals: {
             create: {
-              contactId: contact.id,
-              tenantId: tenant.id,
-              role: 'Decision Maker',
-              addedById: assigned.id
-            }
-          }
-        }
+              leadId:    lead.id,
+              tenantId:  tenant.id,
+              role:      'Decision Maker',
+              addedById: assigned.id,
+            },
+          },
+        },
       });
 
       // Deal History, Tasks, Activities
@@ -279,61 +286,61 @@ export async function generateTenants(count: number = 10) {
 
       // Create a few tasks per deal
       const numTasks = faker.number.int({ min: 1, max: 4 });
-      for(let k=0; k<numTasks; k++) {
+      for (let k = 0; k < numTasks; k++) {
         const isCompleted = faker.datatype.boolean();
         await prisma.task.create({
           data: {
-            tenantId: tenant.id,
-            dealId: deal.id,
-            contactId: contact.id,
+            tenantId:       tenant.id,
+            dealId:         deal.id,
+            leadId:         lead.id,
             assignedUserId: assigned.id,
-            assignedById: assigned.id,
-            title: faker.helpers.arrayElement(['Follow up call', 'Send Proposal', 'Schedule Demo', 'Review Requirements']),
-            status: isCompleted ? 'completed' : faker.helpers.arrayElement(['pending', 'in_progress']),
-            priority: faker.helpers.arrayElement(['Low', 'Medium', 'High']),
-            dueDate: isCompleted ? randomDatePast(2) : randomDateFuture(10),
-            completedAt: isCompleted ? randomDatePast(1) : null,
-            completedById: isCompleted ? assigned.id : null,
-          }
+            assignedById:   assigned.id,
+            title:          faker.helpers.arrayElement(['Follow up call', 'Send Proposal', 'Schedule Demo', 'Review Requirements']),
+            status:         isCompleted ? 'completed' : faker.helpers.arrayElement(['pending', 'in_progress']),
+            priority:       faker.helpers.arrayElement(['Low', 'Medium', 'High']),
+            dueDate:        isCompleted ? randomDatePast(2) : randomDateFuture(10),
+            completedAt:    isCompleted ? randomDatePast(1) : null,
+            completedById:  isCompleted ? assigned.id : null,
+          },
         });
       }
 
       // Create some activity history
       const numActivities = faker.number.int({ min: 2, max: 6 });
-      for(let k=0; k<numActivities; k++) {
+      for (let k = 0; k < numActivities; k++) {
         await prisma.activity.create({
           data: {
-            tenantId: tenant.id,
+            tenantId:    tenant.id,
             createdById: assigned.id,
-            dealId: deal.id,
-            contactId: contact.id,
-            type: faker.helpers.arrayElement(['call', 'meeting', 'email', 'note']),
-            title: faker.lorem.sentence(4),
+            dealId:      deal.id,
+            leadId:      lead.id,
+            type:        faker.helpers.arrayElement(['call', 'meeting', 'email', 'note']),
+            title:       faker.lorem.sentence(4),
             description: faker.lorem.paragraph(),
-            createdAt: randomDatePast(3)
-          }
+            createdAt:   randomDatePast(3),
+          },
         });
       }
-      
+
       // Invoices for Won deals
       if (stage.isWon) {
         await prisma.invoice.create({
           data: {
-            tenantId: tenant.id,
-            dealId: deal.id,
-            contactId: contact.id,
-            organizationId: org?.id,
-            invoiceNumber: `INV-${faker.number.int({min: 1000, max: 9999})}`,
-            amount: deal.value || 0,
-            totalAmount: deal.value || 0,
-            currency: 'USD',
-            frequency: 'One-time',
-            status: 'Sent',
+            tenantId:      tenant.id,
+            dealId:        deal.id,
+            leadId:        lead.id,
+            accountId:     account?.id ?? null,
+            invoiceNumber: `INV-${faker.number.int({ min: 1000, max: 9999 })}`,
+            amount:        deal.value ?? 0,
+            totalAmount:   deal.value ?? 0,
+            currency:      'USD',
+            frequency:     'One-time',
+            status:        'Sent',
             paymentStatus: faker.helpers.arrayElement(['Paid', 'Unpaid']),
-            startDate: deal.createdAt,
-            dueDate: randomDateFuture(10),
-            createdAt: deal.createdAt
-          }
+            startDate:     deal.createdAt,
+            dueDate:       randomDateFuture(10),
+            createdAt:     deal.createdAt,
+          },
         });
       }
     }

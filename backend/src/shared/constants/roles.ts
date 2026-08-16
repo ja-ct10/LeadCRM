@@ -1,12 +1,9 @@
 // RBAC Role definitions
-// Client Admin is the tenant super-user — bypass at middleware level
-// System Admin is cross-tenant — only exists in the admin portal
 export const Role = {
-  SYSTEM_ADMIN: 'System Admin',
-  CLIENT_ADMIN: 'Client Admin',
-  SALES_REP: 'Sales Rep',
-  TECHNICIAN: 'Technician',
-  VIEWER: 'Viewer',
+  ADMIN: 'Admin',
+  SUPER_USER: 'Super User',
+  USER: 'User',
+  RESTRICTED_USER: 'Restricted User',
 } as const;
 
 export type RoleKey = typeof Role[keyof typeof Role];
