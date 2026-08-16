@@ -14,6 +14,7 @@ export interface Account {
   assignedUserId?: string;
   tags?: string[];
   notes?: string;
+  customerType?: string;
   createdAt: string;
   isArchived?: boolean;
 }
