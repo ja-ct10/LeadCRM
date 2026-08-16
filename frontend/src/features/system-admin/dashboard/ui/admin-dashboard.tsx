@@ -79,7 +79,7 @@ export default function AdminDashboard() {
       <div className="flex justify-between items-start mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Dashboard</h1>
-          <p className="text-sm text-slate-500 mt-1">Platform overview and key metrics</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Platform overview and key metrics</p>
         </div>
         <div className="relative">
           <select className="appearance-none bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl pl-4 pr-10 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer">
