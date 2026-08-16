@@ -1,3 +1,8 @@
+---
+description: Full persistence architecture, tenant configuration, localStorage policy, security rules, and new-feature checklists. Reference document — load with #data-persistence-full when implementing persistent features.
+inclusion: manual
+---
+
 # LeadCRM — Data Persistence, Tenant Isolation & Configuration Architecture
 
 > **Primary Rule:** If a change is expected to survive refresh, logout, another device, or another session, it MUST be persisted through the backend and appropriate storage layer. The browser is a presentation/cache layer, not the system of record.
