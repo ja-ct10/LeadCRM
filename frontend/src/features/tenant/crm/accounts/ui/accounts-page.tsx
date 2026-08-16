@@ -268,6 +268,7 @@ export default function AccountsPage(): React.ReactElement {
   return (
     <>
       <ModuleWorkspace
+        moduleId="accounts"
         title="Accounts"
         primaryActionLabel="Add Account"
         onPrimaryAction={handleOpenCreate}
@@ -292,7 +293,6 @@ export default function AccountsPage(): React.ReactElement {
         searchTerm={searchTerm}
         onSearch={setSearchTerm}
         searchPlaceholder="Search accounts..."
-        onSort={() => toast.info('Sort feature coming soon')}
         onRefresh={() => toast.success('Refreshed')}
         toolbarExtra={
           <button

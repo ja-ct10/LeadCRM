@@ -265,6 +265,7 @@ export default function ContactsPage(): React.ReactElement {
   return (
     <>
     <ModuleWorkspace
+      moduleId="contacts"
       title="Contacts"
       primaryActionLabel="Create Contact"
       onPrimaryAction={() => toast.info('Contact creation coming soon')}
@@ -290,7 +291,6 @@ export default function ContactsPage(): React.ReactElement {
       searchTerm={searchTerm}
       onSearch={setSearchTerm}
       searchPlaceholder="Search contacts..."
-      onSort={() => toast.info('Sort coming soon')}
       onRefresh={() => toast.success('Refreshed')}
       toolbarExtra={
         <button

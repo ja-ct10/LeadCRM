@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
 import { Lead } from '@/store/types';
@@ -9,14 +9,14 @@ import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useFilterUrlSync } from '@/shared/hooks/use-filter-url-sync';
 import { useDebounce } from '@/shared/hooks/use-debounce';
 import { useColumnPreferences } from '../hooks/use-column-preferences';
+import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
 import { migrateLocalStorageColumns } from '../services/local-storage-migration';
 import { ManageColumnsDrawer } from './manage-columns-drawer';
 import { LeadsListView } from './leads-list-view';
 import { LeadFormSheet } from './lead-form';
 import { LEADS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import { toast } from 'sonner';
-import { Edit, Phone, Mail, ListTodo, MoreHorizontal, SlidersHorizontal } from 'lucide-react';
-import type { ColumnConfigItem } from '@leadcrm/shared';
+import { Edit, Phone, Mail, ListTodo, MoreHorizontal } from 'lucide-react';
 
 // ── Leads Page ────────────────────────────────────────────────────────────────
 
@@ -42,7 +42,19 @@ export default function LeadsPage(): React.ReactElement {
   } = useColumnPreferences('leads');
 
   const [isManageColumnsOpen, setIsManageColumnsOpen] = useState(false);
-  const manageColumnsButtonRef = useRef<HTMLButtonElement>(null);
+
+  // ── Table Preferences (pageSize, viewMode, sort) ──────────────────────
+  const {
+    pageSize,
+    viewMode,
+    sort,
+    setPageSize,
+    setViewMode,
+    setSort,
+  } = useTablePreferences('leads');
+
+  // ── Pagination state ──────────────────────────────────────────────────
+  const [currentPage, setCurrentPage] = useState(1);
 
   // ── One-time localStorage migration (fire-and-forget) ─────────────────
   useEffect(() => {
@@ -157,6 +169,38 @@ export default function LeadsPage(): React.ReactElement {
     return result;
   }, [activeLeads, activeTab, user?.id, debouncedSearch, selectedSystemFilters, selectedStatuses, selectedSources, selectedOwners, selectedRelated]);
 
+  // ── Sorted Data ──────────────────────────────────────────────────────
+  const sortedLeads = useMemo(() => {
+    if (!sort) return filteredLeads;
+
+    const { field, direction } = sort;
+    const sorted = [...filteredLeads].sort((a, b) => {
+      const aVal = getFieldValue(a, field);
+      const bVal = getFieldValue(b, field);
+
+      if (aVal === bVal) return 0;
+      if (aVal == null) return 1;
+      if (bVal == null) return -1;
+
+      const comparison = String(aVal).localeCompare(String(bVal), undefined, { numeric: true, sensitivity: 'base' });
+      return direction === 'asc' ? comparison : -comparison;
+    });
+    return sorted;
+  }, [filteredLeads, sort]);
+
+  // ── Paginated Data ───────────────────────────────────────────────────
+  const totalPages = Math.max(1, Math.ceil(sortedLeads.length / pageSize));
+
+  // Reset page when filters/sort/pageSize change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, activeTab, selectedSystemFilters, selectedStatuses, selectedSources, selectedOwners, selectedRelated, pageSize, sort]);
+
+  const paginatedLeads = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return sortedLeads.slice(start, start + pageSize);
+  }, [sortedLeads, currentPage, pageSize]);
+
   // ── Helpers ──────────────────────────────────────────────────────────
   const getInitials = (lead: Lead): string => {
     const name = lead.leadPerson ?? lead.displayName ?? lead.firstName ?? '';
@@ -200,6 +244,38 @@ export default function LeadsPage(): React.ReactElement {
     if (!value) return '$0';
     if (value >= 1000) return `$${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}k`;
     return `$${value.toLocaleString()}`;
+  };
+
+  /** Extract a sortable value from a lead by field id */
+  const getFieldValue = (lead: Lead, field: string): string | number | null => {
+    switch (field) {
+      case 'firstName':
+        return lead.leadPerson ?? lead.displayName ?? lead.firstName ?? '';
+      case 'lastName':
+        return lead.lastName ?? '';
+      case 'email':
+        return lead.email ?? '';
+      case 'phone':
+        return lead.phone ?? '';
+      case 'companyName':
+        return lead.companyName ?? '';
+      case 'status':
+        return lead.status ?? '';
+      case 'source':
+        return lead.leadSource ?? '';
+      case 'createdAt':
+        return lead.createdAt ?? '';
+      case 'updatedAt':
+        return (lead as unknown as Record<string, unknown>).updatedAt as string ?? '';
+      case 'city':
+      case 'address':
+      case 'primaryAddressCityState':
+        return lead.city ?? '';
+      case 'assignedUserId':
+        return getOwnerName(lead.assignedUserId);
+      default:
+        return (lead as unknown as Record<string, unknown>)[field] as string ?? '';
+    }
   };
 
   // ── Filter groups for the rail ───────────────────────────────────────
@@ -313,17 +389,18 @@ export default function LeadsPage(): React.ReactElement {
   }, []);
 
   const handleSelectAll = useCallback(() => {
-    if (selectedIds.length === filteredLeads.length) {
+    if (selectedIds.length === paginatedLeads.length) {
       setSelectedIds([]);
     } else {
-      setSelectedIds(filteredLeads.map((l) => l.id));
+      setSelectedIds(paginatedLeads.map((l) => l.id));
     }
-  }, [selectedIds.length, filteredLeads]);
+  }, [selectedIds.length, paginatedLeads]);
 
   // ── Render ───────────────────────────────────────────────────────────
   return (
     <>
       <ModuleWorkspace
+        moduleId="leads"
         title="Leads"
         primaryActionLabel="Create Lead"
         onPrimaryAction={handleCreate}
@@ -344,23 +421,23 @@ export default function LeadsPage(): React.ReactElement {
         onToggleFilters={() => setShowFilters(!showFilters)}
         filterSearchTerm={filterSearchTerm}
         onFilterSearch={setFilterSearchTerm}
-        totalRecords={filteredLeads.length}
+        totalRecords={sortedLeads.length}
         searchTerm={searchTerm}
         onSearch={setSearchTerm}
         searchPlaceholder="Search leads..."
-        onSort={() => toast.info('Sort options coming soon')}
+        sortableFields={LEADS_COLUMN_REGISTRY.map((col) => ({ id: col.id, label: col.label }))}
+        sort={sort}
+        onSortChange={setSort}
+        pageSize={pageSize}
+        onPageSizeChange={setPageSize}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
         onRefresh={() => toast.success('Refreshed')}
-        toolbarExtra={
-          <button
-            ref={manageColumnsButtonRef}
-            onClick={() => setIsManageColumnsOpen(true)}
-            className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium text-[#5A6B85] dark:text-slate-300 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-            aria-label="Manage columns"
-          >
-            <SlidersHorizontal size={13} />
-            Columns
-          </button>
-        }
+        onManageColumns={() => setIsManageColumnsOpen(true)}
+        onResetColumns={() => {
+          resetColumns();
+          toast.success('Columns reset to default');
+        }}
         bulkSelection={
           selectedIds.length > 0
             ? {
@@ -386,7 +463,13 @@ export default function LeadsPage(): React.ReactElement {
         )}
         {(activeView === 'list' || activeView === 'table') && !isColumnsLoading && (
           <LeadsListView
-            leads={filteredLeads}
+            leads={paginatedLeads}
+            totalRecords={sortedLeads.length}
+            currentPage={currentPage}
+            pageSize={pageSize}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+            viewMode={viewMode}
             selectedIds={selectedIds}
             onToggleSelect={handleToggleSelect}
             onSelectAll={handleSelectAll}
@@ -540,7 +623,6 @@ export default function LeadsPage(): React.ReactElement {
         effectiveColumns={effectiveColumns}
         onSave={saveColumns}
         onReset={resetColumns}
-        triggerRef={manageColumnsButtonRef}
       />
     </>
   );
