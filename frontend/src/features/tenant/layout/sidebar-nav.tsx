@@ -55,7 +55,7 @@ export default function SidebarNav({
   return (
     <aside
       className={cn(
-        'fixed lg:sticky inset-y-0 lg:top-0 left-0 z-50 lg:h-screen',
+        'fixed lg:static inset-y-0 left-0 z-50',
         'bg-[var(--sidebar-bg)] border-r border-[var(--sidebar-border)]',
         'transform transition-all duration-200 ease-in-out',
         'flex flex-col',
