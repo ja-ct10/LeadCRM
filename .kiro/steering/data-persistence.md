@@ -1,8 +1,10 @@
-# LeadCRM — Data Persistence
+# LeadCRM — Data Persistence (Summary)
+
+> **Full architecture:** See `data-persistence-and-tenant-configuration.md` for the complete 40-section binding rule covering tenant isolation, localStorage policy, cache isolation, background jobs, exports, search, file storage, the Required Implementation Report, and AI agent enforcement rules.
 
 ## Core Rule
 
-PostgreSQL is the **sole authoritative source of truth** for all tenant-owned business data.
+PostgreSQL/Prisma is the **sole authoritative source** for all CRM/business state. Other storage (object storage for files, Redis for cache) is legitimate infrastructure but NOT a replacement for the authoritative database.
 
 ## Canonical Record Rule
 
@@ -29,12 +31,16 @@ PostgreSQL is the **sole authoritative source of truth** for all tenant-owned bu
 - Use `createdBy`/`updatedBy` fields or `AuditLog` infrastructure
 - Audit records are tenant-scoped
 
-## User Preferences vs Business Data
+## Preferences vs Business Data
 
-- Preferences stored separately from business data
-- Scoped by: `tenantId + userId + module`
-- Tenant defaults scoped by: `tenantId + module`
-- Preferences survive logout/device-change via server persistence
+Two separate mental models:
+
+| Category | Hierarchy | Storage |
+|---|---|---|
+| Preferences/Config | User Pref > Tenant Default > System Default | `UserPreference` / `TenantPreference` (Json) |
+| Business Records | Auth User → Tenant → RBAC → Repository → DB | Domain-specific Prisma models |
+
+Do not conflate them. CRM entities are NOT preferences.
 
 ## Optimistic Updates
 
@@ -63,3 +69,6 @@ This is a migration path, not a permanent architecture. Mock mode is for UI-only
 - Mutations without user attribution
 - Queries without tenantId filter
 - Silent data loss when browser storage cleared
+- Cache keys without tenant scope
+- Background jobs without tenant verification
+- Search/autocomplete returning cross-tenant results

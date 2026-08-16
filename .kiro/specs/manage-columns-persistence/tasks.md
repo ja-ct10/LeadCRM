@@ -6,16 +6,16 @@ Implements a server-persisted column configuration system for the LeadCRM Leads 
 
 ## Tasks
 
-- [ ] 1. Shared types and contracts
-  - [ ] 1.1 Create shared preference types and contracts
+- [x] 1. Shared types and contracts
+  - [x] 1.1 Create shared preference types and contracts
     - Create `shared/src/types/preferences.ts` with `ColumnConfigItem`, `ColumnConfig`, `ColumnDefinition` interfaces
     - Create `shared/src/contracts/preferences.contracts.ts` with API request/response contracts (success envelope, error shape)
     - Create `shared/src/validation/preferences.validation.ts` with shared Zod schemas (`ColumnModuleParamsSchema`, `ColumnItemSchema`, `SaveColumnsBodySchema`)
     - Export all from shared package index
     - _Requirements: 6.1, 14.1, 14.2, 15.1, 15.2, 15.6_
 
-- [ ] 2. Database schema and migration
-  - [ ] 2.1 Add UserPreference and TenantPreference models to Prisma schema
+- [x] 2. Database schema and migration
+  - [x] 2.1 Add UserPreference and TenantPreference models to Prisma schema
     - Add `UserPreference` model with id (UUID), tenantId, userId, module (VarChar 64), key (VarChar 128), value (Json), createdAt, updatedAt
     - Add `TenantPreference` model with id (UUID), tenantId, module (VarChar 64), key (VarChar 128), value (Json), createdAt, updatedAt
     - Add unique constraint `[tenantId, userId, module, key]` on UserPreference
@@ -27,8 +27,8 @@ Implements a server-persisted column configuration system for the LeadCRM Leads 
     - Run `prisma generate` to update client
     - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 7.4_
 
-- [ ] 3. Backend column registry and repository
-  - [ ] 3.1 Create the Column Registry module
+- [x] 3. Backend column registry and repository
+  - [x] 3.1 Create the Column Registry module
     - Create `backend/src/modules/preferences/column-registry.ts`
     - Define `ColumnDefinition` and `ModuleRegistry` interfaces
     - Implement `LEADS_COLUMN_REGISTRY` with all 12 Leads columns (firstName, lastName, email, phone, companyName, status, source, assignedUserId, productInterest, address, createdAt, accountId)
@@ -36,7 +36,7 @@ Implements a server-persisted column configuration system for the LeadCRM Leads 
     - Implement helper functions: `getRegistryForModule()`, `getSystemDefault()`, `getRequiredColumnIds()`, `isValidModule()`
     - _Requirements: 6.1, 6.3, 6.4, 14.4_
 
-  - [ ] 3.2 Create the Preferences Repository
+  - [x] 3.2 Create the Preferences Repository
     - Create `backend/src/modules/preferences/preferences.repository.ts`
     - Implement `findUserPreference(tenantId, userId, module, key)` with mandatory tenantId + userId filter
     - Implement `upsertUserPreference(tenantId, userId, module, key, value)` using INSERT ... ON CONFLICT UPDATE
@@ -47,13 +47,13 @@ Implements a server-persisted column configuration system for the LeadCRM Leads 
     - All queries scoped by tenantId — no cross-tenant access
     - _Requirements: 2.1, 2.2, 2.6, 7.2, 7.4, 18.1, 18.2_
 
-  - [ ]* 3.3 Write property tests for Column Registry
+  - [x] 3.3 Write property tests for Column Registry
     - **Property 5: Unknown Column Rejection** — generate configs with invalid column ids, verify registry rejects them
     - **Property 7: Column ID Format Validation** — generate strings with special characters and excessive lengths, verify registry validation rejects them
     - **Validates: Requirements 6.2, 6.6, 15.3, 15.6**
 
-- [ ] 4. Backend service layer
-  - [ ] 4.1 Implement Preferences Service — resolution and reconciliation
+- [x] 4. Backend service layer
+  - [x] 4.1 Implement Preferences Service — resolution and reconciliation
     - Create `backend/src/modules/preferences/preferences.service.ts`
     - Implement `resolveEffectiveColumns(tenantId, userId, module)`: User > Tenant > System hierarchy with full replacement semantics
     - Implement `reconcileWithRegistry(config, module)`: strip stale columns, insert new registry columns at default positions
@@ -61,7 +61,7 @@ Implements a server-persisted column configuration system for the LeadCRM Leads 
     - Handle corrupted stored preferences: skip layer, resolve from next layer
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 5.3, 6.5_
 
-  - [ ] 4.2 Implement Preferences Service — CRUD operations and audit
+  - [x] 4.2 Implement Preferences Service — CRUD operations and audit
     - Implement `upsertUserPreference(tenantId, userId, module, config)`: validate → reconcile → persist → return effective columns
     - Implement `deleteUserPreference(tenantId, userId, module)`: delete record → return fallback effective columns
     - Implement `upsertTenantDefault(tenantId, userId, module, config, ipAddress?)`: validate → persist → audit log → return config
@@ -70,21 +70,21 @@ Implements a server-persisted column configuration system for the LeadCRM Leads 
     - Fire-and-forget audit: if audit write fails, log warning but complete preference mutation
     - _Requirements: 3.2, 3.3, 4.1, 4.2, 4.5, 5.2, 5.5, 12.1, 12.2, 12.3, 12.4, 12.5, 12.6_
 
-  - [ ]* 4.3 Write property tests for resolution hierarchy and reconciliation
+  - [x] 4.3 Write property tests for resolution hierarchy and reconciliation
     - **Property 1: Resolution Hierarchy** — generate random layer combinations (user/tenant/system present/absent), verify highest available returned as full replacement
     - **Property 2: Registry Reconciliation** — generate configs missing columns, verify new columns inserted at registry-defined defaults
     - **Property 4: Required Column Auto-Inclusion** — generate configs omitting required columns, verify they are auto-included with visible:true
     - **Property 6: Stale Column Stripping** — generate configs with stale column ids, verify they are stripped from result
     - **Validates: Requirements 1.1, 1.2, 1.3, 1.4, 1.5, 5.3, 6.5, 16.1**
 
-  - [ ]* 4.4 Write property tests for validation logic
+  - [x] 4.4 Write property tests for validation logic
     - **Property 3: Required Column Visibility Enforcement** — generate configs hiding required columns, verify rejection
     - **Property 12: Duplicate Column Rejection** — generate configs with duplicate ids, verify rejection
     - **Property 13: Payload Constraint Validation** — generate oversized payloads, invalid order values, excess column counts, verify rejection
     - **Validates: Requirements 5.2, 5.5, 15.1, 15.2, 15.4, 15.5**
 
-- [ ] 5. Backend controller and routes
-  - [ ] 5.1 Create Preferences Controller
+- [x] 5. Backend controller and routes
+  - [x] 5.1 Create Preferences Controller
     - Create `backend/src/modules/preferences/preferences.controller.ts`
     - Implement `getEffectiveColumns(req, res)`: extract tenantId/userId from JWT, call service.resolveEffectiveColumns, return 200 with data envelope
     - Implement `saveUserPreference(req, res)`: parse body, call service.upsertUserPreference, return 200
@@ -94,14 +94,14 @@ Implements a server-persisted column configuration system for the LeadCRM Leads 
     - Handle errors: 400 validation, 401 auth, 404 not-found (opaque), 500 internal
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 4.1, 4.2, 4.3, 4.4, 4.6_
 
-  - [ ] 5.2 Create Preferences DTO (Zod validation schemas)
+  - [x] 5.2 Create Preferences DTO (Zod validation schemas)
     - Create `backend/src/modules/preferences/preferences.dto.ts`
     - Define `GetColumnsParamsSchema` (module path param validation)
     - Define `SaveColumnsBodySchema` (columns array with id, visible, order, duplicate check, max 64KB)
     - Define `ColumnItemSchema` (individual column validation: id regex, boolean visible, non-negative int order)
     - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5, 15.6, 15.7_
 
-  - [ ] 5.3 Create Preferences Routes and wire middleware
+  - [x] 5.3 Create Preferences Routes and wire middleware
     - Create `backend/src/modules/preferences/preferences.routes.ts`
     - `GET /:module` — authenticate → validate(params) → getEffectiveColumns
     - `PUT /:module` — authenticate → validate(params+body) → saveUserPreference
@@ -111,11 +111,11 @@ Implements a server-persisted column configuration system for the LeadCRM Leads 
     - Register routes under `/api/v1/preferences/columns` in main route file
     - _Requirements: 3.1, 4.3, 7.1, 7.5, 7.6, 14.3_
 
-- [ ] 6. Checkpoint — Backend complete
+- [x] 6. Checkpoint — Backend complete
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 7. Frontend API service and hook
-  - [ ] 7.1 Create Preferences API service
+- [x] 7. Frontend API service and hook
+  - [x] 7.1 Create Preferences API service
     - Create `frontend/src/shared/services/preferences.api.ts`
     - Implement `getEffectiveColumns(module)` → GET `/api/v1/preferences/columns/:module`
     - Implement `saveUserPreference(module, config)` → PUT `/api/v1/preferences/columns/:module`
@@ -125,7 +125,7 @@ Implements a server-persisted column configuration system for the LeadCRM Leads 
     - Use apiClient with `credentials: 'include'`, 10s AbortController timeout
     - _Requirements: 2.4, 9.6, 13.7_
 
-  - [ ] 7.2 Create useColumnPreferences hook
+  - [x] 7.2 Create useColumnPreferences hook
     - Create `frontend/src/features/tenant/crm/leads/hooks/use-column-preferences.ts`
     - Implement `useColumnPreferences(module)` returning: effectiveColumns, isLoading, isSaving, saveError, saveColumns, resetColumns, retryCount
     - `saveColumns`: optimistic update → API call → confirm or rollback
@@ -134,8 +134,8 @@ Implements a server-persisted column configuration system for the LeadCRM Leads 
     - Connect to DataContext for state management
     - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.7, 10.2, 10.4_
 
-- [ ] 8. Frontend DataContext integration
-  - [ ] 8.1 Extend DataContext with column preferences state
+- [x] 8. Frontend DataContext integration
+  - [x] 8.1 Extend DataContext with column preferences state
     - Add `effectiveColumns` state (per-module map) to DataContext
     - Add `columnPreferencesLoading` boolean
     - Fetch effective columns on auth (Batch 1) and cache result
@@ -145,14 +145,14 @@ Implements a server-persisted column configuration system for the LeadCRM Leads 
     - Serve System_Default if fetch fails on initial load
     - _Requirements: 2.5, 9.1, 9.4, 9.7, 10.2, 10.4, 13.1, 13.2, 13.3, 13.4, 13.5_
 
-  - [ ]* 8.2 Write property tests for optimistic update and rollback
+  - [x] 8.2 Write property tests for optimistic update and rollback
     - **Property 9: Optimistic Update Immediacy** — verify DataContext updates state synchronously before API response
     - **Property 10: Failure Rollback Integrity** — generate pre-save states, simulate API failures, verify state reverts exactly
     - **Property 15: Cache Authority** — verify server response overwrites cached state regardless of prior cached state
     - **Validates: Requirements 9.1, 9.4, 10.4, 2.5, 13.2, 13.4**
 
-- [ ] 9. Manage Columns Drawer UI
-  - [ ] 9.1 Create Manage Columns Drawer component
+- [x] 9. Manage Columns Drawer UI
+  - [x] 9.1 Create Manage Columns Drawer component
     - Create `frontend/src/features/tenant/crm/leads/ui/manage-columns-drawer.tsx`
     - Implement slide-in panel from right with semi-transparent backdrop
     - Display all columns from registry as vertical list with: drag handle, column label, visibility toggle
@@ -167,14 +167,14 @@ Implements a server-persisted column configuration system for the LeadCRM Leads 
     - Dark mode classes on every element
     - _Requirements: 8.1, 8.2, 8.3, 8.5, 8.6, 8.7, 8.8, 8.10, 8.11, 9.2, 9.3, 9.5, 10.1_
 
-  - [ ] 9.2 Add drag-and-drop reordering with @dnd-kit
+  - [x] 9.2 Add drag-and-drop reordering with @dnd-kit
     - Integrate @dnd-kit/core and @dnd-kit/sortable for column reordering
     - All columns (including required) are draggable
     - Update order values on drop
     - Respect search filter: hide non-matching items but preserve their order
     - _Requirements: 8.4_
 
-  - [ ] 9.3 Add keyboard accessibility and focus management
+  - [x] 9.3 Add keyboard accessibility and focus management
     - Implement focus trap inside open drawer (tab cycles within drawer)
     - Tab navigation through all interactive elements
     - Enter/space to activate toggles
@@ -182,12 +182,12 @@ Implements a server-persisted column configuration system for the LeadCRM Leads 
     - Return focus to "Manage Columns" button on close
     - _Requirements: 8.9_
 
-  - [ ]* 9.4 Write property test for search filtering
+  - [x] 9.4 Write property test for search filtering
     - **Property 8: Search Filtering Correctness** — generate column lists and search strings, verify filtered result contains exactly columns whose label includes the search as case-insensitive substring, preserving relative order
     - **Validates: Requirements 8.3**
 
-- [ ] 10. Leads table integration
-  - [ ] 10.1 Integrate effective columns into Leads table
+- [x] 10. Leads table integration
+  - [x] 10.1 Integrate effective columns into Leads table
     - Modify `frontend/src/features/tenant/crm/leads/ui/leads-page.tsx` (or leads table component)
     - Render only visible columns from effectiveColumns, in ascending order of `order` field
     - Add "Manage Columns" button to table toolbar
@@ -195,7 +195,7 @@ Implements a server-persisted column configuration system for the LeadCRM Leads 
     - Pass registry data and module identifier via props to drawer
     - _Requirements: 17.1, 8.1, 14.5_
 
-  - [ ] 10.2 Add responsive column behavior
+  - [x] 10.2 Add responsive column behavior
     - Below 768px (md): show only required columns + first 2 non-required visible columns
     - 768px–1024px (md to lg): show required columns + up to 4 non-required visible columns
     - Above 1024px (lg+): show all visible columns
@@ -203,15 +203,15 @@ Implements a server-persisted column configuration system for the LeadCRM Leads 
     - Drawer: full-screen panel below 640px, side drawer above 640px
     - _Requirements: 17.2, 17.3, 17.4, 17.5_
 
-  - [ ]* 10.3 Write property test for visible column rendering
+  - [x] 10.3 Write property test for visible column rendering
     - **Property 14: Visible Column Rendering** — generate effectiveColumns configs, verify table renders exactly visible:true columns in ascending order of order field
     - **Validates: Requirements 17.1**
 
-- [ ] 11. Checkpoint — Frontend integration complete
+- [x] 11. Checkpoint — Frontend integration complete
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 12. localStorage migration and backward compatibility
-  - [ ] 12.1 Implement localStorage migration logic
+- [x] 12. localStorage migration and backward compatibility
+  - [x] 12.1 Implement localStorage migration logic
     - Create migration utility in `frontend/src/features/tenant/crm/leads/services/local-storage-migration.ts`
     - Execute before first Leads table render (one-time)
     - Read existing localStorage column configuration if present
@@ -221,7 +221,7 @@ Implements a server-persisted column configuration system for the LeadCRM Leads 
     - Do not block page load or show errors on migration failure
     - _Requirements: 16.1, 16.2, 16.3, 16.4, 16.5_
 
-  - [ ]* 12.2 Write unit tests for localStorage migration
+  - [x] 12.2 Write unit tests for localStorage migration
     - Test valid localStorage data migration
     - Test invalid JSON handling
     - Test unknown column ids handling
@@ -229,12 +229,12 @@ Implements a server-persisted column configuration system for the LeadCRM Leads 
     - Test migration does not block page load on failure
     - _Requirements: 16.3, 16.4, 16.5_
 
-- [ ] 13. User preference independence validation
-  - [ ]* 13.1 Write property test for user preference independence
+- [x] 13. User preference independence validation
+  - [x] 13.1 Write property test for user preference independence
     - **Property 11: User Preference Independence** — generate user preferences, mutate tenant preference, verify all user preference records remain unchanged
     - **Validates: Requirements 4.5**
 
-- [ ] 14. Final checkpoint — All tests pass
+- [x] 14. Final checkpoint — All tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes

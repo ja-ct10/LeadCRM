@@ -21,7 +21,9 @@
     "verify:production-architecture": "ts-node src/scripts/verify-production-architecture.ts",
     "test:gmail-connection": "ts-node src/scripts/test-gmail-connection.ts",
     "audit:hardcoded-data": "ts-node src/scripts/audit-hardcoded-data.ts",
-    "gmail:setup-system-sender": "ts-node src/scripts/setup-gmail-system-sender.ts"
+    "gmail:setup-system-sender": "ts-node src/scripts/setup-gmail-system-sender.ts",
+    "test": "vitest --run",
+    "test:watch": "vitest"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
@@ -55,8 +57,10 @@
   "devDependencies": {
     "@types/compression": "^1.8.1",
     "@types/helmet": "0.0.48",
+    "fast-check": "^4.9.0",
     "prisma": "^5.22.0",
     "ts-node": "^10.9.2",
-    "ts-node-dev": "^2.0.0"
+    "ts-node-dev": "^2.0.0",
+    "vitest": "^4.1.10"
   }
 }

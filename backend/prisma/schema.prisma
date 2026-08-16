@@ -228,6 +228,8 @@ model Tenant {
   SMSQueue           SMSQueue[]
   EmailEvent         EmailEvent[]
   AutomationRule     AutomationRule[]
+  userPreferences    UserPreference[]
+  tenantPreferences  TenantPreference[]
 }
 
 // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -324,6 +326,7 @@ model User {
   notifications        Notification[]
   auditLogs            AuditLog[]
   oauthAccounts        OAuthAccount[]
+  userPreferences      UserPreference[]
 
   @@unique([tenantId, email])
   @@index([tenantId, status])
@@ -1514,4 +1517,44 @@ model AutomationRule {
 
   @@index([tenantId, isActive])
   @@index([tenantId, triggerType])
+}
+
+// ─────────────────────────────────────────────────────
+// USER PREFERENCE (per-user, per-module, per-key)
+// Generic preference storage for column configs, filters, sorts, etc.
+// ─────────────────────────────────────────────────────
+model UserPreference {
+  id        String   @id @default(uuid())
+  tenantId  String
+  userId    String
+  module    String   @db.VarChar(64)
+  key       String   @db.VarChar(128)
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId, module, key])
+  @@index([tenantId, module])
+}
+
+// ─────────────────────────────────────────────────────
+// TENANT PREFERENCE (per-tenant, per-module, per-key)
+// Tenant-level defaults managed by Client Admins.
+// ─────────────────────────────────────────────────────
+model TenantPreference {
+  id        String   @id @default(uuid())
+  tenantId  String
+  module    String   @db.VarChar(64)
+  key       String   @db.VarChar(128)
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, module, key])
+  @@index([tenantId, module])
 }

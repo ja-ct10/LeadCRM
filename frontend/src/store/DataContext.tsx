@@ -6,6 +6,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useRef,
   useMemo,
   ReactNode,
 } from "react";
@@ -71,6 +72,8 @@ import { templatesApi } from "@/shared/services/templates.api";
 import { serviceOrdersApi } from "@/shared/services/service-orders.api";
 import { invoicesApi } from "@/shared/services/invoices.api";
 import { auditApi } from "@/shared/services/audit.api";
+import { preferencesApi } from "@/shared/services/preferences.api";
+import type { ColumnConfigItem } from '@leadcrm/shared';
 import {
   toBackendCreateContact,
   toBackendUpdateContact,
@@ -198,6 +201,12 @@ interface DataContextType {
   toggleAssetModule: () => void;
   isBillingModuleEnabled: boolean;
   toggleBillingModule: () => void;
+
+  // Column Preferences
+  columnPreferences: Record<string, ColumnConfigItem[]>;
+  columnPreferencesLoading: boolean;
+  saveColumnPreference: (module: string, columns: ColumnConfigItem[]) => Promise<void>;
+  resetColumnPreference: (module: string) => Promise<void>;
 }
 
 const MOCK_AUDIT_LO·S: AuditLog[] = [
@@ -280,6 +289,22 @@ const MOCK_AUDIT_LO·S: AuditLog[] = [
   },
 ];
 
+// ── Column Preferences: System Default (fallback when API unavailable) ────────
+const LEADS_SYSTEM_DEFAULT: ColumnConfigItem[] = [
+  { id: 'firstName', visible: true, order: 0 },
+  { id: 'lastName', visible: true, order: 1 },
+  { id: 'email', visible: true, order: 2 },
+  { id: 'phone', visible: true, order: 3 },
+  { id: 'companyName', visible: true, order: 4 },
+  { id: 'status', visible: true, order: 5 },
+  { id: 'source', visible: true, order: 6 },
+  { id: 'assignedUserId', visible: true, order: 7 },
+  { id: 'productInterest', visible: false, order: 8 },
+  { id: 'address', visible: false, order: 9 },
+  { id: 'createdAt', visible: true, order: 10 },
+  { id: 'accountId', visible: false, order: 11 },
+];
+
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export function DataProvider({ children }: { children: ReactNode }) {
@@ -313,6 +338,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     useState<boolean>(false);
   const [isBillingModuleEnabled, setIsBillingModuleEnabled] =
     useState<boolean>(false);
+
+  // ── Column Preferences State ───────────────────────────────────────────────
+  const [columnPreferences, setColumnPreferences] = useState<Record<string, ColumnConfigItem[]>>({});
+  const [columnPreferencesLoading, setColumnPreferencesLoading] = useState(false);
+  const columnPreferencesRef = useRef(columnPreferences);
+  columnPreferencesRef.current = columnPreferences;
 
   // Safely parse a localStorage value, falling back to `fallback` if the
   // stored value is missing, "undefined", or otherwise unparseable.
@@ -363,6 +394,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setRoles((apiRoles as any[]).filter((r: any) => !r.isArchived));
       } catch (err) {
         console.error('[DataContext] Failed to load CRM data from API:', err);
+      }
+
+      // ── Column Preferences (Batch 1 addition) ─────────────────────────────
+      try {
+        setColumnPreferencesLoading(true);
+        const colResponse = await preferencesApi.getEffectiveColumns('leads');
+        setColumnPreferences(prev => ({ ...prev, leads: colResponse.data.columns }));
+      } catch {
+        // Fallback to system default — don't block table render
+        setColumnPreferences(prev => ({ ...prev, leads: LEADS_SYSTEM_DEFAULT }));
+      } finally {
+        setColumnPreferencesLoading(false);
       }
 
       // Batch 2 — deferred after initial paint so Batch 1 data renders first
@@ -563,6 +606,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setIsServiceModuleEnabled(serviceEnabled);
     setIsAssetModuleEnabled(assetEnabled);
     setIsBillingModuleEnabled(billingEnabled);
+
+    // Column preferences: use system default in mock mode
+    setColumnPreferences(prev => ({ ...prev, leads: LEADS_SYSTEM_DEFAULT }));
 
     if (user?.role === "System Admin") {
       setAuditLogs(logs);
@@ -2702,6 +2748,35 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setIsBillingModuleEnabled(newState);
   };
 
+  // ── Column Preferences: Save & Reset ───────────────────────────────────────
+  const saveColumnPreference = useCallback(async (module: string, columns: ColumnConfigItem[]): Promise<void> => {
+    const previous = columnPreferencesRef.current[module];
+    // Optimistic update
+    setColumnPreferences(prev => ({ ...prev, [module]: columns }));
+    try {
+      const response = await preferencesApi.saveUserPreference(module, columns);
+      // Server response overwrites cache (cache subordination)
+      setColumnPreferences(prev => ({ ...prev, [module]: response.data.columns }));
+    } catch (err: unknown) {
+      // Rollback on failure
+      setColumnPreferences(prev => ({ ...prev, [module]: previous ?? [] }));
+      throw err instanceof Error ? err : new Error('Failed to save column preference');
+    }
+  }, []);
+
+  const resetColumnPreference = useCallback(async (module: string): Promise<void> => {
+    const previous = columnPreferencesRef.current[module];
+    try {
+      const response = await preferencesApi.deleteUserPreference(module);
+      // Server sends back fallback (tenant or system default)
+      setColumnPreferences(prev => ({ ...prev, [module]: response.data.columns }));
+    } catch (err: unknown) {
+      // Keep current state on failure
+      setColumnPreferences(prev => ({ ...prev, [module]: previous ?? [] }));
+      throw err instanceof Error ? err : new Error('Failed to reset column preference');
+    }
+  }, []);
+
   // ── Memoize provider value to prevent re-render cascade to 38 consumers ──
   const contextValue = useMemo(() => ({
     organizations,
@@ -2777,6 +2852,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     updateUser,
     deleteUser,
     restoreRecord,
+    columnPreferences,
+    columnPreferencesLoading,
+    saveColumnPreference,
+    resetColumnPreference,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [
     organizations, contacts, deals, pipelines, workflows, campaigns,
@@ -2785,6 +2864,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     activities, invoices, pendingActions, serviceOrders, assets,
     inventoryItems, auditLogs,
     isServiceModuleEnabled, isAssetModuleEnabled, isBillingModuleEnabled,
+    columnPreferences, columnPreferencesLoading,
   ]);
 
   return (
