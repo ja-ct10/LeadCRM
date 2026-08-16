@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fc from 'fast-check';
 import type { ColumnConfig, ColumnConfigItem } from '@leadcrm/shared';
+import type { Prisma } from '@prisma/client';
 
 import {
   LEADS_COLUMN_REGISTRY,
@@ -58,6 +59,11 @@ function storedValueArb(minLength = 1): fc.Arbitrary<{ columns: ColumnConfigItem
   return validColumnsArb(minLength).map((columns) => ({ columns }));
 }
 
+/** Helper to cast column config to Prisma JsonValue for mock return types. */
+function asJsonValue(val: { columns: ColumnConfigItem[] }): Prisma.JsonValue {
+  return val as unknown as Prisma.JsonValue;
+}
+
 // ─────────────────────────────────────────────────────
 // Property 1: Resolution Hierarchy
 // ─────────────────────────────────────────────────────
@@ -79,7 +85,7 @@ describe('Feature: manage-columns-persistence, Property 1: Resolution Hierarchy'
             userId: 'user-1',
             module: 'leads',
             key: 'columns',
-            value: userValue,
+            value: asJsonValue(userValue),
             createdAt: new Date(),
             updatedAt: new Date(),
           });
@@ -88,7 +94,7 @@ describe('Feature: manage-columns-persistence, Property 1: Resolution Hierarchy'
             tenantId: 'tenant-1',
             module: 'leads',
             key: 'columns',
-            value: tenantValue,
+            value: asJsonValue(tenantValue),
             createdAt: new Date(),
             updatedAt: new Date(),
           });
@@ -121,7 +127,7 @@ describe('Feature: manage-columns-persistence, Property 1: Resolution Hierarchy'
           tenantId: 'tenant-1',
           module: 'leads',
           key: 'columns',
-          value: tenantValue,
+          value: asJsonValue(tenantValue),
           createdAt: new Date(),
           updatedAt: new Date(),
         });
@@ -182,7 +188,7 @@ describe('Feature: manage-columns-persistence, Property 1: Resolution Hierarchy'
             userId: 'user-1',
             module: 'leads',
             key: 'columns',
-            value: userStoredValue,
+            value: asJsonValue(userStoredValue),
             createdAt: new Date(),
             updatedAt: new Date(),
           });
@@ -191,7 +197,7 @@ describe('Feature: manage-columns-persistence, Property 1: Resolution Hierarchy'
             tenantId: 'tenant-1',
             module: 'leads',
             key: 'columns',
-            value: tenantStoredValue,
+            value: asJsonValue(tenantStoredValue),
             createdAt: new Date(),
             updatedAt: new Date(),
           });

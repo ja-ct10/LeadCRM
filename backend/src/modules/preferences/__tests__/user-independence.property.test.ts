@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fc from 'fast-check';
 import type { ColumnConfigItem } from '@leadcrm/shared';
+import type { Prisma } from '@prisma/client';
 
 import {
   LEADS_COLUMN_REGISTRY,
@@ -50,6 +51,11 @@ const mockedWriteAuditLog = vi.mocked(writeAuditLog);
 const registryColumns = LEADS_COLUMN_REGISTRY.columns;
 const registryIds = registryColumns.map((c) => c.id);
 const requiredIds = new Set(getRequiredColumnIds('leads'));
+
+/** Helper to cast column config to Prisma JsonValue for mock return types. */
+function asJsonValue(val: { columns: ColumnConfigItem[] }): Prisma.JsonValue {
+  return val as unknown as Prisma.JsonValue;
+}
 
 /**
  * Generate a valid ColumnConfigItem[] suitable for a tenant default save.
@@ -133,7 +139,7 @@ describe('Feature: manage-columns-persistence, Property 11: User Preference Inde
             tenantId,
             module: 'leads',
             key: 'columns',
-            value: { columns: tenantColumns },
+            value: asJsonValue({ columns: tenantColumns }),
             createdAt: new Date(),
             updatedAt: new Date(),
           });
@@ -189,7 +195,7 @@ describe('Feature: manage-columns-persistence, Property 11: User Preference Inde
             tenantId,
             module: 'leads',
             key: 'columns',
-            value: { columns: registryIds.slice(0, 3).map((id, idx) => ({ id, visible: true, order: idx })) },
+            value: asJsonValue({ columns: registryIds.slice(0, 3).map((id, idx) => ({ id, visible: true, order: idx })) }),
             createdAt: new Date(),
             updatedAt: new Date(),
           });
@@ -198,7 +204,7 @@ describe('Feature: manage-columns-persistence, Property 11: User Preference Inde
             tenantId,
             module: 'leads',
             key: 'columns',
-            value: { columns: tenantColumns },
+            value: asJsonValue({ columns: tenantColumns }),
             createdAt: new Date(),
             updatedAt: new Date(),
           });
@@ -242,7 +248,7 @@ describe('Feature: manage-columns-persistence, Property 11: User Preference Inde
             tenantId,
             module: 'leads',
             key: 'columns',
-            value: { columns: registryIds.map((id, idx) => ({ id, visible: true, order: idx })) },
+            value: asJsonValue({ columns: registryIds.map((id, idx) => ({ id, visible: true, order: idx })) }),
             createdAt: new Date(),
             updatedAt: new Date(),
           });
@@ -251,7 +257,7 @@ describe('Feature: manage-columns-persistence, Property 11: User Preference Inde
             tenantId,
             module: 'leads',
             key: 'columns',
-            value: { columns: tenantColumns },
+            value: asJsonValue({ columns: tenantColumns }),
             createdAt: new Date(),
             updatedAt: new Date(),
           });

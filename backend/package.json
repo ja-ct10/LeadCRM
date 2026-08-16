@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "npm install --include=dev && prisma generate && tsc && npx prisma migrate deploy",
-    "start": "node dist/server.js",
+    "start": "node dist/backend/src/server.js",
     "lint": "tsc --noEmit",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
