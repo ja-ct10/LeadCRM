@@ -4,7 +4,7 @@ import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
 import { Lead } from '@/store/types';
-import { ModuleWorkspace, ViewType, RecordDrawer, StatusBadge, AvatarCell, ActivityFlag } from '@/shared/components/crm';
+import { ModuleWorkspace, ViewType, RecordDrawer, StatusBadge } from '@/shared/components/crm';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useFilterUrlSync } from '@/shared/hooks/use-filter-url-sync';
 import { useDebounce } from '@/shared/hooks/use-debounce';
@@ -13,27 +13,10 @@ import { migrateLocalStorageColumns } from '../services/local-storage-migration'
 import { ManageColumnsDrawer } from './manage-columns-drawer';
 import { LeadsListView } from './leads-list-view';
 import { LeadFormSheet } from './lead-form';
+import { LEADS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
 import { Edit, Phone, Mail, ListTodo, MoreHorizontal, SlidersHorizontal } from 'lucide-react';
-import type { ColumnDefinition, ColumnConfigItem } from '@leadcrm/shared';
-
-// ── Leads Column Registry (frontend mirror for drawer display) ────────────────
-
-const LEADS_COLUMN_REGISTRY: ColumnDefinition[] = [
-  { id: 'firstName', label: 'First Name', required: true, defaultVisible: true, defaultOrder: 0 },
-  { id: 'lastName', label: 'Last Name', required: true, defaultVisible: true, defaultOrder: 1 },
-  { id: 'email', label: 'Email', required: false, defaultVisible: true, defaultOrder: 2 },
-  { id: 'phone', label: 'Phone', required: false, defaultVisible: true, defaultOrder: 3 },
-  { id: 'companyName', label: 'Company', required: false, defaultVisible: true, defaultOrder: 4 },
-  { id: 'status', label: 'Status', required: true, defaultVisible: true, defaultOrder: 5 },
-  { id: 'source', label: 'Source', required: false, defaultVisible: true, defaultOrder: 6 },
-  { id: 'assignedUserId', label: 'Assigned To', required: false, defaultVisible: true, defaultOrder: 7 },
-  { id: 'productInterest', label: 'Product Interest', required: false, defaultVisible: false, defaultOrder: 8 },
-  { id: 'address', label: 'Address', required: false, defaultVisible: false, defaultOrder: 9 },
-  { id: 'createdAt', label: 'Created Date', required: false, defaultVisible: true, defaultOrder: 10 },
-  { id: 'accountId', label: 'Account', required: false, defaultVisible: false, defaultOrder: 11 },
-];
+import type { ColumnConfigItem } from '@leadcrm/shared';
 
 // ── Leads Page ────────────────────────────────────────────────────────────────
 
@@ -42,21 +25,18 @@ export default function LeadsPage(): React.ReactElement {
     contacts: leads,
     addContact: addLead,
     updateContact: updateLead,
-    deleteContact: deleteLead,
     users,
     organizations,
   } = useData();
   const { user } = useAuth();
   const canCreate = useHasPermission('contacts.create');
   const canEdit = useHasPermission('contacts.edit');
-  const canDelete = useHasPermission('contacts.delete');
   const { getParam, getArrayParam, updateParams } = useFilterUrlSync();
 
   // ── Column Preferences ────────────────────────────────────────────────
   const {
     effectiveColumns,
     isLoading: isColumnsLoading,
-    isSaving: isColumnsSaving,
     saveColumns,
     resetColumns,
   } = useColumnPreferences('leads');
@@ -396,26 +376,15 @@ export default function LeadsPage(): React.ReactElement {
         }
       >
         {/* ── List View ─────────────────────────────────────────── */}
-        {activeView === 'list' && (
-          <LeadsListView
-            leads={filteredLeads}
-            selectedIds={selectedIds}
-            onToggleSelect={handleToggleSelect}
-            onSelectAll={handleSelectAll}
-            onRowClick={handleRowClick}
-            getInitials={getInitials}
-            getLeadName={getLeadName}
-            getOwnerName={getOwnerName}
-            getOwnerInitials={getOwnerInitials}
-            getStatusVariant={getStatusVariant}
-            formatCurrency={formatCurrency}
-            visibleColumns={visibleColumns}
-            registry={LEADS_COLUMN_REGISTRY}
-          />
+        {(activeView === 'list' || activeView === 'table') && isColumnsLoading && (
+          <div className="bg-white dark:bg-slate-800/40 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-8">
+            <div className="flex items-center justify-center gap-2 text-[13px] text-[#5A6B85] dark:text-slate-400">
+              <div className="w-4 h-4 border-2 border-[#2563EB] border-t-transparent rounded-full animate-spin" />
+              Loading leads...
+            </div>
+          </div>
         )}
-
-        {/* ── Table View ────────────────────────────────────────── */}
-        {activeView === 'table' && (
+        {(activeView === 'list' || activeView === 'table') && !isColumnsLoading && (
           <LeadsListView
             leads={filteredLeads}
             selectedIds={selectedIds}
@@ -427,10 +396,8 @@ export default function LeadsPage(): React.ReactElement {
             getOwnerName={getOwnerName}
             getOwnerInitials={getOwnerInitials}
             getStatusVariant={getStatusVariant}
-            formatCurrency={formatCurrency}
             visibleColumns={visibleColumns}
             registry={LEADS_COLUMN_REGISTRY}
-            dense
           />
         )}
 

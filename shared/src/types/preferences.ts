@@ -24,4 +24,6 @@ export interface ColumnDefinition {
   required: boolean;
   defaultVisible: boolean;
   defaultOrder: number;
+  /** Optional category group for display in Manage Columns drawer. */
+  group?: string;
 }

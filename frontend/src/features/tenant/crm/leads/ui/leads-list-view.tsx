@@ -58,6 +58,7 @@ export interface LeadsListViewProps {
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
+// UPDATED: Table always renders with header/footer even when empty
 
 export function LeadsListView({
   leads,
@@ -74,19 +75,27 @@ export function LeadsListView({
   registry,
   dense = false,
 }: LeadsListViewProps): React.ReactElement {
-  if (leads.length === 0) {
-    return (
-      <div className="flex items-center justify-center py-16 text-[13px] text-[#5A6B85] dark:text-slate-400">
-        No leads found. Adjust your filters or create a new lead.
-      </div>
-    );
-  }
-
   /** Resolve label for a column id */
   const getColumnLabel = (colId: string): string => {
     const def = registry.find((r) => r.id === colId);
     return def?.label ?? colId;
   };
+
+  // Handle case where no columns are visible
+  if (visibleColumns.length === 0) {
+    return (
+      <div className="bg-white dark:bg-slate-800/40 border border-[#E4E9F0] dark:border-slate-700 rounded-xl overflow-hidden">
+        <div className="flex flex-col items-center justify-center py-16 gap-2">
+          <p className="text-[13px] text-[#5A6B85] dark:text-slate-400">
+            No columns are currently visible.
+          </p>
+          <p className="text-[12px] text-[#5A6B85]/70 dark:text-slate-500">
+            Open Manage Columns to choose the columns you want to display.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   /** Render a cell value for a given column id and lead */
   const renderCell = (colId: string, lead: Lead): React.ReactNode => {
@@ -99,7 +108,7 @@ export function LeadsListView({
             </div>
             <div className="min-w-0">
               <p className="text-[13px] font-semibold text-[#0F172A] dark:text-white truncate leading-tight group-hover:text-[#2563EB] transition-colors">
-                {lead.firstName ?? '—'}
+                {getLeadName(lead)}
               </p>
             </div>
           </div>
@@ -171,6 +180,39 @@ export function LeadsListView({
             {((lead as unknown as Record<string, unknown>).accountId as string) ?? '—'}
           </p>
         );
+      case 'emailAndPhone':
+        return (
+          <div className="min-w-0">
+            <p className="text-[12px] text-[#0F172A] dark:text-slate-200 truncate">{lead.email ?? '—'}</p>
+            {lead.phone && <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 truncate">{lead.phone}</p>}
+          </div>
+        );
+      case 'description':
+        return (
+          <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
+            {(lead as unknown as Record<string, unknown>).description as string ?? '—'}
+          </p>
+        );
+      case 'website':
+        return (
+          <p className="text-[12px] text-[#2563EB] dark:text-blue-400 truncate">
+            {(lead as unknown as Record<string, unknown>).website as string ?? '—'}
+          </p>
+        );
+      case 'updatedAt':
+        return (
+          <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
+            {(lead as unknown as Record<string, unknown>).updatedAt
+              ? new Date((lead as unknown as Record<string, unknown>).updatedAt as string).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+              : '—'}
+          </p>
+        );
+      case 'primaryAddressCityState':
+        return (
+          <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
+            {lead.city ?? '—'}
+          </p>
+        );
       default:
         return <span className="text-[12px] text-[#5A6B85]">—</span>;
     }
@@ -207,6 +249,11 @@ export function LeadsListView({
 
       {/* Rows */}
       <div className="divide-y divide-[#E4E9F0] dark:divide-slate-700">
+        {leads.length === 0 && (
+          <div className="flex items-center justify-center py-16 text-[13px] text-[#5A6B85] dark:text-slate-400">
+            No leads found. Adjust your filters or create a new lead.
+          </div>
+        )}
         {leads.map((lead) => {
           const isSelected = selectedIds.includes(lead.id);
 
