@@ -8,9 +8,10 @@ import { useAccounts } from '../hooks/use-accounts';
 import { useData } from '@/store/DataContext';
 import { useFilterUrlSync } from '@/shared/hooks/use-filter-url-sync';
 import { useDebounce } from '@/shared/hooks/use-debounce';
+import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
 import { ManageColumnsDrawer } from '@/shared/components/manage-columns-drawer';
 import { ACCOUNTS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
-import { getResponsiveColumnClass, getColumnLabel, getDefaultVisibleColumns } from '@/shared/components/column-table-helpers';
+import { AccountsDataGrid } from './accounts-data-grid';
 import AccountForm from '../ui/account-form';
 import { SideSheet } from '@/shared/components/side-sheet';
 import { toast } from 'sonner';
@@ -55,15 +56,15 @@ export default function AccountsPage(): React.ReactElement {
   const [isManageColumnsOpen, setIsManageColumnsOpen] = useState(false);
   const manageColumnsButtonRef = useRef<HTMLButtonElement>(null);
 
-  /** Visible columns sorted by order — drives table rendering */
-  const visibleColumns = useMemo((): ColumnConfigItem[] => {
-    if (effectiveColumns.length === 0) {
-      return getDefaultVisibleColumns(ACCOUNTS_COLUMN_REGISTRY);
-    }
-    return [...effectiveColumns]
-      .filter((col) => col.visible)
-      .sort((a, b) => a.order - b.order);
-  }, [effectiveColumns]);
+  // ── Table Preferences (pageSize, viewMode, sort) ──────────────────────
+  const {
+    pageSize,
+    viewMode,
+    sort,
+    setPageSize,
+    setViewMode,
+    setSort,
+  } = useTablePreferences('accounts');
 
   // ── State (Synced with URL) ──────────────────────────────────────────
   const [activeView, setActiveView] = useState<ViewType>(() => (getParam('view') as ViewType) || 'list');
@@ -74,6 +75,7 @@ export default function AccountsPage(): React.ReactElement {
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [drawerTab, setDrawerTab] = useState('overview');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [accountSelectedIds, setAccountSelectedIds] = useState<Set<string>>(new Set());
 
   // Multi-criteria filter state
   const [selectedSystemFilters, setSelectedSystemFilters] = useState<string[]>(() => getArrayParam('system'));
@@ -277,6 +279,14 @@ export default function AccountsPage(): React.ReactElement {
         availableViews={['list', 'tile', 'table', 'grid']}
         activeView={activeView}
         onViewChange={setActiveView}
+
+        sortableFields={ACCOUNTS_COLUMN_REGISTRY.map((col) => ({ id: col.id, label: col.label }))}
+        sort={sort}
+        onSortChange={setSort}
+        pageSize={pageSize}
+        onPageSizeChange={setPageSize}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
         savedTabs={[
           { id: 'all', label: 'All Accounts' },
           { id: 'my', label: 'My Accounts' },
@@ -306,68 +316,30 @@ export default function AccountsPage(): React.ReactElement {
           </button>
         }
       >
-        {/* List View — Dynamic Columns */}
+        {/* List View — DataGrid */}
         {(activeView === 'list' || activeView === 'table') && (
-          <div className="bg-white dark:bg-slate-800/40 border border-[#E4E9F0] dark:border-slate-700 rounded-xl overflow-hidden overflow-x-auto">
-            {/* Header */}
-            <div
-              className={cn(
-                'flex items-center border-b border-[#E4E9F0] dark:border-slate-700 bg-[#F6F8FB] dark:bg-slate-800/60 sticky top-0 z-10',
-                'text-[11.5px] font-semibold uppercase tracking-wide text-[#5A6B85] dark:text-slate-400 h-11 px-3',
-              )}
-            >
-              <label className="flex items-center justify-center w-10 shrink-0">
-                <input
-                  type="checkbox"
-                  className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-[#2563EB] focus:ring-[#2563EB]/20 cursor-pointer"
-                  aria-label="Select all accounts"
-                />
-              </label>
-              {visibleColumns.map((col) => {
-                const responsiveClass = getResponsiveColumnClass(col.id, visibleColumns, ACCOUNTS_COLUMN_REGISTRY);
-                return (
-                  <span key={col.id} className={cn('px-3 truncate flex-1 min-w-0', responsiveClass)}>
-                    {getColumnLabel(col.id, ACCOUNTS_COLUMN_REGISTRY)}
-                  </span>
-                );
-              })}
-            </div>
-
-            {/* Rows */}
-            <div className="divide-y divide-[#E4E9F0] dark:divide-slate-700">
-              {filteredAccounts.map((account) => (
-                <div
-                  key={account.id}
-                  onClick={() => handleRowClick(account)}
-                  className="flex items-center h-[52px] px-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors group"
-                >
-                  <label className="flex items-center justify-center w-10 shrink-0" onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-[#2563EB] focus:ring-[#2563EB]/20 cursor-pointer"
-                      aria-label={`Select ${account.name}`}
-                    />
-                  </label>
-
-                  {visibleColumns.map((col) => {
-                    const responsiveClass = getResponsiveColumnClass(col.id, visibleColumns, ACCOUNTS_COLUMN_REGISTRY);
-                    return (
-                      <div key={col.id} className={cn('px-3 min-w-0 flex-1', responsiveClass)}>
-                        {renderAccountCell(col.id, account)}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-between px-4 py-2.5 border-t border-[#E4E9F0] dark:border-slate-700 bg-[#F6F8FB] dark:bg-slate-800/60">
-              <span className="text-[12px] text-[#5A6B85]">
-                Total records <strong className="font-semibold text-[#0F172A] dark:text-white">{filteredAccounts.length}</strong>
-              </span>
-            </div>
-          </div>
+          <AccountsDataGrid
+            accounts={filteredAccounts}
+            totalRecords={filteredAccounts.length}
+            effectiveColumns={effectiveColumns}
+            sort={sort}
+            onSortChange={setSort}
+            onRowClick={handleRowClick}
+            selectedIds={accountSelectedIds}
+            onSelectionChange={setAccountSelectedIds}
+            getOwnerName={getOwnerName}
+            canEdit={canEdit}
+            canDelete={canDelete}
+            onEdit={handleOpenEdit}
+            onDelete={(account) => handleDelete(account.id)}
+            onManageColumns={() => setIsManageColumnsOpen(true)}
+            onHideColumn={(columnId) => {
+              const updated = effectiveColumns.map((col) =>
+                col.id === columnId ? { ...col, visible: false } : col,
+              );
+              saveColumns(updated);
+            }}
+          />
         )}
 
         {/* Tile View */}
@@ -457,90 +429,6 @@ export default function AccountsPage(): React.ReactElement {
       />
     </>
   );
-
-  // ── Dynamic cell renderer ────────────────────────────────────────────
-  function renderAccountCell(colId: string, account: Account): React.ReactNode {
-    switch (colId) {
-      case 'name':
-        return (
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white font-bold text-[10px] shrink-0">
-              {getInitials(account.name)}
-            </div>
-            <div className="min-w-0">
-              <p className="text-[13px] font-semibold text-[#0F172A] dark:text-white truncate group-hover:text-[#2563EB] transition-colors">
-                {account.name}
-              </p>
-              <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 truncate">
-                {[account.city, account.country].filter(Boolean).join(', ')}
-              </p>
-            </div>
-          </div>
-        );
-      case 'industry':
-        return (
-          <p className="text-[12.5px] text-[#0F172A] dark:text-slate-200 truncate">
-            {account.industry ?? '—'}
-          </p>
-        );
-      case 'customerType':
-        return (
-          <StatusBadge
-            label={account.customerType ?? 'Prospect'}
-            variant={getStatusVariant(account.customerType)}
-            dot={false}
-          />
-        );
-      case 'size':
-        return (
-          <p className="text-[12.5px] text-[#0F172A] dark:text-slate-200 truncate">
-            {account.size ?? '—'}
-          </p>
-        );
-      case 'city':
-        return (
-          <p className="text-[12.5px] text-[#0F172A] dark:text-slate-200 truncate">
-            {account.city ?? '—'}
-          </p>
-        );
-      case 'country':
-        return (
-          <p className="text-[12.5px] text-[#0F172A] dark:text-slate-200 truncate">
-            {account.country ?? '—'}
-          </p>
-        );
-      case 'assignedUserId':
-        return (
-          <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-            {getOwnerName(account.assignedUserId)}
-          </p>
-        );
-      case 'website':
-        return (
-          <p className="text-[12px] text-[#2563EB] dark:text-blue-400 truncate">
-            {account.website ?? '—'}
-          </p>
-        );
-      case 'tags':
-        return (
-          <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-            {account.tags && account.tags.length > 0
-              ? account.tags.join(', ')
-              : '—'}
-          </p>
-        );
-      case 'createdAt':
-        return (
-          <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-            {account.createdAt
-              ? new Date(account.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-              : '—'}
-          </p>
-        );
-      default:
-        return <span className="text-[12px] text-[#5A6B85]">—</span>;
-    }
-  }
 }
 
 // ── Currency formatter ─────────────────────────────────────────────────────────

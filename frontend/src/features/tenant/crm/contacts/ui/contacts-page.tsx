@@ -9,11 +9,11 @@ import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useColumnPreferences } from '@/shared/hooks/use-column-preferences';
 import { useFilterUrlSync } from '@/shared/hooks/use-filter-url-sync';
 import { useDebounce } from '@/shared/hooks/use-debounce';
+import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
 import { ManageColumnsDrawer } from '@/shared/components/manage-columns-drawer';
 import { CONTACTS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
-import { getResponsiveColumnClass, getColumnLabel, getDefaultVisibleColumns } from '@/shared/components/column-table-helpers';
+import { ContactsDataGrid } from './contacts-data-grid';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
 import { SlidersHorizontal } from 'lucide-react';
 import type { ColumnConfigItem } from '@leadcrm/shared';
 
@@ -37,15 +37,15 @@ export default function ContactsPage(): React.ReactElement {
   const [isManageColumnsOpen, setIsManageColumnsOpen] = useState(false);
   const manageColumnsButtonRef = useRef<HTMLButtonElement>(null);
 
-  /** Visible columns sorted by order — drives table rendering */
-  const visibleColumns = useMemo((): ColumnConfigItem[] => {
-    if (effectiveColumns.length === 0) {
-      return getDefaultVisibleColumns(CONTACTS_COLUMN_REGISTRY);
-    }
-    return [...effectiveColumns]
-      .filter((col) => col.visible)
-      .sort((a, b) => a.order - b.order);
-  }, [effectiveColumns]);
+  // ── Table Preferences (pageSize, viewMode, sort) ──────────────────────
+  const {
+    pageSize,
+    viewMode,
+    sort,
+    setPageSize,
+    setViewMode,
+    setSort,
+  } = useTablePreferences('contacts');
 
   // ── State (Synced with URL) ──────────────────────────────────────────
   const [activeView, setActiveView] = useState<ViewType>(() => (getParam('view') as ViewType) || 'list');
@@ -53,6 +53,7 @@ export default function ContactsPage(): React.ReactElement {
   const [showFilters, setShowFilters] = useState(true);
   const [searchTerm, setSearchTerm] = useState(() => getParam('search'));
   const [filterSearchTerm, setFilterSearchTerm] = useState('');
+  const [contactSelectedIds, setContactSelectedIds] = useState<Set<string>>(new Set());
 
   // Multi-select stacked criteria
   const [selectedSystemFilters, setSelectedSystemFilters] = useState<string[]>(() => getArrayParam('system'));
@@ -274,6 +275,14 @@ export default function ContactsPage(): React.ReactElement {
       availableViews={['list', 'tile', 'table', 'grid']}
       activeView={activeView}
       onViewChange={setActiveView}
+
+      sortableFields={CONTACTS_COLUMN_REGISTRY.map((col) => ({ id: col.id, label: col.label }))}
+      sort={sort}
+      onSortChange={setSort}
+      pageSize={pageSize}
+      onPageSizeChange={setPageSize}
+      viewMode={viewMode}
+      onViewModeChange={setViewMode}
       savedTabs={[
         { id: 'all', label: 'All Contacts' },
         { id: 'my', label: 'My Contacts' },
@@ -304,73 +313,33 @@ export default function ContactsPage(): React.ReactElement {
         </button>
       }
     >
-      {/* ── List / Table View — Dynamic Columns ─────────────────── */}
+      {/* ── List / Table View — DataGrid ─────────────────── */}
       {(activeView === 'list' || activeView === 'table') && (
-        <div className="bg-white dark:bg-slate-800/40 border border-[#E4E9F0] dark:border-slate-700 rounded-xl overflow-hidden overflow-x-auto">
-          {/* Header */}
-          <div
-            className={cn(
-              'flex items-center border-b border-[#E4E9F0] dark:border-slate-700 bg-[#F6F8FB] dark:bg-slate-800/60 sticky top-0 z-10',
-              'text-[11.5px] font-semibold uppercase tracking-wide text-[#5A6B85] dark:text-slate-400 h-11 px-3',
-            )}
-          >
-            <label className="flex items-center justify-center w-10 shrink-0">
-              <input
-                type="checkbox"
-                className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-[#2563EB] focus:ring-[#2563EB]/20 cursor-pointer"
-                aria-label="Select all contacts"
-              />
-            </label>
-            {visibleColumns.map((col) => {
-              const responsiveClass = getResponsiveColumnClass(col.id, visibleColumns, CONTACTS_COLUMN_REGISTRY);
-              return (
-                <span key={col.id} className={cn('px-3 truncate flex-1 min-w-0', responsiveClass)}>
-                  {getColumnLabel(col.id, CONTACTS_COLUMN_REGISTRY)}
-                </span>
-              );
-            })}
-          </div>
-
-          {/* Rows */}
-          <div className="divide-y divide-[#E4E9F0] dark:divide-slate-700">
-            {filteredContacts.map((contact) => (
-              <div
-                key={contact.id}
-                className="flex items-center h-[52px] px-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors group"
-              >
-                {/* Checkbox */}
-                <label className="flex items-center justify-center w-10 shrink-0" onClick={(e) => e.stopPropagation()}>
-                  <input
-                    type="checkbox"
-                    className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-[#2563EB] focus:ring-[#2563EB]/20 cursor-pointer"
-                    aria-label={`Select ${getName(contact)}`}
-                  />
-                </label>
-
-                {visibleColumns.map((col) => {
-                  const responsiveClass = getResponsiveColumnClass(col.id, visibleColumns, CONTACTS_COLUMN_REGISTRY);
-                  return (
-                    <div key={col.id} className={cn('px-3 min-w-0 flex-1', responsiveClass)}>
-                      {renderContactCell(col.id, contact)}
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-
-          {/* Footer */}
-          <div className="flex items-center justify-between px-4 py-2.5 border-t border-[#E4E9F0] dark:border-slate-700 bg-[#F6F8FB] dark:bg-slate-800/60">
-            <span className="text-[12px] text-[#5A6B85]">
-              Total records <strong className="font-semibold text-[#0F172A] dark:text-white">{filteredContacts.length}</strong>
-            </span>
-            <div className="flex items-center gap-2 text-[12px] text-[#5A6B85]">
-              <span>1 to {Math.min(filteredContacts.length, 25)}</span>
-              <button className="p-1 hover:text-[#0F172A] dark:hover:text-white transition-colors" aria-label="Previous page">&lt;</button>
-              <button className="p-1 hover:text-[#0F172A] dark:hover:text-white transition-colors" aria-label="Next page">&gt;</button>
-            </div>
-          </div>
-        </div>
+        <ContactsDataGrid
+          contacts={filteredContacts}
+          totalRecords={filteredContacts.length}
+          effectiveColumns={effectiveColumns}
+          sort={sort}
+          onSortChange={setSort}
+          onRowClick={() => { /* future: open detail drawer */ }}
+          selectedIds={contactSelectedIds}
+          onSelectionChange={setContactSelectedIds}
+          getAccountName={getAccountName}
+          getAssignedUserName={(userId) => {
+            if (!userId) return '—';
+            const u = users.find((usr) => usr.id === userId);
+            return u ? `${u.firstName} ${u.lastName}` : '—';
+          }}
+          canEdit={false}
+          canDelete={false}
+          onManageColumns={() => setIsManageColumnsOpen(true)}
+          onHideColumn={(columnId) => {
+            const updated = effectiveColumns.map((col) =>
+              col.id === columnId ? { ...col, visible: false } : col,
+            );
+            saveColumns(updated);
+          }}
+        />
       )}
 
       {/* ── Tile View ─────────────────────────────────────────── */}
@@ -452,88 +421,6 @@ export default function ContactsPage(): React.ReactElement {
     />
     </>
   );
-
-  // ── Dynamic cell renderer ──────────────────────────────────────────────
-  function renderContactCell(colId: string, contact: Contact): React.ReactNode {
-    switch (colId) {
-      case 'firstName':
-        return (
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center text-white font-bold text-[10px] shrink-0">
-              {getInitials(contact)}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-semibold text-[#0F172A] dark:text-white truncate group-hover:text-[#2563EB] transition-colors">
-                {contact.firstName ?? getName(contact).split(' ')[0] ?? '—'}
-              </p>
-            </div>
-          </div>
-        );
-      case 'lastName':
-        return (
-          <p className="text-[13px] text-[#0F172A] dark:text-slate-200 truncate">
-            {contact.lastName ?? getName(contact).split(' ').slice(1).join(' ') ?? '—'}
-          </p>
-        );
-      case 'email':
-        return (
-          <p className="text-[13px] text-[#0F172A] dark:text-slate-200 truncate">
-            {contact.email ?? '—'}
-          </p>
-        );
-      case 'phone':
-        return (
-          <p className="text-[13px] text-[#0F172A] dark:text-slate-200 truncate">
-            {contact.phone ?? '—'}
-          </p>
-        );
-      case 'companyName':
-        return (
-          <p className="text-[12.5px] text-[#2563EB] dark:text-blue-400 font-medium truncate">
-            {getAccountName(contact)}
-          </p>
-        );
-      case 'status':
-        return (
-          <StatusBadge
-            label={contact.status ?? 'Active'}
-            variant={getStatusVariant(contact.status ?? 'Active')}
-          />
-        );
-      case 'source':
-        return (
-          <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-            {(contact as unknown as Record<string, unknown>).source as string ?? '—'}
-          </p>
-        );
-      case 'assignedUserId':
-        return (
-          <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-            {contact.assignedUserId
-              ? (users.find((u) => u.id === contact.assignedUserId)
-                  ? `${users.find((u) => u.id === contact.assignedUserId)!.firstName} ${users.find((u) => u.id === contact.assignedUserId)!.lastName}`
-                  : '—')
-              : '—'}
-          </p>
-        );
-      case 'accountId':
-        return (
-          <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-            {getAccountName(contact)}
-          </p>
-        );
-      case 'createdAt':
-        return (
-          <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-            {contact.createdAt
-              ? new Date(contact.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-              : '—'}
-          </p>
-        );
-      default:
-        return <span className="text-[12px] text-[#5A6B85]">—</span>;
-    }
-  }
 }
 
 function formatCurrency(value: number): string {

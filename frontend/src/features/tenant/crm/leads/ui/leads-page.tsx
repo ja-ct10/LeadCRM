@@ -13,8 +13,10 @@ import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
 import { migrateLocalStorageColumns } from '../services/local-storage-migration';
 import { ManageColumnsDrawer } from './manage-columns-drawer';
 import { LeadsListView } from './leads-list-view';
+import { LeadsDataGrid } from './leads-data-grid';
 import { LeadFormSheet } from './lead-form';
 import { LEADS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
+import { LEADS_MODULE_CONFIG } from '../leads.config';
 import { toast } from 'sonner';
 import { Edit, Phone, Mail, ListTodo, MoreHorizontal } from 'lucide-react';
 
@@ -31,6 +33,7 @@ export default function LeadsPage(): React.ReactElement {
   const { user } = useAuth();
   const canCreate = useHasPermission('contacts.create');
   const canEdit = useHasPermission('contacts.edit');
+  const canDelete = useHasPermission('contacts.delete');
   const { getParam, getArrayParam, updateParams } = useFilterUrlSync();
 
   // ── Column Preferences ────────────────────────────────────────────────
@@ -409,6 +412,7 @@ export default function LeadsPage(): React.ReactElement {
         availableViews={['list', 'tile', 'table', 'kanban', 'grid']}
         activeView={activeView}
         onViewChange={setActiveView}
+
         savedTabs={[
           { id: 'all', label: 'All Leads' },
           { id: 'my', label: 'My Leads' },
@@ -461,7 +465,40 @@ export default function LeadsPage(): React.ReactElement {
             </div>
           </div>
         )}
-        {(activeView === 'list' || activeView === 'table') && !isColumnsLoading && (
+
+        {/* ── Table View (new DataGrid) ─────────────────────────── */}
+        {activeView === 'table' && !isColumnsLoading && (
+          <LeadsDataGrid
+            leads={paginatedLeads}
+            totalRecords={sortedLeads.length}
+            effectiveColumns={effectiveColumns}
+            sort={sort}
+            onSortChange={setSort}
+            onRowClick={handleRowClick}
+            selectedIds={new Set(selectedIds)}
+            onSelectionChange={(ids) => setSelectedIds(Array.from(ids))}
+            getOwnerName={getOwnerName}
+            getOwnerInitials={getOwnerInitials}
+            canEdit={canEdit}
+            canDelete={canDelete}
+            onEdit={(lead) => { setEditingLead(lead); setIsFormOpen(true); }}
+            onDelete={(lead) => {
+              // future: confirm + delete
+              toast.info(`Delete "${lead.leadPerson ?? lead.displayName}" coming soon`);
+            }}
+            onManageColumns={() => setIsManageColumnsOpen(true)}
+            onHideColumn={(columnId) => {
+              const updated = effectiveColumns.map((col) =>
+                col.id === columnId ? { ...col, visible: false } : col,
+              );
+              saveColumns(updated);
+              toast.success('Column hidden');
+            }}
+          />
+        )}
+
+        {/* ── List View (legacy flex-based) ─────────────────────── */}
+        {activeView === 'list' && !isColumnsLoading && (
           <LeadsListView
             leads={paginatedLeads}
             totalRecords={sortedLeads.length}
@@ -481,6 +518,7 @@ export default function LeadsPage(): React.ReactElement {
             getStatusVariant={getStatusVariant}
             visibleColumns={visibleColumns}
             registry={LEADS_COLUMN_REGISTRY}
+            onColumnsReorder={(newCols) => saveColumns(newCols)}
           />
         )}
 

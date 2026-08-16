@@ -1,15 +1,20 @@
 ﻿'use client';
 
-import React from 'react';
-import { Briefcase, TrendingUp } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
+import { useColumnPreferences } from '@/shared/hooks/use-column-preferences';
+import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
+import { ModuleWorkspace, ViewType } from '@/shared/components/crm';
 import { DealDetailsModal } from '@/features/tenant/crm/pipeline/ui/deal-details-modal';
 import { useDealsPage } from '../hooks/use-deals-page';
+import { DEALS_MODULE_CONFIG } from '../deals.config';
+import { DEALS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import DealsTable from '../ui/deals-table';
 import DealFilters from '../ui/deal-filters';
 import type { Deal, Task } from '@/store/types';
+import type { ColumnConfigItem } from '@leadcrm/shared';
 import { usePagination } from '@/shared/hooks/use-pagination';
 import { Pagination } from '@/shared/components/ui/pagination';
 import { toast } from 'sonner';
@@ -21,6 +26,7 @@ function formatCurrency(value: number): string {
 export default function DealsPage() {
   const { user, tenant } = useAuth();
   const { tasks, users, updateDeal, moveDealStage, deleteDeal, addTask, updateTask, isBillingModuleEnabled } = useData();
+  const canCreate = useHasPermission('deals.create');
   const canEdit   = useHasPermission('deals.edit');
   const canDelete = useHasPermission('deals.delete');
 
@@ -31,13 +37,44 @@ export default function DealsPage() {
     forecastTotal, pipelines,
   } = useDealsPage();
 
+  // ── Column Preferences ────────────────────────────────────────────────
+  const {
+    effectiveColumns,
+  } = useColumnPreferences('deals');
+
+  // ── Table Preferences (pageSize, viewMode, sort) ──────────────────────
+  const {
+    pageSize,
+    viewMode,
+    sort,
+    setPageSize,
+    setViewMode,
+    setSort,
+  } = useTablePreferences('deals');
+
+  /** Visible columns sorted by order — drives table rendering */
+  const visibleColumns = useMemo((): ColumnConfigItem[] => {
+    if (effectiveColumns.length === 0) {
+      return DEALS_COLUMN_REGISTRY
+        .filter((col) => col.defaultVisible)
+        .sort((a, b) => a.defaultOrder - b.defaultOrder)
+        .map((col) => ({ id: col.id, visible: true, order: col.defaultOrder }));
+    }
+    return [...effectiveColumns]
+      .filter((col) => col.visible)
+      .sort((a, b) => a.order - b.order);
+  }, [effectiveColumns]);
+
+  // ── View state ────────────────────────────────────────────────────────
+  const [activeView, setActiveView] = useState<ViewType>('table');
+
   const {
     currentPage,
-    pageSize,
+    pageSize: paginationPageSize,
     totalPages,
     totalItems,
     goToPage,
-    setPageSize,
+    setPageSize: setPaginationPageSize,
     paginateItems,
   } = usePagination({
     totalItems: deals.length,
@@ -46,67 +83,74 @@ export default function DealsPage() {
     resetDeps: [filters],
   });
 
+  const paginatedDeals = useMemo(() => paginateItems(deals), [paginateItems, deals]);
+
   const selectedPipeline = selectedDeal
     ? (pipelines.find(p => p.id === selectedDeal.pipelineId) ?? pipelines[0])
     : null;
 
   const handleNavigate = (path: string) => {
-    // No-op in the standalone deals page — navigation handled by App Router
     void path;
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <Briefcase className="w-6 h-6 text-blue-500" />
-            All Deals
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            {totalCount} {totalCount === 1 ? 'deal' : 'deals'} total
-          </p>
-        </div>
+    <>
+      <ModuleWorkspace
+        moduleId="deals"
+        title="All Deals"
+        description={`${totalCount} ${totalCount === 1 ? 'deal' : 'deals'} total`}
+        primaryActionLabel="Add Deal"
+        onPrimaryAction={() => toast.info('Deal creation coming soon')}
+        canCreate={canCreate}
+        availableViews={['table', 'list', 'grid', 'tile', 'kanban']}
+        activeView={activeView}
+        onViewChange={setActiveView}
 
-        <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-500/10 px-4 py-2.5 rounded-xl border border-emerald-200 dark:border-emerald-500/20">
-          <TrendingUp className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-          <div>
-            <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Weighted Forecast</p>
-            <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">
-              {formatCurrency(forecastTotal)}
-            </p>
+        sortableFields={DEALS_COLUMN_REGISTRY.map((col) => ({ id: col.id, label: col.label }))}
+        sort={sort}
+        onSortChange={setSort}
+        pageSize={pageSize}
+        onPageSizeChange={setPageSize}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        totalRecords={totalCount}
+        onRefresh={() => toast.success('Refreshed')}
+        kpiCards={[
+          { label: 'TOTAL DEALS', value: String(totalCount) },
+          { label: 'WEIGHTED FORECAST', value: formatCurrency(forecastTotal) },
+        ]}
+      >
+        {/* Default children — existing table rendering (used when moduleConfig view renderer is not active) */}
+        <div className="space-y-4">
+          <DealFilters filters={filters} onChange={setFilters} pipelines={pipelines} />
+
+          <div className="bg-white dark:bg-slate-900/40 rounded-xl border border-slate-200 dark:border-white/[0.06] p-4">
+            <DealsTable
+              deals={paginatedDeals}
+              stageNameMap={stageNameMap}
+              stageProbabilityMap={stageProbabilityMap}
+              pipelineNameMap={pipelineNameMap}
+              pipelineStagesMap={Object.fromEntries(pipelines.map(p => [p.id, p.stages]))}
+              onRowClick={setSelectedDeal}
+              onStageChange={async (dealId, stageId) => {
+                await moveDealStage(dealId, stageId);
+              }}
+            />
+          </div>
+
+          <div className="mt-4">
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              pageSize={paginationPageSize}
+              totalItems={totalItems}
+              pageSizeOptions={[10, 25, 50, 100]}
+              onPageChange={goToPage}
+              onPageSizeChange={setPaginationPageSize}
+            />
           </div>
         </div>
-      </div>
-
-      <DealFilters filters={filters} onChange={setFilters} pipelines={pipelines} />
-
-      <div className="bg-white dark:bg-slate-900/40 rounded-xl border border-slate-200 dark:border-white/[0.06] p-4">
-        <DealsTable
-          deals={paginateItems(deals)}
-          stageNameMap={stageNameMap}
-          stageProbabilityMap={stageProbabilityMap}
-          pipelineNameMap={pipelineNameMap}
-          pipelineStagesMap={Object.fromEntries(pipelines.map(p => [p.id, p.stages]))}
-          onRowClick={setSelectedDeal}
-          onStageChange={async (dealId, stageId) => {
-            await moveDealStage(dealId, stageId);
-          }}
-        />
-      </div>
-
-      <div className="mt-4">
-        <Pagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          pageSize={pageSize}
-          totalItems={totalItems}
-          pageSizeOptions={[10, 25, 50, 100]}
-          onPageChange={goToPage}
-          onPageSizeChange={setPageSize}
-        />
-      </div>
+      </ModuleWorkspace>
 
       {selectedDeal && selectedPipeline && (
         <DealDetailsModal
@@ -141,7 +185,6 @@ export default function DealsPage() {
           onAddTask={(taskData) => addTask(taskData)}
           onUpdateTask={(id, updates) => updateTask(id, updates)}
           onMarkLost={async (deal: Deal) => {
-            // Find the real "Closed Lost" stage ID from the deal's pipeline
             const dealPipeline = pipelines.find(p => p.id === deal.pipelineId) ?? pipelines[0];
             const lostStage = dealPipeline?.stages.find(
               s => s.name === 'Closed Lost' || s.isLost
@@ -160,6 +203,6 @@ export default function DealsPage() {
           onNavigate={handleNavigate}
         />
       )}
-    </div>
+    </>
   );
 }

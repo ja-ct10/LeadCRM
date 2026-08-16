@@ -1,23 +1,18 @@
 import { Request, Response, NextFunction } from 'express';
 
 import * as repo from './preferences.repository';
+import { isValidModule, isValidSortField } from './column-registry';
 import { AppError } from '../../shared/errors/app-error';
 
 // ─────────────────────────────────────────────────────
 // Table Preferences Controller
 // Handles generic per-module preferences: pageSize, viewMode, sort
 // Uses the existing UserPreference table with different keys.
+// Unknown modules return 404 — never reveal module existence.
 // ─────────────────────────────────────────────────────
 
-// Valid modules for table preferences (same as column modules + extensible)
-const VALID_MODULES = ['leads', 'accounts', 'contacts', 'deals', 'tasks', 'campaigns', 'invoices'];
-
-function isValidModule(module: string): boolean {
-  return VALID_MODULES.includes(module);
-}
-
 // Valid page sizes
-const VALID_PAGE_SIZES = [10, 20, 30, 40, 50];
+const VALID_PAGE_SIZES = [10, 20, 25, 30, 40, 50];
 
 // Valid view modes
 const VALID_VIEW_MODES = ['wrap', 'clip'];
@@ -39,7 +34,7 @@ export async function getTablePreferences(
     const module = String(req.params.module);
 
     if (!isValidModule(module)) {
-      throw new AppError(`Module '${module}' is not registered for table preferences`, 400);
+      throw new AppError('Not found', 404);
     }
 
     // Fetch all table preference keys in parallel
@@ -51,7 +46,10 @@ export async function getTablePreferences(
 
     const pageSize = parsePageSize(pageSizePref?.value);
     const viewMode = parseViewMode(viewModePref?.value);
-    const sort = parseSort(sortPref?.value);
+    const rawSort = parseSort(sortPref?.value);
+
+    // Discard stale sort if the field is no longer in the module's sortable fields
+    const sort = rawSort && isValidSortField(module, rawSort.field) ? rawSort : null;
 
     res.json({
       success: true,
@@ -76,7 +74,7 @@ export async function savePageSize(
     const module = String(req.params.module);
 
     if (!isValidModule(module)) {
-      throw new AppError(`Module '${module}' is not registered for table preferences`, 400);
+      throw new AppError('Not found', 404);
     }
 
     const { pageSize } = req.body;
@@ -113,7 +111,7 @@ export async function saveViewMode(
     const module = String(req.params.module);
 
     if (!isValidModule(module)) {
-      throw new AppError(`Module '${module}' is not registered for table preferences`, 400);
+      throw new AppError('Not found', 404);
     }
 
     const { viewMode } = req.body;
@@ -150,7 +148,7 @@ export async function saveSort(
     const module = String(req.params.module);
 
     if (!isValidModule(module)) {
-      throw new AppError(`Module '${module}' is not registered for table preferences`, 400);
+      throw new AppError('Not found', 404);
     }
 
     const { field, direction } = req.body;
@@ -182,7 +180,7 @@ export async function saveSort(
 // ─────────────────────────────────────────────────────
 
 function parsePageSize(value: unknown): number {
-  if (!value) return 10; // default
+  if (!value) return 25; // default
   try {
     const data = typeof value === 'string' ? JSON.parse(value) : value;
     if (data && typeof data === 'object' && 'pageSize' in data) {
@@ -191,9 +189,9 @@ function parsePageSize(value: unknown): number {
         return ps;
       }
     }
-    return 10;
+    return 25;
   } catch {
-    return 10;
+    return 25;
   }
 }
 

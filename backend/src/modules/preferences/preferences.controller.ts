@@ -24,7 +24,7 @@ export async function getEffectiveColumns(
     const module = String(req.params.module);
 
     if (!isValidModule(module)) {
-      throw new AppError(`Module '${module}' is not registered`, 400);
+      throw new AppError('Not found', 404);
     }
 
     const { config, source } = await resolveWithSource(tenantId, userId, module);
@@ -52,7 +52,7 @@ export async function saveUserPreference(
     const module = String(req.params.module);
 
     if (!isValidModule(module)) {
-      throw new AppError(`Module '${module}' is not registered`, 400);
+      throw new AppError('Not found', 404);
     }
 
     const config = await service.upsertUserPreference(
@@ -85,7 +85,7 @@ export async function deleteUserPreference(
     const module = String(req.params.module);
 
     if (!isValidModule(module)) {
-      throw new AppError(`Module '${module}' is not registered`, 400);
+      throw new AppError('Not found', 404);
     }
 
     const fallback = await service.deleteUserPreference(tenantId, userId, module);
@@ -116,7 +116,7 @@ export async function saveTenantDefault(
     const module = String(req.params.module);
 
     if (!isValidModule(module)) {
-      throw new AppError(`Module '${module}' is not registered`, 400);
+      throw new AppError('Not found', 404);
     }
 
     const ipAddress = extractIpAddress(req);
@@ -152,7 +152,7 @@ export async function deleteTenantDefault(
     const module = String(req.params.module);
 
     if (!isValidModule(module)) {
-      throw new AppError(`Module '${module}' is not registered`, 400);
+      throw new AppError('Not found', 404);
     }
 
     const ipAddress = extractIpAddress(req);
