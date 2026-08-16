@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
 import { Lead } from '@/store/types';
@@ -8,10 +8,32 @@ import { ModuleWorkspace, ViewType, RecordDrawer, StatusBadge, AvatarCell, Activ
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useFilterUrlSync } from '@/shared/hooks/use-filter-url-sync';
 import { useDebounce } from '@/shared/hooks/use-debounce';
+import { useColumnPreferences } from '../hooks/use-column-preferences';
+import { migrateLocalStorageColumns } from '../services/local-storage-migration';
+import { ManageColumnsDrawer } from './manage-columns-drawer';
+import { LeadsListView } from './leads-list-view';
 import { LeadFormSheet } from './lead-form';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { Edit, Phone, Mail, ListTodo, MoreHorizontal } from 'lucide-react';
+import { Edit, Phone, Mail, ListTodo, MoreHorizontal, SlidersHorizontal } from 'lucide-react';
+import type { ColumnDefinition, ColumnConfigItem } from '@leadcrm/shared';
+
+// ── Leads Column Registry (frontend mirror for drawer display) ────────────────
+
+const LEADS_COLUMN_REGISTRY: ColumnDefinition[] = [
+  { id: 'firstName', label: 'First Name', required: true, defaultVisible: true, defaultOrder: 0 },
+  { id: 'lastName', label: 'Last Name', required: true, defaultVisible: true, defaultOrder: 1 },
+  { id: 'email', label: 'Email', required: false, defaultVisible: true, defaultOrder: 2 },
+  { id: 'phone', label: 'Phone', required: false, defaultVisible: true, defaultOrder: 3 },
+  { id: 'companyName', label: 'Company', required: false, defaultVisible: true, defaultOrder: 4 },
+  { id: 'status', label: 'Status', required: true, defaultVisible: true, defaultOrder: 5 },
+  { id: 'source', label: 'Source', required: false, defaultVisible: true, defaultOrder: 6 },
+  { id: 'assignedUserId', label: 'Assigned To', required: false, defaultVisible: true, defaultOrder: 7 },
+  { id: 'productInterest', label: 'Product Interest', required: false, defaultVisible: false, defaultOrder: 8 },
+  { id: 'address', label: 'Address', required: false, defaultVisible: false, defaultOrder: 9 },
+  { id: 'createdAt', label: 'Created Date', required: false, defaultVisible: true, defaultOrder: 10 },
+  { id: 'accountId', label: 'Account', required: false, defaultVisible: false, defaultOrder: 11 },
+];
 
 // ── Leads Page ────────────────────────────────────────────────────────────────
 
@@ -29,6 +51,37 @@ export default function LeadsPage(): React.ReactElement {
   const canEdit = useHasPermission('contacts.edit');
   const canDelete = useHasPermission('contacts.delete');
   const { getParam, getArrayParam, updateParams } = useFilterUrlSync();
+
+  // ── Column Preferences ────────────────────────────────────────────────
+  const {
+    effectiveColumns,
+    isLoading: isColumnsLoading,
+    isSaving: isColumnsSaving,
+    saveColumns,
+    resetColumns,
+  } = useColumnPreferences('leads');
+
+  const [isManageColumnsOpen, setIsManageColumnsOpen] = useState(false);
+  const manageColumnsButtonRef = useRef<HTMLButtonElement>(null);
+
+  // ── One-time localStorage migration (fire-and-forget) ─────────────────
+  useEffect(() => {
+    migrateLocalStorageColumns();
+  }, []);
+
+  /** Visible columns sorted by order — drives table rendering */
+  const visibleColumns = useMemo(() => {
+    if (effectiveColumns.length === 0) {
+      // Fallback to system default when no preferences loaded yet
+      return LEADS_COLUMN_REGISTRY
+        .filter((col) => col.defaultVisible)
+        .sort((a, b) => a.defaultOrder - b.defaultOrder)
+        .map((col) => ({ id: col.id, visible: true, order: col.defaultOrder }));
+    }
+    return [...effectiveColumns]
+      .filter((col) => col.visible)
+      .sort((a, b) => a.order - b.order);
+  }, [effectiveColumns]);
 
   // ── State ────────────────────────────────────────────────────────────
   const [activeView, setActiveView] = useState<ViewType>(() => (getParam('view') as ViewType) || 'list');
@@ -317,6 +370,17 @@ export default function LeadsPage(): React.ReactElement {
         searchPlaceholder="Search leads..."
         onSort={() => toast.info('Sort options coming soon')}
         onRefresh={() => toast.success('Refreshed')}
+        toolbarExtra={
+          <button
+            ref={manageColumnsButtonRef}
+            onClick={() => setIsManageColumnsOpen(true)}
+            className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium text-[#5A6B85] dark:text-slate-300 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+            aria-label="Manage columns"
+          >
+            <SlidersHorizontal size={13} />
+            Columns
+          </button>
+        }
         bulkSelection={
           selectedIds.length > 0
             ? {
@@ -345,6 +409,8 @@ export default function LeadsPage(): React.ReactElement {
             getOwnerInitials={getOwnerInitials}
             getStatusVariant={getStatusVariant}
             formatCurrency={formatCurrency}
+            visibleColumns={visibleColumns}
+            registry={LEADS_COLUMN_REGISTRY}
           />
         )}
 
@@ -362,6 +428,8 @@ export default function LeadsPage(): React.ReactElement {
             getOwnerInitials={getOwnerInitials}
             getStatusVariant={getStatusVariant}
             formatCurrency={formatCurrency}
+            visibleColumns={visibleColumns}
+            registry={LEADS_COLUMN_REGISTRY}
             dense
           />
         )}
@@ -495,195 +563,22 @@ export default function LeadsPage(): React.ReactElement {
           setEditingLead(undefined);
         }}
       />
+
+      {/* ── Manage Columns Drawer ───────────────────────────────── */}
+      <ManageColumnsDrawer
+        isOpen={isManageColumnsOpen}
+        onClose={() => setIsManageColumnsOpen(false)}
+        module="leads"
+        registry={LEADS_COLUMN_REGISTRY}
+        effectiveColumns={effectiveColumns}
+        onSave={saveColumns}
+        onReset={resetColumns}
+        triggerRef={manageColumnsButtonRef}
+      />
     </>
   );
 }
 
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Sub-components — List View
-// ═══════════════════════════════════════════════════════════════════════════════
-
-interface LeadsListViewProps {
-  leads: Lead[];
-  selectedIds: string[];
-  onToggleSelect: (id: string) => void;
-  onSelectAll: () => void;
-  onRowClick: (lead: Lead) => void;
-  getInitials: (lead: Lead) => string;
-  getLeadName: (lead: Lead) => string;
-  getOwnerName: (userId?: string) => string;
-  getOwnerInitials: (userId?: string) => string;
-  getStatusVariant: (status: string) => 'success' | 'info' | 'warn' | 'danger' | 'purple' | 'neutral';
-  formatCurrency: (value?: number) => string;
-  dense?: boolean;
-}
-
-function LeadsListView({
-  leads,
-  selectedIds,
-  onToggleSelect,
-  onSelectAll,
-  onRowClick,
-  getInitials,
-  getLeadName,
-  getOwnerName,
-  getOwnerInitials,
-  getStatusVariant,
-  formatCurrency,
-  dense = false,
-}: LeadsListViewProps): React.ReactElement {
-  if (leads.length === 0) {
-    return (
-      <div className="flex items-center justify-center py-16 text-[13px] text-[#5A6B85] dark:text-slate-400">
-        No leads found. Adjust your filters or create a new lead.
-      </div>
-    );
-  }
-
-  return (
-    <div className="bg-white dark:bg-slate-800/40 border border-[#E4E9F0] dark:border-slate-700 rounded-xl overflow-hidden">
-      {/* Table header */}
-      <div className={cn(
-        'grid items-center border-b border-[#E4E9F0] dark:border-slate-700 bg-[#F6F8FB] dark:bg-slate-800/60 sticky top-0 z-10',
-        'text-[11.5px] font-semibold uppercase tracking-wide text-[#5A6B85] dark:text-slate-400',
-        dense
-          ? 'grid-cols-[40px_1fr_1fr_120px_80px_100px_100px_80px] h-10 px-3'
-          : 'grid-cols-[40px_1.2fr_1fr_120px_80px_100px_100px_80px] h-11 px-3',
-      )}>
-        <label className="flex items-center justify-center">
-          <input
-            type="checkbox"
-            checked={selectedIds.length === leads.length && leads.length > 0}
-            onChange={onSelectAll}
-            className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-[#2563EB] focus:ring-[#2563EB]/20 cursor-pointer"
-            aria-label="Select all leads"
-          />
-        </label>
-        <span className="px-3">LEAD NAME</span>
-        <span className="px-3">COMPANY</span>
-        <span className="px-3">STATUS</span>
-        <span className="px-3 text-center">SCORE</span>
-        <span className="px-3">SOURCE</span>
-        <span className="px-3 text-right">EST. VALUE</span>
-        <span className="px-3 text-right">OWNER</span>
-      </div>
-
-      {/* Rows */}
-      <div className="divide-y divide-[#E4E9F0] dark:divide-slate-700">
-        {leads.map((lead) => {
-          const isSelected = selectedIds.includes(lead.id);
-          const scorePercent = Math.min((lead.score ?? 0), 100);
-
-          return (
-            <div
-              key={lead.id}
-              onClick={() => onRowClick(lead)}
-              className={cn(
-                'grid items-center cursor-pointer transition-colors group',
-                dense
-                  ? 'grid-cols-[40px_1fr_1fr_120px_80px_100px_100px_80px] h-[44px] px-3'
-                  : 'grid-cols-[40px_1.2fr_1fr_120px_80px_100px_100px_80px] h-[52px] px-3',
-                isSelected
-                  ? 'bg-blue-50/60 dark:bg-blue-500/5'
-                  : 'hover:bg-slate-50 dark:hover:bg-slate-800/40',
-              )}
-            >
-              {/* Checkbox */}
-              <label className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
-                <input
-                  type="checkbox"
-                  checked={isSelected}
-                  onChange={() => onToggleSelect(lead.id)}
-                  className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-[#2563EB] focus:ring-[#2563EB]/20 cursor-pointer"
-                  aria-label={`Select ${getLeadName(lead)}`}
-                />
-              </label>
-
-              {/* Lead name + avatar */}
-              <div className="flex items-center gap-2.5 px-3 min-w-0">
-                <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-[10px] shrink-0">
-                  {getInitials(lead)}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[13px] font-semibold text-[#0F172A] dark:text-white truncate leading-tight group-hover:text-[#2563EB] transition-colors">
-                    {getLeadName(lead)}
-                  </p>
-                  {lead.city && (
-                    <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 truncate mt-0.5">
-                      {lead.city}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Company */}
-              <div className="px-3 min-w-0">
-                <p className="text-[13px] text-[#0F172A] dark:text-slate-200 truncate">
-                  {lead.companyName ?? '—'}
-                </p>
-              </div>
-
-              {/* Status */}
-              <div className="px-3">
-                <StatusBadge label={lead.status} variant={getStatusVariant(lead.status)} />
-              </div>
-
-              {/* Score */}
-              <div className="px-3 flex items-center gap-2 justify-center">
-                <div className="w-10 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-[#2563EB] rounded-full transition-all"
-                    style={{ width: `${scorePercent}%` }}
-                  />
-                </div>
-                <span className="text-[12px] font-semibold text-[#0F172A] dark:text-white tabular-nums w-6 text-right">
-                  {lead.score ?? 0}
-                </span>
-              </div>
-
-              {/* Source */}
-              <div className="px-3">
-                <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-                  {lead.leadSource ?? '—'}
-                </p>
-              </div>
-
-              {/* Est. Value */}
-              <div className="px-3 text-right">
-                <p className="text-[13px] font-semibold text-[#0F172A] dark:text-white tabular-nums">
-                  {formatCurrency(lead.estimatedValue)}
-                </p>
-              </div>
-
-              {/* Owner */}
-              <div className="px-3 flex items-center justify-end gap-1.5">
-                <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-[9px] font-bold text-slate-600 dark:text-slate-300">
-                  {getOwnerInitials(lead.assignedUserId)}
-                </div>
-                <span className="text-[11px] text-[#5A6B85] dark:text-slate-400 truncate max-w-[60px] hidden xl:inline">
-                  {getOwnerName(lead.assignedUserId).split(' ')[0]}
-                </span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Footer */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-t border-[#E4E9F0] dark:border-slate-700 bg-[#F6F8FB] dark:bg-slate-800/60">
-        <span className="text-[12px] text-[#5A6B85] dark:text-slate-400">
-          Total records <strong className="font-semibold text-[#0F172A] dark:text-white">{leads.length}</strong>
-        </span>
-        <div className="flex items-center gap-2 text-[12px] text-[#5A6B85]">
-          <span>1 to {Math.min(leads.length, 25)}</span>
-          <button className="p-1 hover:text-[#0F172A] dark:hover:text-white transition-colors" aria-label="Previous page">&lt;</button>
-          <button className="p-1 hover:text-[#0F172A] dark:hover:text-white transition-colors" aria-label="Next page">&gt;</button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Tile View
