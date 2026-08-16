@@ -118,14 +118,18 @@ export function ManageColumnsDrawer({
   // Sync local columns when drawer opens or effectiveColumns change
   useEffect(() => {
     if (isOpen) {
-      setLocalColumns([...effectiveColumns]);
+      // If effectiveColumns is empty (API not available / loading), build from registry defaults
+      const columns = effectiveColumns.length > 0
+        ? [...effectiveColumns]
+        : registry.map((col) => ({ id: col.id, visible: col.defaultVisible, order: col.defaultOrder }));
+      setLocalColumns(columns);
       setSearchQuery('');
       setSaveState('idle');
       setShowResetConfirm(false);
       setShowCloseConfirm(false);
       setRetryCount(0);
     }
-  }, [isOpen, effectiveColumns]);
+  }, [isOpen, effectiveColumns, registry]);
 
   useEffect(() => {
     return () => { if (savedTimerRef.current) clearTimeout(savedTimerRef.current); };
@@ -144,10 +148,27 @@ export function ManageColumnsDrawer({
     return sorted
       .map((col) => {
         const def = registry.find((r) => r.id === col.id);
-        return { ...col, label: def?.label ?? col.id, required: def?.required ?? false };
+        return { ...col, label: def?.label ?? col.id, required: def?.required ?? false, group: def?.group ?? '' };
       })
       .filter((col) => col.label.toLowerCase().includes(searchQuery.toLowerCase()));
   }, [localColumns, registry, searchQuery]);
+
+  /** Columns grouped by category for display */
+  const groupedColumns = useMemo(() => {
+    const groups: { name: string; columns: typeof displayColumns }[] = [];
+    const seenGroups = new Set<string>();
+
+    for (const col of displayColumns) {
+      const groupName = col.group || 'General';
+      if (!seenGroups.has(groupName)) {
+        seenGroups.add(groupName);
+        groups.push({ name: groupName, columns: [] });
+      }
+      groups.find((g) => g.name === groupName)!.columns.push(col);
+    }
+
+    return groups;
+  }, [displayColumns]);
 
   const displayColumnIds = useMemo(() => displayColumns.map((col) => col.id), [displayColumns]);
 
@@ -346,16 +367,26 @@ export function ManageColumnsDrawer({
         <div className="flex-1 overflow-y-auto px-6 py-3">
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={displayColumnIds} strategy={verticalListSortingStrategy}>
-              <ul className="space-y-1" role="list" aria-label="Column list">
-                {displayColumns.map((col) => (
-                  <SortableColumnItem key={col.id} col={col} onToggle={handleToggleVisibility} />
-                ))}
-                {displayColumns.length === 0 && (
-                  <li className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                    No columns match your search.
-                  </li>
-                )}
-              </ul>
+              {groupedColumns.length > 0 ? (
+                <div className="space-y-4" role="list" aria-label="Column list">
+                  {groupedColumns.map((group) => (
+                    <div key={group.name}>
+                      <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 px-1 pb-1.5 border-b border-gray-100 dark:border-gray-800 mb-1.5">
+                        {group.name}
+                      </h3>
+                      <ul className="space-y-1">
+                        {group.columns.map((col) => (
+                          <SortableColumnItem key={col.id} col={col} onToggle={handleToggleVisibility} />
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                  No columns match your search.
+                </div>
+              )}
             </SortableContext>
           </DndContext>
         </div>

@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { hashPassword } from '../../shared/helpers/crypto';
 import { seedSystemRoles } from './roles.seed';
+import { seedNotifications } from './notifications.seed';
 
 const prisma = new PrismaClient();
 
@@ -220,9 +221,7 @@ export async function seedDemoAccounts(): Promise<void> {
   }
   
   // ── Seed Notifications ──────────────────────────────────────────────────
-  // Import notifications seed dynamically to avoid circular dependencies
   try {
-    const { seedNotifications } = await import('./notifications.seed');
     await seedNotifications();
   } catch (error) {
     console.error('[Seed] Failed to seed notifications:', error);
