@@ -66,7 +66,7 @@ export const MOCK_USERS: User[] = [
     firstName: 'System',
     lastName: 'Admin',
     email: 'super@leadcrm.com',
-    role: 'Admin',
+    role: 'System Admin',
     status: 'active',
   },
   {
@@ -76,7 +76,7 @@ export const MOCK_USERS: User[] = [
     firstName: 'System',
     lastName: 'Admin',
     email: 'admin@gmail.com',
-    role: 'Admin',
+    role: 'System Admin',
     status: 'active',
   },
   {

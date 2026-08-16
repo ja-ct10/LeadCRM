@@ -59,7 +59,12 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     const isEntryPoint =
       pathname === '/' || pathname === '/login' || pathname === '/dashboard';
 
-    if (isEntryPoint && user.role !== 'System Admin') {
+    // Determine System Admin using role + tenantId (matches use-layout.ts detection)
+    const isSystemAdmin = user.role === 'System Admin'
+      || user.tenantId === 'system'
+      || user.tenantId === 'leadcrm-system-demo';
+
+    if (isEntryPoint && !isSystemAdmin) {
       // CRITICAL: Check NextAuth session flag FIRST (for OAuth users)
       // If requiresProfileCompletion is true, ALWAYS send to onboarding
       // even if localStorage has stale "onboarding complete" data
@@ -94,7 +99,6 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     sessionStorage.removeItem('leadcrm_redirect_after_login');
     if (savedRedirect && savedRedirect !== '/login' && savedRedirect !== '/register') {
       const isAdminPath = savedRedirect.startsWith('/admin');
-      const isSystemAdmin = user.role === 'System Admin';
       if (!isAdminPath || isSystemAdmin) {
         router.replace(savedRedirect);
         return;
@@ -105,7 +109,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     // ── Role-based default landing ────────────────────────────────────────
     // Only redirect when on an entry point — avoid interrupting deep links.
     if (isEntryPoint) {
-      if (user.role === 'System Admin') {
+      if (isSystemAdmin) {
         router.replace('/admin/dashboard');
       } else {
         router.replace('/dashboard');

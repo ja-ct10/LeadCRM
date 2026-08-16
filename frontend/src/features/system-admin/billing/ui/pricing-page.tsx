@@ -91,8 +91,8 @@ export default function PricingPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
-          <h3 className="text-xl font-bold text-slate-900 dark:text-white">Pricing</h3>
-          <p className="text-sm text-slate-500">Manage subscription tiers and features</p>
+          <h3 className="text-2xl font-bold text-slate-900 dark:text-white">Pricing</h3>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Manage subscription tiers and features</p>
           <p className="text-xs text-amber-600 mt-2 bg-amber-50 dark:bg-amber-500/10 inline-block px-2 py-1 rounded border border-amber-200 dark:border-amber-500/20">
             Note: Maximum of 3 active plans supported.
           </p>
