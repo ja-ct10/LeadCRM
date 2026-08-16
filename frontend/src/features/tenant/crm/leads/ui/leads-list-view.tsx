@@ -42,6 +42,12 @@ export function getResponsiveColumnClass(
 
 export interface LeadsListViewProps {
   leads: Lead[];
+  totalRecords: number;
+  currentPage: number;
+  pageSize: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+  viewMode: 'wrap' | 'clip';
   selectedIds: string[];
   onToggleSelect: (id: string) => void;
   onSelectAll: () => void;
@@ -62,6 +68,12 @@ export interface LeadsListViewProps {
 
 export function LeadsListView({
   leads,
+  totalRecords,
+  currentPage,
+  pageSize,
+  totalPages,
+  onPageChange,
+  viewMode,
   selectedIds,
   onToggleSelect,
   onSelectAll,
@@ -263,7 +275,9 @@ export function LeadsListView({
               onClick={() => onRowClick(lead)}
               className={cn(
                 'flex items-center cursor-pointer transition-colors group',
-                dense ? 'h-[44px] px-3' : 'h-[52px] px-3',
+                viewMode === 'wrap'
+                  ? (dense ? 'min-h-[44px] px-3 py-2' : 'min-h-[52px] px-3 py-2')
+                  : (dense ? 'h-[44px] px-3' : 'h-[52px] px-3'),
                 isSelected
                   ? 'bg-blue-50/60 dark:bg-blue-500/5'
                   : 'hover:bg-slate-50 dark:hover:bg-slate-800/40',
@@ -284,7 +298,11 @@ export function LeadsListView({
               {visibleColumns.map((col) => {
                 const responsiveClass = getResponsiveColumnClass(col.id, visibleColumns, registry);
                 return (
-                  <div key={col.id} className={cn('px-3 min-w-0 flex-1', responsiveClass)}>
+                  <div key={col.id} className={cn(
+                    'px-3 min-w-0 flex-1',
+                    responsiveClass,
+                    viewMode === 'clip' ? '[&_p]:truncate [&_span]:truncate' : '[&_p]:whitespace-normal [&_p]:break-words [&_span]:whitespace-normal [&_span]:break-words',
+                  )}>
                     {renderCell(col.id, lead)}
                   </div>
                 );
@@ -297,12 +315,43 @@ export function LeadsListView({
       {/* Footer */}
       <div className="flex items-center justify-between px-4 py-2.5 border-t border-[#E4E9F0] dark:border-slate-700 bg-[#F6F8FB] dark:bg-slate-800/60">
         <span className="text-[12px] text-[#5A6B85] dark:text-slate-400">
-          Total records <strong className="font-semibold text-[#0F172A] dark:text-white">{leads.length}</strong>
+          Total records <strong className="font-semibold text-[#0F172A] dark:text-white">{totalRecords}</strong>
         </span>
         <div className="flex items-center gap-2 text-[12px] text-[#5A6B85]">
-          <span>1 to {Math.min(leads.length, 25)}</span>
-          <button className="p-1 hover:text-[#0F172A] dark:hover:text-white transition-colors" aria-label="Previous page">&lt;</button>
-          <button className="p-1 hover:text-[#0F172A] dark:hover:text-white transition-colors" aria-label="Next page">&gt;</button>
+          <span>
+            {totalRecords === 0
+              ? '0 records'
+              : `${(currentPage - 1) * pageSize + 1} to ${Math.min(currentPage * pageSize, totalRecords)}`}
+          </span>
+          <button
+            onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+            disabled={currentPage <= 1}
+            className={cn(
+              'p-1 transition-colors',
+              currentPage <= 1
+                ? 'text-[#5A6B85]/40 dark:text-slate-600 cursor-not-allowed'
+                : 'hover:text-[#0F172A] dark:hover:text-white',
+            )}
+            aria-label="Previous page"
+          >
+            &lt;
+          </button>
+          <span className="text-[11px] tabular-nums">
+            {currentPage} / {totalPages}
+          </span>
+          <button
+            onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+            disabled={currentPage >= totalPages}
+            className={cn(
+              'p-1 transition-colors',
+              currentPage >= totalPages
+                ? 'text-[#5A6B85]/40 dark:text-slate-600 cursor-not-allowed'
+                : 'hover:text-[#0F172A] dark:hover:text-white',
+            )}
+            aria-label="Next page"
+          >
+            &gt;
+          </button>
         </div>
       </div>
     </div>
