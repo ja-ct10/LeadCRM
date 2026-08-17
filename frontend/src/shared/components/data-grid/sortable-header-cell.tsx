@@ -72,13 +72,17 @@ export function SortableHeaderCell({
       onClick={onClick}
       aria-sort={ariaSort}
     >
-      <div className="flex items-center gap-0.5">
-        {/* Drag handle — only shown when draggable */}
+      <div className="flex items-center w-full min-w-0">
+        {/* Column content (label + sort indicator etc.) */}
+        <div className="flex-1 min-w-0">
+          {children}
+        </div>
+        {/* Drag handle — only shown on hover when draggable */}
         {isDraggable && (
           <button
             type="button"
             className={cn(
-              'flex-shrink-0 p-0.5 rounded cursor-grab active:cursor-grabbing',
+              'flex-shrink-0 p-0.5 rounded cursor-grab active:cursor-grabbing ml-0.5',
               'text-slate-300 dark:text-slate-600',
               'hover:text-slate-500 dark:hover:text-slate-400',
               'opacity-0 group-hover/header:opacity-100 transition-opacity',
@@ -91,10 +95,6 @@ export function SortableHeaderCell({
             <GripVertical size={12} />
           </button>
         )}
-        {/* Column content (label + sort indicator etc.) */}
-        <div className="flex-1 min-w-0">
-          {children}
-        </div>
       </div>
     </th>
   );

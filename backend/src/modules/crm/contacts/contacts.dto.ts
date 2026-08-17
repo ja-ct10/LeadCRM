@@ -18,6 +18,8 @@ export const CreateContactSchema = z.object({
   assignedUserId: id().optional(),
   productInterest: z.array(z.string()).optional(),
   address:        z.string().optional(),
+  description:    z.string().optional(),
+  website:        z.string().optional(),
 });
 
 export const UpdateContactSchema = z.object({
@@ -32,6 +34,8 @@ export const UpdateContactSchema = z.object({
   assignedUserId: id().optional(),
   productInterest: z.array(z.string()).optional(),
   address:        z.string().optional(),
+  description:    z.string().optional(),
+  website:        z.string().optional(),
 });
 
 export type CreateContactDto = z.infer<typeof CreateContactSchema>;

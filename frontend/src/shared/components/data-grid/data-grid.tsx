@@ -72,9 +72,9 @@ const ROW_ACTIONS_WIDTH = 40;
 const ACTIONS_COLUMN_WIDTH = 100;
 const SETTINGS_COLUMN_WIDTH = 36;
 const HIDDEN_BADGE_COLUMN_WIDTH = 80;
-const ROW_HEIGHT_NORMAL = 52;
-const ROW_HEIGHT_DENSE = 44;
-const HEADER_HEIGHT = 44;
+const ROW_HEIGHT_NORMAL = 44;
+const ROW_HEIGHT_DENSE = 36;
+const HEADER_HEIGHT = 40;
 
 // ─── Resize Handle ───────────────────────────────────────────────────────────
 
@@ -158,10 +158,10 @@ function DataGridRowInner<T>({
   return (
     <tr
       className={cn(
-        'transition-colors cursor-pointer group/row',
+        'transition-colors duration-100 cursor-pointer group/row border-b border-[#eef0f3] dark:border-slate-800',
         selected
-          ? 'bg-blue-50/60 dark:bg-blue-500/5'
-          : 'hover:bg-slate-50 dark:hover:bg-slate-800/40',
+          ? 'bg-blue-50 dark:bg-blue-500/10'
+          : 'hover:bg-[#f7f8fa] dark:hover:bg-slate-800/50',
       )}
       style={viewMode === 'wrap' ? { minHeight: rowHeight, maxHeight: 156 } : { height: rowHeight }}
       onClick={() => onRowClick?.(row)}
@@ -172,10 +172,10 @@ function DataGridRowInner<T>({
       {hasRowActions && rowActions && (
         <td
           className={cn(
-            'sticky left-0 z-10 px-1 text-center',
+            'sticky left-0 z-10 px-1 text-center border-r border-[#eef0f3] dark:border-slate-800',
             selected
               ? 'bg-blue-50/60 dark:bg-blue-500/5'
-              : 'bg-white dark:bg-slate-800/40 group-hover/row:bg-slate-50 dark:group-hover/row:bg-slate-800/40',
+              : 'bg-white dark:bg-slate-900 group-hover/row:bg-[#f7f8fa] dark:group-hover/row:bg-slate-800/50',
           )}
           onClick={(e) => e.stopPropagation()}
         >
@@ -189,13 +189,13 @@ function DataGridRowInner<T>({
       {selectable && (
         <td
           className={cn(
-            'sticky z-10 px-3 text-center',
+            'sticky z-10 px-3 text-center border-r border-[#eef0f3] dark:border-slate-800',
             selected
               ? 'bg-blue-50/60 dark:bg-blue-500/5'
-              : 'bg-white dark:bg-slate-800/40 group-hover/row:bg-slate-50 dark:group-hover/row:bg-slate-800/40',
+              : 'bg-white dark:bg-slate-900 group-hover/row:bg-[#f7f8fa] dark:group-hover/row:bg-slate-800/50',
             pinnedLeftColumns.length === 0 && isScrolled
               ? 'shadow-[4px_0_8px_-2px_rgba(0,0,0,0.08)] dark:shadow-[4px_0_8px_-2px_rgba(0,0,0,0.25)]'
-              : 'shadow-[inset_-1px_0_0_0_#e5e7eb] dark:shadow-[inset_-1px_0_0_0_rgba(255,255,255,0.06)]',
+              : 'shadow-[inset_-1px_0_0_0_#eef0f3] dark:shadow-[inset_-1px_0_0_0_rgba(255,255,255,0.06)]',
           )}
           style={{ left: hasRowActions ? ROW_ACTIONS_WIDTH : 0 }}
           onClick={(e) => e.stopPropagation()}
@@ -221,13 +221,13 @@ function DataGridRowInner<T>({
           <td
             key={col.id}
             className={cn(
-              'sticky z-10 px-3',
+              'sticky z-10 px-3 border-r border-[#eef0f3] dark:border-slate-800',
               selected
                 ? 'bg-blue-50/60 dark:bg-blue-500/5'
-                : 'bg-white dark:bg-slate-800/40 group-hover/row:bg-slate-50 dark:group-hover/row:bg-slate-800/40',
+                : 'bg-white dark:bg-slate-900 group-hover/row:bg-[#f7f8fa] dark:group-hover/row:bg-slate-800/50',
               isLastPinned && isScrolled
                 ? 'shadow-[4px_0_8px_-2px_rgba(0,0,0,0.08)] dark:shadow-[4px_0_8px_-2px_rgba(0,0,0,0.25)]'
-                : 'shadow-[inset_-1px_0_0_0_#e5e7eb] dark:shadow-[inset_-1px_0_0_0_rgba(255,255,255,0.06)]',
+                : 'shadow-[inset_-1px_0_0_0_#eef0f3] dark:shadow-[inset_-1px_0_0_0_rgba(255,255,255,0.06)]',
               col.align === 'right' && 'text-right',
               col.align === 'center' && 'text-center',
               'text-[13px] text-[#0F172A] dark:text-slate-200',
@@ -261,7 +261,7 @@ function DataGridRowInner<T>({
           <td
             key={col.id}
             className={cn(
-              'px-3',
+              'px-3 border-r border-[#eef0f3] dark:border-slate-800',
               col.align === 'right' && 'text-right',
               col.align === 'center' && 'text-center',
               'text-[13px] text-[#0F172A] dark:text-slate-200',
@@ -297,7 +297,7 @@ function DataGridRowInner<T>({
               'sticky right-0 z-10 px-3',
               selected
                 ? 'bg-blue-50/60 dark:bg-blue-500/5'
-                : 'bg-white dark:bg-slate-800/40 group-hover/row:bg-slate-50 dark:group-hover/row:bg-slate-800/40',
+                : 'bg-white dark:bg-slate-900 group-hover/row:bg-[#f7f8fa] dark:group-hover/row:bg-slate-800/50',
               'shadow-[inset_1px_0_0_0_#e5e7eb] dark:shadow-[inset_1px_0_0_0_rgba(255,255,255,0.06)]',
               col.align === 'right' && 'text-right',
               col.align === 'center' && 'text-center',
@@ -747,8 +747,8 @@ export function DataGrid<T = Record<string, unknown>>({
             <tr
               role="row"
               className={cn(
-                'bg-[#F6F8FB] dark:bg-slate-800/60',
-                'border-b border-[#E4E9F0] dark:border-slate-700',
+                'bg-white dark:bg-slate-900',
+                'border-b border-[#eef0f3] dark:border-slate-700/80',
               )}
               style={{ height: HEADER_HEIGHT }}
             >
@@ -756,7 +756,7 @@ export function DataGrid<T = Record<string, unknown>>({
               {rowActions && (
                 <th
                   scope="col"
-                  className="sticky left-0 z-30 bg-[#F6F8FB] dark:bg-slate-800/60"
+                  className="sticky left-0 z-30 bg-white dark:bg-slate-900"
                 />
               )}
 
@@ -765,12 +765,12 @@ export function DataGrid<T = Record<string, unknown>>({
                 <th
                   scope="col"
                   className={cn(
-                    'sticky z-30 bg-[#F6F8FB] dark:bg-slate-800/60',
+                    'sticky z-30 bg-white dark:bg-slate-900 border-r border-[#eef0f3] dark:border-slate-800',
                     'px-3 text-center',
                     // If no pinned left columns, checkbox is the last pinned element
                     pinnedLeftColumns.length === 0 && isScrolled
-                      ? 'shadow-[4px_0_8px_-2px_rgba(0,0,0,0.08)] dark:shadow-[4px_0_8px_-2px_rgba(0,0,0,0.25)]'
-                      : 'shadow-[inset_-1px_0_0_0_#e5e7eb] dark:shadow-[inset_-1px_0_0_0_rgba(255,255,255,0.06)]',
+                      ? 'shadow-[4px_0_8px_-2px_rgba(0,0,0,0.06)] dark:shadow-[4px_0_8px_-2px_rgba(0,0,0,0.25)]'
+                      : 'shadow-[inset_-1px_0_0_0_#eef0f3] dark:shadow-[inset_-1px_0_0_0_rgba(255,255,255,0.06)]',
                   )}
                   style={{ left: rowActions ? ROW_ACTIONS_WIDTH : 0 }}
                 >
@@ -795,14 +795,14 @@ export function DataGrid<T = Record<string, unknown>>({
                   key={col.id}
                   scope="col"
                   className={cn(
-                    'sticky z-30 bg-[#F6F8FB] dark:bg-slate-800/60',
+                    'sticky z-30 bg-white dark:bg-slate-900 border-r border-[#eef0f3] dark:border-slate-800',
                     'px-3 text-left group/header relative',
-                    'text-[11.5px] font-semibold uppercase tracking-wider text-[#5A6B85] dark:text-slate-400',
+                    'text-[12px] font-medium text-[#8899a6] dark:text-slate-500',
                     // Last pinned column shows inset shadow when scrolled, subtle border otherwise
                     isLastPinned && isScrolled
-                      ? 'shadow-[4px_0_8px_-2px_rgba(0,0,0,0.08)] dark:shadow-[4px_0_8px_-2px_rgba(0,0,0,0.25)]'
-                      : 'shadow-[inset_-1px_0_0_0_#e5e7eb] dark:shadow-[inset_-1px_0_0_0_rgba(255,255,255,0.06)]',
-                    col.sortable && 'cursor-pointer hover:text-[#0F172A] dark:hover:text-white select-none',
+                      ? 'shadow-[4px_0_8px_-2px_rgba(0,0,0,0.06)] dark:shadow-[4px_0_8px_-2px_rgba(0,0,0,0.25)]'
+                      : 'shadow-[inset_-1px_0_0_0_#eef0f3] dark:shadow-[inset_-1px_0_0_0_rgba(255,255,255,0.06)]',
+                    col.sortable && 'cursor-pointer hover:text-[#3C4858] dark:hover:text-slate-300 select-none',
                   )}
                   style={{ left: pinnedLeftOffsets[col.id] }}
                   onClick={() => col.sortable && handleHeaderClick(col.id)}
@@ -834,9 +834,9 @@ export function DataGrid<T = Record<string, unknown>>({
                   columnId={col.id}
                   isDraggable={isDraggable(col.id)}
                   className={cn(
-                    'px-3 text-left group/header relative',
-                    'text-[11.5px] font-semibold uppercase tracking-wider text-[#5A6B85] dark:text-slate-400',
-                    col.sortable && !enableColumnMenu && 'cursor-pointer hover:text-[#0F172A] dark:hover:text-white select-none',
+                    'px-3 text-left group/header relative bg-white dark:bg-slate-900 border-r border-[#eef0f3] dark:border-slate-800',
+                    'text-[12px] font-medium text-[#8899a6] dark:text-slate-500',
+                    col.sortable && !enableColumnMenu && 'cursor-pointer hover:text-[#3C4858] dark:hover:text-slate-300 select-none',
                   )}
                   onClick={() => !enableColumnMenu && col.sortable && handleHeaderClick(col.id)}
                   ariaSort={
@@ -879,11 +879,11 @@ export function DataGrid<T = Record<string, unknown>>({
                   key={col.id}
                   scope="col"
                   className={cn(
-                    'sticky right-0 z-30 bg-[#F6F8FB] dark:bg-slate-800/60',
+                    'sticky right-0 z-30 bg-white dark:bg-slate-900',
                     'px-3 text-left group/header relative',
-                    'text-[11.5px] font-semibold uppercase tracking-wider text-[#5A6B85] dark:text-slate-400',
-                    'shadow-[inset_1px_0_0_0_#e5e7eb] dark:shadow-[inset_1px_0_0_0_rgba(255,255,255,0.06)]',
-                    col.sortable && 'cursor-pointer hover:text-[#0F172A] dark:hover:text-white select-none',
+                    'text-[12px] font-medium text-[#8899a6] dark:text-slate-500',
+                    'shadow-[inset_1px_0_0_0_#eef0f3] dark:shadow-[inset_1px_0_0_0_rgba(255,255,255,0.06)]',
+                    col.sortable && 'cursor-pointer hover:text-[#3C4858] dark:hover:text-slate-300 select-none',
                   )}
                   onClick={() => col.sortable && handleHeaderClick(col.id)}
                 >
@@ -906,7 +906,7 @@ export function DataGrid<T = Record<string, unknown>>({
               {hasQuickActions && (
                 <th
                   scope="col"
-                  className="px-3 text-right text-[11.5px] font-semibold uppercase tracking-wider text-[#5A6B85] dark:text-slate-400"
+                  className="px-3 text-right text-[12px] font-medium text-[#8899a6] dark:text-slate-500"
                 >
                   Actions
                 </th>
@@ -952,7 +952,7 @@ export function DataGrid<T = Record<string, unknown>>({
           </thead>
 
           {/* ─── Body ──────────────────────────────────────────────── */}
-          <tbody className="divide-y divide-[#E4E9F0] dark:divide-slate-700">
+          <tbody className="divide-y divide-[#eef0f3] dark:divide-slate-700/80">
             {sortedData.length === 0 && (
               <tr>
                 <td

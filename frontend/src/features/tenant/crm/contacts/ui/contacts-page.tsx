@@ -15,9 +15,8 @@ import { CONTACTS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import { CONTACTS_MODULE_CONFIG } from '../contacts.config';
 import { ContactsDataGrid } from './contacts-data-grid';
 import { ContactFormSheet } from './contact-form';
+import { ColumnsPopover } from '@/shared/components/data-grid';
 import { toast } from 'sonner';
-import { SlidersHorizontal } from 'lucide-react';
-
 // ── Contacts Page ─────────────────────────────────────────────────────────────
 // Shows all contacts with activity flags, customer type, account links, deals
 
@@ -343,15 +342,19 @@ export default function ContactsPage(): React.ReactElement {
       paginationTotalRecords={filteredContacts.length}
       onPageChange={setCurrentPage}
       toolbarExtra={
-        <button
-          ref={manageColumnsButtonRef}
-          onClick={() => setIsManageColumnsOpen(true)}
-          className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium text-[#5A6B85] dark:text-slate-300 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-          aria-label="Manage columns"
-        >
-          <SlidersHorizontal size={13} />
-          Columns
-        </button>
+        <ColumnsPopover
+          registry={CONTACTS_COLUMN_REGISTRY}
+          effectiveColumns={effectiveColumns}
+          onApply={(cols) => {
+            saveColumns(cols);
+            toast.success('Column visibility updated');
+          }}
+          onReset={() => {
+            resetColumns();
+            toast.success('Columns reset to default');
+          }}
+          hiddenCount={effectiveColumns.filter((c) => !c.visible).length}
+        />
       }
     >
       {/* ── List / Table View — DataGrid ─────────────────── */}

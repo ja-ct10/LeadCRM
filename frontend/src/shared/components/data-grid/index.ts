@@ -43,6 +43,8 @@ export { RowActionsMenu, buildDefaultRowActions } from './row-actions-menu';
 export type { RowActionsMenuProps, RowActionItem } from './row-actions-menu';
 export { ActivityFlag } from './activity-flag';
 export type { ActivityFlagProps, ActivityType } from './activity-flag';
+export { ColumnsPopover } from './columns-popover';
+export type { ColumnsPopoverProps } from './columns-popover';
 
 // Hooks
 export { useBulkSelection } from './use-bulk-selection';

@@ -179,7 +179,6 @@ export function AccountsDataGrid({
     registry: ACCOUNTS_COLUMN_REGISTRY,
     effectiveColumns,
     cellRenderers,
-    pinnedColumns: ['name'],
     sortableColumns: [
       'name', 'industry', 'customerType', 'size',
       'city', 'country', 'assignedUserId', 'createdAt',
@@ -243,7 +242,6 @@ export function AccountsDataGrid({
       viewMode={viewMode}
       onColumnReorder={onColumnReorder}
       effectiveColumns={effectiveColumns}
-      lockedColumns={['name']}
     />
   );
 }

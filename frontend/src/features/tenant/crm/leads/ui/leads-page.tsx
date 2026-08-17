@@ -12,6 +12,7 @@ import { useColumnPreferences } from '@/shared/hooks/use-column-preferences';
 import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
 import { migrateLocalStorageColumns } from '../services/local-storage-migration';
 import { ManageColumnsDrawer } from '@/shared/components/manage-columns-drawer';
+import { ColumnsPopover } from '@/shared/components/data-grid';
 import { LeadsTileView, LeadsGridView, LeadsKanbanView, LeadDrawerOverview, LeadDrawerRelated } from './leads-view-components';
 import { LeadsListView } from './leads-list-view';
 import { LeadsDataGrid } from './leads-data-grid';
@@ -475,6 +476,21 @@ export default function LeadsPage(): React.ReactElement {
         paginationTotalRecords={sortedLeads.length}
         onPageChange={setCurrentPage}
         onManageColumns={() => setIsManageColumnsOpen(true)}
+        toolbarExtra={
+          <ColumnsPopover
+            registry={LEADS_COLUMN_REGISTRY}
+            effectiveColumns={effectiveColumns}
+            onApply={(cols) => {
+              saveColumns(cols);
+              toast.success('Column visibility updated');
+            }}
+            onReset={() => {
+              resetColumns();
+              toast.success('Columns reset to default');
+            }}
+            hiddenCount={effectiveColumns.filter((c) => !c.visible).length}
+          />
+        }
         onResetColumns={() => {
           resetColumns();
           toast.success('Columns reset to default');
@@ -503,8 +519,8 @@ export default function LeadsPage(): React.ReactElement {
           </div>
         )}
 
-        {/* ── Table View (new DataGrid) ─────────────────────────── */}
-        {activeView === 'table' && !isColumnsLoading && (
+        {/* ── List / Table View (DataGrid) ─────────────────── */}
+        {(activeView === 'list' || activeView === 'table') && !isColumnsLoading && (
           <LeadsDataGrid
             leads={paginatedLeads}
             totalRecords={sortedLeads.length}
@@ -520,7 +536,6 @@ export default function LeadsPage(): React.ReactElement {
             canDelete={canDelete}
             onEdit={(lead) => { setEditingLead(lead); setIsFormOpen(true); }}
             onDelete={(lead) => {
-              // future: confirm + delete
               toast.info(`Delete "${lead.leadPerson ?? lead.displayName}" coming soon`);
             }}
             onManageColumns={() => setIsManageColumnsOpen(true)}
@@ -543,37 +558,6 @@ export default function LeadsPage(): React.ReactElement {
               }
             }}
             viewMode={viewMode}
-          />
-        )}
-
-        {/* ── List View (legacy flex-based) ─────────────────────── */}
-        {activeView === 'list' && !isColumnsLoading && (
-          <LeadsListView
-            leads={paginatedLeads}
-            totalRecords={sortedLeads.length}
-            currentPage={currentPage}
-            pageSize={pageSize}
-            totalPages={totalPages}
-            onPageChange={setCurrentPage}
-            viewMode={viewMode}
-            selectedIds={Array.from(selectedIds)}
-            onToggleSelect={handleToggleSelect}
-            onSelectAll={handleSelectAll}
-            onRowClick={handleRowClick}
-            getInitials={getInitials}
-            getLeadName={getLeadName}
-            getOwnerName={getOwnerName}
-            getOwnerInitials={getOwnerInitials}
-            getStatusVariant={getStatusVariant}
-            visibleColumns={visibleColumns}
-            registry={LEADS_COLUMN_REGISTRY}
-            onColumnsReorder={async (newCols) => {
-              try {
-                await saveColumns(newCols);
-              } catch {
-                toast.error('Failed to save column order. Reverted to previous layout.');
-              }
-            }}
           />
         )}
 

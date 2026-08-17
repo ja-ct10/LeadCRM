@@ -23,6 +23,7 @@ export interface Lead extends Omit<SharedContact, 'firstName' | 'lastName'> {
   jobTitle?: string;
   industry?: string;
   website?: string;
+  description?: string;
   notes?: string;
   internalNotes?: string;
   score?: number;
@@ -30,6 +31,11 @@ export interface Lead extends Omit<SharedContact, 'firstName' | 'lastName'> {
   organizationId?: string;
   isArchived?: boolean;
   archivedAt?: string;
+
+  // ── Audit / creator fields ───────────────────────────────────────────────
+  createdByUser?: { id: string; firstName: string; lastName: string };
+  updatedByUser?: { id: string; firstName: string; lastName: string };
+  lastStatusChangedAt?: string;
 
   // ── Legacy / extra contact fields used by UI ────────────────────────────
   leadSource?: string;

@@ -33,6 +33,8 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
       include: {
         assignedUser: { select: { id: true, firstName: true, lastName: true } },
         account:      { select: { id: true, name: true } },
+        createdBy:    { select: { id: true, firstName: true, lastName: true } },
+        updatedBy:    { select: { id: true, firstName: true, lastName: true } },
       },
     }),
     prisma.lead.count({ where }),
@@ -47,21 +49,51 @@ export async function findContactById(id: string, tenantId: string) {
     include: {
       assignedUser: { select: { id: true, firstName: true, lastName: true, email: true } },
       account:      { select: { id: true, name: true, industry: true } },
+      createdBy:    { select: { id: true, firstName: true, lastName: true } },
+      updatedBy:    { select: { id: true, firstName: true, lastName: true } },
     },
   });
 }
 
-export async function createContact(tenantId: string, dto: CreateContactDto) {
+export async function createContact(
+  tenantId: string,
+  dto: CreateContactDto,
+  createdById?: string,
+) {
   return prisma.lead.create({
-    data: { ...dto, tenantId },
+    data: { ...dto, tenantId, ...(createdById ? { createdById, updatedById: createdById } : {}) },
+    include: {
+      assignedUser: { select: { id: true, firstName: true, lastName: true } },
+      account:      { select: { id: true, name: true } },
+      createdBy:    { select: { id: true, firstName: true, lastName: true } },
+      updatedBy:    { select: { id: true, firstName: true, lastName: true } },
+    },
   });
 }
 
-export async function updateContact(id: string, tenantId: string, dto: UpdateContactDto) {
+export async function updateContact(
+  id: string,
+  tenantId: string,
+  dto: UpdateContactDto,
+  updatedById?: string,
+  prevStatus?: string,
+) {
   try {
+    const data: Record<string, unknown> = { ...dto };
+    if (updatedById) data.updatedById = updatedById;
+    // Stamp lastStatusChangedAt when status actually changes
+    if (dto.status && prevStatus !== undefined && dto.status !== prevStatus) {
+      data.lastStatusChangedAt = new Date();
+    }
     return await prisma.lead.update({
-      where:  { id, tenantId },
-      data:   dto,
+      where: { id, tenantId },
+      data,
+      include: {
+        assignedUser: { select: { id: true, firstName: true, lastName: true } },
+        account:      { select: { id: true, name: true } },
+        createdBy:    { select: { id: true, firstName: true, lastName: true } },
+        updatedBy:    { select: { id: true, firstName: true, lastName: true } },
+      },
     });
   } catch {
     // Record not found or cross-tenant attempt

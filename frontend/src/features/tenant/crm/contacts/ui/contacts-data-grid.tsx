@@ -176,7 +176,6 @@ export function ContactsDataGrid({
     registry: CONTACTS_COLUMN_REGISTRY,
     effectiveColumns,
     cellRenderers,
-    pinnedColumns: ['firstName'],
     sortableColumns: [
       'firstName', 'lastName', 'email', 'phone', 'companyName',
       'status', 'source', 'assignedUserId', 'createdAt',
@@ -240,7 +239,6 @@ export function ContactsDataGrid({
       viewMode={viewMode}
       onColumnReorder={onColumnReorder}
       effectiveColumns={effectiveColumns}
-      lockedColumns={['firstName']}
     />
   );
 }

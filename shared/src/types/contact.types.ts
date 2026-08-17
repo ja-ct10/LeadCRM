@@ -31,6 +31,8 @@ export interface Contact {
   phone?: string;
   companyName?: string;
   address?: string;
+  description?: string;
+  website?: string;
   productInterest?: string[];
   source?: string;
   assignedUserId?: string;
@@ -38,10 +40,15 @@ export interface Contact {
   status: string;
   createdAt: string;
   updatedAt?: string;
+  createdById?: string;
+  updatedById?: string;
+  lastStatusChangedAt?: string;
 
   // Joined relations (included in list/detail responses)
   assignedUser?: { id: string; firstName: string; lastName: string };
   account?: { id: string; name: string };
+  createdByUser?: { id: string; firstName: string; lastName: string };
+  updatedByUser?: { id: string; firstName: string; lastName: string };
 }
 
 /**

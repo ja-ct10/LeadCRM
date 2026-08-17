@@ -15,9 +15,9 @@ import { ACCOUNTS_MODULE_CONFIG } from '../accounts.config';
 import { AccountsDataGrid } from './accounts-data-grid';
 import AccountForm from '../ui/account-form';
 import { SideSheet } from '@/shared/components/side-sheet';
+import { ColumnsPopover } from '@/shared/components/data-grid';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { SlidersHorizontal } from 'lucide-react';
 import type { Account } from '../types/account.types';
 import type { ColumnConfigItem } from '@leadcrm/shared';
 
@@ -345,15 +345,19 @@ export default function AccountsPage(): React.ReactElement {
         paginationTotalRecords={filteredAccounts.length}
         onPageChange={setCurrentPage}
         toolbarExtra={
-          <button
-            ref={manageColumnsButtonRef}
-            onClick={() => setIsManageColumnsOpen(true)}
-            className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium text-[#5A6B85] dark:text-slate-300 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-            aria-label="Manage columns"
-          >
-            <SlidersHorizontal size={13} />
-            Columns
-          </button>
+        <ColumnsPopover
+          registry={ACCOUNTS_COLUMN_REGISTRY}
+          effectiveColumns={effectiveColumns}
+          onApply={(cols) => {
+            saveColumns(cols);
+            toast.success('Column visibility updated');
+          }}
+          onReset={() => {
+            resetColumns();
+            toast.success('Columns reset to default');
+          }}
+          hiddenCount={effectiveColumns.filter((c) => !c.visible).length}
+        />
         }
       >
         {/* List View — DataGrid */}

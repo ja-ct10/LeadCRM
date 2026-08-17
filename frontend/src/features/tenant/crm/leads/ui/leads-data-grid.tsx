@@ -1,40 +1,65 @@
 /**
  * LeadsDataGrid — Leads table implemented with the shared DataGrid component.
  *
- * This replaces the legacy LeadsListView for the "table" view type,
- * providing:
- * - Sticky header + pinned "Name" column on horizontal scroll
- * - Resizable columns via drag handles
- * - Header-click sorting with directional chevrons
- * - Bulk selection (select-all + row checkboxes)
- * - Quick-action icons (call, email) on row hover
- * - Sticky summary footer with record count
- * - Seamless integration with existing column preference system
- *
- * The filtering/sorting state remains external (owned by leads-page.tsx)
- * so switching between Table/List/Kanban views retains active filters.
+ * Close.com-style features:
+ * - Status rendered as colored dot + plain text (no pill badge)
+ * - Dedicated clickable Phone and Email icon columns (between Name and Email)
+ * - Name column pinned left and always visible
+ * - Sticky header with resizable, reorderable columns
+ * - Bulk selection, quick actions, column header menu
  */
 
 'use client';
 
 import React, { useMemo, useCallback } from 'react';
-import { Phone } from 'lucide-react';
-import { StatusBadge } from '@/shared/components/crm';
+import { Phone, Mail, ExternalLink } from 'lucide-react';
 import {
   DataGrid,
   DataGridQuickFilter,
   useDataGridColumns,
   buildDefaultRowActions,
   renderDate,
-  renderLink,
   MODULE_ACCENT_COLORS,
-  LEAD_STATUS_VARIANTS,
 } from '@/shared/components/data-grid';
 import type { QuickAction, SortState, RowActionItem } from '@/shared/components/data-grid';
 import type { CellRendererMap } from '@/shared/components/data-grid';
 import { LEADS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import type { ColumnConfigItem } from '@leadcrm/shared';
 import type { Lead } from '@/store/types';
+
+// ─── Status Dot Colors (Close.com style) ─────────────────────────────────────
+
+const STATUS_DOT_COLORS: Record<string, string> = {
+  Inquiry:   '#94a3b8',
+  Qualified: '#22c55e',
+  HOT:       '#ef4444',
+  WARM:      '#f59e0b',
+  COLD:      '#3b82f6',
+  CANCELLED: '#6b7280',
+  CLOSED:    '#8b5cf6',
+  Converted: '#8b5cf6',
+  Archived:  '#d1d5db',
+};
+
+// ─── Helper: Render user with avatar initials ─────────────────────────────────
+
+function renderUserName(
+  user?: { id: string; firstName: string; lastName: string } | null,
+): React.ReactNode {
+  if (!user) return <span className="text-[12px] text-[#94a3b8]">—</span>;
+  const initials = `${user.firstName?.[0] ?? ''}${user.lastName?.[0] ?? ''}`.toUpperCase();
+  const name = `${user.firstName} ${user.lastName}`.trim();
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-[9px] font-bold text-slate-600 dark:text-slate-300 shrink-0">
+        {initials}
+      </div>
+      <span className="text-[12px] text-[#3C4858] dark:text-slate-300 truncate max-w-[100px]">
+        {name}
+      </span>
+    </div>
+  );
+}
 
 // ─── Props Interface ─────────────────────────────────────────────────────────
 
@@ -109,6 +134,8 @@ export function LeadsDataGrid({
   // ─── Cell Renderers ────────────────────────────────────────────────────
 
   const cellRenderers: CellRendererMap<Lead> = useMemo(() => ({
+
+    // ── Name (pinned left) ─────────────────────────────────────────────
     firstName: (_value: unknown, row: Lead) => {
       const name = row.leadPerson ?? row.displayName ?? (`${row.firstName ?? ''} ${row.lastName ?? ''}`.trim() || 'Unknown');
       const initials = (() => {
@@ -116,18 +143,17 @@ export function LeadsDataGrid({
         if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
         return name.slice(0, 2).toUpperCase();
       })();
-
       return (
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className={`w-8 h-8 rounded-full ${MODULE_ACCENT_COLORS.leads} flex items-center justify-center text-white font-bold text-[10px] shrink-0`}>
+          <div className={`w-7 h-7 rounded-full ${MODULE_ACCENT_COLORS.leads} flex items-center justify-center text-white font-bold text-[10px] shrink-0`}>
             {initials}
           </div>
           <div className="min-w-0">
-            <p className="text-[13px] font-semibold text-[#0F172A] dark:text-white truncate leading-tight">
+            <p className="text-[13px] font-medium text-[#1a73e8] dark:text-blue-400 truncate leading-tight hover:underline cursor-pointer">
               {name}
             </p>
             {row.companyName && (
-              <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 truncate">
+              <p className="text-[11px] text-[#8899a6] dark:text-slate-500 truncate">
                 {row.companyName}
               </p>
             )}
@@ -136,42 +162,76 @@ export function LeadsDataGrid({
       );
     },
 
+    // ── Phone icon column (clickable) ──────────────────────────────────
+    phoneAction: (_value: unknown, row: Lead) => {
+      if (!row.phone) return <span className="text-[#d1d5db] select-none text-center block">—</span>;
+      return (
+        <a
+          href={`tel:${row.phone}`}
+          title={row.phone}
+          onClick={(e) => e.stopPropagation()}
+          className="inline-flex items-center justify-center w-7 h-7 rounded-md text-[#5A6B85] hover:text-[#1a73e8] hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+        >
+          <Phone size={14} />
+        </a>
+      );
+    },
+
+    // ── Email icon column (clickable) ──────────────────────────────────
+    emailAction: (_value: unknown, row: Lead) => {
+      if (!row.email) return <span className="text-[#d1d5db] select-none text-center block">—</span>;
+      return (
+        <a
+          href={`mailto:${row.email}`}
+          title={row.email}
+          onClick={(e) => e.stopPropagation()}
+          className="inline-flex items-center justify-center w-7 h-7 rounded-md text-[#5A6B85] hover:text-[#1a73e8] hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+        >
+          <Mail size={14} />
+        </a>
+      );
+    },
+
     emailAndPhone: (_value: unknown, row: Lead) => (
       <div className="min-w-0">
-        <p className="text-[12px] text-[#0F172A] dark:text-slate-200 truncate">{row.email ?? '—'}</p>
-        {row.phone && <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 truncate">{row.phone}</p>}
+        <p className="text-[12px] text-[#3C4858] dark:text-slate-200 truncate">{row.email ?? '—'}</p>
+        {row.phone && <p className="text-[11px] text-[#8899a6] dark:text-slate-400 truncate">{row.phone}</p>}
       </div>
     ),
 
     email: (_value: unknown, row: Lead) => (
-      <p className="text-[12px] text-[#0F172A] dark:text-slate-200 truncate">{row.email ?? '—'}</p>
+      <p className="text-[12px] text-[#3C4858] dark:text-slate-200 truncate">{row.email ?? '—'}</p>
     ),
 
     phone: (_value: unknown, row: Lead) => (
-      <p className="text-[12px] text-[#0F172A] dark:text-slate-200 truncate">{row.phone ?? '—'}</p>
+      <p className="text-[12px] text-[#3C4858] dark:text-slate-200 truncate">{row.phone ?? '—'}</p>
     ),
 
     companyName: (_value: unknown, row: Lead) => (
-      <p className="text-[13px] text-[#0F172A] dark:text-slate-200 truncate">{row.companyName ?? '—'}</p>
+      <p className="text-[13px] text-[#3C4858] dark:text-slate-200 truncate">{row.companyName ?? '—'}</p>
     ),
 
-    status: (_value: unknown, row: Lead) => (
-      <StatusBadge
-        label={row.status}
-        variant={LEAD_STATUS_VARIANTS[row.status] ?? 'neutral'}
-      />
-    ),
+    // ── Status: Close.com dot + plain text ────────────────────────────
+    status: (_value: unknown, row: Lead) => {
+      const dotColor = STATUS_DOT_COLORS[row.status] ?? '#94a3b8';
+      return (
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
+          <span className="text-[13px] text-[#3C4858] dark:text-slate-300 truncate">{row.status}</span>
+        </div>
+      );
+    },
 
     source: (_value: unknown, row: Lead) => (
-      <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">{row.leadSource ?? '—'}</p>
+      <p className="text-[12px] text-[#8899a6] dark:text-slate-400 truncate">{row.leadSource ?? row.source ?? '—'}</p>
     ),
 
     assignedUserId: (_value: unknown, row: Lead) => (
       <div className="flex items-center gap-1.5">
-        <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-[9px] font-bold text-slate-600 dark:text-slate-300">
+        <div className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-[9px] font-bold text-slate-600 dark:text-slate-300 shrink-0">
           {getOwnerInitials(row.assignedUserId)}
         </div>
-        <span className="text-[11px] text-[#5A6B85] dark:text-slate-400 truncate max-w-[80px]">
+        <span className="text-[12px] text-[#3C4858] dark:text-slate-400 truncate max-w-[100px]">
           {getOwnerName(row.assignedUserId)}
         </span>
       </div>
@@ -180,14 +240,66 @@ export function LeadsDataGrid({
     createdAt: (_value: unknown, row: Lead) => renderDate(row.createdAt),
 
     updatedAt: (_value: unknown, row: Lead) => {
-      const updatedAt = (row as unknown as Record<string, unknown>).updatedAt as string | undefined;
-      return renderDate(updatedAt);
+      const val = (row as unknown as Record<string, unknown>).updatedAt as string | undefined;
+      return renderDate(val);
     },
 
+    lastStatusChangedAt: (_value: unknown, row: Lead) => renderDate(row.lastStatusChangedAt),
+    latestStatusChangeDate: (_value: unknown, row: Lead) => renderDate(row.lastStatusChangedAt),
+
     website: (_value: unknown, row: Lead) => {
-      const website = (row as unknown as Record<string, unknown>).website as string | undefined;
-      return renderLink(website ?? null);
+      const url = row.website;
+      if (!url) return <span className="text-[12px] text-[#94a3b8]">—</span>;
+      return (
+        <a
+          href={url.startsWith('http') ? url : `https://${url}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={url}
+          onClick={(e) => e.stopPropagation()}
+          className="inline-flex items-center gap-1 text-[12px] text-[#1a73e8] hover:underline truncate"
+        >
+          {url.replace(/^https?:\/\//, '')}
+          <ExternalLink size={11} className="shrink-0" />
+        </a>
+      );
     },
+
+    description: (_value: unknown, row: Lead) => {
+      const desc = row.description;
+      if (!desc) return <span className="text-[12px] text-[#94a3b8]">—</span>;
+      return <p className="text-[12px] text-[#3C4858] dark:text-slate-300 truncate" title={desc}>{desc}</p>;
+    },
+
+    createdBy: (_value: unknown, row: Lead) => renderUserName(row.createdByUser),
+    updatedBy: (_value: unknown, row: Lead) => renderUserName(row.updatedByUser),
+
+    address: (_value: unknown, row: Lead) => (
+      <p className="text-[12px] text-[#3C4858] dark:text-slate-300 truncate">{row.address ?? row.streetAddress ?? '—'}</p>
+    ),
+
+    primaryAddressCityState: (_value: unknown, row: Lead) => {
+      const parts = [row.city, row.province].filter(Boolean).join(', ');
+      return <p className="text-[12px] text-[#3C4858] dark:text-slate-300 truncate">{parts || '—'}</p>;
+    },
+
+    productInterest: (_value: unknown, row: Lead) => {
+      const interests = row.productInterest ?? row.productInterests ?? [];
+      if (!interests.length) return <span className="text-[12px] text-[#94a3b8]">—</span>;
+      return (
+        <div className="flex flex-wrap gap-1 min-w-0">
+          {interests.slice(0, 2).map((item: string) => (
+            <span key={item} className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 dark:bg-slate-700 text-[#5A6B85] dark:text-slate-300 truncate max-w-[80px]">
+              {item}
+            </span>
+          ))}
+          {interests.length > 2 && (
+            <span className="text-[10px] text-[#94a3b8]">+{interests.length - 2}</span>
+          )}
+        </div>
+      );
+    },
+
   }), [getOwnerName, getOwnerInitials]);
 
   // ─── Column Configuration ──────────────────────────────────────────────
@@ -196,26 +308,33 @@ export function LeadsDataGrid({
     registry: LEADS_COLUMN_REGISTRY,
     effectiveColumns,
     cellRenderers,
-    pinnedColumns: ['firstName'],
     sortableColumns: [
       'firstName', 'email', 'phone', 'companyName', 'status',
       'source', 'assignedUserId', 'createdAt', 'updatedAt',
     ],
     resizableColumns: 'all',
     defaultWidths: {
-      firstName: 240,
-      emailAndPhone: 220,
-      email: 220,
-      phone: 150,
-      companyName: 180,
-      status: 120,
-      source: 140,
-      assignedUserId: 160,
-      createdAt: 140,
-      updatedAt: 140,
-      description: 200,
-      website: 180,
+      firstName:               240,
+      phoneAction:             52,
+      emailAction:             52,
+      emailAndPhone:           220,
+      email:                   200,
+      phone:                   150,
+      companyName:             180,
+      status:                  130,
+      source:                  140,
+      assignedUserId:          160,
+      createdAt:               140,
+      updatedAt:               140,
+      lastStatusChangedAt:     150,
+      latestStatusChangeDate:  150,
+      description:             220,
+      website:                 180,
+      address:                 200,
       primaryAddressCityState: 160,
+      productInterest:         180,
+      createdBy:               150,
+      updatedBy:               150,
     },
   });
 
@@ -226,12 +345,15 @@ export function LeadsDataGrid({
       id: 'call',
       label: 'Call',
       icon: <Phone size={14} />,
-      onClick: (lead: Lead) => {
-        if (lead.phone) {
-          window.open(`tel:${lead.phone}`, '_self');
-        }
-      },
+      onClick: (lead: Lead) => { if (lead.phone) window.open(`tel:${lead.phone}`, '_self'); },
       visible: (lead: Lead) => Boolean(lead.phone),
+    },
+    {
+      id: 'email',
+      label: 'Email',
+      icon: <Mail size={14} />,
+      onClick: (lead: Lead) => { if (lead.email) window.open(`mailto:${lead.email}`, '_self'); },
+      visible: (lead: Lead) => Boolean(lead.email),
     },
   ], []);
 
@@ -295,7 +417,6 @@ export function LeadsDataGrid({
         viewMode={viewMode}
         onColumnReorder={onColumnReorder}
         effectiveColumns={effectiveColumns}
-        lockedColumns={['firstName']}
       />
     </div>
   );
