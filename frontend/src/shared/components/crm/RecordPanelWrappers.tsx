@@ -53,7 +53,7 @@ function EditableField({
   value: string;
   onSave: (val: string) => void;
   placeholder?: string;
-  icon?: React.ElementType;
+  icon?: React.ComponentType<{ className?: string }>;
   className?: string;
 }) {
   const [isEditing, setIsEditing] = useState(false);
@@ -1044,7 +1044,7 @@ export function DealPanel({ open, onOpenChange, deal, onEdit }: DealPanelProps) 
             <EditableField 
               value={deal.priority || 'Medium'} 
               placeholder="Medium"
-              onSave={(val) => { deal.priority = val; onEdit?.(deal); }} 
+              onSave={(val) => { deal.priority = val as Deal['priority']; onEdit?.(deal); }} 
               className="w-[120px]"
             />
           </div>
