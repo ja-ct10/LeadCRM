@@ -1,21 +1,16 @@
-import { Contact, ContactStatus } from '../types/contact.types';
+/**
+ * Contact API contracts — request/response shapes for the contacts module.
+ *
+ * Entity types and request interfaces are defined in ../types/contact.types.ts.
+ * This file re-exports them and adds response-specific contracts.
+ */
 
-// API shape contracts — what the API accepts and returns
-// Both frontend services and backend controllers reference these
+import type { Contact } from '../types/contact.types';
 
-export interface CreateContactRequest {
-  firstName: string;
-  lastName: string;
-  email?: string;
-  phone?: string;
-  company?: string;
-  status?: ContactStatus;
-  source?: string;
-  notes?: string;
-}
+// Re-export request types from types for consumers that import from contracts
+export type { CreateContactRequest, UpdateContactRequest } from '../types/contact.types';
 
-export interface UpdateContactRequest extends Partial<CreateContactRequest> {}
-
+/** Paginated list response for the contacts endpoint. */
 export interface ContactListResponse {
   data: Contact[];
   meta: {

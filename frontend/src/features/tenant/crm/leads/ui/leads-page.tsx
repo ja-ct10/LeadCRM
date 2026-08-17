@@ -3,18 +3,22 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
-import { Lead } from '@/store/types';
+import { Lead, Organization } from '@/store/types';
 import { ModuleWorkspace, ViewType, RecordDrawer, StatusBadge } from '@/shared/components/crm';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useFilterUrlSync } from '@/shared/hooks/use-filter-url-sync';
 import { useDebounce } from '@/shared/hooks/use-debounce';
-import { useColumnPreferences } from '../hooks/use-column-preferences';
+import { useColumnPreferences } from '@/shared/hooks/use-column-preferences';
 import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
 import { migrateLocalStorageColumns } from '../services/local-storage-migration';
-import { ManageColumnsDrawer } from './manage-columns-drawer';
+import { ManageColumnsDrawer } from '@/shared/components/manage-columns-drawer';
+import { ColumnsPopover } from '@/shared/components/data-grid';
+import { LeadsTileView, LeadsGridView, LeadsKanbanView, LeadDrawerOverview, LeadDrawerRelated } from './leads-view-components';
 import { LeadsListView } from './leads-list-view';
+import { LeadsDataGrid } from './leads-data-grid';
 import { LeadFormSheet } from './lead-form';
 import { LEADS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
+import { LEADS_MODULE_CONFIG } from '../leads.config';
 import { toast } from 'sonner';
 import { Edit, Phone, Mail, ListTodo, MoreHorizontal } from 'lucide-react';
 
@@ -31,7 +35,8 @@ export default function LeadsPage(): React.ReactElement {
   const { user } = useAuth();
   const canCreate = useHasPermission('contacts.create');
   const canEdit = useHasPermission('contacts.edit');
-  const { getParam, getArrayParam, updateParams } = useFilterUrlSync();
+  const canDelete = useHasPermission('contacts.delete');
+  const { getParam, getArrayParam, updateParams } = useFilterUrlSync('leads');
 
   // ── Column Preferences ────────────────────────────────────────────────
   const {
@@ -51,6 +56,7 @@ export default function LeadsPage(): React.ReactElement {
     setPageSize,
     setViewMode,
     setSort,
+    persistFilters,
   } = useTablePreferences('leads');
 
   // ── Pagination state ──────────────────────────────────────────────────
@@ -85,7 +91,7 @@ export default function LeadsPage(): React.ReactElement {
   const [editingLead, setEditingLead] = useState<Lead | undefined>();
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [drawerTab, setDrawerTab] = useState('overview');
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Multi-criteria filter state
   const [selectedSystemFilters, setSelectedSystemFilters] = useState<string[]>(() => getArrayParam('system'));
@@ -109,6 +115,27 @@ export default function LeadsPage(): React.ReactElement {
       related: selectedRelated,
     });
   }, [activeTab, debouncedSearch, activeView, selectedSystemFilters, selectedStatuses, selectedSources, selectedOwners, selectedRelated, updateParams]);
+
+  // -- Persist filter selections (fire-and-forget) ------------------------
+  useEffect(() => {
+    const conditions: { field: string; operator: string; value: unknown }[] = [];
+    if (selectedStatuses.length > 0) {
+      conditions.push({ field: 'status', operator: 'in', value: selectedStatuses });
+    }
+    if (selectedSources.length > 0) {
+      conditions.push({ field: 'leadSource', operator: 'in', value: selectedSources });
+    }
+    if (selectedOwners.length > 0) {
+      conditions.push({ field: 'assignedUserId', operator: 'in', value: selectedOwners });
+    }
+    if (selectedRelated.length > 0) {
+      conditions.push({ field: 'related', operator: 'in', value: selectedRelated });
+    }
+    if (selectedSystemFilters.length > 0) {
+      conditions.push({ field: 'system', operator: 'in', value: selectedSystemFilters });
+    }
+    persistFilters(conditions);
+  }, [selectedStatuses, selectedSources, selectedOwners, selectedRelated, selectedSystemFilters, persistFilters]);
 
   // ── Filtered Data ────────────────────────────────────────────────────
   const activeLeads = useMemo(
@@ -169,6 +196,46 @@ export default function LeadsPage(): React.ReactElement {
     return result;
   }, [activeLeads, activeTab, user?.id, debouncedSearch, selectedSystemFilters, selectedStatuses, selectedSources, selectedOwners, selectedRelated]);
 
+
+  // Helpers needed by sortedLeads
+  const getOwnerName = (userId?: string): string => {
+    if (!userId) return 'Unassigned';
+    const u = users.find((usr) => usr.id === userId);
+    return u ? `${u.firstName} ${u.lastName}` : 'Unknown';
+  };
+
+  /** Extract a sortable value from a lead by field id */
+  const getFieldValue = (lead: Lead, field: string): string | number | null => {
+    switch (field) {
+      case 'firstName':
+        return lead.leadPerson ?? lead.displayName ?? lead.firstName ?? '';
+      case 'lastName':
+        return lead.lastName ?? '';
+      case 'email':
+        return lead.email ?? '';
+      case 'phone':
+        return lead.phone ?? '';
+      case 'companyName':
+        return lead.companyName ?? '';
+      case 'status':
+        return lead.status ?? '';
+      case 'source':
+        return lead.leadSource ?? '';
+      case 'createdAt':
+        return lead.createdAt ?? '';
+      case 'updatedAt':
+        return (lead as unknown as Record<string, unknown>).updatedAt as string ?? '';
+      case 'city':
+      case 'address':
+      case 'primaryAddressCityState':
+        return lead.city ?? '';
+      case 'assignedUserId':
+        return getOwnerName(lead.assignedUserId);
+      default:
+        return (lead as unknown as Record<string, unknown>)[field] as string ?? '';
+    }
+  };
+
   // ── Sorted Data ──────────────────────────────────────────────────────
   const sortedLeads = useMemo(() => {
     if (!sort) return filteredLeads;
@@ -213,11 +280,6 @@ export default function LeadsPage(): React.ReactElement {
     return lead.leadPerson ?? lead.displayName ?? (`${lead.firstName ?? ''} ${lead.lastName ?? ''}`.trim() || 'Unknown');
   };
 
-  const getOwnerName = (userId?: string): string => {
-    if (!userId) return 'Unassigned';
-    const u = users.find((usr) => usr.id === userId);
-    return u ? `${u.firstName} ${u.lastName}` : 'Unknown';
-  };
 
   const getOwnerInitials = (userId?: string): string => {
     if (!userId) return '?';
@@ -246,37 +308,6 @@ export default function LeadsPage(): React.ReactElement {
     return `$${value.toLocaleString()}`;
   };
 
-  /** Extract a sortable value from a lead by field id */
-  const getFieldValue = (lead: Lead, field: string): string | number | null => {
-    switch (field) {
-      case 'firstName':
-        return lead.leadPerson ?? lead.displayName ?? lead.firstName ?? '';
-      case 'lastName':
-        return lead.lastName ?? '';
-      case 'email':
-        return lead.email ?? '';
-      case 'phone':
-        return lead.phone ?? '';
-      case 'companyName':
-        return lead.companyName ?? '';
-      case 'status':
-        return lead.status ?? '';
-      case 'source':
-        return lead.leadSource ?? '';
-      case 'createdAt':
-        return lead.createdAt ?? '';
-      case 'updatedAt':
-        return (lead as unknown as Record<string, unknown>).updatedAt as string ?? '';
-      case 'city':
-      case 'address':
-      case 'primaryAddressCityState':
-        return lead.city ?? '';
-      case 'assignedUserId':
-        return getOwnerName(lead.assignedUserId);
-      default:
-        return (lead as unknown as Record<string, unknown>)[field] as string ?? '';
-    }
-  };
 
   // ── Filter groups for the rail ───────────────────────────────────────
   const statusCounts = useMemo(() => {
@@ -383,18 +414,24 @@ export default function LeadsPage(): React.ReactElement {
   }, []);
 
   const handleToggleSelect = useCallback((id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   }, []);
 
   const handleSelectAll = useCallback(() => {
-    if (selectedIds.length === paginatedLeads.length) {
-      setSelectedIds([]);
+    if (selectedIds.size === paginatedLeads.length) {
+      setSelectedIds(new Set());
     } else {
-      setSelectedIds(paginatedLeads.map((l) => l.id));
+      setSelectedIds(new Set(paginatedLeads.map((l) => l.id)));
     }
-  }, [selectedIds.length, paginatedLeads]);
+  }, [selectedIds.size, paginatedLeads]);
 
   // ── Render ───────────────────────────────────────────────────────────
   return (
@@ -402,6 +439,7 @@ export default function LeadsPage(): React.ReactElement {
       <ModuleWorkspace
         moduleId="leads"
         title="Leads"
+        moduleConfig={LEADS_MODULE_CONFIG}
         primaryActionLabel="Create Lead"
         onPrimaryAction={handleCreate}
         onImport={() => toast.info('Import feature coming soon')}
@@ -409,6 +447,7 @@ export default function LeadsPage(): React.ReactElement {
         availableViews={['list', 'tile', 'table', 'kanban', 'grid']}
         activeView={activeView}
         onViewChange={setActiveView}
+
         savedTabs={[
           { id: 'all', label: 'All Leads' },
           { id: 'my', label: 'My Leads' },
@@ -433,16 +472,34 @@ export default function LeadsPage(): React.ReactElement {
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         onRefresh={() => toast.success('Refreshed')}
+        currentPage={currentPage}
+        paginationTotalRecords={sortedLeads.length}
+        onPageChange={setCurrentPage}
         onManageColumns={() => setIsManageColumnsOpen(true)}
+        toolbarExtra={
+          <ColumnsPopover
+            registry={LEADS_COLUMN_REGISTRY}
+            effectiveColumns={effectiveColumns}
+            onApply={(cols) => {
+              saveColumns(cols);
+              toast.success('Column visibility updated');
+            }}
+            onReset={() => {
+              resetColumns();
+              toast.success('Columns reset to default');
+            }}
+            hiddenCount={effectiveColumns.filter((c) => !c.visible).length}
+          />
+        }
         onResetColumns={() => {
           resetColumns();
           toast.success('Columns reset to default');
         }}
         bulkSelection={
-          selectedIds.length > 0
+          selectedIds.size > 0
             ? {
-                count: selectedIds.length,
-                onClear: () => setSelectedIds([]),
+                count: selectedIds.size,
+                onClear: () => setSelectedIds(new Set()),
                 actions: (
                   <button className="text-[12px] text-white/80 hover:text-white transition-colors">
                     Delete
@@ -461,26 +518,46 @@ export default function LeadsPage(): React.ReactElement {
             </div>
           </div>
         )}
+
+        {/* ── List / Table View (DataGrid) ─────────────────── */}
         {(activeView === 'list' || activeView === 'table') && !isColumnsLoading && (
-          <LeadsListView
+          <LeadsDataGrid
             leads={paginatedLeads}
             totalRecords={sortedLeads.length}
-            currentPage={currentPage}
-            pageSize={pageSize}
-            totalPages={totalPages}
-            onPageChange={setCurrentPage}
-            viewMode={viewMode}
-            selectedIds={selectedIds}
-            onToggleSelect={handleToggleSelect}
-            onSelectAll={handleSelectAll}
+            effectiveColumns={effectiveColumns}
+            sort={sort}
+            onSortChange={setSort}
             onRowClick={handleRowClick}
-            getInitials={getInitials}
-            getLeadName={getLeadName}
+            selectedIds={selectedIds}
+            onSelectionChange={setSelectedIds}
             getOwnerName={getOwnerName}
             getOwnerInitials={getOwnerInitials}
-            getStatusVariant={getStatusVariant}
-            visibleColumns={visibleColumns}
-            registry={LEADS_COLUMN_REGISTRY}
+            canEdit={canEdit}
+            canDelete={canDelete}
+            onEdit={(lead) => { setEditingLead(lead); setIsFormOpen(true); }}
+            onDelete={(lead) => {
+              toast.info(`Delete "${lead.leadPerson ?? lead.displayName}" coming soon`);
+            }}
+            onManageColumns={() => setIsManageColumnsOpen(true)}
+            onHideColumn={async (columnId) => {
+              const updated = effectiveColumns.map((col) =>
+                col.id === columnId ? { ...col, visible: false } : col,
+              );
+              try {
+                await saveColumns(updated);
+                toast.success('Column hidden');
+              } catch {
+                toast.error('Failed to hide column. Reverted.');
+              }
+            }}
+            onColumnReorder={async (columns) => {
+              try {
+                await saveColumns(columns);
+              } catch {
+                toast.error('Failed to save column order. Reverted to previous layout.');
+              }
+            }}
+            viewMode={viewMode}
           />
         )}
 
@@ -625,283 +702,5 @@ export default function LeadsPage(): React.ReactElement {
         onReset={resetColumns}
       />
     </>
-  );
-}
-
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Tile View
-// ═══════════════════════════════════════════════════════════════════════════════
-
-interface LeadsTileViewProps {
-  leads: Lead[];
-  onCardClick: (lead: Lead) => void;
-  getInitials: (lead: Lead) => string;
-  getLeadName: (lead: Lead) => string;
-  getStatusVariant: (status: string) => 'success' | 'info' | 'warn' | 'danger' | 'purple' | 'neutral';
-  formatCurrency: (value?: number) => string;
-}
-
-function LeadsTileView({ leads, onCardClick, getInitials, getLeadName, getStatusVariant, formatCurrency }: LeadsTileViewProps): React.ReactElement {
-  if (leads.length === 0) {
-    return (
-      <div className="flex items-center justify-center py-16 text-[13px] text-[#5A6B85]">
-        No leads found.
-      </div>
-    );
-  }
-
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-      {leads.map((lead) => (
-        <div
-          key={lead.id}
-          onClick={() => onCardClick(lead)}
-          className="bg-white dark:bg-slate-800/60 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-4 cursor-pointer hover:shadow-md hover:border-[#2563EB]/30 transition-all group"
-        >
-          <div className="flex items-start gap-3 mb-3">
-            <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-[11px] shrink-0">
-              {getInitials(lead)}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-semibold text-[#0F172A] dark:text-white truncate group-hover:text-[#2563EB] transition-colors">
-                {getLeadName(lead)}
-              </p>
-              <p className="text-[11.5px] text-[#5A6B85] dark:text-slate-400 truncate">
-                {lead.companyName ?? lead.city ?? '—'}
-              </p>
-            </div>
-            <StatusBadge label={lead.status} variant={getStatusVariant(lead.status)} />
-          </div>
-
-          <div className="flex items-center justify-between pt-3 border-t border-[#E4E9F0] dark:border-slate-700">
-            <span className="text-[12px] text-[#5A6B85] dark:text-slate-400">
-              Score: <strong className="text-[#0F172A] dark:text-white">{lead.score ?? 0}</strong>
-            </span>
-            <span className="text-[13px] font-semibold text-[#0F172A] dark:text-white tabular-nums">
-              {formatCurrency(lead.estimatedValue)}
-            </span>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Grid View (4-up compact cards)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-interface LeadsGridViewProps {
-  leads: Lead[];
-  onCardClick: (lead: Lead) => void;
-  getInitials: (lead: Lead) => string;
-  getLeadName: (lead: Lead) => string;
-}
-
-function LeadsGridView({ leads, onCardClick, getInitials, getLeadName }: LeadsGridViewProps): React.ReactElement {
-  if (leads.length === 0) {
-    return (
-      <div className="flex items-center justify-center py-16 text-[13px] text-[#5A6B85]">
-        No leads found.
-      </div>
-    );
-  }
-
-  return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5">
-      {leads.map((lead) => (
-        <div
-          key={lead.id}
-          onClick={() => onCardClick(lead)}
-          className="bg-white dark:bg-slate-800/60 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-3 cursor-pointer hover:shadow-md hover:border-[#2563EB]/30 transition-all flex items-center gap-2.5"
-        >
-          <div className="w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-[10px] shrink-0">
-            {getInitials(lead)}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[12px] font-semibold text-[#0F172A] dark:text-white truncate">
-              {getLeadName(lead)}
-            </p>
-            <p className="text-[10.5px] text-[#5A6B85] dark:text-slate-400 truncate">
-              {lead.companyName ?? '—'}
-            </p>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Kanban View (by status)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-interface LeadsKanbanViewProps {
-  leads: Lead[];
-  onCardClick: (lead: Lead) => void;
-  getInitials: (lead: Lead) => string;
-  getLeadName: (lead: Lead) => string;
-  getStatusVariant: (status: string) => 'success' | 'info' | 'warn' | 'danger' | 'purple' | 'neutral';
-}
-
-const LEAD_STATUSES = ['New', 'Contacted', 'Nurturing', 'Qualified', 'Unqualified'];
-
-function LeadsKanbanView({ leads, onCardClick, getInitials, getLeadName, getStatusVariant }: LeadsKanbanViewProps): React.ReactElement {
-  const columns = useMemo(() => {
-    return LEAD_STATUSES.map((status) => ({
-      status,
-      leads: leads.filter((l) => l.status === status),
-    }));
-  }, [leads]);
-
-  return (
-    <div className="flex gap-3 overflow-x-auto pb-4 custom-scrollbar">
-      {columns.map(({ status, leads: columnLeads }) => (
-        <div
-          key={status}
-          className="min-w-[260px] w-[260px] flex-shrink-0 bg-[#F6F8FB] dark:bg-slate-800/30 border border-[#E4E9F0] dark:border-slate-700 rounded-xl flex flex-col max-h-[600px]"
-        >
-          {/* Column header */}
-          <div className="flex items-center justify-between px-3 py-2.5 border-b border-[#E4E9F0] dark:border-slate-700">
-            <div className="flex items-center gap-2">
-              <StatusBadge label={status} variant={getStatusVariant(status)} />
-              <span className="text-[11px] font-semibold text-[#5A6B85] tabular-nums">
-                {columnLeads.length}
-              </span>
-            </div>
-          </div>
-
-          {/* Cards */}
-          <div className="flex-1 overflow-y-auto p-2 space-y-2 custom-scrollbar">
-            {columnLeads.map((lead) => (
-              <div
-                key={lead.id}
-                onClick={() => onCardClick(lead)}
-                className="bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg p-3 cursor-pointer hover:shadow-md transition-all"
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-[9px] shrink-0">
-                    {getInitials(lead)}
-                  </div>
-                  <p className="text-[12px] font-semibold text-[#0F172A] dark:text-white truncate">
-                    {getLeadName(lead)}
-                  </p>
-                </div>
-                <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 truncate">
-                  {lead.companyName ?? '—'}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Drawer — Overview Tab
-// ═══════════════════════════════════════════════════════════════════════════════
-
-interface LeadDrawerOverviewProps {
-  lead: Lead;
-  getOwnerName: (userId?: string) => string;
-  formatCurrency: (value?: number) => string;
-  organizations: any[];
-}
-
-function LeadDrawerOverview({ lead, getOwnerName, formatCurrency, organizations }: LeadDrawerOverviewProps): React.ReactElement {
-  const org = organizations.find((o) => o.id === lead.organizationId);
-
-  const fields = [
-    { label: 'Company', value: lead.companyName ?? '—' },
-    { label: 'Industry', value: lead.industry ?? '—' },
-    { label: 'City', value: lead.city ?? '—' },
-    { label: 'Lead source', value: lead.leadSource ?? '—' },
-    { label: 'Estimated value', value: formatCurrency(lead.estimatedValue) },
-    { label: 'Owner', value: getOwnerName(lead.assignedUserId) },
-    { label: 'Created', value: lead.createdAt ? new Date(lead.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—' },
-  ];
-
-  return (
-    <div className="space-y-6">
-      {/* Details grid */}
-      <div>
-        <h3 className="text-[11.5px] font-semibold uppercase tracking-wide text-[#5A6B85] dark:text-slate-400 mb-3">
-          DETAILS
-        </h3>
-        <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-          {fields.map(({ label, value }) => (
-            <div key={label}>
-              <p className="text-[11.5px] text-[#5A6B85] dark:text-slate-400 mb-0.5">{label}</p>
-              <p className="text-[13px] font-medium text-[#0F172A] dark:text-white">{value}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Linked Account */}
-      {org && (
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-[11.5px] font-semibold uppercase tracking-wide text-[#5A6B85] dark:text-slate-400">
-              LINKED ACCOUNT
-            </h3>
-            <span className="text-[11px] text-[#5A6B85] tabular-nums">1</span>
-          </div>
-          <div className="flex items-center gap-3 p-3 bg-[#F6F8FB] dark:bg-slate-800/40 rounded-lg border border-[#E4E9F0] dark:border-slate-700">
-            <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white font-bold text-[10px]">
-              {org.name?.slice(0, 2).toUpperCase()}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-semibold text-[#0F172A] dark:text-white truncate">{org.name}</p>
-              <p className="text-[11px] text-[#5A6B85] dark:text-slate-400">{org.industry ?? 'Account'}</p>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Drawer — Related Tab
-// ═══════════════════════════════════════════════════════════════════════════════
-
-interface LeadDrawerRelatedProps {
-  lead: Lead;
-  organizations: any[];
-}
-
-function LeadDrawerRelated({ lead, organizations }: LeadDrawerRelatedProps): React.ReactElement {
-  const org = organizations.find((o) => o.id === lead.organizationId);
-
-  return (
-    <div className="space-y-6">
-      {org && (
-        <div>
-          <h3 className="text-[11.5px] font-semibold uppercase tracking-wide text-[#5A6B85] dark:text-slate-400 mb-2">
-            LINKED ACCOUNT
-          </h3>
-          <div className="flex items-center gap-3 p-3 bg-[#F6F8FB] dark:bg-slate-800/40 rounded-lg border border-[#E4E9F0] dark:border-slate-700">
-            <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white font-bold text-[10px]">
-              {org.name?.slice(0, 2).toUpperCase()}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-semibold text-[#0F172A] dark:text-white truncate">{org.name}</p>
-              <p className="text-[11px] text-[#5A6B85] dark:text-slate-400">{org.industry ?? 'Manufacturing'} · Account</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div>
-        <h3 className="text-[11.5px] font-semibold uppercase tracking-wide text-[#5A6B85] dark:text-slate-400 mb-2">
-          DEALS FROM THIS LEAD
-        </h3>
-        <p className="text-[12px] text-[#5A6B85] dark:text-slate-400">No deals linked yet.</p>
-      </div>
-    </div>
   );
 }

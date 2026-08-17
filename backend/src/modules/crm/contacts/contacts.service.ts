@@ -20,7 +20,7 @@ export async function getContactById(id: string, tenantId: string) {
 
 export async function createContact(tenantId: string, userId: string, dto: CreateContactDto) {
   await enforcePlanLimit(tenantId, 'contacts');
-  const contact = await repo.createContact(tenantId, dto);
+  const contact = await repo.createContact(tenantId, dto, userId);
 
   await writeAuditLog({
     tenantId, userId,
@@ -45,7 +45,7 @@ export async function updateContact(
   const before = await repo.findContactById(id, tenantId);
   if (!before) throw new NotFoundError('Contact');
 
-  const contact = await repo.updateContact(id, tenantId, dto);
+  const contact = await repo.updateContact(id, tenantId, dto, userId, before.status);
   if (!contact) throw new NotFoundError('Contact');
 
   await writeAuditLog({

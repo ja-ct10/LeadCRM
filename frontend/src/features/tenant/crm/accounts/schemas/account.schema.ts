@@ -1,40 +1,41 @@
-// Plain validation — no zod (not in project dependencies)
+import { z } from 'zod';
 
-export interface AccountFormValues {
-  name: string;
-  industry?: string;
-  size?: string;
-  website?: string;
-  email?: string;
-  phone?: string;
-  address?: string;
-  city?: string;
-  country?: string;
-  taxId?: string;
-  assignedUserId?: string;
-  notes?: string;
-}
+// ── Zod schemas mirroring backend CreateCompanySchema / UpdateCompanySchema ──
+// Backend route POST /crm/accounts validates against CreateCompanySchema from companies.dto.ts.
 
-export interface AccountFormErrors {
-  name?: string;
-  email?: string;
-  website?: string;
-}
+export const COMPANY_SIZE_OPTIONS = ['1-10', '11-50', '51-200', '200+'] as const;
 
-export function validateAccountForm(values: AccountFormValues): AccountFormErrors {
-  const errors: AccountFormErrors = {};
+export const CUSTOMER_TYPE_OPTIONS = [
+  'Prospect',
+  'Active Customer',
+  'Inactive Customer',
+  'Former Customer',
+] as const;
 
-  if (!values.name?.trim()) {
-    errors.name = 'Account name is required';
-  }
+export const CreateAccountSchema = z.object({
+  name: z.string().min(1, 'Account name is required').max(255, 'Max 255 characters'),
+  industry: z.string().optional(),
+  size: z.enum(COMPANY_SIZE_OPTIONS).optional().or(z.literal('')),
+  website: z.string().url('Must be a valid URL').optional().or(z.literal('')),
+  taxId: z.string().optional(),
+  tags: z.array(z.string()).default([]),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  province: z.string().optional(),
+  country: z.string().default('Philippines'),
+  assignedUserId: z.string().min(1).optional().or(z.literal('')),
+  notes: z.string().optional(),
+  internalNotes: z.string().optional(),
+  productInterests: z.array(z.string()).optional(),
+  customerType: z.enum(CUSTOMER_TYPE_OPTIONS).optional().or(z.literal('')),
+  customerSince: z.string().datetime().optional().or(z.literal('')),
+  activeProducts: z.array(z.string()).optional(),
+});
 
-  if (values.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) {
-    errors.email = 'Must be a valid email';
-  }
+export const UpdateAccountSchema = CreateAccountSchema.partial();
 
-  if (values.website && !/^https?:\/\/.+/.test(values.website)) {
-    errors.website = 'Must start with http:// or https://';
-  }
+export type CreateAccountFormData = z.infer<typeof CreateAccountSchema>;
+export type UpdateAccountFormData = z.infer<typeof UpdateAccountSchema>;
 
-  return errors;
-}
+// Unified form data type (used for both create and edit modes)
+export type AccountFormValues = CreateAccountFormData;

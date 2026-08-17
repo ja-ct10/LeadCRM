@@ -4,8 +4,6 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { preferencesApi } from '@/shared/services/preferences.api';
 import type { ColumnConfigItem } from '@leadcrm/shared';
 
-const MAX_RETRY_COUNT = 3;
-
 interface UseColumnPreferencesReturn {
   effectiveColumns: ColumnConfigItem[];
   isLoading: boolean;
@@ -89,10 +87,6 @@ export function useColumnPreferences(module: string): UseColumnPreferencesReturn
    * 5. On failure: rollback to previous state, set saveError, increment retryCount
    */
   const saveColumns = useCallback(async (config: ColumnConfigItem[]): Promise<void> => {
-    if (retryCount >= MAX_RETRY_COUNT) {
-      return;
-    }
-
     // Store previous state for rollback
     previousColumnsRef.current = [...effectiveColumns];
 
@@ -120,12 +114,14 @@ export function useColumnPreferences(module: string): UseColumnPreferencesReturn
         setSaveError(errorMessage);
         setRetryCount((prev) => prev + 1);
       }
+      // Re-throw so callers (e.g. onColumnReorder) can handle with a toast
+      throw error;
     } finally {
       if (mountedRef.current) {
         setIsSaving(false);
       }
     }
-  }, [module, effectiveColumns, retryCount]);
+  }, [module, effectiveColumns]);
 
   /**
    * Reset columns by deleting user preference.

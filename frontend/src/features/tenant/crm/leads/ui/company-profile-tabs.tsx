@@ -110,7 +110,7 @@ export const CompanyProfileTabs = ({
   // Cascade states
   const [cascadeWeb, setCascadeWeb] = useState(selectedOrg.website !== 'N/A' ? selectedOrg.website : '');
   const [cascadeIndustry, setCascadeIndustry] = useState(selectedOrg.industry);
-  const [cascadeSize, setCascadeSize] = useState(selectedOrg.size);
+  const [cascadeSize, setCascadeSize] = useState<string | undefined>(selectedOrg.size);
   const [cascadeTaxId, setCascadeTaxId] = useState(selectedOrg.taxId !== 'N/A' ? selectedOrg.taxId : '');
   const [cascadeAddress, setCascadeAddress] = useState(selectedOrg.address !== 'N/A' ? selectedOrg.address : '');
 
