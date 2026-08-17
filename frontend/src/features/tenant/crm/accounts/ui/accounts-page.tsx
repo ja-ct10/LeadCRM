@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { ModuleWorkspace, ViewType, RecordDrawer, StatusBadge } from '@/shared/components/crm';
+import { ModuleWorkspace, ViewType, AccountPanel, StatusBadge } from '@/shared/components/crm';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useColumnPreferences } from '@/shared/hooks/use-column-preferences';
 import { useAccounts } from '../hooks/use-accounts';
@@ -458,6 +458,14 @@ export default function AccountsPage(): React.ReactElement {
           </div>
         )}
       </ModuleWorkspace>
+
+      {/* ── Slide-Over Account Panel ──────────────────────────────── */}
+      <AccountPanel
+        open={!!selectedAccount}
+        onOpenChange={(open) => !open && setSelectedAccount(null)}
+        account={selectedAccount}
+        onEdit={(acc) => handleOpenEdit(acc)}
+      />
 
       {/* Form Sheet */}
       <SideSheet

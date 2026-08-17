@@ -49,6 +49,33 @@
   --color-text-primary: #25313D;
   --color-text-muted: #5A6B85;
   --color-card-shadow: 0 1px 2px rgba(37, 49, 61, 0.06);
+
+  /* Semantic UI Tokens for RecordPanel and Design System */
+  --color-background: var(--background);
+  --color-foreground: var(--text-primary);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+
+  --shadow-soft: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+  --shadow-panel: -24px 0 60px -20px rgba(0, 0, 0, 0.18);
+  --radius-base: 0.625rem;
 }
 
 @layer base {
@@ -86,6 +113,10 @@
     font-family:
       var(--font-body), "Poppins", ui-sans-serif, system-ui, sans-serif !important;
   }
+
+  .bg-gradient-brand {
+    background-image: linear-gradient(135deg, var(--primary) 0%, #2563EB 100%);
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -93,16 +124,28 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 :root {
-  /* ── Backgrounds ─────────────────────────────────────────────────────── */
+  /* ── Backgrounds & Surfaces ─────────────────────────────────────────── */
   --background: #F5F6F7;
   --surface: #FFFFFF;
   --surface-secondary: #ECEEF0;
+  --card: #FFFFFF;
+  --card-foreground: #25313D;
+  --popover: #FFFFFF;
+  --popover-foreground: #25313D;
+  --muted: #F0F2F5;
+  --muted-foreground: #5A6B85;
+  --secondary: #ECEEF2;
+  --secondary-foreground: #25313D;
+  --accent: #F1F4F8;
+  --accent-foreground: #25313D;
 
-  /* ── Brand (LeadCRM Red) ────────────────────────────────────────────── */
+  /* ── Brand (LeadCRM Red / Blue Slate) ────────────────────────────────── */
   --primary: #D94F4F;
   --primary-dark: #B83D3D;
   --primary-hover: #C24545;
   --primary-foreground: #FFFFFF;
+  --ring: #D94F4F;
+  --radius: 0.625rem;
 
   /* ── Neutrals (Deep Slate based) ─────────────────────────────────────── */
   --text-primary: #25313D;
@@ -110,6 +153,7 @@
   --text-tertiary: #8494A7;
   --border: #E4E9F0;
   --border-subtle: #ECEEF0;
+  --input: #E4E9F0;
 
   /* ── Sidebar (Light default = light sidebar) ─────────────────────────── */
   --sidebar-bg: #FFFFFF;
@@ -126,10 +170,14 @@
   /* ── Semantic ────────────────────────────────────────────────────────── */
   --success: #5F8F88;
   --success-bg: rgba(95, 143, 136, 0.1);
+  --success-foreground: #FFFFFF;
   --warning: #E5A84B;
   --warning-bg: rgba(229, 168, 75, 0.1);
+  --warning-foreground: #78350F;
   --error: #D94F4F;
   --error-bg: rgba(217, 79, 79, 0.08);
+  --destructive: #DC2626;
+  --destructive-foreground: #FFFFFF;
   --info: #5A8FBF;
   --info-bg: rgba(90, 143, 191, 0.08);
 
@@ -163,17 +211,29 @@
   --background: #0D0E11;
   --surface: #16191E;
   --surface-secondary: #1C2027;
+  --card: #16191E;
+  --card-foreground: #F1F5F9;
+  --popover: #16191E;
+  --popover-foreground: #F1F5F9;
+  --muted: #1C2027;
+  --muted-foreground: #94A3B8;
+  --secondary: #222731;
+  --secondary-foreground: #F1F5F9;
+  --accent: #262B36;
+  --accent-foreground: #F1F5F9;
 
   --primary: #2563EB;
   --primary-dark: #1D4ED8;
   --primary-hover: #3B82F6;
   --primary-foreground: #FFFFFF;
+  --ring: #2563EB;
 
   --text-primary: #F1F5F9;
   --text-secondary: #94A3B8;
   --text-tertiary: #64748B;
   --border: #262A33;
   --border-subtle: #1C2027;
+  --input: #262A33;
 
   /* Sidebar is deep obsidian in Dark mode */
   --sidebar-bg: #08090B;
@@ -189,10 +249,14 @@
 
   --success: #10B981;
   --success-bg: rgba(16, 185, 129, 0.12);
+  --success-foreground: #FFFFFF;
   --warning: #F59E0B;
   --warning-bg: rgba(245, 158, 11, 0.12);
+  --warning-foreground: #FEF3C7;
   --error: #EF4444;
   --error-bg: rgba(239, 68, 68, 0.1);
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
   --info: #3B82F6;
   --info-bg: rgba(59, 130, 246, 0.1);
 

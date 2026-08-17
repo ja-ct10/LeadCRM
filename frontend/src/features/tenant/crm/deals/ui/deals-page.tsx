@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '@/store/DataContext';
@@ -7,7 +7,7 @@ import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useColumnPreferences } from '@/shared/hooks/use-column-preferences';
 import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
 import { useDebounce } from '@/shared/hooks/use-debounce';
-import { ModuleWorkspace, ViewType } from '@/shared/components/crm';
+import { ModuleWorkspace, ViewType, DealPanel } from '@/shared/components/crm';
 import { DealDetailsModal } from '@/features/tenant/crm/pipeline/ui/deal-details-modal';
 import { useDealsPage } from '../hooks/use-deals-page';
 import { DEALS_MODULE_CONFIG } from '../deals.config';
@@ -296,57 +296,12 @@ export default function DealsPage() {
         }}
       />
 
-      {selectedDeal && selectedPipeline && (
-        <DealDetailsModal
-          deal={selectedDeal}
-          pipeline={selectedPipeline}
-          users={users}
-          tasks={tasks.filter((t: Task) => t.dealId === selectedDeal.id)}
-          currentUserId={user?.id ?? ''}
-          tenantId={tenant?.id ?? ''}
-          canEdit={canEdit}
-          canDelete={canDelete}
-          isAutomatedOnly={false}
-          isBillingModuleEnabled={isBillingModuleEnabled}
-          onClose={() => setSelectedDeal(null)}
-          onUpdateDeal={async (id, updates) => {
-            try {
-              await updateDeal(id, updates);
-              toast.success("Deal updated successfully");
-            } catch (err: unknown) {
-              toast.error(err instanceof Error ? err.message : "Failed to update deal");
-            }
-          }}
-          onDeleteDeal={async (deal: Deal) => {
-            try {
-              await deleteDeal(deal.id);
-              setSelectedDeal(null);
-              toast.success("Deal deleted successfully");
-            } catch (err: unknown) {
-              toast.error(err instanceof Error ? err.message : "Failed to delete deal");
-            }
-          }}
-          onAddTask={(taskData) => addTask(taskData)}
-          onUpdateTask={(id, updates) => updateTask(id, updates)}
-          onMarkLost={async (deal: Deal) => {
-            const dealPipeline = pipelines.find(p => p.id === deal.pipelineId) ?? pipelines[0];
-            const lostStage = dealPipeline?.stages.find(
-              s => s.name === 'Closed Lost' || s.isLost
-            );
-            if (!lostStage) {
-              toast.error("No 'Closed Lost' stage found in this pipeline.");
-              return;
-            }
-            try {
-              await moveDealStage(deal.id, lostStage.id);
-              toast.success("Deal marked as lost");
-            } catch (err: unknown) {
-              toast.error(err instanceof Error ? err.message : "Failed to update deal");
-            }
-          }}
-          onNavigate={handleNavigate}
-        />
-      )}
+      {/* ── Slide-Over Deal Panel ─────────────────────────────────── */}
+      <DealPanel
+        open={!!selectedDeal}
+        onOpenChange={(open) => !open && setSelectedDeal(null)}
+        deal={selectedDeal}
+      />
     </>
   );
 }

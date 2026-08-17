@@ -3,8 +3,8 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
-import { Lead, Organization } from '@/store/types';
-import { ModuleWorkspace, ViewType, RecordDrawer, StatusBadge } from '@/shared/components/crm';
+import type { Lead, Organization } from '@/store/types';
+import { ModuleWorkspace, ViewType, LeadPanel, StatusBadge } from '@/shared/components/crm';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useFilterUrlSync } from '@/shared/hooks/use-filter-url-sync';
 import { useDebounce } from '@/shared/hooks/use-debounce';
@@ -595,83 +595,16 @@ export default function LeadsPage(): React.ReactElement {
         )}
       </ModuleWorkspace>
 
-      {/* ── Record Drawer ───────────────────────────────────────── */}
-      {selectedLead && (
-        <RecordDrawer
-          isOpen={!!selectedLead}
-          onClose={() => setSelectedLead(null)}
-          moduleLabel="LEAD"
-          avatar={
-            <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-[13px]">
-              {getInitials(selectedLead)}
-            </div>
-          }
-          name={getLeadName(selectedLead)}
-          subtitle={[selectedLead.email, selectedLead.phone].filter(Boolean).join(' · ')}
-          badges={
-            <>
-              <StatusBadge label={selectedLead.status} variant={getStatusVariant(selectedLead.status)} />
-              {selectedLead.score && (
-                <StatusBadge label={`Score ${selectedLead.score}`} variant="info" dot={false} />
-              )}
-              {selectedLead.leadSource && (
-                <span className="text-[11px] text-[#5A6B85] dark:text-slate-400 font-medium">
-                  {selectedLead.leadSource}
-                </span>
-              )}
-            </>
-          }
-          kpiTiles={[
-            { label: 'EST. VALUE', value: formatCurrency(selectedLead.estimatedValue) },
-            { label: 'SCORE', value: String(selectedLead.score ?? '—') },
-            { label: 'OWNER', value: getOwnerInitials(selectedLead.assignedUserId) },
-            { label: 'CREATED', value: selectedLead.createdAt ? new Date(selectedLead.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—' },
-          ]}
-          tabs={[
-            { id: 'overview', label: 'Overview' },
-            { id: 'activity', label: 'Activity' },
-            { id: 'related', label: 'Related' },
-            { id: 'notes', label: 'Notes' },
-          ]}
-          activeTab={drawerTab}
-          onTabChange={setDrawerTab}
-          actions={
-            <>
-              {canEdit && (
-                <button className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-semibold text-white bg-[#2563EB] hover:bg-[#1D4ED8] rounded-lg transition-colors">
-                  <Edit size={13} /> Edit
-                </button>
-              )}
-              <button className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium text-[#0F172A] dark:text-slate-200 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
-                <Phone size={13} /> Log call
-              </button>
-              <button className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium text-[#0F172A] dark:text-slate-200 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
-                <Mail size={13} /> Email
-              </button>
-              <button className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium text-[#0F172A] dark:text-slate-200 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
-                <ListTodo size={13} /> Task
-              </button>
-              <button className="w-8 h-8 flex items-center justify-center text-[#5A6B85] hover:text-[#0F172A] dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
-                <MoreHorizontal size={16} />
-              </button>
-            </>
-          }
-        >
-          {/* Drawer tab content */}
-          {drawerTab === 'overview' && (
-            <LeadDrawerOverview lead={selectedLead} getOwnerName={getOwnerName} formatCurrency={formatCurrency} organizations={organizations} />
-          )}
-          {drawerTab === 'activity' && (
-            <p className="text-[13px] text-[#5A6B85]">Activity timeline coming soon.</p>
-          )}
-          {drawerTab === 'related' && (
-            <LeadDrawerRelated lead={selectedLead} organizations={organizations} />
-          )}
-          {drawerTab === 'notes' && (
-            <p className="text-[13px] text-[#5A6B85]">Notes coming soon.</p>
-          )}
-        </RecordDrawer>
-      )}
+      {/* ── Slide-Over Record Panel ─────────────────────────────────── */}
+      <LeadPanel
+        open={!!selectedLead}
+        onOpenChange={(open) => !open && setSelectedLead(null)}
+        lead={selectedLead}
+        onEdit={(lead) => {
+          setEditingLead(lead);
+          setIsFormOpen(true);
+        }}
+      />
 
       {/* ── Form Sheet ──────────────────────────────────────────── */}
       <LeadFormSheet

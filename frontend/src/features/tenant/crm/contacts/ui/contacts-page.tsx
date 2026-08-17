@@ -4,7 +4,7 @@ import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
 import { Contact } from '@/store/types';
-import { ModuleWorkspace, ViewType, StatusBadge } from '@/shared/components/crm';
+import { ModuleWorkspace, ViewType, StatusBadge, ContactPanel } from '@/shared/components/crm';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useColumnPreferences } from '@/shared/hooks/use-column-preferences';
 import { useFilterUrlSync } from '@/shared/hooks/use-filter-url-sync';
@@ -40,6 +40,7 @@ export default function ContactsPage(): React.ReactElement {
   // ── Form State ────────────────────────────────────────────────────────
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | undefined>(undefined);
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
 
   // ── Table Preferences (pageSize, viewMode, sort) ──────────────────────
   const {
@@ -365,7 +366,7 @@ export default function ContactsPage(): React.ReactElement {
           effectiveColumns={effectiveColumns}
           sort={sort}
           onSortChange={setSort}
-          onRowClick={() => { /* future: open detail drawer */ }}
+          onRowClick={(contact) => setSelectedContact(contact)}
           selectedIds={contactSelectedIds}
           onSelectionChange={setContactSelectedIds}
           getAccountName={getAccountName}
@@ -404,6 +405,7 @@ export default function ContactsPage(): React.ReactElement {
           {filteredContacts.map((contact) => (
             <div
               key={contact.id}
+              onClick={() => setSelectedContact(contact)}
               className="bg-white dark:bg-slate-800/60 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-4 cursor-pointer hover:shadow-md hover:border-[#2563EB]/30 transition-all"
             >
               <div className="flex items-start gap-3 mb-3">
@@ -442,6 +444,7 @@ export default function ContactsPage(): React.ReactElement {
           {filteredContacts.map((contact) => (
             <div
               key={contact.id}
+              onClick={() => setSelectedContact(contact)}
               className="bg-white dark:bg-slate-800/60 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-3 cursor-pointer hover:shadow-md transition-all flex items-center gap-2.5"
             >
               <div className="w-9 h-9 rounded-full bg-teal-500 flex items-center justify-center text-white font-bold text-[10px] shrink-0">
@@ -463,6 +466,17 @@ export default function ContactsPage(): React.ReactElement {
         </div>
       )}
     </ModuleWorkspace>
+
+    {/* ── Contact Slide-Over Panel ─────────────────────────────── */}
+    <ContactPanel
+      open={!!selectedContact}
+      onOpenChange={(open) => !open && setSelectedContact(null)}
+      contact={selectedContact}
+      onEdit={(c) => {
+        setEditingContact(c);
+        setIsFormOpen(true);
+      }}
+    />
 
     {/* ── Contact Form Sheet ──────────────────────────────────── */}
     <ContactFormSheet
