@@ -65,7 +65,7 @@ export const CustomerJourneyTimeline: React.FC<CustomerJourneyTimelineProps> = (
       id: `evt_deal_created_${deal.id}`,
       category: 'Sales',
       eventType: 'deal_created',
-      title: `Opportunity Created: ${deal.title}`,
+      title: `Deal Created: ${deal.title}`,
       description: `Initial deal value set at ₱${(deal.value || 0).toLocaleString('en-PH')} (${deal.priority} Priority).`,
       timestamp: deal.createdAt,
       actorName: deal.assignedUserId || 'Sales Rep',

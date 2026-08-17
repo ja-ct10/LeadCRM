@@ -2078,7 +2078,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
               <thead>
                 <tr className="border-b border-gray-150 dark:border-white/[0.05] bg-slate-50/50 dark:bg-white/[0.01]">
                   {[
-                    { key: 'title', label: 'Opportunity / Title' },
+                    { key: 'title', label: 'Deal / Title' },
                     { key: 'companyName', label: 'Company / Client' },
                     { key: 'value', label: 'Value' },
                     { key: 'stageId', label: 'Sales Stage' },
@@ -2550,10 +2550,10 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                 <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
                   <Archive size={20} />
                 </div>
-                <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Archive Deal Opportunity</h2>
+                <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Archive Deal</h2>
               </div>
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                Are you sure you want to archive the deal opportunity <span className="font-semibold text-slate-900 dark:text-white">"{dealToDelete.title}"</span>?
+                Are you sure you want to archive the deal <span className="font-semibold text-slate-900 dark:text-white">"{dealToDelete.title}"</span>?
               </p>
             </div>
             <div className="p-6 bg-white/[0.01]">

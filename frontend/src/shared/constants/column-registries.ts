@@ -98,10 +98,10 @@ export const LEADS_COLUMN_REGISTRY: ColumnDefinition[] = [
   { id: 'primaryOppValue',         label: 'Primary opp. value',            required: false, defaultVisible: false, defaultOrder: 65, group: 'Opportunities', priority: 'low' },
   { id: 'primaryOppUser',          label: 'Primary opp. user',             required: false, defaultVisible: false, defaultOrder: 66, group: 'Opportunities', priority: 'low' },
   { id: 'lastOppStatusChangeDate', label: 'Last opp. status change date',  required: false, defaultVisible: false, defaultOrder: 67, group: 'Opportunities', priority: 'low' },
-  { id: 'opportunityCount',        label: '# Opportunities',               required: false, defaultVisible: false, defaultOrder: 68, group: 'Opportunities', priority: 'low' },
-  { id: 'activeOpportunityCount',  label: '# Active opportunities',        required: false, defaultVisible: false, defaultOrder: 69, group: 'Opportunities', priority: 'low' },
-  { id: 'wonOpportunityCount',     label: '# Won opportunities',           required: false, defaultVisible: false, defaultOrder: 70, group: 'Opportunities', priority: 'low' },
-  { id: 'lostOpportunityCount',    label: '# Lost opportunities',          required: false, defaultVisible: false, defaultOrder: 71, group: 'Opportunities', priority: 'low' },
+  { id: 'opportunityCount',        label: '# Deals',               required: false, defaultVisible: false, defaultOrder: 68, group: 'Deals', priority: 'low' },
+  { id: 'activeOpportunityCount',  label: '# Active deals',        required: false, defaultVisible: false, defaultOrder: 69, group: 'Deals', priority: 'low' },
+  { id: 'wonOpportunityCount',     label: '# Won deals',           required: false, defaultVisible: false, defaultOrder: 70, group: 'Deals', priority: 'low' },
+  { id: 'lostOpportunityCount',    label: '# Lost deals',          required: false, defaultVisible: false, defaultOrder: 71, group: 'Deals', priority: 'low' },
 
   // ── Tasks ──────────────────────────────────────────────────
   { id: 'nextTask',                label: 'Next task',                     required: false, defaultVisible: false, defaultOrder: 72, group: 'Tasks', priority: 'low' },

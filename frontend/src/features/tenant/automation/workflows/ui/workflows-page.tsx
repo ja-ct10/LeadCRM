@@ -1110,7 +1110,7 @@ export default function WorkflowsPage() {
                         <option value="lead_expected_close_date_approaching">Contact Close Approaching</option>
                         <option value="tag_added">Tag Added to Contact</option>
                       </optgroup>
-                      <optgroup label="💼 Opportunity & Pipeline Events">
+                      <optgroup label="💼 Deal & Pipeline Events">
                         <option value="deal_created">Deal Created</option>
                         <option value="deal_stage_qualified">Deal Reached Qualified Stage</option>
                         <option value="deal_stage_proposal">Deal Reached Proposal Stage</option>

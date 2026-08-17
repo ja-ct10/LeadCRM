@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import { uuid } from '@/lib/utils';
 
 import React, { useState, useEffect } from 'react';
@@ -692,9 +692,9 @@ export const CompanyProfileTabs = ({
               )}
 
               <div className="flex justify-between items-center border-b border-gray-200 dark:border-white/5 pb-2">
-                <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">Enterprise B2B Opportunities</h4>
+                <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">Enterprise B2B Deals</h4>
                 <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-                  {connectedDeals.length} opportunity record{connectedDeals.length !== 1 ? 's' : ''}
+                  {connectedDeals.length} deal record{connectedDeals.length !== 1 ? 's' : ''}
                 </span>
               </div>
 
@@ -724,7 +724,7 @@ export const CompanyProfileTabs = ({
                           <tr key={deal.id} 
                             onClick={() => setSelectedDealModal(deal)}
                             className="hover:bg-slate-50/80 dark:hover:bg-white/2 transition-colors cursor-pointer group"
-                            title="Click to view & edit complete opportunity details"
+                            title="Click to view & edit complete deal details"
                           >
                             {/* 1. Deal Column (Enriched with Title + Subtext) */}
                             <td className="py-3 px-3 min-w-50">
@@ -789,9 +789,9 @@ export const CompanyProfileTabs = ({
                 <div className="py-12 text-center border border-dashed border-gray-200 dark:border-white/10 rounded-xl bg-slate-50/50 dark:bg-white/1">
                   <Briefcase className="w-10 h-10 mx-auto text-slate-400 opacity-40 mb-2" />
                   <h5 className="font-bold text-sm text-slate-700 dark:text-slate-200">No deals found</h5>
-                  <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">This account has no associated B2B opportunities yet.</p>
+                  <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">This account has no associated B2B deals yet.</p>
                   <button 
-                    onClick={() => toast.info('Initiate new B2B opportunity from the Deals page or Pipeline module.')}
+                    onClick={() => toast.info('Initiate new B2B deal from the Deals page or Pipeline module.')}
                     className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-colors"
                   >
                     <Plus size={14} />
