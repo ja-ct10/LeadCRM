@@ -123,6 +123,7 @@ export function TabsTrigger({
     <button
       role="tab"
       type="button"
+      data-state={isActive ? 'active' : 'inactive'}
       aria-selected={isActive}
       aria-controls={`tabpanel-${value}`}
       id={`tab-${value}`}
@@ -130,11 +131,8 @@ export function TabsTrigger({
       disabled={disabled}
       className={cn(
         'relative px-4 py-2 text-sm font-medium rounded-lg transition-all whitespace-nowrap',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
         'disabled:opacity-50 disabled:cursor-not-allowed',
-        isActive
-          ? 'bg-blue-600 text-white shadow-md'
-          : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-white/5',
         className
       )}
     >
@@ -148,27 +146,14 @@ export function TabsTrigger({
             className={cn(
               'inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold rounded-full',
               isActive
-                ? 'bg-white/20 text-white'
-                : 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                ? 'bg-primary/20 text-primary'
+                : 'bg-muted text-muted-foreground'
             )}
           >
             {badge}
           </motion.span>
         )}
       </span>
-
-      {/* Animated underline indicator (for underline variant) */}
-      {isActive && (
-        <motion.div
-          layoutId="activeTabIndicator"
-          className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full"
-          transition={
-            shouldReduceMotion
-              ? { duration: 0 }
-              : { type: 'spring', stiffness: 380, damping: 30 }
-          }
-        />
-      )}
     </button>
   );
 }

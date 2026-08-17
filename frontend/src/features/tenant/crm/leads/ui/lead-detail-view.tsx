@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React from 'react';
 import { Lead, Organization, User as UserType, Deal, Task, Campaign } from '@/store/types';
@@ -145,7 +145,7 @@ export const UnifiedDetailView = ({
           <div className="flex items-center gap-1.5 bg-white dark:bg-white/5 border border-gray-150 dark:border-white/5 px-2.5 py-1 rounded-lg">
             <TrendingUp className="text-indigo-400 w-3.5 h-3.5" />
             <span className="font-semibold text-slate-700 dark:text-slate-300">
-              Deals Stream: <strong className="text-indigo-500 dark:text-indigo-400">{mappedDeals.length} opportunity file(s)</strong>
+              Deals Stream: <strong className="text-indigo-500 dark:text-indigo-400">{mappedDeals.length} deal file(s)</strong>
             </span>
           </div>
         </div>

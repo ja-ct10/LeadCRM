@@ -53,14 +53,14 @@ export async function seedDemoAccounts(): Promise<void> {
   await prisma.user.upsert({
     where:  { tenantId_email: { tenantId: systemTenant.id, email: systemAdminEmail } },
     // update block restores correct password + ACTIVE status on every seed run
-    update: { passwordHash: systemAdminHash, status: 'ACTIVE', role: 'Admin' },
+    update: { passwordHash: systemAdminHash, status: 'ACTIVE', role: 'System Admin' },
     create: {
       tenantId:     systemTenant.id,
       email:        systemAdminEmail,
       firstName:    'System',
       lastName:     'Admin',
       passwordHash: systemAdminHash,
-      role:         'Admin',
+      role:         'System Admin',
       status:       'ACTIVE',
     },
   });
@@ -73,14 +73,14 @@ export async function seedDemoAccounts(): Promise<void> {
   if (systemAdminEmail !== 'super@leadcrm.com') {
     await prisma.user.upsert({
       where:  { tenantId_email: { tenantId: systemTenant.id, email: 'super@leadcrm.com' } },
-      update: { passwordHash, status: 'ACTIVE', role: 'Super User' },
+      update: { passwordHash, status: 'ACTIVE', role: 'System Admin' },
       create: {
         tenantId:     systemTenant.id,
         email:        'super@leadcrm.com',
         firstName:    'System',
         lastName:     'Administrator',
         passwordHash,
-        role:         'Super User',
+        role:         'System Admin',
         status:       'ACTIVE',
       },
     });
