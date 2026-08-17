@@ -7,3 +7,4 @@ export * from './billing.types';
 export * from './tenant.types';
 export * from './api.types';
 export * from './preferences';
+export * from './data-view.types';

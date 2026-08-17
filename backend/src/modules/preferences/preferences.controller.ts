@@ -4,11 +4,34 @@ import * as service from './preferences.service';
 import * as repo from './preferences.repository';
 import { isValidModule } from './column-registry';
 import { AppError } from '../../shared/errors/app-error';
+import { DEFAULT_ROLE_PERMISSIONS } from '../../core/permissions/permission.registry';
 import type { ColumnSource } from '@leadcrm/shared';
 
 // ─────────────────────────────────────────────────────
 // Controller — HTTP handlers only. No business logic here.
 // ─────────────────────────────────────────────────────
+
+// Super roles that bypass permission checks
+const SUPER_ROLES = ['Admin', 'Super User', 'Client Admin', 'System Admin'];
+
+// Map module IDs to their view permission key
+const MODULE_VIEW_PERMISSIONS: Record<string, string> = {
+  leads: 'contacts.view',
+  contacts: 'contacts.view',
+  accounts: 'accounts.view',
+  deals: 'deals.view',
+};
+
+/** R12 AC2: Check module-level view permission (returns 404 to not reveal existence) */
+function hasModuleViewPermission(req: Request, module: string): boolean {
+  const role = req.user?.role;
+  if (!role) return false;
+  if (SUPER_ROLES.includes(role)) return true;
+  const requiredPermission = MODULE_VIEW_PERMISSIONS[module];
+  if (!requiredPermission) return true;
+  const rolePermissions: string[] = DEFAULT_ROLE_PERMISSIONS[role] ?? [];
+  return rolePermissions.includes(requiredPermission);
+}
 
 /**
  * GET /api/v1/preferences/columns/:module
@@ -24,7 +47,12 @@ export async function getEffectiveColumns(
     const module = String(req.params.module);
 
     if (!isValidModule(module)) {
-      throw new AppError(`Module '${module}' is not registered`, 400);
+      throw new AppError('Not found', 404);
+    }
+
+    // R12 AC2: Check module-level view permission
+    if (!hasModuleViewPermission(req, module)) {
+      throw new AppError('Not found', 404);
     }
 
     const { config, source } = await resolveWithSource(tenantId, userId, module);
@@ -52,7 +80,12 @@ export async function saveUserPreference(
     const module = String(req.params.module);
 
     if (!isValidModule(module)) {
-      throw new AppError(`Module '${module}' is not registered`, 400);
+      throw new AppError('Not found', 404);
+    }
+
+    // R17.8: Check module-level view permission (returns 404 to not reveal existence)
+    if (!hasModuleViewPermission(req, module)) {
+      throw new AppError('Not found', 404);
     }
 
     const config = await service.upsertUserPreference(
@@ -85,7 +118,12 @@ export async function deleteUserPreference(
     const module = String(req.params.module);
 
     if (!isValidModule(module)) {
-      throw new AppError(`Module '${module}' is not registered`, 400);
+      throw new AppError('Not found', 404);
+    }
+
+    // R17.8: Check module-level view permission (returns 404 to not reveal existence)
+    if (!hasModuleViewPermission(req, module)) {
+      throw new AppError('Not found', 404);
     }
 
     const fallback = await service.deleteUserPreference(tenantId, userId, module);
@@ -116,7 +154,12 @@ export async function saveTenantDefault(
     const module = String(req.params.module);
 
     if (!isValidModule(module)) {
-      throw new AppError(`Module '${module}' is not registered`, 400);
+      throw new AppError('Not found', 404);
+    }
+
+    // R17.8: Check module-level view permission (returns 404 to not reveal existence)
+    if (!hasModuleViewPermission(req, module)) {
+      throw new AppError('Not found', 404);
     }
 
     const ipAddress = extractIpAddress(req);
@@ -152,7 +195,12 @@ export async function deleteTenantDefault(
     const module = String(req.params.module);
 
     if (!isValidModule(module)) {
-      throw new AppError(`Module '${module}' is not registered`, 400);
+      throw new AppError('Not found', 404);
+    }
+
+    // R17.8: Check module-level view permission (returns 404 to not reveal existence)
+    if (!hasModuleViewPermission(req, module)) {
+      throw new AppError('Not found', 404);
     }
 
     const ipAddress = extractIpAddress(req);

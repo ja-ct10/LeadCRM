@@ -78,7 +78,9 @@ export function toBackendCreateContact(data: Record<string, any>): Record<string
     assignedUserId: data.assignedUserId || undefined,
     productInterest: Array.isArray(data.productInterests)
       ? data.productInterests
-      : (data.productInterest ? [data.productInterest] : undefined),
+      : (Array.isArray(data.productInterest)
+        ? data.productInterest
+        : (data.productInterest ? [data.productInterest] : undefined)),
     address: data.address || undefined,
   };
 }

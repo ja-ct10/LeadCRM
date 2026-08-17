@@ -14,5 +14,8 @@ router.get('/:module', controller.getTablePreferences);
 router.put('/:module/page-size', controller.savePageSize);
 router.put('/:module/view-mode', controller.saveViewMode);
 router.put('/:module/sort', controller.saveSort);
+router.get('/:module/view-type', controller.getViewType);
+router.put('/:module/view-type', controller.saveViewType);
+router.put('/:module/filters', controller.saveFilters);
 
 export default router;
