@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useData } from '@/store/DataContext';
@@ -21,7 +21,7 @@ import { LEADS_MODULE_CONFIG } from '../leads.config';
 import { toast } from 'sonner';
 import { Edit, Phone, Mail, ListTodo, MoreHorizontal } from 'lucide-react';
 
-// â”€â”€ Leads Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Leads Page ────────────────────────────────────────────────────────────────
 
 export default function LeadsPage(): React.ReactElement {
   const {
@@ -35,9 +35,9 @@ export default function LeadsPage(): React.ReactElement {
   const canCreate = useHasPermission('contacts.create');
   const canEdit = useHasPermission('contacts.edit');
   const canDelete = useHasPermission('contacts.delete');
-  const { getParam, getArrayParam, updateParams } = useFilterUrlSync();
+  const { getParam, getArrayParam, updateParams } = useFilterUrlSync('leads');
 
-  // â”€â”€ Column Preferences â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Column Preferences ────────────────────────────────────────────────
   const {
     effectiveColumns,
     isLoading: isColumnsLoading,
@@ -47,7 +47,7 @@ export default function LeadsPage(): React.ReactElement {
 
   const [isManageColumnsOpen, setIsManageColumnsOpen] = useState(false);
 
-  // â”€â”€ Table Preferences (pageSize, viewMode, sort) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Table Preferences (pageSize, viewMode, sort) ──────────────────────
   const {
     pageSize,
     viewMode,
@@ -55,17 +55,18 @@ export default function LeadsPage(): React.ReactElement {
     setPageSize,
     setViewMode,
     setSort,
+    persistFilters,
   } = useTablePreferences('leads');
 
-  // â”€â”€ Pagination state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Pagination state ──────────────────────────────────────────────────
   const [currentPage, setCurrentPage] = useState(1);
 
-  // â”€â”€ One-time localStorage migration (fire-and-forget) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── One-time localStorage migration (fire-and-forget) ─────────────────
   useEffect(() => {
     migrateLocalStorageColumns();
   }, []);
 
-  /** Visible columns sorted by order â€” drives table rendering */
+  /** Visible columns sorted by order — drives table rendering */
   const visibleColumns = useMemo(() => {
     if (effectiveColumns.length === 0) {
       // Fallback to system default when no preferences loaded yet
@@ -79,7 +80,7 @@ export default function LeadsPage(): React.ReactElement {
       .sort((a, b) => a.order - b.order);
   }, [effectiveColumns]);
 
-  // â”€â”€ State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── State ────────────────────────────────────────────────────────────
   const [activeView, setActiveView] = useState<ViewType>(() => (getParam('view') as ViewType) || 'list');
   const [activeTab, setActiveTab] = useState(() => getParam('tab') || 'all');
   const [showFilters, setShowFilters] = useState(true);
@@ -114,7 +115,28 @@ export default function LeadsPage(): React.ReactElement {
     });
   }, [activeTab, debouncedSearch, activeView, selectedSystemFilters, selectedStatuses, selectedSources, selectedOwners, selectedRelated, updateParams]);
 
-  // â”€â”€ Filtered Data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // -- Persist filter selections (fire-and-forget) ------------------------
+  useEffect(() => {
+    const conditions: { field: string; operator: string; value: unknown }[] = [];
+    if (selectedStatuses.length > 0) {
+      conditions.push({ field: 'status', operator: 'in', value: selectedStatuses });
+    }
+    if (selectedSources.length > 0) {
+      conditions.push({ field: 'leadSource', operator: 'in', value: selectedSources });
+    }
+    if (selectedOwners.length > 0) {
+      conditions.push({ field: 'assignedUserId', operator: 'in', value: selectedOwners });
+    }
+    if (selectedRelated.length > 0) {
+      conditions.push({ field: 'related', operator: 'in', value: selectedRelated });
+    }
+    if (selectedSystemFilters.length > 0) {
+      conditions.push({ field: 'system', operator: 'in', value: selectedSystemFilters });
+    }
+    persistFilters(conditions);
+  }, [selectedStatuses, selectedSources, selectedOwners, selectedRelated, selectedSystemFilters, persistFilters]);
+
+  // ── Filtered Data ────────────────────────────────────────────────────
   const activeLeads = useMemo(
     () => leads.filter((l) => !l.isArchived && l.recordType !== 'Organization'),
     [leads],
@@ -173,81 +195,12 @@ export default function LeadsPage(): React.ReactElement {
     return result;
   }, [activeLeads, activeTab, user?.id, debouncedSearch, selectedSystemFilters, selectedStatuses, selectedSources, selectedOwners, selectedRelated]);
 
-  // â”€â”€ Sorted Data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const sortedLeads = useMemo(() => {
-    if (!sort) return filteredLeads;
 
-    const { field, direction } = sort;
-    const sorted = [...filteredLeads].sort((a, b) => {
-      const aVal = getFieldValue(a, field);
-      const bVal = getFieldValue(b, field);
-
-      if (aVal === bVal) return 0;
-      if (aVal == null) return 1;
-      if (bVal == null) return -1;
-
-      const comparison = String(aVal).localeCompare(String(bVal), undefined, { numeric: true, sensitivity: 'base' });
-      return direction === 'asc' ? comparison : -comparison;
-    });
-    return sorted;
-  }, [filteredLeads, sort]);
-
-  // â”€â”€ Paginated Data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const totalPages = Math.max(1, Math.ceil(sortedLeads.length / pageSize));
-
-  // Reset page when filters/sort/pageSize change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [debouncedSearch, activeTab, selectedSystemFilters, selectedStatuses, selectedSources, selectedOwners, selectedRelated, pageSize, sort]);
-
-  const paginatedLeads = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return sortedLeads.slice(start, start + pageSize);
-  }, [sortedLeads, currentPage, pageSize]);
-
-  // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const getInitials = (lead: Lead): string => {
-    const name = lead.leadPerson ?? lead.displayName ?? lead.firstName ?? '';
-    const parts = name.split(' ');
-    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-    return name.slice(0, 2).toUpperCase();
-  };
-
-  const getLeadName = (lead: Lead): string => {
-    return lead.leadPerson ?? lead.displayName ?? (`${lead.firstName ?? ''} ${lead.lastName ?? ''}`.trim() || 'Unknown');
-  };
-
+  // Helpers needed by sortedLeads
   const getOwnerName = (userId?: string): string => {
     if (!userId) return 'Unassigned';
     const u = users.find((usr) => usr.id === userId);
     return u ? `${u.firstName} ${u.lastName}` : 'Unknown';
-  };
-
-  const getOwnerInitials = (userId?: string): string => {
-    if (!userId) return '?';
-    const u = users.find((usr) => usr.id === userId);
-    if (!u) return '?';
-    return `${u.firstName?.[0] ?? ''}${u.lastName?.[0] ?? ''}`.toUpperCase();
-  };
-
-  const getStatusVariant = (status: string): 'success' | 'info' | 'warn' | 'danger' | 'purple' | 'neutral' => {
-    const map: Record<string, 'success' | 'info' | 'warn' | 'danger' | 'purple' | 'neutral'> = {
-      Qualified: 'success',
-      New: 'info',
-      Contacted: 'info',
-      Nurturing: 'purple',
-      Unqualified: 'danger',
-      Hot: 'danger',
-      Warm: 'warn',
-      Cold: 'neutral',
-    };
-    return map[status] ?? 'neutral';
-  };
-
-  const formatCurrency = (value?: number): string => {
-    if (!value) return '$0';
-    if (value >= 1000) return `$${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}k`;
-    return `$${value.toLocaleString()}`;
   };
 
   /** Extract a sortable value from a lead by field id */
@@ -282,7 +235,80 @@ export default function LeadsPage(): React.ReactElement {
     }
   };
 
-  // â”€â”€ Filter groups for the rail â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Sorted Data ──────────────────────────────────────────────────────
+  const sortedLeads = useMemo(() => {
+    if (!sort) return filteredLeads;
+
+    const { field, direction } = sort;
+    const sorted = [...filteredLeads].sort((a, b) => {
+      const aVal = getFieldValue(a, field);
+      const bVal = getFieldValue(b, field);
+
+      if (aVal === bVal) return 0;
+      if (aVal == null) return 1;
+      if (bVal == null) return -1;
+
+      const comparison = String(aVal).localeCompare(String(bVal), undefined, { numeric: true, sensitivity: 'base' });
+      return direction === 'asc' ? comparison : -comparison;
+    });
+    return sorted;
+  }, [filteredLeads, sort]);
+
+  // ── Paginated Data ───────────────────────────────────────────────────
+  const totalPages = Math.max(1, Math.ceil(sortedLeads.length / pageSize));
+
+  // Reset page when filters/sort/pageSize change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, activeTab, selectedSystemFilters, selectedStatuses, selectedSources, selectedOwners, selectedRelated, pageSize, sort]);
+
+  const paginatedLeads = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return sortedLeads.slice(start, start + pageSize);
+  }, [sortedLeads, currentPage, pageSize]);
+
+  // ── Helpers ──────────────────────────────────────────────────────────
+  const getInitials = (lead: Lead): string => {
+    const name = lead.leadPerson ?? lead.displayName ?? lead.firstName ?? '';
+    const parts = name.split(' ');
+    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    return name.slice(0, 2).toUpperCase();
+  };
+
+  const getLeadName = (lead: Lead): string => {
+    return lead.leadPerson ?? lead.displayName ?? (`${lead.firstName ?? ''} ${lead.lastName ?? ''}`.trim() || 'Unknown');
+  };
+
+
+  const getOwnerInitials = (userId?: string): string => {
+    if (!userId) return '?';
+    const u = users.find((usr) => usr.id === userId);
+    if (!u) return '?';
+    return `${u.firstName?.[0] ?? ''}${u.lastName?.[0] ?? ''}`.toUpperCase();
+  };
+
+  const getStatusVariant = (status: string): 'success' | 'info' | 'warn' | 'danger' | 'purple' | 'neutral' => {
+    const map: Record<string, 'success' | 'info' | 'warn' | 'danger' | 'purple' | 'neutral'> = {
+      Qualified: 'success',
+      New: 'info',
+      Contacted: 'info',
+      Nurturing: 'purple',
+      Unqualified: 'danger',
+      Hot: 'danger',
+      Warm: 'warn',
+      Cold: 'neutral',
+    };
+    return map[status] ?? 'neutral';
+  };
+
+  const formatCurrency = (value?: number): string => {
+    if (!value) return '$0';
+    if (value >= 1000) return `$${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}k`;
+    return `$${value.toLocaleString()}`;
+  };
+
+
+  // ── Filter groups for the rail ───────────────────────────────────────
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     activeLeads.forEach((l) => {
@@ -375,7 +401,7 @@ export default function LeadsPage(): React.ReactElement {
     }
   }, []);
 
-  // â”€â”€ Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Handlers ─────────────────────────────────────────────────────────
   const handleCreate = useCallback(() => {
     setEditingLead(undefined);
     setIsFormOpen(true);
@@ -406,7 +432,7 @@ export default function LeadsPage(): React.ReactElement {
     }
   }, [selectedIds.size, paginatedLeads]);
 
-  // â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Render ───────────────────────────────────────────────────────────
   return (
     <>
       <ModuleWorkspace
@@ -445,6 +471,9 @@ export default function LeadsPage(): React.ReactElement {
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         onRefresh={() => toast.success('Refreshed')}
+        currentPage={currentPage}
+        paginationTotalRecords={sortedLeads.length}
+        onPageChange={setCurrentPage}
         onManageColumns={() => setIsManageColumnsOpen(true)}
         onResetColumns={() => {
           resetColumns();
@@ -464,7 +493,7 @@ export default function LeadsPage(): React.ReactElement {
             : undefined
         }
       >
-        {/* â”€â”€ List View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* ── List View ─────────────────────────────────────────── */}
         {(activeView === 'list' || activeView === 'table') && isColumnsLoading && (
           <div className="bg-white dark:bg-slate-800/40 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-8">
             <div className="flex items-center justify-center gap-2 text-[13px] text-[#5A6B85] dark:text-slate-400">
@@ -474,7 +503,7 @@ export default function LeadsPage(): React.ReactElement {
           </div>
         )}
 
-        {/* â”€â”€ Table View (new DataGrid) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* ── Table View (new DataGrid) ─────────────────────────── */}
         {activeView === 'table' && !isColumnsLoading && (
           <LeadsDataGrid
             leads={paginatedLeads}
@@ -495,18 +524,29 @@ export default function LeadsPage(): React.ReactElement {
               toast.info(`Delete "${lead.leadPerson ?? lead.displayName}" coming soon`);
             }}
             onManageColumns={() => setIsManageColumnsOpen(true)}
-            onHideColumn={(columnId) => {
+            onHideColumn={async (columnId) => {
               const updated = effectiveColumns.map((col) =>
                 col.id === columnId ? { ...col, visible: false } : col,
               );
-              saveColumns(updated);
-              toast.success('Column hidden');
+              try {
+                await saveColumns(updated);
+                toast.success('Column hidden');
+              } catch {
+                toast.error('Failed to hide column. Reverted.');
+              }
             }}
-            onColumnReorder={saveColumns}
+            onColumnReorder={async (columns) => {
+              try {
+                await saveColumns(columns);
+              } catch {
+                toast.error('Failed to save column order. Reverted to previous layout.');
+              }
+            }}
+            viewMode={viewMode}
           />
         )}
 
-        {/* â”€â”€ List View (legacy flex-based) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* ── List View (legacy flex-based) ─────────────────────── */}
         {activeView === 'list' && !isColumnsLoading && (
           <LeadsListView
             leads={paginatedLeads}
@@ -527,11 +567,17 @@ export default function LeadsPage(): React.ReactElement {
             getStatusVariant={getStatusVariant}
             visibleColumns={visibleColumns}
             registry={LEADS_COLUMN_REGISTRY}
-            onColumnsReorder={(newCols) => saveColumns(newCols)}
+            onColumnsReorder={async (newCols) => {
+              try {
+                await saveColumns(newCols);
+              } catch {
+                toast.error('Failed to save column order. Reverted to previous layout.');
+              }
+            }}
           />
         )}
 
-        {/* â”€â”€ Tile View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* ── Tile View ─────────────────────────────────────────── */}
         {activeView === 'tile' && (
           <LeadsTileView
             leads={filteredLeads}
@@ -543,7 +589,7 @@ export default function LeadsPage(): React.ReactElement {
           />
         )}
 
-        {/* â”€â”€ Grid View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* ── Grid View ─────────────────────────────────────────── */}
         {activeView === 'grid' && (
           <LeadsGridView
             leads={filteredLeads}
@@ -553,7 +599,7 @@ export default function LeadsPage(): React.ReactElement {
           />
         )}
 
-        {/* â”€â”€ Kanban View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* ── Kanban View ───────────────────────────────────────── */}
         {activeView === 'kanban' && (
           <LeadsKanbanView
             leads={filteredLeads}
@@ -565,7 +611,7 @@ export default function LeadsPage(): React.ReactElement {
         )}
       </ModuleWorkspace>
 
-      {/* â”€â”€ Record Drawer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ── Record Drawer ───────────────────────────────────────── */}
       {selectedLead && (
         <RecordDrawer
           isOpen={!!selectedLead}
@@ -577,7 +623,7 @@ export default function LeadsPage(): React.ReactElement {
             </div>
           }
           name={getLeadName(selectedLead)}
-          subtitle={[selectedLead.email, selectedLead.phone].filter(Boolean).join(' Â· ')}
+          subtitle={[selectedLead.email, selectedLead.phone].filter(Boolean).join(' · ')}
           badges={
             <>
               <StatusBadge label={selectedLead.status} variant={getStatusVariant(selectedLead.status)} />
@@ -593,9 +639,9 @@ export default function LeadsPage(): React.ReactElement {
           }
           kpiTiles={[
             { label: 'EST. VALUE', value: formatCurrency(selectedLead.estimatedValue) },
-            { label: 'SCORE', value: String(selectedLead.score ?? 'â€”') },
+            { label: 'SCORE', value: String(selectedLead.score ?? '—') },
             { label: 'OWNER', value: getOwnerInitials(selectedLead.assignedUserId) },
-            { label: 'CREATED', value: selectedLead.createdAt ? new Date(selectedLead.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'â€”' },
+            { label: 'CREATED', value: selectedLead.createdAt ? new Date(selectedLead.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—' },
           ]}
           tabs={[
             { id: 'overview', label: 'Overview' },
@@ -643,7 +689,7 @@ export default function LeadsPage(): React.ReactElement {
         </RecordDrawer>
       )}
 
-      {/* â”€â”€ Form Sheet â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ── Form Sheet ──────────────────────────────────────────── */}
       <LeadFormSheet
         isOpen={isFormOpen}
         onClose={() => { setIsFormOpen(false); setEditingLead(undefined); }}
@@ -661,7 +707,7 @@ export default function LeadsPage(): React.ReactElement {
         }}
       />
 
-      {/* â”€â”€ Manage Columns Drawer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ── Manage Columns Drawer ───────────────────────────────── */}
       <ManageColumnsDrawer
         isOpen={isManageColumnsOpen}
         onClose={() => setIsManageColumnsOpen(false)}
@@ -674,4 +720,3 @@ export default function LeadsPage(): React.ReactElement {
     </>
   );
 }
-

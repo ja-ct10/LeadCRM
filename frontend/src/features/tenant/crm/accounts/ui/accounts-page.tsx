@@ -44,7 +44,7 @@ export default function AccountsPage(): React.ReactElement {
   } = useAccounts();
 
   const { deals, users } = useData();
-  const { getParam, getArrayParam, updateParams } = useFilterUrlSync();
+  const { getParam, getArrayParam, updateParams } = useFilterUrlSync('accounts');
 
   // ── Column Preferences ────────────────────────────────────────────────
   const {
@@ -65,6 +65,7 @@ export default function AccountsPage(): React.ReactElement {
     setPageSize,
     setViewMode,
     setSort,
+    persistFilters,
   } = useTablePreferences('accounts');
 
   // ── State (Synced with URL) ──────────────────────────────────────────
@@ -100,6 +101,27 @@ export default function AccountsPage(): React.ReactElement {
       related: selectedRelated,
     });
   }, [activeTab, debouncedSearch, activeView, selectedSystemFilters, selectedIndustries, selectedTypes, selectedOwners, selectedRelated, updateParams]);
+
+  // ── Persist filter selections (fire-and-forget) ────────────────────────
+  useEffect(() => {
+    const conditions: { field: string; operator: string; value: unknown }[] = [];
+    if (selectedIndustries.length > 0) {
+      conditions.push({ field: 'industry', operator: 'in', value: selectedIndustries });
+    }
+    if (selectedTypes.length > 0) {
+      conditions.push({ field: 'type', operator: 'in', value: selectedTypes });
+    }
+    if (selectedOwners.length > 0) {
+      conditions.push({ field: 'assignedUserId', operator: 'in', value: selectedOwners });
+    }
+    if (selectedRelated.length > 0) {
+      conditions.push({ field: 'related', operator: 'in', value: selectedRelated });
+    }
+    if (selectedSystemFilters.length > 0) {
+      conditions.push({ field: 'system', operator: 'in', value: selectedSystemFilters });
+    }
+    persistFilters(conditions);
+  }, [selectedIndustries, selectedTypes, selectedOwners, selectedRelated, selectedSystemFilters, persistFilters]);
 
   // ── Filtered list ────────────────────────────────────────────────────
   const filteredAccounts = useMemo(() => {
@@ -137,10 +159,10 @@ export default function AccountsPage(): React.ReactElement {
   // ── Pagination ───────────────────────────────────────────────────────
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Reset page on filter/search changes
+  // Reset page on filter/search/pageSize/sort changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, selectedIndustries, selectedTypes, selectedOwners, selectedRelated]);
+  }, [debouncedSearch, selectedIndustries, selectedTypes, selectedOwners, selectedRelated, pageSize, sort]);
 
   const paginatedAccounts = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -319,6 +341,9 @@ export default function AccountsPage(): React.ReactElement {
         onSearch={setSearchTerm}
         searchPlaceholder="Search accounts..."
         onRefresh={() => toast.success('Refreshed')}
+        currentPage={currentPage}
+        paginationTotalRecords={filteredAccounts.length}
+        onPageChange={setCurrentPage}
         toolbarExtra={
           <button
             ref={manageColumnsButtonRef}
@@ -348,14 +373,24 @@ export default function AccountsPage(): React.ReactElement {
             onEdit={handleOpenEdit}
             onDelete={(account) => handleDelete(account.id)}
             onManageColumns={() => setIsManageColumnsOpen(true)}
-            onHideColumn={(columnId) => {
+            onHideColumn={async (columnId) => {
               const updated = effectiveColumns.map((col) =>
                 col.id === columnId ? { ...col, visible: false } : col,
               );
-              saveColumns(updated);
+              try {
+                await saveColumns(updated);
+              } catch {
+                toast.error('Failed to hide column. Reverted.');
+              }
             }}
             viewMode={viewMode}
-            onColumnReorder={saveColumns}
+            onColumnReorder={async (columns) => {
+              try {
+                await saveColumns(columns);
+              } catch {
+                toast.error('Failed to save column order. Reverted to previous layout.');
+              }
+            }}
           />
         )}
 

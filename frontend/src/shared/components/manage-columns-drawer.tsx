@@ -67,10 +67,12 @@ interface DisplayColumn extends ColumnConfigItem {
 
 interface SortableColumnItemProps {
   col: DisplayColumn;
+  index: number;
+  total: number;
   onToggle: (id: string) => void;
 }
 
-function SortableColumnItem({ col, onToggle }: SortableColumnItemProps): React.ReactElement {
+function SortableColumnItem({ col, index, total, onToggle }: SortableColumnItemProps): React.ReactElement {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: col.id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -81,6 +83,7 @@ function SortableColumnItem({ col, onToggle }: SortableColumnItemProps): React.R
     <li
       ref={setNodeRef}
       style={style}
+      aria-label={`Column ${col.label}, position ${index} of ${total}`}
       className={cn(
         'flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors',
         'bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800',
@@ -395,9 +398,18 @@ export function ManageColumnsDrawer({
                         {group.name}
                       </h3>
                       <ul className="space-y-1">
-                        {group.columns.map((col) => (
-                          <SortableColumnItem key={col.id} col={col} onToggle={handleToggleVisibility} />
-                        ))}
+                        {group.columns.map((col) => {
+                          const positionIndex = displayColumns.indexOf(col) + 1;
+                          return (
+                            <SortableColumnItem
+                              key={col.id}
+                              col={col}
+                              index={positionIndex}
+                              total={displayColumns.length}
+                              onToggle={handleToggleVisibility}
+                            />
+                          );
+                        })}
                       </ul>
                     </div>
                   ))}

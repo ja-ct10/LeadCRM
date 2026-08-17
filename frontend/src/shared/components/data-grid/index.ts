@@ -16,6 +16,23 @@
  * ```
  */
 
+// Cell Renderers
+export {
+  formatDate,
+  renderDate,
+  renderLink,
+  renderStatusBadge,
+  renderAvatar,
+  renderText,
+  getInitials,
+  MODULE_ACCENT_COLORS,
+  LEAD_STATUS_VARIANTS,
+  CONTACT_STATUS_VARIANTS,
+  ACCOUNT_TYPE_VARIANTS,
+  DEAL_PRIORITY_VARIANTS,
+} from './cell-renderers';
+export type { StatusVariant, ModuleAccentColor } from './cell-renderers';
+
 // Components
 export { DataGrid } from './data-grid';
 export { DataGridQuickFilter } from './data-grid-quick-filter';
@@ -35,6 +52,8 @@ export { useDataGridColumns } from './use-data-grid-columns';
 export type { CellRendererMap, CellRendererFn } from './use-data-grid-columns';
 export { useColumnDragReorder } from './use-column-drag-reorder';
 export type { UseColumnDragReorderOptions, UseColumnDragReorderReturn } from './use-column-drag-reorder';
+export { useResponsiveColumns } from './use-responsive-columns';
+export { useGridKeyboardNav } from './use-grid-keyboard-nav';
 export { SortableHeaderCell } from './sortable-header-cell';
 
 // Types

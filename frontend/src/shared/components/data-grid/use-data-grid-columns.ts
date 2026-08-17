@@ -123,6 +123,7 @@ export function useDataGridColumns<T = Record<string, unknown>>({
         sortable: isSortable,
         resizable: isResizable,
         required: def?.required ?? false,
+        responsivePriority: def?.priority ?? 'medium',
         truncate: true,
       };
     });

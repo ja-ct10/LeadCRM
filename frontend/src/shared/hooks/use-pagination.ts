@@ -30,7 +30,7 @@ export function usePagination(options: PaginationOptions): PaginationState {
     totalItems,
     initialPage = 1,
     initialPageSize = 10,
-    pageSizeOptions = [10, 25, 50, 100],
+    pageSizeOptions = [10, 20, 25, 30, 40, 50],
     resetDeps = [],
     onPageChange,
     onPageSizeChange,

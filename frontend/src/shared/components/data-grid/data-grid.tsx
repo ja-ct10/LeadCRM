@@ -42,9 +42,9 @@
 
 'use client';
 
-import React, { useMemo, useCallback, useState, useRef } from 'react';
+import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import { ChevronUp, ChevronDown, Settings2, SearchX, Inbox, Plus } from 'lucide-react';
+import { ChevronUp, ChevronDown, Settings2, SearchX, Inbox, Plus, EyeOff } from 'lucide-react';
 import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import { useColumnResize } from './use-column-resize';
@@ -54,6 +54,8 @@ import { useColumnDragReorder } from './use-column-drag-reorder';
 import { SortableHeaderCell } from './sortable-header-cell';
 import { ColumnHeaderMenu } from './column-header-menu';
 import { RowActionsMenu } from './row-actions-menu';
+import { TruncatedCellTooltip } from './truncated-cell-tooltip';
+import { useGridKeyboardNav } from './use-grid-keyboard-nav';
 import type {
   DataGridProps,
   DataGridColumnDef,
@@ -69,6 +71,7 @@ const CHECKBOX_COLUMN_WIDTH = 44;
 const ROW_ACTIONS_WIDTH = 40;
 const ACTIONS_COLUMN_WIDTH = 100;
 const SETTINGS_COLUMN_WIDTH = 36;
+const HIDDEN_BADGE_COLUMN_WIDTH = 80;
 const ROW_HEIGHT_NORMAL = 52;
 const ROW_HEIGHT_DENSE = 44;
 const HEADER_HEIGHT = 44;
@@ -99,6 +102,266 @@ function ResizeHandle({ columnId, currentWidth, onStartResize, isResizing }: Res
     />
   );
 }
+
+// ─── Memoized Row Component ──────────────────────────────────────────────────
+// Extracted as React.memo to avoid re-rendering all rows when a single
+// selection toggle occurs. With Set-based selection, only the toggled row's
+// `isSelected` prop changes, so other rows skip re-render.
+
+interface DataGridRowProps<T> {
+  row: T;
+  rowId: string;
+  rowIdx: number;
+  selected: boolean;
+  selectable: boolean;
+  pinnedLeftColumns: DataGridColumnDef<T>[];
+  scrollableColumns: DataGridColumnDef<T>[];
+  pinnedRightColumns: DataGridColumnDef<T>[];
+  pinnedLeftOffsets: Record<string, number>;
+  isScrolled: boolean;
+  viewMode: 'wrap' | 'clip';
+  rowHeight: number;
+  cellContentClass: string;
+  hasQuickActions: boolean;
+  quickActions?: Array<{ id: string; label: string; icon: React.ReactNode; onClick: (row: T) => void; visible?: (row: T) => boolean }>;
+  showToolbarColumn: boolean;
+  rowActions?: (row: T) => Array<{ id: string; label: string; icon?: React.ReactNode; onClick: () => void; variant?: string; disabled?: boolean }>;
+  hasRowActions: boolean;
+  onRowClick?: (row: T) => void;
+  toggleRow: (id: string) => void;
+  renderCellContent: (col: DataGridColumnDef<T>, row: T, rowIdx: number) => React.ReactNode;
+}
+
+function DataGridRowInner<T>({
+  row,
+  rowId,
+  rowIdx,
+  selected,
+  selectable,
+  pinnedLeftColumns,
+  scrollableColumns,
+  pinnedRightColumns,
+  pinnedLeftOffsets,
+  isScrolled,
+  viewMode,
+  rowHeight,
+  cellContentClass,
+  hasQuickActions,
+  quickActions,
+  showToolbarColumn,
+  rowActions,
+  hasRowActions,
+  onRowClick,
+  toggleRow,
+  renderCellContent,
+}: DataGridRowProps<T>): React.ReactElement {
+  return (
+    <tr
+      className={cn(
+        'transition-colors cursor-pointer group/row',
+        selected
+          ? 'bg-blue-50/60 dark:bg-blue-500/5'
+          : 'hover:bg-slate-50 dark:hover:bg-slate-800/40',
+      )}
+      style={viewMode === 'wrap' ? { minHeight: rowHeight, maxHeight: 156 } : { height: rowHeight }}
+      onClick={() => onRowClick?.(row)}
+      aria-selected={selected}
+      role="row"
+    >
+      {/* Row actions menu (⋯) — leftmost cell */}
+      {hasRowActions && rowActions && (
+        <td
+          className={cn(
+            'sticky left-0 z-10 px-1 text-center',
+            selected
+              ? 'bg-blue-50/60 dark:bg-blue-500/5'
+              : 'bg-white dark:bg-slate-800/40 group-hover/row:bg-slate-50 dark:group-hover/row:bg-slate-800/40',
+          )}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="opacity-0 group-hover/row:opacity-100 transition-opacity duration-150">
+            <RowActionsMenu actions={rowActions(row)} position="left" />
+          </div>
+        </td>
+      )}
+
+      {/* Checkbox cell — pinned left */}
+      {selectable && (
+        <td
+          className={cn(
+            'sticky z-10 px-3 text-center',
+            selected
+              ? 'bg-blue-50/60 dark:bg-blue-500/5'
+              : 'bg-white dark:bg-slate-800/40 group-hover/row:bg-slate-50 dark:group-hover/row:bg-slate-800/40',
+            pinnedLeftColumns.length === 0 && isScrolled
+              ? 'shadow-[4px_0_8px_-2px_rgba(0,0,0,0.08)] dark:shadow-[4px_0_8px_-2px_rgba(0,0,0,0.25)]'
+              : 'shadow-[inset_-1px_0_0_0_#e5e7eb] dark:shadow-[inset_-1px_0_0_0_rgba(255,255,255,0.06)]',
+          )}
+          style={{ left: hasRowActions ? ROW_ACTIONS_WIDTH : 0 }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => toggleRow(rowId)}
+            className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-[#2563EB] focus:ring-[#2563EB]/20 cursor-pointer accent-[#2563EB]"
+            aria-label={`Select record ${rowId}`}
+          />
+        </td>
+      )}
+
+      {/* Pinned left data cells */}
+      {pinnedLeftColumns.map((col, colIdx) => {
+        const cellContent = renderCellContent(col, row, rowIdx);
+        const shouldShowTooltip = viewMode === 'clip' && !col.cell;
+        const cellText = shouldShowTooltip ? String(cellContent ?? '') : '';
+        const isLastPinned = colIdx === pinnedLeftColumns.length - 1;
+
+        return (
+          <td
+            key={col.id}
+            className={cn(
+              'sticky z-10 px-3',
+              selected
+                ? 'bg-blue-50/60 dark:bg-blue-500/5'
+                : 'bg-white dark:bg-slate-800/40 group-hover/row:bg-slate-50 dark:group-hover/row:bg-slate-800/40',
+              isLastPinned && isScrolled
+                ? 'shadow-[4px_0_8px_-2px_rgba(0,0,0,0.08)] dark:shadow-[4px_0_8px_-2px_rgba(0,0,0,0.25)]'
+                : 'shadow-[inset_-1px_0_0_0_#e5e7eb] dark:shadow-[inset_-1px_0_0_0_rgba(255,255,255,0.06)]',
+              col.align === 'right' && 'text-right',
+              col.align === 'center' && 'text-center',
+              'text-[13px] text-[#0F172A] dark:text-slate-200',
+              viewMode === 'wrap' && 'py-2',
+            )}
+            style={{ left: pinnedLeftOffsets[col.id] }}
+          >
+            {shouldShowTooltip ? (
+              <TruncatedCellTooltip
+                content={cellText}
+                className={cn('flex items-center h-full truncate', cellContentClass)}
+              >
+                {cellContent}
+              </TruncatedCellTooltip>
+            ) : (
+              <div className={cn('flex items-center', viewMode === 'clip' ? 'h-full truncate' : 'min-h-[28px]', cellContentClass)}>
+                {cellContent}
+              </div>
+            )}
+          </td>
+        );
+      })}
+
+      {/* Scrollable data cells */}
+      {scrollableColumns.map((col) => {
+        const cellContent = renderCellContent(col, row, rowIdx);
+        const shouldShowTooltip = viewMode === 'clip' && !col.cell;
+        const cellText = shouldShowTooltip ? String(cellContent ?? '') : '';
+
+        return (
+          <td
+            key={col.id}
+            className={cn(
+              'px-3',
+              col.align === 'right' && 'text-right',
+              col.align === 'center' && 'text-center',
+              'text-[13px] text-[#0F172A] dark:text-slate-200',
+              viewMode === 'wrap' && 'py-2',
+            )}
+          >
+            {shouldShowTooltip ? (
+              <TruncatedCellTooltip
+                content={cellText}
+                className={cn('flex items-center h-full truncate', cellContentClass)}
+              >
+                {cellContent}
+              </TruncatedCellTooltip>
+            ) : (
+              <div className={cn('flex items-center', viewMode === 'clip' ? 'h-full truncate' : 'min-h-[28px]', cellContentClass)}>
+                {cellContent}
+              </div>
+            )}
+          </td>
+        );
+      })}
+
+      {/* Pinned right data cells */}
+      {pinnedRightColumns.map((col) => {
+        const cellContent = renderCellContent(col, row, rowIdx);
+        const shouldShowTooltip = viewMode === 'clip' && !col.cell;
+        const cellText = shouldShowTooltip ? String(cellContent ?? '') : '';
+
+        return (
+          <td
+            key={col.id}
+            className={cn(
+              'sticky right-0 z-10 px-3',
+              selected
+                ? 'bg-blue-50/60 dark:bg-blue-500/5'
+                : 'bg-white dark:bg-slate-800/40 group-hover/row:bg-slate-50 dark:group-hover/row:bg-slate-800/40',
+              'shadow-[inset_1px_0_0_0_#e5e7eb] dark:shadow-[inset_1px_0_0_0_rgba(255,255,255,0.06)]',
+              col.align === 'right' && 'text-right',
+              col.align === 'center' && 'text-center',
+              'text-[13px] text-[#0F172A] dark:text-slate-200',
+              viewMode === 'wrap' && 'py-2',
+            )}
+          >
+            {shouldShowTooltip ? (
+              <TruncatedCellTooltip
+                content={cellText}
+                className={cn('flex items-center h-full truncate', cellContentClass)}
+              >
+                {cellContent}
+              </TruncatedCellTooltip>
+            ) : (
+              <div className={cn('flex items-center', viewMode === 'clip' ? 'h-full truncate' : 'min-h-[28px]', cellContentClass)}>
+                {cellContent}
+              </div>
+            )}
+          </td>
+        );
+      })}
+
+      {/* Quick actions cell */}
+      {hasQuickActions && quickActions && (
+        <td
+          className="px-2 text-right"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-end gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity">
+            {quickActions.map((action) => {
+              if (action.visible && !action.visible(row)) return null;
+              return (
+                <button
+                  key={action.id}
+                  type="button"
+                  onClick={() => action.onClick(row)}
+                  className={cn(
+                    'p-1.5 rounded-md transition-colors',
+                    'text-slate-400 dark:text-slate-500',
+                    'hover:text-slate-700 dark:hover:text-slate-200',
+                    'hover:bg-slate-100 dark:hover:bg-slate-700',
+                  )}
+                  title={action.label}
+                  aria-label={action.label}
+                >
+                  {action.icon}
+                </button>
+              );
+            })}
+          </div>
+        </td>
+      )}
+
+      {/* Settings/toolbar column spacer cell */}
+      {showToolbarColumn && (
+        <td aria-hidden="true" />
+      )}
+    </tr>
+  );
+}
+
+// Use React.memo with generic type support via type assertion
+const DataGridRow = React.memo(DataGridRowInner) as typeof DataGridRowInner;
 
 // ─── Sort Indicator ──────────────────────────────────────────────────────────
 
@@ -140,6 +403,7 @@ export function DataGrid<T = Record<string, unknown>>({
   summaryLabel,
   columnWidths: externalColumnWidths,
   onColumnResize,
+  onColumnWidthChange,
   cellContext,
   ariaLabel = 'Data grid',
   enableColumnMenu = false,
@@ -153,6 +417,7 @@ export function DataGrid<T = Record<string, unknown>>({
   onColumnReorder,
   lockedColumns,
   effectiveColumns,
+  hiddenColumnsCount,
 }: DataGridProps<T>): React.ReactElement {
   // ─── Internal column widths state (when uncontrolled) ──────────────────
   const [internalWidths, setInternalWidths] = useState<Record<string, number>>({});
@@ -172,7 +437,8 @@ export function DataGrid<T = Record<string, unknown>>({
   // ─── Resize hook ───────────────────────────────────────────────────────
   const { isResizing, resizingColumnId, startResize } = useColumnResize({
     onResize: handleColumnResize,
-    minWidth: DEFAULT_MIN_WIDTH,
+    onResizeEnd: onColumnWidthChange,
+    minWidth: 80,
     maxWidth: 800,
   });
 
@@ -260,12 +526,29 @@ export function DataGrid<T = Record<string, unknown>>({
   const rowHeight = dense ? ROW_HEIGHT_DENSE : ROW_HEIGHT_NORMAL;
 
   // View mode cell content classes
+  // clip: single-line with text-overflow: ellipsis
+  // wrap: multi-line with line-clamp-3 (max ~3 lines, 156px row max)
   const cellContentClass = viewMode === 'wrap'
     ? 'whitespace-normal break-words line-clamp-3 overflow-hidden'
-    : 'truncate overflow-hidden whitespace-nowrap';
+    : 'truncate';
 
   // Ref for scroll container
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // ─── Horizontal scroll state (for pinned column shadow) ────────────
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const handleScroll = () => {
+      setIsScrolled(el.scrollLeft > 0);
+    };
+    el.addEventListener('scroll', handleScroll, { passive: true });
+    // Check initial scroll position
+    handleScroll();
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, []);
 
   // ─── Render Helpers ────────────────────────────────────────────────────
 
@@ -282,8 +565,10 @@ export function DataGrid<T = Record<string, unknown>>({
         return col.cell(value, row, context);
       }
 
-      // Default string rendering
-      if (value === null || value === undefined) return '—';
+      // Default rendering: em-dash for null/undefined/empty values
+      if (value === null || value === undefined || value === '') {
+        return <span className="text-[#5A6B85] dark:text-slate-400">—</span>;
+      }
       return String(value);
     },
     [cellContext, isSelected, getRowId],
@@ -291,26 +576,117 @@ export function DataGrid<T = Record<string, unknown>>({
 
   const hasQuickActions = quickActions && quickActions.length > 0;
 
+  // ─── Computed toolbar column width (settings + hidden badge) ────────────
+  const hasHiddenBadge = hiddenColumnsCount != null && hiddenColumnsCount > 0;
+  const showToolbarColumn = onSettingsClick || hasHiddenBadge;
+  const toolbarColumnWidth = hasHiddenBadge ? HIDDEN_BADGE_COLUMN_WIDTH : SETTINGS_COLUMN_WIDTH;
+
+  // ─── ARIA Grid Keyboard Navigation ────────────────────────────────────
+  const totalColCount = columns.length + (selectable ? 1 : 0) + (rowActions ? 1 : 0) + (hasQuickActions ? 1 : 0) + (showToolbarColumn ? 1 : 0);
+  const {
+    gridRef,
+    handleGridKeyDown,
+    handleCellFocus,
+  } = useGridKeyboardNav({
+    rowCount: sortedData.length,
+    colCount: totalColCount,
+    enabled: true,
+  });
+
+  // ─── ARIA Live Announcements ───────────────────────────────────────────
+  const [ariaAnnouncement, setAriaAnnouncement] = useState('');
+  const prevSelectedCountRef = useRef(selectedIds.size);
+  const prevSortRef = useRef(sort);
+
+  // Announce selection changes
+  useEffect(() => {
+    const currentCount = selectedIds.size;
+    const prevCount = prevSelectedCountRef.current;
+    if (currentCount !== prevCount) {
+      if (currentCount === 0) {
+        setAriaAnnouncement('Selection cleared');
+      } else {
+        setAriaAnnouncement(`${currentCount} row${currentCount === 1 ? '' : 's'} selected`);
+      }
+      prevSelectedCountRef.current = currentCount;
+    }
+  }, [selectedIds]);
+
+  // Announce sort changes
+  useEffect(() => {
+    const prevSort = prevSortRef.current;
+    if (sort && (sort.field !== prevSort?.field || sort.direction !== prevSort?.direction)) {
+      const direction = sort.direction === 'asc' ? 'ascending' : 'descending';
+      setAriaAnnouncement(`Sorted by ${sort.field}, ${direction}`);
+    } else if (!sort && prevSort) {
+      setAriaAnnouncement('Sort cleared');
+    }
+    prevSortRef.current = sort;
+  }, [sort]);
+
   // ─── Loading skeleton ──────────────────────────────────────────────────
+  // Renders a placeholder skeleton that matches the column layout
+  // while the table data is loading. Does NOT block toolbar/filter rail
+  // rendering since those live outside this component in the parent.
   if (isLoading) {
+    // Determine skeleton column count from actual columns (capped at 6 for visual balance)
+    const skeletonColCount = Math.min(columns.length, 6);
+
     return (
       <div
-        className="bg-white dark:bg-slate-800/40 border border-[#E4E9F0] dark:border-slate-700 rounded-xl overflow-hidden animate-pulse"
+        className="bg-white dark:bg-slate-800/40 border border-[#E4E9F0] dark:border-slate-700 rounded-xl overflow-hidden"
         style={containerStyle}
+        role="status"
+        aria-label="Loading data"
       >
-        <div className="h-[44px] bg-[#F6F8FB] dark:bg-slate-800/60 border-b border-[#E4E9F0] dark:border-slate-700" />
-        {Array.from({ length: 5 }).map((_, i) => (
+        {/* Skeleton header row — 44px height */}
+        <div
+          className="flex items-center bg-[#F6F8FB] dark:bg-slate-800/60 border-b border-[#E4E9F0] dark:border-slate-700 px-3 gap-3"
+          style={{ height: `${HEADER_HEIGHT}px` }}
+        >
+          {/* Checkbox placeholder */}
+          {selectable && (
+            <div className="w-3.5 h-3.5 bg-slate-200/70 dark:bg-slate-700/70 rounded animate-pulse shrink-0" />
+          )}
+          {/* Column header placeholders */}
+          {Array.from({ length: skeletonColCount }).map((_, i) => (
+            <div
+              key={i}
+              className="h-2.5 bg-slate-200/70 dark:bg-slate-700/70 rounded animate-pulse"
+              style={{ width: i === 0 ? '140px' : i === 1 ? '100px' : '80px', flexShrink: 0 }}
+            />
+          ))}
+        </div>
+
+        {/* Skeleton body rows — at least 5 rows matching row height */}
+        {Array.from({ length: 5 }).map((_, rowIdx) => (
           <div
-            key={i}
-            className="border-b border-[#E4E9F0] dark:border-slate-700"
+            key={rowIdx}
+            className="flex items-center border-b border-[#E4E9F0] dark:border-slate-700 px-3 gap-3"
             style={{ height: `${rowHeight}px` }}
           >
-            <div className="flex items-center h-full px-4 gap-4">
-              <div className="w-3.5 h-3.5 bg-slate-200 dark:bg-slate-700 rounded" />
-              <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded flex-1 max-w-[200px]" />
-              <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded flex-1 max-w-[120px]" />
-              <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded flex-1 max-w-[80px]" />
+            {/* Checkbox placeholder */}
+            {selectable && (
+              <div className="w-3.5 h-3.5 bg-slate-200 dark:bg-slate-700 rounded animate-pulse shrink-0" />
+            )}
+            {/* Primary column — avatar + text block */}
+            <div className="flex items-center gap-2.5 shrink-0" style={{ width: '200px' }}>
+              <div className="w-8 h-8 bg-slate-200 dark:bg-slate-700 rounded-full animate-pulse shrink-0" />
+              <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded animate-pulse w-[70%]" />
+                <div className="h-2 bg-slate-100 dark:bg-slate-700/60 rounded animate-pulse w-[50%]" />
+              </div>
             </div>
+            {/* Remaining column placeholders */}
+            {Array.from({ length: Math.max(skeletonColCount - 1, 2) }).map((_, colIdx) => (
+              <div
+                key={colIdx}
+                className="h-3 bg-slate-200 dark:bg-slate-700 rounded animate-pulse flex-1"
+                style={{
+                  maxWidth: colIdx === 0 ? '150px' : colIdx === 1 ? '100px' : '120px',
+                }}
+              />
+            ))}
           </div>
         ))}
       </div>
@@ -344,7 +720,9 @@ export function DataGrid<T = Record<string, unknown>>({
           className="border-collapse table-fixed"
           style={{ minWidth: '100%', width: 'max-content' }}
           role="grid"
-          aria-rowcount={sortedData.length}
+          ref={gridRef}
+          onKeyDown={handleGridKeyDown}
+          aria-rowcount={sortedData.length + 1}
           aria-colcount={columns.length + (selectable ? 1 : 0)}
         >
           {/* ─── Column Group (widths) ─────────────────────────────── */}
@@ -361,12 +739,13 @@ export function DataGrid<T = Record<string, unknown>>({
               <col key={col.id} style={{ width: getColumnWidth(col), minWidth: col.minWidth ?? DEFAULT_MIN_WIDTH }} />
             ))}
             {hasQuickActions && <col style={{ width: ACTIONS_COLUMN_WIDTH }} />}
-            {onSettingsClick && <col style={{ width: SETTINGS_COLUMN_WIDTH }} />}
+            {showToolbarColumn && <col style={{ width: toolbarColumnWidth }} />}
           </colgroup>
 
           {/* ─── Header ────────────────────────────────────────────── */}
           <thead className="sticky top-0 z-20">
             <tr
+              role="row"
               className={cn(
                 'bg-[#F6F8FB] dark:bg-slate-800/60',
                 'border-b border-[#E4E9F0] dark:border-slate-700',
@@ -378,7 +757,6 @@ export function DataGrid<T = Record<string, unknown>>({
                 <th
                   scope="col"
                   className="sticky left-0 z-30 bg-[#F6F8FB] dark:bg-slate-800/60"
-                  style={{ width: ROW_ACTIONS_WIDTH, minWidth: ROW_ACTIONS_WIDTH }}
                 />
               )}
 
@@ -389,9 +767,12 @@ export function DataGrid<T = Record<string, unknown>>({
                   className={cn(
                     'sticky z-30 bg-[#F6F8FB] dark:bg-slate-800/60',
                     'px-3 text-center',
-                    'shadow-[inset_-1px_0_0_0_#e5e7eb] dark:shadow-[inset_-1px_0_0_0_rgba(255,255,255,0.06)]',
+                    // If no pinned left columns, checkbox is the last pinned element
+                    pinnedLeftColumns.length === 0 && isScrolled
+                      ? 'shadow-[4px_0_8px_-2px_rgba(0,0,0,0.08)] dark:shadow-[4px_0_8px_-2px_rgba(0,0,0,0.25)]'
+                      : 'shadow-[inset_-1px_0_0_0_#e5e7eb] dark:shadow-[inset_-1px_0_0_0_rgba(255,255,255,0.06)]',
                   )}
-                  style={{ left: rowActions ? ROW_ACTIONS_WIDTH : 0, width: CHECKBOX_COLUMN_WIDTH, minWidth: CHECKBOX_COLUMN_WIDTH }}
+                  style={{ left: rowActions ? ROW_ACTIONS_WIDTH : 0 }}
                 >
                   <input
                     type="checkbox"
@@ -407,7 +788,9 @@ export function DataGrid<T = Record<string, unknown>>({
               )}
 
               {/* Pinned left header cells */}
-              {pinnedLeftColumns.map((col) => (
+              {pinnedLeftColumns.map((col, colIdx) => {
+                const isLastPinned = colIdx === pinnedLeftColumns.length - 1;
+                return (
                 <th
                   key={col.id}
                   scope="col"
@@ -415,10 +798,13 @@ export function DataGrid<T = Record<string, unknown>>({
                     'sticky z-30 bg-[#F6F8FB] dark:bg-slate-800/60',
                     'px-3 text-left group/header relative',
                     'text-[11.5px] font-semibold uppercase tracking-wider text-[#5A6B85] dark:text-slate-400',
-                    'shadow-[inset_-1px_0_0_0_#e5e7eb] dark:shadow-[inset_-1px_0_0_0_rgba(255,255,255,0.06)]',
+                    // Last pinned column shows inset shadow when scrolled, subtle border otherwise
+                    isLastPinned && isScrolled
+                      ? 'shadow-[4px_0_8px_-2px_rgba(0,0,0,0.08)] dark:shadow-[4px_0_8px_-2px_rgba(0,0,0,0.25)]'
+                      : 'shadow-[inset_-1px_0_0_0_#e5e7eb] dark:shadow-[inset_-1px_0_0_0_rgba(255,255,255,0.06)]',
                     col.sortable && 'cursor-pointer hover:text-[#0F172A] dark:hover:text-white select-none',
                   )}
-                  style={{ left: pinnedLeftOffsets[col.id], width: getColumnWidth(col) }}
+                  style={{ left: pinnedLeftOffsets[col.id] }}
                   onClick={() => col.sortable && handleHeaderClick(col.id)}
                   aria-sort={
                     getSortDirection(col.id) === 'asc' ? 'ascending' :
@@ -438,7 +824,8 @@ export function DataGrid<T = Record<string, unknown>>({
                     />
                   )}
                 </th>
-              ))}
+                );
+              })}
 
               {/* Scrollable header cells */}
               {scrollableColumns.map((col) => (
@@ -451,7 +838,6 @@ export function DataGrid<T = Record<string, unknown>>({
                     'text-[11.5px] font-semibold uppercase tracking-wider text-[#5A6B85] dark:text-slate-400',
                     col.sortable && !enableColumnMenu && 'cursor-pointer hover:text-[#0F172A] dark:hover:text-white select-none',
                   )}
-                  style={{ width: getColumnWidth(col) }}
                   onClick={() => !enableColumnMenu && col.sortable && handleHeaderClick(col.id)}
                   ariaSort={
                     getSortDirection(col.id) === 'asc' ? 'ascending' :
@@ -499,7 +885,6 @@ export function DataGrid<T = Record<string, unknown>>({
                     'shadow-[inset_1px_0_0_0_#e5e7eb] dark:shadow-[inset_1px_0_0_0_rgba(255,255,255,0.06)]',
                     col.sortable && 'cursor-pointer hover:text-[#0F172A] dark:hover:text-white select-none',
                   )}
-                  style={{ width: getColumnWidth(col) }}
                   onClick={() => col.sortable && handleHeaderClick(col.id)}
                 >
                   <div className="flex items-center truncate">
@@ -522,27 +907,45 @@ export function DataGrid<T = Record<string, unknown>>({
                 <th
                   scope="col"
                   className="px-3 text-right text-[11.5px] font-semibold uppercase tracking-wider text-[#5A6B85] dark:text-slate-400"
-                  style={{ width: ACTIONS_COLUMN_WIDTH }}
                 >
                   Actions
                 </th>
               )}
 
-              {/* Settings icon (⚙) at end of header */}
-              {onSettingsClick && (
+              {/* Settings icon (⚙) and hidden columns badge at end of header */}
+              {showToolbarColumn && (
                 <th
                   scope="col"
                   className="px-1 text-center"
-                  style={{ width: SETTINGS_COLUMN_WIDTH }}
                 >
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); onSettingsClick(); }}
-                    className="w-7 h-7 flex items-center justify-center rounded-md text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-600/40 transition-colors"
-                    aria-label="Table settings"
-                  >
-                    <Settings2 size={14} />
-                  </button>
+                  <div className="flex items-center justify-center gap-1">
+                    {/* Hidden columns indicator badge */}
+                    {hasHiddenBadge && (
+                      <span
+                        className={cn(
+                          'inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md',
+                          'text-[10px] font-medium leading-none',
+                          'bg-amber-100 text-amber-700',
+                          'dark:bg-amber-900/30 dark:text-amber-400',
+                        )}
+                        aria-label={`${hiddenColumnsCount} column${hiddenColumnsCount === 1 ? '' : 's'} hidden`}
+                        title={`${hiddenColumnsCount} column${hiddenColumnsCount === 1 ? '' : 's'} hidden`}
+                      >
+                        <EyeOff size={10} aria-hidden="true" />
+                        {hiddenColumnsCount}
+                      </span>
+                    )}
+                    {onSettingsClick && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onSettingsClick(); }}
+                        className="w-7 h-7 flex items-center justify-center rounded-md text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-600/40 transition-colors"
+                        aria-label="Table settings"
+                      >
+                        <Settings2 size={14} />
+                      </button>
+                    )}
+                  </div>
                 </th>
               )}
             </tr>
@@ -606,6 +1009,17 @@ export function DataGrid<T = Record<string, unknown>>({
                         </button>
                       )}
                     </div>
+                  ) : emptyState?.variant === 'default' ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <p className="text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">
+                        {emptyState.title ?? 'No records found'}
+                      </p>
+                      {emptyState.description && (
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {emptyState.description}
+                        </p>
+                      )}
+                    </div>
                   ) : (
                     <p className="text-[13px] text-[#5A6B85] dark:text-slate-400">
                       {emptyMessage}
@@ -620,162 +1034,30 @@ export function DataGrid<T = Record<string, unknown>>({
               const selected = isSelected(rowId);
 
               return (
-                <tr
+                <DataGridRow<T>
                   key={rowId}
-                  className={cn(
-                    'transition-colors cursor-pointer group/row',
-                    selected
-                      ? 'bg-blue-50/60 dark:bg-blue-500/5'
-                      : 'hover:bg-slate-50 dark:hover:bg-slate-800/40',
-                  )}
-                  style={viewMode === 'wrap' ? { minHeight: rowHeight, maxHeight: 156 } : { height: rowHeight }}
-                  onClick={() => onRowClick?.(row)}
-                  aria-selected={selected}
-                  role="row"
-                >
-                  {/* Row actions menu (⋯) — leftmost cell */}
-                  {rowActions && (
-                    <td
-                      className={cn(
-                        'sticky left-0 z-10 px-1 text-center',
-                        selected
-                          ? 'bg-blue-50/60 dark:bg-blue-500/5'
-                          : 'bg-white dark:bg-slate-800/40 group-hover/row:bg-slate-50 dark:group-hover/row:bg-slate-800/40',
-                      )}
-                      style={{ width: ROW_ACTIONS_WIDTH, minWidth: ROW_ACTIONS_WIDTH }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className="opacity-0 group-hover/row:opacity-100 transition-opacity">
-                        <RowActionsMenu actions={rowActions(row)} position="left" />
-                      </div>
-                    </td>
-                  )}
-
-                  {/* Checkbox cell — pinned left */}
-                  {selectable && (
-                    <td
-                      className={cn(
-                        'sticky z-10 px-3 text-center',
-                        selected
-                          ? 'bg-blue-50/60 dark:bg-blue-500/5'
-                          : 'bg-white dark:bg-slate-800/40 group-hover/row:bg-slate-50 dark:group-hover/row:bg-slate-800/40',
-                        'shadow-[inset_-1px_0_0_0_#e5e7eb] dark:shadow-[inset_-1px_0_0_0_rgba(255,255,255,0.06)]',
-                      )}
-                      style={{ left: rowActions ? ROW_ACTIONS_WIDTH : 0, width: CHECKBOX_COLUMN_WIDTH, minWidth: CHECKBOX_COLUMN_WIDTH }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selected}
-                        onChange={() => toggleRow(rowId)}
-                        className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-[#2563EB] focus:ring-[#2563EB]/20 cursor-pointer accent-[#2563EB]"
-                        aria-label={`Select record ${rowId}`}
-                      />
-                    </td>
-                  )}
-
-                  {/* Pinned left data cells */}
-                  {pinnedLeftColumns.map((col) => (
-                    <td
-                      key={col.id}
-                      className={cn(
-                        'sticky z-10 px-3',
-                        selected
-                          ? 'bg-blue-50/60 dark:bg-blue-500/5'
-                          : 'bg-white dark:bg-slate-800/40 group-hover/row:bg-slate-50 dark:group-hover/row:bg-slate-800/40',
-                        'shadow-[inset_-1px_0_0_0_#e5e7eb] dark:shadow-[inset_-1px_0_0_0_rgba(255,255,255,0.06)]',
-                        col.align === 'right' && 'text-right',
-                        col.align === 'center' && 'text-center',
-                        col.truncate !== false && 'truncate',
-                        'text-[13px] text-[#0F172A] dark:text-slate-200',
-                      )}
-                      style={{ left: pinnedLeftOffsets[col.id], width: getColumnWidth(col) }}
-                    >
-                      <div className={cn('flex items-center h-full', col.truncate !== false && 'truncate')}>
-                        {renderCellContent(col, row, rowIdx)}
-                      </div>
-                    </td>
-                  ))}
-
-                  {/* Scrollable data cells */}
-                  {scrollableColumns.map((col) => (
-                    <td
-                      key={col.id}
-                      className={cn(
-                        'px-3',
-                        col.align === 'right' && 'text-right',
-                        col.align === 'center' && 'text-center',
-                        'text-[13px] text-[#0F172A] dark:text-slate-200',
-                        viewMode === 'wrap' && 'py-2',
-                      )}
-                      style={{ width: getColumnWidth(col) }}
-                    >
-                      <div className={cn('flex items-center', viewMode === 'clip' ? 'h-full truncate' : 'min-h-[28px]', cellContentClass)}>
-                        {renderCellContent(col, row, rowIdx)}
-                      </div>
-                    </td>
-                  ))}
-
-                  {/* Pinned right data cells */}
-                  {pinnedRightColumns.map((col) => (
-                    <td
-                      key={col.id}
-                      className={cn(
-                        'sticky right-0 z-10 px-3',
-                        selected
-                          ? 'bg-blue-50/60 dark:bg-blue-500/5'
-                          : 'bg-white dark:bg-slate-800/40 group-hover/row:bg-slate-50 dark:group-hover/row:bg-slate-800/40',
-                        'shadow-[inset_1px_0_0_0_#e5e7eb] dark:shadow-[inset_1px_0_0_0_rgba(255,255,255,0.06)]',
-                        col.align === 'right' && 'text-right',
-                        col.align === 'center' && 'text-center',
-                        col.truncate !== false && 'truncate',
-                        'text-[13px] text-[#0F172A] dark:text-slate-200',
-                      )}
-                      style={{ width: getColumnWidth(col) }}
-                    >
-                      <div className={cn('flex items-center h-full', col.truncate !== false && 'truncate')}>
-                        {renderCellContent(col, row, rowIdx)}
-                      </div>
-                    </td>
-                  ))}
-
-                  {/* Quick actions cell */}
-                  {hasQuickActions && (
-                    <td
-                      className="px-2 text-right"
-                      style={{ width: ACTIONS_COLUMN_WIDTH }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity">
-                        {quickActions!.map((action) => {
-                          if (action.visible && !action.visible(row)) return null;
-                          return (
-                            <button
-                              key={action.id}
-                              type="button"
-                              onClick={() => action.onClick(row)}
-                              className={cn(
-                                'p-1.5 rounded-md transition-colors',
-                                'text-slate-400 dark:text-slate-500',
-                                'hover:text-slate-700 dark:hover:text-slate-200',
-                                'hover:bg-slate-100 dark:hover:bg-slate-700',
-                              )}
-                              title={action.label}
-                              aria-label={action.label}
-                            >
-                              {action.icon}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </td>
-                  )}
-
-                  {/* Settings column spacer cell */}
-                  {onSettingsClick && (
-                    <td style={{ width: SETTINGS_COLUMN_WIDTH }} />
-                  )}
-                </tr>
+                  row={row}
+                  rowId={rowId}
+                  rowIdx={rowIdx}
+                  selected={selected}
+                  selectable={selectable}
+                  pinnedLeftColumns={pinnedLeftColumns}
+                  scrollableColumns={scrollableColumns}
+                  pinnedRightColumns={pinnedRightColumns}
+                  pinnedLeftOffsets={pinnedLeftOffsets}
+                  isScrolled={isScrolled}
+                  viewMode={viewMode}
+                  rowHeight={rowHeight}
+                  cellContentClass={cellContentClass}
+                  hasQuickActions={Boolean(hasQuickActions)}
+                  quickActions={quickActions}
+                  showToolbarColumn={Boolean(showToolbarColumn)}
+                  rowActions={rowActions}
+                  hasRowActions={Boolean(rowActions)}
+                  onRowClick={onRowClick}
+                  toggleRow={toggleRow}
+                  renderCellContent={renderCellContent}
+                />
               );
             })}
           </tbody>
@@ -812,6 +1094,15 @@ export function DataGrid<T = Record<string, unknown>>({
           )}
         </div>
       )}
+      {/* ─── ARIA Live Region for Screen Reader Announcements ────────── */}
+      <div
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+        role="status"
+      >
+        {ariaAnnouncement}
+      </div>
     </div>
   );
 }

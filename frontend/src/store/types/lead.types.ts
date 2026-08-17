@@ -1,24 +1,19 @@
 // ─── Lead ─────────────────────────────────────────────────────────────────
-// Canonical Lead type — mirrors the backend Prisma Lead model plus
-// UI-only display fields used by leads-page, leads-table, lead-form, etc.
-// firstName/lastName are optional to stay assignable from Contact (which has them optional).
+// Extends the shared Contact type with additional UI/display fields.
+// Core API response fields are defined in @leadcrm/shared to ensure
+// compile-time detection of field name mismatches between FE and BE.
+// The backend Lead model maps to the same Prisma model as Contact.
 
-export interface Lead {
-  id: string;
-  tenantId: string;
+import type { Contact as SharedContact, CreateContactRequest, UpdateContactRequest } from '@leadcrm/shared';
+
+/**
+ * Lead — extends the shared Contact type with additional
+ * frontend-specific display and enrichment fields.
+ * firstName/lastName are optional to stay assignable from Contact (which has them optional).
+ */
+export interface Lead extends Omit<SharedContact, 'firstName' | 'lastName'> {
   firstName?: string;
   lastName?: string;
-  email?: string;
-  phone?: string;
-  companyName?: string;
-  address?: string;
-  productInterest?: string[];
-  source?: string;
-  assignedUserId?: string;
-  status: string;
-  accountId?: string;
-  createdAt: string;
-  updatedAt?: string;
 
   // ── UI / display fields (derived or legacy-compat) ──────────────────────
   leadPerson?: string;
@@ -82,18 +77,10 @@ export interface Lead {
   suffix?: string;
 }
 
-export interface CreateLeadRequest {
-  firstName: string;
-  lastName: string;
-  email?: string;
-  phone?: string;
-  companyName?: string;
-  address?: string;
-  productInterest?: string[];
-  source?: string;
-  assignedUserId?: string;
-  status?: string;
-  accountId?: string;
+/**
+ * Create lead request — re-exported from shared with additional UI fields.
+ */
+export interface CreateLeadRequest extends CreateContactRequest {
   recordType?: string;
   leadSource?: string;
   estimatedValue?: number;
@@ -104,4 +91,7 @@ export interface CreateLeadRequest {
   productInterests?: string[];
 }
 
+/**
+ * Update lead request.
+ */
 export interface UpdateLeadRequest extends Partial<CreateLeadRequest> {}

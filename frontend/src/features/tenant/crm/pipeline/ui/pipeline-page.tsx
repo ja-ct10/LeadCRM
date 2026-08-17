@@ -53,6 +53,7 @@ import {
 import { TrendingUp, AlertTriangle } from 'lucide-react';
 import EmptyState from '@/shared/components/empty-state';
 import ForecastBar from './forecast-bar';
+import { DealContactsField } from '@/features/tenant/crm/deals/ui/deal-contacts-field';
 import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
 
 interface SortableDealCardProps {
@@ -644,7 +645,8 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
   const [lostReason, setLostReason] = useState('');
   const [newDeal, setNewDeal] = useState({
     title: '', companyName: '', contactPerson: '', value: 0, priority: 'Medium', expectedCloseDate: '', description: '', assignedUserId: '', stageId: '',
-    leadSource: '', industry: '', address: '', productInterests: '', campaign: '', customerType: 'New Customer', tags: ''
+    leadSource: '', industry: '', address: '', productInterests: '', campaign: '', customerType: 'New Customer', tags: '',
+    contactIds: [] as string[],
   });
   const [dealTitleTouched, setDealTitleTouched] = useState(false);
   const [dealValueTouched, setDealValueTouched] = useState(false);
@@ -779,7 +781,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
     if (filterStaff.length > 0) {
       result = result.filter(d => {
         if (filterStaff.includes('unassigned') && !d.assignedUserId) return true;
-        return filterStaff.includes(d.assignedUserId);
+        return !!d.assignedUserId && filterStaff.includes(d.assignedUserId);
       });
     }
 
@@ -1051,7 +1053,8 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
       setIsModalOpen(false);
       setNewDeal({ 
         title: '', companyName: '', contactPerson: '', value: 0, priority: 'Medium', expectedCloseDate: '', description: '', assignedUserId: '', stageId: '',
-        leadSource: '', industry: '', address: '', productInterests: '', campaign: '', customerType: 'New Customer', tags: ''
+        leadSource: '', industry: '', address: '', productInterests: '', campaign: '', customerType: 'New Customer', tags: '',
+        contactIds: [],
       });
       setDealTitleTouched(false);
       setDealValueTouched(false);
@@ -2398,8 +2401,12 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                       <input required value={newDeal.companyName} onChange={e => setNewDeal({...newDeal, companyName: e.target.value})} className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] focus:bg-white/[0.04] transition-all" placeholder="Acme Corp" />
                     </div>
                     <div>
-                      <label className="block text-sm text-slate-500 dark:text-slate-400 mb-1.5">Contact Person</label>
-                      <input value={newDeal.contactPerson} onChange={e => setNewDeal({...newDeal, contactPerson: e.target.value})} className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-lg px-3 py-2 text-slate-900 dark:text-white focus:outline-none focus:border-gray-300 dark:border-white/[0.1] focus:bg-white/[0.04] transition-all" placeholder="John Doe" />
+                      <label className="block text-sm text-slate-500 dark:text-slate-400 mb-1.5">Contacts</label>
+                      <DealContactsField
+                        values={newDeal.contactIds}
+                        onChange={(ids) => setNewDeal({ ...newDeal, contactIds: ids })}
+                        disabled={false}
+                      />
                     </div>
                     <div>
                       <label className="block text-sm text-slate-500 dark:text-slate-400 mb-1.5">Stage</label>

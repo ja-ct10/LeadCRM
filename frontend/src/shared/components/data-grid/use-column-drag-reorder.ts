@@ -96,8 +96,8 @@ export function useColumnDragReorder({
       const activeId = String(active.id);
       const overId = String(over.id);
 
-      // Don't allow dropping onto locked columns
-      if (lockedSet.has(overId)) return;
+      // Don't allow dragging locked columns or dropping onto locked positions
+      if (lockedSet.has(activeId) || lockedSet.has(overId)) return;
 
       const oldIndex = effectiveColumns.findIndex((col) => col.id === activeId);
       const newIndex = effectiveColumns.findIndex((col) => col.id === overId);

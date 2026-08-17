@@ -92,6 +92,8 @@ export interface DataGridColumnDef<T = Record<string, unknown>> {
   required?: boolean;
   /** Responsive priority — lower numbers hidden first on small screens */
   priority?: number;
+  /** Responsive priority category from column registry — determines hide order as viewport narrows */
+  responsivePriority?: 'required' | 'high' | 'medium' | 'low';
   /** Custom sort comparator for non-string values */
   comparator?: (a: T, b: T) => number;
   /** Alignment: left (default), center, right */
@@ -173,8 +175,10 @@ export interface DataGridProps<T = Record<string, unknown>> {
   // ─── Column Resize ──────────────────────────────────────────────────────
   /** Column widths state (controlled) — maps column id to pixel width */
   columnWidths?: Record<string, number>;
-  /** Column resize callback */
+  /** Column resize callback (fires per animation frame during drag for live preview) */
   onColumnResize?: (columnId: string, width: number) => void;
+  /** Column width change callback (fires once on pointer-up for persistence) */
+  onColumnWidthChange?: (columnId: string, width: number) => void;
 
   // ─── Cell Render Context ────────────────────────────────────────────────
   /** Additional context passed to all cell renderers */
@@ -217,6 +221,10 @@ export interface DataGridProps<T = Record<string, unknown>> {
   // ─── Settings Icon ──────────────────────────────────────────────────────
   /** Callback when settings (⚙) icon at end of header is clicked */
   onSettingsClick?: () => void;
+
+  // ─── Hidden Columns Indicator ─────────────────────────────────────────
+  /** Count of columns auto-hidden by the responsive column strategy */
+  hiddenColumnsCount?: number;
 }
 
 // ─── Empty State Types ────────────────────────────────────────────────────────
@@ -224,7 +232,8 @@ export interface DataGridProps<T = Record<string, unknown>> {
 export interface DataGridEmptyStateProps {
   /** 'filtered': records exist but none match filters — show "clear filters" */
   /** 'empty-module': module has zero records — show "create" action */
-  variant: 'filtered' | 'empty-module';
+  /** 'default': plain text message with no action buttons */
+  variant: 'filtered' | 'empty-module' | 'default';
   /** Title text */
   title?: string;
   /** Description text */

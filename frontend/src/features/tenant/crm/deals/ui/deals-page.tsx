@@ -1,11 +1,12 @@
 ﻿'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useColumnPreferences } from '@/shared/hooks/use-column-preferences';
 import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
+import { useDebounce } from '@/shared/hooks/use-debounce';
 import { ModuleWorkspace, ViewType } from '@/shared/components/crm';
 import { DealDetailsModal } from '@/features/tenant/crm/pipeline/ui/deal-details-modal';
 import { useDealsPage } from '../hooks/use-deals-page';
@@ -14,6 +15,7 @@ import { DEALS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import { DealsDataGrid } from './deals-data-grid';
 import { ManageColumnsDrawer } from '@/shared/components/manage-columns-drawer';
 import DealFilters from '../ui/deal-filters';
+import { DealFormSheet } from './deal-form';
 import type { Deal, Task } from '@/store/types';
 import type { ColumnConfigItem } from '@leadcrm/shared';
 import { usePagination } from '@/shared/hooks/use-pagination';
@@ -26,10 +28,13 @@ function formatCurrency(value: number): string {
 
 export default function DealsPage() {
   const { user, tenant } = useAuth();
-  const { tasks, users, organizations, updateDeal, moveDealStage, deleteDeal, addTask, updateTask, isBillingModuleEnabled } = useData();
+  const { tasks, users, organizations, updateDeal, moveDealStage, deleteDeal, addDeal, addTask, updateTask, isBillingModuleEnabled } = useData();
   const canCreate = useHasPermission('deals.create');
   const canEdit   = useHasPermission('deals.edit');
   const canDelete = useHasPermission('deals.delete');
+
+  // ── Create Form State ─────────────────────────────────────────────────
+  const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
 
   const {
     deals, totalCount, filters, setFilters,
@@ -57,7 +62,28 @@ export default function DealsPage() {
     setPageSize,
     setViewMode,
     setSort,
+    persistFilters,
   } = useTablePreferences('deals');
+
+  // ── Search state with 300ms debounce ────────────────────────────────
+  const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearch = useDebounce(searchTerm, 300);
+
+  // ── Persist filter changes (fire-and-forget) ──────────────────────────
+  useEffect(() => {
+    // Convert DealPageFilters to FilterCondition-like array for server persistence
+    const conditions: { field: string; operator: string; value: unknown }[] = [];
+    if (filters.stages.length > 0) {
+      conditions.push({ field: 'stageId', operator: 'in', value: filters.stages });
+    }
+    if (filters.priorities.length > 0) {
+      conditions.push({ field: 'priority', operator: 'in', value: filters.priorities });
+    }
+    if (filters.pipelines.length > 0) {
+      conditions.push({ field: 'pipelineId', operator: 'in', value: filters.pipelines });
+    }
+    persistFilters(conditions);
+  }, [filters, persistFilters]);
 
   /** Visible columns sorted by order — drives table rendering */
   const visibleColumns = useMemo((): ColumnConfigItem[] => {
@@ -75,6 +101,18 @@ export default function DealsPage() {
   // ── View state ────────────────────────────────────────────────────────
   const [activeView, setActiveView] = useState<ViewType>('table');
 
+  // ── Apply debounced search on top of hook-filtered deals ──────────────
+  const searchFilteredDeals = useMemo(() => {
+    if (!debouncedSearch) return deals;
+    const term = debouncedSearch.toLowerCase();
+    return deals.filter(
+      (d) =>
+        d.title.toLowerCase().includes(term) ||
+        (d.companyName ?? '').toLowerCase().includes(term) ||
+        (d.contactPerson ?? '').toLowerCase().includes(term),
+    );
+  }, [deals, debouncedSearch]);
+
   const {
     currentPage,
     pageSize: paginationPageSize,
@@ -84,13 +122,13 @@ export default function DealsPage() {
     setPageSize: setPaginationPageSize,
     paginateItems,
   } = usePagination({
-    totalItems: deals.length,
+    totalItems: searchFilteredDeals.length,
     initialPageSize: 25,
-    pageSizeOptions: [10, 25, 50, 100],
-    resetDeps: [filters],
+    pageSizeOptions: [10, 20, 25, 30, 40, 50],
+    resetDeps: [filters, debouncedSearch, sort],
   });
 
-  const paginatedDeals = useMemo(() => paginateItems(deals), [paginateItems, deals]);
+  const paginatedDeals = useMemo(() => paginateItems(searchFilteredDeals), [paginateItems, searchFilteredDeals]);
 
   // ── Lookup helpers ──────────────────────────────────────────────────────
   const getAssignedUserName = (userId?: string): string => {
@@ -121,7 +159,7 @@ export default function DealsPage() {
         moduleConfig={DEALS_MODULE_CONFIG}
         description={`${totalCount} ${totalCount === 1 ? 'deal' : 'deals'} total`}
         primaryActionLabel="Add Deal"
-        onPrimaryAction={() => toast.info('Deal creation coming soon')}
+        onPrimaryAction={() => setIsCreateFormOpen(true)}
         canCreate={canCreate}
         availableViews={['table', 'list', 'grid', 'tile', 'kanban']}
         activeView={activeView}
@@ -134,56 +172,102 @@ export default function DealsPage() {
         onPageSizeChange={setPageSize}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
-        totalRecords={totalCount}
+        totalRecords={searchFilteredDeals.length}
+        searchTerm={searchTerm}
+        onSearch={setSearchTerm}
+        searchPlaceholder="Search deals..."
         onRefresh={() => toast.success('Refreshed')}
+        currentPage={currentPage}
+        paginationTotalRecords={totalItems}
+        onPageChange={goToPage}
         onManageColumns={() => setIsManageColumnsOpen(true)}
         kpiCards={[
           { label: 'TOTAL DEALS', value: String(totalCount) },
           { label: 'WEIGHTED FORECAST', value: formatCurrency(forecastTotal) },
         ]}
       >
-        {/* Deals rendering using shared DataGrid */}
-        <div className="space-y-4">
-          <DealFilters filters={filters} onChange={setFilters} pipelines={pipelines} />
+        {/* ── Filters (shared across all views) ──────────────────────── */}
+        <DealFilters filters={filters} onChange={setFilters} pipelines={pipelines} />
 
-          <DealsDataGrid
-            deals={paginatedDeals}
-            totalRecords={totalItems}
-            effectiveColumns={visibleColumns}
-            sort={sort}
-            onSortChange={setSort}
-            onRowClick={setSelectedDeal}
-            selectedIds={dealSelectedIds}
-            onSelectionChange={setDealSelectedIds}
-            stageNameMap={stageNameMap}
-            pipelineNameMap={pipelineNameMap}
-            getAssignedUserName={getAssignedUserName}
-            getAccountName={getAccountName}
-            canEdit={canEdit}
-            canDelete={canDelete}
-            onManageColumns={() => setIsManageColumnsOpen(true)}
-            onHideColumn={(columnId) => {
-              const updated = effectiveColumns.map((col) =>
-                col.id === columnId ? { ...col, visible: false } : col,
-              );
-              saveColumns(updated);
-            }}
-            viewMode={viewMode}
-            onColumnReorder={saveColumns}
-          />
-
-          <div className="mt-4">
-            <Pagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              pageSize={paginationPageSize}
-              totalItems={totalItems}
-              pageSizeOptions={[10, 25, 50, 100]}
-              onPageChange={goToPage}
-              onPageSizeChange={setPaginationPageSize}
+        {/* ── Table View (DataGrid) ──────────────────────────────────── */}
+        {activeView === 'table' && (
+          <div className="space-y-4">
+            <DealsDataGrid
+              deals={paginatedDeals}
+              totalRecords={totalItems}
+              effectiveColumns={effectiveColumns}
+              sort={sort}
+              onSortChange={setSort}
+              onRowClick={setSelectedDeal}
+              selectedIds={dealSelectedIds}
+              onSelectionChange={setDealSelectedIds}
+              stageNameMap={stageNameMap}
+              pipelineNameMap={pipelineNameMap}
+              getAssignedUserName={getAssignedUserName}
+              getAccountName={getAccountName}
+              canEdit={canEdit}
+              canDelete={canDelete}
+              onEdit={(deal) => setSelectedDeal(deal)}
+              onDelete={async (deal) => {
+                try {
+                  await deleteDeal(deal.id);
+                  toast.success('Deal deleted successfully');
+                } catch (err: unknown) {
+                  toast.error(err instanceof Error ? err.message : 'Failed to delete deal');
+                }
+              }}
+              onManageColumns={() => setIsManageColumnsOpen(true)}
+              onHideColumn={async (columnId) => {
+                const updated = effectiveColumns.map((col) =>
+                  col.id === columnId ? { ...col, visible: false } : col,
+                );
+                try {
+                  await saveColumns(updated);
+                } catch {
+                  toast.error('Failed to hide column. Reverted.');
+                }
+              }}
+              viewMode={viewMode}
+              onColumnReorder={async (columns) => {
+                try {
+                  await saveColumns(columns);
+                } catch {
+                  toast.error('Failed to save column order. Reverted to previous layout.');
+                }
+              }}
             />
+
+            <div className="mt-4">
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                pageSize={paginationPageSize}
+                totalItems={totalItems}
+                pageSizeOptions={[10, 20, 25, 30, 40, 50]}
+                onPageChange={goToPage}
+                onPageSizeChange={setPaginationPageSize}
+              />
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* ── Kanban View (placeholder — kanban board lives in pipeline module) */}
+        {activeView === 'kanban' && (
+          <div className="bg-white dark:bg-slate-800/40 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-8 text-center">
+            <p className="text-[13px] text-[#5A6B85] dark:text-slate-400">
+              Kanban view — use the Pipeline board for drag-and-drop stage management.
+            </p>
+          </div>
+        )}
+
+        {/* ── List / Grid / Tile views (future) ─────────────────────── */}
+        {(activeView === 'list' || activeView === 'grid' || activeView === 'tile') && (
+          <div className="bg-white dark:bg-slate-800/40 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-8 text-center">
+            <p className="text-[13px] text-[#5A6B85] dark:text-slate-400">
+              {activeView.charAt(0).toUpperCase() + activeView.slice(1)} view coming soon.
+            </p>
+          </div>
+        )}
       </ModuleWorkspace>
 
       {/* ── Manage Columns Drawer ───────────────────────────────── */}
@@ -195,6 +279,21 @@ export default function DealsPage() {
         onClose={() => setIsManageColumnsOpen(false)}
         onSave={saveColumns}
         onReset={resetColumns}
+      />
+
+      {/* ── Create Deal Form ─────────────────────────────────────── */}
+      <DealFormSheet
+        isOpen={isCreateFormOpen}
+        onClose={() => setIsCreateFormOpen(false)}
+        onSave={async (data) => {
+          try {
+            await addDeal(data as any);
+            setIsCreateFormOpen(false);
+            toast.success('Deal created successfully');
+          } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to create deal');
+          }
+        }}
       />
 
       {selectedDeal && selectedPipeline && (

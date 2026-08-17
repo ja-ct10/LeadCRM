@@ -17,6 +17,10 @@ import {
   DataGrid,
   useDataGridColumns,
   buildDefaultRowActions,
+  renderDate,
+  renderLink,
+  MODULE_ACCENT_COLORS,
+  DEAL_PRIORITY_VARIANTS,
 } from '@/shared/components/data-grid';
 import type { CellRendererMap, RowActionItem } from '@/shared/components/data-grid';
 import { DEALS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
@@ -42,8 +46,8 @@ interface DealsDataGridProps {
   onSelectionChange: (ids: Set<string>) => void;
   /** Stage name lookup */
   stageNameMap: Record<string, string>;
-  /** Pipeline name lookup */
-  pipelineNameMap: Record<string, string>;
+  /** Pipeline name lookup (reserved for future pipeline column) */
+  pipelineNameMap?: Record<string, string>;
   /** Lookup: get assigned user name */
   getAssignedUserName: (userId?: string) => string;
   /** Lookup: get account name */
@@ -66,23 +70,10 @@ interface DealsDataGridProps {
   onColumnReorder?: (columns: ColumnConfigItem[]) => void;
 }
 
-// ─── Priority Variant Map ────────────────────────────────────────────────────
-
-const PRIORITY_VARIANT_MAP: Record<string, 'success' | 'info' | 'warn' | 'danger' | 'neutral'> = {
-  High: 'danger',
-  Medium: 'warn',
-  Low: 'neutral',
-};
-
 // ─── Helper ──────────────────────────────────────────────────────────────────
 
 function formatCurrency(value: number): string {
   return '₱' + Math.round(value).toLocaleString('en-PH');
-}
-
-function formatDate(dateStr?: string): string {
-  if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -97,7 +88,7 @@ export function DealsDataGrid({
   selectedIds,
   onSelectionChange,
   stageNameMap,
-  pipelineNameMap,
+  // pipelineNameMap available via props if pipeline column is added
   getAssignedUserName,
   getAccountName,
   canEdit = false,
@@ -112,18 +103,32 @@ export function DealsDataGrid({
   // ─── Cell Renderers ────────────────────────────────────────────────────
 
   const cellRenderers: CellRendererMap<Deal> = useMemo(() => ({
-    title: (_value: unknown, row: Deal) => (
-      <div className="min-w-0">
-        <p className="text-[13px] font-semibold text-[#0F172A] dark:text-white truncate leading-tight">
-          {row.title}
-        </p>
-        {row.companyName && (
-          <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 truncate">
-            {row.companyName}
-          </p>
-        )}
-      </div>
-    ),
+    title: (_value: unknown, row: Deal) => {
+      const name = row.title || 'Untitled Deal';
+      const initials = (() => {
+        const parts = name.split(' ');
+        if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+        return name.slice(0, 2).toUpperCase();
+      })();
+
+      return (
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className={`w-8 h-8 rounded-full ${MODULE_ACCENT_COLORS.deals} flex items-center justify-center text-white font-bold text-[10px] shrink-0`}>
+            {initials}
+          </div>
+          <div className="min-w-0">
+            <p className="text-[13px] font-semibold text-[#0F172A] dark:text-white truncate leading-tight">
+              {row.title}
+            </p>
+            {row.companyName && (
+              <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 truncate">
+                {row.companyName}
+              </p>
+            )}
+          </div>
+        </div>
+      );
+    },
 
     value: (_value: unknown, row: Deal) => (
       <span className="text-[13px] font-semibold text-[#0F172A] dark:text-slate-100">
@@ -143,7 +148,7 @@ export function DealsDataGrid({
       return (
         <StatusBadge
           label={p}
-          variant={PRIORITY_VARIANT_MAP[p] ?? 'neutral'}
+          variant={DEAL_PRIORITY_VARIANTS[p] ?? 'neutral'}
         />
       );
     },
@@ -154,17 +159,12 @@ export function DealsDataGrid({
       </span>
     ),
 
-    accountId: (_value: unknown, row: Deal) => (
-      <span className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-        {getAccountName(row.organizationId)}
-      </span>
-    ),
+    accountId: (_value: unknown, row: Deal) => {
+      const accountName = getAccountName(row.organizationId);
+      return renderLink(accountName || null);
+    },
 
-    expectedCloseDate: (_value: unknown, row: Deal) => (
-      <span className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-        {formatDate(row.expectedCloseDate)}
-      </span>
-    ),
+    expectedCloseDate: (_value: unknown, row: Deal) => renderDate(row.expectedCloseDate),
 
     leadSource: (_value: unknown, row: Deal) => (
       <span className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
@@ -178,11 +178,7 @@ export function DealsDataGrid({
       </span>
     ),
 
-    createdAt: (_value: unknown, row: Deal) => (
-      <span className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-        {formatDate(row.createdAt)}
-      </span>
-    ),
+    createdAt: (_value: unknown, row: Deal) => renderDate(row.createdAt),
   }), [stageNameMap, getAssignedUserName, getAccountName]);
 
   // ─── Column Configuration ──────────────────────────────────────────────
@@ -208,6 +204,10 @@ export function DealsDataGrid({
     },
   });
 
+  // ─── Stable Callbacks ────────────────────────────────────────────────
+
+  const getRowId = useCallback((deal: Deal) => deal.id, []);
+
   // ─── Row Actions (⋯ menu) ─────────────────────────────────────────────
 
   const getRowActions = useCallback((deal: Deal): RowActionItem[] => {
@@ -226,7 +226,7 @@ export function DealsDataGrid({
     <DataGrid<Deal>
       columns={gridColumns}
       data={deals}
-      getRowId={(deal) => deal.id}
+      getRowId={getRowId}
       height={600}
       selectable
       selectedIds={selectedIds}
@@ -238,7 +238,7 @@ export function DealsDataGrid({
       onHideColumn={onHideColumn}
       rowActions={getRowActions}
       onSettingsClick={onManageColumns}
-      summaryLabel={`${totalRecords} total deals`}
+      summaryLabel={`${totalRecords} total records`}
       emptyMessage="No deals found. Adjust your filters or create a new deal."
       ariaLabel="Deals data grid"
       viewMode={viewMode}

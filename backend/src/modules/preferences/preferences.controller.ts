@@ -83,6 +83,11 @@ export async function saveUserPreference(
       throw new AppError('Not found', 404);
     }
 
+    // R17.8: Check module-level view permission (returns 404 to not reveal existence)
+    if (!hasModuleViewPermission(req, module)) {
+      throw new AppError('Not found', 404);
+    }
+
     const config = await service.upsertUserPreference(
       tenantId,
       userId,
@@ -116,6 +121,11 @@ export async function deleteUserPreference(
       throw new AppError('Not found', 404);
     }
 
+    // R17.8: Check module-level view permission (returns 404 to not reveal existence)
+    if (!hasModuleViewPermission(req, module)) {
+      throw new AppError('Not found', 404);
+    }
+
     const fallback = await service.deleteUserPreference(tenantId, userId, module);
 
     // After deleting user pref, determine fallback source
@@ -144,6 +154,11 @@ export async function saveTenantDefault(
     const module = String(req.params.module);
 
     if (!isValidModule(module)) {
+      throw new AppError('Not found', 404);
+    }
+
+    // R17.8: Check module-level view permission (returns 404 to not reveal existence)
+    if (!hasModuleViewPermission(req, module)) {
       throw new AppError('Not found', 404);
     }
 
@@ -180,6 +195,11 @@ export async function deleteTenantDefault(
     const module = String(req.params.module);
 
     if (!isValidModule(module)) {
+      throw new AppError('Not found', 404);
+    }
+
+    // R17.8: Check module-level view permission (returns 404 to not reveal existence)
+    if (!hasModuleViewPermission(req, module)) {
       throw new AppError('Not found', 404);
     }
 

@@ -1,52 +1,37 @@
 // ─── Contact & Organization ────────────────────────────────────────────────
+// Extends the shared package types with additional UI/display fields.
+// Core API response fields are defined in @leadcrm/shared to ensure
+// compile-time detection of field name mismatches between FE and BE.
 
-export interface Organization {
-  id: string;
-  tenantId: string;
-  name: string;
-  industry?: string;
-  productInterests?: string[];
-  size?: string;
-  website?: string;
-  taxId?: string;
-  assignedUserId?: string;
-  tags?: string[];
-  notes?: string;
-  internalNotes?: string;
-  customerType?: string;
-  customerSince?: string;
-  activeProducts?: string[];
-  createdAt: string;
+import type { Contact as SharedContact, Company as SharedCompany } from '@leadcrm/shared';
+
+/**
+ * Organization — extends the shared Company type with additional
+ * frontend-specific display fields.
+ */
+export interface Organization extends SharedCompany {
   isArchived?: boolean;
-  // Location fields
-  address?: string;
-  city?: string;
-  province?: string;
-  country?: string;
   postalCode?: string;
 }
 
-export interface Contact {
-  id: string;
-  tenantId: string;
+/**
+ * Contact — extends the shared Contact type with additional
+ * frontend-specific display and enrichment fields.
+ * The core API fields (id, tenantId, firstName, lastName, email, phone,
+ * companyName, status, etc.) come from @leadcrm/shared.
+ */
+export interface Contact extends SharedContact {
   organizationId?: string;
-  companyName?: string;
   contactPerson?: string;
   leadPerson?: string;
   jobTitle?: string;
-  email?: string;
-  phone?: string;
   leadSource?: string;
   estimatedValue?: number;
-  assignedUserId?: string;
   expectedCloseDate?: string;
   notes?: string;
-  productInterest?: string[];
-  status: string;
   lifecycleStage?: string;
   recordType?: string;
   score?: number;
-  createdAt: string;
   isArchived?: boolean;
   archivedAt?: string;
   archivedBy?: string;
@@ -62,12 +47,9 @@ export interface Contact {
   contactNumbers?: { id: string; type: string; countryCode?: string; number: string; notes?: string }[];
   leadNumbers?: string[];
   productInterests?: string[];
-  address?: string;
   doNotContact?: boolean;
   // Enriched fields
-  firstName?: string;
   middleName?: string;
-  lastName?: string;
   suffix?: string;
   displayName?: string;
   preferredName?: string;

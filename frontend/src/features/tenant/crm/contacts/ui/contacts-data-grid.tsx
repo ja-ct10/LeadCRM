@@ -22,6 +22,10 @@ import {
   DataGrid,
   useDataGridColumns,
   buildDefaultRowActions,
+  renderDate,
+  renderLink,
+  MODULE_ACCENT_COLORS,
+  CONTACT_STATUS_VARIANTS,
 } from '@/shared/components/data-grid';
 import type { SortState, RowActionItem } from '@/shared/components/data-grid';
 import type { CellRendererMap } from '@/shared/components/data-grid';
@@ -70,13 +74,7 @@ interface ContactsDataGridProps {
   onColumnReorder?: (columns: ColumnConfigItem[]) => void;
 }
 
-// ─── Status Variant Map ──────────────────────────────────────────────────────
-
-const STATUS_VARIANT_MAP: Record<string, 'success' | 'info' | 'danger' | 'neutral'> = {
-  Active: 'success',
-  Inactive: 'danger',
-  Lead: 'info',
-};
+// ─── Status Variant Map (uses shared CONTACT_STATUS_VARIANTS) ────────────────
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -113,7 +111,7 @@ export function ContactsDataGrid({
 
       return (
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center text-white font-bold text-[10px] shrink-0">
+          <div className={`w-8 h-8 rounded-full ${MODULE_ACCENT_COLORS.contacts} flex items-center justify-center text-white font-bold text-[10px] shrink-0`}>
             {initials}
           </div>
           <div className="min-w-0">
@@ -139,16 +137,15 @@ export function ContactsDataGrid({
       <p className="text-[12px] text-[#0F172A] dark:text-slate-200 truncate">{row.phone ?? '—'}</p>
     ),
 
-    companyName: (_value: unknown, row: Contact) => (
-      <p className="text-[12.5px] text-[#2563EB] dark:text-blue-400 font-medium truncate">
-        {getAccountName(row)}
-      </p>
-    ),
+    companyName: (_value: unknown, row: Contact) => {
+      const accountName = getAccountName(row);
+      return renderLink(accountName || null);
+    },
 
     status: (_value: unknown, row: Contact) => (
       <StatusBadge
         label={row.status ?? 'Active'}
-        variant={STATUS_VARIANT_MAP[row.status ?? 'Active'] ?? 'neutral'}
+        variant={CONTACT_STATUS_VARIANTS[row.status ?? 'Active'] ?? 'neutral'}
       />
     ),
 
@@ -170,13 +167,7 @@ export function ContactsDataGrid({
       </p>
     ),
 
-    createdAt: (_value: unknown, row: Contact) => (
-      <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-        {row.createdAt
-          ? new Date(row.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-          : '—'}
-      </p>
-    ),
+    createdAt: (_value: unknown, row: Contact) => renderDate(row.createdAt),
   }), [getAccountName, getAssignedUserName]);
 
   // ─── Column Configuration ──────────────────────────────────────────────
@@ -205,6 +196,10 @@ export function ContactsDataGrid({
     },
   });
 
+  // ─── Stable Callbacks ────────────────────────────────────────────────
+
+  const getRowId = useCallback((contact: Contact) => contact.id, []);
+
   // ─── Row Actions (⋯ menu) ─────────────────────────────────────────────
 
   const getRowActions = useCallback((contact: Contact): RowActionItem[] => {
@@ -227,7 +222,7 @@ export function ContactsDataGrid({
     <DataGrid<Contact>
       columns={gridColumns}
       data={contacts}
-      getRowId={(contact) => contact.id}
+      getRowId={getRowId}
       height={600}
       selectable
       selectedIds={selectedIds}

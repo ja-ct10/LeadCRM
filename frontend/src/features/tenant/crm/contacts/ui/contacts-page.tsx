@@ -14,18 +14,18 @@ import { ManageColumnsDrawer } from '@/shared/components/manage-columns-drawer';
 import { CONTACTS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import { CONTACTS_MODULE_CONFIG } from '../contacts.config';
 import { ContactsDataGrid } from './contacts-data-grid';
+import { ContactFormSheet } from './contact-form';
 import { toast } from 'sonner';
 import { SlidersHorizontal } from 'lucide-react';
-import type { ColumnConfigItem } from '@leadcrm/shared';
 
 // ── Contacts Page ─────────────────────────────────────────────────────────────
 // Shows all contacts with activity flags, customer type, account links, deals
 
 export default function ContactsPage(): React.ReactElement {
-  const { contacts, organizations, deals, users } = useData();
+  const { contacts, organizations, deals, users, addContact, updateContact } = useData();
   const { user } = useAuth();
   const canCreate = useHasPermission('contacts.create');
-  const { getParam, getArrayParam, updateParams } = useFilterUrlSync();
+  const { getParam, getArrayParam, updateParams } = useFilterUrlSync('contacts');
 
   // ── Column Preferences ────────────────────────────────────────────────
   const {
@@ -38,6 +38,10 @@ export default function ContactsPage(): React.ReactElement {
   const [isManageColumnsOpen, setIsManageColumnsOpen] = useState(false);
   const manageColumnsButtonRef = useRef<HTMLButtonElement>(null);
 
+  // ── Form State ────────────────────────────────────────────────────────
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingContact, setEditingContact] = useState<Contact | undefined>(undefined);
+
   // ── Table Preferences (pageSize, viewMode, sort) ──────────────────────
   const {
     pageSize,
@@ -46,6 +50,7 @@ export default function ContactsPage(): React.ReactElement {
     setPageSize,
     setViewMode,
     setSort,
+    persistFilters,
   } = useTablePreferences('contacts');
 
   // ── State (Synced with URL) ──────────────────────────────────────────
@@ -76,6 +81,24 @@ export default function ContactsPage(): React.ReactElement {
       related: selectedRelated,
     });
   }, [activeTab, debouncedSearch, activeView, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, updateParams]);
+
+  // ── Persist filter selections (fire-and-forget) ────────────────────────
+  useEffect(() => {
+    const conditions: { field: string; operator: string; value: unknown }[] = [];
+    if (selectedSystemFilters.length > 0) {
+      conditions.push({ field: 'system', operator: 'in', value: selectedSystemFilters });
+    }
+    if (selectedCustomerTypes.length > 0) {
+      conditions.push({ field: 'customerType', operator: 'in', value: selectedCustomerTypes });
+    }
+    if (selectedOwners.length > 0) {
+      conditions.push({ field: 'assignedUserId', operator: 'in', value: selectedOwners });
+    }
+    if (selectedRelated.length > 0) {
+      conditions.push({ field: 'related', operator: 'in', value: selectedRelated });
+    }
+    persistFilters(conditions);
+  }, [selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, persistFilters]);
 
   // ── Data ─────────────────────────────────────────────────────────────
   const activeContacts = useMemo(
@@ -138,10 +161,10 @@ export default function ContactsPage(): React.ReactElement {
   // ── Pagination ───────────────────────────────────────────────────────
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Reset page on filter/search/tab changes
+  // Reset page on filter/search/tab/pageSize/sort changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, activeTab, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated]);
+  }, [debouncedSearch, activeTab, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, pageSize, sort]);
 
   const paginatedContacts = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -284,7 +307,7 @@ export default function ContactsPage(): React.ReactElement {
       title="Contacts"
       moduleConfig={CONTACTS_MODULE_CONFIG}
       primaryActionLabel="Create Contact"
-      onPrimaryAction={() => toast.info('Contact creation coming soon')}
+      onPrimaryAction={() => { setEditingContact(undefined); setIsFormOpen(true); }}
       onImport={() => toast.info('Import coming soon')}
       canCreate={canCreate}
       availableViews={['list', 'tile', 'table', 'grid']}
@@ -316,6 +339,9 @@ export default function ContactsPage(): React.ReactElement {
       onSearch={setSearchTerm}
       searchPlaceholder="Search contacts..."
       onRefresh={() => toast.success('Refreshed')}
+      currentPage={currentPage}
+      paginationTotalRecords={filteredContacts.length}
+      onPageChange={setCurrentPage}
       toolbarExtra={
         <button
           ref={manageColumnsButtonRef}
@@ -348,14 +374,24 @@ export default function ContactsPage(): React.ReactElement {
           canEdit={false}
           canDelete={false}
           onManageColumns={() => setIsManageColumnsOpen(true)}
-          onHideColumn={(columnId) => {
+          onHideColumn={async (columnId) => {
             const updated = effectiveColumns.map((col) =>
               col.id === columnId ? { ...col, visible: false } : col,
             );
-            saveColumns(updated);
+            try {
+              await saveColumns(updated);
+            } catch {
+              toast.error('Failed to hide column. Reverted.');
+            }
           }}
           viewMode={viewMode}
-          onColumnReorder={saveColumns}
+          onColumnReorder={async (columns) => {
+            try {
+              await saveColumns(columns);
+            } catch {
+              toast.error('Failed to save column order. Reverted to previous layout.');
+            }
+          }}
         />
       )}
 
@@ -424,6 +460,24 @@ export default function ContactsPage(): React.ReactElement {
         </div>
       )}
     </ModuleWorkspace>
+
+    {/* ── Contact Form Sheet ──────────────────────────────────── */}
+    <ContactFormSheet
+      isOpen={isFormOpen}
+      onClose={() => { setIsFormOpen(false); setEditingContact(undefined); }}
+      initialData={editingContact}
+      onSave={(data) => {
+        if (editingContact) {
+          updateContact(editingContact.id, data);
+          toast.success('Contact updated successfully');
+        } else {
+          addContact(data as Omit<Contact, 'id' | 'tenantId' | 'createdAt' | 'score'>);
+          toast.success('Contact created successfully');
+        }
+        setIsFormOpen(false);
+        setEditingContact(undefined);
+      }}
+    />
 
     {/* ── Manage Columns Drawer ───────────────────────────────── */}
     <ManageColumnsDrawer

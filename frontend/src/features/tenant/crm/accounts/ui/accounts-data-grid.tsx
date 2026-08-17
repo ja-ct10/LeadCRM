@@ -22,6 +22,10 @@ import {
   DataGrid,
   useDataGridColumns,
   buildDefaultRowActions,
+  renderDate,
+  renderLink,
+  MODULE_ACCENT_COLORS,
+  ACCOUNT_TYPE_VARIANTS,
 } from '@/shared/components/data-grid';
 import type { SortState, RowActionItem } from '@/shared/components/data-grid';
 import type { CellRendererMap } from '@/shared/components/data-grid';
@@ -68,15 +72,7 @@ interface AccountsDataGridProps {
   onColumnReorder?: (columns: ColumnConfigItem[]) => void;
 }
 
-// ─── Account Type Variant Map ────────────────────────────────────────────────
-
-function getStatusVariant(type?: string): 'success' | 'info' | 'purple' | 'danger' | 'neutral' {
-  if (type === 'Customer' || type === 'Active') return 'success';
-  if (type === 'Prospect') return 'info';
-  if (type === 'Partner') return 'purple';
-  if (type === 'Churned') return 'danger';
-  return 'neutral';
-}
+// ─── Account Type Variant (uses shared ACCOUNT_TYPE_VARIANTS) ────────────────
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -111,7 +107,7 @@ export function AccountsDataGrid({
 
       return (
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white font-bold text-[10px] shrink-0">
+          <div className={`w-8 h-8 rounded-full ${MODULE_ACCENT_COLORS.accounts} flex items-center justify-center text-white font-bold text-[10px] shrink-0`}>
             {initials}
           </div>
           <div className="min-w-0">
@@ -137,7 +133,7 @@ export function AccountsDataGrid({
     customerType: (_value: unknown, row: Account) => (
       <StatusBadge
         label={row.customerType ?? 'Prospect'}
-        variant={getStatusVariant(row.customerType)}
+        variant={ACCOUNT_TYPE_VARIANTS[row.customerType ?? 'Prospect'] ?? 'neutral'}
         dot={false}
       />
     ),
@@ -166,11 +162,7 @@ export function AccountsDataGrid({
       </p>
     ),
 
-    website: (_value: unknown, row: Account) => (
-      <p className="text-[12px] text-[#2563EB] dark:text-blue-400 truncate">
-        {row.website ?? '—'}
-      </p>
-    ),
+    website: (_value: unknown, row: Account) => renderLink(row.website ?? null),
 
     tags: (_value: unknown, row: Account) => (
       <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
@@ -178,13 +170,7 @@ export function AccountsDataGrid({
       </p>
     ),
 
-    createdAt: (_value: unknown, row: Account) => (
-      <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-        {row.createdAt
-          ? new Date(row.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-          : '—'}
-      </p>
-    ),
+    createdAt: (_value: unknown, row: Account) => renderDate(row.createdAt),
   }), [getOwnerName]);
 
   // ─── Column Configuration ──────────────────────────────────────────────
@@ -213,6 +199,10 @@ export function AccountsDataGrid({
     },
   });
 
+  // ─── Stable Callbacks ────────────────────────────────────────────────
+
+  const getRowId = useCallback((account: Account) => account.id, []);
+
   // ─── Row Actions (⋯ menu) ─────────────────────────────────────────────
 
   const getRowActions = useCallback((account: Account): RowActionItem[] => {
@@ -235,7 +225,7 @@ export function AccountsDataGrid({
     <DataGrid<Account>
       columns={gridColumns}
       data={accounts}
-      getRowId={(account) => account.id}
+      getRowId={getRowId}
       height={600}
       selectable
       selectedIds={selectedIds}

@@ -9,3 +9,4 @@ export { useBulkSelection } from './use-bulk-selection';
 export type { UseBulkSelectionReturn, UseBulkSelectionOptions } from './use-bulk-selection';
 export { useModuleData } from './use-module-data';
 export { useFilterUrlSync } from './use-filter-url-sync';
+export { useScrollToError } from './use-scroll-to-error';

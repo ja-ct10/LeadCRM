@@ -113,6 +113,11 @@ export async function savePageSize(
       throw new AppError('Not found', 404);
     }
 
+    // R17.8: Check module-level view permission (returns 404 to not reveal existence)
+    if (!hasModuleViewPermission(req, module)) {
+      throw new AppError('Not found', 404);
+    }
+
     const { pageSize } = req.body;
 
     if (!VALID_PAGE_SIZES.includes(pageSize)) {
@@ -150,6 +155,11 @@ export async function saveViewMode(
       throw new AppError('Not found', 404);
     }
 
+    // R17.8: Check module-level view permission (returns 404 to not reveal existence)
+    if (!hasModuleViewPermission(req, module)) {
+      throw new AppError('Not found', 404);
+    }
+
     const { viewMode } = req.body;
 
     if (!VALID_VIEW_MODES.includes(viewMode)) {
@@ -184,6 +194,11 @@ export async function saveSort(
     const module = String(req.params.module);
 
     if (!isValidModule(module)) {
+      throw new AppError('Not found', 404);
+    }
+
+    // R17.8: Check module-level view permission (returns 404 to not reveal existence)
+    if (!hasModuleViewPermission(req, module)) {
       throw new AppError('Not found', 404);
     }
 
@@ -266,6 +281,11 @@ export async function getViewType(
       throw new AppError('Not found', 404);
     }
 
+    // R17.8: Check module-level view permission (returns 404 to not reveal existence)
+    if (!hasModuleViewPermission(req, module)) {
+      throw new AppError('Not found', 404);
+    }
+
     const pref = await repo.findUserPreference(tenantId, userId, module, 'viewType');
     const viewType = parseViewType(pref?.value);
 
@@ -295,6 +315,11 @@ export async function saveViewType(
     const module = String(req.params.module);
 
     if (!isValidModule(module)) {
+      throw new AppError('Not found', 404);
+    }
+
+    // R17.8: Check module-level view permission (returns 404 to not reveal existence)
+    if (!hasModuleViewPermission(req, module)) {
       throw new AppError('Not found', 404);
     }
 
@@ -332,6 +357,11 @@ export async function saveFilters(
     const module = String(req.params.module);
 
     if (!isValidModule(module)) {
+      throw new AppError('Not found', 404);
+    }
+
+    // R17.8: Check module-level view permission (returns 404 to not reveal existence)
+    if (!hasModuleViewPermission(req, module)) {
       throw new AppError('Not found', 404);
     }
 

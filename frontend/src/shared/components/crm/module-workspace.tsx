@@ -4,7 +4,7 @@ import React, { useState, useCallback, useRef, useEffect, useMemo, ReactNode } f
 import {
   List, LayoutGrid, Table2, Columns3, Grid3X3,
   TrendingUp, Filter, ArrowUpDown, ArrowUp, ArrowDown, RefreshCw, Search,
-  Settings2, ChevronDown, ChevronRight, X, Upload,
+  Settings2, ChevronDown, ChevronLeft, ChevronRight, X, Upload,
   ListOrdered, Eye, Check,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -363,8 +363,22 @@ export function ModuleWorkspace({
       )}
 
       {/* ── Toolbar ─────────────────────────────────────────────────── */}
+      {/* Control order: search → filter toggle → sort dropdown → page-size selector → pagination nav (Req 8.1) */}
       <div className="flex flex-wrap items-center gap-2 mb-3" role="toolbar" aria-label="Module controls">
-        {/* Filter toggle */}
+        {/* 1. Search field */}
+        <div className="relative">
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => onSearch?.(e.target.value)}
+            placeholder={searchPlaceholder}
+            aria-label={searchPlaceholder}
+            className="h-8 w-48 lg:w-56 pl-8 pr-3 text-[12px] rounded-lg border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0F172A] dark:text-slate-200 placeholder:text-[#5A6B85] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] transition-all"
+          />
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#5A6B85]" aria-hidden="true" />
+        </div>
+
+        {/* 2. Filter toggle */}
         <button
           onClick={onToggleFilters}
           className={cn(
@@ -378,7 +392,7 @@ export function ModuleWorkspace({
           Filter
         </button>
 
-        {/* Sort Dropdown (dynamic per module — from moduleConfig.sortableFields or prop) */}
+        {/* 3. Sort Dropdown (dynamic per module — from moduleConfig.sortableFields or prop) */}
         {effectiveSortableFields && effectiveSortableFields.length > 0 && effectiveSortChange && (
           <SortDropdownInline
             sort={effectiveSort ?? null}
@@ -386,6 +400,24 @@ export function ModuleWorkspace({
             fields={effectiveSortableFields}
           />
         )}
+
+        {/* 4. Page-size selector */}
+        {onPageSizeChange && (
+          <PageSizeSelectorInline pageSize={pageSize} onPageSizeChange={onPageSizeChange} />
+        )}
+
+        {/* 5. Pagination nav (compact toolbar variant) */}
+        {onPageChange && (paginationTotalRecords ?? totalRecords) > 0 && (
+          <PaginationNavInline
+            currentPage={currentPage}
+            totalRecords={paginationTotalRecords ?? totalRecords}
+            pageSize={pageSize}
+            onPageChange={onPageChange}
+          />
+        )}
+
+        {/* Spacer */}
+        <div className="flex-1" />
 
         {/* View Switcher — Desktop: segmented control | Mobile: dropdown only */}
         {/* Desktop segmented control (hidden on mobile when >1 view) */}
@@ -528,23 +560,7 @@ export function ModuleWorkspace({
         {/* Extra toolbar (pipeline selector, etc.) */}
         {toolbarExtra}
 
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {/* Module search */}
-        <div className="relative">
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => onSearch?.(e.target.value)}
-            placeholder={searchPlaceholder}
-            aria-label={searchPlaceholder}
-            className="h-8 w-48 lg:w-56 pl-8 pr-3 text-[12px] rounded-lg border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0F172A] dark:text-slate-200 placeholder:text-[#5A6B85] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] transition-all"
-          />
-          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#5A6B85]" aria-hidden="true" />
-        </div>
-
-        {/* Table Settings Menu (Manage Columns, Records Per Page, View Mode) */}
+        {/* Table Settings Menu (Manage Columns, Reset Columns, View Mode) */}
         <TableSettingsMenuInline
           pageSize={pageSize}
           onPageSizeChange={onPageSizeChange}
@@ -973,6 +989,94 @@ function TableSettingsMenuInline({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Page Size Selector (inline toolbar sub-component)
+// Compact dropdown for selecting records per page directly in the toolbar
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface PageSizeSelectorInlineProps {
+  pageSize: number;
+  onPageSizeChange: (size: number) => void;
+}
+
+function PageSizeSelectorInline({ pageSize, onPageSizeChange }: PageSizeSelectorInlineProps): React.ReactElement {
+  return (
+    <div className="inline-flex items-center gap-1.5">
+      <label
+        htmlFor="toolbar-page-size"
+        className="text-[11.5px] text-[#5A6B85] dark:text-slate-400 whitespace-nowrap"
+      >
+        Per page
+      </label>
+      <select
+        id="toolbar-page-size"
+        value={pageSize}
+        onChange={(e) => onPageSizeChange(Number(e.target.value))}
+        className="h-8 px-2 pr-6 text-[12px] font-medium rounded-lg border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0F172A] dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 cursor-pointer appearance-none"
+        aria-label="Records per page"
+      >
+        {PAGE_SIZE_OPTIONS.map((size) => (
+          <option key={size} value={size}>
+            {size}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Pagination Nav (inline toolbar sub-component)
+// Compact prev/next navigation + page indicator for the toolbar
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface PaginationNavInlineProps {
+  currentPage: number;
+  totalRecords: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+}
+
+function PaginationNavInline({ currentPage, totalRecords, pageSize, onPageChange }: PaginationNavInlineProps): React.ReactElement {
+  const totalPages = totalRecords > 0 ? Math.ceil(totalRecords / pageSize) : 0;
+  const isFirstPage = currentPage <= 1;
+  const isLastPage = currentPage >= totalPages;
+
+  return (
+    <div className="inline-flex items-center gap-1.5">
+      <span className="text-[11.5px] text-[#5A6B85] dark:text-slate-400 tabular-nums whitespace-nowrap">
+        {currentPage} / {totalPages || 1}
+      </span>
+      <button
+        onClick={() => !isFirstPage && onPageChange(currentPage - 1)}
+        disabled={isFirstPage}
+        className={cn(
+          'inline-flex items-center justify-center w-7 h-7 rounded-md border transition-colors',
+          isFirstPage
+            ? 'border-[#E4E9F0] dark:border-slate-700 text-[#C5CDD8] dark:text-slate-600 cursor-not-allowed'
+            : 'border-[#E4E9F0] dark:border-slate-700 text-[#5A6B85] dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-[#0F172A] dark:hover:text-white',
+        )}
+        aria-label="Previous page"
+      >
+        <ChevronLeft size={14} />
+      </button>
+      <button
+        onClick={() => !isLastPage && onPageChange(currentPage + 1)}
+        disabled={isLastPage}
+        className={cn(
+          'inline-flex items-center justify-center w-7 h-7 rounded-md border transition-colors',
+          isLastPage
+            ? 'border-[#E4E9F0] dark:border-slate-700 text-[#C5CDD8] dark:text-slate-600 cursor-not-allowed'
+            : 'border-[#E4E9F0] dark:border-slate-700 text-[#5A6B85] dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-[#0F172A] dark:hover:text-white',
+        )}
+        aria-label="Next page"
+      >
+        <ChevronRight size={14} />
+      </button>
     </div>
   );
 }

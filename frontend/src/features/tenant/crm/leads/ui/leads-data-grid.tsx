@@ -25,8 +25,12 @@ import {
   DataGridQuickFilter,
   useDataGridColumns,
   buildDefaultRowActions,
+  renderDate,
+  renderLink,
+  MODULE_ACCENT_COLORS,
+  LEAD_STATUS_VARIANTS,
 } from '@/shared/components/data-grid';
-import type { DataGridColumnDef, QuickAction, SortState, RowActionItem } from '@/shared/components/data-grid';
+import type { QuickAction, SortState, RowActionItem } from '@/shared/components/data-grid';
 import type { CellRendererMap } from '@/shared/components/data-grid';
 import { LEADS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import type { ColumnConfigItem } from '@leadcrm/shared';
@@ -76,18 +80,7 @@ interface LeadsDataGridProps {
   onColumnReorder?: (columns: ColumnConfigItem[]) => void;
 }
 
-// ─── Status Variant Map ──────────────────────────────────────────────────────
-
-const STATUS_VARIANT_MAP: Record<string, 'success' | 'info' | 'warn' | 'danger' | 'purple' | 'neutral'> = {
-  Qualified: 'success',
-  New: 'info',
-  Contacted: 'info',
-  Nurturing: 'purple',
-  Unqualified: 'danger',
-  Hot: 'danger',
-  Warm: 'warn',
-  Cold: 'neutral',
-};
+// ─── Status Variant Map (uses shared LEAD_STATUS_VARIANTS) ───────────────────
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -126,7 +119,7 @@ export function LeadsDataGrid({
 
       return (
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-[10px] shrink-0">
+          <div className={`w-8 h-8 rounded-full ${MODULE_ACCENT_COLORS.leads} flex items-center justify-center text-white font-bold text-[10px] shrink-0`}>
             {initials}
           </div>
           <div className="min-w-0">
@@ -165,7 +158,7 @@ export function LeadsDataGrid({
     status: (_value: unknown, row: Lead) => (
       <StatusBadge
         label={row.status}
-        variant={STATUS_VARIANT_MAP[row.status] ?? 'neutral'}
+        variant={LEAD_STATUS_VARIANTS[row.status] ?? 'neutral'}
       />
     ),
 
@@ -184,30 +177,16 @@ export function LeadsDataGrid({
       </div>
     ),
 
-    createdAt: (_value: unknown, row: Lead) => (
-      <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-        {row.createdAt
-          ? new Date(row.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-          : '—'}
-      </p>
-    ),
+    createdAt: (_value: unknown, row: Lead) => renderDate(row.createdAt),
 
     updatedAt: (_value: unknown, row: Lead) => {
       const updatedAt = (row as unknown as Record<string, unknown>).updatedAt as string | undefined;
-      return (
-        <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-          {updatedAt
-            ? new Date(updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-            : '—'}
-        </p>
-      );
+      return renderDate(updatedAt);
     },
 
     website: (_value: unknown, row: Lead) => {
       const website = (row as unknown as Record<string, unknown>).website as string | undefined;
-      return (
-        <p className="text-[12px] text-[#2563EB] dark:text-blue-400 truncate">{website ?? '—'}</p>
-      );
+      return renderLink(website ?? null);
     },
   }), [getOwnerName, getOwnerInitials]);
 
@@ -256,6 +235,10 @@ export function LeadsDataGrid({
     },
   ], []);
 
+  // ─── Stable Callbacks ────────────────────────────────────────────────
+
+  const getRowId = useCallback((lead: Lead) => lead.id, []);
+
   // ─── Row Actions (⋯ menu) ─────────────────────────────────────────────
 
   const getRowActions = useCallback((lead: Lead): RowActionItem[] => {
@@ -293,7 +276,7 @@ export function LeadsDataGrid({
       <DataGrid<Lead>
         columns={gridColumns}
         data={leads}
-        getRowId={(lead) => lead.id}
+        getRowId={getRowId}
         height={600}
         selectable
         selectedIds={selectedIds}

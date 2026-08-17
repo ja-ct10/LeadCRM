@@ -94,6 +94,7 @@ export function useBulkSelection({
         if (next.size >= MAX_SELECTION) {
           toast.info(`Selection limit reached (${MAX_SELECTION} records maximum)`, {
             duration: 3000,
+            id: 'selection-cap',
           });
           return prev;
         }
