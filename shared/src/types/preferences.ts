@@ -32,5 +32,5 @@ export interface ColumnDefinition {
   /** Optional category group for display in Manage Columns drawer. */
   group?: string;
   /** Responsive priority — determines hide order as viewport narrows. */
-  priority?: ColumnPriority;
+  priority: ColumnPriority;
 }

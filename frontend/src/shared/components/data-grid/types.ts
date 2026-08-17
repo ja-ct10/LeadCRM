@@ -198,7 +198,43 @@ export interface DataGridProps<T = Record<string, unknown>> {
   /** Row actions builder — receives row record, returns action items */
   rowActions?: (row: T) => import('./row-actions-menu').RowActionItem[];
 
+  // ─── View Mode ──────────────────────────────────────────────────────────
+  /** Display mode for cell content: 'wrap' shows multi-line, 'clip' truncates */
+  viewMode?: 'wrap' | 'clip';
+
+  // ─── Empty State ────────────────────────────────────────────────────────
+  /** Contextual empty state configuration */
+  emptyState?: DataGridEmptyStateProps;
+
+  // ─── Column Drag Reorder ────────────────────────────────────────────────
+  /** Callback when columns are reordered via drag-and-drop. Receives updated column config. */
+  onColumnReorder?: (columns: import('@leadcrm/shared').ColumnConfigItem[]) => void;
+  /** Column IDs that are pinned/locked and cannot be dragged */
+  lockedColumns?: string[];
+  /** The current effective columns (needed for drag reorder to know the full set) */
+  effectiveColumns?: import('@leadcrm/shared').ColumnConfigItem[];
+
   // ─── Settings Icon ──────────────────────────────────────────────────────
   /** Callback when settings (⚙) icon at end of header is clicked */
   onSettingsClick?: () => void;
+}
+
+// ─── Empty State Types ────────────────────────────────────────────────────────
+
+export interface DataGridEmptyStateProps {
+  /** 'filtered': records exist but none match filters — show "clear filters" */
+  /** 'empty-module': module has zero records — show "create" action */
+  variant: 'filtered' | 'empty-module';
+  /** Title text */
+  title?: string;
+  /** Description text */
+  description?: string;
+  /** Called when user clicks "Clear filters" (only for 'filtered' variant) */
+  onClearFilters?: () => void;
+  /** Called when user clicks "Create" button (only for 'empty-module' variant) */
+  onCreateRecord?: () => void;
+  /** Label for create button — e.g. "New Lead" */
+  createLabel?: string;
+  /** Whether the create button should render (RBAC-gated by caller) */
+  canCreate?: boolean;
 }

@@ -44,10 +44,14 @@
 
 import React, { useMemo, useCallback, useState, useRef } from 'react';
 import { cn } from '@/lib/utils';
-import { ChevronUp, ChevronDown, Settings2 } from 'lucide-react';
+import { ChevronUp, ChevronDown, Settings2, SearchX, Inbox, Plus } from 'lucide-react';
+import { DndContext, closestCenter, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import { useColumnResize } from './use-column-resize';
 import { useDataGridSort } from './use-data-grid-sort';
 import { useBulkSelection } from './use-bulk-selection';
+import { useColumnDragReorder } from './use-column-drag-reorder';
+import { SortableHeaderCell } from './sortable-header-cell';
 import { ColumnHeaderMenu } from './column-header-menu';
 import { RowActionsMenu } from './row-actions-menu';
 import type {
@@ -144,6 +148,11 @@ export function DataGrid<T = Record<string, unknown>>({
   onHideColumn,
   rowActions,
   onSettingsClick,
+  viewMode = 'clip',
+  emptyState,
+  onColumnReorder,
+  lockedColumns,
+  effectiveColumns,
 }: DataGridProps<T>): React.ReactElement {
   // ─── Internal column widths state (when uncontrolled) ──────────────────
   const [internalWidths, setInternalWidths] = useState<Record<string, number>>({});
@@ -188,6 +197,19 @@ export function DataGrid<T = Record<string, unknown>>({
     getRowId,
     selectedIds: externalSelectedIds,
     onSelectionChange,
+  });
+
+  // ─── Column Drag Reorder ───────────────────────────────────────────────
+  const {
+    sensors: dragSensors,
+    handleDragEnd,
+    sortableColumnIds,
+    isDraggable,
+  } = useColumnDragReorder({
+    effectiveColumns: effectiveColumns ?? [],
+    onReorder: onColumnReorder ?? (() => {}),
+    lockedColumns: lockedColumns ?? [],
+    disabled: !onColumnReorder,
   });
 
   // ─── Computed column layout ────────────────────────────────────────────
@@ -236,6 +258,11 @@ export function DataGrid<T = Record<string, unknown>>({
   }, [height]);
 
   const rowHeight = dense ? ROW_HEIGHT_DENSE : ROW_HEIGHT_NORMAL;
+
+  // View mode cell content classes
+  const cellContentClass = viewMode === 'wrap'
+    ? 'whitespace-normal break-words line-clamp-3 overflow-hidden'
+    : 'truncate overflow-hidden whitespace-nowrap';
 
   // Ref for scroll container
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -304,6 +331,15 @@ export function DataGrid<T = Record<string, unknown>>({
         className="flex-1 overflow-auto relative"
         style={isResizing ? { cursor: 'col-resize' } : undefined}
       >
+        <DndContext
+          sensors={dragSensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+        <SortableContext
+          items={sortableColumnIds}
+          strategy={horizontalListSortingStrategy}
+        >
         <table
           className="border-collapse table-fixed"
           style={{ minWidth: '100%', width: 'max-content' }}
@@ -406,9 +442,10 @@ export function DataGrid<T = Record<string, unknown>>({
 
               {/* Scrollable header cells */}
               {scrollableColumns.map((col) => (
-                <th
+                <SortableHeaderCell
                   key={col.id}
-                  scope="col"
+                  columnId={col.id}
+                  isDraggable={isDraggable(col.id)}
                   className={cn(
                     'px-3 text-left group/header relative',
                     'text-[11.5px] font-semibold uppercase tracking-wider text-[#5A6B85] dark:text-slate-400',
@@ -416,7 +453,7 @@ export function DataGrid<T = Record<string, unknown>>({
                   )}
                   style={{ width: getColumnWidth(col) }}
                   onClick={() => !enableColumnMenu && col.sortable && handleHeaderClick(col.id)}
-                  aria-sort={
+                  ariaSort={
                     getSortDirection(col.id) === 'asc' ? 'ascending' :
                     getSortDirection(col.id) === 'desc' ? 'descending' : 'none'
                   }
@@ -447,7 +484,7 @@ export function DataGrid<T = Record<string, unknown>>({
                       isResizing={resizingColumnId === col.id}
                     />
                   )}
-                </th>
+                </SortableHeaderCell>
               ))}
 
               {/* Pinned right header cells */}
@@ -519,9 +556,61 @@ export function DataGrid<T = Record<string, unknown>>({
                   colSpan={columns.length + (selectable ? 1 : 0) + (hasQuickActions ? 1 : 0)}
                   className="py-16 text-center"
                 >
-                  <p className="text-[13px] text-[#5A6B85] dark:text-slate-400">
-                    {emptyMessage}
-                  </p>
+                  {emptyState?.variant === 'filtered' ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <div className="rounded-full bg-slate-100 dark:bg-slate-800 p-4 mb-4">
+                        <SearchX className="h-8 w-8 text-slate-400 dark:text-slate-500" />
+                      </div>
+                      <p className="text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">
+                        {emptyState.title ?? 'No results found'}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+                        {emptyState.description ?? 'No records match your current filters.'}
+                      </p>
+                      {emptyState.onClearFilters && (
+                        <button
+                          onClick={emptyState.onClearFilters}
+                          className={cn(
+                            'px-3 py-1.5 text-xs font-medium rounded-md border transition-colors',
+                            'border-slate-300 dark:border-slate-600',
+                            'text-slate-700 dark:text-slate-300',
+                            'hover:bg-slate-50 dark:hover:bg-slate-800',
+                          )}
+                        >
+                          Clear filters
+                        </button>
+                      )}
+                    </div>
+                  ) : emptyState?.variant === 'empty-module' ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <div className="rounded-full bg-slate-100 dark:bg-slate-800 p-4 mb-4">
+                        <Inbox className="h-8 w-8 text-slate-400 dark:text-slate-500" />
+                      </div>
+                      <p className="text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">
+                        {emptyState.title ?? 'Nothing here yet'}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+                        {emptyState.description ?? 'Create your first record to get started.'}
+                      </p>
+                      {emptyState.canCreate && emptyState.onCreateRecord && (
+                        <button
+                          onClick={emptyState.onCreateRecord}
+                          className={cn(
+                            'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
+                            'bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700',
+                            'text-white',
+                          )}
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          {emptyState.createLabel ?? 'Create record'}
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-[13px] text-[#5A6B85] dark:text-slate-400">
+                      {emptyMessage}
+                    </p>
+                  )}
                 </td>
               </tr>
             )}
@@ -539,7 +628,7 @@ export function DataGrid<T = Record<string, unknown>>({
                       ? 'bg-blue-50/60 dark:bg-blue-500/5'
                       : 'hover:bg-slate-50 dark:hover:bg-slate-800/40',
                   )}
-                  style={{ height: rowHeight }}
+                  style={viewMode === 'wrap' ? { minHeight: rowHeight, maxHeight: 156 } : { height: rowHeight }}
                   onClick={() => onRowClick?.(row)}
                   aria-selected={selected}
                   role="row"
@@ -616,12 +705,12 @@ export function DataGrid<T = Record<string, unknown>>({
                         'px-3',
                         col.align === 'right' && 'text-right',
                         col.align === 'center' && 'text-center',
-                        col.truncate !== false && 'truncate',
                         'text-[13px] text-[#0F172A] dark:text-slate-200',
+                        viewMode === 'wrap' && 'py-2',
                       )}
                       style={{ width: getColumnWidth(col) }}
                     >
-                      <div className={cn('flex items-center h-full', col.truncate !== false && 'truncate')}>
+                      <div className={cn('flex items-center', viewMode === 'clip' ? 'h-full truncate' : 'min-h-[28px]', cellContentClass)}>
                         {renderCellContent(col, row, rowIdx)}
                       </div>
                     </td>
@@ -691,6 +780,8 @@ export function DataGrid<T = Record<string, unknown>>({
             })}
           </tbody>
         </table>
+        </SortableContext>
+        </DndContext>
       </div>
 
       {/* ─── Summary Footer (sticky bottom) ────────────────────────── */}

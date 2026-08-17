@@ -70,6 +70,10 @@ interface LeadsDataGridProps {
   onManageColumns?: () => void;
   /** Hide a specific column */
   onHideColumn?: (columnId: string) => void;
+  /** Display mode: wrap or clip cell content */
+  viewMode?: 'wrap' | 'clip';
+  /** Column reorder handler — called when user drag-drops a column header */
+  onColumnReorder?: (columns: ColumnConfigItem[]) => void;
 }
 
 // ─── Status Variant Map ──────────────────────────────────────────────────────
@@ -106,6 +110,8 @@ export function LeadsDataGrid({
   onDelete,
   onManageColumns,
   onHideColumn,
+  viewMode = 'clip',
+  onColumnReorder,
 }: LeadsDataGridProps): React.ReactElement {
   // ─── Cell Renderers ────────────────────────────────────────────────────
 
@@ -303,6 +309,10 @@ export function LeadsDataGrid({
         summaryLabel={`${totalRecords} total records`}
         emptyMessage="No leads found. Adjust your filters or create a new lead."
         ariaLabel="Leads data grid"
+        viewMode={viewMode}
+        onColumnReorder={onColumnReorder}
+        effectiveColumns={effectiveColumns}
+        lockedColumns={['firstName']}
       />
     </div>
   );

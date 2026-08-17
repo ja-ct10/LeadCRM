@@ -3,11 +3,16 @@
  *
  * Provides select all, toggle individual, clear, and computed state
  * (allSelected, someSelected, count).
+ *
+ * Enforces a maximum selection cap of 100 records (R01).
  */
 
 'use client';
 
 import { useState, useCallback, useMemo } from 'react';
+import { toast } from 'sonner';
+
+const MAX_SELECTION = 100;
 
 interface UseBulkSelectionOptions<T> {
   /** All row data (to support "select all") */
@@ -29,6 +34,8 @@ interface UseBulkSelectionReturn {
   someSelected: boolean;
   /** Number of selected rows */
   selectedCount: number;
+  /** Whether selection has reached the maximum cap */
+  isAtCap: boolean;
   /** Toggle a single row's selection */
   toggleRow: (id: string) => void;
   /** Select or deselect all rows */
@@ -73,12 +80,22 @@ export function useBulkSelection<T>({
 
   const selectedCount = selectedIds.size;
 
+  const isAtCap = selectedIds.size >= MAX_SELECTION;
+
   const toggleRow = useCallback(
     (id: string) => {
       const next = new Set(selectedIds);
       if (next.has(id)) {
         next.delete(id);
       } else {
+        // About to add a new record — check cap
+        if (selectedIds.size >= MAX_SELECTION) {
+          toast.info(`Selection is limited to ${MAX_SELECTION} records`, {
+            duration: 3000,
+            id: 'selection-cap',
+          });
+          return;
+        }
         next.add(id);
       }
       setSelectedIds(next);
@@ -88,12 +105,39 @@ export function useBulkSelection<T>({
 
   const toggleAll = useCallback(() => {
     if (allSelected) {
-      setSelectedIds(new Set());
+      // Deselect all current page rows
+      const pageIds = new Set(data.map((row) => getRowId(row)));
+      const next = new Set(selectedIds);
+      for (const id of pageIds) {
+        next.delete(id);
+      }
+      setSelectedIds(next);
     } else {
-      const allIds = new Set(data.map((row) => getRowId(row)));
-      setSelectedIds(allIds);
+      // Select all current page rows — respect cap
+      const pageIds = data.map((row) => getRowId(row));
+      const remaining = MAX_SELECTION - selectedIds.size;
+
+      if (remaining <= 0) {
+        toast.info(`Selection is limited to ${MAX_SELECTION} records`, {
+          duration: 3000,
+          id: 'selection-cap',
+        });
+        return;
+      }
+
+      const toAdd = pageIds.filter((id) => !selectedIds.has(id)).slice(0, remaining);
+      const next = new Set([...selectedIds, ...toAdd]);
+
+      if (toAdd.length < pageIds.filter((id) => !selectedIds.has(id)).length) {
+        toast.info(`Selection limited to ${MAX_SELECTION} records. ${next.size} selected.`, {
+          duration: 3000,
+          id: 'selection-cap',
+        });
+      }
+
+      setSelectedIds(next);
     }
-  }, [allSelected, data, getRowId, setSelectedIds]);
+  }, [allSelected, data, getRowId, selectedIds, setSelectedIds]);
 
   const clearSelection = useCallback(() => {
     setSelectedIds(new Set());
@@ -109,6 +153,7 @@ export function useBulkSelection<T>({
     allSelected,
     someSelected,
     selectedCount,
+    isAtCap,
     toggleRow,
     toggleAll,
     clearSelection,

@@ -11,7 +11,8 @@ import { DealDetailsModal } from '@/features/tenant/crm/pipeline/ui/deal-details
 import { useDealsPage } from '../hooks/use-deals-page';
 import { DEALS_MODULE_CONFIG } from '../deals.config';
 import { DEALS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
-import DealsTable from '../ui/deals-table';
+import { DealsDataGrid } from './deals-data-grid';
+import { ManageColumnsDrawer } from '@/shared/components/manage-columns-drawer';
 import DealFilters from '../ui/deal-filters';
 import type { Deal, Task } from '@/store/types';
 import type { ColumnConfigItem } from '@leadcrm/shared';
@@ -25,7 +26,7 @@ function formatCurrency(value: number): string {
 
 export default function DealsPage() {
   const { user, tenant } = useAuth();
-  const { tasks, users, updateDeal, moveDealStage, deleteDeal, addTask, updateTask, isBillingModuleEnabled } = useData();
+  const { tasks, users, organizations, updateDeal, moveDealStage, deleteDeal, addTask, updateTask, isBillingModuleEnabled } = useData();
   const canCreate = useHasPermission('deals.create');
   const canEdit   = useHasPermission('deals.edit');
   const canDelete = useHasPermission('deals.delete');
@@ -40,7 +41,13 @@ export default function DealsPage() {
   // ── Column Preferences ────────────────────────────────────────────────
   const {
     effectiveColumns,
+    isLoading: isColumnsLoading,
+    saveColumns,
+    resetColumns,
   } = useColumnPreferences('deals');
+
+  const [isManageColumnsOpen, setIsManageColumnsOpen] = useState(false);
+  const [dealSelectedIds, setDealSelectedIds] = useState<Set<string>>(new Set());
 
   // ── Table Preferences (pageSize, viewMode, sort) ──────────────────────
   const {
@@ -85,6 +92,19 @@ export default function DealsPage() {
 
   const paginatedDeals = useMemo(() => paginateItems(deals), [paginateItems, deals]);
 
+  // ── Lookup helpers ──────────────────────────────────────────────────────
+  const getAssignedUserName = (userId?: string): string => {
+    if (!userId) return '—';
+    const u = users.find((usr) => usr.id === userId);
+    return u ? `${u.firstName} ${u.lastName}` : '—';
+  };
+
+  const getAccountName = (accountId?: string): string => {
+    if (!accountId) return '—';
+    const org = organizations.find((o) => o.id === accountId);
+    return org?.name ?? '—';
+  };
+
   const selectedPipeline = selectedDeal
     ? (pipelines.find(p => p.id === selectedDeal.pipelineId) ?? pipelines[0])
     : null;
@@ -98,6 +118,7 @@ export default function DealsPage() {
       <ModuleWorkspace
         moduleId="deals"
         title="All Deals"
+        moduleConfig={DEALS_MODULE_CONFIG}
         description={`${totalCount} ${totalCount === 1 ? 'deal' : 'deals'} total`}
         primaryActionLabel="Add Deal"
         onPrimaryAction={() => toast.info('Deal creation coming soon')}
@@ -115,28 +136,41 @@ export default function DealsPage() {
         onViewModeChange={setViewMode}
         totalRecords={totalCount}
         onRefresh={() => toast.success('Refreshed')}
+        onManageColumns={() => setIsManageColumnsOpen(true)}
         kpiCards={[
           { label: 'TOTAL DEALS', value: String(totalCount) },
           { label: 'WEIGHTED FORECAST', value: formatCurrency(forecastTotal) },
         ]}
       >
-        {/* Default children — existing table rendering (used when moduleConfig view renderer is not active) */}
+        {/* Deals rendering using shared DataGrid */}
         <div className="space-y-4">
           <DealFilters filters={filters} onChange={setFilters} pipelines={pipelines} />
 
-          <div className="bg-white dark:bg-slate-900/40 rounded-xl border border-slate-200 dark:border-white/[0.06] p-4">
-            <DealsTable
-              deals={paginatedDeals}
-              stageNameMap={stageNameMap}
-              stageProbabilityMap={stageProbabilityMap}
-              pipelineNameMap={pipelineNameMap}
-              pipelineStagesMap={Object.fromEntries(pipelines.map(p => [p.id, p.stages]))}
-              onRowClick={setSelectedDeal}
-              onStageChange={async (dealId, stageId) => {
-                await moveDealStage(dealId, stageId);
-              }}
-            />
-          </div>
+          <DealsDataGrid
+            deals={paginatedDeals}
+            totalRecords={totalItems}
+            effectiveColumns={visibleColumns}
+            sort={sort}
+            onSortChange={setSort}
+            onRowClick={setSelectedDeal}
+            selectedIds={dealSelectedIds}
+            onSelectionChange={setDealSelectedIds}
+            stageNameMap={stageNameMap}
+            pipelineNameMap={pipelineNameMap}
+            getAssignedUserName={getAssignedUserName}
+            getAccountName={getAccountName}
+            canEdit={canEdit}
+            canDelete={canDelete}
+            onManageColumns={() => setIsManageColumnsOpen(true)}
+            onHideColumn={(columnId) => {
+              const updated = effectiveColumns.map((col) =>
+                col.id === columnId ? { ...col, visible: false } : col,
+              );
+              saveColumns(updated);
+            }}
+            viewMode={viewMode}
+            onColumnReorder={saveColumns}
+          />
 
           <div className="mt-4">
             <Pagination
@@ -151,6 +185,17 @@ export default function DealsPage() {
           </div>
         </div>
       </ModuleWorkspace>
+
+      {/* ── Manage Columns Drawer ───────────────────────────────── */}
+      <ManageColumnsDrawer
+        module="deals"
+        registry={DEALS_COLUMN_REGISTRY}
+        effectiveColumns={effectiveColumns}
+        isOpen={isManageColumnsOpen}
+        onClose={() => setIsManageColumnsOpen(false)}
+        onSave={saveColumns}
+        onReset={resetColumns}
+      />
 
       {selectedDeal && selectedPipeline && (
         <DealDetailsModal

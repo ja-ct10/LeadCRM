@@ -64,6 +64,10 @@ interface ContactsDataGridProps {
   onManageColumns?: () => void;
   /** Hide a specific column */
   onHideColumn?: (columnId: string) => void;
+  /** Display mode: wrap or clip cell content */
+  viewMode?: 'wrap' | 'clip';
+  /** Column reorder handler — called when user drag-drops a column header */
+  onColumnReorder?: (columns: ColumnConfigItem[]) => void;
 }
 
 // ─── Status Variant Map ──────────────────────────────────────────────────────
@@ -93,6 +97,8 @@ export function ContactsDataGrid({
   onDelete,
   onManageColumns,
   onHideColumn,
+  viewMode = 'clip',
+  onColumnReorder,
 }: ContactsDataGridProps): React.ReactElement {
   // ─── Cell Renderers ────────────────────────────────────────────────────
 
@@ -236,6 +242,10 @@ export function ContactsDataGrid({
       summaryLabel={`${totalRecords} total records`}
       emptyMessage="No contacts found. Adjust your filters or create a new contact."
       ariaLabel="Contacts data grid"
+      viewMode={viewMode}
+      onColumnReorder={onColumnReorder}
+      effectiveColumns={effectiveColumns}
+      lockedColumns={['firstName']}
     />
   );
 }

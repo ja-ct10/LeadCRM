@@ -12,6 +12,7 @@ import { useDebounce } from '@/shared/hooks/use-debounce';
 import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
 import { ManageColumnsDrawer } from '@/shared/components/manage-columns-drawer';
 import { CONTACTS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
+import { CONTACTS_MODULE_CONFIG } from '../contacts.config';
 import { ContactsDataGrid } from './contacts-data-grid';
 import { toast } from 'sonner';
 import { SlidersHorizontal } from 'lucide-react';
@@ -133,6 +134,19 @@ export default function ContactsPage(): React.ReactElement {
 
     return result;
   }, [activeContacts, activeTab, user?.id, debouncedSearch, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, deals]);
+
+  // ── Pagination ───────────────────────────────────────────────────────
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Reset page on filter/search/tab changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, activeTab, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated]);
+
+  const paginatedContacts = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredContacts.slice(start, start + pageSize);
+  }, [filteredContacts, currentPage, pageSize]);
 
   // ── Helpers ──────────────────────────────────────────────────────────
   const getInitials = (contact: Contact): string => {
@@ -268,6 +282,7 @@ export default function ContactsPage(): React.ReactElement {
     <ModuleWorkspace
       moduleId="contacts"
       title="Contacts"
+      moduleConfig={CONTACTS_MODULE_CONFIG}
       primaryActionLabel="Create Contact"
       onPrimaryAction={() => toast.info('Contact creation coming soon')}
       onImport={() => toast.info('Import coming soon')}
@@ -316,7 +331,7 @@ export default function ContactsPage(): React.ReactElement {
       {/* ── List / Table View — DataGrid ─────────────────── */}
       {(activeView === 'list' || activeView === 'table') && (
         <ContactsDataGrid
-          contacts={filteredContacts}
+          contacts={paginatedContacts}
           totalRecords={filteredContacts.length}
           effectiveColumns={effectiveColumns}
           sort={sort}
@@ -339,6 +354,8 @@ export default function ContactsPage(): React.ReactElement {
             );
             saveColumns(updated);
           }}
+          viewMode={viewMode}
+          onColumnReorder={saveColumns}
         />
       )}
 

@@ -174,7 +174,7 @@ const VIEW_ICON_MAP: Record<ViewType, ViewOption> = {
   forecast: { id: 'forecast', label: 'Forecast View', icon: TrendingUp },
 };
 
-const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50] as const;
+const PAGE_SIZE_OPTIONS = [10, 20, 25, 30, 40, 50] as const;
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -212,7 +212,7 @@ export function ModuleWorkspace({
   sortableFields,
   sort = null,
   onSortChange,
-  pageSize = 10,
+  pageSize = 25,
   onPageSizeChange,
   viewMode = 'wrap',
   onViewModeChange,

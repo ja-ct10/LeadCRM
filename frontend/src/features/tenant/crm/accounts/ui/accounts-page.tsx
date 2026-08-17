@@ -11,6 +11,7 @@ import { useDebounce } from '@/shared/hooks/use-debounce';
 import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
 import { ManageColumnsDrawer } from '@/shared/components/manage-columns-drawer';
 import { ACCOUNTS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
+import { ACCOUNTS_MODULE_CONFIG } from '../accounts.config';
 import { AccountsDataGrid } from './accounts-data-grid';
 import AccountForm from '../ui/account-form';
 import { SideSheet } from '@/shared/components/side-sheet';
@@ -132,6 +133,19 @@ export default function AccountsPage(): React.ReactElement {
 
     return result;
   }, [accounts, debouncedSearch, selectedIndustries, selectedTypes, selectedOwners, selectedRelated, deals]);
+
+  // ── Pagination ───────────────────────────────────────────────────────
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Reset page on filter/search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, selectedIndustries, selectedTypes, selectedOwners, selectedRelated]);
+
+  const paginatedAccounts = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredAccounts.slice(start, start + pageSize);
+  }, [filteredAccounts, currentPage, pageSize]);
 
   // ── Helpers ──────────────────────────────────────────────────────────
   const getInitials = (name: string): string => {
@@ -272,6 +286,7 @@ export default function AccountsPage(): React.ReactElement {
       <ModuleWorkspace
         moduleId="accounts"
         title="Accounts"
+        moduleConfig={ACCOUNTS_MODULE_CONFIG}
         primaryActionLabel="Add Account"
         onPrimaryAction={handleOpenCreate}
         onImport={() => toast.info('Import feature coming soon')}
@@ -319,7 +334,7 @@ export default function AccountsPage(): React.ReactElement {
         {/* List View — DataGrid */}
         {(activeView === 'list' || activeView === 'table') && (
           <AccountsDataGrid
-            accounts={filteredAccounts}
+            accounts={paginatedAccounts}
             totalRecords={filteredAccounts.length}
             effectiveColumns={effectiveColumns}
             sort={sort}
@@ -339,6 +354,8 @@ export default function AccountsPage(): React.ReactElement {
               );
               saveColumns(updated);
             }}
+            viewMode={viewMode}
+            onColumnReorder={saveColumns}
           />
         )}
 

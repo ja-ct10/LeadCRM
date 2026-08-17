@@ -181,3 +181,16 @@ Workflow Engine → Contacts Service → Contacts Repository → DB
 - Batch related fetches with `Promise.all`
 - Index every `tenantId` + frequent filter combination
 - Frontend: `useMemo` for filtered lists > 50 items, debounce search at 300ms
+
+## Known Technical Debt
+
+### Client-Side Sort/Filter (R02 — Low Priority)
+
+All CRM module pages (Leads, Contacts, Accounts, Deals) sort and filter client-side via `useMemo`
+on DataContext data. Design spec requires server-side pagination via `ModuleDataFetchParams`.
+This works correctly for current data volumes (< 10k records per tenant). Migration to
+server-driven data fetching is deferred until DataContext is replaced with per-domain data hooks
+(TanStack Query or similar). The `useTablePreferences` hook already provides sort/filter/pageSize
+values ready to use as API query parameters when the migration occurs.
+
+See: `docs/UNIFIED-DATA-VIEW-AUDIT.md` R02

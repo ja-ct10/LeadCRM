@@ -62,8 +62,11 @@ export const tablePreferencesApi = {
   saveViewMode: (module: string, viewMode: ViewMode): Promise<SaveViewModeResponse> =>
     apiClient.put<SaveViewModeResponse>(`/preferences/table/${module}/view-mode`, { viewMode }),
 
-  saveSort: (module: string, sort: SortPreference): Promise<SaveSortResponse> =>
-    apiClient.put<SaveSortResponse>(`/preferences/table/${module}/sort`, { field: sort.field, direction: sort.direction }),
+  saveSort: (module: string, sort: SortPreference | null): Promise<SaveSortResponse> =>
+    apiClient.put<SaveSortResponse>(`/preferences/table/${module}/sort`, {
+      field: sort?.field ?? null,
+      direction: sort?.direction ?? null,
+    }),
 
   getViewType: (module: string): Promise<GetViewTypeResponse> =>
     apiClient.get<GetViewTypeResponse>(`/preferences/table/${module}/view-type`),

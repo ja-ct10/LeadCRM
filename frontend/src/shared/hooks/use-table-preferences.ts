@@ -23,6 +23,8 @@ interface UseTablePreferencesReturn {
   setViewMode: (mode: ViewMode) => void;
   setDisplayMode: (mode: DisplayMode) => void;
   setSort: (sort: SortPreference | null) => void;
+  /** Fire-and-forget filter persistence — URL remains source of truth */
+  persistFilters: (conditions: unknown[]) => void;
 }
 
 /**
@@ -119,14 +121,23 @@ export function useTablePreferences(module: string): UseTablePreferencesReturn {
 
   const setSort = useCallback((newSort: SortPreference | null) => {
     setSortState(newSort);
-    if (newSort) {
-      // Fire-and-forget: no rollback, retry on next user action
-      tablePreferencesApi.saveSort(module, newSort).catch(() => {
-        if (mountedRef.current) {
-          toast.error('Unable to save sort preference', { duration: 5000 });
-        }
-      });
-    }
+    // Always persist — including null (clears server sort)
+    tablePreferencesApi.saveSort(module, newSort).catch(() => {
+      if (mountedRef.current) {
+        toast.error('Unable to save sort preference', { duration: 5000 });
+      }
+    });
+  }, [module]);
+
+  /**
+   * Fire-and-forget filter persistence.
+   * URL state remains the source of truth — this just mirrors to server
+   * so filters are restored on next visit when URL has no filter params.
+   */
+  const persistFilters = useCallback((conditions: unknown[]) => {
+    tablePreferencesApi.saveFilters(module, conditions as import('@leadcrm/shared').FilterCondition[]).catch(() => {
+      // Silent fail — filters are URL-owned, server is just a backup
+    });
   }, [module]);
 
   return {
@@ -139,5 +150,6 @@ export function useTablePreferences(module: string): UseTablePreferencesReturn {
     setViewMode,
     setDisplayMode,
     setSort,
+    persistFilters,
   };
 }

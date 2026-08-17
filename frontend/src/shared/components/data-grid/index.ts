@@ -33,11 +33,15 @@ export { useColumnResize } from './use-column-resize';
 export { useDataGridSort } from './use-data-grid-sort';
 export { useDataGridColumns } from './use-data-grid-columns';
 export type { CellRendererMap, CellRendererFn } from './use-data-grid-columns';
+export { useColumnDragReorder } from './use-column-drag-reorder';
+export type { UseColumnDragReorderOptions, UseColumnDragReorderReturn } from './use-column-drag-reorder';
+export { SortableHeaderCell } from './sortable-header-cell';
 
 // Types
 export type {
   DataGridProps,
   DataGridColumnDef,
+  DataGridEmptyStateProps,
   QuickAction,
   SummaryColumnDef,
   SortState,

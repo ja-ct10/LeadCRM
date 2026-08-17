@@ -62,6 +62,10 @@ interface AccountsDataGridProps {
   onManageColumns?: () => void;
   /** Hide a specific column */
   onHideColumn?: (columnId: string) => void;
+  /** Display mode: wrap or clip cell content */
+  viewMode?: 'wrap' | 'clip';
+  /** Column reorder handler — called when user drag-drops a column header */
+  onColumnReorder?: (columns: ColumnConfigItem[]) => void;
 }
 
 // ─── Account Type Variant Map ────────────────────────────────────────────────
@@ -92,6 +96,8 @@ export function AccountsDataGrid({
   onDelete,
   onManageColumns,
   onHideColumn,
+  viewMode = 'clip',
+  onColumnReorder,
 }: AccountsDataGridProps): React.ReactElement {
   // ─── Cell Renderers ────────────────────────────────────────────────────
 
@@ -244,6 +250,10 @@ export function AccountsDataGrid({
       summaryLabel={`${totalRecords} total records`}
       emptyMessage="No accounts found. Adjust your filters or create a new account."
       ariaLabel="Accounts data grid"
+      viewMode={viewMode}
+      onColumnReorder={onColumnReorder}
+      effectiveColumns={effectiveColumns}
+      lockedColumns={['name']}
     />
   );
 }
