@@ -100,7 +100,7 @@ export default function ModernRegisterPage({ onNavigate }: ModernRegisterPagePro
       password: 'Password123!',
       confirmPassword: 'Password123!'
     });
-    toast.success('Form auto-filled for testing');
+    toast.success('Form auto-filled for demo purposes.');
   };
 
   const handleNextStep = () => {

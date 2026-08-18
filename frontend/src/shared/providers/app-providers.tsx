@@ -28,7 +28,6 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
           <Toaster 
             position="top-right" 
             expand={true}
-            richColors
             closeButton
             duration={4000}
           />

@@ -24,8 +24,6 @@ export const NAV_ITEMS = [
   { name: 'Campaigns',         path: 'campaigns',         icon: Mail,            permission: 'campaigns.view', roles: null,          group: 'Marketing' },
   // ── Automation ──────────────────────────────────────
   { name: 'Workflows',         path: 'workflows',         icon: Workflow,        permission: 'workflows.view', roles: null,          group: 'Automation' },
-  // ── Billing ─────────────────────────────────────────
-  { name: 'Contract Billing',  path: 'billing',           icon: Receipt,         permission: 'billing.view',   roles: null,          group: 'Billing', featureFlag: 'billing' as const },
   // ── Administration ──────────────────────────────────
   { name: 'Audit Trail',       path: 'audit-log',         icon: Activity,        permission: 'audit.view',     roles: null,          group: 'Administration' },
   // ── System Admin (separate portal) ──────────────────

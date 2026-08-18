@@ -166,7 +166,7 @@ export default function ProfileSettingsPage({
       toast.error("New passwords do not match!");
       return;
     }
-    toast.success("Security password and access key set successfully.");
+    toast.success("Password changed successfully.");
     setCurrentPassword("");
     setNewPassword("");
     setConfirmPassword("");
@@ -178,9 +178,7 @@ export default function ProfileSettingsPage({
 
   // Profile picture upload simulator
   const handlePhotoUpload = () => {
-    toast.info(
-      "Simulating avatar secure file upload. Selected device camera loop.",
-    );
+    toast.info("Photo upload is coming soon.");
   };
 
   return (
@@ -1007,7 +1005,7 @@ export default function ProfileSettingsPage({
                   </div>
                   <button
                     type="button"
-                    onClick={() => toast.success("iPhone session terminated.")}
+                    onClick={() => toast.success("Device session ended successfully.")}
                     className="text-[10px] font-bold text-rose-500 hover:text-rose-600 transition-colors cursor-pointer"
                   >
                     Revoke Key

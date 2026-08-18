@@ -15,13 +15,13 @@ import {
   Keyboard,
   LogOut,
   ChevronRight,
-  Sparkles,
   ExternalLink,
   Check,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '@/store/AuthContext';
 import { useLayout } from '@/features/tenant/layout/use-layout';
+import { useRouter } from 'next/navigation';
 import { ACCENT_COLORS, applyAccentColor, ACCENT_KEY } from '@/lib/accent-colors';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -29,6 +29,7 @@ import { cn } from '@/lib/utils';
 export function UserProfileDropdown(): React.ReactElement {
   const { user, tenant, logout } = useAuth();
   const { navigate } = useLayout();
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [appTheme, setAppTheme] = useState<string>('Light');
   const [appAccentColor, setAppAccentColor] = useState<string>('blue');
@@ -203,7 +204,7 @@ export function UserProfileDropdown(): React.ReactElement {
       await logout();
       toast.success('Signed out successfully');
     } catch (err) {
-      toast.error('Failed to log out');
+      toast.error('Unable to sign out. Please try again.');
     }
   };
 
@@ -321,15 +322,12 @@ export function UserProfileDropdown(): React.ReactElement {
 
               <button
                 role="menuitem"
-                onClick={() => handleMenuClick('billing')}
+                onClick={() => { setIsOpen(false); router.push('/settings?tab=plan'); }}
                 className="w-full flex items-center justify-between px-3.5 py-2 text-[12.5px] font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer group"
               >
                 <span className="flex items-center gap-2.5">
                   <CreditCard size={14} className="text-slate-400 dark:text-slate-500 group-hover:text-[#2563EB] transition-colors" />
                   Billing & Plans
-                </span>
-                <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold px-2 py-0.5 rounded-full bg-linear-to-r from-amber-500/10 to-orange-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                  <Sparkles size={10} /> Pro Plan
                 </span>
               </button>
             </div>
@@ -507,6 +505,12 @@ export function UserProfileDropdown(): React.ReactElement {
                 <LogOut size={14} className="text-slate-400 dark:text-slate-500 group-hover:text-red-600 dark:group-hover:text-red-400 transition-colors" />
                 Log out
               </button>
+            </div>
+
+            {/* Sandbox environment indicator */}
+            <div className="px-3.5 py-2 border-t border-slate-100 dark:border-slate-700/70 flex items-center justify-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">Sandbox Environment</span>
             </div>
           </motion.div>
         )}

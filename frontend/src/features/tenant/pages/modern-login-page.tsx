@@ -128,7 +128,7 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
         const hasSeenOnboarding = localStorage.getItem('leadcrm_onboarding_complete');
         onNavigate(hasSeenOnboarding ? 'dashboard' : 'onboarding');
       } else {
-        toast.error('Invalid credentials or account inactive.');
+        toast.error('The email or password you entered is incorrect. Please try again.');
       }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Sign in failed. Please try again.');

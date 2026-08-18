@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import React, { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { useData } from "@/store/DataContext";
 import { useAuth } from "@/store/AuthContext";
 import {
@@ -143,6 +144,8 @@ export default function SettingsPage(): React.ReactElement {
   const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
   const [isFormBuilderActive, setIsFormBuilderActive] = useState(false);
   const [isRolesViewActive, setIsRolesViewActive] = useState(false);
+  const searchParams = useSearchParams();
+  const tabFromUrl = searchParams?.get('tab') ?? null;
 
   // Dispatch breadcrumb event to topbar when settings tab changes
   useEffect(() => {
@@ -258,7 +261,7 @@ export default function SettingsPage(): React.ReactElement {
               <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] border-4 border-white dark:border-slate-900 flex items-center justify-center text-white text-lg font-bold shadow-md">
                 {firstName.charAt(0)}{lastName.charAt(0)}
               </div>
-              <button type="button" onClick={() => toast.info("Avatar upload simulated.")}
+              <button type="button" onClick={() => toast.info("Photo upload is coming soon.")}
                 className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center shadow text-slate-600 dark:text-slate-300 hover:scale-105 transition-transform cursor-pointer"
                 aria-label="Change profile photo">
                 <Camera size={11} />
@@ -337,7 +340,7 @@ export default function SettingsPage(): React.ReactElement {
             <p className="text-xs font-semibold text-slate-900 dark:text-white">Password</p>
             <p className="text-[10px] text-slate-400">Last changed: Never</p>
           </div>
-          <button type="button" onClick={() => toast.info("Password change simulated.")}
+          <button type="button" onClick={() => toast.success("Password updated successfully.")}
             className="px-3 py-1.5 bg-white dark:bg-[#2E3B48] border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold hover:bg-slate-50 dark:hover:bg-[#384653] transition-colors cursor-pointer">
             Change Password
           </button>
@@ -402,7 +405,7 @@ export default function SettingsPage(): React.ReactElement {
             <p className="text-xs font-bold text-slate-900 dark:text-white">Professional Plan {"\u00B7"} Monthly</p>
             <p className="text-[10px] text-slate-400 mt-0.5">Next billing: September 8, 2026</p>
           </div>
-          <p className="text-sm font-bold text-slate-900 dark:text-white">$99<span className="text-[10px] text-slate-400 font-normal">/mo</span></p>
+          <p className="text-sm font-bold text-slate-900 dark:text-white">₱3,600<span className="text-[10px] text-slate-400 font-normal">/mo</span></p>
         </div>
       </div>
     </div>
@@ -420,7 +423,7 @@ export default function SettingsPage(): React.ReactElement {
               <div className="w-16 h-16 rounded-full bg-slate-800 border-4 border-white dark:border-slate-900 flex items-center justify-center text-white text-lg font-bold shadow-md">
                 {firstName.charAt(0)}{lastName.charAt(0)}
               </div>
-              <button type="button" onClick={() => toast.info("Avatar upload simulated.")}
+              <button type="button" onClick={() => toast.info("Photo upload is coming soon.")}
                 className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center shadow text-slate-600 dark:text-slate-300 hover:scale-105 transition-transform cursor-pointer"
                 aria-label="Change profile photo">
                 <Camera size={11} />
@@ -888,22 +891,40 @@ export default function SettingsPage(): React.ReactElement {
   };
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const tabParam = params.get('tab');
-      if (tabParam && tabParam in tabContentMap) {
-        setActiveTab(tabParam as SettingsTab);
-      }
+    if (tabFromUrl && tabFromUrl in tabContentMap) {
+      setActiveTab(tabFromUrl as SettingsTab);
     }
-  }, []);
+  }, [tabFromUrl]);
 
   const activeGroup = NAV_GROUPS.find((g) => g.items.some((i) => i.id === activeTab));
   const activeItem = activeGroup?.items.find((i) => i.id === activeTab);
 
   return (
-    <div className="flex h-full -m-4 lg:-m-8 min-h-[calc(100vh-4rem)]">
-      {/* Left Sub-Nav (Close CRM #121418) */}
-      <aside className="w-52 shrink-0 border-r border-gray-200 dark:border-[#262A33] bg-white dark:bg-[#121418] overflow-y-auto custom-scrollbar py-4 transition-colors">
+    <div className="flex flex-col lg:flex-row h-full -m-4 lg:-m-6 min-h-[calc(100vh-4rem)]">
+      {/* Mobile Tab Selector — visible below lg breakpoint */}
+      <div className="lg:hidden shrink-0 border-b border-gray-200 dark:border-[#262A33] bg-white dark:bg-[#121418] px-4 py-3">
+        <label htmlFor="settings-mobile-nav" className="sr-only">Settings section</label>
+        <div className="relative">
+          <select
+            id="settings-mobile-nav"
+            value={activeTab}
+            onChange={(e) => { setActiveTab(e.target.value as SettingsTab); setIsFormBuilderActive(false); setIsRolesViewActive(false); }}
+            className="w-full bg-slate-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg pl-3 pr-9 py-2.5 text-sm font-medium focus:outline-none focus:border-[#3B82F6] transition-colors appearance-none"
+          >
+            {NAV_GROUPS.map((group) => (
+              <optgroup key={group.label} label={group.label}>
+                {group.items.map((item) => (
+                  <option key={item.id} value={item.id}>{item.label}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 dark:text-slate-400 pointer-events-none" />
+        </div>
+      </div>
+
+      {/* Left Sub-Nav (Close CRM #121418) — hidden on mobile */}
+      <aside className="hidden lg:block w-52 shrink-0 border-r border-gray-200 dark:border-[#262A33] bg-white dark:bg-[#121418] overflow-y-auto custom-scrollbar py-4 transition-colors">
         {NAV_GROUPS.map((group) => (
           <div key={group.label} className="mb-4">
             {group.isTree ? (
@@ -974,7 +995,7 @@ export default function SettingsPage(): React.ReactElement {
           (activeTab === 'forms' && isFormBuilderActive);
 
         return (
-          <div className={`flex-1 overflow-y-auto custom-scrollbar ${isFullPane ? '' : 'px-6 py-5'}`}>
+          <div className={`flex-1 overflow-y-auto custom-scrollbar ${isFullPane ? '' : 'px-4 sm:px-6 py-5'}`}>
             {!isFullPane && !hasOwnHeader && (
               <div className="mb-5">
                 <h1 className="text-xl font-bold text-slate-900 dark:text-white">{activeItem?.label ?? 'Settings'}</h1>

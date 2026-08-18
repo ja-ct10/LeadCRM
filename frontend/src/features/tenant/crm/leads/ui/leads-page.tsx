@@ -471,7 +471,7 @@ export default function LeadsPage(): React.ReactElement {
         onPageSizeChange={setPageSize}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
-        onRefresh={() => toast.success('Refreshed')}
+        onRefresh={() => toast.success('Data refreshed')}
         currentPage={currentPage}
         paginationTotalRecords={sortedLeads.length}
         onPageChange={setCurrentPage}

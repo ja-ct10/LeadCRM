@@ -98,6 +98,7 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
             {currentModule}
           </span>
         </div>
+
       </div>
 
       {/* Center: Global Search Omnibox */}

@@ -68,8 +68,8 @@ export default function AccountDetailsPage() {
         <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-6 mb-6 border border-slate-200 dark:border-slate-700/50">
           <div className="flex justify-between items-start mb-4">
             <div>
-              <h4 className="text-lg font-semibold text-slate-900 dark:text-white">Current Plan: Pro</h4>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Billed monthly at $299/month</p>
+              <h4 className="text-lg font-semibold text-slate-900 dark:text-white">Current Plan: Professional</h4>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Billed monthly at ₱3,600/month</p>
             </div>
             <span className="px-3 py-1 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-medium rounded-full border border-slate-300 dark:border-slate-600">
               Active
@@ -100,22 +100,22 @@ export default function AccountDetailsPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-          {/* Free Plan */}
+          {/* Starter Plan */}
           <div className="border border-gray-200 dark:border-slate-700/50 rounded-xl p-6 bg-white dark:bg-slate-800/40">
-            <h4 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Free</h4>
+            <h4 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Starter</h4>
             <div className="flex items-baseline gap-1 mb-4">
-              <span className="text-3xl font-bold text-slate-900 dark:text-white">$0</span>
+              <span className="text-3xl font-bold text-slate-900 dark:text-white">₱1,350</span>
               <span className="text-sm text-slate-500">/month</span>
             </div>
             <ul className="space-y-2 mb-6">
               <li className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-                <CheckCircle2 className="w-4 h-4 text-green-500" /> Up to 100 contacts
+                <CheckCircle2 className="w-4 h-4 text-green-500" /> Up to 5,000 contacts
               </li>
               <li className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
                 <CheckCircle2 className="w-4 h-4 text-green-500" /> Basic pipeline
               </li>
               <li className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-                <CheckCircle2 className="w-4 h-4 text-green-500" /> 1 user
+                <CheckCircle2 className="w-4 h-4 text-green-500" /> 3 users
               </li>
               <li className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
                 <CheckCircle2 className="w-4 h-4 text-green-500" /> Email support
@@ -123,14 +123,14 @@ export default function AccountDetailsPage() {
             </ul>
           </div>
 
-          {/* Pro Plan */}
+          {/* Professional Plan */}
           <div className="border-2 border-slate-900 dark:border-slate-600 rounded-xl p-6 bg-white dark:bg-slate-800/40 relative">
             <div className="absolute top-4 right-4 px-2.5 py-1 bg-slate-900 dark:bg-slate-700 text-white text-xs font-medium rounded-full">
               Current
             </div>
-            <h4 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Pro</h4>
+            <h4 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Professional</h4>
             <div className="flex items-baseline gap-1 mb-4">
-              <span className="text-3xl font-bold text-slate-900 dark:text-white">$299</span>
+              <span className="text-3xl font-bold text-slate-900 dark:text-white">₱3,600</span>
               <span className="text-sm text-slate-500">/month</span>
             </div>
             <ul className="space-y-2 mb-6">
@@ -159,12 +159,12 @@ export default function AccountDetailsPage() {
           <div className="border border-gray-200 dark:border-slate-700/50 rounded-xl p-6 bg-white dark:bg-slate-800/40">
             <h4 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Enterprise</h4>
             <div className="flex items-baseline gap-1 mb-4">
-              <span className="text-3xl font-bold text-slate-900 dark:text-white">Custom</span>
-              <span className="text-sm text-slate-500">pricing</span>
+              <span className="text-3xl font-bold text-slate-900 dark:text-white">₱8,950</span>
+              <span className="text-sm text-slate-500">/month</span>
             </div>
             <ul className="space-y-2 mb-6">
               <li className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-                <CheckCircle2 className="w-4 h-4 text-green-500" /> Everything in Pro
+                <CheckCircle2 className="w-4 h-4 text-green-500" /> Everything in Professional
               </li>
               <li className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
                 <CheckCircle2 className="w-4 h-4 text-green-500" /> Unlimited users
@@ -210,9 +210,9 @@ export default function AccountDetailsPage() {
         <div className="bg-white dark:bg-slate-800/40 border border-gray-200 dark:border-slate-700/50 rounded-2xl p-6">
           <div className="flex justify-between items-start mb-4">
             <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Current Balance</h3>
-            <span className="text-slate-400">$</span>
+            <span className="text-slate-400">₱</span>
           </div>
-          <div className="text-3xl font-bold text-slate-900 dark:text-white mb-1">$0.00</div>
+          <div className="text-3xl font-bold text-slate-900 dark:text-white mb-1">₱0.00</div>
           <p className="text-xs text-slate-500 dark:text-slate-400">No outstanding balance</p>
         </div>
 
@@ -256,11 +256,11 @@ export default function AccountDetailsPage() {
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-slate-700/50">
               {[
-                { id: 'INV-2026-004', date: 'Apr 1, 2026', amount: '$299.00', status: 'Paid' },
-                { id: 'INV-2026-003', date: 'Mar 1, 2026', amount: '$299.00', status: 'Paid' },
-                { id: 'INV-2026-002', date: 'Feb 1, 2026', amount: '$299.00', status: 'Paid' },
-                { id: 'INV-2026-001', date: 'Jan 1, 2026', amount: '$299.00', status: 'Paid' },
-                { id: 'INV-2025-012', date: 'Dec 1, 2025', amount: '$299.00', status: 'Paid' },
+                { id: 'INV-2026-004', date: 'Apr 1, 2026', amount: '₱3,600.00', status: 'Paid' },
+                { id: 'INV-2026-003', date: 'Mar 1, 2026', amount: '₱3,600.00', status: 'Paid' },
+                { id: 'INV-2026-002', date: 'Feb 1, 2026', amount: '₱3,600.00', status: 'Paid' },
+                { id: 'INV-2026-001', date: 'Jan 1, 2026', amount: '₱3,600.00', status: 'Paid' },
+                { id: 'INV-2025-012', date: 'Dec 1, 2025', amount: '₱3,600.00', status: 'Paid' },
               ].map((invoice) => (
                 <tr key={invoice.id} className="hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors">
                   <td className="px-4 py-4">{invoice.id}</td>
@@ -328,9 +328,9 @@ export default function AccountDetailsPage() {
 
           <div className="space-y-4">
             {[
-              { amount: '$299.00', date: 'Apr 1', card: 'Visa **** 1234', id: 'PAY-2026-004' },
-              { amount: '$299.00', date: 'Mar 1', card: 'Visa **** 1234', id: 'PAY-2026-003' },
-              { amount: '$299.00', date: 'Feb 1', card: 'Visa **** 1234', id: 'PAY-2026-002' },
+              { amount: '₱3,600.00', date: 'Apr 1', card: 'Visa **** 1234', id: 'PAY-2026-004' },
+              { amount: '₱3,600.00', date: 'Mar 1', card: 'Visa **** 1234', id: 'PAY-2026-003' },
+              { amount: '₱3,600.00', date: 'Feb 1', card: 'Visa **** 1234', id: 'PAY-2026-002' },
             ].map((payment, i) => (
               <div key={i} className="flex justify-between items-center pb-4 border-b border-gray-100 dark:border-slate-700/50 last:border-0 last:pb-0">
                 <div>
@@ -463,7 +463,7 @@ export default function AccountDetailsPage() {
                 <div>
                   <label className="block text-sm font-medium text-slate-900 dark:text-white mb-2">Current Plan</label>
                   <div className="bg-slate-100 dark:bg-slate-800 rounded-xl p-4">
-                    <div className="font-bold text-slate-900 dark:text-white">Pro Plan</div>
+                    <div className="font-bold text-slate-900 dark:text-white">Professional Plan</div>
                     <div className="text-sm text-slate-500 dark:text-slate-400 mt-1">Next billing date: 5/1/2026</div>
                   </div>
                 </div>
@@ -562,7 +562,7 @@ export default function AccountDetailsPage() {
 
                 <div className="bg-slate-100 dark:bg-slate-800 rounded-xl p-4 mt-6">
                   <p className="text-sm text-slate-600 dark:text-slate-400">
-                    Current balance: <span className="font-bold text-slate-900 dark:text-white">$0.00</span>
+                    Current balance: <span className="font-bold text-slate-900 dark:text-white">₱0.00</span>
                   </p>
                 </div>
               </div>

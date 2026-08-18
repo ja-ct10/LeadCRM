@@ -11,7 +11,7 @@ export default function ClientBillingPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'payment-methods'>('overview');
 
   // Interactive states for Payment Prediction
-  const [frequency, setFrequency] = useState<'monthly' | 'semi-annual' | 'annual'>('monthly');
+  const [frequency, setFrequency] = useState<'monthly' | 'quarterly' | 'annual'>('monthly');
   const [extraUsers, setExtraUsers] = useState<number>(0);
   const [extraStorage, setExtraStorage] = useState<number>(0); // GB
   const [premiumSupport, setPremiumSupport] = useState<boolean>(false);
@@ -22,16 +22,16 @@ export default function ClientBillingPage() {
   };
 
   // Prediction calculation math
-  const basePrice = 9999;
+  const basePrice = 3600;
   const userCost = extraUsers * 200;
-  const storageCost = extraStorage * 50; // Each extra GB costs $50
+  const storageCost = extraStorage * 50; // Each extra GB costs ₱50
   const supportCost = premiumSupport ? 1500 : 0;
   const apiCost = advancedAPI ? 2500 : 0;
 
   const rawSubtotal = basePrice + userCost + storageCost + supportCost + apiCost;
 
   let discountPercent = 0;
-  if (frequency === 'semi-annual') {
+  if (frequency === 'quarterly') {
     discountPercent = 10;
   } else if (frequency === 'annual') {
     discountPercent = 20;
@@ -41,9 +41,9 @@ export default function ClientBillingPage() {
   const estimatedNextMonthlyAmount = rawSubtotal - discountAmount;
 
   const invoices = [
-    { id: 'INV-2026-001', date: 'Apr 01, 2026', amount: '$9,999.00', status: 'Paid', method: '•••• 4242' },
-    { id: 'INV-2026-002', date: 'Mar 01, 2026', amount: '$9,999.00', status: 'Paid', method: '•••• 4242' },
-    { id: 'INV-2026-003', date: 'Feb 01, 2026', amount: '$9,999.00', status: 'Paid', method: '•••• 4242' },
+    { id: 'INV-2026-001', date: 'Apr 01, 2026', amount: '₱3,600.00', status: 'Paid', method: '•••• 4242' },
+    { id: 'INV-2026-002', date: 'Mar 01, 2026', amount: '₱3,600.00', status: 'Paid', method: '•••• 4242' },
+    { id: 'INV-2026-003', date: 'Feb 01, 2026', amount: '₱3,600.00', status: 'Paid', method: '•••• 4242' },
   ];
 
   return (
@@ -56,7 +56,7 @@ export default function ClientBillingPage() {
         </div>
         <div className="flex items-center gap-3">
           <button 
-            onClick={() => toast.success('Redirecting to upgrade flow...')}
+            onClick={() => toast.success('Redirecting to upgrade options...')}
             className="px-4 py-2 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition-colors shadow-sm cursor-pointer"
           >
             Upgrade Plan
@@ -100,7 +100,7 @@ export default function ClientBillingPage() {
                   <span className="px-3 py-1 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 text-xs font-bold rounded-full border border-blue-100 dark:border-blue-800">Professional</span>
                 </div>
                 <div className="flex items-end gap-2 mb-6">
-                  <span className="text-4xl font-extrabold text-slate-900 dark:text-white">$9,999</span>
+                  <span className="text-4xl font-extrabold text-slate-900 dark:text-white">₱3,600</span>
                   <span className="text-slate-500 dark:text-slate-400 mb-1">/ month</span>
                 </div>
                 <div className="space-y-3 mb-6">
@@ -128,7 +128,7 @@ export default function ClientBillingPage() {
               <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 shadow-sm">
                 <h3 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-4">Next Payment</h3>
                 <div className="text-2xl font-bold text-slate-900 dark:text-white mb-1">May 01, 2026</div>
-                <div className="text-sm text-slate-500 dark:text-slate-400 mb-4">Amount: $9,999.00</div>
+                <div className="text-sm text-slate-500 dark:text-slate-400 mb-4">Amount: ₱3,600.00</div>
                 <div className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-100 dark:border-slate-800">
                   <CreditCard size={16} className="text-slate-500 dark:text-slate-400" />
                   Visa ending in 4242
@@ -155,7 +155,7 @@ export default function ClientBillingPage() {
                   <div className="grid grid-cols-3 gap-1 p-1 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-150 dark:border-slate-800/80">
                     {[
                       { id: 'monthly', label: 'Monthly', desc: 'No disc' },
-                      { id: 'semi-annual', label: 'Semi-Ann', desc: '10% off' },
+                      { id: 'quarterly', label: 'Quarterly', desc: '10% off' },
                       { id: 'annual', label: 'Annual', desc: '20% off' },
                     ].map((freq) => (
                       <button
@@ -183,7 +183,7 @@ export default function ClientBillingPage() {
                 {/* Additional Users */}
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center text-xs">
-                    <span className="font-semibold text-slate-500 dark:text-slate-400">Extra Users (+$200/ea)</span>
+                    <span className="font-semibold text-slate-500 dark:text-slate-400">Extra Users (+₱200/ea)</span>
                     <span className="font-bold text-slate-800 dark:text-slate-200">+{extraUsers} Users</span>
                   </div>
                   <input
@@ -204,7 +204,7 @@ export default function ClientBillingPage() {
                 {/* Extra storage */}
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center text-xs">
-                    <span className="font-semibold text-slate-500 dark:text-slate-400">Extra Storage (+$50/GB)</span>
+                    <span className="font-semibold text-slate-500 dark:text-slate-400">Extra Storage (+₱50/GB)</span>
                     <span className="font-bold text-slate-800 dark:text-slate-200">+{extraStorage} GB</span>
                   </div>
                   <input
@@ -237,7 +237,7 @@ export default function ClientBillingPage() {
                       className="rounded border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-blue-500 h-4 w-4 mt-0.5"
                     />
                     <div>
-                      <div className="font-bold text-slate-800 dark:text-slate-200">Premium SLA Support (+$1,500)</div>
+                      <div className="font-bold text-slate-800 dark:text-slate-200">Premium SLA Support (+₱1,500)</div>
                       <p className="text-[10px] text-slate-400 leading-normal mt-0.5">Priority routing, guaranteed sub-hour responses</p>
                     </div>
                   </label>
@@ -253,7 +253,7 @@ export default function ClientBillingPage() {
                       className="rounded border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-blue-500 h-4 w-4 mt-0.5"
                     />
                     <div>
-                      <div className="font-bold text-slate-800 dark:text-slate-200">Unlimited API Access (+$2,500)</div>
+                      <div className="font-bold text-slate-800 dark:text-slate-200">Unlimited API Access (+₱2,500)</div>
                       <p className="text-[10px] text-slate-400 leading-normal mt-0.5">Integration tokens, raw database sync, custom endpoints</p>
                     </div>
                   </label>
@@ -263,36 +263,36 @@ export default function ClientBillingPage() {
                 <div className="pt-3.5 border-t border-slate-150 dark:border-slate-800 space-y-1.5 text-xs">
                   <div className="flex justify-between text-slate-500 dark:text-slate-400 font-mono text-[11px]">
                     <span>Professional Plan:</span>
-                    <span className="text-slate-700 dark:text-slate-200">$9,999.00</span>
+                    <span className="text-slate-700 dark:text-slate-200">₱3,600.00</span>
                   </div>
                   {extraUsers > 0 && (
                     <div className="flex justify-between text-slate-500 dark:text-slate-400 font-mono text-[11px]">
                       <span>Extra Users ({extraUsers}):</span>
-                      <span className="text-slate-700 dark:text-slate-200">+${userCost.toLocaleString()}</span>
+                      <span className="text-slate-700 dark:text-slate-200">+₱{userCost.toLocaleString()}</span>
                     </div>
                   )}
                   {extraStorage > 0 && (
                     <div className="flex justify-between text-slate-500 dark:text-slate-400 font-mono text-[11px]">
                       <span>Extra Storage ({extraStorage} GB):</span>
-                      <span className="text-slate-700 dark:text-slate-200">+${storageCost.toLocaleString()}</span>
+                      <span className="text-slate-700 dark:text-slate-200">+₱{storageCost.toLocaleString()}</span>
                     </div>
                   )}
                   {premiumSupport && (
                     <div className="flex justify-between text-slate-500 dark:text-slate-400 font-mono text-[11px]">
                       <span>Premium Support SLA:</span>
-                      <span className="text-slate-700 dark:text-slate-200">+$1,500.00</span>
+                      <span className="text-slate-700 dark:text-slate-200">+₱1,500.00</span>
                     </div>
                   )}
                   {advancedAPI && (
                     <div className="flex justify-between text-slate-500 dark:text-slate-400 font-mono text-[11px]">
                       <span>Enterprise API Access:</span>
-                      <span className="text-slate-700 dark:text-slate-200">+$2,500.00</span>
+                      <span className="text-slate-700 dark:text-slate-200">+₱2,500.00</span>
                     </div>
                   )}
                   {discountAmount > 0 && (
                     <div className="flex justify-between text-rose-500 dark:text-rose-400 font-bold font-mono text-[11px]">
                       <span>{frequency === 'annual' ? '20%' : '10%'} Frequency Disc:</span>
-                      <span>-${discountAmount.toLocaleString()}</span>
+                      <span>-₱{discountAmount.toLocaleString()}</span>
                     </div>
                   )}
                 </div>
@@ -306,14 +306,14 @@ export default function ClientBillingPage() {
                     </span>
                   </div>
                   <div className="text-3xl font-extrabold text-slate-900 dark:text-white flex items-baseline justify-center sm:justify-start gap-1">
-                    <span>${estimatedNextMonthlyAmount.toLocaleString()}</span>
+                    <span>₱{estimatedNextMonthlyAmount.toLocaleString()}</span>
                     <span className="text-xs text-slate-400 normal-case font-normal font-mono">/ month</span>
                   </div>
                   
                   {frequency !== 'monthly' ? (
                     <p className="text-[10px] text-teal-600 dark:text-teal-400 font-bold mt-2 flex items-center gap-1 justify-center sm:justify-start bg-teal-50 ml-[-4px] mr-[-4px] dark:bg-teal-900/10 px-2 py-1.5 rounded-lg border border-teal-100/40 dark:border-teal-900/20">
                       <Sparkles size={11} className="shrink-0 animate-pulse text-teal-500" />
-                      Dynamic Cycle: ${(estimatedNextMonthlyAmount * (frequency === 'annual' ? 12 : 6)).toLocaleString()} billed every {frequency === 'annual' ? '12' : '6'} months.
+                      Dynamic Cycle: ₱{(estimatedNextMonthlyAmount * (frequency === 'annual' ? 12 : 3)).toLocaleString()} billed every {frequency === 'annual' ? '12' : '3'} months.
                     </p>
                   ) : (
                     <p className="text-[10px] text-slate-400 font-medium mt-1 leading-normal italic">
@@ -374,7 +374,7 @@ export default function ClientBillingPage() {
             <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">Payment Methods</h3>
               <button 
-                onClick={() => toast.success('Opening payment method modal...')}
+                onClick={() => toast.success('Opening payment settings...')}
                 className="px-4 py-2 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 rounded-xl font-medium text-sm hover:bg-blue-100 transition-colors cursor-pointer"
               >
                 Add New Method

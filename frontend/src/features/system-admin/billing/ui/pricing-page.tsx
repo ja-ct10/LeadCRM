@@ -10,7 +10,7 @@ import { adminStripeService } from '../services/admin-stripe.service';
 
 const DEFAULT_PLANS = [
   {
-    id: 'starter', name: 'Starter', price: 299, billingCycle: 'Monthly',
+    id: 'starter', name: 'Starter', price: 1350, billingCycle: 'Monthly',
     usersLimit: '5', storage: '10GB', apiCalls: '10,000',
     features: [
       { id: 'f1', text: 'Basic Contact Tracking', enabled: true },
@@ -21,7 +21,7 @@ const DEFAULT_PLANS = [
     isPopular: false,
   },
   {
-    id: 'professional', name: 'Professional', price: 799, billingCycle: 'Monthly',
+    id: 'professional', name: 'Professional', price: 3600, billingCycle: 'Monthly',
     usersLimit: '20', storage: '50GB', apiCalls: '100,000',
     features: [
       { id: 'f1', text: 'Advanced Contact Tracking', enabled: true },
@@ -32,7 +32,7 @@ const DEFAULT_PLANS = [
     isPopular: true,
   },
   {
-    id: 'enterprise', name: 'Enterprise', price: 2499, billingCycle: 'Monthly',
+    id: 'enterprise', name: 'Enterprise', price: 8950, billingCycle: 'Monthly',
     usersLimit: 'Unlimited', storage: '500GB', apiCalls: 'Unlimited',
     features: [
       { id: 'f1', text: 'Custom Contact Tracking',   enabled: true },
@@ -118,7 +118,7 @@ export default function PricingPage() {
             )}
             <h4 className="text-lg font-bold text-slate-900 dark:text-white mb-2">{plan.name}</h4>
             <div className="text-3xl font-extrabold text-slate-900 dark:text-white mb-4">
-              ${getDisplayPrice(plan.price)}<span className="text-sm font-normal text-slate-500"> / {pricingView.toLowerCase()}</span>
+              ₱{getDisplayPrice(plan.price).toLocaleString()}<span className="text-sm font-normal text-slate-500"> / {pricingView.toLowerCase()}</span>
             </div>
             <div className="space-y-3 mb-8 flex-1">
               <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400"><Users size={16} /> {plan.usersLimit} Users</div>
@@ -156,7 +156,7 @@ export default function PricingPage() {
                   <input type="text" value={editingPlan.name} onChange={(e) => setEditingPlan({ ...editingPlan, name: e.target.value })}
                     className="w-full border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-900 text-slate-900 dark:text-white" />
                 </Field>
-                <Field label="Monthly Price ($)">
+                <Field label="Monthly Price (₱)">
                   <input type="number" value={editingPlan.price} onChange={(e) => setEditingPlan({ ...editingPlan, price: Number(e.target.value) })}
                     className="w-full border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-900 text-slate-900 dark:text-white" />
                 </Field>
