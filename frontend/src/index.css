@@ -16,17 +16,17 @@
 
   /* ═══════════════════════════════════════════════════════════════
      LeadCRM 5-Color Brand Palette
-     1. Brand Red     #D94F4F — primary actions, active states
+     1. Brand Blue    #3B82F6 — primary actions, active states
      2. Deep Slate    #25313D — dark surfaces, sidebar, primary text
      3. Soft Neutral  #F5F6F7 — light backgrounds
      4. Pure Surface  #FFFFFF — cards, tables, dialogs
      5. Muted Teal    #5F8F88 — success, positive indicators
      ═══════════════════════════════════════════════════════════════ */
 
-  --color-brand: #D94F4F;
-  --color-brand-hover: #C24545;
-  --color-brand-light: rgba(217, 79, 79, 0.08);
-  --color-brand-border: rgba(217, 79, 79, 0.2);
+  --color-brand: #3B82F6;
+  --color-brand-hover: #2563EB;
+  --color-brand-light: rgba(59, 130, 246, 0.08);
+  --color-brand-border: rgba(59, 130, 246, 0.2);
 
   --color-deep-slate: #25313D;
   --color-deep-slate-light: #2E3B48;
@@ -139,12 +139,12 @@
   --accent: #F1F4F8;
   --accent-foreground: #25313D;
 
-  /* ── Brand (LeadCRM Red / Blue Slate) ────────────────────────────────── */
-  --primary: #D94F4F;
-  --primary-dark: #B83D3D;
-  --primary-hover: #C24545;
+  /* ── Brand (LeadCRM Blue) ──────────────────────────────────────────── */
+  --primary: #3B82F6;
+  --primary-dark: #2563EB;
+  --primary-hover: #2563EB;
   --primary-foreground: #FFFFFF;
-  --ring: #D94F4F;
+  --ring: #3B82F6;
   --radius: 0.625rem;
 
   /* ── Neutrals (Deep Slate based) ─────────────────────────────────────── */
@@ -160,8 +160,8 @@
   --sidebar-text: #25313D;
   --sidebar-text-muted: #5A6B85;
   --sidebar-hover: rgba(37, 49, 61, 0.05);
-  --sidebar-active-bg: rgba(217, 79, 79, 0.08);
-  --sidebar-active-text: #D94F4F;
+  --sidebar-active-bg: rgba(59, 130, 246, 0.08);
+  --sidebar-active-text: #3B82F6;
   --sidebar-border: #E4E9F0;
   --sidebar-badge-bg: rgba(37, 49, 61, 0.06);
   --sidebar-badge-text: #4A5968;
@@ -285,8 +285,8 @@
   --sidebar-text: #25313D;
   --sidebar-text-muted: #5A6B85;
   --sidebar-hover: rgba(37, 49, 61, 0.04);
-  --sidebar-active-bg: rgba(217, 79, 79, 0.08);
-  --sidebar-active-text: #D94F4F;
+  --sidebar-active-bg: rgba(59, 130, 246, 0.08);
+  --sidebar-active-text: #3B82F6;
   --sidebar-border: #E4E9F0;
   --sidebar-badge-bg: rgba(37, 49, 61, 0.06);
   --sidebar-badge-text: #4A5968;

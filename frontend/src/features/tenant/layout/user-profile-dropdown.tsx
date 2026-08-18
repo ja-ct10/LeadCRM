@@ -12,7 +12,6 @@ import {
   Monitor,
   Layout,
   HelpCircle,
-  Users2,
   Keyboard,
   LogOut,
   ChevronRight,
@@ -264,7 +263,7 @@ export function UserProfileDropdown(): React.ReactElement {
             transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
             role="menu"
             aria-orientation="vertical"
-            className="absolute right-0 top-full mt-2 w-[270px] bg-white dark:bg-[#1E293B] border border-slate-200/90 dark:border-slate-700/80 rounded-2xl shadow-xl shadow-slate-900/10 dark:shadow-black/40 py-1.5 z-50 overflow-hidden backdrop-blur-md focus:outline-none"
+            className="absolute right-0 top-full mt-2 w-[310px] bg-white dark:bg-[#1E293B] border border-slate-200/90 dark:border-slate-700/80 rounded-2xl shadow-xl shadow-slate-900/10 dark:shadow-black/40 py-1.5 z-50 overflow-hidden backdrop-blur-md focus:outline-none"
           >
             {/* Section 1: User Identity */}
             <div className="px-3.5 py-3 border-b border-slate-100 dark:border-slate-700/70">
@@ -379,7 +378,7 @@ export function UserProfileDropdown(): React.ReactElement {
                               : 'text-slate-400 dark:text-slate-500',
                           )}
                         />
-                        <span className="truncate">{t.label}</span>
+                        <span className="whitespace-nowrap">{t.label}</span>
                       </button>
                     );
                   })}
@@ -479,20 +478,6 @@ export function UserProfileDropdown(): React.ReactElement {
                 <ExternalLink size={12} className="text-slate-400 opacity-60" />
               </a>
 
-              <a
-                href="#community"
-                role="menuitem"
-                onClick={(e) => {
-                  e.preventDefault();
-                  toast.info('Community Slack & Discord invite link copied.');
-                }}
-                className="w-full flex items-center justify-between px-3.5 py-2 text-[12.5px] font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer group"
-              >
-                <span className="flex items-center gap-2.5">
-                  <Users2 size={14} className="text-slate-400 dark:text-slate-500 group-hover:text-[#2563EB] transition-colors" />
-                  Community
-                </span>
-              </a>
 
               <button
                 role="menuitem"

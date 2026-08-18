@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Menu, Bell, Mail, Settings, Plus } from 'lucide-react';
+import { Menu, Bell, Mail, Settings } from 'lucide-react';
 import { useNotifications } from '@/features/tenant/notifications/hooks/use-notifications';
 import { getGmailStatus, fetchGmailEmails } from '@/features/tenant/inbox/services/gmail.service';
 import { useLayout, NAV_ITEMS } from './use-layout';
@@ -24,6 +24,7 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
   const { currentPath, navigate } = useLayout();
   const [inboxCount, setInboxCount] = useState(0);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [settingsBreadcrumb, setSettingsBreadcrumb] = useState<{ group: string; tab: string }>({ group: 'General', tab: 'Profile Settings' });
   const notificationButtonRef = useRef<HTMLButtonElement>(null!);
 
   // Fetch unread email count for inbox badge
@@ -46,14 +47,28 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
     return () => { isMounted = false; };
   }, []);
 
+  // Listen for settings tab changes to update breadcrumb
+  useEffect(() => {
+    const handleSettingsTab = (e: Event) => {
+      const detail = (e as CustomEvent<{ group: string; tab: string }>).detail;
+      if (detail) setSettingsBreadcrumb(detail);
+    };
+    window.addEventListener('settings-tab-change', handleSettingsTab);
+    return () => window.removeEventListener('settings-tab-change', handleSettingsTab);
+  }, []);
+
   // Get current module name from navigation
-  const currentModule = NAV_ITEMS.find(item => item.path === currentPath)?.name ||
-    (currentPath === 'notifications' ? 'Notifications' :
-     currentPath === 'inbox' ? 'Messages' : 'Dashboard');
+  const currentModule = currentPath === 'settings'
+    ? settingsBreadcrumb.tab
+    : NAV_ITEMS.find(item => item.path === currentPath)?.name ||
+      (currentPath === 'notifications' ? 'Notifications' :
+       currentPath === 'inbox' ? 'Messages' : 'Dashboard');
 
   // Get parent group for breadcrumb
   const currentGroup = NAV_ITEMS.find(item => item.path === currentPath);
-  const groupName = (currentGroup as any)?.group ?? '';
+  const groupName = currentPath === 'settings'
+    ? settingsBreadcrumb.group
+    : (currentGroup as any)?.group ?? '';
 
   return (
     <header className="h-[52px] bg-[var(--surface)] border-b border-[var(--border)] flex items-center justify-between px-4 lg:px-5 shrink-0 sticky top-0 z-40 transition-colors duration-200">
@@ -92,22 +107,13 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
 
       {/* Right: Actions */}
       <div className="flex items-center gap-1.5 flex-1 justify-end">
-        {/* Quick Create */}
-        <button
-          className="w-8 h-8 rounded-lg bg-[#D94F4F] hover:bg-[#C24545] text-white flex items-center justify-center transition-colors shadow-sm active:scale-95"
-          aria-label="Quick create"
-          title="Quick create"
-        >
-          <Plus size={16} />
-        </button>
-
         {/* Inbox (Gmail) */}
         <button
           onClick={onOpenInbox}
           className={cn(
             'relative w-8 h-8 rounded-lg flex items-center justify-center transition-colors',
             currentPath === 'inbox'
-              ? 'bg-[#D94F4F]/10 text-[#D94F4F]'
+              ? 'bg-[#3B82F6]/10 text-[#3B82F6]'
               : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)]',
           )}
           aria-label="Open Inbox"
@@ -128,7 +134,7 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
           className={cn(
             'relative w-8 h-8 rounded-lg flex items-center justify-center transition-colors',
             isNotificationsOpen
-              ? 'bg-[#D94F4F]/10 text-[#D94F4F]'
+              ? 'bg-[#3B82F6]/10 text-[#3B82F6]'
               : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)]',
           )}
           aria-label="Notifications"
@@ -136,14 +142,19 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
         >
           <Bell size={16} />
           {notificationCount > 0 && (
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#D94F4F]" />
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#3B82F6]" />
           )}
         </button>
 
         {/* Settings */}
         <button
           onClick={() => navigate('settings')}
-          className="w-8 h-8 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)] flex items-center justify-center transition-colors"
+          className={cn(
+            'w-8 h-8 rounded-lg flex items-center justify-center transition-colors',
+            currentPath === 'settings'
+              ? 'bg-[#3B82F6]/10 text-[#3B82F6]'
+              : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)]',
+          )}
           aria-label="Settings"
           title="Settings"
         >
