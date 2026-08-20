@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import type { LucideIcon } from 'lucide-react';
 import {
   Mail,
@@ -244,7 +245,19 @@ export function SectionCard({
         </div>
         <div className="flex shrink-0 items-center gap-1 text-muted-foreground">{actions}</div>
       </header>
-      {open && children}
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            className="overflow-hidden"
+          >
+            {children}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </section>
   );
 }
@@ -447,7 +460,7 @@ export function RecordPanel({
               {/* ========================================================================= */}
               {/*                                HEADER SECTION                            */}
               {/* ========================================================================= */}
-              <div className="shrink-0 border-b border-border/60 bg-card/95 px-6 pt-6 backdrop-blur-md">
+              <div className="sticky top-0 z-10 shrink-0 border-b border-border/60 bg-card/95 px-6 pt-6 backdrop-blur-md">
                 
                 {/* 1. Main Title & Status Row */}
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">

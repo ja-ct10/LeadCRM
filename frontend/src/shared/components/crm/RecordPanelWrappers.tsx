@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import {
   Info,
@@ -16,17 +16,23 @@ import {
   FileText,
   Trash2,
   Plus,
-  ChevronsUp,
+  Paperclip,
+  UserPlus,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { RecordPanel, SmallAction, Chip } from './RecordPanel';
-import { Button } from '@/shared/components/ui/button';
-import { Input } from '@/shared/components/ui/input';
-import { Textarea } from '@/shared/components/ui/textarea';
+import { PipelineProgressBar } from './pipeline-progress-bar';
+import { RecordActionBar } from './record-action-bar';
+import type { OverflowMenuItem } from './record-action-bar';
+import { InlineTaskForm } from './inline-task-form';
+import { InlineDealForm } from './inline-deal-form';
+import { CustomFieldsSection } from './custom-fields-section';
+import { FilesSection } from './files-section';
+import type { FileRecord } from './files-section';
 import { Checkbox } from '@/shared/components/ui/checkbox';
-import { Slider } from '@/shared/components/ui/slider';
 import { useData } from '@/store/DataContext';
+import { useHasPermission } from '@/shared/hooks/use-permissions';
 import type { Lead, Contact, Deal, Task } from '@/store/types';
 import { cn } from '@/lib/utils';
 import {
@@ -132,34 +138,13 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
     tasks,
     deals,
     organizations,
-    users,
     addTask,
     addDeal,
   } = useData();
 
   // Local UI states for inline forms
   const [showTaskForm, setShowTaskForm] = useState(false);
-  const [taskMode, setTaskMode] = useState<'task' | 'call'>('task');
-  const [taskTitle, setTaskTitle] = useState('');
-  const [taskPriority, setTaskPriority] = useState(false);
-  const [taskAssignee, setTaskAssignee] = useState('');
-  const [taskDueDate, setTaskDueDate] = useState('');
-
-  const [showOppForm, setShowOppForm] = useState(false);
-  const [oppAmount, setOppAmount] = useState('');
-  const [oppConfidence, setOppConfidence] = useState([50]);
-  const [oppCloseDate, setOppCloseDate] = useState('');
-  const [oppNote, setOppNote] = useState('');
-
-  const [files, setFiles] = useState<FileItem[]>([
-    {
-      id: 'f-1',
-      name: 'Lead_Qualification_Brief.pdf',
-      size: '245 KB',
-      uploadedBy: 'System',
-      uploadedAt: 'Today',
-    },
-  ]);
+  const [showDealForm, setShowDealForm] = useState(false);
 
   const [customFields, setCustomFields] = useState<CustomFieldItem[]>([
     { id: 'cf-1', name: 'Product Interest Keywords', type: 'text', value: 'Security, Cabling, CCTV' },
@@ -218,77 +203,48 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
     }
   };
 
-  const handleCreateTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!taskTitle.trim()) {
-      toast.error('Task title is required');
-      return;
-    }
-    try {
-      await addTask({
-        title: taskTitle,
-        description: taskTitle,
-        leadId: lead.id,
-        priority: taskPriority ? 'High' : 'Medium',
-        assignedUserId: taskAssignee || lead.assignedUserId || users[0]?.id || '',
-        dueDate: taskDueDate || new Date(Date.now() + 86400000 * 2).toISOString(),
-        status: 'pending',
-      } as any);
-      toast.success(taskMode === 'call' ? 'Call task scheduled' : 'Task created');
-      setTaskTitle('');
-      setShowTaskForm(false);
-    } catch {
-      toast.error('Failed to create task');
-    }
-  };
-
-  const handleCreateDeal = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!oppAmount) {
-      toast.error('Please specify a deal amount');
-      return;
-    }
-    try {
-      await addDeal({
-        title: `${leadName} - Deal`,
-        value: Number(oppAmount.replace(/[^0-9.]/g, '')) || 10000,
-        currency: 'PHP',
-        leadId: lead.id,
-        organizationId: leadOrg?.id,
-        stageId: 'stage-1',
-        pipelineId: 'pipe-1',
-        description: oppNote,
-        priority: 'Medium',
-        expectedCloseDate: oppCloseDate || new Date(Date.now() + 86400000 * 30).toISOString(),
-      } as any);
-      toast.success('Deal saved');
-      setShowOppForm(false);
-      setOppAmount('');
-      setOppNote('');
-    } catch (e) {
-      toast.error('Failed to create deal');
-    }
-  };
-
-  const handleUploadFile = (file: File) => {
-    const newFile: FileItem = {
-      id: `f-${Date.now()}`,
-      name: file.name,
-      size: `${Math.round(file.size / 1024)} KB`,
-      uploadedBy: 'You',
-      uploadedAt: 'Just now',
-    };
-    setFiles((prev) => [newFile, ...prev]);
-    toast.success(`Uploaded ${file.name}`);
-  };
-
-  const handleDeleteFile = (id: string) => {
-    setFiles((prev) => prev.filter((f) => f.id !== id));
-    toast.success('File removed');
-  };
+  // Overflow menu items for RecordActionBar
+  const overflowItems: OverflowMenuItem[] = [
+    { label: 'Edit', icon: <Pencil className="size-4" />, onClick: () => onEdit?.(lead) },
+    {
+      label: 'Convert to Contact',
+      icon: <UserPlus className="size-4" />,
+      onClick: () => toast.info('Convert to Contact functionality coming soon'),
+      permission: 'contacts.create',
+    },
+    {
+      label: 'Delete',
+      icon: <Trash2 className="size-4" />,
+      onClick: async () => {
+        if (window.confirm(`Delete lead ${leadName}?`)) {
+          await deleteLead(lead.id);
+          onOpenChange(false);
+          toast.success('Lead deleted');
+        }
+      },
+      destructive: true,
+      permission: 'contacts.delete',
+    },
+  ];
 
   // Sections configuration
   const sections = [
+    // RecordActionBar section
+    {
+      id: 'action-bar',
+      title: 'Actions',
+      icon: Info,
+      content: (
+        <div className="px-4 py-2">
+          <RecordActionBar
+            email={lead.email ?? null}
+            phone={lead.phone ?? null}
+            onLogActivity={() => toast.info('Activity logging coming soon')}
+            overflowItems={overflowItems}
+          />
+        </div>
+      ),
+    },
     {
       id: 'about',
       title: 'About',
@@ -389,84 +345,29 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
             </div>
           ))}
 
-          {showTaskForm ? (
-            <form onSubmit={handleCreateTask} className="p-4 bg-secondary/40 space-y-3">
-              <div className="flex items-center gap-3 border-b border-border pb-2">
-                <button
-                  type="button"
-                  onClick={() => setTaskMode('task')}
-                  className={cn(
-                    'text-xs font-semibold uppercase tracking-wider pb-1 transition-colors',
-                    taskMode === 'task' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground'
-                  )}
-                >
-                  Task
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTaskMode('call')}
-                  className={cn(
-                    'text-xs font-semibold uppercase tracking-wider pb-1 transition-colors',
-                    taskMode === 'call' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground'
-                  )}
-                >
-                  Call
-                </button>
-              </div>
-
-              <Input
-                autoFocus
-                placeholder={taskMode === 'call' ? `Call ${leadName}` : 'Follow up with lead'}
-                value={taskTitle}
-                onChange={(e) => setTaskTitle(e.target.value)}
-                className="h-9"
+          {showTaskForm && (
+            <div className="p-4">
+              <InlineTaskForm
+                recordName={leadName}
+                onSubmit={async (taskData) => {
+                  await addTask({
+                    title: taskData.title,
+                    description: taskData.title,
+                    leadId: lead.id,
+                    priority: taskData.priority === 'HIGH' ? 'High' : taskData.priority === 'LOW' ? 'Low' : 'Medium',
+                    assignedUserId: taskData.assignedUserId || lead.assignedUserId || '',
+                    dueDate: taskData.dueDate || new Date(Date.now() + 86400000 * 2).toISOString(),
+                    status: 'pending',
+                  } as any);
+                  toast.success(taskData.type === 'call' ? 'Call task scheduled' : 'Task created');
+                  setShowTaskForm(false);
+                }}
+                onCancel={() => setShowTaskForm(false)}
               />
+            </div>
+          )}
 
-              {taskMode === 'task' && (
-                <label className="flex items-center gap-2 text-xs font-medium text-foreground">
-                  <Checkbox checked={taskPriority} onCheckedChange={setTaskPriority} />
-                  High Priority
-                  <ChevronsUp className="h-3.5 w-3.5 text-destructive" />
-                </label>
-              )}
-
-              <div className="grid grid-cols-2 gap-2">
-                <Input
-                  type="date"
-                  value={taskDueDate}
-                  onChange={(e) => setTaskDueDate(e.target.value)}
-                  className="h-8 text-xs"
-                />
-                <select
-                  value={taskAssignee}
-                  onChange={(e) => setTaskAssignee(e.target.value)}
-                  className="h-8 rounded-lg border border-input bg-card px-2 text-xs text-foreground"
-                >
-                  <option value="">Assignee (Default)</option>
-                  {users.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.firstName ? `${u.firstName} ${u.lastName || ''}`.trim() : u.email}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {taskMode === 'call' && (
-                <p className="text-[11px] text-muted-foreground">
-                  The task will automatically resolve when call activity is logged.
-                </p>
-              )}
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button size="sm" variant="ghost" type="button" onClick={() => setShowTaskForm(false)}>
-                  Cancel
-                </Button>
-                <Button size="sm" type="submit">
-                  Save Task
-                </Button>
-              </div>
-            </form>
-          ) : leadTasks.length === 0 ? (
+          {!showTaskForm && leadTasks.length === 0 && (
             <div className="p-4 text-center">
               <p className="text-xs text-muted-foreground">No tasks scheduled for this lead.</p>
               <button
@@ -477,7 +378,7 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
                 + Add Task
               </button>
             </div>
-          ) : null}
+          )}
         </div>
       ),
     },
@@ -488,7 +389,7 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
       count: leadDeals.length,
       collapsible: true,
       actions: (
-        <SmallAction label="Add Deal" onClick={() => setShowOppForm((v) => !v)}>
+        <SmallAction label="Add Deal" onClick={() => setShowDealForm((v) => !v)}>
           <Plus className="h-4 w-4" />
         </SmallAction>
       ),
@@ -506,66 +407,43 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
             </Link>
           ))}
 
-          {showOppForm ? (
-            <form onSubmit={handleCreateDeal} className="p-4 bg-secondary/40 space-y-3">
-              <div className="grid grid-cols-2 gap-2">
-                <Input
-                  type="number"
-                  placeholder="Amount (e.g. 50000)"
-                  value={oppAmount}
-                  onChange={(e) => setOppAmount(e.target.value)}
-                  className="h-9 text-sm"
-                />
-                <Input
-                  type="date"
-                  placeholder="Close Date"
-                  value={oppCloseDate}
-                  onChange={(e) => setOppCloseDate(e.target.value)}
-                  className="h-9 text-xs"
-                />
-              </div>
-
-              <div>
-                <div className="flex justify-between text-xs mb-1 text-muted-foreground">
-                  <span>Confidence</span>
-                  <span>{oppConfidence[0]}%</span>
-                </div>
-                <Slider
-                  value={oppConfidence}
-                  onValueChange={setOppConfidence}
-                  max={100}
-                  step={5}
-                />
-              </div>
-
-              <Textarea
-                placeholder="Deal notes or scope…"
-                value={oppNote}
-                onChange={(e) => setOppNote(e.target.value)}
-                className="min-h-16 text-xs resize-none"
+          {showDealForm && (
+            <div className="p-4">
+              <InlineDealForm
+                relatedRecord={{ type: 'lead', id: lead.id, organizationId: leadOrg?.id }}
+                onSubmit={async (dealData) => {
+                  await addDeal({
+                    title: dealData.title,
+                    value: dealData.value || 0,
+                    currency: 'PHP',
+                    leadId: dealData.leadId || lead.id,
+                    organizationId: dealData.organizationId || leadOrg?.id,
+                    stageId: dealData.stageId,
+                    pipelineId: dealData.pipelineId,
+                    description: dealData.description,
+                    priority: 'Medium',
+                    expectedCloseDate: dealData.expectedCloseDate || new Date(Date.now() + 86400000 * 30).toISOString(),
+                  } as any);
+                  toast.success('Deal created');
+                  setShowDealForm(false);
+                }}
+                onCancel={() => setShowDealForm(false)}
               />
+            </div>
+          )}
 
-              <div className="flex justify-end gap-2 pt-2">
-                <Button size="sm" variant="ghost" type="button" onClick={() => setShowOppForm(false)}>
-                  Cancel
-                </Button>
-                <Button size="sm" type="submit">
-                  Save Deal
-                </Button>
-              </div>
-            </form>
-          ) : leadDeals.length === 0 ? (
+          {!showDealForm && leadDeals.length === 0 && (
             <div className="p-4 text-center">
               <p className="text-xs text-muted-foreground">No active deals attached to this lead.</p>
               <button
                 type="button"
-                onClick={() => setShowOppForm(true)}
+                onClick={() => setShowDealForm(true)}
                 className="mt-1 text-xs font-semibold text-primary hover:underline"
               >
                 + Create Deal
               </button>
             </div>
-          ) : null}
+          )}
         </div>
       ),
     },
@@ -595,28 +473,27 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
       icon: Table2,
       count: customFields.length,
       collapsible: true,
-      actions: (
-        <SmallAction label="Add Field" onClick={() => {
-          const name = window.prompt('Field Name:');
-          if (name) {
-            const val = window.prompt('Field Value:') || '';
-            setCustomFields((prev) => [...prev, { id: `cf-${Date.now()}`, name, type: 'text', value: val }]);
-          }
-        }}>
-          <Plus className="h-4 w-4" />
-        </SmallAction>
-      ),
       content: (
-        <div className="divide-y divide-border">
-          {customFields.map((cf) => (
-            <div key={cf.id} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2 px-4 py-2.5 text-xs">
-              <span className="text-muted-foreground truncate">{cf.name}</span>
-              <span className="font-medium text-foreground truncate">{cf.value}</span>
-              <SmallAction label="Delete" onClick={() => setCustomFields((p) => p.filter((x) => x.id !== cf.id))}>
-                <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
-              </SmallAction>
-            </div>
-          ))}
+        <div className="px-4 py-3">
+          <CustomFieldsSection
+            fields={customFields}
+            canEdit={true}
+            onAdd={(field) => {
+              const newField: CustomFieldItem = { id: `cf-${Date.now()}`, ...field };
+              setCustomFields((prev) => [...prev, newField]);
+              toast.success('Custom field added');
+            }}
+            onUpdate={(fieldId, value) => {
+              setCustomFields((prev) =>
+                prev.map((f) => (f.id === fieldId ? { ...f, value } : f))
+              );
+              toast.success('Field updated');
+            }}
+            onDelete={(fieldId) => {
+              setCustomFields((prev) => prev.filter((f) => f.id !== fieldId));
+              toast.success('Custom field removed');
+            }}
+          />
         </div>
       ),
     },
@@ -642,9 +519,6 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
       onStatusChange={handleStatusChange}
       activity={activityItems}
       sections={sections}
-      files={files}
-      onUploadFile={handleUploadFile}
-      onDeleteFile={handleDeleteFile}
       actions={{
         email: () => {
           if (lead.email) window.location.href = `mailto:${lead.email}`;
@@ -662,6 +536,11 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
           label: 'Edit Lead',
           icon: Pencil,
           onSelect: () => onEdit?.(lead),
+        },
+        {
+          label: 'Convert to Contact',
+          icon: UserPlus,
+          onSelect: () => toast.info('Convert to Contact functionality coming soon'),
         },
         {
           label: 'Delete Lead',
@@ -692,15 +571,57 @@ export interface ContactPanelProps {
 }
 
 export function ContactPanel({ open, onOpenChange, contact, onEdit }: ContactPanelProps) {
-  const { updateContact, deleteContact, tasks, deals, organizations } = useData();
+  const { updateContact, deleteContact, tasks, deals, organizations, addTask } = useData();
+
+  // Local UI states
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const [customFields, setCustomFields] = useState<CustomFieldItem[]>([]);
+  const [files, setFiles] = useState<FileRecord[]>([]);
 
   if (!contact) return null;
 
   const contactName = `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || 'Contact';
   const relatedAccount = organizations.find((o) => o.id === contact.accountId || o.name === contact.companyName);
   const contactDeals = deals.filter((d) => d.contactId === contact.id || d.leadId === contact.id);
+  const contactTasks = tasks.filter(
+    (t: Task) => (t as any).contactId === contact.id || t.title.toLowerCase().includes(contactName.toLowerCase())
+  );
+
+  // Overflow menu items for RecordActionBar
+  const overflowItems: OverflowMenuItem[] = [
+    { label: 'Edit', icon: <Pencil className="size-4" />, onClick: () => onEdit?.(contact) },
+    {
+      label: 'Delete',
+      icon: <Trash2 className="size-4" />,
+      onClick: async () => {
+        if (window.confirm(`Delete contact ${contactName}?`)) {
+          await deleteContact(contact.id);
+          onOpenChange(false);
+          toast.success('Contact deleted');
+        }
+      },
+      destructive: true,
+      permission: 'contacts.delete',
+    },
+  ];
 
   const sections = [
+    // RecordActionBar section
+    {
+      id: 'action-bar',
+      title: 'Actions',
+      icon: Info,
+      content: (
+        <div className="px-4 py-2">
+          <RecordActionBar
+            email={contact.email ?? null}
+            phone={contact.phone ?? null}
+            onLogActivity={() => toast.info('Activity logging coming soon')}
+            overflowItems={overflowItems}
+          />
+        </div>
+      ),
+    },
     {
       id: 'about',
       title: 'About',
@@ -750,6 +671,71 @@ export function ContactPanel({ open, onOpenChange, contact, onEdit }: ContactPan
         <div className="p-4 text-xs text-muted-foreground text-center">No associated account.</div>
       ),
     },
+    // Tasks section with InlineTaskForm
+    {
+      id: 'tasks',
+      title: 'Tasks',
+      icon: CheckCircle2,
+      count: contactTasks.length,
+      collapsible: true,
+      actions: (
+        <SmallAction label="Add Task" onClick={() => setShowTaskForm((v) => !v)}>
+          <Plus className="h-4 w-4" />
+        </SmallAction>
+      ),
+      content: (
+        <div className="divide-y divide-border">
+          {contactTasks.map((t) => (
+            <div key={t.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-4 py-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-foreground">{t.title}</p>
+                <p className="text-xs text-muted-foreground">
+                  Due: {t.dueDate ? new Date(t.dueDate).toLocaleDateString() : 'No date'}
+                </p>
+              </div>
+              <Chip className={t.priority === 'High' ? 'text-destructive bg-destructive/10' : ''}>
+                {t.priority || 'Medium'}
+              </Chip>
+            </div>
+          ))}
+
+          {showTaskForm && (
+            <div className="p-4">
+              <InlineTaskForm
+                recordName={contactName}
+                onSubmit={async (taskData) => {
+                  await addTask({
+                    title: taskData.title,
+                    description: taskData.title,
+                    contactId: contact.id,
+                    priority: taskData.priority === 'HIGH' ? 'High' : taskData.priority === 'LOW' ? 'Low' : 'Medium',
+                    assignedUserId: taskData.assignedUserId || '',
+                    dueDate: taskData.dueDate || new Date(Date.now() + 86400000 * 2).toISOString(),
+                    status: 'pending',
+                  } as any);
+                  toast.success(taskData.type === 'call' ? 'Call task scheduled' : 'Task created');
+                  setShowTaskForm(false);
+                }}
+                onCancel={() => setShowTaskForm(false)}
+              />
+            </div>
+          )}
+
+          {!showTaskForm && contactTasks.length === 0 && (
+            <div className="p-4 text-center">
+              <p className="text-xs text-muted-foreground">No tasks scheduled for this contact.</p>
+              <button
+                type="button"
+                onClick={() => setShowTaskForm(true)}
+                className="mt-1 text-xs font-semibold text-primary hover:underline"
+              >
+                + Add Task
+              </button>
+            </div>
+          )}
+        </div>
+      ),
+    },
     {
       id: 'deals',
       title: 'Deals',
@@ -770,6 +756,70 @@ export function ContactPanel({ open, onOpenChange, contact, onEdit }: ContactPan
           {contactDeals.length === 0 && (
             <p className="p-4 text-xs text-muted-foreground text-center">No deals connected.</p>
           )}
+        </div>
+      ),
+    },
+    // Custom Fields section
+    {
+      id: 'custom-fields',
+      title: 'Custom Fields',
+      icon: Table2,
+      count: customFields.length,
+      collapsible: true,
+      content: (
+        <div className="px-4 py-3">
+          <CustomFieldsSection
+            fields={customFields}
+            canEdit={true}
+            onAdd={(field) => {
+              const newField: CustomFieldItem = { id: `cf-${Date.now()}`, ...field };
+              setCustomFields((prev) => [...prev, newField]);
+              toast.success('Custom field added');
+            }}
+            onUpdate={(fieldId, value) => {
+              setCustomFields((prev) =>
+                prev.map((f) => (f.id === fieldId ? { ...f, value } : f))
+              );
+              toast.success('Field updated');
+            }}
+            onDelete={(fieldId) => {
+              setCustomFields((prev) => prev.filter((f) => f.id !== fieldId));
+              toast.success('Custom field removed');
+            }}
+          />
+        </div>
+      ),
+    },
+    // Files section
+    {
+      id: 'files',
+      title: 'Files',
+      icon: Paperclip,
+      count: files.length,
+      collapsible: true,
+      content: (
+        <div className="px-4 py-3">
+          <FilesSection
+            files={files}
+            canUpload={true}
+            canDelete={true}
+            onUpload={async (file) => {
+              const newFile: FileRecord = {
+                id: `file-${Date.now()}`,
+                name: file.name,
+                size: file.size,
+                url: URL.createObjectURL(file),
+                uploadedBy: 'You',
+                uploadedAt: new Date().toISOString(),
+              };
+              setFiles((prev) => [newFile, ...prev]);
+              toast.info('File stored locally — server upload coming soon');
+            }}
+            onDelete={(fileId) => {
+              setFiles((prev) => prev.filter((f) => f.id !== fileId));
+              toast.info('File removed locally — server sync coming soon');
+            }}
+          />
         </div>
       ),
     },
@@ -845,13 +895,51 @@ export interface AccountPanelProps {
 export function AccountPanel({ open, onOpenChange, account, onEdit }: AccountPanelProps) {
   const { contacts, deals, updateOrganization, deleteOrganization } = useData();
 
+  // Local UI states
+  const [customFields, setCustomFields] = useState<CustomFieldItem[]>([]);
+  const [files, setFiles] = useState<FileRecord[]>([]);
+
   if (!account) return null;
 
   const accountName = account.name || 'Account';
   const relatedContacts = contacts.filter((c) => c.accountId === account.id || c.companyName === accountName);
   const relatedDeals = deals.filter((d) => d.organizationId === account.id || d.companyName === accountName);
 
+  // Overflow menu items for RecordActionBar
+  const overflowItems: OverflowMenuItem[] = [
+    { label: 'Edit', icon: <Pencil className="size-4" />, onClick: () => onEdit?.(account) },
+    {
+      label: 'Delete',
+      icon: <Trash2 className="size-4" />,
+      onClick: async () => {
+        if (window.confirm(`Delete account ${accountName}?`)) {
+          await deleteOrganization(account.id);
+          onOpenChange(false);
+          toast.success('Account deleted');
+        }
+      },
+      destructive: true,
+      permission: 'accounts.delete',
+    },
+  ];
+
   const sections = [
+    // RecordActionBar section (no email/phone for org)
+    {
+      id: 'action-bar',
+      title: 'Actions',
+      icon: Info,
+      content: (
+        <div className="px-4 py-2">
+          <RecordActionBar
+            email={null}
+            phone={null}
+            onLogActivity={() => toast.info('Activity logging coming soon')}
+            overflowItems={overflowItems}
+          />
+        </div>
+      ),
+    },
     {
       id: 'about',
       title: 'About',
@@ -942,6 +1030,70 @@ export function AccountPanel({ open, onOpenChange, account, onEdit }: AccountPan
         </div>
       ),
     },
+    // Custom Fields section
+    {
+      id: 'custom-fields',
+      title: 'Custom Fields',
+      icon: Table2,
+      count: customFields.length,
+      collapsible: true,
+      content: (
+        <div className="px-4 py-3">
+          <CustomFieldsSection
+            fields={customFields}
+            canEdit={true}
+            onAdd={(field) => {
+              const newField: CustomFieldItem = { id: `cf-${Date.now()}`, ...field };
+              setCustomFields((prev) => [...prev, newField]);
+              toast.success('Custom field added');
+            }}
+            onUpdate={(fieldId, value) => {
+              setCustomFields((prev) =>
+                prev.map((f) => (f.id === fieldId ? { ...f, value } : f))
+              );
+              toast.success('Field updated');
+            }}
+            onDelete={(fieldId) => {
+              setCustomFields((prev) => prev.filter((f) => f.id !== fieldId));
+              toast.success('Custom field removed');
+            }}
+          />
+        </div>
+      ),
+    },
+    // Files section
+    {
+      id: 'files',
+      title: 'Files',
+      icon: Paperclip,
+      count: files.length,
+      collapsible: true,
+      content: (
+        <div className="px-4 py-3">
+          <FilesSection
+            files={files}
+            canUpload={true}
+            canDelete={true}
+            onUpload={async (file) => {
+              const newFile: FileRecord = {
+                id: `file-${Date.now()}`,
+                name: file.name,
+                size: file.size,
+                url: URL.createObjectURL(file),
+                uploadedBy: 'You',
+                uploadedAt: new Date().toISOString(),
+              };
+              setFiles((prev) => [newFile, ...prev]);
+              toast.info('File stored locally — server upload coming soon');
+            }}
+            onDelete={(fileId) => {
+              setFiles((prev) => prev.filter((f) => f.id !== fileId));
+              toast.info('File removed locally — server sync coming soon');
+            }}
+          />
+        </div>
+      ),
+    },
   ];
 
   return (
@@ -1003,10 +1155,24 @@ export interface DealPanelProps {
   onOpenChange: (open: boolean) => void;
   deal: Deal | null;
   onEdit?: (deal: Deal) => void;
+  onOpenContactPanel?: (contactId: string) => void;
+  onOpenAccountPanel?: (accountId: string) => void;
 }
 
-export function DealPanel({ open, onOpenChange, deal, onEdit }: DealPanelProps) {
-  const { pipelines, moveDealStage, deleteDeal, tasks } = useData();
+export function DealPanel({ open, onOpenChange, deal, onEdit, onOpenContactPanel, onOpenAccountPanel }: DealPanelProps) {
+  const { pipelines, moveDealStage, deleteDeal, tasks, contacts, organizations, addTask, updateDeal, updateTask } = useData();
+  const canEditDeal = useHasPermission('deals.edit');
+  const canDeleteDeal = useHasPermission('deals.delete');
+  const canCreateDeal = useHasPermission('deals.create');
+
+  // Local UI states for DealPanel
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const [customFields, setCustomFields] = useState<CustomFieldItem[]>(
+    (deal as any)?.customFields ?? []
+  );
+  const [files, setFiles] = useState<FileRecord[]>(
+    (deal as any)?.files ?? []
+  );
 
   if (!deal) return null;
 
@@ -1020,7 +1186,120 @@ export function DealPanel({ open, onOpenChange, deal, onEdit }: DealPanelProps) 
   const currentStage = dealStages.find((s) => s.id === deal.stageId)?.label || 'In Progress';
   const dealTasks = tasks.filter((t) => t.dealId === deal.id);
 
+  // Associated contacts: from deal.contactIds or deal.leadIds, or fallback to contactId
+  const linkedContactIds = deal.contactIds ?? (deal.leadIds ?? (deal.leadId ? [deal.leadId] : []));
+  const linkedContacts = contacts.filter((c) => linkedContactIds.includes(c.id));
+  const primaryContact = linkedContacts[0] ?? null;
+
+  // Company/Organization from deal's organizationId or companyId
+  const dealOrganization = organizations.find(
+    (o) => o.id === deal.organizationId || o.id === (deal as any).companyId || o.name === deal.companyName
+  );
+
+  // Current stage info for won/lost detection
+  const currentStageObj = dealPipeline?.stages.find((s) => s.id === deal.stageId);
+  const isWon = currentStageObj?.isWon ?? false;
+  const isLost = currentStageObj?.isLost ?? false;
+
+  // Pipeline progress bar stages
+  const progressStages = (dealPipeline?.stages ?? []).map((s) => ({
+    id: s.id,
+    name: s.name,
+    isWon: s.isWon,
+    isLost: s.isLost,
+    order: s.order,
+  }));
+
+  const handleStageClick = async (stageId: string): Promise<void> => {
+    if (!canEditDeal) return;
+    try {
+      await moveDealStage(deal.id, stageId);
+      const stageName = dealPipeline?.stages.find((s) => s.id === stageId)?.name ?? 'new stage';
+      toast.success(`Stage moved to ${stageName}`);
+    } catch {
+      toast.error('Failed to change stage');
+    }
+  };
+
+  const handleDuplicate = async (): Promise<void> => {
+    try {
+      const { duplicateDeal: duplicateApi } = await import('@/shared/services/deals-actions.api');
+      await duplicateApi(deal.id);
+    } catch {
+      toast.error('Failed to duplicate deal');
+    }
+  };
+
+  const handleArchiveRestore = async (): Promise<void> => {
+    if (deal.isArchived) {
+      try {
+        const { restoreDeal: restoreApi } = await import('@/shared/services/deals-actions.api');
+        await restoreApi(deal.id);
+      } catch {
+        toast.error('Failed to restore deal');
+      }
+    } else {
+      await deleteDeal(deal.id);
+      toast.success('Deal archived');
+    }
+  };
+
+  // Overflow menu items for RecordActionBar
+  const overflowItems: OverflowMenuItem[] = [
+    { label: 'Edit', icon: <Pencil className="size-4" />, onClick: () => onEdit?.(deal) },
+    { label: 'Duplicate', icon: <FileText className="size-4" />, onClick: handleDuplicate, permission: 'deals.create' },
+    { label: deal.isArchived ? 'Restore' : 'Archive', icon: <Trash2 className="size-4" />, onClick: handleArchiveRestore, permission: 'deals.delete' },
+    {
+      label: 'Delete',
+      icon: <Trash2 className="size-4" />,
+      onClick: async () => {
+        if (window.confirm(`Delete deal ${deal.title}?`)) {
+          await deleteDeal(deal.id);
+          onOpenChange(false);
+          toast.success('Deal deleted');
+        }
+      },
+      destructive: true,
+      permission: 'deals.delete',
+    },
+  ];
+
   const sections = [
+    // 21.1: Pipeline Progress Bar section
+    {
+      id: 'pipeline-progress',
+      title: 'Pipeline',
+      icon: Info,
+      content: (
+        <div className="px-4 py-3">
+          <PipelineProgressBar
+            stages={progressStages}
+            currentStageId={deal.stageId}
+            isWon={isWon}
+            isLost={isLost}
+            onStageClick={handleStageClick}
+            canChangeStage={canEditDeal}
+          />
+        </div>
+      ),
+    },
+    // 21.2: Record Action Bar section
+    {
+      id: 'action-bar',
+      title: 'Actions',
+      icon: Info,
+      content: (
+        <div className="px-4 py-2">
+          <RecordActionBar
+            email={primaryContact?.email ?? null}
+            phone={primaryContact?.phone ?? null}
+            onLogActivity={() => toast.info('Activity logging coming soon')}
+            overflowItems={overflowItems}
+          />
+        </div>
+      ),
+    },
+    // About Deal
     {
       id: 'about',
       title: 'About Deal',
@@ -1068,25 +1347,243 @@ export function DealPanel({ open, onOpenChange, deal, onEdit }: DealPanelProps) 
         </div>
       ),
     },
+    // 21.3: Associated Contacts section
     {
-      id: 'tasks',
-      title: 'Deal Tasks',
-      icon: CheckCircle2,
-      count: dealTasks.length,
+      id: 'contacts',
+      title: 'Associated Contacts',
+      icon: ContactIcon,
+      count: linkedContacts.length,
+      collapsible: true,
       content: (
         <div className="divide-y divide-border text-sm">
-          {dealTasks.map((t) => (
-            <div key={t.id} className="p-3 flex justify-between items-center">
-              <div>
-                <p className="font-medium text-foreground">{t.title}</p>
-                <p className="text-xs text-muted-foreground">Due: {t.dueDate ? new Date(t.dueDate).toLocaleDateString() : '--'}</p>
+          {linkedContacts.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => onOpenContactPanel?.(c.id)}
+              className="w-full grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 hover:bg-secondary/50 transition-colors cursor-pointer text-left"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-foreground">
+                  {`${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() || 'Unnamed Contact'}
+                </p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {c.email || c.phone || 'No contact info'}
+                </p>
               </div>
-              <Chip>{t.status}</Chip>
+              {c.phone && (
+                <span className="text-xs text-muted-foreground">{c.phone}</span>
+              )}
+            </button>
+          ))}
+          {linkedContacts.length === 0 && (
+            <div className="p-4 text-center">
+              <p className="text-xs text-muted-foreground">No contacts linked.</p>
+              <button
+                type="button"
+                className="mt-1 text-xs font-semibold text-primary hover:underline"
+                onClick={() => toast.info('Link Contact functionality coming soon')}
+              >
+                + Link Contact
+              </button>
+            </div>
+          )}
+        </div>
+      ),
+    },
+    // 21.4: Company/Organization section
+    {
+      id: 'organization',
+      title: 'Company / Organization',
+      icon: Building,
+      count: dealOrganization ? 1 : 0,
+      collapsible: true,
+      content: dealOrganization ? (
+        <button
+          type="button"
+          onClick={() => onOpenAccountPanel?.(dealOrganization.id)}
+          className="w-full grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 hover:bg-secondary/50 transition-colors cursor-pointer text-left"
+        >
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-foreground">
+              {dealOrganization.name}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {dealOrganization.industry || 'General Industry'}
+            </p>
+          </div>
+          <Chip>{dealOrganization.city || 'Account'}</Chip>
+        </button>
+      ) : (
+        <div className="p-4 text-center text-xs text-muted-foreground">
+          No organization linked to this deal.
+        </div>
+      ),
+    },
+    // 21.5: Tasks section with InlineTaskForm
+    {
+      id: 'tasks',
+      title: 'Tasks',
+      icon: CheckCircle2,
+      count: dealTasks.length,
+      collapsible: true,
+      actions: (
+        <SmallAction label="Add Task" onClick={() => setShowTaskForm((v) => !v)}>
+          <Plus className="h-4 w-4" />
+        </SmallAction>
+      ),
+      content: (
+        <div className="divide-y divide-border">
+          {dealTasks.map((t) => (
+            <div key={t.id} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3">
+              <Checkbox
+                checked={t.status === 'completed'}
+                onCheckedChange={async (checked) => {
+                  try {
+                    await updateTask(t.id, { status: checked ? 'completed' : 'pending' });
+                    toast.success(checked ? 'Task completed' : 'Task reopened');
+                  } catch {
+                    toast.error('Failed to update task status');
+                  }
+                }}
+                className="shrink-0"
+              />
+              <div className="min-w-0">
+                <p className={cn(
+                  "truncate text-sm font-medium text-foreground",
+                  t.status === 'completed' && "line-through text-muted-foreground"
+                )}>
+                  {t.title}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Due: {t.dueDate ? new Date(t.dueDate).toLocaleDateString() : 'No date'}
+                </p>
+              </div>
+              <Chip className={t.priority === 'High' ? 'text-destructive bg-destructive/10' : ''}>
+                {t.priority || 'Medium'}
+              </Chip>
             </div>
           ))}
-          {dealTasks.length === 0 && (
-            <p className="p-4 text-xs text-muted-foreground text-center">No tasks linked to this deal.</p>
+
+          {showTaskForm && (
+            <div className="p-4">
+              <InlineTaskForm
+                recordName={deal.title}
+                onSubmit={async (taskData) => {
+                  await addTask({
+                    title: taskData.title,
+                    description: taskData.title,
+                    dealId: deal.id,
+                    priority: taskData.priority === 'HIGH' ? 'High' : taskData.priority === 'LOW' ? 'Low' : 'Medium',
+                    assignedUserId: taskData.assignedUserId || '',
+                    dueDate: taskData.dueDate || new Date(Date.now() + 86400000 * 2).toISOString(),
+                    status: 'pending',
+                  } as any);
+                  toast.success(taskData.type === 'call' ? 'Call task scheduled' : 'Task created');
+                  setShowTaskForm(false);
+                }}
+                onCancel={() => setShowTaskForm(false)}
+              />
+            </div>
           )}
+
+          {!showTaskForm && dealTasks.length === 0 && (
+            <div className="p-4 text-center">
+              <p className="text-xs text-muted-foreground">No tasks linked to this deal.</p>
+              <button
+                type="button"
+                onClick={() => setShowTaskForm(true)}
+                className="mt-1 text-xs font-semibold text-primary hover:underline"
+              >
+                + Add Task
+              </button>
+            </div>
+          )}
+        </div>
+      ),
+    },
+    // 21.6: Custom Fields section
+    {
+      id: 'custom-fields',
+      title: 'Custom Fields',
+      icon: Table2,
+      count: customFields.length,
+      collapsible: true,
+      content: (
+        <div className="px-4 py-3">
+          <CustomFieldsSection
+            fields={customFields}
+            canEdit={canEditDeal}
+            onAdd={(field) => {
+              const newField: CustomFieldItem = {
+                id: `cf-${Date.now()}`,
+                ...field,
+              };
+              setCustomFields((prev) => [...prev, newField]);
+              if (updateDeal) {
+                updateDeal(deal.id, { customFields: [...customFields, newField] } as any).catch(() => {
+                  toast.error('Failed to save custom field');
+                });
+              }
+              toast.success('Custom field added');
+            }}
+            onUpdate={(fieldId, value) => {
+              setCustomFields((prev) =>
+                prev.map((f) => (f.id === fieldId ? { ...f, value } : f))
+              );
+              const updated = customFields.map((f) => (f.id === fieldId ? { ...f, value } : f));
+              if (updateDeal) {
+                updateDeal(deal.id, { customFields: updated } as any).catch(() => {
+                  toast.error('Failed to update custom field');
+                });
+              }
+              toast.success('Field updated');
+            }}
+            onDelete={(fieldId) => {
+              setCustomFields((prev) => prev.filter((f) => f.id !== fieldId));
+              const updated = customFields.filter((f) => f.id !== fieldId);
+              if (updateDeal) {
+                updateDeal(deal.id, { customFields: updated } as any).catch(() => {
+                  toast.error('Failed to delete custom field');
+                });
+              }
+              toast.success('Custom field removed');
+            }}
+          />
+        </div>
+      ),
+    },
+    // 21.7: Files section
+    {
+      id: 'files',
+      title: 'Files',
+      icon: Paperclip,
+      count: files.length,
+      collapsible: true,
+      content: (
+        <div className="px-4 py-3">
+          <FilesSection
+            files={files}
+            canUpload={canEditDeal}
+            canDelete={canEditDeal}
+            onUpload={async (file) => {
+              // Placeholder — file upload backend not yet implemented
+              const newFile: FileRecord = {
+                id: `file-${Date.now()}`,
+                name: file.name,
+                size: file.size,
+                url: URL.createObjectURL(file),
+                uploadedBy: 'You',
+                uploadedAt: new Date().toISOString(),
+              };
+              setFiles((prev) => [newFile, ...prev]);
+              toast.info('File stored locally — server upload coming soon');
+            }}
+            onDelete={(fileId) => {
+              setFiles((prev) => prev.filter((f) => f.id !== fileId));
+              toast.info('File removed locally — server sync coming soon');
+            }}
+          />
         </div>
       ),
     },

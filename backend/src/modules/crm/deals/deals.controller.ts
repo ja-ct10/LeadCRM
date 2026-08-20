@@ -1,9 +1,33 @@
 ﻿import { Request, Response, NextFunction } from 'express';
 import * as service from './deals.service';
+import * as forecastService from './forecast.service';
+import * as velocityService from './velocity.service';
+import { DealsQuerySchema } from './deals.dto';
 
 export async function getDeals(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const result = await service.getDeals(req.user!.tenantId, req.query as Record<string, unknown>);
+    const validation = DealsQuerySchema.safeParse(req.query);
+    if (!validation.success) {
+      res.status(400).json({
+        success: false,
+        error: validation.error.errors[0]?.message ?? 'Invalid query parameters',
+      });
+      return;
+    }
+
+    const params = validation.data;
+
+    // Branch for grouped-by-stage pipeline pagination
+    if (params.groupByStage === 'true' && params.pipelineId) {
+      const stagePageMap = req.query.stagePages
+        ? JSON.parse(String(req.query.stagePages)) as Record<string, number>
+        : undefined;
+      const result = await service.getDealsGroupedByStage(req.user!.tenantId, params.pipelineId, stagePageMap);
+      res.json({ success: true, data: { stages: result } });
+      return;
+    }
+
+    const result = await service.getDeals(req.user!.tenantId, params);
     res.json({ success: true, ...result });
   } catch (err) { next(err); }
 }
@@ -40,5 +64,45 @@ export async function archiveDeal(req: Request, res: Response, next: NextFunctio
   try {
     await service.archiveDeal(String(req.params.id), req.user!.tenantId, req.user!.userId, req.body?.archiveReason);
     res.status(204).send();
+  } catch (err) { next(err); }
+}
+
+export async function getForecast(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { pipelineId } = req.query;
+    const result = await forecastService.computeForecast(
+      req.user!.tenantId,
+      pipelineId ? String(pipelineId) : undefined
+    );
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+}
+
+export async function getVelocity(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { pipelineId, dateFrom, dateTo } = req.query;
+    const result = await velocityService.computeVelocity(
+      req.user!.tenantId,
+      {
+        pipelineId: pipelineId ? String(pipelineId) : undefined,
+        dateFrom: dateFrom ? String(dateFrom) : undefined,
+        dateTo: dateTo ? String(dateTo) : undefined,
+      }
+    );
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+}
+
+export async function restoreDeal(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const deal = await service.restoreDeal(String(req.params.id), req.user!.tenantId, req.user!.userId);
+    res.json({ success: true, data: deal });
+  } catch (err) { next(err); }
+}
+
+export async function duplicateDeal(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const deal = await service.duplicateDeal(String(req.params.id), req.user!.tenantId, req.user!.userId);
+    res.status(201).json({ success: true, data: deal });
   } catch (err) { next(err); }
 }

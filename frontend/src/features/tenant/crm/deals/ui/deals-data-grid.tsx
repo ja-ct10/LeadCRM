@@ -24,6 +24,7 @@ import {
 } from '@/shared/components/data-grid';
 import type { CellRendererMap, RowActionItem } from '@/shared/components/data-grid';
 import { DEALS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
+import { formatCurrency, type CurrencyConfig } from '@/shared/utils/currency';
 
 // ─── Props Interface ─────────────────────────────────────────────────────────
 
@@ -68,12 +69,8 @@ interface DealsDataGridProps {
   viewMode?: 'wrap' | 'clip';
   /** Column reorder handler — called when user drag-drops a column header */
   onColumnReorder?: (columns: ColumnConfigItem[]) => void;
-}
-
-// ─── Helper ──────────────────────────────────────────────────────────────────
-
-function formatCurrency(value: number): string {
-  return '₱' + Math.round(value).toLocaleString('en-PH');
+  /** Tenant currency configuration for formatting monetary values */
+  currencyConfig?: CurrencyConfig;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -99,6 +96,7 @@ export function DealsDataGrid({
   onHideColumn,
   viewMode = 'clip',
   onColumnReorder,
+  currencyConfig,
 }: DealsDataGridProps): React.ReactElement {
   // ─── Cell Renderers ────────────────────────────────────────────────────
 
@@ -132,7 +130,7 @@ export function DealsDataGrid({
 
     value: (_value: unknown, row: Deal) => (
       <span className="text-[13px] font-semibold text-[#0F172A] dark:text-slate-100">
-        {typeof row.value === 'number' && row.value > 0 ? formatCurrency(row.value) : '—'}
+        {typeof row.value === 'number' && row.value > 0 ? formatCurrency(row.value, currencyConfig) : '—'}
       </span>
     ),
 
@@ -179,7 +177,7 @@ export function DealsDataGrid({
     ),
 
     createdAt: (_value: unknown, row: Deal) => renderDate(row.createdAt),
-  }), [stageNameMap, getAssignedUserName, getAccountName]);
+  }), [stageNameMap, getAssignedUserName, getAccountName, currencyConfig]);
 
   // ─── Column Configuration ──────────────────────────────────────────────
 

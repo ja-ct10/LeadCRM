@@ -22,6 +22,8 @@ export {
   EmptyTotalState,
   DataErrorState,
 } from './data-view-states';
+export { PipelineProgressBar } from './pipeline-progress-bar';
+export type { PipelineProgressBarProps, StageItem } from './pipeline-progress-bar';
 export * from './moduleConfig';
 
 

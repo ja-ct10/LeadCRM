@@ -8,7 +8,7 @@ export const CreateDealSchema = z.object({
   pipelineId:        id(),
   stageId:           id(),
   title:             z.string().min(1).max(255),
-  value:             z.number().positive().optional(),
+  value:             z.number().positive().max(999_999_999_999).optional(),
   currency:          z.string().default('PHP'),
   priority:          z.enum(['LOW', 'MEDIUM', 'HIGH']).default('MEDIUM'),
   expectedCloseDate: z.string().datetime().optional(),
@@ -40,6 +40,48 @@ export const MoveDealStageSchema = z.object({
   handoff:    DealHandoffSchema.optional(),
 });
 
+// --- Bulk Operation Schemas ---
+
+export const BulkArchiveSchema = z.object({
+  dealIds:       z.array(z.string().min(1)).min(1).max(50),
+  archiveReason: z.string().optional(),
+});
+
+export const BulkReassignSchema = z.object({
+  dealIds:        z.array(z.string().min(1)).min(1).max(50),
+  assignedUserId: z.string().min(1),
+});
+
+export const BulkStageChangeSchema = z.object({
+  dealIds:    z.array(z.string().min(1)).min(1).max(50),
+  stageId:    z.string().min(1),
+  note:       z.string().optional(),
+  lostReason: z.string().optional(),
+});
+
+// --- Inferred Types ---
+
+export const DealsQuerySchema = z.object({
+  page:           z.coerce.number().int().min(1).default(1),
+  limit:          z.coerce.number().int().min(1).max(100).default(25),
+  sortBy:         z.enum(['title', 'value', 'priority', 'expectedCloseDate', 'createdAt', 'updatedAt', 'stageId']).optional(),
+  sortOrder:      z.enum(['asc', 'desc']).default('desc'),
+  search:         z.string().optional(),
+  stageId:        z.string().min(1).optional(),
+  pipelineId:     z.string().min(1).optional(),
+  priority:       z.enum(['LOW', 'MEDIUM', 'HIGH']).optional(),
+  assignedUserId: z.string().min(1).optional(),
+  dateFrom:       z.string().datetime().optional(),
+  dateTo:         z.string().datetime().optional(),
+  archived:       z.enum(['true', 'false']).default('false'),
+  groupByStage:   z.enum(['true', 'false']).optional(),
+});
+
+export type DealsQueryParams = z.infer<typeof DealsQuerySchema>;
+
 export type CreateDealDto    = z.infer<typeof CreateDealSchema>;
 export type UpdateDealDto    = z.infer<typeof UpdateDealSchema>;
 export type MoveDealStageDto = z.infer<typeof MoveDealStageSchema>;
+export type BulkArchiveDto      = z.infer<typeof BulkArchiveSchema>;
+export type BulkReassignDto     = z.infer<typeof BulkReassignSchema>;
+export type BulkStageChangeDto  = z.infer<typeof BulkStageChangeSchema>;
