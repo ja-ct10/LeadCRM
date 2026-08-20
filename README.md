@@ -105,8 +105,8 @@ LeadCRM solves these challenges by providing a single, unified platform:
 
 ### 7. 🛡️ System Administration (`(system-admin)`)
 
-- **System Admin Console**: Operator-level multi-tenant management (`/admin/dashboard`, `/admin/clients`, `/admin/billing`, `/admin/pricing`, `/admin/environments`).
-- **Tenant Management**: Provisioning client accounts, monitoring active environments, adjusting subscription plans, and managing global system pricing.
+- **System Admin Console**: Operator-level multi-tenant management (`/admin/dashboard`, `/admin/clients`, `/admin/pricing`, `/admin/billing`, `/admin/audit`).
+- **Tenant Management**: Provisioning client accounts, adjusting subscription plans, and managing global system pricing.
 - **RBAC & Security Audit**: Configurable module permissions (`contacts`, `deals`, `workflows`, `marketing`, etc.) and system-wide immutable audit logging.
 
 ---

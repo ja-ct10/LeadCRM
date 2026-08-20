@@ -1,11 +1,43 @@
 'use client';
-import React, { useState } from 'react';
-import { ChevronDown, DollarSign, Users, TrendingUp, UserCheck, UserX } from 'lucide-react';
+
+import React, { useMemo, useState } from 'react';
+import { DollarSign, Users, TrendingUp, TrendingDown, UserCheck, UserX } from 'lucide-react';
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, Cell, LineChart, Line, PieChart, Pie, Legend
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart, Bar, Cell, LineChart, Line, PieChart, Pie, Legend,
 } from '@/shared/components/charts/ChartComponents';
 import { useTheme } from '@/shared/hooks/use-theme';
+import { cn } from '@/lib/utils';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type RangeId = '3m' | '6m' | '12m';
+
+interface RangeOption {
+  id: RangeId;
+  label: string;
+  months: number;
+}
+
+interface BreakdownSlice {
+  name: string;
+  value: number;
+  detail: string;
+  /** Canvas fill for the chart renderer */
+  hex: string;
+  /** Tailwind class for the legend swatch — keeps colour out of inline styles */
+  swatchClass: string;
+  /** Required by the shared Pie wrapper's data contract */
+  [key: string]: unknown;
+}
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const RANGE_OPTIONS: RangeOption[] = [
+  { id: '3m',  label: '3M',  months: 3 },
+  { id: '6m',  label: '6M',  months: 6 },
+  { id: '12m', label: '12M', months: 12 },
+];
 
 const REVENUE_DATA = [
   { month: 'Jan', amount: 180000 }, { month: 'Feb', amount: 195000 },
@@ -43,137 +75,238 @@ const CHURN_DATA = [
   { month: 'Nov', new: 240, churned: 30 }, { month: 'Dec', new: 260, churned: 28 },
 ];
 
-const PLAN_DISTRIBUTION = [
-  { name: 'Basic',      value: 31, amount: '$89,500',   color: '#3B82F6' },
-  { name: 'Pro',        value: 50, amount: '$142,800',  color: '#10B981' },
-  { name: 'Enterprise', value: 19, amount: '$52,290',   color: '#F59E0B' },
+const PLAN_DISTRIBUTION: BreakdownSlice[] = [
+  { name: 'Basic',      value: 31, detail: '$89,500',  hex: '#3B82F6', swatchClass: 'bg-blue-500' },
+  { name: 'Pro',        value: 50, detail: '$142,800', hex: '#10B981', swatchClass: 'bg-emerald-500' },
+  { name: 'Enterprise', value: 19, detail: '$52,290',  hex: '#F59E0B', swatchClass: 'bg-amber-500' },
 ];
 
-const PAYMENT_STATUS = [
-  { name: 'Paid',    value: 95, clients: '1186 clients', color: '#3B82F6' },
-  { name: 'Pending', value: 3,  clients: '38 clients',   color: '#10B981' },
-  { name: 'Failed',  value: 2,  clients: '24 clients',   color: '#F59E0B' },
+const SUBSCRIPTION_HEALTH: BreakdownSlice[] = [
+  { name: 'Active',   value: 95, detail: '1186 clients', hex: '#3B82F6', swatchClass: 'bg-blue-500' },
+  { name: 'Past Due', value: 3,  detail: '38 clients',   hex: '#F59E0B', swatchClass: 'bg-amber-500' },
+  { name: 'Canceled', value: 2,  detail: '24 clients',   hex: '#EF4444', swatchClass: 'bg-red-500' },
 ];
+
+const CHART_COLORS = {
+  primary: '#3B82F6',
+  success: '#10B981',
+  danger:  '#EF4444',
+} as const;
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 /**
- * System Admin — Dashboard page.
- * Shows platform KPIs: MRR, client growth, churn, plan distribution.
+ * System Admin — Dashboard.
+ * Platform-level KPIs for the LeadCRM operator: MRR, client growth, churn,
+ * plan distribution and subscription health.
  */
-export default function AdminDashboard() {
+export default function AdminDashboard(): React.ReactElement {
   const { isDark } = useTheme();
+  const [range, setRange] = useState<RangeId>('12m');
 
-  const tooltipProps = {
-    contentStyle: isDark ? {
-      backgroundColor: '#0F172A', borderColor: 'rgba(255,255,255,0.08)',
-      color: '#F8FAFC', borderRadius: '12px',
-    } : {
-      backgroundColor: '#FFFFFF', borderColor: '#E2E8F0',
-      color: '#0F172A', borderRadius: '12px',
+  const months = RANGE_OPTIONS.find((option) => option.id === range)?.months ?? 12;
+
+  const revenueSeries      = useMemo(() => REVENUE_DATA.slice(-months), [months]);
+  const signupSeries       = useMemo(() => CLIENT_GROWTH_DATA.slice(-months), [months]);
+  const activeClientSeries = useMemo(() => ACTIVE_CLIENTS_DATA.slice(-months), [months]);
+  const churnSeries        = useMemo(() => CHURN_DATA.slice(-months), [months]);
+
+  // Axis/grid colours must be concrete values for the canvas renderer,
+  // so they are derived from the resolved theme rather than CSS variables.
+  const axisColor = isDark ? '#64748B' : '#8494A7';
+  const gridColor = isDark ? '#262A33' : '#E4E9F0';
+
+  const tooltipProps = useMemo(() => ({
+    contentStyle: {
+      backgroundColor: isDark ? '#16191E' : '#FFFFFF',
+      borderColor:     isDark ? '#262A33' : '#E4E9F0',
+      color:           isDark ? '#F1F5F9' : '#25313D',
+      borderRadius:    '12px',
+      fontSize:        '12px',
     },
-    itemStyle: { color: isDark ? '#F8FAFC' : '#0F172A' },
-  };
+    itemStyle: { color: isDark ? '#F1F5F9' : '#25313D' },
+  }), [isDark]);
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-start mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Dashboard</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Platform overview and key metrics</p>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+            Dashboard
+          </h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+            Platform overview and key metrics
+          </p>
         </div>
-        <div className="relative">
-          <select className="appearance-none bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl pl-4 pr-10 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer">
-            <option>Last 12 months</option>
-          </select>
-          <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+
+        {/* Range selector — segmented control */}
+        <div
+          role="group"
+          aria-label="Select reporting range"
+          className="inline-flex items-center gap-1 p-1 rounded-xl border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] shrink-0"
+        >
+          {RANGE_OPTIONS.map((option) => (
+            <button
+              key={option.id}
+              onClick={() => setRange(option.id)}
+              aria-pressed={range === option.id}
+              className={cn(
+                'px-3 h-7 rounded-lg text-xs font-semibold transition-colors active:scale-95',
+                range === option.id
+                  ? 'bg-blue-600 text-white'
+                  : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/[0.05] hover:text-slate-900 dark:hover:text-white',
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
         </div>
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <KpiCard icon={<DollarSign size={20} />} label="Monthly Recurring Revenue" value="$284,590" sub="Total MRR" badge="+12.5%" />
-        <KpiCard icon={<Users size={20} />}       label="Total Clients"            value="8,429"    sub="All registered clients" badge="+8.3%" />
-        <KpiCard icon={<UserCheck size={20} />}   label="Active Clients"           value="7,248"    sub="Currently active"       badge="+5.7%" />
-        <KpiCard icon={<UserX size={20} />}       label="Churn Rate"               value="2.4%"     sub="Monthly churn"          badge="-0.8%" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard
+          icon={<DollarSign size={18} />}
+          label="Monthly Recurring Revenue"
+          value="$284,590"
+          sub="Total MRR"
+          delta="+12.5%"
+          isImproving
+        />
+        <KpiCard
+          icon={<Users size={18} />}
+          label="Total Clients"
+          value="8,429"
+          sub="All registered clients"
+          delta="+8.3%"
+          isImproving
+        />
+        <KpiCard
+          icon={<UserCheck size={18} />}
+          label="Active Clients"
+          value="7,248"
+          sub="Currently active"
+          delta="+5.7%"
+          isImproving
+        />
+        <KpiCard
+          icon={<UserX size={18} />}
+          label="Churn Rate"
+          value="2.4%"
+          sub="Monthly churn"
+          delta="-0.8%"
+          isImproving
+        />
       </div>
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <ChartCard title="Revenue Growth (MRR)" subtitle="Monthly recurring revenue over time">
-          <LineChart data={REVENUE_DATA} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} horizontal={false} />
-            <XAxis dataKey="month" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
-            <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} ticks={[0, 75000, 150000, 225000, 300000]} />
-            <Tooltip {...tooltipProps} formatter={(v: number) => [`$${v.toLocaleString()}`, 'MRR']} />
-            <Line type="monotone" dataKey="amount" stroke="#3B82F6" strokeWidth={2} dot={{ r: 4, fill: '#3B82F6' }} />
+          <LineChart data={revenueSeries} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+            <XAxis dataKey="month" stroke={axisColor} fontSize={12} tickLine={false} axisLine={false} />
+            <YAxis stroke={axisColor} fontSize={12} tickLine={false} axisLine={false} />
+            <Tooltip {...tooltipProps} formatter={(value: number) => [`$${value.toLocaleString()}`, 'MRR']} />
+            <Line type="monotone" dataKey="amount" stroke={CHART_COLORS.primary} strokeWidth={2} dot={{ r: 3, fill: CHART_COLORS.primary }} />
           </LineChart>
         </ChartCard>
 
         <ChartCard title="New Signups" subtitle="Client registrations over time">
-          <LineChart data={CLIENT_GROWTH_DATA} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} horizontal={false} />
-            <XAxis dataKey="month" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
-            <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} ticks={[0, 65, 130, 195, 260]} />
+          <LineChart data={signupSeries} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+            <XAxis dataKey="month" stroke={axisColor} fontSize={12} tickLine={false} axisLine={false} />
+            <YAxis stroke={axisColor} fontSize={12} tickLine={false} axisLine={false} />
             <Tooltip {...tooltipProps} />
-            <Line type="monotone" dataKey="count" stroke="#10B981" strokeWidth={2} dot={{ r: 4, fill: '#10B981' }} />
+            <Line type="monotone" dataKey="count" stroke={CHART_COLORS.success} strokeWidth={2} dot={{ r: 3, fill: CHART_COLORS.success }} />
           </LineChart>
         </ChartCard>
 
         <ChartCard title="Active Clients" subtitle="Currently active clients over time">
-          <LineChart data={ACTIVE_CLIENTS_DATA} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} horizontal={false} />
-            <XAxis dataKey="month" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
-            <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} ticks={[0, 2000, 4000, 6000, 8000]} />
+          <LineChart data={activeClientSeries} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+            <XAxis dataKey="month" stroke={axisColor} fontSize={12} tickLine={false} axisLine={false} />
+            <YAxis stroke={axisColor} fontSize={12} tickLine={false} axisLine={false} />
             <Tooltip {...tooltipProps} />
-            <Line type="monotone" dataKey="count" stroke="#3B82F6" strokeWidth={2} dot={{ r: 4, fill: '#3B82F6' }} />
+            <Line type="monotone" dataKey="count" stroke={CHART_COLORS.primary} strokeWidth={2} dot={{ r: 3, fill: CHART_COLORS.primary }} />
           </LineChart>
         </ChartCard>
 
         <ChartCard title="New vs Churned Clients" subtitle="Client acquisition and churn comparison">
-          <BarChart data={CHURN_DATA} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} horizontal={false} />
-            <XAxis dataKey="month" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
-            <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
-            <Tooltip {...tooltipProps} cursor={{ fill: isDark ? '#1e293b' : '#f1f5f9' }} />
+          <BarChart data={churnSeries} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+            <XAxis dataKey="month" stroke={axisColor} fontSize={12} tickLine={false} axisLine={false} />
+            <YAxis stroke={axisColor} fontSize={12} tickLine={false} axisLine={false} />
+            <Tooltip {...tooltipProps} cursor={{ fill: isDark ? '#1C2027' : '#ECEEF0' }} />
             <Legend iconType="square" wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }} />
-            <Bar dataKey="new"     name="New Clients"     fill="#10B981" radius={[2, 2, 0, 0]} barSize={12} />
-            <Bar dataKey="churned" name="Churned Clients" fill="#EF4444" radius={[2, 2, 0, 0]} barSize={12} />
+            <Bar dataKey="new"     name="New Clients"     fill={CHART_COLORS.success} radius={[2, 2, 0, 0]} barSize={12} />
+            <Bar dataKey="churned" name="Churned Clients" fill={CHART_COLORS.danger}  radius={[2, 2, 0, 0]} barSize={12} />
           </BarChart>
         </ChartCard>
 
-        <PieBreakdown title="Revenue by Plan" data={PLAN_DISTRIBUTION} tooltipProps={tooltipProps} />
-        <PieBreakdown title="Payment Status"  data={PAYMENT_STATUS}    tooltipProps={tooltipProps} />
+        <PieBreakdown title="Revenue by Plan"     data={PLAN_DISTRIBUTION}    tooltipProps={tooltipProps} />
+        <PieBreakdown title="Subscription Health" data={SUBSCRIPTION_HEALTH} tooltipProps={tooltipProps} />
       </div>
     </div>
   );
 }
 
-// --- Local helpers ------------------------------------------------------------
+// ── Local components ──────────────────────────────────────────────────────────
 
-function KpiCard({ icon, label, value, sub, badge }: { icon: React.ReactNode; label: string; value: string; sub: string; badge: string }) {
+const CARD_SHELL =
+  'rounded-2xl border border-gray-200 dark:border-white/[0.05] bg-white dark:bg-white/[0.02] shadow-lg backdrop-blur-xl';
+
+interface KpiCardProps {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  sub: string;
+  delta: string;
+  /** Whether the delta represents a favourable movement for this metric */
+  isImproving: boolean;
+}
+
+function KpiCard({ icon, label, value, sub, delta, isImproving }: KpiCardProps): React.ReactElement {
+  const TrendIcon = isImproving ? TrendingUp : TrendingDown;
+
   return (
-    <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 p-6 rounded-2xl shadow-sm flex flex-col justify-between">
+    <div className={cn(CARD_SHELL, 'p-5 flex flex-col justify-between')}>
       <div className="flex justify-between items-start mb-4">
-        <div className="p-2 bg-slate-100 dark:bg-slate-800 rounded-lg text-slate-700 dark:text-slate-300">{icon}</div>
-        <span className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400">
-          <TrendingUp size={12} /> {badge}
+        <div className="p-2 rounded-lg bg-slate-100 dark:bg-white/[0.05] text-slate-600 dark:text-slate-300">
+          {icon}
+        </div>
+        <span
+          className={cn(
+            'flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-semibold border',
+            isImproving
+              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+              : 'bg-red-500/10 border-red-500/20 text-red-600 dark:text-red-400',
+          )}
+        >
+          <TrendIcon size={12} /> {delta}
         </span>
       </div>
       <div>
-        <p className="text-xs text-slate-500 mb-1">{label}</p>
-        <h3 className="text-2xl font-bold text-slate-900 dark:text-white">{value}</h3>
-        <p className="text-[10px] text-slate-400 mt-1">{sub}</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">{label}</p>
+        <p className="font-display text-2xl font-bold text-slate-900 dark:text-white tabular-nums">{value}</p>
+        <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">{sub}</p>
       </div>
     </div>
   );
 }
 
-function ChartCard({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
+interface ChartCardProps {
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
+}
+
+function ChartCard({ title, subtitle, children }: ChartCardProps): React.ReactElement {
   return (
-    <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 p-6 rounded-2xl shadow-sm">
+    <div className={cn(CARD_SHELL, 'p-6')}>
       <div className="mb-6">
-        <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{title}</h3>
-        <p className="text-sm text-slate-500 mt-1">{subtitle}</p>
+        <h2 className="text-base font-semibold text-slate-900 dark:text-white">{title}</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{subtitle}</p>
       </div>
       <div className="h-[300px] w-full relative min-w-0">
         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
@@ -184,34 +317,49 @@ function ChartCard({ title, subtitle, children }: { title: string; subtitle: str
   );
 }
 
-function PieBreakdown({ title, data, tooltipProps }: { title: string; data: { name: string; value: number; color: string; amount?: string; clients?: string }[]; tooltipProps: object }) {
+interface PieBreakdownProps {
+  title: string;
+  data: BreakdownSlice[];
+  tooltipProps: object;
+}
+
+function PieBreakdown({ title, data, tooltipProps }: PieBreakdownProps): React.ReactElement {
   return (
-    <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 p-6 rounded-2xl shadow-sm flex flex-col">
+    <div className={cn(CARD_SHELL, 'p-6 flex flex-col')}>
       <div className="mb-6">
-        <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{title}</h3>
+        <h2 className="text-base font-semibold text-slate-900 dark:text-white">{title}</h2>
       </div>
       <div className="h-[250px] w-full relative min-w-0">
         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
           <PieChart>
-            <Pie data={data} cx="50%" cy="50%" innerRadius={0} outerRadius={100} paddingAngle={2} dataKey="value"
-              label={({ name, value }) => `${name} ${value}%`} labelLine>
-              {data.map((entry, i) => <Cell key={i} fill={entry.color} stroke="none" />)}
+            <Pie
+              data={data}
+              cx="50%"
+              cy="50%"
+              innerRadius={0}
+              outerRadius={100}
+              paddingAngle={2}
+              dataKey="value"
+              label={({ name, value }) => `${name} ${value}%`}
+              labelLine
+            >
+              {data.map((slice) => <Cell key={slice.name} fill={slice.hex} stroke="none" />)}
             </Pie>
             <Tooltip {...tooltipProps} />
           </PieChart>
         </ResponsiveContainer>
       </div>
-      <div className="mt-4 space-y-2">
-        {data.map((item) => (
-          <div key={item.name} className="flex justify-between items-center text-sm">
+      <ul className="mt-4 space-y-2">
+        {data.map((slice) => (
+          <li key={slice.name} className="flex justify-between items-center text-sm">
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
-              <span className="text-slate-600 dark:text-slate-400">{item.name}</span>
+              <span className={cn('w-2.5 h-2.5 rounded-full shrink-0', slice.swatchClass)} aria-hidden="true" />
+              <span className="text-slate-600 dark:text-slate-400">{slice.name}</span>
             </div>
-            <span className="font-semibold text-slate-900 dark:text-white">{item.amount || item.clients}</span>
-          </div>
+            <span className="font-semibold text-slate-900 dark:text-white tabular-nums">{slice.detail}</span>
+          </li>
         ))}
-      </div>
+      </ul>
     </div>
   );
 }

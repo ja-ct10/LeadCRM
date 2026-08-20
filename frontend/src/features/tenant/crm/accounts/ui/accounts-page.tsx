@@ -221,8 +221,8 @@ export default function AccountsPage(): React.ReactElement {
       label: 'System Defined Filters',
       isExpanded: true,
       items: [
-        { id: 'touched', label: 'Touched Records', count: accounts.length, isChecked: selectedSystemFilters.includes('touched') },
-        { id: 'untouched', label: 'Untouched Records', count: 0, isChecked: selectedSystemFilters.includes('untouched') },
+        { id: 'touched', label: 'Updated Records', count: accounts.length, isChecked: selectedSystemFilters.includes('touched') },
+        { id: 'untouched', label: 'Never Updated', count: 0, isChecked: selectedSystemFilters.includes('untouched') },
       ],
     },
     {

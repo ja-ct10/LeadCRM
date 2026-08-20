@@ -114,7 +114,6 @@ frontend/
 │   │       ├── dashboard/        ← AdminDashboard.tsx
 │   │       ├── tenants/          ← ClientManagement.tsx
 │   │       ├── billing/          ← AdminBillingPage.tsx, ui/pricing-page.tsx
-│   │       ├── monitoring/       ← EnvironmentsPage.tsx
 │   │       └── layout/           ← AdminLayout.tsx, AdminLayoutShell.tsx
 │   │
 │   ├── shared/                   ← Reusable UI (used by both portals)
@@ -322,6 +321,7 @@ infrastructure/
 ## Non-Negotiable Rules
 
 ### Frontend
+
 - All data ops through `DataContext` — never direct `localStorage` in components
 - All charts from `ChartComponents.tsx` only — never recharts
 - All filters use `<TrelloFilter>` — never raw `<select>`
@@ -333,6 +333,7 @@ infrastructure/
 - Path aliases: `@/features/tenant/*`, `@/features/system-admin/*`, `@/shared/*`, `@/store/*`, `@/lib/*`
 
 ### Backend
+
 - Controller → never touches DB
 - Service → never uses `req`/`res`
 - Repository → never has business logic, always filters by `tenantId`
@@ -340,6 +341,7 @@ infrastructure/
 - All input validated with Zod before controller executes
 
 ### Shared
+
 - Types, RBAC constants, API contracts, and Zod schemas defined once in `shared/`
 - Both frontend and backend import from `@leadcrm/shared`
 - Never duplicate type definitions across packages

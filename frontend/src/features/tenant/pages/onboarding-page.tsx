@@ -113,7 +113,7 @@ export default function OnboardingPage({ onNavigate, needsCompanySetup = false }
               <img 
                 src="/leadcrm_logo.png" 
                 alt="LeadCRM Logo" 
-                className="w-6 h-6"
+                className="w-7 h-7 object-contain"
               />
             </div>
             <span className="text-xl font-bold">LeadCRM</span>

@@ -122,7 +122,7 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
         >
           <Mail size={16} />
           {inboxCount > 0 && (
-            <span className="absolute top-1 right-1 min-w-[16px] h-[16px] px-0.5 rounded-full bg-emerald-500 text-white text-[9px] font-bold flex items-center justify-center leading-none">
+            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-emerald-500 text-white text-[10px] font-bold flex items-center justify-center leading-none ring-2 ring-[var(--surface)]">
               {inboxCount > 99 ? '99+' : inboxCount}
             </span>
           )}
