@@ -80,8 +80,8 @@ export default function AdminBillingPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Billing</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Stripe payment history across all tenants</p>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Billing</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Stripe payment history across all tenants</p>
         </div>
         <button
           onClick={fetchAll}
@@ -119,7 +119,7 @@ export default function AdminBillingPage() {
         ].map((s) => (
           <div
             key={s.label}
-            className="rounded-2xl border border-gray-200 dark:border-white/[0.05] bg-white dark:bg-white/[0.02] shadow-lg p-6"
+            className="rounded-2xl border border-gray-200 dark:border-white/[0.05] bg-white dark:bg-white/[0.02] shadow-lg backdrop-blur-xl p-6"
           >
             <h3 className="text-sm text-slate-500 dark:text-slate-400 mb-4">{s.label}</h3>
             <div className="text-3xl font-bold text-slate-900 dark:text-white mb-4">
@@ -133,7 +133,7 @@ export default function AdminBillingPage() {
       </div>
 
       {/* Invoice table */}
-      <div className="bg-white dark:bg-white/[0.02] rounded-2xl border border-gray-200 dark:border-white/[0.05] shadow-sm overflow-hidden flex flex-col">
+      <div className="bg-white dark:bg-white/[0.02] rounded-2xl border border-gray-200 dark:border-white/[0.05] shadow-lg backdrop-blur-xl overflow-hidden flex flex-col">
         {/* Search bar */}
         <div className="p-4 border-b border-gray-200 dark:border-white/[0.05] bg-slate-50/50 dark:bg-white/[0.02]">
           <div className="relative max-w-full">
@@ -304,10 +304,10 @@ export default function AdminBillingPage() {
           </div>
         )}
         {selectedTxn && (
-          <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/30 flex justify-end gap-3">
+          <div className="p-4 border-t border-gray-200 dark:border-white/[0.05] bg-slate-50 dark:bg-white/[0.02] flex justify-end gap-3">
             <button
               onClick={() => setSelectedTxn(null)}
-              className="px-4 py-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg font-medium text-sm"
+              className="px-4 py-2 bg-white dark:bg-transparent border border-gray-200 dark:border-white/[0.08] text-slate-700 dark:text-slate-300 rounded-lg font-medium text-sm hover:bg-slate-50 dark:hover:bg-white/[0.05] transition-colors active:scale-95"
             >
               Close
             </button>

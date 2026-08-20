@@ -1,37 +1,86 @@
 'use client';
 
-import React, { useState, useEffect } from "react";
-import { Lead, Organization } from "@/store/types";
-import { SlidingDrawer } from "@/shared/components/sliding-drawer";
-import { useData } from "@/store/DataContext";
-import { useAuth } from "@/store/AuthContext";
-import { toast } from "sonner";
+import React, { useState, useEffect, useRef } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { Lead } from '@/store/types';
+import { SlidingDrawer } from '@/shared/components/sliding-drawer';
+import { useData } from '@/store/DataContext';
+import { useScrollToError } from '@/shared/hooks/use-scroll-to-error';
 import {
   Mail,
   MapPin,
-  Calendar,
   AlertCircle,
   ChevronDown,
-  User,
-  Building,
-} from "lucide-react";
-import { OrganizationSelector } from "./organization-combobox";
+} from 'lucide-react';
 import {
   COUNTRY_CODES,
   getPlaceholderForCountryCode,
-} from "@/lib/countries";
+} from '@/lib/countries';
+
+// ── Zod schemas mirroring backend CreateContactSchema / UpdateContactSchema ──
+// Backend route POST /crm/leads validates against CreateContactSchema from contacts.dto.ts.
+
+// Unified form schema — used for both Create and Edit.
+// On create: firstName + lastName are required (min 1).
+// On edit: all fields pre-populated, same constraints apply for non-empty values.
+// Backend UpdateContactSchema makes all fields optional, but the form always
+// sends populated values (pre-filled from initialData), so using the Create schema
+// for validation is correct for both modes.
+const LeadFormSchema = z.object({
+  firstName: z.string().min(1, 'First name is required').max(100, 'Max 100 characters'),
+  lastName: z.string().min(1, 'Last name is required').max(100, 'Max 100 characters'),
+  email: z.string().email('Invalid email address').optional().or(z.literal('')),
+  phone: z.string().optional(),
+  companyName: z.string().optional(),
+  status: z.string().min(1),
+  source: z.string().optional(),
+  accountId: z.string().optional(),
+  assignedUserId: z.string().optional(),
+  productInterest: z.array(z.string()).optional(),
+  address: z.string().optional(),
+});
+
+type LeadFormData = z.infer<typeof LeadFormSchema>;
 
 const PRODUCTS = [
-  "CCTV",
-  "Biometrics",
-  "Door Access",
-  "Door access/Biometrics",
-  "Network/Structured Cabling",
-  "FDAS",
-  "PABX",
-  "PC/Laptop/Server Assembly",
-  "Software/Web Development",
-  "Others",
+  'CCTV',
+  'Biometrics',
+  'Door Access',
+  'Door access/Biometrics',
+  'Network/Structured Cabling',
+  'FDAS',
+  'PABX',
+  'PC/Laptop/Server Assembly',
+  'Software/Web Development',
+  'Others',
+];
+
+const STATUS_OPTIONS = [
+  { value: 'Inquiry', label: 'Inquiry' },
+  { value: 'Hot', label: 'Hot' },
+  { value: 'Warm', label: 'Warm' },
+  { value: 'Cold', label: 'Cold' },
+  { value: 'Closed', label: 'Closed' },
+  { value: 'Cancelled', label: 'Cancelled' },
+];
+
+const SOURCE_OPTIONS = [
+  'Google Ads',
+  'Referral',
+  'Email Campaign',
+  'Website',
+  'LinkedIn Ads',
+  'Webinar',
+  'Social Media Advertisement',
+  'Partner Referral',
+  'Direct Mail',
+  'Cold Call',
+  'Content Marketing',
+  'YouTube Ads',
+  'SEO / Organic Search',
+  'Others',
 ];
 
 interface LeadFormProps {
@@ -48,263 +97,220 @@ interface AddLeadFormProps {
 }
 
 export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps) {
-  const { organizations, addOrganization, updateOrganization, addTask, users } = useData();
-  const { user } = useAuth();
-  const organizationsRef = React.useRef(organizations);
-  organizationsRef.current = organizations;
+  const { users } = useData();
+  const isEdit = !!initialData;
 
-  const [scheduleFollowUp, setScheduleFollowUp] = useState(false);
-  const [followUpDate, setFollowUpDate] = useState("");
-  const [selectedProduct, setSelectedProduct] = useState<string>("");
-  const [customProduct, setCustomProduct] = useState<string>("");
-  const [isProductDropdownOpen, setIsProductDropdownOpen] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [formData, setFormData] = useState<Partial<Lead>>({
-    firstName: "", lastName: "", email: "", phone: "",
-    recordType: "Individual", jobTitle: "", organizationId: "",
-    status: "Cold", leadSource: "Organic", companyName: "",
-    businessType: "", companySize: "", orgWebsite: "", taxId: "", priority: "Medium",
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+    reset,
+    setFocus,
+  } = useForm<LeadFormData>({
+    resolver: zodResolver(LeadFormSchema),
+    mode: 'onBlur',
+    defaultValues: {
+      firstName: '',
+      lastName: '',
+      email: '',
+      phone: '',
+      companyName: '',
+      status: 'Inquiry',
+      source: '',
+      accountId: '',
+      assignedUserId: '',
+      productInterest: [],
+      address: '',
+    },
   });
 
-  const validateField = (fieldName: string, value: string) => {
-    let errorMessage = "";
-    const isIndividual = formData.recordType === "Individual";
-    if (fieldName === "firstName" && isIndividual && !value.trim()) errorMessage = "First Name is required";
-    else if (fieldName === "lastName" && isIndividual && !value.trim()) errorMessage = "Last Name is required";
-    else if (fieldName === "followUpDate" && scheduleFollowUp && !value.trim()) errorMessage = "Follow-up date is required";
-    setErrors((prev) => {
-      const next = { ...prev };
-      if (errorMessage) next[fieldName] = errorMessage;
-      else delete next[fieldName];
-      return next;
-    });
-  };
+  // Product interest state (for custom dropdown UX)
+  const [selectedProduct, setSelectedProduct] = useState<string>('');
+  const [customProduct, setCustomProduct] = useState<string>('');
+  const [isProductDropdownOpen, setIsProductDropdownOpen] = useState(false);
 
-  useEffect(() => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    setFollowUpDate(tomorrow.toISOString().split("T")[0]);
-  }, []);
+  // Phone helpers for country code splitting
+  const [phoneCode, setPhoneCode] = useState('+63');
+  const [phoneNumber, setPhoneNumber] = useState('');
+
+  // Scroll to first error on submit via shared hook
+  const formRef = useRef<HTMLFormElement>(null);
+  useScrollToError({ errors, formRef, setFocus });
 
   useEffect(() => {
     if (initialData) {
-      const org = organizationsRef.current.find((o) => o.id === initialData.organizationId);
-      const prod = initialData.productInterests?.[0] || "";
-      let sp = "", cp = "";
+      const phone = initialData.phone || '';
+      const matchedCode = COUNTRY_CODES.find((c) => phone.startsWith(c.code));
+      const code = matchedCode ? matchedCode.code : '+63';
+      let number = phone;
+      if (matchedCode) {
+        number = phone.startsWith(code + ' ')
+          ? phone.substring(code.length + 1)
+          : phone.substring(code.length);
+      }
+      setPhoneCode(code);
+      setPhoneNumber(number);
+
+      // Determine product interest from existing data
+      const prod = initialData.productInterests?.[0] || initialData.productInterest?.[0] || '';
       if (prod) {
         const matched = PRODUCTS.find((p) => p.toLowerCase() === prod.toLowerCase());
-        if (matched) { sp = matched; } else { sp = "Others"; cp = prod; }
+        if (matched) {
+          setSelectedProduct(matched);
+          setCustomProduct('');
+        } else {
+          setSelectedProduct('Others');
+          setCustomProduct(prod);
+        }
       }
-      setSelectedProduct(sp);
-      setCustomProduct(cp);
-      setFormData({
-        ...initialData,
-        recordType: initialData.recordType || (initialData.organizationId || initialData.companyName ? "Organization" : "Individual"),
-        companyName: org ? org.name : initialData.companyName || "",
-        businessType: org ? org.industry : "",
-        companySize: org ? org.size : "",
-        orgWebsite: org ? org.website : "",
-        taxId: org ? org.taxId : "",
-        priority: initialData.priority || "Medium",
+
+      reset({
+        firstName: initialData.firstName || '',
+        lastName: initialData.lastName || '',
+        email: initialData.email || '',
+        phone: phone,
+        companyName: initialData.companyName || '',
+        status: initialData.status || 'Inquiry',
+        source: initialData.leadSource || initialData.source || '',
+        accountId: initialData.accountId || initialData.organizationId || '',
+        assignedUserId: initialData.assignedUserId || '',
+        productInterest: initialData.productInterests || initialData.productInterest || [],
+        address: initialData.address || '',
       });
     } else {
-      setSelectedProduct(""); setCustomProduct("");
-      setFormData({
-        firstName: "", lastName: "", email: "", phone: "",
-        recordType: "Individual", jobTitle: "", organizationId: "",
-        status: "Cold", leadSource: "Organic", companyName: "",
-        businessType: "", companySize: "", orgWebsite: "", taxId: "", priority: "Medium",
+      setSelectedProduct('');
+      setCustomProduct('');
+      setPhoneCode('+63');
+      setPhoneNumber('');
+      reset({
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        companyName: '',
+        status: 'Inquiry',
+        source: '',
+        accountId: '',
+        assignedUserId: '',
+        productInterest: [],
+        address: '',
       });
     }
-  }, [initialData, initialData?.organizationId]);
+  }, [initialData, reset]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const newErrors: Record<string, string> = {};
-    const isOrg = formData.recordType === "Organization";
-    if (!isOrg && !formData.firstName?.trim()) newErrors.firstName = "First Name is required";
-    if (isOrg && !formData.organizationId && !formData.companyName?.trim()) {
-      newErrors.companyName = "Organization selection or name is required";
-      toast.error("An organization must be selected or created.");
-    }
-    if (scheduleFollowUp && !followUpDate) newErrors.followUpDate = "Follow-up date is required when scheduling a follow-up";
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      toast.error("Please resolve missing mandatory fields before submitting");
-      return;
-    }
-    const finalProduct = selectedProduct === "Others" ? customProduct : selectedProduct;
-    let finalOrgId = formData.organizationId;
-    if (isOrg) {
-      if (formData.organizationId === "NEW_TEMP") {
-        const createdId = await addOrganization({ name: formData.companyName || "", industry: formData.businessType || "", size: formData.companySize || "", website: formData.orgWebsite || "", taxId: formData.taxId || "" });
-        if (createdId) { finalOrgId = createdId; toast.success(`Organization "${formData.companyName}" successfully created`); }
-        else { toast.error("Failed to create organization record"); return; }
-      } else if (formData.organizationId) {
-        await updateOrganization(formData.organizationId, { industry: formData.businessType || "", size: formData.companySize || "", website: formData.orgWebsite || "", taxId: formData.taxId || "" });
-      }
-    } else { finalOrgId = ""; }
-    const leadPerson = `${formData.firstName || ""} ${formData.lastName || ""}`.trim();
-    const updated = {
-      ...formData,
-      recordType: formData.recordType || "Individual",
-      organizationId: isOrg ? finalOrgId : "",
-      companyName: isOrg ? formData.companyName || "" : "",
-      businessType: isOrg ? formData.businessType : "",
-      companySize: isOrg ? formData.companySize : "",
-      orgWebsite: isOrg ? formData.orgWebsite : "",
-      taxId: isOrg ? formData.taxId : "",
-      leadPerson, productInterests: finalProduct ? [finalProduct] : [],
-      jobTitle: formData.jobTitle || "",
-      linkedin: formData.linkedin || "",
-      notes: formData.notes || "",
+  const onFormSubmit = (data: LeadFormData): void => {
+    // Build phone from code + number
+    const fullPhone = phoneNumber ? `${phoneCode} ${phoneNumber}`.trim() : '';
+
+    // Build productInterest array
+    const finalProduct = selectedProduct === 'Others' ? customProduct : selectedProduct;
+    const productInterest = finalProduct ? [finalProduct] : [];
+
+    // Build payload matching backend CreateContactSchema field names exactly.
+    // No phantom fields — adapter handles any remaining mapping.
+    const payload: Partial<Lead> = {
+      firstName: data.firstName,
+      lastName: data.lastName,
+      email: data.email || undefined,
+      phone: fullPhone || undefined,
+      companyName: data.companyName || undefined,
+      status: data.status || 'Inquiry',
+      source: data.source || undefined,
+      accountId: data.accountId || undefined,
+      assignedUserId: data.assignedUserId || undefined,
+      productInterest: productInterest,
+      address: data.address || undefined,
     };
-    if (scheduleFollowUp && followUpDate) {
-      addTask({ title: `Follow up with ${leadPerson}`, description: `Follow-up reminder set during lead form submission for ${leadPerson}.`, status: "pending", dueDate: followUpDate, assignedUserId: user?.id || "system", priority: "Medium" as "Low" | "Medium" | "High" });
-      toast.success(`Follow-up task scheduled for ${followUpDate}`);
-    }
-    onSave(updated);
+
+    onSave(payload);
   };
 
-  // ··· Shared field classes ···················································
-  const inputCls = "w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none transition-all focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500";
-  const selectCls = "w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl pl-3.5 pr-8 py-2.5 text-sm text-slate-900 dark:text-white outline-none appearance-none cursor-pointer focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all [&>option]:bg-white dark:[&>option]:bg-slate-900";
-  const sectionNum = (n: number) => formData.recordType === "Organization" ? n : n - 1;
-
-  // Phone helpers
-  const getPhoneCode = () => { const p = formData.phone || ""; const m = COUNTRY_CODES.find((c) => p.startsWith(c.code)); return m ? m.code : "+63"; };
-  const getPhoneNumber = () => { const p = formData.phone || ""; let clean = p; COUNTRY_CODES.forEach((c) => { if (p.startsWith(c.code + " ")) clean = p.substring(c.code.length + 1); else if (p.startsWith(c.code)) clean = p.substring(c.code.length); }); return clean; };
-  const setPhone = (code: string, number: string) => setFormData({ ...formData, phone: `${code} ${number}`.trim() });
+  // Shared field classes
+  const inputCls = 'w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none transition-all focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500';
+  const selectCls = 'w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl pl-3.5 pr-8 py-2.5 text-sm text-slate-900 dark:text-white outline-none appearance-none cursor-pointer focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all [&>option]:bg-white dark:[&>option]:bg-slate-900';
+  const errorInputCls = '!border-red-500 focus:!ring-red-500/20';
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col h-full">
-
-      {/* ·· Scrollable Body ······················· */}
+    <form ref={formRef} onSubmit={handleSubmit(onFormSubmit)} className="flex flex-col h-full" noValidate>
+      {/* Scrollable Body */}
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
 
-        {/* Customer Type */}
-        <div className="rounded-2xl border border-gray-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.02] p-4">
-          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3">Customer Type</p>
-          <div className="flex gap-2">
-            {[{ val: "Individual", Icon: User }, { val: "Organization", Icon: Building }].map(({ val, Icon }) => (
-              <button key={val} type="button"
-                onClick={() => setFormData({ ...formData, recordType: val as "Individual" | "Organization", ...(val === "Individual" ? { companyName: "" } : {}) })}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all border ${
-                  formData.recordType === val
-                    ? "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20"
-                    : "bg-white dark:bg-white/[0.03] border-gray-200 dark:border-white/[0.08] text-slate-500 dark:text-slate-400 hover:border-blue-400 hover:text-blue-500"
-                }`}
-              ><Icon size={16} /> {val}</button>
-            ))}
-          </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-3 leading-relaxed">
-            {formData.recordType === "Organization"
-              ? "Track the corporate entity. A primary lead person will be linked below."
-              : "A personal account for homeowners or individual clients."}
-          </p>
-        </div>
-
-        {/* Section 1: Organization Details (org only) */}
-        {formData.recordType === "Organization" && (
-          <div className="space-y-4 animate-in fade-in duration-200">
-            <SectionHeader num={1} title="Organization Details" />
-            <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400">
-                Search or Add Organization <span className="text-blue-500">*</span>
-              </label>
-              <OrganizationSelector
-                organizations={organizations}
-                value={formData.organizationId || ""}
-                companyName={formData.companyName}
-                onChange={(orgId, orgName) => {
-                  const org = organizations.find((o) => o.id === orgId);
-                  if (org) { setFormData({ ...formData, organizationId: orgId, companyName: orgName, businessType: org.industry || "", companySize: org.size || "", orgWebsite: org.website || "", taxId: org.taxId || "" }); toast.success(`Loaded details from "${orgName}"`); }
-                  else { setFormData({ ...formData, organizationId: "", companyName: "", businessType: "", companySize: "", orgWebsite: "", taxId: "" }); }
-                }}
-                onCreateNew={(name) => {
-                  setFormData({ ...formData, organizationId: "NEW_TEMP", companyName: name, businessType: "", companySize: "", orgWebsite: "", taxId: "" });
-                  toast.success(`Positioned "${name}" for creation.`);
-                }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Section: Basic Info / Lead Person */}
+        {/* Section 1: Basic Information */}
         <div className="space-y-4">
-          <SectionHeader
-            num={formData.recordType === "Organization" ? 2 : 1}
-            title={formData.recordType === "Organization" ? "Organization Lead Person" : "Basic Information"}
-          />
+          <SectionHeader num={1} title="Basic Information" />
           <div className="grid grid-cols-2 gap-4">
-            <FieldWrap label={`First Name${formData.recordType !== "Organization" ? " *" : ""}`} error={errors.firstName}>
-              <input required={formData.recordType !== "Organization"} className={`${inputCls}${errors.firstName ? " !border-red-500 focus:!ring-red-500/20" : ""}`}
-                placeholder="Enter first name" value={formData.firstName || ""}
-                onChange={(e) => { setFormData({ ...formData, firstName: e.target.value }); validateField("firstName", e.target.value); }}
-                onBlur={(e) => validateField("firstName", e.target.value)} />
+            <FieldWrap label="First Name *" error={errors.firstName?.message}>
+              <input
+                {...register('firstName')}
+                className={`${inputCls}${errors.firstName ? ` ${errorInputCls}` : ''}`}
+                placeholder="Enter first name"
+              />
             </FieldWrap>
-            <FieldWrap label={`Last Name${formData.recordType !== "Organization" ? " *" : ""}`} error={errors.lastName}>
-              <input required={formData.recordType !== "Organization"} className={`${inputCls}${errors.lastName ? " !border-red-500 focus:!ring-red-500/20" : ""}`}
-                placeholder="Enter last name" value={formData.lastName || ""}
-                onChange={(e) => { setFormData({ ...formData, lastName: e.target.value }); validateField("lastName", e.target.value); }}
-                onBlur={(e) => validateField("lastName", e.target.value)} />
+            <FieldWrap label="Last Name *" error={errors.lastName?.message}>
+              <input
+                {...register('lastName')}
+                className={`${inputCls}${errors.lastName ? ` ${errorInputCls}` : ''}`}
+                placeholder="Enter last name"
+              />
             </FieldWrap>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <FieldWrap label={formData.recordType === "Organization" ? "Company Email" : "Email"}>
+            <FieldWrap label="Email" error={errors.email?.message}>
               <div className="relative">
                 <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                <input type="email" className={`${inputCls} pl-9`} placeholder="email@example.com"
-                  value={formData.email || ""} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
+                <input
+                  type="email"
+                  {...register('email')}
+                  className={`${inputCls} pl-9${errors.email ? ` ${errorInputCls}` : ''}`}
+                  placeholder="email@example.com"
+                />
               </div>
             </FieldWrap>
-            <FieldWrap label={formData.recordType === "Organization" ? "Company Phone" : "Phone"}>
+            <FieldWrap label="Phone">
               <div className="flex bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 overflow-hidden text-sm transition-all">
                 <div className="relative border-r border-gray-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.03] flex items-center shrink-0 w-[90px]">
-                  <select value={getPhoneCode()}
-                    onChange={(e) => setPhone(e.target.value, getPhoneNumber())}
-                    className="w-full h-full py-2.5 pl-2.5 pr-6 bg-transparent text-slate-900 dark:text-slate-100 border-none outline-none appearance-none cursor-pointer text-xs [&>option]:text-slate-900 [&>option]:bg-white dark:[&>option]:text-white dark:[&>option]:bg-slate-800">
+                  <select
+                    value={phoneCode}
+                    onChange={(e) => setPhoneCode(e.target.value)}
+                    className="w-full h-full py-2.5 pl-2.5 pr-6 bg-transparent text-slate-900 dark:text-slate-100 border-none outline-none appearance-none cursor-pointer text-xs [&>option]:text-slate-900 [&>option]:bg-white dark:[&>option]:text-white dark:[&>option]:bg-slate-800"
+                  >
                     <option value="" disabled>Code</option>
                     {COUNTRY_CODES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
                   </select>
                   <ChevronDown size={12} className="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
                 </div>
-                <input type="tel"
-                  placeholder={getPlaceholderForCountryCode(getPhoneCode())}
+                <input
+                  type="tel"
+                  placeholder={getPlaceholderForCountryCode(phoneCode)}
                   className="flex-1 px-3 py-2.5 bg-transparent border-none outline-none focus:ring-0 placeholder:text-slate-400 text-slate-900 dark:text-white min-w-0 text-sm"
-                  value={getPhoneNumber()}
-                  onChange={(e) => setPhone(getPhoneCode(), e.target.value)} />
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                />
               </div>
             </FieldWrap>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <FieldWrap label="Job Title">
-              <input className={inputCls} placeholder="e.g. CEO, Sales Manager"
-                value={formData.jobTitle || ""} onChange={(e) => setFormData({ ...formData, jobTitle: e.target.value })} />
-            </FieldWrap>
-            <FieldWrap label="LinkedIn URL">
-              <input type="url" className={inputCls} placeholder="https://linkedin.com/in/..."
-                value={formData.linkedin || ""} onChange={(e) => setFormData({ ...formData, linkedin: e.target.value })} />
-            </FieldWrap>
-          </div>
+          <FieldWrap label="Company Name">
+            <input
+              {...register('companyName')}
+              className={inputCls}
+              placeholder="Enter company name"
+            />
+          </FieldWrap>
         </div>
 
-        {/* Section: Status & Interest */}
+        {/* Section 2: Status & Interest */}
         <div className="space-y-4">
-          <SectionHeader
-            num={formData.recordType === "Organization" ? 3 : 2}
-            title="Status & Interest"
-          />
+          <SectionHeader num={2} title="Status & Interest" />
           <div className="grid grid-cols-2 gap-4">
-            <FieldWrap label="Lead Status">
+            <FieldWrap label="Status">
               <div className="relative">
-                <select className={selectCls} value={formData.status || "Cold"}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}>
-                  <option value="Hot">=··· Hot</option>
-                  <option value="Warm">=··· Warm</option>
-                  <option value="Cold">=··· Cold</option>
-                  <option value="Closed">=··· Closed</option>
-                  <option value="Cancelled">Gܽ Cancelled</option>
+                <select
+                  {...register('status')}
+                  className={selectCls}
+                >
+                  {STATUS_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
                 </select>
                 <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
               </div>
@@ -316,12 +322,11 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
                     className={`${inputCls} flex items-center justify-between cursor-pointer select-none`}
                     onClick={() => setIsProductDropdownOpen(!isProductDropdownOpen)}
                   >
-                    <span className={selectedProduct ? "text-slate-900 dark:text-white" : "text-slate-400"}>
-                      {selectedProduct || "Select product..."}
+                    <span className={selectedProduct ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
+                      {selectedProduct || 'Select product...'}
                     </span>
-                    <ChevronDown size={14} className={`text-slate-400 transition-transform ${isProductDropdownOpen ? "rotate-180" : ""}`} />
+                    <ChevronDown size={14} className={`text-slate-400 transition-transform ${isProductDropdownOpen ? 'rotate-180' : ''}`} />
                   </div>
-                  
                   {isProductDropdownOpen && (
                     <>
                       <div className="fixed inset-0 z-40" onClick={() => setIsProductDropdownOpen(false)} />
@@ -329,7 +334,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
                         {PRODUCTS.map((p) => (
                           <div
                             key={p}
-                            className={`px-3.5 py-2.5 text-sm cursor-pointer transition-colors ${selectedProduct === p ? "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium" : "text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.04]"}`}
+                            className={`px-3.5 py-2.5 text-sm cursor-pointer transition-colors ${selectedProduct === p ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.04]'}`}
                             onClick={() => {
                               setSelectedProduct(p);
                               setIsProductDropdownOpen(false);
@@ -342,70 +347,35 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
                     </>
                   )}
                 </div>
-                {selectedProduct === "Others" && (
+                {selectedProduct === 'Others' && (
                   <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-                    <input type="text" autoFocus
+                    <input
+                      type="text"
+                      autoFocus
                       className="w-full bg-white dark:bg-white/[0.04] border border-blue-400 dark:border-blue-500/60 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all shadow-sm shadow-blue-500/10"
                       placeholder="Specify product or service"
                       value={customProduct}
-                      onChange={(e) => setCustomProduct(e.target.value)} />
+                      onChange={(e) => setCustomProduct(e.target.value)}
+                    />
                   </div>
                 )}
               </div>
             </FieldWrap>
           </div>
-
-          {/* Follow-up toggle card */}
-          <div className="rounded-2xl border border-gray-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.02] p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-slate-900 dark:text-white">Schedule a follow-up</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Instantly set a reminder task on your Task Board.</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                <input type="checkbox" className="sr-only peer" checked={scheduleFollowUp}
-                  onChange={() => {
-                    const next = !scheduleFollowUp;
-                    setScheduleFollowUp(next);
-                    if (!next) setErrors((prev) => { const n = { ...prev }; delete n.followUpDate; return n; });
-                    else if (!followUpDate) setErrors((prev) => ({ ...prev, followUpDate: "Follow-up date is required" }));
-                  }} />
-                <div className="w-11 h-6 bg-slate-300 dark:bg-slate-700 rounded-full peer peer-checked:bg-blue-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:border-gray-300 after:rounded-full after:h-5 after:w-5 after:transition-all" />
-              </label>
-            </div>
-            {scheduleFollowUp && (
-              <div className="mt-4 pt-4 border-t border-gray-200 dark:border-white/[0.06] space-y-1.5 animate-in fade-in duration-200">
-                <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400">
-                  <Calendar size={13} className="text-blue-500" />
-                  Follow-up Due Date <span className="text-blue-500">*</span>
-                </label>
-                <input type="date" required={scheduleFollowUp}
-                  className={`w-full bg-white dark:bg-white/[0.04] border rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 transition-all ${errors.followUpDate ? "border-red-500 focus:ring-red-500/20" : "border-gray-200 dark:border-white/[0.08] focus:ring-blue-500/20 focus:border-blue-500"}`}
-                  value={followUpDate}
-                  onChange={(e) => { setFollowUpDate(e.target.value); validateField("followUpDate", e.target.value); }} />
-                {errors.followUpDate && (
-                  <p className="text-[11px] text-red-500 flex items-center gap-1">
-                    <AlertCircle size={11} /> {errors.followUpDate}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
         </div>
 
-        {/* Section: Additional Information */}
+        {/* Section 3: Additional Information */}
         <div className="space-y-4">
-          <SectionHeader
-            num={formData.recordType === "Organization" ? 4 : 3}
-            title="Additional Information"
-          />
+          <SectionHeader num={3} title="Additional Information" />
           <div className="grid grid-cols-2 gap-4">
             <FieldWrap label="Lead Source">
               <div className="relative">
-                <select className={selectCls} value={formData.leadSource || ""}
-                  onChange={(e) => setFormData({ ...formData, leadSource: e.target.value })}>
+                <select
+                  {...register('source')}
+                  className={selectCls}
+                >
                   <option value="">Select source...</option>
-                  {["Google Ads","Referral","Email Campaign","Website","LinkedIn Ads","Webinar","Social Media Advertisement","Partner Referral","Direct Mail","Cold Call","Content Marketing","YouTube Ads","SEO / Organic Search","Others"].map((opt) => (
+                  {SOURCE_OPTIONS.map((opt) => (
                     <option key={opt} value={opt}>{opt}</option>
                   ))}
                 </select>
@@ -414,10 +384,14 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
             </FieldWrap>
             <FieldWrap label="Assigned Agent">
               <div className="relative">
-                <select className={selectCls} value={formData.assignedUserId || ""}
-                  onChange={(e) => setFormData({ ...formData, assignedUserId: e.target.value })}>
+                <select
+                  {...register('assignedUserId')}
+                  className={selectCls}
+                >
                   <option value="">Unassigned</option>
-                  {users.map((u) => <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>)}
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
+                  ))}
                 </select>
                 <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
               </div>
@@ -426,11 +400,11 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
           <FieldWrap label="Full Address">
             <div className="relative">
               <MapPin className="absolute left-3.5 top-3 text-slate-400" size={14} />
-              <textarea rows={3}
+              <textarea
+                {...register('address')}
+                rows={3}
                 className="w-full pl-9 pr-4 bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all resize-none overflow-hidden"
                 placeholder="123 Main St, Apt 4B, City, State, Zip Code"
-                value={formData.address || ""}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                 onInput={(e) => {
                   const target = e.target as HTMLTextAreaElement;
                   target.style.height = 'auto';
@@ -439,36 +413,33 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
               />
             </div>
           </FieldWrap>
-          <FieldWrap label="Update">
-            <textarea rows={3}
-              className="w-full px-3.5 bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all resize-none"
-              placeholder="Add an update status or notes..."
-              value={formData.notes || ""}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-            />
-          </FieldWrap>
         </div>
 
       </div>{/* end scrollable body */}
 
-      {/* ·· Sticky Footer ···························· */}
+      {/* Sticky Footer */}
       <div className="shrink-0 px-6 py-4 border-t border-gray-200 dark:border-white/[0.06] bg-white dark:bg-slate-900 flex items-center justify-end gap-3">
-        <button type="button" onClick={onCancel}
-          className="px-5 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-white/[0.05] hover:bg-slate-200 dark:hover:bg-white/[0.08] border border-gray-200 dark:border-white/[0.08] rounded-xl transition-colors">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-5 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-white/[0.05] hover:bg-slate-200 dark:hover:bg-white/[0.08] border border-gray-200 dark:border-white/[0.08] rounded-xl transition-colors"
+        >
           Cancel
         </button>
-        <button type="submit"
-          className="px-6 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 rounded-xl transition-all shadow-lg shadow-blue-500/25">
-          {initialData ? "Save Changes" : "Create Profile"}
+        <button
+          type="submit"
+          className="px-6 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 rounded-xl transition-all shadow-lg shadow-blue-500/25"
+        >
+          {isEdit ? 'Save Changes' : 'Create Lead'}
         </button>
       </div>
     </form>
   );
 }
 
-// ··· Small reusable helpers ···················································
+// ── Small reusable helpers ─────────────────────────────────────────────────────
 
-function SectionHeader({ num, title }: { num: number; title: string }) {
+function SectionHeader({ num, title }: { num: number; title: string }): React.ReactElement {
   return (
     <div className="flex items-center gap-3">
       <div className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-[11px] font-bold shrink-0">
@@ -480,7 +451,7 @@ function SectionHeader({ num, title }: { num: number; title: string }) {
   );
 }
 
-function FieldWrap({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+function FieldWrap({ label, error, children }: { label: string; error?: string; children: React.ReactNode }): React.ReactElement {
   return (
     <div className="space-y-1.5">
       <label className="flex items-center justify-between text-xs font-semibold text-slate-600 dark:text-slate-400">
@@ -497,15 +468,15 @@ function FieldWrap({ label, error, children }: { label: string; error?: string; 
   );
 }
 
-// ··· Sheet wrapper ·····························································
+// ── Sheet wrapper ──────────────────────────────────────────────────────────────
 
-export function LeadFormSheet({ initialData, isOpen, onClose, onSave }: LeadFormProps) {
+export function LeadFormSheet({ initialData, isOpen, onClose, onSave }: LeadFormProps): React.ReactElement {
   return (
     <SlidingDrawer
       isOpen={isOpen}
       onClose={onClose}
-      title={initialData ? "Edit Profile" : "New Profile"}
-      subtitle="Complete the profile details below."
+      title={initialData ? 'Edit Lead' : 'New Lead'}
+      subtitle="Complete the lead details below."
     >
       <AddLeadForm initialData={initialData} onSave={onSave} onCancel={onClose} />
     </SlidingDrawer>

@@ -137,21 +137,21 @@ export function CampaignBuilder({
   return (
     <div className="w-full h-full flex flex-col">
       {/* Top Bar */}
-      <div className="flex items-center justify-between border-b border-gray-200 dark:border-white/5 bg-white/80 dark:bg-slate-900/70 backdrop-blur-xl px-6 py-3 shrink-0 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-200 dark:border-white/5 bg-white/80 dark:bg-slate-900/70 backdrop-blur-xl px-4 sm:px-6 py-3 shrink-0 shadow-sm">
         <div className="flex items-center gap-3">
           <button onClick={onBack} aria-label="Back to campaigns" className="p-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-lg transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
             <ArrowLeft size={18} />
           </button>
           <div>
             <h1 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Create Campaign</h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Draft a new message to send to your contacts.</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">Draft a new message to send to your contacts.</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={handleSaveDraft} disabled={isSending} className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 rounded-lg border border-gray-200 dark:border-white/10 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          <button onClick={handleSaveDraft} disabled={isSending} className="px-3 sm:px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 rounded-lg border border-gray-200 dark:border-white/10 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">
             Save Draft
           </button>
-          <button onClick={handleSend} disabled={isSending} className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 disabled:opacity-50 disabled:cursor-not-allowed">
+          <button onClick={handleSend} disabled={isSending} className="flex items-center gap-2 px-4 sm:px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 disabled:opacity-50 disabled:cursor-not-allowed">
             {isSending ? <Loader2 size={16} className="animate-spin" /> : isScheduling ? <Calendar size={16} /> : <Send size={16} />}
             {isScheduling ? 'Schedule' : 'Send Now'}
           </button>
@@ -159,16 +159,16 @@ export function CampaignBuilder({
       </div>
 
       {/* Split Layout */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* Editor */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-5 border-r border-gray-200 dark:border-white/5">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 border-b lg:border-b-0 lg:border-r border-gray-200 dark:border-white/5">
           <div className="space-y-4">
             <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Campaign Details</h3>
             <div>
               <label htmlFor="builder-name" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Campaign Name <span className="text-red-500">*</span></label>
               <input id="builder-name" value={campaignName} onChange={(e) => setCampaignName(e.target.value)} className={`${inputCls} placeholder:text-slate-400`} placeholder="e.g. Q3 Newsletter" />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Type <span className="text-red-500">*</span></label>
                 <div className="flex rounded-lg border border-gray-200 dark:border-white/10 overflow-hidden bg-slate-50 dark:bg-white/3">
@@ -223,7 +223,7 @@ export function CampaignBuilder({
             </div>
             {isScheduling && (
               <div className="p-4 bg-white/60 dark:bg-white/2 backdrop-blur-sm border border-gray-200 dark:border-white/5 rounded-xl space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label htmlFor="builder-date" className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">
                       <span className="flex items-center gap-1.5"><Calendar size={12} /> Date</span>
@@ -348,7 +348,7 @@ export function CampaignBuilder({
         </div>
 
         {/* Right Side — Live Preview */}
-        <div className="w-105 shrink-0 flex flex-col bg-linear-to-br from-slate-50 via-slate-100 to-blue-50/30 dark:from-[#030712] dark:via-[#0a1020] dark:to-blue-950/10 overflow-y-auto">
+        <div className="w-full lg:w-105 shrink-0 flex flex-col bg-linear-to-br from-slate-50 via-slate-100 to-blue-50/30 dark:from-[#030712] dark:via-[#0a1020] dark:to-blue-950/10 overflow-y-auto">
           <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 dark:border-white/5 bg-white/50 dark:bg-white/2 backdrop-blur-lg">
             <span className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Live Preview</span>
             <div className="flex gap-0.5 bg-slate-200/80 dark:bg-white/5 p-0.5 rounded-lg border border-gray-200 dark:border-white/5">

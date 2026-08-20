@@ -306,8 +306,10 @@ model User {
   sessions           Session[]
   invitationsSent    TenantInvitation[] @relation("InvitedByUser")
   organizationsOwned Account[]
-  assignedLeads      Lead[]             @relation("AssignedLeads")
-  assignedCustomers  Customer[]         @relation("AssignedCustomers")
+  assignedLeads        Lead[]             @relation("AssignedLeads")
+  createdLeads         Lead[]             @relation("CreatedLeads")
+  updatedLeads         Lead[]             @relation("UpdatedLeads")
+  assignedCustomers    Customer[]         @relation("AssignedCustomers")
 
   assignedDeals        Deal[]             @relation("AssignedDeals")
   ownedDeals           Deal[]             @relation("OwnedDeals")
@@ -555,24 +557,32 @@ model Account {
 // LEAD
 // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 model Lead {
-  id              String   @id @default(uuid())
-  tenantId        String
-  createdAt       DateTime @default(now())
-  companyName     String?
-  address         String?
-  firstName       String
-  lastName        String
-  phone           String?
-  email           String?
-  productInterest String[]
-  source          String?
-  assignedUserId  String?
-  status          String   @default("Inquiry")
-  accountId       String?
+  id                  String    @id @default(uuid())
+  tenantId            String
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @default(now()) @updatedAt
+  companyName         String?
+  address             String?
+  firstName           String
+  lastName            String
+  phone               String?
+  email               String?
+  description         String?   @db.Text
+  website             String?
+  productInterest     String[]
+  source              String?
+  assignedUserId      String?
+  status              String    @default("Inquiry")
+  accountId           String?
+  createdById         String?
+  updatedById         String?
+  lastStatusChangedAt DateTime?
 
   tenant       Tenant   @relation(fields: [tenantId], references: [id])
   account      Account? @relation(fields: [accountId], references: [id])
   assignedUser User?    @relation("AssignedLeads", fields: [assignedUserId], references: [id])
+  createdBy    User?    @relation("CreatedLeads",  fields: [createdById],  references: [id])
+  updatedBy    User?    @relation("UpdatedLeads",  fields: [updatedById],  references: [id])
 
   leadDeals         LeadDeal[]
   deals             Deal[]
@@ -588,6 +598,7 @@ model Lead {
   @@index([tenantId, email])
   @@index([tenantId, createdAt])
   @@index([tenantId, accountId])
+  @@index([tenantId, createdById])
 }
 
 // ─────────────────────────────────────────────────────

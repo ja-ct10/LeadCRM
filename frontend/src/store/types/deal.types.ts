@@ -1,3 +1,15 @@
+// ─── Deal, Pipeline, Stage ─────────────────────────────────────────────────
+// Extends the shared Deal/Pipeline/Stage types with additional UI/display fields.
+// Core API response fields are defined in @leadcrm/shared to ensure
+// compile-time detection of field name mismatches between FE and BE.
+
+import type {
+  Deal as SharedDeal,
+  DealPriority as SharedDealPriority,
+  Pipeline as SharedPipeline,
+  Stage as SharedStage,
+} from '@leadcrm/shared';
+
 // ─── Deal Ownership History ────────────────────────────────────────────────
 
 export interface DealOwnershipRecord {
@@ -7,59 +19,43 @@ export interface DealOwnershipRecord {
   reason?: string;      // e.g. "Territory Transfer", "Rep Left Company"
 }
 
-// ─── Deal, Pipeline, Stage ─────────────────────────────────────────────────
+// ─── Stage (extended) ──────────────────────────────────────────────────────
 
-export interface Stage {
-  id: string;
-  name: string;
-  order: number;
-  probability?: number; // 0–100, used for weighted revenue forecast
-  color?: string;       // hex e.g. "#3fb950" — rendered on board columns
-  isWon?: boolean;
-  isLost?: boolean;
+export interface Stage extends SharedStage {
   isDefault?: boolean;
-  requiredFields?: string[];  // deal fields required before entry (REQ089)
-  rottenAfterDays?: number;   // days before a deal in this stage is flagged stale
+  requiredFields?: string[];
+  rottenAfterDays?: number;
 }
 
-export interface Pipeline {
-  id: string;
-  tenantId: string;
-  name: string;
+// ─── Pipeline (extended) ────────────────────────────────────────────────────
+
+export interface Pipeline extends Omit<SharedPipeline, 'stages' | 'createdAt'> {
   stages: Stage[];
   isArchived?: boolean;
+  createdAt?: string;
 }
 
-export interface Deal {
-  id: string;
-  tenantId: string;
-  pipelineId: string;
-  stageId: string;
-  title: string;
-  organizationId?: string;
-  contactId?: string;        // legacy — kept for backward compat; use contactIds
-  contactIds?: string[];     // all stakeholder contacts on this deal
-  companyId?: string;        // parent company account
+// ─── Deal (extended) ────────────────────────────────────────────────────────
+
+/**
+ * Deal — extends the shared Deal type with additional
+ * frontend-specific display, history, and UI fields.
+ * The core API fields come from @leadcrm/shared.
+ */
+export interface Deal extends Omit<SharedDeal, 'priority' | 'value' | 'order'> {
+  // Value is treated as required in frontend (defaults to 0 for display)
+  value: number;
+  // Order is required for kanban drag-and-drop positioning
+  order: number;
+  // Priority uses display-friendly casing in frontend
+  priority: SharedDealPriority | 'Low' | 'Medium' | 'High';
+  companyId?: string;
   companyName: string;
   contactPerson: string;
-  value: number;
-  priority: 'Low' | 'Medium' | 'High';
-  expectedCloseDate: string;
-  description: string;
-  assignedUserId: string;
-  lostReason?: string;
-  order: number;
-  createdAt: string;
-  updatedAt?: string;
-  lastStageChangeDate?: string; // ISO — updated whenever stageId changes
-  leadSource?: string;
-  industry?: string;
-  address?: string;
-  productInterests?: string[];
+  lastStageChangeDate?: string;
   campaign?: string;
   customerType?: 'New Business' | 'Existing Customer' | string;
   tags?: string[];
-  isArchived?: boolean;
   archivedAt?: string;
   archivedBy?: string;
   archiveReason?: string;
@@ -72,9 +68,12 @@ export interface Deal {
     note?: string;
   }[];
   activities?: { id: string; type: 'call' | 'email' | 'meeting' | 'note'; description: string; timestamp: string; userId: string }[];
-  ownershipHistory?: DealOwnershipRecord[]; // full ownership audit trail
-  // Lead linkage — added after CRM model split
+  ownershipHistory?: DealOwnershipRecord[];
+  // Lead linkage
   leadId?: string;
   leadIds?: string[];
   leadPerson?: { id: string; firstName: string; lastName: string };
 }
+
+// Re-export the shared priority type for use in type-only contexts
+export type { SharedDealPriority as DealPriority };

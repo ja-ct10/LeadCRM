@@ -361,7 +361,7 @@ export default function VisualWorkflowBuilder({
     setZoom(0.95);
     setPan({ x: 20, y: 30 });
     setSelectedNodeId(null);
-    toast.info('Visual viewport aligned to center');
+    toast.info('View centered');
   };
 
   // Interactive configurations update
@@ -375,14 +375,14 @@ export default function VisualWorkflowBuilder({
     const newRule = { field: 'deal.value', operator: '>', value: '5000' };
     setRules([...rules, newRule]);
     setSelectedNodeId(`rule-${rules.length}`);
-    toast.success('Visual condition node added');
+    toast.success('Condition added');
   };
 
   const handleDeleteRule = (index: number) => {
     const filtered = rules.filter((_, idx) => idx !== index);
     setRules(filtered);
     setSelectedNodeId('logic-gate');
-    toast.success('Condition filter node deleted');
+    toast.success('Condition removed');
   };
 
   const handleUpdateAction = (actionId: string, key: string, value: any) => {
@@ -419,14 +419,14 @@ export default function VisualWorkflowBuilder({
     };
     setActions([...actions, newAct]);
     setSelectedNodeId(`action-${newAct.id}`);
-    toast.success(`Visual Action Node added: ${getActionName(type)}`);
+    toast.success(`Action added: ${getActionName(type)}`);
   };
 
   const handleDeleteAction = (actionId: string) => {
     const filtered = actions.filter(act => act.id !== actionId);
     setActions(filtered);
     setSelectedNodeId('logic-gate');
-    toast.success('Outbound automation action deleted');
+    toast.success('Action removed');
   };
 
   // Submit complete workflow visual modifications back to the store
@@ -445,7 +445,7 @@ export default function VisualWorkflowBuilder({
     };
 
     onSave(finalWorkflow, finalConditionRules);
-    toast.success('SaaS visual automation criteria compiled!');
+    toast.success('Workflow saved successfully!');
   };
 
   const renderInspectorContent = () => {

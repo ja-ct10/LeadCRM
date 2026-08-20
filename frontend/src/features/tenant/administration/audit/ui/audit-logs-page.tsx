@@ -401,13 +401,13 @@ export default function AuditLogsPage() {
   // Clear log state (retains in-memory only or clears local storage keys safely)
   const handleClearLogs = () => {
     if (user?.role !== 'System Admin' && user?.role !== 'Client Admin') {
-      toast.error('Unauthorized access. Only administrative staff can purge audit histories.');
+      toast.error('Only administrators can clear audit logs.');
       return;
     }
 
     if (window.confirm('CRITICAL WARN: Are you sure you want to permanently clear the audit history? This action is irreversible.')) {
       localStorage.setItem('leadcrm_audit_logs', JSON.stringify([]));
-      toast.success('Audit trail and action logs purged successfully.');
+      toast.success('Audit logs cleared successfully.');
       // Refresh window state to reload
       setTimeout(() => {
         window.location.reload();
@@ -435,9 +435,9 @@ export default function AuditLogsPage() {
                   const val = !isRealTime;
                   setIsRealTime(val);
                   if (val) {
-                    toast.success('Real-time Updates active (polling system state every 30s)');
+                    toast.success('Live updates enabled');
                   } else {
-                    toast.info('Real-time state updates paused');
+                    toast.info('Live updates paused');
                   }
                 }}
                 className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${

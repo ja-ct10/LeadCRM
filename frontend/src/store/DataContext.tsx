@@ -1551,7 +1551,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (original) {
       addAuditLog(
         "Deal Archived",
-        `Archived deal opportunity '${original.title}' valued at PHP ${original.value.toLocaleString()}.`,
+        `Archived deal '${original.title}' valued at PHP ${original.value.toLocaleString()}.`,
       );
     }
   };
@@ -2289,7 +2289,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           deals.map((d) => (d.id === id ? { ...d, isArchived: false } : d)),
           setDeals,
         );
-        addAuditLog("Deal Restored", `Restored deal opportunity (ID: ${id}).`);
+        addAuditLog("Deal Restored", `Restored deal (ID: ${id}).`);
         break;
       case "Pipeline":
         saveAndSet(

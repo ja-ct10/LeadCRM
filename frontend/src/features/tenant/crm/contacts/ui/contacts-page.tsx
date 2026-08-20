@@ -4,27 +4,27 @@ import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
 import { Contact } from '@/store/types';
-import { ModuleWorkspace, ViewType, StatusBadge } from '@/shared/components/crm';
+import { ModuleWorkspace, ViewType, StatusBadge, ContactPanel } from '@/shared/components/crm';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useColumnPreferences } from '@/shared/hooks/use-column-preferences';
 import { useFilterUrlSync } from '@/shared/hooks/use-filter-url-sync';
 import { useDebounce } from '@/shared/hooks/use-debounce';
+import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
 import { ManageColumnsDrawer } from '@/shared/components/manage-columns-drawer';
 import { CONTACTS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
-import { getResponsiveColumnClass, getColumnLabel, getDefaultVisibleColumns } from '@/shared/components/column-table-helpers';
+import { CONTACTS_MODULE_CONFIG } from '../contacts.config';
+import { ContactsDataGrid } from './contacts-data-grid';
+import { ContactFormSheet } from './contact-form';
+import { ColumnsPopover } from '@/shared/components/data-grid';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
-import { SlidersHorizontal } from 'lucide-react';
-import type { ColumnConfigItem } from '@leadcrm/shared';
-
 // ── Contacts Page ─────────────────────────────────────────────────────────────
 // Shows all contacts with activity flags, customer type, account links, deals
 
 export default function ContactsPage(): React.ReactElement {
-  const { contacts, organizations, deals, users } = useData();
+  const { contacts, organizations, deals, users, addContact, updateContact } = useData();
   const { user } = useAuth();
   const canCreate = useHasPermission('contacts.create');
-  const { getParam, getArrayParam, updateParams } = useFilterUrlSync();
+  const { getParam, getArrayParam, updateParams } = useFilterUrlSync('contacts');
 
   // ── Column Preferences ────────────────────────────────────────────────
   const {
@@ -37,15 +37,21 @@ export default function ContactsPage(): React.ReactElement {
   const [isManageColumnsOpen, setIsManageColumnsOpen] = useState(false);
   const manageColumnsButtonRef = useRef<HTMLButtonElement>(null);
 
-  /** Visible columns sorted by order — drives table rendering */
-  const visibleColumns = useMemo((): ColumnConfigItem[] => {
-    if (effectiveColumns.length === 0) {
-      return getDefaultVisibleColumns(CONTACTS_COLUMN_REGISTRY);
-    }
-    return [...effectiveColumns]
-      .filter((col) => col.visible)
-      .sort((a, b) => a.order - b.order);
-  }, [effectiveColumns]);
+  // ── Form State ────────────────────────────────────────────────────────
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingContact, setEditingContact] = useState<Contact | undefined>(undefined);
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+
+  // ── Table Preferences (pageSize, viewMode, sort) ──────────────────────
+  const {
+    pageSize,
+    viewMode,
+    sort,
+    setPageSize,
+    setViewMode,
+    setSort,
+    persistFilters,
+  } = useTablePreferences('contacts');
 
   // ── State (Synced with URL) ──────────────────────────────────────────
   const [activeView, setActiveView] = useState<ViewType>(() => (getParam('view') as ViewType) || 'list');
@@ -53,6 +59,7 @@ export default function ContactsPage(): React.ReactElement {
   const [showFilters, setShowFilters] = useState(true);
   const [searchTerm, setSearchTerm] = useState(() => getParam('search'));
   const [filterSearchTerm, setFilterSearchTerm] = useState('');
+  const [contactSelectedIds, setContactSelectedIds] = useState<Set<string>>(new Set());
 
   // Multi-select stacked criteria
   const [selectedSystemFilters, setSelectedSystemFilters] = useState<string[]>(() => getArrayParam('system'));
@@ -74,6 +81,24 @@ export default function ContactsPage(): React.ReactElement {
       related: selectedRelated,
     });
   }, [activeTab, debouncedSearch, activeView, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, updateParams]);
+
+  // ── Persist filter selections (fire-and-forget) ────────────────────────
+  useEffect(() => {
+    const conditions: { field: string; operator: string; value: unknown }[] = [];
+    if (selectedSystemFilters.length > 0) {
+      conditions.push({ field: 'system', operator: 'in', value: selectedSystemFilters });
+    }
+    if (selectedCustomerTypes.length > 0) {
+      conditions.push({ field: 'customerType', operator: 'in', value: selectedCustomerTypes });
+    }
+    if (selectedOwners.length > 0) {
+      conditions.push({ field: 'assignedUserId', operator: 'in', value: selectedOwners });
+    }
+    if (selectedRelated.length > 0) {
+      conditions.push({ field: 'related', operator: 'in', value: selectedRelated });
+    }
+    persistFilters(conditions);
+  }, [selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, persistFilters]);
 
   // ── Data ─────────────────────────────────────────────────────────────
   const activeContacts = useMemo(
@@ -132,6 +157,19 @@ export default function ContactsPage(): React.ReactElement {
 
     return result;
   }, [activeContacts, activeTab, user?.id, debouncedSearch, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, deals]);
+
+  // ── Pagination ───────────────────────────────────────────────────────
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Reset page on filter/search/tab/pageSize/sort changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, activeTab, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, pageSize, sort]);
+
+  const paginatedContacts = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredContacts.slice(start, start + pageSize);
+  }, [filteredContacts, currentPage, pageSize]);
 
   // ── Helpers ──────────────────────────────────────────────────────────
   const getInitials = (contact: Contact): string => {
@@ -208,8 +246,8 @@ export default function ContactsPage(): React.ReactElement {
       label: 'System Defined Filters',
       isExpanded: true,
       items: [
-        { id: 'touched', label: 'Touched Records', count: touchedCount, isChecked: selectedSystemFilters.includes('touched') },
-        { id: 'untouched', label: 'Untouched Records', count: untouchedCount, isChecked: selectedSystemFilters.includes('untouched') },
+        { id: 'touched', label: 'Updated Records', count: touchedCount, isChecked: selectedSystemFilters.includes('touched') },
+        { id: 'untouched', label: 'Never Updated', count: untouchedCount, isChecked: selectedSystemFilters.includes('untouched') },
       ],
     },
     {
@@ -267,13 +305,22 @@ export default function ContactsPage(): React.ReactElement {
     <ModuleWorkspace
       moduleId="contacts"
       title="Contacts"
+      moduleConfig={CONTACTS_MODULE_CONFIG}
       primaryActionLabel="Create Contact"
-      onPrimaryAction={() => toast.info('Contact creation coming soon')}
+      onPrimaryAction={() => { setEditingContact(undefined); setIsFormOpen(true); }}
       onImport={() => toast.info('Import coming soon')}
       canCreate={canCreate}
       availableViews={['list', 'tile', 'table', 'grid']}
       activeView={activeView}
       onViewChange={setActiveView}
+
+      sortableFields={CONTACTS_COLUMN_REGISTRY.map((col) => ({ id: col.id, label: col.label }))}
+      sort={sort}
+      onSortChange={setSort}
+      pageSize={pageSize}
+      onPageSizeChange={setPageSize}
+      viewMode={viewMode}
+      onViewModeChange={setViewMode}
       savedTabs={[
         { id: 'all', label: 'All Contacts' },
         { id: 'my', label: 'My Contacts' },
@@ -292,85 +339,64 @@ export default function ContactsPage(): React.ReactElement {
       onSearch={setSearchTerm}
       searchPlaceholder="Search contacts..."
       onRefresh={() => toast.success('Refreshed')}
+      currentPage={currentPage}
+      paginationTotalRecords={filteredContacts.length}
+      onPageChange={setCurrentPage}
       toolbarExtra={
-        <button
-          ref={manageColumnsButtonRef}
-          onClick={() => setIsManageColumnsOpen(true)}
-          className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium text-[#5A6B85] dark:text-slate-300 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-          aria-label="Manage columns"
-        >
-          <SlidersHorizontal size={13} />
-          Columns
-        </button>
+        <ColumnsPopover
+          registry={CONTACTS_COLUMN_REGISTRY}
+          effectiveColumns={effectiveColumns}
+          onApply={(cols) => {
+            saveColumns(cols);
+            toast.success('Column visibility updated');
+          }}
+          onReset={() => {
+            resetColumns();
+            toast.success('Columns reset to default');
+          }}
+          hiddenCount={effectiveColumns.filter((c) => !c.visible).length}
+        />
       }
     >
-      {/* ── List / Table View — Dynamic Columns ─────────────────── */}
+      {/* ── List / Table View — DataGrid ─────────────────── */}
       {(activeView === 'list' || activeView === 'table') && (
-        <div className="bg-white dark:bg-slate-800/40 border border-[#E4E9F0] dark:border-slate-700 rounded-xl overflow-hidden overflow-x-auto">
-          {/* Header */}
-          <div
-            className={cn(
-              'flex items-center border-b border-[#E4E9F0] dark:border-slate-700 bg-[#F6F8FB] dark:bg-slate-800/60 sticky top-0 z-10',
-              'text-[11.5px] font-semibold uppercase tracking-wide text-[#5A6B85] dark:text-slate-400 h-11 px-3',
-            )}
-          >
-            <label className="flex items-center justify-center w-10 shrink-0">
-              <input
-                type="checkbox"
-                className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-[#2563EB] focus:ring-[#2563EB]/20 cursor-pointer"
-                aria-label="Select all contacts"
-              />
-            </label>
-            {visibleColumns.map((col) => {
-              const responsiveClass = getResponsiveColumnClass(col.id, visibleColumns, CONTACTS_COLUMN_REGISTRY);
-              return (
-                <span key={col.id} className={cn('px-3 truncate flex-1 min-w-0', responsiveClass)}>
-                  {getColumnLabel(col.id, CONTACTS_COLUMN_REGISTRY)}
-                </span>
-              );
-            })}
-          </div>
-
-          {/* Rows */}
-          <div className="divide-y divide-[#E4E9F0] dark:divide-slate-700">
-            {filteredContacts.map((contact) => (
-              <div
-                key={contact.id}
-                className="flex items-center h-[52px] px-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors group"
-              >
-                {/* Checkbox */}
-                <label className="flex items-center justify-center w-10 shrink-0" onClick={(e) => e.stopPropagation()}>
-                  <input
-                    type="checkbox"
-                    className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-[#2563EB] focus:ring-[#2563EB]/20 cursor-pointer"
-                    aria-label={`Select ${getName(contact)}`}
-                  />
-                </label>
-
-                {visibleColumns.map((col) => {
-                  const responsiveClass = getResponsiveColumnClass(col.id, visibleColumns, CONTACTS_COLUMN_REGISTRY);
-                  return (
-                    <div key={col.id} className={cn('px-3 min-w-0 flex-1', responsiveClass)}>
-                      {renderContactCell(col.id, contact)}
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-
-          {/* Footer */}
-          <div className="flex items-center justify-between px-4 py-2.5 border-t border-[#E4E9F0] dark:border-slate-700 bg-[#F6F8FB] dark:bg-slate-800/60">
-            <span className="text-[12px] text-[#5A6B85]">
-              Total records <strong className="font-semibold text-[#0F172A] dark:text-white">{filteredContacts.length}</strong>
-            </span>
-            <div className="flex items-center gap-2 text-[12px] text-[#5A6B85]">
-              <span>1 to {Math.min(filteredContacts.length, 25)}</span>
-              <button className="p-1 hover:text-[#0F172A] dark:hover:text-white transition-colors" aria-label="Previous page">&lt;</button>
-              <button className="p-1 hover:text-[#0F172A] dark:hover:text-white transition-colors" aria-label="Next page">&gt;</button>
-            </div>
-          </div>
-        </div>
+        <ContactsDataGrid
+          contacts={paginatedContacts}
+          totalRecords={filteredContacts.length}
+          effectiveColumns={effectiveColumns}
+          sort={sort}
+          onSortChange={setSort}
+          onRowClick={(contact) => setSelectedContact(contact)}
+          selectedIds={contactSelectedIds}
+          onSelectionChange={setContactSelectedIds}
+          getAccountName={getAccountName}
+          getAssignedUserName={(userId) => {
+            if (!userId) return '—';
+            const u = users.find((usr) => usr.id === userId);
+            return u ? `${u.firstName} ${u.lastName}` : '—';
+          }}
+          canEdit={false}
+          canDelete={false}
+          onManageColumns={() => setIsManageColumnsOpen(true)}
+          onHideColumn={async (columnId) => {
+            const updated = effectiveColumns.map((col) =>
+              col.id === columnId ? { ...col, visible: false } : col,
+            );
+            try {
+              await saveColumns(updated);
+            } catch {
+              toast.error('Failed to hide column. Reverted.');
+            }
+          }}
+          viewMode={viewMode}
+          onColumnReorder={async (columns) => {
+            try {
+              await saveColumns(columns);
+            } catch {
+              toast.error('Failed to save column order. Reverted to previous layout.');
+            }
+          }}
+        />
       )}
 
       {/* ── Tile View ─────────────────────────────────────────── */}
@@ -379,6 +405,7 @@ export default function ContactsPage(): React.ReactElement {
           {filteredContacts.map((contact) => (
             <div
               key={contact.id}
+              onClick={() => setSelectedContact(contact)}
               className="bg-white dark:bg-slate-800/60 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-4 cursor-pointer hover:shadow-md hover:border-[#2563EB]/30 transition-all"
             >
               <div className="flex items-start gap-3 mb-3">
@@ -417,6 +444,7 @@ export default function ContactsPage(): React.ReactElement {
           {filteredContacts.map((contact) => (
             <div
               key={contact.id}
+              onClick={() => setSelectedContact(contact)}
               className="bg-white dark:bg-slate-800/60 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-3 cursor-pointer hover:shadow-md transition-all flex items-center gap-2.5"
             >
               <div className="w-9 h-9 rounded-full bg-teal-500 flex items-center justify-center text-white font-bold text-[10px] shrink-0">
@@ -439,6 +467,35 @@ export default function ContactsPage(): React.ReactElement {
       )}
     </ModuleWorkspace>
 
+    {/* ── Contact Slide-Over Panel ─────────────────────────────── */}
+    <ContactPanel
+      open={!!selectedContact}
+      onOpenChange={(open) => !open && setSelectedContact(null)}
+      contact={selectedContact}
+      onEdit={(c) => {
+        setEditingContact(c);
+        setIsFormOpen(true);
+      }}
+    />
+
+    {/* ── Contact Form Sheet ──────────────────────────────────── */}
+    <ContactFormSheet
+      isOpen={isFormOpen}
+      onClose={() => { setIsFormOpen(false); setEditingContact(undefined); }}
+      initialData={editingContact}
+      onSave={(data) => {
+        if (editingContact) {
+          updateContact(editingContact.id, data);
+          toast.success('Contact updated successfully');
+        } else {
+          addContact(data as Omit<Contact, 'id' | 'tenantId' | 'createdAt' | 'score'>);
+          toast.success('Contact created successfully');
+        }
+        setIsFormOpen(false);
+        setEditingContact(undefined);
+      }}
+    />
+
     {/* ── Manage Columns Drawer ───────────────────────────────── */}
     <ManageColumnsDrawer
       isOpen={isManageColumnsOpen}
@@ -452,88 +509,6 @@ export default function ContactsPage(): React.ReactElement {
     />
     </>
   );
-
-  // ── Dynamic cell renderer ──────────────────────────────────────────────
-  function renderContactCell(colId: string, contact: Contact): React.ReactNode {
-    switch (colId) {
-      case 'firstName':
-        return (
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center text-white font-bold text-[10px] shrink-0">
-              {getInitials(contact)}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-semibold text-[#0F172A] dark:text-white truncate group-hover:text-[#2563EB] transition-colors">
-                {contact.firstName ?? getName(contact).split(' ')[0] ?? '—'}
-              </p>
-            </div>
-          </div>
-        );
-      case 'lastName':
-        return (
-          <p className="text-[13px] text-[#0F172A] dark:text-slate-200 truncate">
-            {contact.lastName ?? getName(contact).split(' ').slice(1).join(' ') ?? '—'}
-          </p>
-        );
-      case 'email':
-        return (
-          <p className="text-[13px] text-[#0F172A] dark:text-slate-200 truncate">
-            {contact.email ?? '—'}
-          </p>
-        );
-      case 'phone':
-        return (
-          <p className="text-[13px] text-[#0F172A] dark:text-slate-200 truncate">
-            {contact.phone ?? '—'}
-          </p>
-        );
-      case 'companyName':
-        return (
-          <p className="text-[12.5px] text-[#2563EB] dark:text-blue-400 font-medium truncate">
-            {getAccountName(contact)}
-          </p>
-        );
-      case 'status':
-        return (
-          <StatusBadge
-            label={contact.status ?? 'Active'}
-            variant={getStatusVariant(contact.status ?? 'Active')}
-          />
-        );
-      case 'source':
-        return (
-          <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-            {(contact as unknown as Record<string, unknown>).source as string ?? '—'}
-          </p>
-        );
-      case 'assignedUserId':
-        return (
-          <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-            {contact.assignedUserId
-              ? (users.find((u) => u.id === contact.assignedUserId)
-                  ? `${users.find((u) => u.id === contact.assignedUserId)!.firstName} ${users.find((u) => u.id === contact.assignedUserId)!.lastName}`
-                  : '—')
-              : '—'}
-          </p>
-        );
-      case 'accountId':
-        return (
-          <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-            {getAccountName(contact)}
-          </p>
-        );
-      case 'createdAt':
-        return (
-          <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-            {contact.createdAt
-              ? new Date(contact.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-              : '—'}
-          </p>
-        );
-      default:
-        return <span className="text-[12px] text-[#5A6B85]">—</span>;
-    }
-  }
 }
 
 function formatCurrency(value: number): string {

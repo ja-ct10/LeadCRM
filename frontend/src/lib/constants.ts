@@ -96,7 +96,7 @@ export const ROUTES = {
   ADMIN_CLIENTS: 'admin-clients',
   ADMIN_PRICING: 'admin-pricing',
   ADMIN_BILLING: 'admin-billing',
-  ADMIN_ENVIRONMENTS: 'admin-environments',
+  ADMIN_AUDIT_LOG: 'admin-audit-log',
 } as const;
 
 // ─── Roles ─────────────────────────────────────────────────────────────────

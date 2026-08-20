@@ -13,7 +13,7 @@ import type { ViewMode } from '@/shared/hooks/use-table-preferences';
 // "View Mode" (submenu: Wrap Text / Clip Text).
 // ─────────────────────────────────────────────────────
 
-const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50] as const;
+const PAGE_SIZE_OPTIONS = [10, 20, 25, 30, 40, 50] as const;
 
 interface TableSettingsMenuProps {
   /** Current records per page */

@@ -20,6 +20,16 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Switch } from '@/shared/components/ui/switch';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from '@/shared/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import type { ColumnDefinition, ColumnConfigItem } from '@leadcrm/shared';
 
@@ -52,14 +62,17 @@ interface ManageColumnsDrawerProps {
 interface DisplayColumn extends ColumnConfigItem {
   label: string;
   required: boolean;
+  group: string;
 }
 
 interface SortableColumnItemProps {
   col: DisplayColumn;
+  index: number;
+  total: number;
   onToggle: (id: string) => void;
 }
 
-function SortableColumnItem({ col, onToggle }: SortableColumnItemProps): React.ReactElement {
+function SortableColumnItem({ col, index, total, onToggle }: SortableColumnItemProps): React.ReactElement {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: col.id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -70,6 +83,7 @@ function SortableColumnItem({ col, onToggle }: SortableColumnItemProps): React.R
     <li
       ref={setNodeRef}
       style={style}
+      aria-label={`Column ${col.label}, position ${index} of ${total}`}
       className={cn(
         'flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors',
         'bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800',
@@ -109,6 +123,7 @@ export function ManageColumnsDrawer({
   const [localColumns, setLocalColumns] = useState<ColumnConfigItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [resetError, setResetError] = useState<string | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
@@ -125,6 +140,7 @@ export function ManageColumnsDrawer({
       setLocalColumns(columns);
       setSearchQuery('');
       setSaveState('idle');
+      setResetError(null);
       setShowResetConfirm(false);
       setShowCloseConfirm(false);
       setRetryCount(0);
@@ -143,23 +159,23 @@ export function ManageColumnsDrawer({
     });
   }, [localColumns, effectiveColumns]);
 
-  const displayColumns = useMemo(() => {
+  const displayColumns: DisplayColumn[] = useMemo(() => {
     const sorted = [...localColumns].sort((a, b) => a.order - b.order);
     return sorted
       .map((col) => {
         const def = registry.find((r) => r.id === col.id);
-        return { ...col, label: def?.label ?? col.id, required: def?.required ?? false, group: def?.group ?? '' };
+        return { ...col, label: def?.label ?? col.id, required: def?.required ?? false, group: def?.group ?? 'General' };
       })
       .filter((col) => col.label.toLowerCase().includes(searchQuery.toLowerCase()));
   }, [localColumns, registry, searchQuery]);
 
-  /** Columns grouped by category for display */
+  /** Columns grouped by registry-defined group labels */
   const groupedColumns = useMemo(() => {
-    const groups: { name: string; columns: typeof displayColumns }[] = [];
+    const groups: { name: string; columns: DisplayColumn[] }[] = [];
     const seenGroups = new Set<string>();
 
     for (const col of displayColumns) {
-      const groupName = col.group || 'General';
+      const groupName = col.group;
       if (!seenGroups.has(groupName)) {
         seenGroups.add(groupName);
         groups.push({ name: groupName, columns: [] });
@@ -172,11 +188,13 @@ export function ManageColumnsDrawer({
 
   const displayColumnIds = useMemo(() => displayColumns.map((col) => col.id), [displayColumns]);
 
+  // DnD sensors: 5px drag threshold + keyboard with sortable coordinates
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
+  /** Reassign sequential 0-based order values after each drop */
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -185,6 +203,7 @@ export function ManageColumnsDrawer({
       const allSorted = [...prev].sort((a, b) => a.order - b.order);
 
       if (searchQuery) {
+        // When search is active, reorder only within matching items
         const matchingIds = new Set(displayColumns.map((c) => c.id));
         const matchingItems = allSorted.filter((c) => matchingIds.has(c.id));
         const oldIndex = matchingItems.findIndex((c) => c.id === active.id);
@@ -222,6 +241,7 @@ export function ManageColumnsDrawer({
   const handleSave = useCallback(async () => {
     if (!hasChanges || saveState === 'saving') return;
     setSaveState('saving');
+    setResetError(null);
     try {
       await onSave(localColumns);
       setSaveState('saved');
@@ -238,15 +258,18 @@ export function ManageColumnsDrawer({
     await handleSave();
   }, [retryCount, handleSave]);
 
+  /** Reset to Default: calls resetColumns() → DELETE /api/v1/preferences/columns/:module */
   const handleResetConfirm = useCallback(async () => {
     setShowResetConfirm(false);
+    setResetError(null);
     setSaveState('saving');
     try {
       await onReset();
       setSaveState('idle');
       setRetryCount(0);
     } catch {
-      setSaveState('error');
+      setSaveState('idle');
+      setResetError('Unable to reset columns. Please try again.');
     }
   }, [onReset]);
 
@@ -375,9 +398,18 @@ export function ManageColumnsDrawer({
                         {group.name}
                       </h3>
                       <ul className="space-y-1">
-                        {group.columns.map((col) => (
-                          <SortableColumnItem key={col.id} col={col} onToggle={handleToggleVisibility} />
-                        ))}
+                        {group.columns.map((col) => {
+                          const positionIndex = displayColumns.indexOf(col) + 1;
+                          return (
+                            <SortableColumnItem
+                              key={col.id}
+                              col={col}
+                              index={positionIndex}
+                              total={displayColumns.length}
+                              onToggle={handleToggleVisibility}
+                            />
+                          );
+                        })}
                       </ul>
                     </div>
                   ))}
@@ -390,7 +422,13 @@ export function ManageColumnsDrawer({
             </SortableContext>
           </DndContext>
         </div>
-        {/* Error State */}
+        {/* Reset Error State */}
+        {resetError && (
+          <div className="px-6 py-3 bg-red-50 dark:bg-red-900/20 border-t border-red-200 dark:border-red-800">
+            <span className="text-sm text-red-700 dark:text-red-400">{resetError}</span>
+          </div>
+        )}
+        {/* Save Error State */}
         {saveState === 'error' && retryCount < 3 && (
           <div className="px-6 py-3 bg-red-50 dark:bg-red-900/20 border-t border-red-200 dark:border-red-800">
             <div className="flex items-center justify-between">
@@ -432,72 +470,35 @@ export function ManageColumnsDrawer({
         </div>
       </div>
       {/* Reset Confirmation Dialog */}
-      {showResetConfirm && (
-        <ConfirmDialog
-          title="Reset to Default?"
-          message="This will remove your custom column configuration and revert to the default layout."
-          confirmLabel="Reset"
-          cancelLabel="Cancel"
-          onConfirm={handleResetConfirm}
-          onCancel={() => setShowResetConfirm(false)}
-        />
-      )}
+      <AlertDialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset to Default?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove your custom column configuration and revert to the default layout.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowResetConfirm(false)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleResetConfirm}>Reset</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {/* Close with Unsaved Changes Confirmation */}
-      {showCloseConfirm && (
-        <ConfirmDialog
-          title="Discard changes?"
-          message="You have unsaved changes. Are you sure you want to close without saving?"
-          confirmLabel="Discard"
-          cancelLabel="Keep editing"
-          onConfirm={handleConfirmClose}
-          onCancel={() => setShowCloseConfirm(false)}
-        />
-      )}
-    </div>
-  );
-}
-
-// --- Confirmation Dialog ---
-
-interface ConfirmDialogProps {
-  title: string;
-  message: string;
-  confirmLabel: string;
-  cancelLabel: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-}
-
-function ConfirmDialog({ title, message, confirmLabel, cancelLabel, onConfirm, onCancel }: ConfirmDialogProps): React.ReactElement {
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 dark:bg-black/60" onClick={onCancel} aria-hidden="true" />
-      <div
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="confirm-dialog-title"
-        aria-describedby="confirm-dialog-desc"
-        className="relative z-10 w-full max-w-sm mx-4 p-6 rounded-lg shadow-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700"
-      >
-        <h3 id="confirm-dialog-title" className="text-base font-semibold text-gray-900 dark:text-gray-100">{title}</h3>
-        <p id="confirm-dialog-desc" className="mt-2 text-sm text-gray-600 dark:text-gray-400">{message}</p>
-        <div className="mt-4 flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-4 py-2 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-          >
-            {cancelLabel}
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className="px-4 py-2 text-sm font-medium rounded-md transition-colors text-white bg-amber-600 hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600"
-          >
-            {confirmLabel}
-          </button>
-        </div>
-      </div>
+      <AlertDialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard changes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes. Are you sure you want to close without saving?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowCloseConfirm(false)}>Keep editing</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmClose}>Discard</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

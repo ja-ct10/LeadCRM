@@ -1191,7 +1191,7 @@ export default function UsersPage() {
           description: roleForm.description,
           permissions: roleForm.permissions,
         });
-        toast.success(`Role definition upgraded: ${roleForm.name}`);
+        toast.success(`Role updated: ${roleForm.name}`);
       } else {
         addRole({
           name: roleForm.name,
@@ -1201,7 +1201,7 @@ export default function UsersPage() {
           permissions: roleForm.permissions,
         });
         toast.success(
-          `Welcome to the stack! New role configured: ${roleForm.name}`,
+          `New role created: ${roleForm.name}`,
         );
       }
       setIsRoleModalOpen(false);
@@ -1644,7 +1644,7 @@ export default function UsersPage() {
         department: formDepartment,
         status: formStatus === "Active" ? "active" : "inactive",
       });
-      toast.success(`Welcome aboard! New user cataloged: ${formFirstName} ${formLastName}`);
+      toast.success(`User created: ${formFirstName} ${formLastName}`);
       setIsAddModalOpen(false);
     } catch (err: unknown) {
       // Error handled by DataContext
@@ -1658,7 +1658,7 @@ export default function UsersPage() {
       )
     ) {
       deleteUser(id);
-      toast.success(`${name} has been purged from authentication databases.`);
+      toast.success(`${name} has been removed.`);
     }
   };
 
@@ -1686,7 +1686,7 @@ export default function UsersPage() {
 
   const handleTriggerPasswordReset = (email: string, name: string) => {
     toast.info(
-      `Standard system link generated. Dispatching reset token to ${email}...`,
+      `Sending password reset link to ${email}...`,
     );
     addAuditLog(
       "Credentials Recovery",
@@ -1694,19 +1694,19 @@ export default function UsersPage() {
     );
     setTimeout(() => {
       toast.success(
-        `Success! Security ticket dispatched to ${name}'s verified mailbox.`,
+        `Password reset email sent to ${name}.`,
       );
     }, 1200);
   };
 
   const handleResendInvitation = (email: string, name: string) => {
-    toast.info(`Regenerating temporary workspace token for ${name}...`);
+    toast.info(`Resending invitation to ${name}...`);
     addAuditLog(
       "Invite Resent",
       `Regenerated onboarding credentials and dispatched fresh workspace invite packet to ${name} (${email}).`,
     );
     setTimeout(() => {
-      toast.success(`Secure onboarding mail resent: ${email}`);
+      toast.success(`Invitation resent to ${email}`);
     }, 1000);
   };
 

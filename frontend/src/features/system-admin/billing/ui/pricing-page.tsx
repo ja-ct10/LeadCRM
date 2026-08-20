@@ -1,5 +1,5 @@
 'use client';
-import { uuid } from '@/lib/utils';
+import { cn, uuid } from '@/lib/utils';
 import React, { useState } from 'react';
 import { CheckCircle2, Server, Users, Plus, Trash2, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -10,7 +10,7 @@ import { adminStripeService } from '../services/admin-stripe.service';
 
 const DEFAULT_PLANS = [
   {
-    id: 'starter', name: 'Starter', price: 299, billingCycle: 'Monthly',
+    id: 'starter', name: 'Starter', price: 1350, billingCycle: 'Monthly',
     usersLimit: '5', storage: '10GB', apiCalls: '10,000',
     features: [
       { id: 'f1', text: 'Basic Contact Tracking', enabled: true },
@@ -21,7 +21,7 @@ const DEFAULT_PLANS = [
     isPopular: false,
   },
   {
-    id: 'professional', name: 'Professional', price: 799, billingCycle: 'Monthly',
+    id: 'professional', name: 'Professional', price: 3600, billingCycle: 'Monthly',
     usersLimit: '20', storage: '50GB', apiCalls: '100,000',
     features: [
       { id: 'f1', text: 'Advanced Contact Tracking', enabled: true },
@@ -32,7 +32,7 @@ const DEFAULT_PLANS = [
     isPopular: true,
   },
   {
-    id: 'enterprise', name: 'Enterprise', price: 2499, billingCycle: 'Monthly',
+    id: 'enterprise', name: 'Enterprise', price: 8950, billingCycle: 'Monthly',
     usersLimit: 'Unlimited', storage: '500GB', apiCalls: 'Unlimited',
     features: [
       { id: 'f1', text: 'Custom Contact Tracking',   enabled: true },
@@ -91,20 +91,31 @@ export default function PricingPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
-          <h3 className="text-2xl font-bold text-slate-900 dark:text-white">Pricing</h3>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Manage subscription tiers and features</p>
-          <p className="text-xs text-amber-600 mt-2 bg-amber-50 dark:bg-amber-500/10 inline-block px-2 py-1 rounded border border-amber-200 dark:border-amber-500/20">
+          <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Pricing</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Manage subscription tiers and features</p>
+          <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 bg-amber-500/10 inline-block px-2 py-1 rounded border border-amber-500/20">
             Note: Maximum of 3 active plans supported.
           </p>
         </div>
-        <div className="flex bg-slate-200 dark:bg-slate-700/50 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+        <div
+          role="group"
+          aria-label="Select billing cycle"
+          className="inline-flex items-center gap-1 p-1 rounded-xl border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] shrink-0"
+        >
           {(['Monthly', 'Quarterly', 'Annual'] as BillingView[]).map((v) => (
-            <button key={v} onClick={() => setPricingView(v)}
-              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+            <button
+              key={v}
+              onClick={() => setPricingView(v)}
+              aria-pressed={pricingView === v}
+              className={cn(
+                'px-3 h-7 rounded-lg text-xs font-semibold transition-colors active:scale-95',
                 pricingView === v
-                  ? 'bg-white dark:bg-slate-950 text-blue-600 shadow-sm border border-slate-200 dark:border-slate-700/50'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}>{v}</button>
+                  ? 'bg-blue-600 text-white'
+                  : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/[0.05] hover:text-slate-900 dark:hover:text-white',
+              )}
+            >
+              {v}
+            </button>
           ))}
         </div>
       </div>
@@ -112,13 +123,21 @@ export default function PricingPage() {
       {/* Plan cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {plans.map((plan) => (
-          <div key={plan.id} className={`relative bg-white dark:bg-slate-950 border rounded-2xl p-6 flex flex-col hover:shadow-md transition-shadow ${plan.isPopular ? 'border-blue-500 shadow-lg shadow-blue-500/10' : 'border-slate-200 dark:border-slate-700'}`}>
+          <div
+            key={plan.id}
+            className={cn(
+              'relative rounded-2xl border bg-white dark:bg-white/[0.02] backdrop-blur-xl p-6 flex flex-col transition-shadow',
+              plan.isPopular
+                ? 'border-blue-500 shadow-lg shadow-blue-500/10'
+                : 'border-gray-200 dark:border-white/[0.05] shadow-lg hover:shadow-xl',
+            )}
+          >
             {plan.isPopular && (
               <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-3 py-1 rounded-full text-xs font-bold uppercase">Most Popular</div>
             )}
             <h4 className="text-lg font-bold text-slate-900 dark:text-white mb-2">{plan.name}</h4>
             <div className="text-3xl font-extrabold text-slate-900 dark:text-white mb-4">
-              ${getDisplayPrice(plan.price)}<span className="text-sm font-normal text-slate-500"> / {pricingView.toLowerCase()}</span>
+              ₱{getDisplayPrice(plan.price).toLocaleString()}<span className="text-sm font-normal text-slate-500"> / {pricingView.toLowerCase()}</span>
             </div>
             <div className="space-y-3 mb-8 flex-1">
               <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400"><Users size={16} /> {plan.usersLimit} Users</div>
@@ -134,7 +153,12 @@ export default function PricingPage() {
               </div>
             </div>
             <button onClick={() => setEditingPlan(JSON.parse(JSON.stringify(plan)))}
-              className={`w-full py-2.5 rounded-xl text-sm font-bold transition-all ${plan.isPopular ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md' : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-900 dark:text-white'}`}>
+              className={cn(
+                'w-full py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95',
+                plan.isPopular
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md'
+                  : 'bg-slate-100 dark:bg-white/[0.05] hover:bg-slate-200 dark:hover:bg-white/[0.08] text-slate-900 dark:text-white',
+              )}>
               Edit Plan
             </button>
           </div>
@@ -146,8 +170,8 @@ export default function PricingPage() {
         {editingPlan && (
           <div className="fixed inset-0 bg-slate-900/40 dark:bg-slate-900/80 backdrop-blur-sm z-50 flex justify-end">
             <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="bg-white dark:bg-slate-950 w-full max-w-md h-full shadow-2xl flex flex-col border-l border-slate-200 dark:border-slate-700">
-              <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
+              className="bg-white dark:bg-slate-900 w-full max-w-md h-full shadow-[0_0_50px_rgba(0,0,0,0.15)] flex flex-col border-l border-gray-200 dark:border-white/[0.05]">
+              <div className="px-6 py-4 border-b border-gray-200 dark:border-white/[0.05] flex justify-between items-center bg-slate-50 dark:bg-white/[0.02]">
                 <h3 className="text-lg font-bold text-slate-900 dark:text-white">Edit {editingPlan.name} Plan</h3>
                 <ModalCloseButton onClose={() => setEditingPlan(null)} ariaLabel="Close edit plan drawer" size={20} />
               </div>
@@ -156,7 +180,7 @@ export default function PricingPage() {
                   <input type="text" value={editingPlan.name} onChange={(e) => setEditingPlan({ ...editingPlan, name: e.target.value })}
                     className="w-full border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-900 text-slate-900 dark:text-white" />
                 </Field>
-                <Field label="Monthly Price ($)">
+                <Field label="Monthly Price (₱)">
                   <input type="number" value={editingPlan.price} onChange={(e) => setEditingPlan({ ...editingPlan, price: Number(e.target.value) })}
                     className="w-full border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-900 text-slate-900 dark:text-white" />
                 </Field>
@@ -178,8 +202,8 @@ export default function PricingPage() {
                   </div>
                 </div>
               </div>
-              <div className="p-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex gap-3">
-                <button onClick={() => setEditingPlan(null)} className="flex-1 px-4 py-2 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-xl font-medium text-sm transition-colors">Cancel</button>
+              <div className="p-4 border-t border-gray-200 dark:border-white/[0.05] bg-slate-50 dark:bg-white/[0.02] flex gap-3">
+                <button onClick={() => setEditingPlan(null)} className="flex-1 px-4 py-2 bg-white dark:bg-transparent border border-gray-200 dark:border-white/[0.08] text-slate-700 dark:text-slate-300 rounded-lg font-medium text-sm hover:bg-slate-50 dark:hover:bg-white/[0.05] transition-colors active:scale-95">Cancel</button>
                 <button onClick={handleSavePlan} disabled={isSaving} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-xl font-medium text-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-70">
                   {isSaving ? <Loader2 size={16} className="animate-spin" /> : saveStatus === 'success' ? <CheckCircle2 size={16} /> : 'Save Changes'}
                 </button>

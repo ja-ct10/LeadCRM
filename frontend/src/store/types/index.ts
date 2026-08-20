@@ -5,7 +5,7 @@
 
 export type { Role, Permission, RoleDefinition, User, Tenant } from './user.types';
 export type { Organization, Contact } from './contact.types';
-export type { DealOwnershipRecord, Stage, Pipeline, Deal } from './deal.types';
+export type { DealOwnershipRecord, DealPriority, Stage, Pipeline, Deal } from './deal.types';
 export type {
   WorkflowAction, Workflow, PendingAction,
   WorkflowExecution,

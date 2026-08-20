@@ -39,7 +39,7 @@ export function FormsTab({ onBuilderActiveChange }: FormsTabProps): React.ReactE
 
   const handleCreate = () => {
     if (!newFormName.trim()) { toast.error('Form name is required'); return; }
-    if (!tenant?.id) { toast.error('No tenant context'); return; }
+    if (!tenant?.id) { toast.error('Unable to save. Please refresh and try again.'); return; }
     const form = createForm({ name: newFormName.trim(), tenantId: tenant.id });
     setForms((prev) => [...prev, form]);
     setNewFormName('');
