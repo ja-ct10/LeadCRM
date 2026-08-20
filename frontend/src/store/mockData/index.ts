@@ -9,7 +9,6 @@
  *   deals.mock.ts         — MOCK_PIPELINES, MOCK_DEALS
  *   workflows.mock.ts     — MOCK_WORKFLOWS, MOCK_WORKFLOW_EXECUTIONS, MOCK_TASKS
  *   campaigns.mock.ts     — MOCK_CAMPAIGNS, MOCK_TEMPLATES
- *   service-orders.mock.ts — MOCK_SERVICE_ORDERS, MOCK_ASSETS, MOCK_INVENTORY
  *   users.mock.ts         — MOCK_TENANTS, MOCK_USERS, MOCK_PERMISSIONS, MOCK_ROLES
  */
 
@@ -24,12 +23,6 @@ export {
 } from './workflows.mock';
 
 export { MOCK_CAMPAIGNS, MOCK_TEMPLATES } from './campaigns.mock';
-
-export {
-  MOCK_SERVICE_ORDERS,
-  MOCK_ASSETS,
-  MOCK_INVENTORY,
-} from './service-orders.mock';
 
 export {
   MOCK_TENANTS,

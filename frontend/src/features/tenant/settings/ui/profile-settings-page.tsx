@@ -18,7 +18,6 @@ import {
   HelpCircle,
   Save,
   Wrench,
-  Package,
   Receipt,
   Send,
   Palette,
@@ -38,10 +37,6 @@ export default function ProfileSettingsPage({
 }: ProfileSettingsPageProps) {
   const { user, tenant, updateProfile } = useAuth();
   const {
-    isServiceModuleEnabled,
-    toggleServiceModule,
-    isAssetModuleEnabled,
-    toggleAssetModule,
     isBillingModuleEnabled,
     toggleBillingModule,
   } = useData();
@@ -171,7 +166,7 @@ export default function ProfileSettingsPage({
       toast.error("New passwords do not match!");
       return;
     }
-    toast.success("Security password and access key set successfully.");
+    toast.success("Password changed successfully.");
     setCurrentPassword("");
     setNewPassword("");
     setConfirmPassword("");
@@ -183,9 +178,7 @@ export default function ProfileSettingsPage({
 
   // Profile picture upload simulator
   const handlePhotoUpload = () => {
-    toast.info(
-      "Simulating avatar secure file upload. Selected device camera loop.",
-    );
+    toast.info("Photo upload is coming soon.");
   };
 
   return (
@@ -206,14 +199,14 @@ export default function ProfileSettingsPage({
       {/* Modern Banner Identity Card */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/[0.06] rounded-2xl shadow-sm overflow-hidden">
         {/* Grey Gradient Cover Banner */}
-        <div className="h-28 bg-gradient-to-r from-slate-200 via-slate-150 to-slate-100 dark:from-slate-850 dark:via-slate-805 dark:to-slate-800 relative" />
+        <div className="h-24 bg-gradient-to-r from-slate-200 via-slate-150 to-slate-100 dark:from-slate-850 dark:via-slate-805 dark:to-slate-800 relative" />
 
         {/* User Badge Details Portion */}
-        <div className="p-6 pt-0 relative flex flex-col md:flex-row md:items-end justify-between gap-6">
-          <div className="flex flex-col sm:flex-row gap-4 -mt-10 sm:items-end">
-            {/* Round Avatar with floating camera icon */}
+        <div className="px-6 pb-6 relative">
+          {/* Avatar row — overlaps the banner */}
+          <div className="flex items-end justify-between -mt-12">
             <div className="relative shrink-0 select-none">
-              <div className="w-24 h-24 rounded-full bg-white dark:bg-slate-950 dark:bg-slate-800 border-4 border-white dark:border-slate-900 flex items-center justify-center text-white text-3xl font-extrabold relative overflow-hidden shadow-md">
+              <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] border-4 border-white dark:border-slate-900 flex items-center justify-center text-white text-3xl font-extrabold relative overflow-hidden shadow-md">
                 {firstName.charAt(0)}
                 {lastName.charAt(0)}
               </div>
@@ -226,30 +219,30 @@ export default function ProfileSettingsPage({
               </button>
             </div>
 
-            {/* Profile labels */}
+            {/* Blue banner pill */}
             <div className="pb-1">
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-                {firstName} {lastName}
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
-                {user?.role === "Client Admin"
-                  ? "System Administrator"
-                  : user?.role || "System Administrator"}{" "}
-                -+ {tenant?.name || "Camxian Technologies"}
-              </p>
+              <span className="px-3 py-1 bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 text-xs font-bold rounded-lg border border-blue-500/10 flex items-center gap-1.5 w-fit select-none">
+                <Shield size={12} />
+                <span>
+                  {user?.role === "Client Admin"
+                    ? "Administrator"
+                    : user?.role || "Administrator"}
+                </span>
+              </span>
             </div>
           </div>
 
-          {/* Red banner pill to match style */}
-          <div className="pb-1">
-            <span className="px-3 py-1 bg-red-500/10 dark:bg-red-500/20 text-red-600 dark:text-red-400 text-xs font-bold rounded-lg border border-red-500/10 flex items-center gap-1.5 w-fit select-none">
-              <Shield size={12} />
-              <span>
-                {user?.role === "Client Admin"
-                  ? "Administrator"
-                  : user?.role || "Administrator"}
-              </span>
-            </span>
+          {/* Profile labels — always below the banner */}
+          <div className="mt-3">
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">
+              {firstName} {lastName}
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+              {user?.role === "Client Admin"
+                ? "System Administrator"
+                : user?.role || "System Administrator"}{" "}
+              · {tenant?.name || "Camxian Technologies"}
+            </p>
           </div>
         </div>
 
@@ -578,7 +571,7 @@ export default function ProfileSettingsPage({
                     {tenant?.name || "Camxian Technologies"}
                   </p>
                   <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wider mt-0.5">
-                    Organization -+ Administrator
+                    Organization · Administrator
                   </p>
                 </div>
               </div>
@@ -614,133 +607,7 @@ export default function ProfileSettingsPage({
 
               {/* Grid of Modules */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {/* Module 1: Service Orders */}
-                <div
-                  className={`p-4 rounded-xl border transition-all flex flex-col justify-between gap-4 h-36 ${
-                    isServiceModuleEnabled
-                      ? "bg-blue-50/20 dark:bg-blue-500/[0.02] border-blue-500/20 dark:border-blue-500/30"
-                      : "bg-white dark:bg-slate-900 border-slate-200 dark:border-white/[0.06]"
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div
-                      className={`p-2 rounded-lg shrink-0 ${
-                        isServiceModuleEnabled
-                          ? "bg-blue-500/10 text-blue-500"
-                          : "bg-slate-100 dark:bg-slate-800 text-slate-400"
-                      }`}
-                    >
-                      <Wrench size={16} />
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                        <span>Service Orders</span>
-                        {isServiceModuleEnabled && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        )}
-                      </h4>
-                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-snug">
-                        Manage technical installations, dispatches, and
-                        maintenance jobs.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-white/[0.02]">
-                    <span
-                      className={`text-[10px] font-bold ${isServiceModuleEnabled ? "text-blue-500" : "text-slate-400"}`}
-                    >
-                      {isServiceModuleEnabled ? "Enabled" : "Disabled"}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        toggleServiceModule();
-                        toast.success(
-                          `Service Orders module is now ${!isServiceModuleEnabled ? "ENABLED" : "DISABLED"}`,
-                        );
-                      }}
-                      className={`w-10 h-5.5 rounded-full transition-colors flex items-center p-0.5 cursor-pointer shrink-0 ${
-                        isServiceModuleEnabled
-                          ? "bg-blue-500"
-                          : "bg-slate-300 dark:bg-slate-800"
-                      }`}
-                    >
-                      <div
-                        className={`w-4 h-4 rounded-full bg-white transition-all transform ${
-                          isServiceModuleEnabled
-                            ? "translate-x-4.5"
-                            : "translate-x-0"
-                        }`}
-                      />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Module 2: Asset Tracking */}
-                <div
-                  className={`p-4 rounded-xl border transition-all flex flex-col justify-between gap-4 h-36 ${
-                    isAssetModuleEnabled
-                      ? "bg-blue-50/20 dark:bg-blue-500/[0.02] border-blue-500/20 dark:border-blue-500/30"
-                      : "bg-white dark:bg-slate-900 border-slate-200 dark:border-white/[0.06]"
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div
-                      className={`p-2 rounded-lg shrink-0 ${
-                        isAssetModuleEnabled
-                          ? "bg-blue-500/10 text-blue-500"
-                          : "bg-slate-100 dark:bg-slate-800 text-slate-400"
-                      }`}
-                    >
-                      <Package size={16} />
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                        <span>Asset Tracking</span>
-                        {isAssetModuleEnabled && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        )}
-                      </h4>
-                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-snug">
-                        Track installed devices, client hardware, and product
-                        warranties.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-white/[0.02]">
-                    <span
-                      className={`text-[10px] font-bold ${isAssetModuleEnabled ? "text-blue-500" : "text-slate-400"}`}
-                    >
-                      {isAssetModuleEnabled ? "Enabled" : "Disabled"}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        toggleAssetModule();
-                        toast.success(
-                          `Asset Tracking module is now ${!isAssetModuleEnabled ? "ENABLED" : "DISABLED"}`,
-                        );
-                      }}
-                      className={`w-10 h-5.5 rounded-full transition-colors flex items-center p-0.5 cursor-pointer shrink-0 ${
-                        isAssetModuleEnabled
-                          ? "bg-blue-500"
-                          : "bg-slate-300 dark:bg-slate-800"
-                      }`}
-                    >
-                      <div
-                        className={`w-4 h-4 rounded-full bg-white transition-all transform ${
-                          isAssetModuleEnabled
-                            ? "translate-x-4.5"
-                            : "translate-x-0"
-                        }`}
-                      />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Module 3: Contract Billing */}
+                {/* Module: Contract Billing */}
                 <div
                   className={`p-4 rounded-xl border transition-all flex flex-col justify-between gap-4 h-36 sm:col-span-2 lg:col-span-1 ${
                     isBillingModuleEnabled
@@ -1117,10 +984,10 @@ export default function ProfileSettingsPage({
                 <div className="flex items-center justify-between p-3.5 bg-slate-50/55 dark:bg-slate-800/20 border border-slate-100 dark:border-slate-850 rounded-xl">
                   <div>
                     <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                      MacBook Pro -+ San Francisco, CA
+                      MacBook Pro · San Francisco, CA
                     </p>
                     <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-                      Active session -+ IP: 192.168.1.18
+                      Active session · IP: 192.168.1.18
                     </p>
                   </div>
                   <span className="text-[10px] bg-blue-500/10 text-blue-500 border border-blue-500/15 py-0.5 px-2 rounded-md font-bold uppercase tracking-wider">
@@ -1130,15 +997,15 @@ export default function ProfileSettingsPage({
                 <div className="flex items-center justify-between p-3.5 bg-slate-50/55 dark:bg-slate-800/20 border border-slate-100 dark:border-slate-850 rounded-xl">
                   <div>
                     <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                      iPhone 15 Pro -+ Los Angeles, CA
+                      iPhone 15 Pro · Los Angeles, CA
                     </p>
                     <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-                      Last login: 2 hours ago -+ IP: 198.51.100.12
+                      Last login: 2 hours ago · IP: 198.51.100.12
                     </p>
                   </div>
                   <button
                     type="button"
-                    onClick={() => toast.success("iPhone session terminated.")}
+                    onClick={() => toast.success("Device session ended successfully.")}
                     className="text-[10px] font-bold text-rose-500 hover:text-rose-600 transition-colors cursor-pointer"
                   >
                     Revoke Key

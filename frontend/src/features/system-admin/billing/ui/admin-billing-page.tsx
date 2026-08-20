@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Search, Eye, Download, CreditCard, Building2, RefreshCw,
-  CheckCircle2, Clock, XCircle, RotateCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { SideSheet } from '@/shared/components/side-sheet';
@@ -14,20 +13,18 @@ import type { StripePaymentTransaction, PaymentMetrics, PaymentStatus } from '@/
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
-const STATUS_CFG: Record<PaymentStatus, { label: string; classes: string; icon: React.ElementType }> = {
-  paid:               { label: 'Paid',           classes: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500', icon: CheckCircle2 },
-  pending:            { label: 'Pending',         classes: 'bg-amber-500/10 border-amber-500/20 text-amber-500',      icon: Clock },
-  failed:             { label: 'Failed',          classes: 'bg-red-500/10 border-red-500/20 text-red-500',            icon: XCircle },
-  refunded:           { label: 'Refunded',        classes: 'bg-slate-500/10 border-slate-500/20 text-slate-500',      icon: RotateCcw },
-  partially_refunded: { label: 'Partial Refund', classes: 'bg-amber-500/10 border-amber-500/20 text-amber-500',      icon: RotateCcw },
+const STATUS_CFG: Record<PaymentStatus, { label: string; classes: string }> = {
+  paid:               { label: 'Paid',           classes: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' },
+  pending:            { label: 'Pending',         classes: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20' },
+  failed:             { label: 'Failed',          classes: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20' },
+  refunded:           { label: 'Refunded',        classes: 'bg-slate-500/10 text-slate-500 dark:text-slate-400 border-slate-500/20' },
+  partially_refunded: { label: 'Partial Refund', classes: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20' },
 };
 
 function StatusBadge({ status }: { status: string }) {
   const cfg = STATUS_CFG[status as PaymentStatus] ?? STATUS_CFG.pending;
-  const Icon = cfg.icon as any;
   return (
-    <span className={cn('inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border', cfg.classes)}>
-      <Icon size={11} />
+    <span className={cn('inline-flex items-center px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold uppercase border', cfg.classes)}>
       {cfg.label}
     </span>
   );
@@ -83,8 +80,8 @@ export default function AdminBillingPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Billing</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Stripe payment history across all tenants</p>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Billing</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Stripe payment history across all tenants</p>
         </div>
         <button
           onClick={fetchAll}
@@ -122,7 +119,7 @@ export default function AdminBillingPage() {
         ].map((s) => (
           <div
             key={s.label}
-            className="rounded-2xl border border-gray-200 dark:border-white/[0.05] bg-white dark:bg-white/[0.02] shadow-lg p-6"
+            className="rounded-2xl border border-gray-200 dark:border-white/[0.05] bg-white dark:bg-white/[0.02] shadow-lg backdrop-blur-xl p-6"
           >
             <h3 className="text-sm text-slate-500 dark:text-slate-400 mb-4">{s.label}</h3>
             <div className="text-3xl font-bold text-slate-900 dark:text-white mb-4">
@@ -136,7 +133,7 @@ export default function AdminBillingPage() {
       </div>
 
       {/* Invoice table */}
-      <div className="rounded-2xl border border-gray-200 dark:border-white/[0.05] bg-white dark:bg-white/[0.02] shadow-lg overflow-hidden">
+      <div className="bg-white dark:bg-white/[0.02] rounded-2xl border border-gray-200 dark:border-white/[0.05] shadow-lg backdrop-blur-xl overflow-hidden flex flex-col">
         {/* Search bar */}
         <div className="p-4 border-b border-gray-200 dark:border-white/[0.05] bg-slate-50/50 dark:bg-white/[0.02]">
           <div className="relative max-w-full">
@@ -152,23 +149,26 @@ export default function AdminBillingPage() {
         </div>
 
         {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-600 dark:text-slate-400">
-            <thead className="bg-white dark:bg-slate-950 text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-700">
-              <tr>
-                {['Invoice #', 'Client', 'Plan', 'Amount', 'Date', 'Payment Method', 'Status', ''].map((h) => (
-                  <th key={h} className={cn('px-6 py-4 font-semibold text-xs uppercase tracking-wider', !h && 'text-right')}>
-                    {h}
-                  </th>
-                ))}
+        <div className="overflow-x-hidden">
+          <table className="w-full text-left text-sm border-collapse table-fixed">
+            <thead>
+              <tr className="border-b border-gray-200 dark:border-white/[0.05] bg-gray-50/50 dark:bg-white/[0.01] text-[9px] sm:text-[10px] uppercase text-slate-500 tracking-wider">
+                <th className="p-2 sm:p-4 py-2 sm:py-3 font-semibold w-[16%]">Invoice #</th>
+                <th className="p-2 sm:p-4 py-2 sm:py-3 font-semibold w-[20%]">Client</th>
+                <th className="p-2 sm:p-4 py-2 sm:py-3 font-semibold w-[10%] hidden sm:table-cell">Plan</th>
+                <th className="p-2 sm:p-4 py-2 sm:py-3 font-semibold w-[12%]">Amount</th>
+                <th className="p-2 sm:p-4 py-2 sm:py-3 font-semibold w-[12%] hidden md:table-cell">Date</th>
+                <th className="p-2 sm:p-4 py-2 sm:py-3 font-semibold w-[14%] hidden sm:table-cell">Payment Method</th>
+                <th className="p-2 sm:p-4 py-2 sm:py-3 font-semibold w-[10%]">Status</th>
+                <th className="p-2 sm:p-4 py-2 sm:py-3 font-semibold text-right w-[16%]">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+            <tbody className="divide-y divide-gray-100 dark:divide-white/[0.04] text-[10px] sm:text-[11px] text-slate-700 dark:text-slate-300">
               {isLoading ? (
                 Array.from({ length: 6 }).map((_, i) => (
                   <tr key={i}>
                     {Array.from({ length: 8 }).map((__, j) => (
-                      <td key={j} className="px-6 py-4">
+                      <td key={j} className="p-2 sm:p-4">
                         <div className="h-4 bg-slate-100 dark:bg-white/[0.04] rounded animate-pulse" />
                       </td>
                     ))}
@@ -176,48 +176,58 @@ export default function AdminBillingPage() {
                 ))
               ) : transactions.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={8} className="px-4 py-12 text-center text-slate-500 text-sm">
                     No transactions found.
                   </td>
                 </tr>
               ) : (
                 transactions.map((txn) => (
-                  <tr key={txn.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                    <td className="px-6 py-4 font-mono text-xs">{txn.invoice.invoiceNumber}</td>
-                    <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">{txn.invoice.tenant.name}</td>
-                    <td className="px-6 py-4">{txn.invoice.plan ?? '—'}</td>
-                    <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">
+                  <tr key={txn.id} className="hover:bg-gray-50 dark:hover:bg-white/[0.01] transition-colors">
+                    <td className="p-2 sm:p-4 font-mono truncate" title={txn.invoice.invoiceNumber}>
+                      {txn.invoice.invoiceNumber}
+                    </td>
+                    <td className="p-2 sm:p-4">
+                      <span className="font-semibold text-slate-900 dark:text-white block truncate" title={txn.invoice.tenant.name}>
+                        {txn.invoice.tenant.name}
+                      </span>
+                      <span className="text-[9px] text-slate-400 sm:hidden block truncate">{txn.invoice.plan ?? '—'}</span>
+                    </td>
+                    <td className="p-2 sm:p-4 hidden sm:table-cell truncate">{txn.invoice.plan ?? '—'}</td>
+                    <td className="p-2 sm:p-4 font-semibold text-slate-900 dark:text-white">
                       {fmt(txn.amount)}
+                      <span className="text-[9px] text-slate-400 font-mono md:hidden block mt-1">
+                        {txn.paidAt ? new Date(txn.paidAt).toISOString().split('T')[0] : '—'}
+                      </span>
                     </td>
-                    <td className="px-6 py-4 text-slate-500">
-                      {txn.paidAt ? new Date(txn.paidAt).toLocaleDateString() : '—'}
+                    <td className="p-2 sm:p-4 text-slate-500 hidden md:table-cell font-mono text-[10px]">
+                      {txn.paidAt ? new Date(txn.paidAt).toISOString().split('T')[0] : '—'}
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
+                    <td className="p-2 sm:p-4 hidden sm:table-cell">
+                      <div className="flex items-center gap-1.5 truncate">
                         {txn.paymentMethod?.includes('card')
-                          ? <CreditCard size={14} className="text-slate-400" />
-                          : <Building2 size={14} className="text-slate-400" />}
-                        <span className="capitalize">{txn.paymentMethod ?? '—'}</span>
+                          ? <CreditCard size={12} className="text-slate-400 shrink-0" />
+                          : <Building2 size={12} className="text-slate-400 shrink-0" />}
+                        <span className="capitalize truncate">{txn.paymentMethod ?? '—'}</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="p-2 sm:p-4">
                       <StatusBadge status={txn.status} />
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-3">
+                    <td className="p-2 sm:p-4">
+                      <div className="flex items-center justify-end gap-1.5 flex-wrap">
                         <button
                           onClick={() => setSelectedTxn(txn)}
                           aria-label="View transaction"
-                          className="text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+                          className="flex items-center gap-1 px-2 py-1 border border-slate-200 dark:border-white/[0.08] rounded-md text-[10px] font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.05] transition-colors"
                         >
-                          <Eye size={16} />
+                          <Eye size={12} /> View
                         </button>
                         <button
                           onClick={() => handleDownload(txn.invoice.invoiceNumber)}
                           aria-label="Download invoice"
-                          className="text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+                          className="flex items-center gap-1 px-2 py-1 border border-blue-500/30 rounded-md text-[10px] font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
                         >
-                          <Download size={16} />
+                          <Download size={12} /> Download
                         </button>
                       </div>
                     </td>
@@ -228,7 +238,7 @@ export default function AdminBillingPage() {
           </table>
         </div>
 
-        <div className="p-4 border-t border-slate-200 dark:border-slate-800">
+        <div className="p-4 border-t border-gray-200 dark:border-white/[0.05]">
           <Pagination
             currentPage={page}
             totalPages={totalPages}
@@ -294,10 +304,10 @@ export default function AdminBillingPage() {
           </div>
         )}
         {selectedTxn && (
-          <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/30 flex justify-end gap-3">
+          <div className="p-4 border-t border-gray-200 dark:border-white/[0.05] bg-slate-50 dark:bg-white/[0.02] flex justify-end gap-3">
             <button
               onClick={() => setSelectedTxn(null)}
-              className="px-4 py-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-lg font-medium text-sm"
+              className="px-4 py-2 bg-white dark:bg-transparent border border-gray-200 dark:border-white/[0.08] text-slate-700 dark:text-slate-300 rounded-lg font-medium text-sm hover:bg-slate-50 dark:hover:bg-white/[0.05] transition-colors active:scale-95"
             >
               Close
             </button>

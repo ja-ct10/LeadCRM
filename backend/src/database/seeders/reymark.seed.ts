@@ -22,9 +22,6 @@ async function cleanupLegacyRecords() {
   await prisma.task.deleteMany({
     where: { tenantId: TENANT_ID, id: { startsWith: 'rey-' } },
   });
-  await prisma.serviceOrder.deleteMany({
-    where: { tenantId: TENANT_ID, id: { startsWith: 'rey-' } },
-  });
   await prisma.campaign.deleteMany({
     where: { tenantId: TENANT_ID, id: { startsWith: 'rey-' } },
   });
@@ -159,16 +156,6 @@ async function main() {
     ],
   });
   console.log('[Seed] Campaigns created.');
-
-  // ── Service Orders ─────────────────────────────────────────────────
-  await prisma.serviceOrder.createMany({
-    data: [
-      { tenantId: TENANT_ID, assignedTechnicianId: USER_ID, contactId: contacts[7].id, organizationId: orgs[2].id, title: 'CRM Enterprise Onboarding', status: 'in_progress', scheduledDate: new Date(Date.now() + 1 * 86400000) },
-      { tenantId: TENANT_ID, assignedTechnicianId: USER_ID, contactId: contacts[0].id, organizationId: orgs[0].id, title: 'CRM Pro Training Session',   status: 'pending',     scheduledDate: new Date(Date.now() + 7 * 86400000) },
-      { tenantId: TENANT_ID, assignedTechnicianId: USER_ID, contactId: contacts[2].id, organizationId: orgs[2].id, title: 'API Integration Support',    status: 'pending',     scheduledDate: new Date(Date.now() + 2 * 86400000) },
-    ],
-  });
-  console.log('[Seed] Service orders created.');
 
   // ── Audit Logs ─────────────────────────────────────────────────────
   await prisma.auditLog.createMany({

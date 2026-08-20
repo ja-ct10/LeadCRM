@@ -70,7 +70,7 @@ export default function AccountDropdown({
         <button
           onClick={onToggle}
           title={`${user?.firstName ?? ''} ${user?.lastName ?? ''} Â· ${user?.role ?? ''}`}
-          className="w-8 h-8 rounded-full bg-gradient-to-br from-[#D94F4F] to-[#25313D] flex items-center justify-center text-white font-bold text-[11px] cursor-pointer hover:ring-2 hover:ring-[#D94F4F]/40 transition-all"
+          className="w-8 h-8 rounded-full bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] flex items-center justify-center text-white font-bold text-[11px] cursor-pointer hover:ring-2 hover:ring-[#3B82F6]/40 transition-all"
         >
           {initials}
         </button>
@@ -109,7 +109,7 @@ export default function AccountDropdown({
         onClick={onToggle}
         className="w-full flex items-center gap-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/[0.04] p-2 transition-all cursor-pointer border border-transparent active:scale-[0.98]"
       >
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#D94F4F] to-[#25313D] flex items-center justify-center text-white font-extrabold text-[11px] shrink-0">
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] flex items-center justify-center text-white font-extrabold text-[11px] shrink-0">
           {initials}
         </div>
         <div className="min-w-0 flex-1 text-left">
@@ -140,7 +140,7 @@ function DropdownContent({ user, initials, onSwitch, onLogout }: DropdownContent
       {/* Current user summary */}
       <div className="px-4 py-3 bg-slate-50/60 dark:bg-white/[0.02] border-b border-slate-100 dark:border-white/[0.05] mb-1">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#D94F4F] to-[#25313D] flex items-center justify-center text-white font-bold text-[11px] shrink-0">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] flex items-center justify-center text-white font-bold text-[11px] shrink-0">
             {initials}
           </div>
           <div className="min-w-0 flex-1">
@@ -174,7 +174,7 @@ function DropdownContent({ user, initials, onSwitch, onLogout }: DropdownContent
               className={cn(
                 'w-full text-left px-4 py-2 transition-colors flex items-center justify-between gap-2 cursor-pointer',
                 isCurrent
-                  ? 'bg-[#D94F4F]/5 dark:bg-[#D94F4F]/10'
+                  ? 'bg-[#3B82F6]/5 dark:bg-[#3B82F6]/10'
                   : 'hover:bg-slate-50 dark:hover:bg-white/[0.03]',
               )}
             >
@@ -182,7 +182,7 @@ function DropdownContent({ user, initials, onSwitch, onLogout }: DropdownContent
                 <div className={cn(
                   'w-7 h-7 rounded-full flex items-center justify-center font-bold text-[11px] shrink-0',
                   isCurrent
-                    ? 'bg-[#D94F4F] text-white'
+                    ? 'bg-[#3B82F6] text-white'
                     : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300',
                 )}>
                   {acc.initials}
@@ -190,14 +190,14 @@ function DropdownContent({ user, initials, onSwitch, onLogout }: DropdownContent
                 <div className="min-w-0">
                   <p className={cn(
                     'text-xs font-semibold truncate',
-                    isCurrent ? 'text-[#D94F4F] dark:text-[#E05A5A]' : 'text-slate-800 dark:text-slate-200',
+                    isCurrent ? 'text-[#3B82F6] dark:text-[#60A5FA]' : 'text-slate-800 dark:text-slate-200',
                   )}>
                     {acc.label}
                   </p>
                   <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">{acc.role}</p>
                 </div>
               </div>
-              {isCurrent && <Check size={12} className="text-[#D94F4F] dark:text-[#E05A5A] shrink-0" />}
+              {isCurrent && <Check size={12} className="text-[#3B82F6] dark:text-[#60A5FA] shrink-0" />}
             </button>
           );
         })}

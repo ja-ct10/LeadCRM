@@ -100,7 +100,7 @@ export default function ModernRegisterPage({ onNavigate }: ModernRegisterPagePro
       password: 'Password123!',
       confirmPassword: 'Password123!'
     });
-    toast.success('Form auto-filled for testing');
+    toast.success('Form auto-filled for demo purposes.');
   };
 
   const handleNextStep = () => {
@@ -233,7 +233,7 @@ export default function ModernRegisterPage({ onNavigate }: ModernRegisterPagePro
               <img 
                 src="/leadcrm_logo.png" 
                 alt="LeadCRM Logo" 
-                className="w-6 h-6"
+                className="w-7 h-7 object-contain"
               />
             </div>
             <span className="text-xl font-bold">LeadCRM</span>

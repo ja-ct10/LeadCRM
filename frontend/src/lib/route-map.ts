@@ -18,10 +18,6 @@ export const PATHNAME_TO_PATH: Record<string, string> = {
   '/settings':                     'settings',
   '/settings/account':             'account-details',
   '/settings/profile':             'profile-settings',
-  '/operations/service-orders':    'service-orders',
-  '/operations/tasks':             'technician-jobs',
-  '/operations/assets':            'assets',
-  '/operations/inventory':         'inventory',
   '/billing':                      'billing',
   '/billing/client':               'client-billing',
   '/administration/audit':         'audit-log',
@@ -32,11 +28,7 @@ export const PATHNAME_TO_PATH: Record<string, string> = {
   '/admin/clients':                'admin-clients',
   '/admin/pricing':                'admin-pricing',
   '/admin/billing':                'admin-billing',
-  '/admin/environments':           'admin-environments',
   '/admin/audit':                  'admin-audit-log',
-  '/admin/payments':               'admin-payments',
-  '/admin/revenue':                'admin-revenue',
-  '/admin/refunds':                'admin-refunds',
 };
 
 // Reverse map — canonical pathname for each path (first match wins)
@@ -55,10 +47,6 @@ export const PATH_TO_PATHNAME: Record<string, string> = {
   'settings':            '/settings',
   'account-details':     '/settings/account',
   'profile-settings':    '/settings/profile',
-  'service-orders':      '/operations/service-orders',
-  'technician-jobs':     '/operations/tasks',
-  'assets':              '/operations/assets',
-  'inventory':           '/operations/inventory',
   'billing':             '/billing',
   'client-billing':      '/billing/client',
   'audit-log':           '/administration/audit',
@@ -69,9 +57,5 @@ export const PATH_TO_PATHNAME: Record<string, string> = {
   'admin-clients':       '/admin/clients',
   'admin-pricing':       '/admin/pricing',
   'admin-billing':       '/admin/billing',
-  'admin-environments':  '/admin/environments',
   'admin-audit-log':     '/admin/audit',
-  'admin-payments':      '/admin/payments',
-  'admin-revenue':       '/admin/revenue',
-  'admin-refunds':       '/admin/refunds',
 };

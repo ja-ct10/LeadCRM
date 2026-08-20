@@ -14,8 +14,8 @@ export const ColumnModuleParamsSchema = z.object({
 
 /** Single column item in a save payload. */
 export const ColumnItemSchema = z.object({
-  id: z.string().min(1).max(255).regex(/^[a-zA-Z0-9]+$/, {
-    message: 'Column id must contain only alphanumeric characters',
+  id: z.string().min(1).max(255).regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/, {
+    message: 'Column ID must start with a letter and contain only letters, numbers, hyphens, or underscores',
   }),
   visible: z.boolean(),
   order: z.number().int().nonnegative(),

@@ -217,9 +217,6 @@ model Tenant {
   wfExecutionSteps   WorkflowExecutionStep[]
   invoices           Invoice[]
   paymentTxns        PaymentTransaction[]
-  serviceOrders      ServiceOrder[]
-  assets             Asset[]
-  inventoryItems     InventoryItem[]
   notifications      Notification[]
   auditLogs          AuditLog[]
   emailDeliveryLogs  EmailDeliveryLog[]
@@ -309,8 +306,10 @@ model User {
   sessions           Session[]
   invitationsSent    TenantInvitation[] @relation("InvitedByUser")
   organizationsOwned Account[]
-  assignedLeads      Lead[]             @relation("AssignedLeads")
-  assignedCustomers  Customer[]         @relation("AssignedCustomers")
+  assignedLeads        Lead[]             @relation("AssignedLeads")
+  createdLeads         Lead[]             @relation("CreatedLeads")
+  updatedLeads         Lead[]             @relation("UpdatedLeads")
+  assignedCustomers    Customer[]         @relation("AssignedCustomers")
 
   assignedDeals        Deal[]             @relation("AssignedDeals")
   ownedDeals           Deal[]             @relation("OwnedDeals")
@@ -322,7 +321,6 @@ model User {
   tasksAssignedByMe    Task[]             @relation("TaskAssignedBy")
   completedTasks       Task[]             @relation("TaskCompletedBy")
   activitiesCreated    Activity[]
-  serviceOrders        ServiceOrder[]
   notifications        Notification[]
   auditLogs            AuditLog[]
   oauthAccounts        OAuthAccount[]
@@ -545,8 +543,6 @@ model Account {
   customers     Customer[]
   deals         Deal[]
   activities    Activity[]
-  serviceOrders ServiceOrder[]
-  assets        Asset[]
 
   @@index([tenantId, isArchived])
   @@index([tenantId, name])
@@ -561,24 +557,32 @@ model Account {
 // LEAD
 // ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 model Lead {
-  id              String   @id @default(uuid())
-  tenantId        String
-  createdAt       DateTime @default(now())
-  companyName     String?
-  address         String?
-  firstName       String
-  lastName        String
-  phone           String?
-  email           String?
-  productInterest String[]
-  source          String?
-  assignedUserId  String?
-  status          String   @default("Inquiry")
-  accountId       String?
+  id                  String    @id @default(uuid())
+  tenantId            String
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @default(now()) @updatedAt
+  companyName         String?
+  address             String?
+  firstName           String
+  lastName            String
+  phone               String?
+  email               String?
+  description         String?   @db.Text
+  website             String?
+  productInterest     String[]
+  source              String?
+  assignedUserId      String?
+  status              String    @default("Inquiry")
+  accountId           String?
+  createdById         String?
+  updatedById         String?
+  lastStatusChangedAt DateTime?
 
   tenant       Tenant   @relation(fields: [tenantId], references: [id])
   account      Account? @relation(fields: [accountId], references: [id])
   assignedUser User?    @relation("AssignedLeads", fields: [assignedUserId], references: [id])
+  createdBy    User?    @relation("CreatedLeads",  fields: [createdById],  references: [id])
+  updatedBy    User?    @relation("UpdatedLeads",  fields: [updatedById],  references: [id])
 
   leadDeals         LeadDeal[]
   deals             Deal[]
@@ -588,18 +592,18 @@ model Lead {
   emailDeliveryLogs EmailDeliveryLog[]
   SMSQueue          SMSQueue[]
   invoices          Invoice[]
-  serviceOrders     ServiceOrder[]
 
   @@index([tenantId, status])
   @@index([tenantId, assignedUserId])
   @@index([tenantId, email])
   @@index([tenantId, createdAt])
   @@index([tenantId, accountId])
+  @@index([tenantId, createdById])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─────────────────────────────────────────────────────
 // CUSTOMER
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─────────────────────────────────────────────────────
 model Customer {
   id              String   @id @default(uuid())
   tenantId        String
@@ -628,7 +632,6 @@ model Customer {
   emailDeliveryLogs EmailDeliveryLog[]
   SMSQueue          SMSQueue[]
   invoices          Invoice[]
-  serviceOrders     ServiceOrder[]
 
   @@index([tenantId, status])
   @@index([tenantId, assignedUserId])
@@ -733,7 +736,6 @@ model Deal {
   tasks          Task[]
   activities     Activity[]
   invoices       Invoice[]
-  serviceOrders  ServiceOrder[]
 
   @@index([tenantId, stageId])
   @@index([tenantId, pipelineId])
@@ -1241,87 +1243,7 @@ model PaymentTransaction {
   @@index([stripeEventId])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-// SERVICE ORDER
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-model ServiceOrder {
-  id                   String    @id @default(uuid())
-  tenantId             String
-  assignedTechnicianId String?
-  leadId               String?
-  customerId           String?
-  accountId            String?
-  dealId               String?
-  invoiceId            String?
-  title                String
-  description          String?
-  status               String    @default("pending") // pending|in_progress|completed|cancelled
-  scheduledDate        DateTime
-  completedAt          DateTime?
-  actualDurationMins   Int?
-  photos               Json? // { before: [url], after: [url] } ΓÇö object storage URLs, NOT base64
-  signature            String? // URL to signed document in object storage
-  notes                String?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
-
-  tenant       Tenant    @relation(fields: [tenantId], references: [id])
-  technician   User?     @relation(fields: [assignedTechnicianId], references: [id])
-  lead         Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  customer     Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  organization Account?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
-  deal         Deal?     @relation(fields: [dealId], references: [id], onDelete: SetNull)
-
-  @@index([tenantId, status, assignedTechnicianId])
-  @@index([tenantId, scheduledDate])
-}
-
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-// ASSET & INVENTORY
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-model Asset {
-  id             String   @id @default(uuid())
-  tenantId       String
-  accountId      String?
-  name           String
-  category       String // Security|Telecom|IT|Infrastructure
-  serialNumber   String
-  client         String
-  status         String   @default("Active") // Active|Maintenance|Retired|Faulty
-  installDate    DateTime
-  warrantyExpiry DateTime
-  location       String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  tenant       Tenant   @relation(fields: [tenantId], references: [id])
-  organization Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
-
-  @@index([tenantId, status])
-  @@index([tenantId, accountId])
-}
-
-model InventoryItem {
-  id            String    @id @default(uuid())
-  tenantId      String
-  name          String
-  sku           String
-  category      String
-  quantity      Int
-  minQuantity   Int
-  unitPrice     Float
-  supplier      String?
-  lastRestocked DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-
-  @@unique([tenantId, sku])
-  @@index([tenantId, category])
-}
-
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─────────────────────────────────────────────────────
 // AUDIT LOG
 // Mentor: "Audit Log is needed, logs of all actions with categorization"
 // severity: INFO | WARNING | CRITICAL

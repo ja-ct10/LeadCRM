@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { hashPassword } from '../../shared/helpers/crypto';
 import { seedSystemRoles } from './roles.seed';
+import { seedNotifications } from './notifications.seed';
 
 const prisma = new PrismaClient();
 
@@ -52,14 +53,14 @@ export async function seedDemoAccounts(): Promise<void> {
   await prisma.user.upsert({
     where:  { tenantId_email: { tenantId: systemTenant.id, email: systemAdminEmail } },
     // update block restores correct password + ACTIVE status on every seed run
-    update: { passwordHash: systemAdminHash, status: 'ACTIVE', role: 'Admin' },
+    update: { passwordHash: systemAdminHash, status: 'ACTIVE', role: 'System Admin' },
     create: {
       tenantId:     systemTenant.id,
       email:        systemAdminEmail,
       firstName:    'System',
       lastName:     'Admin',
       passwordHash: systemAdminHash,
-      role:         'Admin',
+      role:         'System Admin',
       status:       'ACTIVE',
     },
   });
@@ -72,14 +73,14 @@ export async function seedDemoAccounts(): Promise<void> {
   if (systemAdminEmail !== 'super@leadcrm.com') {
     await prisma.user.upsert({
       where:  { tenantId_email: { tenantId: systemTenant.id, email: 'super@leadcrm.com' } },
-      update: { passwordHash, status: 'ACTIVE', role: 'Super User' },
+      update: { passwordHash, status: 'ACTIVE', role: 'System Admin' },
       create: {
         tenantId:     systemTenant.id,
         email:        'super@leadcrm.com',
         firstName:    'System',
         lastName:     'Administrator',
         passwordHash,
-        role:         'Super User',
+        role:         'System Admin',
         status:       'ACTIVE',
       },
     });
@@ -220,9 +221,7 @@ export async function seedDemoAccounts(): Promise<void> {
   }
   
   // ── Seed Notifications ──────────────────────────────────────────────────
-  // Import notifications seed dynamically to avoid circular dependencies
   try {
-    const { seedNotifications } = await import('./notifications.seed');
     await seedNotifications();
   } catch (error) {
     console.error('[Seed] Failed to seed notifications:', error);

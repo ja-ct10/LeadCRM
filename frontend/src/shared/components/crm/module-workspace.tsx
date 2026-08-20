@@ -1,17 +1,30 @@
 'use client';
 
-import React, { useState, useCallback, ReactNode } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo, ReactNode } from 'react';
 import {
   List, LayoutGrid, Table2, Columns3, Grid3X3,
-  TrendingUp, Filter, ArrowUpDown, RefreshCw, Search,
-  SlidersHorizontal, ChevronDown, X, Upload,
+  TrendingUp, Filter, ArrowUpDown, ArrowUp, ArrowDown, RefreshCw, Search,
+  Settings2, ChevronDown, ChevronLeft, ChevronRight, X, Upload,
+  ListOrdered, Eye, Check,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
+import type { SortPreference, ViewMode } from '@/shared/hooks/use-table-preferences';
+import type { ModuleConfig, ViewType as SharedViewType, ColumnConfigItem } from '@leadcrm/shared';
+import { useViewTypePreference } from '@/shared/hooks/use-view-type-preference';
+import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
+import { VIEW_OPTIONS as VIEW_RENDERERS } from './view-registry';
+import { validateModuleConfig } from './validate-module-config';
+import { PaginationControls } from './pagination-controls';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type ViewType = 'list' | 'tile' | 'table' | 'kanban' | 'grid' | 'forecast';
+
+export interface SortableField {
+  id: string;
+  label: string;
+}
 
 interface ViewOption {
   id: ViewType;
@@ -45,7 +58,9 @@ interface KpiCard {
   subtitle?: string;
 }
 
-interface ModuleWorkspaceProps {
+export interface ModuleWorkspaceProps {
+  /** Module ID (informational — not used internally, use for debugging) */
+  moduleId: string;
   /** Module title e.g. "Leads" */
   title: string;
   /** One-line module description */
@@ -64,6 +79,24 @@ interface ModuleWorkspaceProps {
   activeView: ViewType;
   /** View change handler */
   onViewChange: (view: ViewType) => void;
+  /**
+   * Optional Module_Config for the new Data_View_System.
+   * When provided, enables: validation on mount, active view resolution from VIEW_OPTIONS,
+   * view switcher wired to useViewTypePreference, and sort controls from sortableFields.
+   */
+  moduleConfig?: ModuleConfig;
+  /** Data rows for the active view renderer (used when moduleConfig is provided) */
+  viewData?: Record<string, unknown>[];
+  /** Effective column config (used when moduleConfig is provided with view renderer) */
+  viewColumns?: ColumnConfigItem[];
+  /** Row click handler for view renderers */
+  onRowClick?: (recordId: string) => void;
+  /** Row selection handler for view renderers */
+  onRowSelect?: (recordId: string, selected: boolean) => void;
+  /** Currently selected row IDs */
+  selectedIds?: Set<string>;
+  /** Whether data is loading */
+  isDataLoading?: boolean;
   /** Saved view tabs */
   savedTabs?: SavedViewTab[];
   /** Active tab id */
@@ -90,8 +123,20 @@ interface ModuleWorkspaceProps {
   onSearch?: (term: string) => void;
   /** Search placeholder */
   searchPlaceholder?: string;
-  /** Sort handler */
-  onSort?: () => void;
+  /** Sortable fields for the sort dropdown (dynamic per module) */
+  sortableFields?: SortableField[];
+  /** Current sort preference (controlled) */
+  sort?: SortPreference | null;
+  /** Sort change handler */
+  onSortChange?: (sort: SortPreference | null) => void;
+  /** Current records per page (controlled) */
+  pageSize?: number;
+  /** Page size change handler */
+  onPageSizeChange?: (size: number) => void;
+  /** Current view mode (controlled) */
+  viewMode?: ViewMode;
+  /** View mode change handler */
+  onViewModeChange?: (mode: ViewMode) => void;
   /** Refresh handler */
   onRefresh?: () => void;
   /** KPI strip cards (Accounts, Deals) */
@@ -102,11 +147,25 @@ interface ModuleWorkspaceProps {
   children: ReactNode;
   /** Bulk selection bar */
   bulkSelection?: { count: number; onClear: () => void; actions: ReactNode };
+  /** Handler for "Manage Columns" (opens ManageColumnsDrawer in parent) */
+  onManageColumns?: () => void;
+  /** Handler for "Reset Column Size" */
+  onResetColumns?: () => void;
+
+  // ── Pagination Props (Task 13.2) ──────────────────────────────────────────
+  /** Current page number (1-based) for pagination controls */
+  currentPage?: number;
+  /** Total records count for pagination display */
+  paginationTotalRecords?: number;
+  /** Page change handler */
+  onPageChange?: (page: number) => void;
 }
 
 // ── View Icons Map ─────────────────────────────────────────────────────────────
 
-const VIEW_OPTIONS: Record<ViewType, ViewOption> = {
+// ── View Icons Map ─────────────────────────────────────────────────────────────
+
+const VIEW_ICON_MAP: Record<ViewType, ViewOption> = {
   list: { id: 'list', label: 'List View', icon: List },
   tile: { id: 'tile', label: 'Tile View', icon: LayoutGrid },
   table: { id: 'table', label: 'Table View', icon: Table2 },
@@ -115,9 +174,12 @@ const VIEW_OPTIONS: Record<ViewType, ViewOption> = {
   forecast: { id: 'forecast', label: 'Forecast View', icon: TrendingUp },
 };
 
+const PAGE_SIZE_OPTIONS = [10, 20, 25, 30, 40, 50] as const;
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function ModuleWorkspace({
+  moduleId,
   title,
   description,
   primaryActionLabel,
@@ -127,6 +189,13 @@ export function ModuleWorkspace({
   availableViews,
   activeView,
   onViewChange,
+  moduleConfig,
+  viewData,
+  viewColumns,
+  onRowClick,
+  onRowSelect,
+  selectedIds,
+  isDataLoading,
   savedTabs,
   activeTab,
   onTabChange,
@@ -140,19 +209,95 @@ export function ModuleWorkspace({
   searchTerm = '',
   onSearch,
   searchPlaceholder = 'Search records...',
-  onSort,
+  sortableFields,
+  sort = null,
+  onSortChange,
+  pageSize = 25,
+  onPageSizeChange,
+  viewMode = 'wrap',
+  onViewModeChange,
   onRefresh,
   kpiCards,
   toolbarExtra,
   children,
   bulkSelection,
+  onManageColumns,
+  onResetColumns,
+  currentPage = 1,
+  paginationTotalRecords,
+  onPageChange,
 }: ModuleWorkspaceProps): React.ReactElement {
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
 
-  const handleViewSelect = useCallback((view: ViewType) => {
+  // ── Module_Config validation on mount ──────────────────────────────────────
+  // Throws to ErrorBoundary on invalid config (development-time guard)
+  useMemo(() => {
+    if (moduleConfig) {
+      validateModuleConfig(moduleConfig);
+    }
+  }, [moduleConfig]);
+
+  // ── View Type Preference (Data_View_System) ────────────────────────────────
+  // When moduleConfig is provided, use the persisted view type hook
+  const configViewPref = useViewTypePreference(
+    moduleConfig?.moduleId ?? '__noop__',
+    moduleConfig?.availableViews?.[0] ?? 'table',
+  );
+
+  // Resolve effective view type: moduleConfig-driven hook takes priority when moduleConfig present
+  const effectiveViewType: ViewType = moduleConfig
+    ? (configViewPref.viewType as ViewType)
+    : activeView;
+
+  // Resolve effective view change handler
+  const effectiveViewChange = useCallback((view: ViewType) => {
+    if (moduleConfig) {
+      configViewPref.setViewType(view as SharedViewType);
+    }
     onViewChange(view);
+  }, [moduleConfig, configViewPref, onViewChange]);
+
+  // ── Sort from Module_Config (Data_View_System) ─────────────────────────────
+  // When moduleConfig is provided, use useTablePreferences internally for sort persistence
+  const internalTablePrefs = useTablePreferences(
+    moduleConfig?.moduleId ?? '__noop__',
+  );
+
+  // Resolve effective sort state: external prop takes priority, then internal hook
+  const effectiveSort = moduleConfig && !onSortChange ? internalTablePrefs.sort : sort;
+  const effectiveSortChange = useMemo(() => {
+    if (onSortChange) return onSortChange;
+    if (moduleConfig) return internalTablePrefs.setSort;
+    return undefined;
+  }, [onSortChange, moduleConfig, internalTablePrefs.setSort]);
+
+  // When moduleConfig provides sortableFields, derive the SortableField[] for the sort dropdown
+  const effectiveSortableFields = useMemo((): SortableField[] | undefined => {
+    if (moduleConfig?.sortableFields && moduleConfig.sortableFields.length > 0) {
+      return moduleConfig.sortableFields.map((f) => ({ id: f.id, label: f.label }));
+    }
+    return sortableFields;
+  }, [moduleConfig, sortableFields]);
+
+  // ── Available views from Module_Config ─────────────────────────────────────
+  const effectiveAvailableViews = useMemo((): ViewType[] => {
+    if (moduleConfig) {
+      return moduleConfig.availableViews as ViewType[];
+    }
+    return availableViews;
+  }, [moduleConfig, availableViews]);
+
+  // ── Resolve active View Renderer from VIEW_OPTIONS ─────────────────────────
+  const ActiveViewRenderer = useMemo(() => {
+    if (!moduleConfig) return null;
+    const viewType = effectiveViewType as SharedViewType;
+    return VIEW_RENDERERS[viewType] ?? null;
+  }, [moduleConfig, effectiveViewType]);
+
+  const handleViewSelect = useCallback((view: ViewType) => {
+    effectiveViewChange(view);
     setViewMenuOpen(false);
-  }, [onViewChange]);
+  }, [effectiveViewChange]);
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -218,8 +363,22 @@ export function ModuleWorkspace({
       )}
 
       {/* ── Toolbar ─────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-2 mb-3">
-        {/* Filter toggle */}
+      {/* Control order: search → filter toggle → sort dropdown → page-size selector → pagination nav (Req 8.1) */}
+      <div className="flex flex-wrap items-center gap-2 mb-3" role="toolbar" aria-label="Module controls">
+        {/* 1. Search field */}
+        <div className="relative">
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => onSearch?.(e.target.value)}
+            placeholder={searchPlaceholder}
+            aria-label={searchPlaceholder}
+            className="h-8 w-48 lg:w-56 pl-8 pr-3 text-[12px] rounded-lg border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0F172A] dark:text-slate-200 placeholder:text-[#5A6B85] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] transition-all"
+          />
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#5A6B85]" aria-hidden="true" />
+        </div>
+
+        {/* 2. Filter toggle */}
         <button
           onClick={onToggleFilters}
           className={cn(
@@ -233,27 +392,47 @@ export function ModuleWorkspace({
           Filter
         </button>
 
-        {/* Sort */}
-        {onSort && (
-          <button
-            onClick={onSort}
-            className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium text-[#5A6B85] dark:text-slate-300 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-          >
-            <ArrowUpDown size={13} />
-            Sort
-          </button>
+        {/* 3. Sort Dropdown (dynamic per module — from moduleConfig.sortableFields or prop) */}
+        {effectiveSortableFields && effectiveSortableFields.length > 0 && effectiveSortChange && (
+          <SortDropdownInline
+            sort={effectiveSort ?? null}
+            onSortChange={effectiveSortChange}
+            fields={effectiveSortableFields}
+          />
         )}
 
-        {/* View Switcher (segmented) */}
-        <div className="inline-flex items-center bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg p-0.5">
-          {availableViews.map((viewId) => {
-            const viewOption = VIEW_OPTIONS[viewId];
+        {/* 4. Page-size selector */}
+        {onPageSizeChange && (
+          <PageSizeSelectorInline pageSize={pageSize} onPageSizeChange={onPageSizeChange} />
+        )}
+
+        {/* 5. Pagination nav (compact toolbar variant) */}
+        {onPageChange && (paginationTotalRecords ?? totalRecords) > 0 && (
+          <PaginationNavInline
+            currentPage={currentPage}
+            totalRecords={paginationTotalRecords ?? totalRecords}
+            pageSize={pageSize}
+            onPageChange={onPageChange}
+          />
+        )}
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* View Switcher — Desktop: segmented control | Mobile: dropdown only */}
+        {/* Desktop segmented control (hidden on mobile when >1 view) */}
+        <div className={cn(
+          'inline-flex items-center bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg p-0.5',
+          effectiveAvailableViews.length > 1 ? 'hidden sm:inline-flex' : 'inline-flex',
+        )}>
+          {effectiveAvailableViews.map((viewId) => {
+            const viewOption = VIEW_ICON_MAP[viewId];
             const Icon = viewOption.icon;
-            const isActive = activeView === viewId;
+            const isActive = effectiveViewType === viewId;
             return (
               <button
                 key={viewId}
-                onClick={() => onViewChange(viewId)}
+                onClick={() => effectiveViewChange(viewId)}
                 title={viewOption.label}
                 aria-label={viewOption.label}
                 className={cn(
@@ -268,7 +447,7 @@ export function ModuleWorkspace({
             );
           })}
 
-          {/* View dropdown chevron */}
+          {/* View dropdown chevron (always visible) */}
           <div className="relative">
             <button
               onClick={() => setViewMenuOpen(!viewMenuOpen)}
@@ -286,10 +465,10 @@ export function ModuleWorkspace({
                   transition={{ duration: 0.15 }}
                   className="absolute top-full right-0 mt-1 w-44 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-xl shadow-lg z-30 py-1.5 overflow-hidden"
                 >
-                  {availableViews.map((viewId) => {
-                    const viewOption = VIEW_OPTIONS[viewId];
+                  {effectiveAvailableViews.map((viewId) => {
+                    const viewOption = VIEW_ICON_MAP[viewId];
                     const Icon = viewOption.icon;
-                    const isActive = activeView === viewId;
+                    const isActive = effectiveViewType === viewId;
                     return (
                       <button
                         key={viewId}
@@ -313,6 +492,60 @@ export function ModuleWorkspace({
           </div>
         </div>
 
+        {/* Mobile view dropdown (visible only on small screens when >1 view) */}
+        {effectiveAvailableViews.length > 1 && (
+          <div className="relative sm:hidden">
+            <button
+              onClick={() => setViewMenuOpen(!viewMenuOpen)}
+              className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium rounded-lg border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#5A6B85] dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+              aria-label="Switch view"
+              aria-expanded={viewMenuOpen}
+              aria-haspopup="true"
+            >
+              {(() => {
+                const currentIcon = VIEW_ICON_MAP[effectiveViewType];
+                const CurrentIcon = currentIcon.icon;
+                return <CurrentIcon size={14} />;
+              })()}
+              <span>{VIEW_ICON_MAP[effectiveViewType].label}</span>
+              <ChevronDown size={12} />
+            </button>
+            <AnimatePresence>
+              {viewMenuOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute top-full left-0 mt-1 w-44 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-xl shadow-lg z-30 py-1.5 overflow-hidden"
+                >
+                  {effectiveAvailableViews.map((viewId) => {
+                    const viewOption = VIEW_ICON_MAP[viewId];
+                    const Icon = viewOption.icon;
+                    const isActive = effectiveViewType === viewId;
+                    return (
+                      <button
+                        key={viewId}
+                        onClick={() => handleViewSelect(viewId)}
+                        className={cn(
+                          'w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium transition-colors',
+                          isActive
+                            ? 'text-[#2563EB] dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10'
+                            : 'text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700',
+                        )}
+                      >
+                        <Icon size={15} />
+                        {viewOption.label}
+                        {isActive && <Check size={13} className="ml-auto text-[#2563EB]" />}
+                      </button>
+                    );
+                  })}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
+
         {/* Refresh */}
         {onRefresh && (
           <button
@@ -327,28 +560,15 @@ export function ModuleWorkspace({
         {/* Extra toolbar (pipeline selector, etc.) */}
         {toolbarExtra}
 
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {/* Module search */}
-        <div className="relative">
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => onSearch?.(e.target.value)}
-            placeholder={searchPlaceholder}
-            className="h-8 w-48 lg:w-56 pl-8 pr-3 text-[12px] rounded-lg border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0F172A] dark:text-slate-200 placeholder:text-[#5A6B85] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] transition-all"
-          />
-          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#5A6B85]" />
-        </div>
-
-        {/* Manage columns */}
-        <button
-          className="p-1.5 text-[#5A6B85] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-          aria-label="Manage columns"
-        >
-          <SlidersHorizontal size={15} />
-        </button>
+        {/* Table Settings Menu (Manage Columns, Reset Columns, View Mode) */}
+        <TableSettingsMenuInline
+          pageSize={pageSize}
+          onPageSizeChange={onPageSizeChange}
+          viewMode={viewMode}
+          onViewModeChange={onViewModeChange}
+          onManageColumns={onManageColumns}
+          onResetColumns={onResetColumns}
+        />
       </div>
 
       {/* ── KPI Strip ───────────────────────────────────────────────── */}
@@ -410,9 +630,10 @@ export function ModuleWorkspace({
                       value={filterSearchTerm}
                       onChange={(e) => onFilterSearch?.(e.target.value)}
                       placeholder="Search filters"
+                      aria-label="Search filters"
                       className="w-full h-8 pl-8 pr-3 text-[12px] rounded-lg border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0F172A] dark:text-slate-200 placeholder:text-[#5A6B85] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 transition-all"
                     />
-                    <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#5A6B85]" />
+                    <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#5A6B85]" aria-hidden="true" />
                   </div>
                 </div>
 
@@ -439,7 +660,32 @@ export function ModuleWorkspace({
 
         {/* Content area */}
         <div className="flex-1 min-w-0 flex flex-col">
-          {children}
+          {/* Render active view from VIEW_OPTIONS registry when moduleConfig is provided */}
+          {moduleConfig && ActiveViewRenderer && viewData && viewColumns ? (
+            <ActiveViewRenderer
+              data={viewData}
+              columns={viewColumns}
+              columnRegistry={moduleConfig.columnRegistry}
+              viewMode={viewMode}
+              onRowClick={onRowClick}
+              onRowSelect={onRowSelect}
+              selectedIds={selectedIds}
+              isLoading={isDataLoading}
+            />
+          ) : (
+            children
+          )}
+
+          {/* Pagination Controls (Task 13.2) */}
+          {onPageChange && onPageSizeChange && (
+            <PaginationControls
+              currentPage={currentPage}
+              totalRecords={paginationTotalRecords ?? totalRecords}
+              pageSize={pageSize}
+              onPageChange={onPageChange}
+              onPageSizeChange={onPageSizeChange}
+            />
+          )}
         </div>
       </div>
 
@@ -464,6 +710,373 @@ export function ModuleWorkspace({
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Sort Dropdown (inline sub-component)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface SortDropdownInlineProps {
+  sort: SortPreference | null;
+  onSortChange: (sort: SortPreference | null) => void;
+  fields: SortableField[];
+}
+
+function SortDropdownInline({ sort, onSortChange, fields }: SortDropdownInlineProps): React.ReactElement {
+  const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent): void {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    if (isOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  const handleFieldClick = (fieldId: string): void => {
+    if (sort?.field === fieldId) {
+      onSortChange({ field: fieldId, direction: sort.direction === 'asc' ? 'desc' : 'asc' });
+    } else {
+      onSortChange({ field: fieldId, direction: 'asc' });
+    }
+    setIsOpen(false);
+  };
+
+  const handleClearSort = (): void => {
+    onSortChange(null);
+    setIsOpen(false);
+  };
+
+  const activeLabel = sort ? fields.find((f) => f.id === sort.field)?.label ?? sort.field : null;
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <button
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={cn(
+          'inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium rounded-lg border transition-colors',
+          sort
+            ? 'bg-[#2563EB]/10 text-[#2563EB] dark:text-blue-400 border-[#2563EB]/30 hover:bg-[#2563EB]/20'
+            : 'text-[#5A6B85] dark:text-slate-300 bg-white dark:bg-slate-800 border-[#E4E9F0] dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700',
+        )}
+        aria-expanded={isOpen}
+        aria-haspopup="true"
+        aria-label="Sort"
+      >
+        <ArrowUpDown size={13} />
+        Sort
+        {sort && (
+          <span className="text-[11px] opacity-80">
+            · {activeLabel} {sort.direction === 'asc' ? '↑' : '↓'}
+          </span>
+        )}
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 mt-1 w-52 max-h-72 overflow-y-auto bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-xl shadow-lg z-50 py-1.5">
+          {sort && (
+            <>
+              <button
+                onClick={handleClearSort}
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+              >
+                <X size={13} />
+                Clear Sort
+              </button>
+              <div className="my-1 border-t border-[#E4E9F0] dark:border-slate-700" />
+            </>
+          )}
+          {fields.map((field) => {
+            const isActive = sort?.field === field.id;
+            return (
+              <button
+                key={field.id}
+                onClick={() => handleFieldClick(field.id)}
+                className={cn(
+                  'w-full flex items-center gap-2 px-3 py-2 text-[13px] font-medium transition-colors',
+                  isActive
+                    ? 'text-[#2563EB] dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10'
+                    : 'text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700',
+                )}
+              >
+                <span className="flex-1 text-left truncate">{field.label}</span>
+                {isActive && sort!.direction === 'asc' && <ArrowUp size={13} />}
+                {isActive && sort!.direction === 'desc' && <ArrowDown size={13} />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Table Settings Menu (inline sub-component)
+// Manage Columns | Reset Column Size | Records Per Page ▸ | View Mode ▸
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface TableSettingsMenuInlineProps {
+  pageSize: number;
+  onPageSizeChange?: (size: number) => void;
+  viewMode: ViewMode;
+  onViewModeChange?: (mode: ViewMode) => void;
+  onManageColumns?: () => void;
+  onResetColumns?: () => void;
+}
+
+function TableSettingsMenuInline({
+  pageSize,
+  onPageSizeChange,
+  viewMode,
+  onViewModeChange,
+  onManageColumns,
+  onResetColumns,
+}: TableSettingsMenuInlineProps): React.ReactElement {
+  const [isOpen, setIsOpen] = useState(false);
+  const [activeSubmenu, setActiveSubmenu] = useState<'pageSize' | 'viewMode' | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent): void {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+        setActiveSubmenu(null);
+      }
+    }
+    if (isOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  useEffect(() => {
+    function handleEscape(e: KeyboardEvent): void {
+      if (e.key === 'Escape') {
+        setIsOpen(false);
+        setActiveSubmenu(null);
+      }
+    }
+    if (isOpen) document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isOpen]);
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <button
+        onClick={() => { setIsOpen((prev) => !prev); setActiveSubmenu(null); }}
+        className="inline-flex items-center gap-1.5 h-8 px-2.5 text-[12px] font-medium text-[#5A6B85] dark:text-slate-300 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+        aria-label="Table settings"
+        aria-expanded={isOpen}
+        aria-haspopup="true"
+      >
+        <Settings2 size={14} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full right-0 mt-1 w-56 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-xl shadow-lg z-50 py-1.5 overflow-visible">
+          {/* Manage Columns */}
+          {onManageColumns && (
+            <button
+              onClick={() => { onManageColumns(); setIsOpen(false); }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+            >
+              <Settings2 size={14} className="text-[#5A6B85] dark:text-slate-400" />
+              Manage Columns
+            </button>
+          )}
+
+          {/* Reset Column Size */}
+          {onResetColumns && (
+            <button
+              onClick={() => { onResetColumns(); setIsOpen(false); }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+            >
+              <Columns3 size={14} className="text-[#5A6B85] dark:text-slate-400" />
+              Reset Column Size
+            </button>
+          )}
+
+          {/* Separator */}
+          <div className="my-1.5 border-t border-[#E4E9F0] dark:border-slate-700" />
+
+          {/* Records Per Page */}
+          <div
+            className="relative"
+            onMouseEnter={() => setActiveSubmenu('pageSize')}
+            onMouseLeave={() => setActiveSubmenu(null)}
+          >
+            <button
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+              aria-haspopup="true"
+            >
+              <ListOrdered size={14} className="text-[#5A6B85] dark:text-slate-400" />
+              <span className="flex-1 text-left">Records Per Page</span>
+              <span className="text-[12px] font-semibold text-[#0F172A] dark:text-slate-200 mr-1">{pageSize}</span>
+              <ChevronRight size={12} className="text-[#5A6B85] dark:text-slate-400" />
+            </button>
+
+            {activeSubmenu === 'pageSize' && (
+              <div className="absolute right-full top-0 mr-1 w-32 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-xl shadow-lg z-50 py-1.5">
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <button
+                    key={size}
+                    onClick={() => { onPageSizeChange?.(size); setIsOpen(false); setActiveSubmenu(null); }}
+                    className={cn(
+                      'w-full flex items-center gap-2 px-3 py-2 text-[13px] font-medium transition-colors',
+                      pageSize === size
+                        ? 'text-[#2563EB] dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10'
+                        : 'text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700',
+                    )}
+                  >
+                    {pageSize === size ? <Check size={13} className="shrink-0" /> : <span className="w-[13px] shrink-0" />}
+                    {size}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* View Mode */}
+          <div
+            className="relative"
+            onMouseEnter={() => setActiveSubmenu('viewMode')}
+            onMouseLeave={() => setActiveSubmenu(null)}
+          >
+            <button
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+              aria-haspopup="true"
+            >
+              <Eye size={14} className="text-[#5A6B85] dark:text-slate-400" />
+              <span className="flex-1 text-left">View Mode</span>
+              <span className="text-[12px] font-semibold text-[#0F172A] dark:text-slate-200 mr-1">
+                {viewMode === 'wrap' ? 'Wrap Text' : 'Clip Text'}
+              </span>
+              <ChevronRight size={12} className="text-[#5A6B85] dark:text-slate-400" />
+            </button>
+
+            {activeSubmenu === 'viewMode' && (
+              <div className="absolute right-full top-0 mr-1 w-36 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-xl shadow-lg z-50 py-1.5">
+                <button
+                  onClick={() => { onViewModeChange?.('wrap'); setIsOpen(false); setActiveSubmenu(null); }}
+                  className={cn(
+                    'w-full flex items-center gap-2 px-3 py-2 text-[13px] font-medium transition-colors',
+                    viewMode === 'wrap'
+                      ? 'text-[#2563EB] dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10'
+                      : 'text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700',
+                  )}
+                >
+                  {viewMode === 'wrap' ? <Check size={13} className="shrink-0" /> : <span className="w-[13px] shrink-0" />}
+                  Wrap Text
+                </button>
+                <button
+                  onClick={() => { onViewModeChange?.('clip'); setIsOpen(false); setActiveSubmenu(null); }}
+                  className={cn(
+                    'w-full flex items-center gap-2 px-3 py-2 text-[13px] font-medium transition-colors',
+                    viewMode === 'clip'
+                      ? 'text-[#2563EB] dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10'
+                      : 'text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700',
+                  )}
+                >
+                  {viewMode === 'clip' ? <Check size={13} className="shrink-0" /> : <span className="w-[13px] shrink-0" />}
+                  Clip Text
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Page Size Selector (inline toolbar sub-component)
+// Compact dropdown for selecting records per page directly in the toolbar
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface PageSizeSelectorInlineProps {
+  pageSize: number;
+  onPageSizeChange: (size: number) => void;
+}
+
+function PageSizeSelectorInline({ pageSize, onPageSizeChange }: PageSizeSelectorInlineProps): React.ReactElement {
+  return (
+    <div className="inline-flex items-center gap-1.5">
+      <label
+        htmlFor="toolbar-page-size"
+        className="text-[11.5px] text-[#5A6B85] dark:text-slate-400 whitespace-nowrap"
+      >
+        Per page
+      </label>
+      <select
+        id="toolbar-page-size"
+        value={pageSize}
+        onChange={(e) => onPageSizeChange(Number(e.target.value))}
+        className="h-8 px-2 pr-6 text-[12px] font-medium rounded-lg border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0F172A] dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 cursor-pointer appearance-none"
+        aria-label="Records per page"
+      >
+        {PAGE_SIZE_OPTIONS.map((size) => (
+          <option key={size} value={size}>
+            {size}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Pagination Nav (inline toolbar sub-component)
+// Compact prev/next navigation + page indicator for the toolbar
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface PaginationNavInlineProps {
+  currentPage: number;
+  totalRecords: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+}
+
+function PaginationNavInline({ currentPage, totalRecords, pageSize, onPageChange }: PaginationNavInlineProps): React.ReactElement {
+  const totalPages = totalRecords > 0 ? Math.ceil(totalRecords / pageSize) : 0;
+  const isFirstPage = currentPage <= 1;
+  const isLastPage = currentPage >= totalPages;
+
+  return (
+    <div className="inline-flex items-center gap-1.5">
+      <span className="text-[11.5px] text-[#5A6B85] dark:text-slate-400 tabular-nums whitespace-nowrap">
+        {currentPage} / {totalPages || 1}
+      </span>
+      <button
+        onClick={() => !isFirstPage && onPageChange(currentPage - 1)}
+        disabled={isFirstPage}
+        className={cn(
+          'inline-flex items-center justify-center w-7 h-7 rounded-md border transition-colors',
+          isFirstPage
+            ? 'border-[#E4E9F0] dark:border-slate-700 text-[#C5CDD8] dark:text-slate-600 cursor-not-allowed'
+            : 'border-[#E4E9F0] dark:border-slate-700 text-[#5A6B85] dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-[#0F172A] dark:hover:text-white',
+        )}
+        aria-label="Previous page"
+      >
+        <ChevronLeft size={14} />
+      </button>
+      <button
+        onClick={() => !isLastPage && onPageChange(currentPage + 1)}
+        disabled={isLastPage}
+        className={cn(
+          'inline-flex items-center justify-center w-7 h-7 rounded-md border transition-colors',
+          isLastPage
+            ? 'border-[#E4E9F0] dark:border-slate-700 text-[#C5CDD8] dark:text-slate-600 cursor-not-allowed'
+            : 'border-[#E4E9F0] dark:border-slate-700 text-[#5A6B85] dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-[#0F172A] dark:hover:text-white',
+        )}
+        aria-label="Next page"
+      >
+        <ChevronRight size={14} />
+      </button>
     </div>
   );
 }

@@ -401,13 +401,13 @@ export default function AuditLogsPage() {
   // Clear log state (retains in-memory only or clears local storage keys safely)
   const handleClearLogs = () => {
     if (user?.role !== 'System Admin' && user?.role !== 'Client Admin') {
-      toast.error('Unauthorized access. Only administrative staff can purge audit histories.');
+      toast.error('Only administrators can clear audit logs.');
       return;
     }
 
     if (window.confirm('CRITICAL WARN: Are you sure you want to permanently clear the audit history? This action is irreversible.')) {
       localStorage.setItem('leadcrm_audit_logs', JSON.stringify([]));
-      toast.success('Audit trail and action logs purged successfully.');
+      toast.success('Audit logs cleared successfully.');
       // Refresh window state to reload
       setTimeout(() => {
         window.location.reload();
@@ -435,9 +435,9 @@ export default function AuditLogsPage() {
                   const val = !isRealTime;
                   setIsRealTime(val);
                   if (val) {
-                    toast.success('Real-time Updates active (polling system state every 30s)');
+                    toast.success('Live updates enabled');
                   } else {
-                    toast.info('Real-time state updates paused');
+                    toast.info('Live updates paused');
                   }
                 }}
                 className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
@@ -782,18 +782,18 @@ export default function AuditLogsPage() {
                 <p className="text-xs text-slate-400">Try modifying search term or turning off some category filters.</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left font-mono border-collapse">
+              <div className="overflow-x-hidden">
+                <table className="w-full text-left font-mono border-collapse table-fixed">
                   <thead>
-                    <tr className="border-b border-gray-200 dark:border-white/[0.05] bg-gray-50/50 dark:bg-white/[0.01] text-[10px] uppercase text-slate-500 tracking-wider">
-                      <th className="p-4 py-3 font-semibold">Category/Action</th>
-                      <th className="p-4 py-3 font-semibold">Operator Email</th>
-                      <th className="p-4 py-3 font-semibold">IP Address</th>
-                      <th className="p-4 py-3 font-semibold">Details / Record ID</th>
-                      <th className="p-4 py-3 font-semibold">Timestamp</th>
+                    <tr className="border-b border-gray-200 dark:border-white/[0.05] bg-gray-50/50 dark:bg-white/[0.01] text-[9px] sm:text-[10px] uppercase text-slate-500 tracking-wider">
+                      <th className="p-1 sm:p-4 py-2 sm:py-3 font-semibold break-words">Category/Action</th>
+                      <th className="p-1 sm:p-4 py-2 sm:py-3 font-semibold break-words">Operator Email</th>
+                      <th className="p-1 sm:p-4 py-2 sm:py-3 font-semibold break-words hidden sm:table-cell">IP Address</th>
+                      <th className="p-1 sm:p-4 py-2 sm:py-3 font-semibold break-words">Details / Record ID</th>
+                      <th className="p-1 sm:p-4 py-2 sm:py-3 font-semibold break-words">Timestamp</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100 dark:divide-white/[0.04] text-[11px] text-slate-700 dark:text-slate-300">
+                  <tbody className="divide-y divide-gray-100 dark:divide-white/[0.04] text-[10px] sm:text-[11px] text-slate-700 dark:text-slate-300">
                     {paginatedLogs.map((log) => {
                       const isSelected = selectedLogId === log.id;
                       return (
@@ -806,8 +806,8 @@ export default function AuditLogsPage() {
                               : ''
                           }`}
                         >
-                          <td className="p-4">
-                            <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded ${
+                          <td className="p-1 sm:p-4">
+                            <span className={`text-[9px] sm:text-[10px] font-bold uppercase px-1 sm:px-2 py-0.5 rounded break-words ${
                               log.action.includes('Created') 
                                 ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' 
                                 : log.action.includes('Updated') 
@@ -819,27 +819,30 @@ export default function AuditLogsPage() {
                               {log.action}
                             </span>
                           </td>
-                          <td className="p-4 truncate max-w-[120px]" title={log.userEmail}>
-                            <span className="font-semibold">{log.userEmail.split('@')[0]}</span>
-                            <span className="block text-[8px] text-slate-400">@{log.userEmail.split('@')[1]}</span>
+                          <td className="p-1 sm:p-4 break-words" title={log.userEmail}>
+                            <span className="font-semibold break-all">{log.userEmail.split('@')[0]}</span>
+                            <span className="block text-[7px] sm:text-[8px] text-slate-400 break-all">@{log.userEmail.split('@')[1]}</span>
                             {log.operatorRole && (
-                              <span className="inline-block text-[8px] text-emerald-600 dark:text-emerald-450 bg-emerald-500/10 px-1 rounded font-bold mt-0.5">{log.operatorRole}</span>
+                              <span className="inline-block text-[7px] sm:text-[8px] text-emerald-600 dark:text-emerald-450 bg-emerald-500/10 px-1 rounded font-bold mt-0.5">{log.operatorRole}</span>
                             )}
+                            <span className="block text-[7px] sm:text-[8px] text-slate-400 font-mono sm:hidden mt-0.5">
+                              IP: {log.ipAddress || '127.0.0.1'}
+                            </span>
                           </td>
-                          <td className="p-4 text-slate-500 dark:text-slate-400 font-mono">
+                          <td className="p-1 sm:p-4 text-slate-500 dark:text-slate-400 font-mono break-words hidden sm:table-cell">
                             {log.ipAddress || '127.0.0.1'}
                           </td>
-                          <td className="p-4">
-                            <p className="line-clamp-2 leading-relaxed" title={log.details}>
+                          <td className="p-1 sm:p-4">
+                            <p className="line-clamp-2 leading-relaxed break-words" title={log.details}>
                               {log.details}
                             </p>
                             {log.rowId && (
-                              <span className="inline-block text-[8px] tracking-wide font-semibold text-cyan-600 dark:text-cyan-400 bg-cyan-55/20 px-1.5 py-0.5 rounded mt-1 border border-cyan-500/10">
+                              <span className="inline-block text-[7px] sm:text-[8px] tracking-wide font-semibold text-cyan-600 dark:text-cyan-400 bg-cyan-55/20 px-1 sm:px-1.5 py-0.5 rounded mt-1 border border-cyan-500/10 break-all">
                                 Row: {log.rowId}
                               </span>
                             )}
                           </td>
-                          <td className="p-4 text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                          <td className="p-1 sm:p-4 text-slate-500 dark:text-slate-400 break-words">
                             {new Date(log.timestamp).toLocaleDateString()} {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </td>
                         </tr>

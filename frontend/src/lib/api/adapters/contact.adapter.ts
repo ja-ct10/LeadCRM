@@ -71,19 +71,16 @@ export function toBackendCreateContact(data: Record<string, any>): Record<string
     lastName,
     email: data.email || undefined,
     phone: data.phone || undefined,
-    company: data.companyName || undefined,
-    jobTitle: data.jobTitle || undefined,
-    linkedinUrl: data.linkedin || undefined,
+    companyName: data.companyName || undefined,
     status: toBackendStatus(data.status),
-    score: typeof data.score === 'number' ? data.score : undefined,
-    source: data.leadSource || undefined,
-    notes: data.notes || undefined,
-    doNotContact: !!data.doNotContact,
-    organizationId: data.organizationId || undefined,
+    source: data.leadSource || data.source || undefined,
+    accountId: data.accountId || undefined,
     assignedUserId: data.assignedUserId || undefined,
-    productInterests: Array.isArray(data.productInterests)
+    productInterest: Array.isArray(data.productInterests)
       ? data.productInterests
-      : (data.productInterest ? [data.productInterest] : undefined),
+      : (Array.isArray(data.productInterest)
+        ? data.productInterest
+        : (data.productInterest ? [data.productInterest] : undefined)),
     address: data.address || undefined,
   };
 }
@@ -111,18 +108,13 @@ export function toBackendUpdateContact(data: Record<string, any>): Record<string
 
   if (data.email !== undefined) result.email = data.email || undefined;
   if (data.phone !== undefined) result.phone = data.phone || undefined;
-  if (data.companyName !== undefined) result.company = data.companyName || undefined;
-  if (data.jobTitle !== undefined) result.jobTitle = data.jobTitle || undefined;
-  if (data.linkedin !== undefined) result.linkedinUrl = data.linkedin || undefined;
+  if (data.companyName !== undefined) result.companyName = data.companyName || undefined;
   if (data.status !== undefined) result.status = toBackendStatus(data.status);
-  if (data.score !== undefined) result.score = data.score;
-  if (data.leadSource !== undefined) result.source = data.leadSource || undefined;
-  if (data.notes !== undefined) result.notes = data.notes || undefined;
-  if (data.doNotContact !== undefined) result.doNotContact = !!data.doNotContact;
-  if (data.organizationId !== undefined) result.organizationId = data.organizationId || undefined;
+  if (data.leadSource !== undefined || data.source !== undefined) result.source = data.leadSource || data.source || undefined;
+  if (data.accountId !== undefined) result.accountId = data.accountId || undefined;
   if (data.assignedUserId !== undefined) result.assignedUserId = data.assignedUserId || undefined;
-  if (data.productInterests !== undefined) result.productInterests = data.productInterests;
-  else if (data.productInterest !== undefined) result.productInterests = data.productInterest ? [data.productInterest] : [];
+  if (data.productInterests !== undefined) result.productInterest = data.productInterests;
+  else if (data.productInterest !== undefined) result.productInterest = data.productInterest ? (Array.isArray(data.productInterest) ? data.productInterest : [data.productInterest]) : [];
   if (data.address !== undefined) result.address = data.address || undefined;
 
   return result;
@@ -145,19 +137,23 @@ export function toFrontendContact(backendContact: any): Record<string, any> {
   return {
     id: backendContact.id || '',
     tenantId: backendContact.tenantId || '',
-    organizationId: backendContact.organizationId || undefined,
-    companyName: backendContact.company || '',
+    organizationId: backendContact.organizationId || backendContact.accountId || undefined,
+    accountId: backendContact.accountId || undefined,
+    companyName: backendContact.companyName || backendContact.company || '',
     contactPerson: contactPerson || 'Unknown',
     firstName,
     lastName,
     jobTitle: backendContact.jobTitle || '',
     email: backendContact.email || '',
     phone: backendContact.phone || '',
-    productInterests: Array.isArray(backendContact.productInterests)
-      ? backendContact.productInterests
-      : (backendContact.productInterest ? [backendContact.productInterest] : []),
-    productInterest: backendContact.productInterests?.[0] || backendContact.productInterest || '',
+    productInterests: Array.isArray(backendContact.productInterest)
+      ? backendContact.productInterest
+      : (Array.isArray(backendContact.productInterests) ? backendContact.productInterests : []),
+    productInterest: Array.isArray(backendContact.productInterest)
+      ? backendContact.productInterest[0] || ''
+      : (backendContact.productInterest || ''),
     leadSource: backendContact.source || '',
+    source: backendContact.source || '',
     estimatedValue: 0, // Frontend only
     assignedUserId: backendContact.assignedUserId || '',
     expectedCloseDate: '', // Frontend only
@@ -165,14 +161,15 @@ export function toFrontendContact(backendContact: any): Record<string, any> {
     status: toFrontendStatus(backendContact.status),
     score: typeof backendContact.score === 'number' ? backendContact.score : 0,
     createdAt: backendContact.createdAt || new Date().toISOString(),
-    isArchived: !!backendContact.isArchived,
+    updatedAt: backendContact.updatedAt || undefined,
+    isArchived: backendContact.status === 'Archived' || !!backendContact.isArchived,
     archivedAt: backendContact.deletedAt || undefined,
     archivedBy: backendContact.deletedBy || undefined,
     linkedin: backendContact.linkedinUrl || '',
-    customerType: backendContact.organizationId ? 'Organization' : 'Individual',
-    address: backendContact.address || '', 
-    // Populate nested fields optionally if needed
-    organization: backendContact.organization || undefined,
+    customerType: backendContact.accountId ? 'Organization' : 'Individual',
+    address: backendContact.address || '',
+    // Nested relation objects (when included by Prisma)
+    organization: backendContact.account || backendContact.organization || undefined,
     assignedUser: backendContact.assignedUser || undefined,
   };
 }

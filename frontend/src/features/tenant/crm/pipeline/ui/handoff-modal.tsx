@@ -15,7 +15,6 @@ export function HandoffModal({ isOpen, onClose, onConfirm, deal, users }: Handof
   const [assignedUserId, setAssignedUserId] = useState<string>('');
   const [kickoffDate, setKickoffDate] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
-  const [createServiceOrder, setCreateServiceOrder] = useState<boolean>(true);
 
   if (!isOpen) return null;
 
@@ -25,7 +24,6 @@ export function HandoffModal({ isOpen, onClose, onConfirm, deal, users }: Handof
         assignedUserId: assignedUserId || undefined,
         kickoffDate: kickoffDate || undefined,
         notes: notes || undefined,
-        createServiceOrder,
       }
     });
   };
@@ -101,19 +99,6 @@ export function HandoffModal({ isOpen, onClose, onConfirm, deal, users }: Handof
                 />
               </div>
               
-              <label className="flex items-center gap-3 p-4 bg-slate-50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-700 rounded-xl cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={createServiceOrder}
-                  onChange={(e) => setCreateServiceOrder(e.target.checked)}
-                  className="w-5 h-5 rounded border-slate-300 text-blue-500 focus:ring-blue-500"
-                />
-                <div>
-                  <div className="font-medium text-slate-900 dark:text-white">Create Service Order</div>
-                  <div className="text-xs text-slate-500">Automatically generate an onboarding ticket in Service Operations</div>
-                </div>
-              </label>
-
             </div>
           </div>
 

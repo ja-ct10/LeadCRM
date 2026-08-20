@@ -5,11 +5,8 @@ import { authorize } from '../middleware/rbac.middleware';
 import { validate } from '../middleware/validate.middleware';
 
 import * as taskController         from '../../modules/operations/tasks/tasks.controller';
-import * as serviceOrderController from '../../modules/operations/service-orders/service-orders.controller';
 
 import { CreateTaskSchema, UpdateTaskSchema }       from '../../modules/operations/tasks/tasks.dto';
-import { CreateServiceOrderSchema, UpdateServiceOrderSchema, CompleteServiceOrderSchema }
-  from '../../modules/operations/service-orders/service-orders.dto';
 
 const router = Router();
 
@@ -24,12 +21,5 @@ router.post(  '/tasks',                 authorize('deals.create'), validate(Crea
 router.put(   '/tasks/:id',             authorize('deals.edit'),   validate(UpdateTaskSchema), taskController.updateTask);
 router.patch( '/tasks/:id/complete',    authorize('deals.edit'),   taskController.completeTask);
 router.patch( '/tasks/:id/archive',     authorize('deals.delete'), taskController.archiveTask);
-
-// ── Service Orders ────────────────────────────────────
-router.get(   '/service-orders',          authorize('deals.view'),   serviceOrderController.getServiceOrders);
-router.get(   '/service-orders/:id',      authorize('deals.view'),   serviceOrderController.getServiceOrderById);
-router.post(  '/service-orders',          authorize('deals.create'), validate(CreateServiceOrderSchema), serviceOrderController.createServiceOrder);
-router.put(   '/service-orders/:id',      authorize('deals.edit'),   validate(UpdateServiceOrderSchema), serviceOrderController.updateServiceOrder);
-router.patch( '/service-orders/:id/complete', authorize('deals.edit'), validate(CompleteServiceOrderSchema), serviceOrderController.completeServiceOrder);
 
 export default router;

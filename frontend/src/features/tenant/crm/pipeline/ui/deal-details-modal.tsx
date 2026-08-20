@@ -12,6 +12,7 @@ import { Deal, Pipeline, User as UserType, Task, TaskStatus } from '@/store/type
 import { useData } from '@/store/DataContext';
 import { toast } from 'sonner';
 import { ModalCloseButton } from '@/shared/components/ui/modal-close-button';
+import { DealContactsField } from '@/features/tenant/crm/deals/ui/deal-contacts-field';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -21,6 +22,7 @@ interface EditFields {
   title: string;
   companyName: string;
   contactPerson: string;
+  contactIds: string[];
   value: number;
   priority: string;
   expectedCloseDate: string;
@@ -86,6 +88,7 @@ function buildEditFields(deal: Deal): EditFields {
     title: deal.title || '',
     companyName: deal.companyName || '',
     contactPerson: deal.contactPerson || '',
+    contactIds: (deal as unknown as { contactIds?: string[] }).contactIds || [],
     value: deal.value || 0,
     priority: deal.priority || 'Medium',
     expectedCloseDate: deal.expectedCloseDate || '',
@@ -408,9 +411,12 @@ export function DealDetailsModal({
                         className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Contact Person</label>
-                      <input type="text" value={editFields.contactPerson} onChange={e => setEditFields({ ...editFields, contactPerson: e.target.value })}
-                        className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Contacts</label>
+                      <DealContactsField
+                        values={editFields.contactIds}
+                        onChange={(ids) => setEditFields({ ...editFields, contactIds: ids })}
+                        disabled={false}
+                      />
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Source</label>

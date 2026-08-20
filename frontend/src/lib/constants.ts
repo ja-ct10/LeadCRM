@@ -87,9 +87,6 @@ export const ROUTES = {
   SETTINGS: 'settings',
   ACCOUNT_DETAILS: 'account-details',
   PROFILE_SETTINGS: 'profile-settings',
-  SERVICE_ORDERS: 'service-orders',
-  TECHNICIAN_JOBS: 'technician-jobs',
-  ASSETS: 'assets',
   BILLING: 'billing',
   CLIENT_BILLING: 'client-billing',
   AUDIT_LOG: 'audit-log',
@@ -99,7 +96,7 @@ export const ROUTES = {
   ADMIN_CLIENTS: 'admin-clients',
   ADMIN_PRICING: 'admin-pricing',
   ADMIN_BILLING: 'admin-billing',
-  ADMIN_ENVIRONMENTS: 'admin-environments',
+  ADMIN_AUDIT_LOG: 'admin-audit-log',
 } as const;
 
 // ─── Roles ─────────────────────────────────────────────────────────────────

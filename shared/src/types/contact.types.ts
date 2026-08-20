@@ -1,5 +1,27 @@
-export type ContactStatus = 'HOT' | 'WARM' | 'COLD' | 'CANCELLED' | 'CLOSED';
+/**
+ * Contact/Lead entity types — shared between frontend and backend.
+ * These represent the API response shape for the contacts/leads module.
+ *
+ * Both frontend and backend MUST import from here to ensure compile-time
+ * detection of field name mismatches via TypeScript strict mode.
+ */
 
+/** Possible status values for a Contact/Lead record. */
+export type ContactStatus =
+  | 'HOT'
+  | 'WARM'
+  | 'COLD'
+  | 'CANCELLED'
+  | 'CLOSED'
+  | 'Inquiry'
+  | 'Qualified'
+  | 'Converted'
+  | 'Archived';
+
+/**
+ * Core Contact/Lead entity as returned by the list and detail API endpoints.
+ * Maps to the Prisma `Lead` model in the backend.
+ */
 export interface Contact {
   id: string;
   tenantId: string;
@@ -7,11 +29,48 @@ export interface Contact {
   lastName: string;
   email?: string;
   phone?: string;
-  company?: string;
-  status: ContactStatus;
+  companyName?: string;
+  address?: string;
+  description?: string;
+  website?: string;
+  productInterest?: string[];
   source?: string;
-  notes?: string;
-  isArchived: boolean;
+  assignedUserId?: string;
+  accountId?: string;
+  status: string;
   createdAt: string;
-  updatedAt: string;
+  updatedAt?: string;
+  createdById?: string;
+  updatedById?: string;
+  lastStatusChangedAt?: string;
+
+  // Joined relations (included in list/detail responses)
+  assignedUser?: { id: string; firstName: string; lastName: string };
+  account?: { id: string; name: string };
+  createdByUser?: { id: string; firstName: string; lastName: string };
+  updatedByUser?: { id: string; firstName: string; lastName: string };
 }
+
+/**
+ * Fields accepted by POST /api/v1/crm/contacts (create).
+ * Mirrors the backend `CreateContactSchema` Zod DTO.
+ */
+export interface CreateContactRequest {
+  firstName: string;
+  lastName: string;
+  email?: string;
+  phone?: string;
+  companyName?: string;
+  status?: string;
+  source?: string;
+  accountId?: string;
+  assignedUserId?: string;
+  productInterest?: string[];
+  address?: string;
+}
+
+/**
+ * Fields accepted by PUT /api/v1/crm/contacts/:id (update).
+ * All fields optional — mirrors the backend `UpdateContactSchema`.
+ */
+export interface UpdateContactRequest extends Partial<CreateContactRequest> {}
