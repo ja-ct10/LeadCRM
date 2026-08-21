@@ -18,6 +18,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   MoreHorizontal,
   Eye,
@@ -68,6 +69,7 @@ export function RowActionsMenu({
 }: RowActionsMenuProps): React.ReactElement {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   // Close on outside click
@@ -75,7 +77,10 @@ export function RowActionsMenu({
     if (!isOpen) return;
 
     function handleClickOutside(e: MouseEvent): void {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      if (
+        menuRef.current && !menuRef.current.contains(e.target as Node) &&
+        dropdownRef.current && !dropdownRef.current.contains(e.target as Node)
+      ) {
         setIsOpen(false);
       }
     }
@@ -122,18 +127,24 @@ export function RowActionsMenu({
         <MoreHorizontal size={16} />
       </button>
 
-      {/* Dropdown Menu */}
-      {isOpen && (
+      {/* Dropdown Menu — rendered via portal to escape overflow:hidden */}
+      {isOpen && createPortal(
         <div
           className={cn(
-            'absolute top-full mt-1 z-50',
+            'fixed z-[9999]',
             'w-[180px] py-1.5 px-1',
             'bg-white dark:bg-slate-800 border border-gray-200 dark:border-white/[0.08]',
             'rounded-lg shadow-xl',
-            position === 'left' ? 'left-0' : 'right-0',
           )}
+          style={{
+            top: buttonRef.current ? buttonRef.current.getBoundingClientRect().bottom + 4 : 0,
+            left: position === 'left'
+              ? (buttonRef.current?.getBoundingClientRect().left ?? 0)
+              : (buttonRef.current ? buttonRef.current.getBoundingClientRect().right - 180 : 0),
+          }}
           role="menu"
           aria-label="Row actions menu"
+          ref={dropdownRef}
         >
           {actions.map((action) => (
             <React.Fragment key={action.id}>
@@ -168,7 +179,8 @@ export function RowActionsMenu({
               </button>
             </React.Fragment>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

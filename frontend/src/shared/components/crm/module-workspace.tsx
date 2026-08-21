@@ -5,7 +5,7 @@ import {
   List, LayoutGrid, Table2, Columns3, Grid3X3,
   TrendingUp, Filter, ArrowUpDown, ArrowUp, ArrowDown, RefreshCw, Search,
   Settings2, ChevronDown, ChevronLeft, ChevronRight, X, Upload,
-  ListOrdered, Eye, Check,
+  ListOrdered, Eye, Check, FileUp, UserPlus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -314,24 +314,12 @@ export function ModuleWorkspace({
           )}
         </div>
         <div className="flex items-center gap-2">
-          {onImport && (
-            <button
-              onClick={onImport}
-              className="inline-flex items-center gap-1.5 h-9 px-3.5 text-[13px] font-medium text-[#0F172A] dark:text-slate-200 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-            >
-              <Upload size={14} />
-              Import
-            </button>
-          )}
           {canCreate && (
-            <button
-              onClick={onPrimaryAction}
-              className="inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-semibold text-white bg-[#2563EB] hover:bg-[#1D4ED8] rounded-lg transition-colors shadow-sm"
-            >
-              <span className="text-base leading-none">+</span>
-              {primaryActionLabel}
-              <ChevronDown size={14} className="ml-0.5 opacity-60" />
-            </button>
+            <CreateActionDropdown
+              primaryActionLabel={primaryActionLabel}
+              onPrimaryAction={onPrimaryAction}
+              onImport={onImport}
+            />
           )}
         </div>
       </div>
@@ -420,7 +408,8 @@ export function ModuleWorkspace({
         <div className="flex-1" />
 
         {/* View Switcher — Desktop: segmented control | Mobile: dropdown only */}
-        {/* Desktop segmented control (hidden on mobile when >1 view) */}
+        {/* Only show when more than 1 view is available */}
+        {effectiveAvailableViews.length > 1 && (
         <div className={cn(
           'inline-flex items-center bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg p-0.5',
           effectiveAvailableViews.length > 1 ? 'hidden sm:inline-flex' : 'inline-flex',
@@ -491,6 +480,7 @@ export function ModuleWorkspace({
             </AnimatePresence>
           </div>
         </div>
+        )}
 
         {/* Mobile view dropdown (visible only on small screens when >1 view) */}
         {effectiveAvailableViews.length > 1 && (
@@ -900,45 +890,54 @@ function TableSettingsMenuInline({
             </button>
           )}
 
-          {/* Separator */}
-          <div className="my-1.5 border-t border-[#E4E9F0] dark:border-slate-700" />
+          {/* Separator + Records Per Page (only when page size control is available) */}
+          {onPageSizeChange && (
+            <>
+              <div className="my-1.5 border-t border-[#E4E9F0] dark:border-slate-700" />
 
-          {/* Records Per Page */}
-          <div
-            className="relative"
-            onMouseEnter={() => setActiveSubmenu('pageSize')}
-            onMouseLeave={() => setActiveSubmenu(null)}
-          >
-            <button
-              className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-              aria-haspopup="true"
-            >
-              <ListOrdered size={14} className="text-[#5A6B85] dark:text-slate-400" />
-              <span className="flex-1 text-left">Records Per Page</span>
-              <span className="text-[12px] font-semibold text-[#0F172A] dark:text-slate-200 mr-1">{pageSize}</span>
-              <ChevronRight size={12} className="text-[#5A6B85] dark:text-slate-400" />
-            </button>
+              {/* Records Per Page */}
+              <div
+                className="relative"
+                onMouseEnter={() => setActiveSubmenu('pageSize')}
+                onMouseLeave={() => setActiveSubmenu(null)}
+              >
+                <button
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                  aria-haspopup="true"
+                >
+                  <ListOrdered size={14} className="text-[#5A6B85] dark:text-slate-400" />
+                  <span className="flex-1 text-left">Records Per Page</span>
+                  <span className="text-[12px] font-semibold text-[#0F172A] dark:text-slate-200 mr-1">{pageSize}</span>
+                  <ChevronRight size={12} className="text-[#5A6B85] dark:text-slate-400" />
+                </button>
 
-            {activeSubmenu === 'pageSize' && (
-              <div className="absolute right-full top-0 mr-1 w-32 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-xl shadow-lg z-50 py-1.5">
-                {PAGE_SIZE_OPTIONS.map((size) => (
-                  <button
-                    key={size}
-                    onClick={() => { onPageSizeChange?.(size); setIsOpen(false); setActiveSubmenu(null); }}
-                    className={cn(
-                      'w-full flex items-center gap-2 px-3 py-2 text-[13px] font-medium transition-colors',
-                      pageSize === size
-                        ? 'text-[#2563EB] dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10'
-                        : 'text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700',
-                    )}
-                  >
-                    {pageSize === size ? <Check size={13} className="shrink-0" /> : <span className="w-[13px] shrink-0" />}
-                    {size}
-                  </button>
-                ))}
+                {activeSubmenu === 'pageSize' && (
+                  <div className="absolute right-full top-0 mr-1 w-32 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-xl shadow-lg z-50 py-1.5">
+                    {PAGE_SIZE_OPTIONS.map((size) => (
+                      <button
+                        key={size}
+                        onClick={() => { onPageSizeChange?.(size); setIsOpen(false); setActiveSubmenu(null); }}
+                        className={cn(
+                          'w-full flex items-center gap-2 px-3 py-2 text-[13px] font-medium transition-colors',
+                          pageSize === size
+                            ? 'text-[#2563EB] dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10'
+                            : 'text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700',
+                        )}
+                      >
+                        {pageSize === size ? <Check size={13} className="shrink-0" /> : <span className="w-[13px] shrink-0" />}
+                        {size}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </>
+          )}
+
+          {/* Separator before View Mode when Records Per Page is not shown */}
+          {!onPageSizeChange && (onManageColumns || onResetColumns) && (
+            <div className="my-1.5 border-t border-[#E4E9F0] dark:border-slate-700" />
+          )}
 
           {/* View Mode */}
           <div
@@ -1152,6 +1151,99 @@ function FilterGroupSection({ group, filterSearchTerm = '', onToggle }: FilterGr
                 </label>
               ))}
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ── Create Action Dropdown ─────────────────────────────────────────────────────
+
+interface CreateActionDropdownProps {
+  primaryActionLabel: string;
+  onPrimaryAction: () => void;
+  onImport?: () => void;
+}
+
+function CreateActionDropdown({ primaryActionLabel, onPrimaryAction, onImport }: CreateActionDropdownProps): React.ReactElement {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [isOpen]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsOpen(false);
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [isOpen]);
+
+  // If no import action, just render the primary button directly (no dropdown)
+  if (!onImport) {
+    return (
+      <button
+        onClick={onPrimaryAction}
+        className="inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-semibold text-white bg-[#2563EB] hover:bg-[#1D4ED8] rounded-lg transition-colors shadow-sm"
+      >
+        <span className="text-base leading-none">+</span>
+        {primaryActionLabel}
+      </button>
+    );
+  }
+
+  return (
+    <div ref={dropdownRef} className="relative">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        aria-expanded={isOpen}
+        aria-haspopup="true"
+        className="inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-semibold text-white bg-[#2563EB] hover:bg-[#1D4ED8] rounded-lg transition-colors shadow-sm"
+      >
+        <span className="text-base leading-none">+</span>
+        {primaryActionLabel}
+        <ChevronDown size={14} className={cn('ml-0.5 opacity-60 transition-transform', isOpen && 'rotate-180')} />
+      </button>
+
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -4, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.95 }}
+            transition={{ duration: 0.12 }}
+            className="absolute top-full right-0 mt-1.5 w-48 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-50 py-1"
+            role="menu"
+          >
+            <button
+              onClick={() => { onPrimaryAction(); setIsOpen(false); }}
+              className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-[13px] text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-left"
+              role="menuitem"
+            >
+              <UserPlus size={15} className="text-slate-500 dark:text-slate-400" />
+              Create New
+            </button>
+            <button
+              onClick={() => { onImport(); setIsOpen(false); }}
+              className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-[13px] text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-left"
+              role="menuitem"
+            >
+              <FileUp size={15} className="text-slate-500 dark:text-slate-400" />
+              Import File
+            </button>
           </motion.div>
         )}
       </AnimatePresence>

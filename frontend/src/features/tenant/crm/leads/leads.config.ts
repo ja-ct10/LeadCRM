@@ -9,7 +9,7 @@ import { LEADS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 export const LEADS_MODULE_CONFIG: ModuleConfig = {
   moduleId: 'leads',
   columnRegistry: LEADS_COLUMN_REGISTRY,
-  availableViews: ['table', 'list', 'grid', 'tile'],
+  availableViews: ['table'],
   sortableFields: [
     { id: 'firstName', label: 'Name' },
     { id: 'email', label: 'Email' },

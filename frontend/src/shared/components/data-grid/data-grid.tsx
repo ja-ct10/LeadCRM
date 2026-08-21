@@ -179,7 +179,7 @@ function DataGridRowInner<T>({
           )}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="opacity-0 group-hover/row:opacity-100 transition-opacity duration-150">
+          <div>
             <RowActionsMenu actions={rowActions(row)} position="left" />
           </div>
         </td>
@@ -327,7 +327,7 @@ function DataGridRowInner<T>({
           className="px-2 text-right"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex items-center justify-end gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity">
+          <div className="flex items-center justify-end gap-1">
             {quickActions.map((action) => {
               if (action.visible && !action.visible(row)) return null;
               return (

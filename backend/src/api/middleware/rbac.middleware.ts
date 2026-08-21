@@ -3,8 +3,8 @@ import { AppError } from '../../shared/errors/app-error';
 import { DEFAULT_ROLE_PERMISSIONS } from '../../core/permissions/permission.registry';
 import type { PermissionKey } from '../../shared/constants/permissions';
 
-// These roles bypass all permission checks (including legacy roles for active sessions)
-const SUPER_ROLES = ['Admin', 'Super User', 'Client Admin', 'System Admin'];
+// These roles bypass all permission checks (case-insensitive, normalized)
+const SUPER_ROLES = ['admin', 'super user', 'client admin', 'system admin', 'client_admin', 'clientadmin', 'superuser', 'systemadmin'];
 
 /**
  * authorize(permission) — RBAC middleware factory.
@@ -22,8 +22,15 @@ export function authorize(permission: PermissionKey) {
       throw new AppError('Authentication required', 401);
     }
 
-    // Super roles bypass all checks
-    if (SUPER_ROLES.includes(req.user.role)) {
+    // Super roles bypass all checks (case-insensitive, whitespace/underscore normalized)
+    const role = req.user.role ?? '';
+    const normalizedRole = role.toLowerCase().trim().replace(/[_\-]/g, ' ').replace(/\s+/g, ' ');
+    if (SUPER_ROLES.includes(normalizedRole)) {
+      return next();
+    }
+    // Also check with all separators removed (catches CLIENT_ADMIN → clientadmin)
+    const compactRole = role.toLowerCase().replace(/[\s_\-]/g, '');
+    if (SUPER_ROLES.includes(compactRole)) {
       return next();
     }
 

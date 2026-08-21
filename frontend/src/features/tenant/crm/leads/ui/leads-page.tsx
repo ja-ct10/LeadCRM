@@ -12,15 +12,17 @@ import { useColumnPreferences } from '@/shared/hooks/use-column-preferences';
 import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
 import { migrateLocalStorageColumns } from '../services/local-storage-migration';
 import { ManageColumnsDrawer } from '@/shared/components/manage-columns-drawer';
-import { ColumnsPopover } from '@/shared/components/data-grid';
 import { LeadsTileView, LeadsGridView, LeadsKanbanView, LeadDrawerOverview, LeadDrawerRelated } from './leads-view-components';
 import { LeadsListView } from './leads-list-view';
 import { LeadsDataGrid } from './leads-data-grid';
 import { LeadFormSheet } from './lead-form';
+import { ImportLeadsDrawer } from './import-leads-drawer';
 import { LEADS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import { LEADS_MODULE_CONFIG } from '../leads.config';
 import { toast } from 'sonner';
-import { Edit, Phone, Mail, ListTodo, MoreHorizontal } from 'lucide-react';
+import { Edit, Phone, Mail, ListTodo, MoreHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { PageSizeSelect } from '@/shared/components/page-size-select';
 
 // ── Leads Page ────────────────────────────────────────────────────────────────
 
@@ -29,6 +31,7 @@ export default function LeadsPage(): React.ReactElement {
     contacts: leads,
     addContact: addLead,
     updateContact: updateLead,
+    refreshContacts,
     users,
     organizations,
   } = useData();
@@ -88,6 +91,7 @@ export default function LeadsPage(): React.ReactElement {
   const [searchTerm, setSearchTerm] = useState(() => getParam('search'));
   const [filterSearchTerm, setFilterSearchTerm] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | undefined>();
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [drawerTab, setDrawerTab] = useState('overview');
@@ -149,6 +153,9 @@ export default function LeadsPage(): React.ReactElement {
     // Tab filter
     if (activeTab === 'my') {
       result = result.filter((l) => l.assignedUserId === user?.id);
+    }
+    if (activeTab === 'active') {
+      result = result.filter((l) => l.status === 'Hot' || l.status === 'Warm' || l.status === 'Inquiry');
     }
 
     // Search
@@ -442,15 +449,15 @@ export default function LeadsPage(): React.ReactElement {
         moduleConfig={LEADS_MODULE_CONFIG}
         primaryActionLabel="Create Lead"
         onPrimaryAction={handleCreate}
-        onImport={() => toast.info('Import feature coming soon')}
+        onImport={() => setIsImportOpen(true)}
         canCreate={canCreate}
-        availableViews={['list', 'tile', 'table', 'kanban', 'grid']}
-        activeView={activeView}
+        availableViews={['table']}
+        activeView={'table' as ViewType}
         onViewChange={setActiveView}
-
         savedTabs={[
           { id: 'all', label: 'All Leads' },
           { id: 'my', label: 'My Leads' },
+          { id: 'active', label: 'Active Leads' },
         ]}
         activeTab={activeTab}
         onTabChange={setActiveTab}
@@ -468,29 +475,10 @@ export default function LeadsPage(): React.ReactElement {
         sort={sort}
         onSortChange={setSort}
         pageSize={pageSize}
-        onPageSizeChange={setPageSize}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         onRefresh={() => toast.success('Data refreshed')}
-        currentPage={currentPage}
-        paginationTotalRecords={sortedLeads.length}
-        onPageChange={setCurrentPage}
         onManageColumns={() => setIsManageColumnsOpen(true)}
-        toolbarExtra={
-          <ColumnsPopover
-            registry={LEADS_COLUMN_REGISTRY}
-            effectiveColumns={effectiveColumns}
-            onApply={(cols) => {
-              saveColumns(cols);
-              toast.success('Column visibility updated');
-            }}
-            onReset={() => {
-              resetColumns();
-              toast.success('Columns reset to default');
-            }}
-            hiddenCount={effectiveColumns.filter((c) => !c.visible).length}
-          />
-        }
         onResetColumns={() => {
           resetColumns();
           toast.success('Columns reset to default');
@@ -561,6 +549,52 @@ export default function LeadsPage(): React.ReactElement {
           />
         )}
 
+        {/* ── Bottom Pagination + Per Page ─────────────────────── */}
+        {(activeView === 'list' || activeView === 'table') && !isColumnsLoading && sortedLeads.length > 0 && (
+          <div className="flex items-center justify-between px-4 py-3 mt-2 bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 rounded-lg">
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-slate-500 dark:text-slate-400">
+                Per page
+              </label>
+              <PageSizeSelect value={pageSize} onChange={(size) => { setPageSize(size); setCurrentPage(1); }} />
+              <span className="text-xs text-slate-400 dark:text-slate-500 ml-2">
+                {sortedLeads.length} total records
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                Page {currentPage} of {Math.ceil(sortedLeads.length / pageSize) || 1}
+              </span>
+              <button
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage <= 1}
+                className={cn(
+                  'inline-flex items-center justify-center w-7 h-7 rounded-md border transition-colors',
+                  currentPage <= 1
+                    ? 'border-slate-200 dark:border-slate-700 text-slate-300 dark:text-slate-600 cursor-not-allowed'
+                    : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700',
+                )}
+                aria-label="Previous page"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <button
+                onClick={() => setCurrentPage(Math.min(Math.ceil(sortedLeads.length / pageSize), currentPage + 1))}
+                disabled={currentPage >= Math.ceil(sortedLeads.length / pageSize)}
+                className={cn(
+                  'inline-flex items-center justify-center w-7 h-7 rounded-md border transition-colors',
+                  currentPage >= Math.ceil(sortedLeads.length / pageSize)
+                    ? 'border-slate-200 dark:border-slate-700 text-slate-300 dark:text-slate-600 cursor-not-allowed'
+                    : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700',
+                )}
+                aria-label="Next page"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* ── Tile View ─────────────────────────────────────────── */}
         {activeView === 'tile' && (
           <LeadsTileView
@@ -622,6 +656,13 @@ export default function LeadsPage(): React.ReactElement {
           setIsFormOpen(false);
           setEditingLead(undefined);
         }}
+      />
+
+      {/* ── Import Leads Drawer ─────────────────────────────────── */}
+      <ImportLeadsDrawer
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        onImportComplete={refreshContacts}
       />
 
       {/* ── Manage Columns Drawer ───────────────────────────────── */}

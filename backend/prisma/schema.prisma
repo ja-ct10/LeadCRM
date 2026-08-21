@@ -11,9 +11,9 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // ENUMS
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 
 enum TenantStatus {
   SANDBOX
@@ -57,7 +57,7 @@ enum ContactStatus {
   CLOSED
 }
 
-// System-owned lifecycle position ΓÇö never manually editable via status controls.
+// System-owned lifecycle position G�� never manually editable via status controls.
 // REQ131: ContactStatus (above) is human-owned and never changed by automation.
 // This enum is the system-owned complement.
 enum ContactLifecycleStage {
@@ -66,7 +66,7 @@ enum ContactLifecycleStage {
   CONTACT // known person, active relationship
   CUSTOMER // has at least one won deal
   CHURNED // former customer, no active deals
-  DISQUALIFIED // dead ΓÇö will not proceed
+  DISQUALIFIED // dead G�� will not proceed
 }
 
 enum Priority {
@@ -101,10 +101,10 @@ enum DealActionType {
   CHANGE_STAGE
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-// SYSTEM ADMIN (cross-tenant ΓÇö LeadCRM operators)
-// No tenantId ΓÇö these users own the platform itself
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+// SYSTEM ADMIN (cross-tenant G�� LeadCRM operators)
+// No tenantId G�� these users own the platform itself
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model SystemAdmin {
   id           String   @id @default(uuid())
   email        String   @unique
@@ -116,10 +116,10 @@ model SystemAdmin {
   updatedAt    DateTime @updatedAt
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-// PRICING PLAN (global ΓÇö not tenant-scoped)
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+// PRICING PLAN (global G�� not tenant-scoped)
 // Managed by SystemAdmin, consumed by Subscription
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model PricingPlan {
   id             String   @id @default(uuid())
   name           String   @unique // "Free" | "Pro" | "Enterprise"
@@ -132,8 +132,8 @@ model PricingPlan {
   maxDeals       Int?
   storageLimit   Int? // MB
   isActive       Boolean  @default(true)
-  // ── Stripe ────────────────────────────────────────────────────────
-  stripeProductId        String?  @unique  // prod_xxx — one Product per plan
+  // -- Stripe --------------------------------------------------------
+  stripeProductId        String?  @unique  // prod_xxx � one Product per plan
   stripeMonthlyPriceId   String?  @unique  // price_xxx for monthly billing
   stripeQuarterlyPriceId String?  @unique  // price_xxx for quarterly billing
   stripeAnnualPriceId    String?  @unique  // price_xxx for annual billing
@@ -144,9 +144,9 @@ model PricingPlan {
   subscriptions Subscription[]
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // PLAN FEATURE
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model PlanFeature {
   id          String  @id @default(uuid())
   planId      String
@@ -158,11 +158,11 @@ model PlanFeature {
   @@index([planId])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // TENANT
 // plan/subscriptionStatus are denormalized caches for fast plan-gating.
 // Subscription is the authoritative billing source.
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Tenant {
   id                 String             @id @default(uuid())
   name               String
@@ -174,7 +174,7 @@ model Tenant {
   address            String?
   status             TenantStatus       @default(SANDBOX)
   subscriptionStatus SubscriptionStatus @default(TRIAL)
-  plan               PlanType           @default(FREE) // denorm cache ΓÇö source of truth = Subscription
+  plan               PlanType           @default(FREE) // denorm cache G�� source of truth = Subscription
   trialEndsAt        DateTime?
   subscriptionEndsAt DateTime?
   maxUsers           Int?
@@ -182,8 +182,8 @@ model Tenant {
   maxDeals           Int?
   approvedById       String? // SystemAdmin id who approved
   approvedAt         DateTime?
-  // ── Stripe ────────────────────────────────────────────────────────
-  stripeCustomerId   String?  @unique   // cus_xxx — one customer per tenant
+  // -- Stripe --------------------------------------------------------
+  stripeCustomerId   String?  @unique   // cus_xxx � one customer per tenant
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
@@ -196,13 +196,13 @@ model Tenant {
   paymentMethods     PaymentMethod[]
   organizations      Account[]
   leads              Lead[]
-  customers          Customer[]
+  contacts           Contact[]
   pipelines          Pipeline[]
   stages             Stage[]
   deals              Deal[]
   dealActions        DealAction[]
   leadDeals          LeadDeal[]
-  customerDeals      CustomerDeal[]
+  contactDeals       ContactDeal[]
   dealStageHistories DealStageHistory[]
   tasks              Task[]
   activities         Activity[]
@@ -227,11 +227,14 @@ model Tenant {
   AutomationRule     AutomationRule[]
   userPreferences    UserPreference[]
   tenantPreferences  TenantPreference[]
+  leadImports        LeadImport[]
+  accountImports     AccountImport[]
+  contactImports     ContactImport[]
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // SUBSCRIPTION (billing source of truth)
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Subscription {
   id              String             @id @default(uuid())
   tenantId        String
@@ -243,9 +246,9 @@ model Subscription {
   endDate         DateTime?
   nextBillingDate DateTime?
   cancelledAt     DateTime?
-  // ── Stripe ────────────────────────────────────────────────────────
+  // -- Stripe --------------------------------------------------------
   stripeSubscriptionId   String?  @unique  // sub_xxx
-  stripeCheckoutSessionId String?          // cs_xxx — transient, kept for audit trail
+  stripeCheckoutSessionId String?          // cs_xxx � transient, kept for audit trail
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
@@ -257,15 +260,15 @@ model Subscription {
   @@index([stripeSubscriptionId])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // PAYMENT METHOD (saved methods per tenant)
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model PaymentMethod {
   id            String   @id @default(uuid())
   tenantId      String
   methodName    String // "GCash" | "Maya" | "Credit Card" | "Bank Transfer"
   accountName   String?
-  accountNumber String? // masked ΓÇö e.g. "****1234"
+  accountNumber String? // masked G�� e.g. "****1234"
   isDefault     Boolean  @default(false)
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
@@ -277,16 +280,16 @@ model PaymentMethod {
   @@index([tenantId, isActive])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // USER
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model User {
   id            String     @id @default(uuid())
   tenantId      String
   email         String
   firstName     String
   lastName      String
-  passwordHash  String?   // nullable — OAuth-only users have no password
+  passwordHash  String?   // nullable � OAuth-only users have no password
   phone         String?
   jobTitle      String?
   department    String?
@@ -309,12 +312,12 @@ model User {
   assignedLeads        Lead[]             @relation("AssignedLeads")
   createdLeads         Lead[]             @relation("CreatedLeads")
   updatedLeads         Lead[]             @relation("UpdatedLeads")
-  assignedCustomers    Customer[]         @relation("AssignedCustomers")
+  assignedCustomers    Contact[]         @relation("AssignedCustomers")
 
   assignedDeals        Deal[]             @relation("AssignedDeals")
   ownedDeals           Deal[]             @relation("OwnedDeals")
   leadDealsAdded       LeadDeal[]
-  customerDealsAdded   CustomerDeal[]
+  customerDealsAdded   ContactDeal[]
   dealStageHistories   DealStageHistory[]
   dealActionsPerformed DealAction[]
   assignedTasks        Task[]             @relation("AssignedTasks")
@@ -325,15 +328,18 @@ model User {
   auditLogs            AuditLog[]
   oauthAccounts        OAuthAccount[]
   userPreferences      UserPreference[]
+  leadImports          LeadImport[]
+  accountImports       AccountImport[]
+  contactImports       ContactImport[]
 
   @@unique([tenantId, email])
   @@index([tenantId, status])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // ROLE DEFINITION
-// permissions String[] removed ΓÇö use RolePermission table instead
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// permissions String[] removed G�� use RolePermission table instead
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model RoleDefinition {
   id           String   @id @default(uuid())
   tenantId     String
@@ -353,11 +359,11 @@ model RoleDefinition {
   @@index([tenantId, isArchived])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // ROLE PERMISSION (per-module CRUD flags)
 // One row per module per role.
 // module examples: contacts | deals | campaigns | workflows | billing | reports | users | settings
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model RolePermission {
   id        String  @id @default(uuid())
   tenantId  String
@@ -375,9 +381,9 @@ model RolePermission {
   @@index([tenantId, module])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // USER ROLE (JUNCTION)
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model UserRole {
   id       String @id @default(uuid())
   userId   String
@@ -392,9 +398,9 @@ model UserRole {
   @@index([userId, tenantId])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // SESSION (Token Revocation)
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Session {
   id           String    @id @default(uuid())
   userId       String
@@ -414,19 +420,19 @@ model Session {
   @@index([tokenHash])
 }
 
-// ─────────────────────────────────────────────
+// ---------------------------------------------
 // OAUTH ACCOUNT
 // Links a social provider account to a LeadCRM user.
 // One user can have multiple OAuth providers linked.
-// ─────────────────────────────────────────────
+// ---------------------------------------------
 model OAuthAccount {
   id                String    @id @default(uuid())
   userId            String
   tenantId          String
   provider          String    // "google" | "github" | "microsoft"
   providerAccountId String    // subject claim from the OAuth provider (immutable)
-  accessToken       String?   // encrypted at rest — short-lived
-  refreshToken      String?   // encrypted at rest — long-lived
+  accessToken       String?   // encrypted at rest � short-lived
+  refreshToken      String?   // encrypted at rest � long-lived
   idToken           String?   // raw OIDC id_token for verification
   tokenType         String?   // "Bearer"
   scope             String?   // e.g. "openid email profile"
@@ -441,9 +447,9 @@ model OAuthAccount {
   @@index([userId, tenantId])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // TENANT INVITATION
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model TenantInvitation {
   id          String    @id @default(uuid())
   tenantId    String
@@ -464,15 +470,15 @@ model TenantInvitation {
   @@index([email, tenantId])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // TENANT DOCUMENT (onboarding files, contracts, etc.)
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model TenantDocument {
   id           String    @id @default(uuid())
   tenantId     String
   fileName     String
   documentType String // "contract" | "business_permit" | "id_proof" | "other"
-  filePath     String // URL to object storage ΓÇö NOT base64
+  filePath     String // URL to object storage G�� NOT base64
   fileSize     Int? // bytes
   status       String    @default("pending") // pending|verified|rejected
   uploadedAt   DateTime  @default(now())
@@ -484,10 +490,10 @@ model TenantDocument {
   @@index([tenantId, status])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // ENVIRONMENT (tenant environment monitoring)
 // Tracks resource usage per tenant environment
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Environment {
   id            String    @id @default(uuid())
   tenantId      String
@@ -508,9 +514,9 @@ model Environment {
   @@index([tenantId])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // ORGANIZATION
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Account {
   id               String    @id @default(uuid())
   tenantId         String
@@ -540,7 +546,7 @@ model Account {
   tenant        Tenant         @relation(fields: [tenantId], references: [id])
   assignedUser  User?          @relation(fields: [assignedUserId], references: [id])
   leads         Lead[]
-  customers     Customer[]
+  contacts  Contact[]
   deals         Deal[]
   activities    Activity[]
 
@@ -550,12 +556,12 @@ model Account {
   @@index([tenantId, assignedUserId])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // CONTACT
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // LEAD
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Lead {
   id                  String    @id @default(uuid())
   tenantId            String
@@ -601,10 +607,10 @@ model Lead {
   @@index([tenantId, createdById])
 }
 
-// ─────────────────────────────────────────────────────
-// CUSTOMER
-// ─────────────────────────────────────────────────────
-model Customer {
+// -----------------------------------------------------
+// CONTACT
+// -----------------------------------------------------
+model Contact {
   id              String   @id @default(uuid())
   tenantId        String
   createdAt       DateTime @default(now())
@@ -624,7 +630,7 @@ model Customer {
   account      Account? @relation(fields: [accountId], references: [id])
   assignedUser User?    @relation("AssignedCustomers", fields: [assignedUserId], references: [id])
 
-  customerDeals     CustomerDeal[]
+  contactDeals      ContactDeal[]
   deals             Deal[]
   tasks             Task[]
   activities        Activity[]
@@ -633,6 +639,7 @@ model Customer {
   SMSQueue          SMSQueue[]
   invoices          Invoice[]
 
+  @@map("Contact")
   @@index([tenantId, status])
   @@index([tenantId, assignedUserId])
   @@index([tenantId, email])
@@ -640,9 +647,9 @@ model Customer {
   @@index([tenantId, accountId])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // PIPELINE & STAGE
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Pipeline {
   id          String   @id @default(uuid())
   tenantId    String
@@ -688,16 +695,16 @@ model Stage {
   @@index([tenantId, pipelineId])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // DEAL
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Deal {
   id                String    @id @default(uuid())
   tenantId          String
   pipelineId        String
   stageId           String
   leadId            String?
-  customerId        String? // legacy singular FK ΓÇö use ContactDeal for new multi-contact deals
+  customerId        String? // legacy singular FK G�� use ContactDeal for new multi-contact deals
   accountId         String?
   assignedUserId    String?
   ownerId           String? // original deal owner (immutable)
@@ -714,7 +721,7 @@ model Deal {
   industry          String?
   productInterests  String[]
   address           String?
-  tags              String[] // normalized to array ΓÇö consistent with Contact.tags and Organization.tags
+  tags              String[] // normalized to array G�� consistent with Contact.tags and Organization.tags
   order             Int       @default(0)
   isArchived        Boolean   @default(false)
   archiveReason     String?
@@ -726,12 +733,12 @@ model Deal {
   pipeline       Pipeline           @relation(fields: [pipelineId], references: [id])
   stage          Stage              @relation(fields: [stageId], references: [id])
   lead           Lead?              @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  customer       Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  contact  Contact?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
   organization   Account?           @relation(fields: [accountId], references: [id])
   assignedUser   User?              @relation("AssignedDeals", fields: [assignedUserId], references: [id])
   owner          User?              @relation("OwnedDeals", fields: [ownerId], references: [id])
   leadDeals      LeadDeal[]
-  customerDeals  CustomerDeal[]
+  contactDeals  ContactDeal[]
   stageHistories DealStageHistory[]
   actions        DealAction[]
   tasks          Task[]
@@ -745,9 +752,9 @@ model Deal {
   @@index([tenantId, isArchived])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // CONTACT-DEAL JUNCTION (multi-contact deals)
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model LeadDeal {
   id        String   @id @default(uuid())
   leadId    String
@@ -767,28 +774,29 @@ model LeadDeal {
   @@index([leadId, tenantId])
 }
 
-model CustomerDeal {
+model ContactDeal {
   id         String   @id @default(uuid())
-  customerId String
+  contactId  String
   dealId     String
   tenantId   String
   role       String?
   addedById  String?
   addedAt    DateTime @default(now())
 
-  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  deal     Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  tenant   Tenant   @relation(fields: [tenantId], references: [id])
-  addedBy  User?    @relation(fields: [addedById], references: [id])
+  contact  Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  deal     Deal    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  tenant   Tenant  @relation(fields: [tenantId], references: [id])
+  addedBy  User?   @relation(fields: [addedById], references: [id])
 
-  @@unique([customerId, dealId])
+  @@map("ContactDeal")
+  @@unique([contactId, dealId])
   @@index([dealId, tenantId])
-  @@index([customerId, tenantId])
+  @@index([contactId, tenantId])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // DEAL STAGE HISTORY
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model DealStageHistory {
   id              String   @id @default(uuid())
   tenantId        String
@@ -810,12 +818,12 @@ model DealStageHistory {
   @@index([tenantId, movedAt])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // DEAL ACTION (manual actions performed on a deal)
 // Mentor requirement: update_field, assign_agent, change_status, send_email, send_sms, etc.
-// Distinct from automated WorkflowExecutionStep ΓÇö these are user-initiated deal operations.
+// Distinct from automated WorkflowExecutionStep G�� these are user-initiated deal operations.
 // Every DealAction also triggers an Activity entry for the timeline.
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model DealAction {
   id            String         @id @default(uuid())
   tenantId      String
@@ -835,9 +843,9 @@ model DealAction {
   @@index([tenantId, performedAt])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // TASK
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Task {
   id             String    @id @default(uuid())
   tenantId       String
@@ -862,7 +870,7 @@ model Task {
   tenant       Tenant     @relation(fields: [tenantId], references: [id])
   deal         Deal?      @relation(fields: [dealId], references: [id], onDelete: SetNull)
   lead         Lead?      @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  customer     Customer?  @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  contact  Contact?  @relation(fields: [customerId], references: [id], onDelete: SetNull)
   assignedUser User       @relation("AssignedTasks", fields: [assignedUserId], references: [id])
   assignedBy   User?      @relation("TaskAssignedBy", fields: [assignedById], references: [id])
   completedBy  User?      @relation("TaskCompletedBy", fields: [completedById], references: [id])
@@ -873,9 +881,9 @@ model Task {
   @@index([tenantId, dealId])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-// ACTIVITY (unified timeline ΓÇö typed FKs, no polymorphic)
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+// ACTIVITY (unified timeline G�� typed FKs, no polymorphic)
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Activity {
   id          String   @id @default(uuid())
   tenantId    String
@@ -896,7 +904,7 @@ model Activity {
   tenant       Tenant    @relation(fields: [tenantId], references: [id])
   createdBy    User      @relation(fields: [createdById], references: [id])
   lead         Lead?     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  customer     Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  contact  Contact? @relation(fields: [customerId], references: [id], onDelete: Cascade)
   deal         Deal?     @relation(fields: [dealId], references: [id], onDelete: Cascade)
   organization Account?  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   task         Task?     @relation(fields: [taskId], references: [id], onDelete: Cascade)
@@ -908,9 +916,9 @@ model Activity {
   @@index([tenantId, createdAt])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // NOTIFICATION
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Notification {
   id         String    @id @default(uuid())
   tenantId   String
@@ -931,11 +939,11 @@ model Notification {
   @@index([tenantId, createdAt])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-// TARGET AUDIENCE (campaign segmentation ΓÇö no audience_contacts table)
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+// TARGET AUDIENCE (campaign segmentation G�� no audience_contacts table)
 // Contacts are resolved at query time using TargetAudienceCondition filters.
 // mentor: "no need for audience_contacts, just filtration logic, query from contacts"
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model TargetAudience {
   id          String   @id @default(uuid())
   tenantId    String
@@ -952,11 +960,11 @@ model TargetAudience {
   @@index([tenantId, isActive])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // TARGET AUDIENCE CONDITION (filter rules)
 // e.g. { field: "status", operator: "equals", value: "HOT" }
 // e.g. { field: "score", operator: "gte", value: "80" }
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model TargetAudienceCondition {
   id               String   @id @default(uuid())
   targetAudienceId String
@@ -971,13 +979,13 @@ model TargetAudienceCondition {
   @@index([targetAudienceId])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // CAMPAIGN & TEMPLATE
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Campaign {
   id               String         @id @default(uuid())
   tenantId         String
-  targetAudienceId String? // FK to TargetAudience ΓÇö replaces old targetAudience String?
+  targetAudienceId String? // FK to TargetAudience G�� replaces old targetAudience String?
   emailTemplateId  String? // optional FK to Template (type=Email)
   smsTemplateId    String? // optional FK to Template (type=SMS)
   name             String
@@ -1008,9 +1016,9 @@ model Campaign {
   @@index([tenantId, isArchived])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-// CAMPAIGN METRICS (historical snapshots ΓÇö separate from inline totals on Campaign)
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+// CAMPAIGN METRICS (historical snapshots G�� separate from inline totals on Campaign)
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model CampaignMetrics {
   id             String   @id @default(uuid())
   tenantId       String
@@ -1035,9 +1043,9 @@ model CampaignMetrics {
   @@index([tenantId, snapshotAt])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // CAMPAIGN-CONTACT JUNCTION (per-contact delivery tracking)
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model CampaignContact {
   id           String    @id @default(uuid())
   tenantId     String
@@ -1055,17 +1063,17 @@ model CampaignContact {
   tenant   Tenant    @relation(fields: [tenantId], references: [id])
   campaign Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   lead     Lead?     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  customer Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  contact  Contact? @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   @@unique([campaignId, leadId])
   @@unique([campaignId, customerId])
   @@index([campaignId, tenantId, status])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // TEMPLATE (single model, type = Email | SMS)
 // Campaign links to this via emailTemplateId or smsTemplateId
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Template {
   id         String   @id @default(uuid())
   tenantId   String
@@ -1085,10 +1093,10 @@ model Template {
   @@index([tenantId, type, isArchived])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // WORKFLOW & EXECUTION CHAIN
 // conditions and actions stored as typed JSON (never eval()'d)
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Workflow {
   id          String   @id @default(uuid())
   tenantId    String
@@ -1163,10 +1171,10 @@ model WorkflowExecutionStep {
   @@index([executionId])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // INVOICE & PAYMENT TRANSACTION
 // Invoice now links to Subscription for billing-driven invoices
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Invoice {
   id              String    @id @default(uuid())
   tenantId        String
@@ -1198,7 +1206,7 @@ model Invoice {
   subscription Subscription?        @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
   deal         Deal?                @relation(fields: [dealId], references: [id], onDelete: SetNull)
   lead         Lead?                @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  customer     Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  contact  Contact?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
   transactions PaymentTransaction[]
   activities   Activity[]
 
@@ -1211,7 +1219,7 @@ model PaymentTransaction {
   id                 String    @id @default(uuid())
   tenantId           String
   invoiceId          String
-  paymentMethodId    String? // FK to PaymentMethod (saved method) ΓÇö nullable for ad-hoc
+  paymentMethodId    String? // FK to PaymentMethod (saved method) G�� nullable for ad-hoc
   amount             Float
   currency           String    @default("PHP")
   status             String    // pending|paid|failed|refunded|partially_refunded
@@ -1222,11 +1230,11 @@ model PaymentTransaction {
   paidAt             DateTime?
   failureReason      String?
   metadata           Json?
-  // ── Stripe ────────────────────────────────────────────────────────
+  // -- Stripe --------------------------------------------------------
   stripePaymentIntentId    String?  @unique  // pi_xxx
-  stripeCheckoutSessionId  String?           // cs_xxx — checkout origin
-  stripeInvoiceId          String?           // in_xxx — for subscription invoices
-  stripeEventId            String?           // evt_xxx — webhook event that created this record (idempotency)
+  stripeCheckoutSessionId  String?           // cs_xxx � checkout origin
+  stripeInvoiceId          String?           // in_xxx � for subscription invoices
+  stripeEventId            String?           // evt_xxx � webhook event that created this record (idempotency)
   refundedAmount           Float?            // partial refund tracking
   refundedAt               DateTime?
   stripeRefundId           String?  @unique  // re_xxx
@@ -1244,12 +1252,12 @@ model PaymentTransaction {
   @@index([stripeEventId])
 }
 
-// ─────────────────────────────────────────────────────
+// -----------------------------------------------------
 // AUDIT LOG
 // Mentor: "Audit Log is needed, logs of all actions with categorization"
 // severity: INFO | WARNING | CRITICAL
 // category: auth | crm | billing | workflow | admin | system
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model AuditLog {
   id         String   @id @default(uuid())
   tenantId   String
@@ -1276,9 +1284,9 @@ model AuditLog {
   @@index([tenantId, severity])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // EMAIL DELIVERY LOG
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model EmailDeliveryLog {
   id             String    @id @default(uuid())
   tenantId       String
@@ -1301,7 +1309,7 @@ model EmailDeliveryLog {
   tenant     Tenant       @relation(fields: [tenantId], references: [id])
   campaign   Campaign?    @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   lead       Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  customer   Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  contact  Contact?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
   EmailEvent EmailEvent[]
 
   @@index([tenantId, leadId])
@@ -1310,9 +1318,9 @@ model EmailDeliveryLog {
   @@index([gmailMessageId])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // VERIFICATION TOKEN (Email Verification)
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model VerificationToken {
   id         String   @id @default(uuid())
   identifier String
@@ -1323,9 +1331,9 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // PASSWORD RESET TOKEN
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model PasswordResetToken {
   id        String   @id @default(uuid())
   email     String
@@ -1336,7 +1344,7 @@ model PasswordResetToken {
   @@unique([email, token])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // REGISTRATION OTP TOKEN (email verification during registration)
 model RegistrationOtpToken {
   id        String   @id @default(uuid())
@@ -1351,15 +1359,15 @@ model RegistrationOtpToken {
 // EMAIL ACCOUNT (Gmail OAuth2 integration per user)
 // Stores encrypted tokens for Gmail API access.
 // Each user can connect ONE Gmail account per tenant.
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model EmailAccount {
   id             String    @id @default(uuid())
   tenantId       String
   userId         String
   provider       String    @default("gmail") // "gmail" | future: "outlook"
   email          String // the connected Gmail address
-  accessToken    String // encrypted ΓÇö never log or expose
-  refreshToken   String? // encrypted ΓÇö needed for offline access
+  accessToken    String // encrypted G�� never log or expose
+  refreshToken   String? // encrypted G�� needed for offline access
   tokenExpiresAt DateTime?
   scopes         String[] // granted OAuth scopes
   isActive       Boolean   @default(true)
@@ -1373,9 +1381,9 @@ model EmailAccount {
   @@index([tenantId, isActive])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // SMS QUEUE (Local Android Gateway)
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model SMSQueue {
   id           String    @id @default(uuid())
   tenantId     String
@@ -1395,15 +1403,15 @@ model SMSQueue {
   tenant   Tenant    @relation(fields: [tenantId], references: [id])
   campaign Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   lead     Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  contact  Contact? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, status])
   @@index([tenantId, scheduledFor])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // EMAIL EVENT (Tracking opens, clicks, etc.)
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model EmailEvent {
   id            String   @id @default(uuid())
   tenantId      String
@@ -1421,9 +1429,9 @@ model EmailEvent {
   @@index([deliveryLogId])
 }
 
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // AUTOMATION RULE (Trigger-based background jobs)
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model AutomationRule {
   id          String   @id @default(uuid())
   tenantId    String
@@ -1442,10 +1450,10 @@ model AutomationRule {
   @@index([tenantId, triggerType])
 }
 
-// ─────────────────────────────────────────────────────
+// -----------------------------------------------------
 // USER PREFERENCE (per-user, per-module, per-key)
 // Generic preference storage for column configs, filters, sorts, etc.
-// ─────────────────────────────────────────────────────
+// -----------------------------------------------------
 model UserPreference {
   id        String   @id @default(uuid())
   tenantId  String
@@ -1463,10 +1471,10 @@ model UserPreference {
   @@index([tenantId, module])
 }
 
-// ─────────────────────────────────────────────────────
+// -----------------------------------------------------
 // TENANT PREFERENCE (per-tenant, per-module, per-key)
 // Tenant-level defaults managed by Client Admins.
-// ─────────────────────────────────────────────────────
+// -----------------------------------------------------
 model TenantPreference {
   id        String   @id @default(uuid())
   tenantId  String
@@ -1480,4 +1488,148 @@ model TenantPreference {
 
   @@unique([tenantId, module, key])
   @@index([tenantId, module])
+}
+
+// -----------------------------------------------------
+// LEAD IMPORT (CSV batch import tracking)
+// -----------------------------------------------------
+model LeadImport {
+  id                String   @id @default(uuid())
+  tenantId          String
+  fileName          String
+  totalRecords      Int      @default(0)
+  successfulRecords Int      @default(0)
+  failedRecords     Int      @default(0)
+  status            String   @default("pending") // pending|importing|completed|completed_with_errors|failed
+  createdById       String
+  createdAt         DateTime @default(now())
+  completedAt       DateTime?
+
+  tenant    Tenant             @relation(fields: [tenantId], references: [id])
+  createdBy User               @relation(fields: [createdById], references: [id])
+  results   LeadImportResult[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+}
+
+// -----------------------------------------------------
+// LEAD IMPORT RESULT (per-row outcome)
+// -----------------------------------------------------
+model LeadImportResult {
+  id         String   @id @default(uuid())
+  importId   String
+  rowNumber  Int
+  status     String   // imported|failed
+  leadId     String?  // set on success
+  remarks    String?  // error messages on failure
+  firstName  String?
+  lastName   String?
+  email      String?
+  phone      String?
+  companyName String?
+  address    String?
+  createdAt  DateTime @default(now())
+
+  import LeadImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+
+  @@index([importId, status])
+  @@index([importId, rowNumber])
+}
+
+
+// -----------------------------------------------------
+// ACCOUNT IMPORT (CSV batch import tracking)
+// -----------------------------------------------------
+model AccountImport {
+  id                String   @id @default(uuid())
+  tenantId          String
+  fileName          String
+  totalRecords      Int      @default(0)
+  successfulRecords Int      @default(0)
+  failedRecords     Int      @default(0)
+  status            String   @default("pending") // pending|importing|completed|completed_with_errors|failed
+  createdById       String
+  createdAt         DateTime @default(now())
+  completedAt       DateTime?
+
+  tenant    Tenant               @relation(fields: [tenantId], references: [id])
+  createdBy User                 @relation(fields: [createdById], references: [id])
+  results   AccountImportResult[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+}
+
+// -----------------------------------------------------
+// ACCOUNT IMPORT RESULT (per-row outcome)
+// -----------------------------------------------------
+model AccountImportResult {
+  id         String   @id @default(uuid())
+  importId   String
+  rowNumber  Int
+  status     String   // imported|failed
+  accountId  String?  // set on success
+  remarks    String?  // error messages on failure
+  name       String?
+  industry   String?
+  website    String?
+  address    String?
+  city       String?
+  province   String?
+  country    String?
+  createdAt  DateTime @default(now())
+
+  import AccountImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+
+  @@index([importId, status])
+  @@index([importId, rowNumber])
+}
+
+
+// -----------------------------------------------------
+// CONTACT IMPORT (CSV batch import tracking)
+// -----------------------------------------------------
+model ContactImport {
+  id                String   @id @default(uuid())
+  tenantId          String
+  fileName          String
+  totalRecords      Int      @default(0)
+  successfulRecords Int      @default(0)
+  failedRecords     Int      @default(0)
+  status            String   @default("pending")
+  createdById       String
+  createdAt         DateTime @default(now())
+  completedAt       DateTime?
+
+  tenant    Tenant                @relation(fields: [tenantId], references: [id])
+  createdBy User                  @relation(fields: [createdById], references: [id])
+  results   ContactImportResult[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+}
+
+// -----------------------------------------------------
+// CONTACT IMPORT RESULT (per-row outcome)
+// -----------------------------------------------------
+model ContactImportResult {
+  id          String   @id @default(uuid())
+  importId    String
+  rowNumber   Int
+  status      String
+  contactId   String?
+  remarks     String?
+  firstName   String?
+  lastName    String?
+  email       String?
+  phone       String?
+  companyName String?
+  address     String?
+  createdAt   DateTime @default(now())
+
+  import ContactImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+
+  @@index([importId, status])
+  @@index([importId, rowNumber])
 }

@@ -6,6 +6,10 @@ import { validate } from '../middleware/validate.middleware';
 
 // Controllers
 import * as contactController      from '../../modules/crm/contacts/contacts.controller';
+import * as contactsV2Controller   from '../../modules/crm/contacts-v2/contacts-v2.controller';
+import * as leadImportController   from '../../modules/crm/lead-imports/lead-imports.controller';
+import * as contactImportController from '../../modules/crm/contact-imports/contact-imports.controller';
+import * as accountImportController from '../../modules/crm/account-imports/account-imports.controller';
 import * as companyController      from '../../modules/crm/companies/companies.controller';
 import * as dealController         from '../../modules/crm/deals/deals.controller';
 import * as bulkDealsController    from '../../modules/crm/deals/bulk-deals.controller';
@@ -14,6 +18,9 @@ import * as activityController     from '../../modules/crm/activities/activities
 
 // Schemas
 import { CreateContactSchema, UpdateContactSchema, ConvertContactSchema } from '../../modules/crm/contacts/contacts.dto';
+import { CreateLeadImportSchema } from '../../modules/crm/lead-imports/lead-imports.dto';
+import { CreateContactImportSchema } from '../../modules/crm/contact-imports/contact-imports.dto';
+import { CreateAccountImportSchema } from '../../modules/crm/account-imports/account-imports.dto';
 import { CreateCompanySchema, UpdateCompanySchema }                       from '../../modules/crm/companies/companies.dto';
 import { CreateDealSchema, UpdateDealSchema, MoveDealStageSchema }        from '../../modules/crm/deals/deals.dto';
 import {
@@ -30,22 +37,33 @@ router.use(tenantMiddleware);
 
 // ── Leads (canonical name; /contacts kept as alias for backward compat) ──
 router.get(   '/leads',              authorize('contacts.view'),   contactController.getContacts);
+router.get(   '/leads/imports',      authorize('contacts.view'),   leadImportController.listImports);
+router.get(   '/leads/imports/:importId',         authorize('contacts.view'),   leadImportController.getImport);
+router.get(   '/leads/imports/:importId/results', authorize('contacts.view'),   leadImportController.getImportResults);
+router.post(  '/leads/imports',      authorize('contacts.create'), validate(CreateLeadImportSchema), leadImportController.createImport);
 router.get(   '/leads/:id',          authorize('contacts.view'),   contactController.getContactById);
 router.post(  '/leads',              authorize('contacts.create'), validate(CreateContactSchema),  contactController.createContact);
 router.put(   '/leads/:id',          authorize('contacts.edit'),   validate(UpdateContactSchema),  contactController.updateContact);
 router.patch( '/leads/:id/archive',  authorize('contacts.delete'), contactController.archiveContact);
 router.post(  '/leads/:id/convert',  authorize('contacts.edit'),   validate(ConvertContactSchema), contactController.convertContact);
 
-// Backward-compat aliases — same handlers, same auth
-router.get(   '/contacts',              authorize('contacts.view'),   contactController.getContacts);
-router.get(   '/contacts/:id',          authorize('contacts.view'),   contactController.getContactById);
-router.post(  '/contacts',              authorize('contacts.create'), validate(CreateContactSchema),  contactController.createContact);
-router.put(   '/contacts/:id',          authorize('contacts.edit'),   validate(UpdateContactSchema),  contactController.updateContact);
-router.patch( '/contacts/:id/archive',  authorize('contacts.delete'), contactController.archiveContact);
-router.post(  '/contacts/:id/convert',  authorize('contacts.edit'),   validate(ConvertContactSchema), contactController.convertContact);
+// ── Contacts (reads from Contact table, separate from Leads) ─────────────────
+router.get(   '/contacts',              authorize('contacts.view'),   contactsV2Controller.getContacts);
+router.get(   '/contacts/imports',      authorize('contacts.view'),   contactImportController.listImports);
+router.get(   '/contacts/imports/:importId',         authorize('contacts.view'),   contactImportController.getImport);
+router.get(   '/contacts/imports/:importId/results', authorize('contacts.view'),   contactImportController.getImportResults);
+router.post(  '/contacts/imports',      authorize('contacts.create'), validate(CreateContactImportSchema), contactImportController.createImport);
+router.get(   '/contacts/:id',          authorize('contacts.view'),   contactsV2Controller.getContactById);
+router.post(  '/contacts',              authorize('contacts.create'), contactsV2Controller.createContact);
+router.put(   '/contacts/:id',          authorize('contacts.edit'),   contactsV2Controller.updateContact);
+router.patch( '/contacts/:id/archive',  authorize('contacts.delete'), contactsV2Controller.archiveContact);
 
 // ── Accounts (canonical name; /companies kept as alias) ──────────────────
 router.get(   '/accounts',              authorize('accounts.view'),   companyController.getCompanies);
+router.get(   '/accounts/imports',      authorize('accounts.view'),   accountImportController.listImports);
+router.get(   '/accounts/imports/:importId',         authorize('accounts.view'),   accountImportController.getImport);
+router.get(   '/accounts/imports/:importId/results', authorize('accounts.view'),   accountImportController.getImportResults);
+router.post(  '/accounts/imports',      authorize('accounts.create'), validate(CreateAccountImportSchema), accountImportController.createImport);
 router.get(   '/accounts/:id',          authorize('accounts.view'),   companyController.getCompanyById);
 router.post(  '/accounts',              authorize('accounts.create'), validate(CreateCompanySchema), companyController.createCompany);
 router.put(   '/accounts/:id',          authorize('accounts.edit'),   validate(UpdateCompanySchema), companyController.updateCompany);

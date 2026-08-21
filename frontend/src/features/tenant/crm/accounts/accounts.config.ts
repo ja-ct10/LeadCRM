@@ -9,7 +9,7 @@ import { ACCOUNTS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 export const ACCOUNTS_MODULE_CONFIG: ModuleConfig = {
   moduleId: 'accounts',
   columnRegistry: ACCOUNTS_COLUMN_REGISTRY,
-  availableViews: ['table', 'list', 'grid', 'tile'],
+  availableViews: ['table'],
   sortableFields: [
     { id: 'name', label: 'Name' },
     { id: 'industry', label: 'Industry' },

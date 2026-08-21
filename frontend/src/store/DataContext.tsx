@@ -114,6 +114,7 @@ interface DataContextType {
   addContact: (
     contact: Omit<Contact, "id" | "tenantId" | "createdAt" | "score">,
   ) => Promise<void>;
+  refreshContacts: () => Promise<void>;
   updateContact: (id: string, updates: Partial<Contact>) => Promise<void>;
   deleteContact: (id: string) => Promise<void>;
   addOrganization: (
@@ -1133,6 +1134,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   };
 
+
+  /** Re-fetch contacts/leads from the API and update state (for use after bulk operations like import) */
+  const refreshContacts = async (): Promise<void> => {
+    if (USE_MOCK_DATA || !user) return;
+    try {
+      const contactsRes = await contactsService.getAll({ limit: 100 });
+      const apiContacts = (contactsRes?.data ?? []).map(toFrontendContact);
+      setContacts((apiContacts as Contact[]).filter((c: any) => !c.isArchived));
+    } catch (err) {
+      console.error('[DataContext] Failed to refresh contacts:', err);
+    }
+  };
 
   const addContact = async (leadData: any): Promise<void> => {
     if (!tenant) return;
@@ -2703,6 +2716,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     updateOrganization,
     deleteOrganization,
     addContact,
+    refreshContacts,
     updateContact,
     deleteContact,
     addDeal,

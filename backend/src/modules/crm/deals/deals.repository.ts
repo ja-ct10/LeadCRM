@@ -89,8 +89,8 @@ export async function createDeal(tenantId: string, ownerId: string, dto: CreateD
   }
 
   if (contactIds && contactIds.length > 0) {
-    await prisma.customerDeal.createMany({
-      data: contactIds.map((customerId) => ({ customerId, dealId: deal.id, tenantId, addedById: ownerId })),
+    await prisma.contactDeal.createMany({
+      data: contactIds.map((contactId) => ({ contactId, dealId: deal.id, tenantId, addedById: ownerId })),
       skipDuplicates: true,
     });
   }
@@ -106,8 +106,8 @@ export async function createDeal(tenantId: string, ownerId: string, dto: CreateD
       leadDeals: {
         include: { lead: { select: { id: true, firstName: true, lastName: true } } },
       },
-      customerDeals: {
-        include: { customer: { select: { id: true, firstName: true, lastName: true } } },
+      contactDeals: {
+        include: { contact: { select: { id: true, firstName: true, lastName: true } } },
       },
     },
   });
@@ -137,8 +137,8 @@ export async function updateDeal(id: string, tenantId: string, dto: UpdateDealDt
       leadDeals: {
         include: { lead: { select: { id: true, firstName: true, lastName: true } } },
       },
-      customerDeals: {
-        include: { customer: { select: { id: true, firstName: true, lastName: true } } },
+      contactDeals: {
+        include: { contact: { select: { id: true, firstName: true, lastName: true } } },
       },
     },
   });
@@ -240,8 +240,8 @@ export async function moveDealStage(
       leadDeals: {
         include: { lead: { select: { id: true, firstName: true, lastName: true } } },
       },
-      customerDeals: {
-        include: { customer: { select: { id: true, firstName: true, lastName: true } } },
+      contactDeals: {
+        include: { contact: { select: { id: true, firstName: true, lastName: true } } },
       },
       stageHistories: {
         orderBy: { movedAt: 'desc' },

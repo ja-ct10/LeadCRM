@@ -13,7 +13,7 @@ import { DEFAULT_ROLE_PERMISSIONS } from '../../core/permissions/permission.regi
 // ─────────────────────────────────────────────────────
 
 // Super roles that bypass permission checks
-const SUPER_ROLES = ['Admin', 'Super User', 'Client Admin', 'System Admin'];
+const SUPER_ROLES = ['admin', 'super user', 'client admin', 'system admin', 'client_admin', 'clientadmin', 'superuser', 'systemadmin'];
 
 // Map module IDs to their view permission key
 // "leads" maps to "contacts.view" since they share the same permission surface
@@ -33,7 +33,7 @@ function hasModuleViewPermission(req: Request, module: string): boolean {
   if (!role) return false;
 
   // Super roles bypass all checks
-  if (SUPER_ROLES.includes(role)) return true;
+  if (SUPER_ROLES.includes(role.toLowerCase().replace(/[\s_\-]/g, ''))) return true;
 
   const requiredPermission = MODULE_VIEW_PERMISSIONS[module];
   if (!requiredPermission) return true; // Unknown module — let isValidModule catch it

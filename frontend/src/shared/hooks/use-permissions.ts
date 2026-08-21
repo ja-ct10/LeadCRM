@@ -5,9 +5,8 @@ import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
 import type { PermissionKey } from '@leadcrm/shared';
 
-// Roles that bypass all permission checks
-const SUPER_ROLES = ['Admin', 'Super User', 'Client Admin', 'System Admin'] as const;
-type SuperRole = typeof SUPER_ROLES[number];
+// Roles that bypass all permission checks (case-insensitive check)
+const SUPER_ROLES = ['admin', 'super user', 'client admin', 'system admin', 'client_admin'] as const;
 
 /**
  * PERMISSION_BRIDGE — exported for CrmLayout nav access checks.
@@ -60,7 +59,7 @@ export function usePermissions(): string[] {
 
   return useMemo(() => {
     if (!user) return [];
-    if (SUPER_ROLES.includes(user.role as SuperRole)) return ['*'];
+    if (SUPER_ROLES.includes(user.role.toLowerCase().trim() as typeof SUPER_ROLES[number])) return ['*'];
     const roleDef = roles.find(r => r.name === user.role);
     return roleDef?.permissions ?? [];
   }, [user, roles]);
