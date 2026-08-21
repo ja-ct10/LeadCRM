@@ -19,15 +19,12 @@ CREATE TABLE IF NOT EXISTS "OAuthAccount" (
     CONSTRAINT "OAuthAccount_pkey" PRIMARY KEY ("id")
 );
 
--- Unique: one provider account maps to one user
+-- Unique: one provider account maps to one user (idempotent — skip if index/constraint already exists)
 DO $$ BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'OAuthAccount_provider_providerAccountId_key'
-  ) THEN
-    ALTER TABLE "OAuthAccount"
-      ADD CONSTRAINT "OAuthAccount_provider_providerAccountId_key"
-      UNIQUE ("provider", "providerAccountId");
-  END IF;
+  ALTER TABLE "OAuthAccount"
+    ADD CONSTRAINT "OAuthAccount_provider_providerAccountId_key"
+    UNIQUE ("provider", "providerAccountId");
+  EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL;
 END $$;
 
 -- Index
