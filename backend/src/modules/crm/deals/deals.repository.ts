@@ -75,7 +75,7 @@ export async function findDealById(id: string, tenantId: string) {
 }
 
 export async function createDeal(tenantId: string, ownerId: string, dto: CreateDealDto) {
-  const { leadIds, ...dealData } = dto as CreateDealDto & { leadIds?: string[] };
+  const { leadIds, contactIds, ...dealData } = dto as CreateDealDto & { leadIds?: string[]; contactIds?: string[] };
 
   const deal = await prisma.deal.create({
     data: { ...dealData, tenantId, ownerId } as never,
@@ -88,19 +88,60 @@ export async function createDeal(tenantId: string, ownerId: string, dto: CreateD
     });
   }
 
-  return deal;
+  if (contactIds && contactIds.length > 0) {
+    await prisma.customerDeal.createMany({
+      data: contactIds.map((customerId) => ({ customerId, dealId: deal.id, tenantId, addedById: ownerId })),
+      skipDuplicates: true,
+    });
+  }
+
+  // Re-fetch with includes so the response contains junction data for the frontend adapter
+  const fullDeal = await prisma.deal.findFirst({
+    where: { id: deal.id, tenantId },
+    include: {
+      stage:        { select: { id: true, name: true, isWon: true, isLost: true, color: true } },
+      pipeline:     true,
+      organization: true,
+      assignedUser: { select: { id: true, firstName: true, lastName: true } },
+      leadDeals: {
+        include: { lead: { select: { id: true, firstName: true, lastName: true } } },
+      },
+      customerDeals: {
+        include: { customer: { select: { id: true, firstName: true, lastName: true } } },
+      },
+    },
+  });
+
+  return fullDeal!;
 }
 
 export async function updateDeal(id: string, tenantId: string, dto: UpdateDealDto) {
   const { leadIds: _leadIds, contactIds: _contactIds, ...updateData } = dto as UpdateDealDto & { leadIds?: string[]; contactIds?: string[] };
   try {
-    return await prisma.deal.update({ where: { id, tenantId }, data: updateData as never });
+    await prisma.deal.update({ where: { id, tenantId }, data: updateData as never });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
       return null;
     }
     throw error;
   }
+
+  // Re-fetch with includes so the response contains junction data for the frontend adapter
+  return prisma.deal.findFirst({
+    where: { id, tenantId },
+    include: {
+      stage:        { select: { id: true, name: true, isWon: true, isLost: true, color: true } },
+      pipeline:     true,
+      organization: true,
+      assignedUser: { select: { id: true, firstName: true, lastName: true } },
+      leadDeals: {
+        include: { lead: { select: { id: true, firstName: true, lastName: true } } },
+      },
+      customerDeals: {
+        include: { customer: { select: { id: true, firstName: true, lastName: true } } },
+      },
+    },
+  });
 }
 
 export async function moveDealStage(
@@ -188,7 +229,33 @@ export async function moveDealStage(
     return { deal: updatedDeal, stageHistory };
   });
 
-  return result;
+  // Re-fetch with full includes so frontend adapter can extract junction data
+  const fullDeal = await prisma.deal.findFirst({
+    where: { id, tenantId },
+    include: {
+      stage:        { select: { id: true, name: true, isWon: true, isLost: true, color: true } },
+      pipeline:     true,
+      organization: true,
+      assignedUser: { select: { id: true, firstName: true, lastName: true } },
+      leadDeals: {
+        include: { lead: { select: { id: true, firstName: true, lastName: true } } },
+      },
+      customerDeals: {
+        include: { customer: { select: { id: true, firstName: true, lastName: true } } },
+      },
+      stageHistories: {
+        orderBy: { movedAt: 'desc' },
+        take: 20,
+        include: {
+          newStage:      { select: { id: true, name: true } },
+          previousStage: { select: { id: true, name: true } },
+          movedBy:       { select: { id: true, firstName: true, lastName: true } },
+        },
+      },
+    },
+  });
+
+  return { deal: fullDeal!, stageHistory: result.stageHistory };
 }
 
 export async function archiveDeal(id: string, tenantId: string, archiveReason?: string) {

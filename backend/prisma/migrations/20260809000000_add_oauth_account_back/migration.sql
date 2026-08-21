@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS "OAuthAccount" (
 -- Unique: one provider account maps to one user
 DO $$ BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'OAuthAccount_provider_providerAccountId_key'
+    SELECT 1 FROM pg_class WHERE relname = 'OAuthAccount_provider_providerAccountId_key'
   ) THEN
     ALTER TABLE "OAuthAccount"
       ADD CONSTRAINT "OAuthAccount_provider_providerAccountId_key"
