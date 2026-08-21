@@ -126,7 +126,7 @@ Surgical fix to the deal linkage plumbing. All changes are frontend-only — the
     - Verify filter includes deal iff direct FK linkage exists
     - **Validates: Requirements 5.1, 5.2, 5.3, 5.4**
 
-- [-] 8. Final checkpoint — All tests pass
+- [x] 8. Final checkpoint — All tests pass
   - Run `npm run lint` and `npm run build`.
   - Run `npx vitest --run` to verify property tests pass.
   - Ensure all tests pass, ask the user if questions arise.
