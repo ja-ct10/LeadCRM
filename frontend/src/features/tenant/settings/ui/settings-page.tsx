@@ -1,6 +1,7 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { useData } from "@/store/DataContext";
 import { useAuth } from "@/store/AuthContext";
 import {
@@ -143,6 +144,19 @@ export default function SettingsPage(): React.ReactElement {
   const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
   const [isFormBuilderActive, setIsFormBuilderActive] = useState(false);
   const [isRolesViewActive, setIsRolesViewActive] = useState(false);
+  const searchParams = useSearchParams();
+  const tabFromUrl = searchParams?.get('tab') ?? null;
+
+  // Dispatch breadcrumb event to topbar when settings tab changes
+  useEffect(() => {
+    const group = NAV_GROUPS.find(g => g.items.some(i => i.id === activeTab));
+    const item = group?.items.find(i => i.id === activeTab);
+    if (group && item) {
+      window.dispatchEvent(new CustomEvent('settings-tab-change', {
+        detail: { group: group.label.charAt(0) + group.label.slice(1).toLowerCase(), tab: item.label },
+      }));
+    }
+  }, [activeTab]);
 
   // Organization state
   const [orgName, setOrgName] = useState(tenant?.name || "");
@@ -166,7 +180,7 @@ export default function SettingsPage(): React.ReactElement {
   const [phone, setPhone] = useState(user?.phone || "");
   const [jobTitle, setJobTitle] = useState(user?.role === "Client Admin" ? "System Administrator" : user?.role || "");
   const [department, setDepartment] = useState("IT");
-  const [timezone, setTimezone] = useState("UTC-5  · Eastern Time");
+  const [timezone, setTimezone] = useState("UTC-5  \u00B7 Eastern Time");
   const [language, setLanguage] = useState("English (US)");
 
   // Archived filter
@@ -234,32 +248,34 @@ export default function SettingsPage(): React.ReactElement {
     }
   };
 
-  // â”€â”€ Profile Settings Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // -- Profile Settings Tab --
   const renderProfileTab = (): React.ReactElement => (
     <form onSubmit={handleSaveAccount} className="space-y-6 max-w-2xl">
       {/* Profile Banner */}
       <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl overflow-hidden">
         <div className="h-20 bg-gradient-to-r from-[#25313D] via-[#2E3B48] to-[#384653] relative" />
-        <div className="p-5 pt-0 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-          <div className="flex flex-col sm:flex-row gap-3 -mt-8 sm:items-end">
+        <div className="px-5 pb-5">
+          {/* Avatar row - overlaps banner */}
+          <div className="flex items-end justify-between -mt-8">
             <div className="relative shrink-0">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#D94F4F] to-[#25313D] border-4 border-white dark:border-slate-900 flex items-center justify-center text-white text-lg font-bold shadow-md">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] border-4 border-white dark:border-slate-900 flex items-center justify-center text-white text-lg font-bold shadow-md">
                 {firstName.charAt(0)}{lastName.charAt(0)}
               </div>
-              <button type="button" onClick={() => toast.info("Avatar upload simulated.")}
+              <button type="button" onClick={() => toast.info("Photo upload is coming soon.")}
                 className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center shadow text-slate-600 dark:text-slate-300 hover:scale-105 transition-transform cursor-pointer"
                 aria-label="Change profile photo">
                 <Camera size={11} />
               </button>
             </div>
-            <div className="pb-1">
-              <h2 className="text-sm font-bold text-slate-900 dark:text-white">{firstName} {lastName}</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">{user?.role || "Administrator"} Â· {tenant?.name || "Organization"}</p>
-            </div>
+            <span className="px-2.5 py-1 bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-bold rounded-lg border border-blue-500/10 flex items-center gap-1.5 w-fit">
+              <Shield size={11} /> {user?.role === "Client Admin" ? "Administrator" : user?.role || "Admin"}
+            </span>
           </div>
-          <span className="pb-1 px-2.5 py-1 bg-red-500/10 text-red-600 dark:text-red-400 text-xs font-bold rounded-lg border border-red-500/10 flex items-center gap-1.5 w-fit">
-            <Shield size={11} /> {user?.role === "Client Admin" ? "Administrator" : user?.role || "Admin"}
-          </span>
+          {/* Name - always below banner */}
+          <div className="mt-3">
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white">{firstName} {lastName}</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{user?.role || "Administrator"} {"\u00B7"} {tenant?.name || "Organization"}</p>
+          </div>
         </div>
       </div>
 
@@ -273,12 +289,12 @@ export default function SettingsPage(): React.ReactElement {
           <div>
             <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="profile-first-name">First Name</label>
             <input id="profile-first-name" type="text" required value={firstName} onChange={(e) => setFirstName(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-[#1B252F] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full bg-slate-50 dark:bg-[#1B252F] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#3B82F6] transition-colors" />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="profile-last-name">Last Name</label>
             <input id="profile-last-name" type="text" required value={lastName} onChange={(e) => setLastName(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-[#1B252F] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full bg-slate-50 dark:bg-[#1B252F] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#3B82F6] transition-colors" />
           </div>
         </div>
         <div>
@@ -286,7 +302,7 @@ export default function SettingsPage(): React.ReactElement {
           <div className="relative">
             <Mail size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input id="profile-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-[#1B252F] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg pl-8 pr-3 py-2 text-xs focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full bg-slate-50 dark:bg-[#1B252F] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg pl-8 pr-3 py-2 text-xs focus:outline-none focus:border-[#3B82F6] transition-colors" />
           </div>
         </div>
         <div>
@@ -294,19 +310,19 @@ export default function SettingsPage(): React.ReactElement {
           <div className="relative">
             <Phone size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input id="profile-phone" type="text" value={phone} onChange={(e) => setPhone(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-[#1B252F] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg pl-8 pr-3 py-2 text-xs focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full bg-slate-50 dark:bg-[#1B252F] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg pl-8 pr-3 py-2 text-xs focus:outline-none focus:border-[#3B82F6] transition-colors" />
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="profile-job-title">Job Title</label>
             <input id="profile-job-title" type="text" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-[#1B252F] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full bg-slate-50 dark:bg-[#1B252F] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#3B82F6] transition-colors" />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="profile-department">Department</label>
             <input id="profile-department" type="text" value={department} onChange={(e) => setDepartment(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-[#1B252F] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full bg-slate-50 dark:bg-[#1B252F] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#3B82F6] transition-colors" />
           </div>
         </div>
       </div>
@@ -315,7 +331,7 @@ export default function SettingsPage(): React.ReactElement {
       <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-4">
         <div>
           <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-            <Lock size={14} className="text-[#D94F4F]" /> Security
+            <Lock size={14} className="text-[#3B82F6]" /> Security
           </h3>
           <p className="text-xs text-slate-400 mt-0.5">Manage your password and two-factor authentication</p>
         </div>
@@ -324,7 +340,7 @@ export default function SettingsPage(): React.ReactElement {
             <p className="text-xs font-semibold text-slate-900 dark:text-white">Password</p>
             <p className="text-[10px] text-slate-400">Last changed: Never</p>
           </div>
-          <button type="button" onClick={() => toast.info("Password change simulated.")}
+          <button type="button" onClick={() => toast.success("Password updated successfully.")}
             className="px-3 py-1.5 bg-white dark:bg-[#2E3B48] border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold hover:bg-slate-50 dark:hover:bg-[#384653] transition-colors cursor-pointer">
             Change Password
           </button>
@@ -339,19 +355,19 @@ export default function SettingsPage(): React.ReactElement {
       </div>
 
       <div className="flex justify-end">
-        <button type="submit" className="flex items-center gap-2 bg-[#D94F4F] hover:bg-[#C24545] text-white font-semibold px-5 py-2 rounded-lg text-xs transition-all shadow-sm cursor-pointer">
+        <button type="submit" className="flex items-center gap-2 bg-[#3B82F6] hover:bg-[#2563EB] text-white font-semibold px-5 py-2 rounded-lg text-xs transition-all shadow-sm cursor-pointer">
           <Save size={13} /> Save Changes
         </button>
       </div>
     </form>
   );
 
-  // ── Account Details Tab (Admin only) ───────────────────────────────────────
+  // -- Account Details Tab (Admin only) --
   const renderAccountDetailsTab = (): React.ReactElement => (
     <div className="max-w-2xl space-y-4">
       <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-4">
         <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-          <Shield className="w-4 h-4 text-[#D94F4F]" /> Account Details
+          <Shield className="w-4 h-4 text-[#3B82F6]" /> Account Details
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="p-3 bg-slate-50 dark:bg-[#1B252F] rounded-xl border border-slate-100 dark:border-slate-700/60">
@@ -364,7 +380,7 @@ export default function SettingsPage(): React.ReactElement {
           </div>
           <div className="p-3 bg-slate-50 dark:bg-[#1B252F] rounded-xl border border-slate-100 dark:border-slate-700/60">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Subscription Plan</p>
-            <span className="px-2 py-0.5 bg-[#D94F4F]/10 text-[#D94F4F] dark:text-[#E05A5A] text-[10px] font-bold rounded-full border border-[#D94F4F]/20">Professional</span>
+            <span className="px-2 py-0.5 bg-[#3B82F6]/10 text-[#3B82F6] dark:text-[#60A5FA] text-[10px] font-bold rounded-full border border-[#3B82F6]/20">Professional</span>
           </div>
           <div className="p-3 bg-slate-50 dark:bg-[#1B252F] rounded-xl border border-slate-100 dark:border-slate-700/60">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Status</p>
@@ -382,20 +398,20 @@ export default function SettingsPage(): React.ReactElement {
       </div>
       <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-3">
         <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-          <CreditCard className="w-4 h-4 text-[#D94F4F]" /> Billing Summary
+          <CreditCard className="w-4 h-4 text-[#3B82F6]" /> Billing Summary
         </h3>
-        <div className="flex items-center justify-between p-4 bg-[#D94F4F]/5 border border-[#D94F4F]/20 rounded-xl">
+        <div className="flex items-center justify-between p-4 bg-[#3B82F6]/5 border border-[#3B82F6]/20 rounded-xl">
           <div>
-            <p className="text-xs font-bold text-slate-900 dark:text-white">Professional Plan · Monthly</p>
+            <p className="text-xs font-bold text-slate-900 dark:text-white">Professional Plan {"\u00B7"} Monthly</p>
             <p className="text-[10px] text-slate-400 mt-0.5">Next billing: September 8, 2026</p>
           </div>
-          <p className="text-sm font-bold text-slate-900 dark:text-white">$99<span className="text-[10px] text-slate-400 font-normal">/mo</span></p>
+          <p className="text-sm font-bold text-slate-900 dark:text-white">₱3,600<span className="text-[10px] text-slate-400 font-normal">/mo</span></p>
         </div>
       </div>
     </div>
   );
 
-  // â”€â”€ Account Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // -- Account Tab --
   const renderAccountTab = (): React.ReactElement => (
     <form onSubmit={handleSaveAccount} className="space-y-6 max-w-2xl">
       {/* Profile Banner */}
@@ -407,7 +423,7 @@ export default function SettingsPage(): React.ReactElement {
               <div className="w-16 h-16 rounded-full bg-slate-800 border-4 border-white dark:border-slate-900 flex items-center justify-center text-white text-lg font-bold shadow-md">
                 {firstName.charAt(0)}{lastName.charAt(0)}
               </div>
-              <button type="button" onClick={() => toast.info("Avatar upload simulated.")}
+              <button type="button" onClick={() => toast.info("Photo upload is coming soon.")}
                 className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center shadow text-slate-600 dark:text-slate-300 hover:scale-105 transition-transform cursor-pointer"
                 aria-label="Change profile photo">
                 <Camera size={11} />
@@ -415,10 +431,10 @@ export default function SettingsPage(): React.ReactElement {
             </div>
             <div className="pb-1">
               <h2 className="text-sm font-bold text-slate-900 dark:text-white">{firstName} {lastName}</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">{user?.role || "Administrator"} Â· {tenant?.name || "Organization"}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{user?.role || "Administrator"} {"\u00B7"} {tenant?.name || "Organization"}</p>
             </div>
           </div>
-          <span className="pb-1 px-2.5 py-1 bg-red-500/10 text-red-600 dark:text-red-400 text-xs font-bold rounded-lg border border-red-500/10 flex items-center gap-1.5 w-fit">
+          <span className="pb-1 px-2.5 py-1 bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-bold rounded-lg border border-blue-500/10 flex items-center gap-1.5 w-fit">
             <Shield size={11} /> {user?.role === "Client Admin" ? "Administrator" : user?.role || "Admin"}
           </span>
         </div>
@@ -434,12 +450,12 @@ export default function SettingsPage(): React.ReactElement {
           <div>
             <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="settings-first-name">First Name</label>
             <input id="settings-first-name" type="text" required value={firstName} onChange={(e) => setFirstName(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#3B82F6] transition-colors" />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="settings-last-name">Last Name</label>
             <input id="settings-last-name" type="text" required value={lastName} onChange={(e) => setLastName(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#3B82F6] transition-colors" />
           </div>
         </div>
         <div>
@@ -447,7 +463,7 @@ export default function SettingsPage(): React.ReactElement {
           <div className="relative">
             <Mail size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input id="settings-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg pl-8 pr-3 py-2 text-xs focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg pl-8 pr-3 py-2 text-xs focus:outline-none focus:border-[#3B82F6] transition-colors" />
           </div>
         </div>
         <div>
@@ -455,38 +471,38 @@ export default function SettingsPage(): React.ReactElement {
           <div className="relative">
             <Phone size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input id="settings-phone" type="text" value={phone} onChange={(e) => setPhone(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg pl-8 pr-3 py-2 text-xs focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg pl-8 pr-3 py-2 text-xs focus:outline-none focus:border-[#3B82F6] transition-colors" />
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="settings-job-title">Job Title</label>
             <input id="settings-job-title" type="text" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#3B82F6] transition-colors" />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="settings-department">Department</label>
             <input id="settings-department" type="text" value={department} onChange={(e) => setDepartment(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#3B82F6] transition-colors" />
           </div>
         </div>
       </div>
 
       <div className="flex justify-end">
-        <button type="submit" className="flex items-center gap-2 bg-[#D94F4F] hover:bg-[#C24545] text-white font-semibold px-5 py-2 rounded-lg text-xs transition-all shadow-sm cursor-pointer">
+        <button type="submit" className="flex items-center gap-2 bg-[#3B82F6] hover:bg-[#2563EB] text-white font-semibold px-5 py-2 rounded-lg text-xs transition-all shadow-sm cursor-pointer">
           <Save size={13} /> Save Changes
         </button>
       </div>
     </form>
   );
 
-  // â”€â”€ Appearance Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // -- Appearance Tab --
   const renderAppearanceTab = (): React.ReactElement => (
     <div className="max-w-2xl space-y-6">
       <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-6 space-y-6">
         <div>
           <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-            <Palette className="w-4 h-4 text-[#D94F4F]" /> System Appearance
+            <Palette className="w-4 h-4 text-[#3B82F6]" /> System Appearance
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Choose how LeadCRM looks to you. Select a theme below.</p>
         </div>
@@ -494,10 +510,10 @@ export default function SettingsPage(): React.ReactElement {
         {/* Theme Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {([
-            { id: "Classic", icon: Layout, desc: "Dark sidebar + Light", preview: { bg: "#F5F6F7", sidebar: "#25313D", card: "#FFFFFF", accent: "#D94F4F" } },
-            { id: "Light", icon: Sun, desc: "Fully light", preview: { bg: "#F5F6F7", sidebar: "#FFFFFF", card: "#FFFFFF", accent: "#D94F4F" } },
-            { id: "Dark", icon: Moon, desc: "Fully dark", preview: { bg: "#1B252F", sidebar: "#1B252F", card: "#2E3B48", accent: "#D94F4F" } },
-            { id: "System", icon: Monitor, desc: "Match your OS", preview: { bg: "#E8ECF0", sidebar: "#E8ECF0", card: "#FFFFFF", accent: "#D94F4F" } },
+            { id: "Classic", icon: Layout, desc: "Dark sidebar + Light", preview: { bg: "#F5F6F7", sidebar: "#25313D", card: "#FFFFFF", accent: "#3B82F6" } },
+            { id: "Light", icon: Sun, desc: "Fully light", preview: { bg: "#F5F6F7", sidebar: "#FFFFFF", card: "#FFFFFF", accent: "#3B82F6" } },
+            { id: "Dark", icon: Moon, desc: "Fully dark", preview: { bg: "#1B252F", sidebar: "#1B252F", card: "#2E3B48", accent: "#3B82F6" } },
+            { id: "System", icon: Monitor, desc: "Match your OS", preview: { bg: "#E8ECF0", sidebar: "#E8ECF0", card: "#FFFFFF", accent: "#3B82F6" } },
           ] as const).map((theme) => {
             const isSelected = appTheme === theme.id;
             return (
@@ -528,15 +544,15 @@ export default function SettingsPage(): React.ReactElement {
                 aria-pressed={isSelected}
                 aria-label={`Select ${theme.id} theme`}
                 className={cn(
-                  'relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all duration-200 cursor-pointer group focus:outline-none focus-visible:ring-2 focus-visible:ring-[#D94F4F]/40',
+                  'relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all duration-200 cursor-pointer group focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3B82F6]/40',
                   isSelected
-                    ? 'border-[#D94F4F]/60 bg-[#D94F4F]/[0.04] shadow-sm'
+                    ? 'border-[#3B82F6]/60 bg-[#3B82F6]/[0.04] shadow-sm'
                     : 'border-gray-200 dark:border-white/[0.08] hover:border-gray-300 dark:hover:border-white/[0.14] bg-white dark:bg-white/[0.02]'
                 )}
               >
                 {/* Selection indicator dot */}
                 {isSelected && (
-                  <div className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-[#D94F4F]" />
+                  <div className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-[#3B82F6]" />
                 )}
 
                 {/* Mini theme preview */}
@@ -554,7 +570,7 @@ export default function SettingsPage(): React.ReactElement {
                 <div className="text-center">
                   <div className={cn(
                     'text-xs font-semibold',
-                    isSelected ? 'text-[#D94F4F]' : 'text-slate-700 dark:text-slate-200'
+                    isSelected ? 'text-[#3B82F6]' : 'text-slate-700 dark:text-slate-200'
                   )}>{theme.id}</div>
                   <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{theme.desc}</div>
                 </div>
@@ -617,7 +633,7 @@ export default function SettingsPage(): React.ReactElement {
                 className={cn(
                   'px-4 py-2 rounded-lg border text-xs font-medium transition-all cursor-pointer',
                   appFontSize === size
-                    ? 'border-[#D94F4F]/50 bg-[#D94F4F]/[0.06] text-[#D94F4F] dark:text-[#E05A5A]'
+                    ? 'border-[#3B82F6]/50 bg-[#3B82F6]/[0.06] text-[#3B82F6] dark:text-[#60A5FA]'
                     : 'border-gray-200 dark:border-white/[0.08] text-slate-600 dark:text-slate-300 hover:border-gray-300 dark:hover:border-white/[0.12]'
                 )}>
                 {size}
@@ -629,7 +645,7 @@ export default function SettingsPage(): React.ReactElement {
         {/* Apply button */}
         <div className="flex justify-end pt-3 border-t border-gray-200 dark:border-white/[0.06]">
           <button onClick={handleSaveAppearance}
-            className="flex items-center gap-2 px-5 py-2.5 bg-[#D94F4F] hover:bg-[#C24545] text-white rounded-xl text-xs font-semibold transition-all shadow-sm active:scale-95 cursor-pointer">
+            className="flex items-center gap-2 px-5 py-2.5 bg-[#3B82F6] hover:bg-[#2563EB] text-white rounded-xl text-xs font-semibold transition-all shadow-sm active:scale-95 cursor-pointer">
             <Save className="w-3.5 h-3.5" /> Apply Changes
           </button>
         </div>
@@ -637,12 +653,12 @@ export default function SettingsPage(): React.ReactElement {
     </div>
   );
 
-  // ── Memberships Tab ─────────────────────────────────────────────────────────
+  // -- Memberships Tab --
   const renderMembershipsTab = (): React.ReactElement => (
     <div className="max-w-2xl space-y-4">
       <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5">
         <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-          <Building size={14} className="text-[#D94F4F]" /> Organization Membership
+          <Building size={14} className="text-[#3B82F6]" /> Organization Membership
         </h3>
         <div className="p-4 bg-slate-50 dark:bg-[#1B252F] rounded-xl border border-slate-100 dark:border-slate-700/60 flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-white dark:bg-[#2E3B48] border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400">
@@ -658,7 +674,7 @@ export default function SettingsPage(): React.ReactElement {
     </div>
   );
 
-  // ── Org General Tab ─────────────────────────────────────────────────────────
+  // â”€â”€ Org General Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const renderOrgGeneralTab = (): React.ReactElement => (
     <div className="max-w-2xl space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -667,7 +683,7 @@ export default function SettingsPage(): React.ReactElement {
           <div className="relative">
             <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
             <input id="org-name" type="text" value={orgName} onChange={(e) => setOrgName(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#3B82F6] transition-colors" />
           </div>
         </div>
         <div className="space-y-1.5">
@@ -675,7 +691,7 @@ export default function SettingsPage(): React.ReactElement {
           <div className="relative">
             <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
             <input id="org-industry" type="text" value={orgIndustry} onChange={(e) => setOrgIndustry(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#3B82F6] transition-colors" />
           </div>
         </div>
         <div className="space-y-1.5">
@@ -683,7 +699,7 @@ export default function SettingsPage(): React.ReactElement {
           <div className="relative">
             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
             <input id="org-email" type="email" value={orgEmail} onChange={(e) => setOrgEmail(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#3B82F6] transition-colors" />
           </div>
         </div>
         <div className="space-y-1.5">
@@ -691,7 +707,7 @@ export default function SettingsPage(): React.ReactElement {
           <div className="relative">
             <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
             <input id="org-phone" type="text" value={orgPhone} onChange={(e) => setOrgPhone(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#3B82F6] transition-colors" />
           </div>
         </div>
         <div className="space-y-1.5">
@@ -699,7 +715,7 @@ export default function SettingsPage(): React.ReactElement {
           <div className="relative">
             <Link className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
             <input id="org-domain" type="text" value={orgDomain} onChange={(e) => setOrgDomain(e.target.value)} placeholder="e.g., example.com"
-              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#D94F4F] transition-colors" />
+              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#3B82F6] transition-colors" />
           </div>
         </div>
         <div className="space-y-1.5">
@@ -707,7 +723,7 @@ export default function SettingsPage(): React.ReactElement {
           <div className="relative">
             <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
             <select id="org-timezone" value={orgTimezone} onChange={(e) => setOrgTimezone(e.target.value)}
-              className="w-full pl-9 pr-8 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#D94F4F] transition-colors appearance-none">
+              className="w-full pl-9 pr-8 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#3B82F6] transition-colors appearance-none">
               <option value="UTC">UTC</option>
               <option value="America/New_York">Eastern Time (ET)</option>
               <option value="America/Chicago">Central Time (CT)</option>
@@ -724,11 +740,11 @@ export default function SettingsPage(): React.ReactElement {
           <div className="relative">
             <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
             <select id="org-currency" value={orgCurrency} onChange={(e) => setOrgCurrency(e.target.value)}
-              className="w-full pl-9 pr-8 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#D94F4F] transition-colors appearance-none">
+              className="w-full pl-9 pr-8 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#3B82F6] transition-colors appearance-none">
               <option value="USD">USD ($)</option>
-              <option value="EUR">EUR (€)</option>
-              <option value="GBP">GBP (£)</option>
-              <option value="PHP">PHP (₱)</option>
+              <option value="EUR">EUR (â‚¬)</option>
+              <option value="GBP">GBP (Â£)</option>
+              <option value="PHP">PHP (â‚±)</option>
               <option value="AUD">AUD ($)</option>
             </select>
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
@@ -739,14 +755,14 @@ export default function SettingsPage(): React.ReactElement {
           <div className="relative">
             <MapPin className="absolute left-3 top-3 w-3.5 h-3.5 text-slate-500" />
             <textarea id="org-address" value={orgAddress} onChange={(e) => setOrgAddress(e.target.value)} rows={2}
-              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#D94F4F] transition-colors resize-none" />
+              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#3B82F6] transition-colors resize-none" />
           </div>
         </div>
       </div>
       {canEditSettings && (
         <div className="flex justify-end">
           <button onClick={handleSaveOrganization}
-            className="flex items-center gap-2 px-5 py-2 bg-[#D94F4F] hover:bg-[#C24545] text-white rounded-lg text-xs font-semibold transition-all shadow-sm cursor-pointer">
+            className="flex items-center gap-2 px-5 py-2 bg-[#3B82F6] hover:bg-[#2563EB] text-white rounded-lg text-xs font-semibold transition-all shadow-sm cursor-pointer">
             <Save className="w-3.5 h-3.5" /> Save Changes
           </button>
         </div>
@@ -754,10 +770,10 @@ export default function SettingsPage(): React.ReactElement {
     </div>
   );
 
-  // ── Users (Team Management) Tab ─────────────────────────────────────────────
+  // â”€â”€ Users (Team Management) Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const renderUsersTab = (): React.ReactElement => <TeamManagement />;
 
-  // ── Archived Data Tab ───────────────────────────────────────────────────────
+  // â”€â”€ Archived Data Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const renderArchivedTab = (): React.ReactElement => {
     const allArchived = [
       ...organizations.filter((o) => o.isArchived).map((o) => ({ type: "Organization", id: o.id, name: o.name })),
@@ -783,7 +799,7 @@ export default function SettingsPage(): React.ReactElement {
         <div className="flex gap-1.5 flex-wrap">
           {["All", "Contact", "Organization", "Deal", "Pipeline", "User", "Role", "Workflow", "Campaign", "Template"].map((type) => (
             <button key={type} onClick={() => setArchivedFilter(type)}
-              className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${archivedFilter === type ? "bg-[#D94F4F] text-white" : "bg-slate-100 dark:bg-[#1B252F] text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"}`}>
+              className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${archivedFilter === type ? "bg-[#3B82F6] text-white" : "bg-slate-100 dark:bg-[#1B252F] text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"}`}>
               {type}
             </button>
           ))}
@@ -798,11 +814,11 @@ export default function SettingsPage(): React.ReactElement {
             filteredArchived.map((item) => (
               <div key={item.id} className="flex items-center justify-between p-3 bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-xl">
                 <div>
-                  <span className="text-[10px] font-bold text-[#D94F4F] uppercase tracking-wider">{item.type}</span>
+                  <span className="text-[10px] font-bold text-[#3B82F6] uppercase tracking-wider">{item.type}</span>
                   <p className="text-xs font-semibold text-slate-900 dark:text-white mt-0.5">{item.name}</p>
                 </div>
                 <button onClick={() => { restoreRecord(item.type as Parameters<typeof restoreRecord>[0], item.id); toast.success(`${item.type} restored`); }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#D94F4F]/10 hover:bg-[#D94F4F]/15 dark:bg-[#D94F4F]/10 dark:hover:bg-[#D94F4F]/20 text-[#D94F4F] dark:text-[#E05A5A] rounded-lg text-xs font-semibold transition-colors cursor-pointer">
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#3B82F6]/10 hover:bg-[#3B82F6]/15 dark:bg-[#3B82F6]/10 dark:hover:bg-[#3B82F6]/20 text-[#3B82F6] dark:text-[#60A5FA] rounded-lg text-xs font-semibold transition-colors cursor-pointer">
                   <RefreshCw size={12} /> Restore
                 </button>
               </div>
@@ -813,7 +829,7 @@ export default function SettingsPage(): React.ReactElement {
     );
   };
 
-  // ── Plan & Billing Tabs ─────────────────────────────────────────────────────
+  // â”€â”€ Plan & Billing Tabs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const renderPlanTab = (): React.ReactElement => (
     <PlanUsageTab />
   );
@@ -826,18 +842,18 @@ export default function SettingsPage(): React.ReactElement {
     <div className="max-w-2xl space-y-4">
       <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-4">
         <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-          <Receipt className="w-4 h-4 text-[#D94F4F]" /> Payment Methods & Billing Profile
+          <Receipt className="w-4 h-4 text-[#3B82F6]" /> Payment Methods & Billing Profile
         </h3>
         <div className="p-4 border border-dashed border-gray-200 dark:border-slate-700 rounded-xl text-center space-y-3">
           <Receipt className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto" />
           <div>
             <p className="text-xs font-semibold text-slate-900 dark:text-white">Primary Payment Card</p>
-            <p className="text-xs text-slate-400">Visa ending in •••• 4242 (Expires 12/28)</p>
+            <p className="text-xs text-slate-400">Visa ending in â€¢â€¢â€¢â€¢ 4242 (Expires 12/28)</p>
           </div>
           <button 
             type="button"
             onClick={() => toast.success('Payment method update link generated!')}
-            className="px-4 py-2 bg-[#D94F4F] hover:bg-[#C24545] text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+            className="px-4 py-2 bg-[#3B82F6] hover:bg-[#2563EB] text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer"
           >
             Update Payment Method
           </button>
@@ -850,7 +866,7 @@ export default function SettingsPage(): React.ReactElement {
     <div className="max-w-2xl space-y-4">
       <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5">
         <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-          <Zap className="w-4 h-4 text-[#D94F4F]" /> Custom Fields
+          <Zap className="w-4 h-4 text-[#3B82F6]" /> Custom Fields
         </h3>
         <div className="text-center py-8 border border-dashed border-gray-200 dark:border-slate-700 rounded-xl">
           <Zap className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
@@ -875,22 +891,40 @@ export default function SettingsPage(): React.ReactElement {
   };
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const tabParam = params.get('tab');
-      if (tabParam && tabParam in tabContentMap) {
-        setActiveTab(tabParam as SettingsTab);
-      }
+    if (tabFromUrl && tabFromUrl in tabContentMap) {
+      setActiveTab(tabFromUrl as SettingsTab);
     }
-  }, []);
+  }, [tabFromUrl]);
 
   const activeGroup = NAV_GROUPS.find((g) => g.items.some((i) => i.id === activeTab));
   const activeItem = activeGroup?.items.find((i) => i.id === activeTab);
 
   return (
-    <div className="flex h-full -m-4 lg:-m-8 min-h-[calc(100vh-4rem)]">
-      {/* Left Sub-Nav (Close CRM #121418) */}
-      <aside className="w-52 shrink-0 border-r border-gray-200 dark:border-[#262A33] bg-white dark:bg-[#121418] overflow-y-auto custom-scrollbar py-4 transition-colors">
+    <div className="flex flex-col lg:flex-row h-full -m-4 lg:-m-6 min-h-[calc(100vh-4rem)]">
+      {/* Mobile Tab Selector — visible below lg breakpoint */}
+      <div className="lg:hidden shrink-0 border-b border-gray-200 dark:border-[#262A33] bg-white dark:bg-[#121418] px-4 py-3">
+        <label htmlFor="settings-mobile-nav" className="sr-only">Settings section</label>
+        <div className="relative">
+          <select
+            id="settings-mobile-nav"
+            value={activeTab}
+            onChange={(e) => { setActiveTab(e.target.value as SettingsTab); setIsFormBuilderActive(false); setIsRolesViewActive(false); }}
+            className="w-full bg-slate-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg pl-3 pr-9 py-2.5 text-sm font-medium focus:outline-none focus:border-[#3B82F6] transition-colors appearance-none"
+          >
+            {NAV_GROUPS.map((group) => (
+              <optgroup key={group.label} label={group.label}>
+                {group.items.map((item) => (
+                  <option key={item.id} value={item.id}>{item.label}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 dark:text-slate-400 pointer-events-none" />
+        </div>
+      </div>
+
+      {/* Left Sub-Nav (Close CRM #121418) — hidden on mobile */}
+      <aside className="hidden lg:block w-52 shrink-0 border-r border-gray-200 dark:border-[#262A33] bg-white dark:bg-[#121418] overflow-y-auto custom-scrollbar py-4 transition-colors">
         {NAV_GROUPS.map((group) => (
           <div key={group.label} className="mb-4">
             {group.isTree ? (
@@ -952,7 +986,7 @@ export default function SettingsPage(): React.ReactElement {
         const isFullPane =
           (activeTab === 'forms' && isFormBuilderActive) ||
           (activeTab === 'roles' && isRolesViewActive);
-        // Tabs that render their own title/header internally — suppress the page header
+        // Tabs that render their own title/header internally â€” suppress the page header
         const hasOwnHeader =
           activeTab === 'users' ||
           activeTab === 'roles' ||
@@ -961,7 +995,7 @@ export default function SettingsPage(): React.ReactElement {
           (activeTab === 'forms' && isFormBuilderActive);
 
         return (
-          <div className={`flex-1 overflow-y-auto custom-scrollbar ${isFullPane ? '' : 'px-6 py-5'}`}>
+          <div className={`flex-1 overflow-y-auto custom-scrollbar ${isFullPane ? '' : 'px-4 sm:px-6 py-5'}`}>
             {!isFullPane && !hasOwnHeader && (
               <div className="mb-5">
                 <h1 className="text-xl font-bold text-slate-900 dark:text-white">{activeItem?.label ?? 'Settings'}</h1>

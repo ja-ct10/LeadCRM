@@ -910,8 +910,8 @@ export default function CampaignsPage() {
       {/* Create Campaign Side Panel */}
       <SideSheet isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Create Campaign" subtitle="Draft a new message to send to your contacts." width="w-full max-w-2xl">
         <div className="p-6 space-y-5">
-              <div className="grid grid-cols-2 gap-5">
-                <div className="col-span-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div className="col-span-1 sm:col-span-2">
                   <label htmlFor="campaign-name-input" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Campaign Name <span className="text-red-500">*</span></label>
                   <input 
                     id="campaign-name-input" 
@@ -959,7 +959,7 @@ export default function CampaignsPage() {
                     <Tags size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
                   </div>
                 </div>
-                <div className="col-span-2">
+                <div className="col-span-1 sm:col-span-2">
                   <div className="flex flex-col sm:flex-row gap-4 mb-4">
                     <div className="flex-1 flex items-center justify-between p-4 bg-white dark:bg-white/2 border border-gray-200 dark:border-white/5 rounded-lg">
                       <div className="flex items-center gap-3">
@@ -1253,7 +1253,7 @@ export default function CampaignsPage() {
                     </>
                   )}
                 </div>
-                <div className="col-span-2">
+                <div className="col-span-1 sm:col-span-2">
                   <div className="flex items-center justify-between p-4 bg-white dark:bg-white/2 border border-gray-200 dark:border-white/5 rounded-lg">
                     <div>
                       <h4 className="text-sm font-medium text-slate-900 dark:text-white">Schedule Campaign</h4>
@@ -1265,7 +1265,7 @@ export default function CampaignsPage() {
                     </label>
                   </div>
                   {isScheduling && (
-                    <div className="mt-3 grid grid-cols-2 gap-4 p-4 bg-white dark:bg-white/2 border border-gray-200 dark:border-white/5 rounded-lg animate-in fade-in slide-in-from-top-2">
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-white dark:bg-white/2 border border-gray-200 dark:border-white/5 rounded-lg animate-in fade-in slide-in-from-top-2">
                       <div>
                         <label htmlFor="campaign-schedule-date" className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">Date</label>
                         <input 

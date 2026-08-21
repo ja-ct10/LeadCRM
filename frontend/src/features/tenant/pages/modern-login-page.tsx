@@ -128,7 +128,7 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
         const hasSeenOnboarding = localStorage.getItem('leadcrm_onboarding_complete');
         onNavigate(hasSeenOnboarding ? 'dashboard' : 'onboarding');
       } else {
-        toast.error('Invalid credentials or account inactive.');
+        toast.error('The email or password you entered is incorrect. Please try again.');
       }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Sign in failed. Please try again.');
@@ -303,7 +303,7 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
                 <img 
                   src="/leadcrm_logo.png" 
                   alt="LeadCRM Logo" 
-                  className="w-6 h-6"
+                  className="w-7 h-7 object-contain"
                 />
               </div>
               <span className="text-xl font-bold">LeadCRM</span>
@@ -382,7 +382,7 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
                 <img 
                   src="/leadcrm_logo.png" 
                   alt="LeadCRM Logo" 
-                  className="w-6 h-6"
+                  className="w-7 h-7 object-contain"
                 />
               </div>
               <span className="text-xl font-bold">LeadCRM</span>
@@ -474,7 +474,7 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
               <img 
                 src="/leadcrm_logo.png" 
                 alt="LeadCRM Logo" 
-                className="w-6 h-6"
+                className="w-7 h-7 object-contain"
               />
             </div>
             <span className="text-xl font-bold">LeadCRM</span>

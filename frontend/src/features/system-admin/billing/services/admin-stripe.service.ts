@@ -7,8 +7,6 @@ import type {
   PaymentMetrics,
   StripePaymentTransaction,
   AdminSubscription,
-  RefundableTransaction,
-  RefundResult,
 } from '@/store/types/stripe.types';
 
 // ─── Metrics ─────────────────────────────────────────────────────────────────
@@ -51,26 +49,6 @@ export const adminStripeService = {
       `/admin/billing/subscriptions/${subscriptionId}/cancel`,
       { mode },
     ),
-
-  // ─── Refunds ─────────────────────────────────────────────────────────────
-
-  /** GET /admin/billing/refunds — transactions eligible for refund */
-  getRefundablePayments: (params?: {
-    page?:   number;
-    limit?:  number;
-    search?: string;
-  }) =>
-    apiClient.get<AdminApiList<RefundableTransaction>>('/admin/billing/refunds', {
-      params: params as Record<string, unknown>,
-    }),
-
-  /** POST /admin/billing/refunds — initiate a refund */
-  createRefund: (body: {
-    paymentTransactionId: string;
-    amountCents?:         number;
-    reason?:              'duplicate' | 'fraudulent' | 'requested_by_customer';
-  }) =>
-    apiClient.post<AdminApiSingle<RefundResult>>('/admin/billing/refunds', body),
 
   // ─── Plan / Stripe Sync ──────────────────────────────────────────────────
 

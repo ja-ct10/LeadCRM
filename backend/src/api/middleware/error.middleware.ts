@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { ZodError } from 'zod';
 import { AppError } from '../../shared/errors/app-error';
 
 export function errorMiddleware(
@@ -19,6 +20,15 @@ export function errorMiddleware(
     res.status(err.statusCode).json({
       success: false,
       error: err.message,
+    });
+    return;
+  }
+
+  // Zod validation errors → 400 Bad Request
+  if (err instanceof ZodError) {
+    res.status(400).json({
+      success: false,
+      error: err.errors[0]?.message ?? 'Validation failed',
     });
     return;
   }

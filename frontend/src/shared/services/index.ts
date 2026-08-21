@@ -5,6 +5,8 @@ export * from './auth.api';
 export * from './contacts.api';
 export * from './companies.api';
 export * from './deals.api';
+export * from './deals-actions.api';
+export * from './deals-bulk.api';
 export * from './pipelines.api';
 export * from './tasks.api';
 

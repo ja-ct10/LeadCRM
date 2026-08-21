@@ -5,11 +5,12 @@ import { authorize } from '../middleware/rbac.middleware';
 import { validate } from '../middleware/validate.middleware';
 
 // Controllers
-import * as contactController  from '../../modules/crm/contacts/contacts.controller';
-import * as companyController  from '../../modules/crm/companies/companies.controller';
-import * as dealController     from '../../modules/crm/deals/deals.controller';
-import * as pipelineController from '../../modules/crm/pipeline/pipeline.controller';
-import * as activityController from '../../modules/crm/activities/activities.controller';
+import * as contactController      from '../../modules/crm/contacts/contacts.controller';
+import * as companyController      from '../../modules/crm/companies/companies.controller';
+import * as dealController         from '../../modules/crm/deals/deals.controller';
+import * as bulkDealsController    from '../../modules/crm/deals/bulk-deals.controller';
+import * as pipelineController     from '../../modules/crm/pipeline/pipeline.controller';
+import * as activityController     from '../../modules/crm/activities/activities.controller';
 
 // Schemas
 import { CreateContactSchema, UpdateContactSchema, ConvertContactSchema } from '../../modules/crm/contacts/contacts.dto';
@@ -59,11 +60,18 @@ router.patch( '/companies/:id/archive', authorize('accounts.delete'), companyCon
 
 // ── Deals ─────────────────────────────────────────────────────────────────
 router.get(   '/deals',              authorize('deals.view'),   dealController.getDeals);
+router.get(   '/deals/forecast',     authorize('deals.view'),   dealController.getForecast);
+// Bulk operations (must be before :id routes to avoid param capture)
+router.post(  '/deals/bulk/archive',  authorize('deals.delete'), bulkDealsController.bulkArchive);
+router.post(  '/deals/bulk/reassign', authorize('deals.edit'),   bulkDealsController.bulkReassign);
+router.post(  '/deals/bulk/stage',    authorize('deals.edit'),   bulkDealsController.bulkStageChange);
 router.get(   '/deals/:id',          authorize('deals.view'),   dealController.getDealById);
 router.post(  '/deals',              authorize('deals.create'), validate(CreateDealSchema),    dealController.createDeal);
 router.put(   '/deals/:id',          authorize('deals.edit'),   validate(UpdateDealSchema),    dealController.updateDeal);
 router.patch( '/deals/:id/stage',    authorize('deals.edit'),   validate(MoveDealStageSchema), dealController.moveDealStage);
 router.patch( '/deals/:id/archive',  authorize('deals.delete'), dealController.archiveDeal);
+router.patch( '/deals/:id/restore',  authorize('deals.edit'),   dealController.restoreDeal);
+router.post(  '/deals/:id/duplicate', authorize('deals.create'), dealController.duplicateDeal);
 
 // ── Pipelines ─────────────────────────────────────────────────────────────
 router.get(    '/pipeline-templates',              authorize('deals.view'),   pipelineController.getPipelineTemplates);

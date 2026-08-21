@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { X, ChevronLeft, ChevronRight, Settings } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
 import { useLayout } from './use-layout';
@@ -50,8 +50,6 @@ export default function SidebarNav({
     return counts[path];
   };
 
-  const isSettingsActive = currentPath === 'settings';
-
   return (
     <aside
       className={cn(
@@ -75,12 +73,12 @@ export default function SidebarNav({
           className={cn('flex items-center gap-2.5', isCollapsed && 'lg:justify-center')}
           title={isCollapsed ? 'LeadCRM' : undefined}
         >
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg overflow-hidden shrink-0 bg-[#D94F4F]">
-            <span className="text-white font-extrabold text-[11px]">L</span>
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg overflow-hidden shrink-0">
+            <img src="/leadcrm_logo.png" alt="LeadCRM" className="h-7 w-7 object-contain" />
           </div>
           {!isCollapsed && (
             <span className="text-[14px] font-bold text-[var(--sidebar-text)] tracking-tight">
-              Lead<span className="text-[#D94F4F]">CRM</span>
+              Lead<span className="text-[#3B82F6]">CRM</span>
             </span>
           )}
         </div>
@@ -182,21 +180,11 @@ export default function SidebarNav({
 
       {/* ── Footer ────────────────────────────────────────────── */}
       <div className="shrink-0 border-t border-[var(--sidebar-border)]">
-        {/* Settings */}
-        <div className="px-2 pt-2">
-          <NavButton
-            item={{ name: 'Settings', path: 'settings', icon: Settings } as any}
-            isActive={isSettingsActive}
-            isCollapsed={isCollapsed}
-            onClick={() => { navigate('settings'); onCloseSidebar(); }}
-          />
-        </div>
-
         {/* User card + Collapse control */}
         <div className="px-3 py-3 flex items-center gap-2">
           {!isCollapsed && (
             <div className="flex items-center gap-2 flex-1 min-w-0">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#D94F4F] to-[#25313D] flex items-center justify-center text-white font-bold text-[10px] shrink-0">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] flex items-center justify-center text-white font-bold text-[10px] shrink-0">
                 {`${user?.firstName?.charAt(0) ?? 'U'}${user?.lastName?.charAt(0) ?? ''}`.toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
@@ -255,7 +243,7 @@ function NavButton({ item, isActive, isCollapsed, badgeCount, onClick }: NavButt
     >
       {/* 3px left brand bar for active state */}
       {isActive && !isCollapsed && (
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-[#D94F4F] rounded-r-full" />
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-[#3B82F6] rounded-r-full" />
       )}
 
       <Icon className="h-[16px] w-[16px] shrink-0" />

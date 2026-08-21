@@ -8,7 +8,7 @@ import { useColumnPreferences } from '@/shared/hooks/use-column-preferences';
 import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
 import { useDebounce } from '@/shared/hooks/use-debounce';
 import { ModuleWorkspace, ViewType, DealPanel } from '@/shared/components/crm';
-import { DealDetailsModal } from '@/features/tenant/crm/pipeline/ui/deal-details-modal';
+import { ModuleErrorBoundary } from '@/shared/components/error-boundary';
 import { useDealsPage } from '../hooks/use-deals-page';
 import { DEALS_MODULE_CONFIG } from '../deals.config';
 import { DEALS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
@@ -21,13 +21,11 @@ import type { ColumnConfigItem } from '@leadcrm/shared';
 import { usePagination } from '@/shared/hooks/use-pagination';
 import { Pagination } from '@/shared/components/ui/pagination';
 import { toast } from 'sonner';
-
-function formatCurrency(value: number): string {
-  return '₱' + Math.round(value).toLocaleString('en-PH');
-}
+import { formatCurrency, getTenantCurrency } from '@/shared/utils/currency';
 
 export default function DealsPage() {
   const { user, tenant } = useAuth();
+  const tenantCurrency = useMemo(() => getTenantCurrency(tenant), [tenant]);
   const { tasks, users, organizations, updateDeal, moveDealStage, deleteDeal, addDeal, addTask, updateTask, isBillingModuleEnabled } = useData();
   const canCreate = useHasPermission('deals.create');
   const canEdit   = useHasPermission('deals.edit');
@@ -35,6 +33,7 @@ export default function DealsPage() {
 
   // ── Create Form State ─────────────────────────────────────────────────
   const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
+  const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
 
   const {
     deals, totalCount, filters, setFilters,
@@ -183,7 +182,7 @@ export default function DealsPage() {
         onManageColumns={() => setIsManageColumnsOpen(true)}
         kpiCards={[
           { label: 'TOTAL DEALS', value: String(totalCount) },
-          { label: 'WEIGHTED FORECAST', value: formatCurrency(forecastTotal) },
+          { label: 'WEIGHTED FORECAST', value: formatCurrency(forecastTotal, tenantCurrency) },
         ]}
       >
         {/* ── Filters (shared across all views) ──────────────────────── */}
@@ -192,6 +191,7 @@ export default function DealsPage() {
         {/* ── Table View (DataGrid) ──────────────────────────────────── */}
         {activeView === 'table' && (
           <div className="space-y-4">
+            <ModuleErrorBoundary fallbackLabel="Deals Table">
             <DealsDataGrid
               deals={paginatedDeals}
               totalRecords={totalItems}
@@ -228,6 +228,7 @@ export default function DealsPage() {
                 }
               }}
               viewMode={viewMode}
+              currencyConfig={tenantCurrency}
               onColumnReorder={async (columns) => {
                 try {
                   await saveColumns(columns);
@@ -236,6 +237,7 @@ export default function DealsPage() {
                 }
               }}
             />
+            </ModuleErrorBoundary>
 
             <div className="mt-4">
               <Pagination
@@ -281,17 +283,25 @@ export default function DealsPage() {
         onReset={resetColumns}
       />
 
-      {/* ── Create Deal Form ─────────────────────────────────────── */}
+      {/* ── Deal Form (Create/Edit) ──────────────────────────── */}
       <DealFormSheet
-        isOpen={isCreateFormOpen}
-        onClose={() => setIsCreateFormOpen(false)}
-        onSave={async (data) => {
+        isOpen={isCreateFormOpen || !!editingDeal}
+        onClose={() => { setIsCreateFormOpen(false); setEditingDeal(null); }}
+        mode={editingDeal ? 'edit' : 'create'}
+        initialData={editingDeal ?? undefined}
+        onSubmit={async (data) => {
           try {
-            await addDeal(data as any);
-            setIsCreateFormOpen(false);
-            toast.success('Deal created successfully');
+            if (editingDeal) {
+              await updateDeal(editingDeal.id, data as any);
+              toast.success('Deal updated');
+              setEditingDeal(null);
+            } else {
+              await addDeal(data as any);
+              setIsCreateFormOpen(false);
+              toast.success('Deal created successfully');
+            }
           } catch (err: unknown) {
-            toast.error(err instanceof Error ? err.message : 'Failed to create deal');
+            toast.error(err instanceof Error ? err.message : 'Failed to save deal');
           }
         }}
       />
@@ -301,6 +311,7 @@ export default function DealsPage() {
         open={!!selectedDeal}
         onOpenChange={(open) => !open && setSelectedDeal(null)}
         deal={selectedDeal}
+        onEdit={(d) => { setEditingDeal(d); }}
       />
     </>
   );

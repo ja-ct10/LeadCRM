@@ -68,24 +68,6 @@ export interface AdminSubscription {
   plan:   { id: string; name: string; planType: string };
 }
 
-// ─── Refundable transaction row ───────────────────────────────────────────────
-
-export interface RefundableTransaction {
-  id:                    string;
-  tenantId:              string;
-  amount:                number;
-  currency:              string;
-  status:                PaymentStatus;
-  stripePaymentIntentId: string;
-  refundedAmount:        number | null;
-  paidAt:                string | null;
-  createdAt:             string;
-  invoice: {
-    invoiceNumber: string;
-    tenant:        { id: string; name: string };
-  };
-}
-
 // ─── Payment Metrics ─────────────────────────────────────────────────────────
 
 export interface PaymentMetrics {
@@ -121,11 +103,4 @@ export interface AdminApiSingle<T> {
   data:    T;
 }
 
-// ─── Refund result ────────────────────────────────────────────────────────────
 
-export interface RefundResult {
-  refundId:    string;
-  amount:      number;
-  status:      string;
-  isFullRefund: boolean;
-}
