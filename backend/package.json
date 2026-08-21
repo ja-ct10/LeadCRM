@@ -32,9 +32,11 @@
     "@faker-js/faker": "^8.4.1",
     "@prisma/client": "^5.22.0",
     "@types/bcryptjs": "^2.4.6",
+    "@types/compression": "^1.8.1",
     "@types/cookie-parser": "1.4.10",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.1",
+    "@types/helmet": "0.0.48",
     "@types/jsonwebtoken": "^9.0.9",
     "@types/node": "^22.14.0",
     "@types/nodemailer": "^8.0.1",
@@ -55,8 +57,6 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
-    "@types/compression": "^1.8.1",
-    "@types/helmet": "0.0.48",
     "fast-check": "^4.9.0",
     "prisma": "^5.22.0",
     "ts-node": "^10.9.2",
