@@ -1,0 +1,404 @@
+{
+  "pbtResults": {
+    "7.4 Write property test for empty array omission": {
+      "status": "passed",
+      "lastRunTimestamp": 1787270047397
+    },
+    "7.1 Write property test for leadId normalization in toBackendCreateDeal": {
+      "status": "passed",
+      "lastRunTimestamp": 1787270092705
+    },
+    "7.5 Write property test for leadIds round-trip extraction in toFrontendDeal": {
+      "status": "passed",
+      "lastRunTimestamp": 1787270127397
+    },
+    "7.3 Write property test for organizationId normalization": {
+      "status": "passed",
+      "lastRunTimestamp": 1787270131083
+    },
+    "7.2 Write property test for contactId normalization in toBackendCreateDeal": {
+      "status": "passed",
+      "lastRunTimestamp": 1787270162191
+    },
+    "7.6 Write property test for contactIds extraction in toFrontendDeal": {
+      "status": "passed",
+      "lastRunTimestamp": 1787270269516
+    },
+    "7.7 Write property test for FK-only filtering": {
+      "status": "passed",
+      "lastRunTimestamp": 1787270287466
+    }
+  },
+  "executionHistory": {
+    "1.1 Update `toBackendCreateDeal` to map leadId→leadIds and contactId→contactIds": [
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268501113
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268513820
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268785755
+      }
+    ],
+    "1.2 Update `toFrontendDeal` to extract leadIds from leadDeals junction": [
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268501253
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268515044
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268787526
+      }
+    ],
+    "2.1 Replace LeadPanel deal filter with FK-only logic": [
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268501496
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268794929
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268887761
+      }
+    ],
+    "2.2 Replace ContactPanel deal filter with FK-only logic": [
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268501783
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268795365
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268888742
+      }
+    ],
+    "2.3 Replace AccountPanel deal filter with FK-only logic": [
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268501958
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268796182
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268889719
+      }
+    ],
+    "3. Checkpoint — Verify adapter and filtering": [
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268502119
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268908451
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787269095056
+      }
+    ],
+    "4.1 Auto-select first pipeline and first stage as defaults": [
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268502255
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268909396
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787269095897
+      }
+    ],
+    "4.2 Add default expected close date (+30 days) and post-submit behavior": [
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268502416
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268910195
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787269096996
+      }
+    ],
+    "5.1 Add DealPanel overlay to LeadPanel": [
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268502747
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787269103206
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787269355246
+      }
+    ],
+    "5.2 Add DealPanel overlay to ContactPanel": [
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268502880
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787269103866
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787269355909
+      }
+    ],
+    "5.3 Add DealPanel overlay to AccountPanel": [
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268503007
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787269104806
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787269356817
+      }
+    ],
+    "6. Checkpoint — Full integration verification": [
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268503153
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787269395576
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787269836481
+      }
+    ],
+    "8. Final checkpoint — All tests pass": [
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268503307
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787270316107
+      }
+    ],
+    "1. Fix deal adapter — toBackendCreateDeal and toFrontendDeal": [
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268787991
+      }
+    ],
+    "2. Fix panel filtering in RecordPanelWrappers": [
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787268889979
+      }
+    ],
+    "4. Improve InlineDealForm UX": [
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787269097292
+      }
+    ],
+    "5. Add deal click → DealPanel navigation from record panels": [
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787269357178
+      }
+    ],
+    "7.1 Write property test for leadId normalization in toBackendCreateDeal": [
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787269842629
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787269860074
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787270180601
+      }
+    ],
+    "7.2 Write property test for contactId normalization in toBackendCreateDeal": [
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787269843350
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787269860978
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787270181607
+      }
+    ],
+    "7.3 Write property test for organizationId normalization": [
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787269844223
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787269861871
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787270182424
+      }
+    ],
+    "7.4 Write property test for empty array omission": [
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787269845263
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787269862761
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787270183419
+      }
+    ],
+    "7.5 Write property test for leadIds round-trip extraction in toFrontendDeal": [
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787269846197
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787269863777
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787270184560
+      }
+    ],
+    "7.6 Write property test for contactIds extraction in toFrontendDeal": [
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787269847170
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787270191325
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787270307690
+      }
+    ],
+    "7.7 Write property test for FK-only filtering": [
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787269848160
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787270192194
+      },
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787270308651
+      }
+    ],
+    "7. Property-based tests for adapter functions": [
+      {
+        "executionId": "8ebeb6da-a90d-4878-bb97-5d9a2e0badea",
+        "chatSessionId": "sess_83381dda-3e9a-4120-8d1f-6684e484dcd9",
+        "timestamp": 1787270180803
+      }
+    ]
+  }
+}

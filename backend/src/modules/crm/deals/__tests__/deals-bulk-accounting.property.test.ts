@@ -88,7 +88,8 @@ describe('Feature: deals-module-modernization, Property 6: Bulk Operation Accoun
 
         // Configure prisma mock: return a deal for "found" IDs, null for others
         let callIndex = 0;
-        vi.mocked(prisma.deal.findFirst).mockImplementation(async () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (prisma.deal.findFirst as any).mockImplementation(async () => {
           const isFound = foundSet.has(callIndex);
           callIndex++;
           if (isFound) {
@@ -103,9 +104,9 @@ describe('Feature: deals-module-modernization, Property 6: Bulk Operation Accoun
               value: 1000,
               createdAt: new Date(),
               updatedAt: new Date(),
-            } as never;
+            };
           }
-          return null as never;
+          return null;
         });
 
         vi.mocked(prisma.deal.update).mockResolvedValue({} as never);
@@ -186,13 +187,14 @@ describe('Feature: deals-module-modernization, Property 6: Bulk Operation Accoun
         } as never);
 
         let updateCallIndex = 0;
-        vi.mocked(prisma.deal.update).mockImplementation(async () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (prisma.deal.update as any).mockImplementation(async () => {
           const shouldFail = failOnUpdate[updateCallIndex];
           updateCallIndex++;
           if (shouldFail) {
             throw new Error('Simulated update failure');
           }
-          return {} as never;
+          return {};
         });
 
         const result = await bulkArchive(tenantId, userId, { dealIds });

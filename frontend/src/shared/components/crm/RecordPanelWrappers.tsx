@@ -145,6 +145,7 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
   // Local UI states for inline forms
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [showDealForm, setShowDealForm] = useState(false);
+  const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
 
   const [customFields, setCustomFields] = useState<CustomFieldItem[]>([
     { id: 'cf-1', name: 'Product Interest Keywords', type: 'text', value: 'Security, Cabling, CCTV' },
@@ -160,7 +161,7 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
     (t: Task) => (t as any).leadId === lead.id || (t as any).contactId === lead.id || t.title.toLowerCase().includes(leadName.toLowerCase())
   );
   const leadDeals = deals.filter(
-    (d: Deal) => d.leadId === lead.id || (lead.companyName && d.companyName === lead.companyName)
+    (d: Deal) => d.leadId === lead.id || (d.leadIds ?? []).includes(lead.id)
   );
 
   // Dynamic activity generator
@@ -396,7 +397,7 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
       content: (
         <div className="divide-y divide-border">
           {leadDeals.map((d) => (
-            <Link key={d.id} href={`/crm/deals?id=${d.id}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 hover:bg-secondary/50 transition-colors cursor-pointer group block">
+            <div key={d.id} onClick={() => setSelectedDealId(d.id)} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 hover:bg-secondary/50 transition-colors cursor-pointer group">
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-foreground group-hover:text-primary transition-colors">{d.title}</p>
                 <p className="text-xs text-muted-foreground">
@@ -404,7 +405,7 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
                 </p>
               </div>
               <Chip className="bg-warning/20 text-warning-foreground">In Progress</Chip>
-            </Link>
+            </div>
           ))}
 
           {showDealForm && (
@@ -499,7 +500,10 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
     },
   ];
 
+  const selectedDeal = selectedDealId ? leadDeals.find(d => d.id === selectedDealId) ?? null : null;
+
   return (
+    <>
     <RecordPanel
       open={open}
       onOpenChange={onOpenChange}
@@ -556,6 +560,14 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
         },
       ]}
     />
+
+    {/* DealPanel overlay — opens when a deal is clicked in the list */}
+    <DealPanel
+      open={!!selectedDeal}
+      onOpenChange={(isOpen) => { if (!isOpen) setSelectedDealId(null); }}
+      deal={selectedDeal}
+    />
+    </>
   );
 }
 
@@ -577,12 +589,15 @@ export function ContactPanel({ open, onOpenChange, contact, onEdit }: ContactPan
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [customFields, setCustomFields] = useState<CustomFieldItem[]>([]);
   const [files, setFiles] = useState<FileRecord[]>([]);
+  const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
 
   if (!contact) return null;
 
   const contactName = `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || 'Contact';
   const relatedAccount = organizations.find((o) => o.id === contact.accountId || o.name === contact.companyName);
-  const contactDeals = deals.filter((d) => d.contactId === contact.id || d.leadId === contact.id);
+  const contactDeals = deals.filter(
+    (d) => (d.contactIds ?? []).includes(contact.id) || d.contactId === contact.id
+  );
   const contactTasks = tasks.filter(
     (t: Task) => (t as any).contactId === contact.id || t.title.toLowerCase().includes(contactName.toLowerCase())
   );
@@ -745,13 +760,18 @@ export function ContactPanel({ open, onOpenChange, contact, onEdit }: ContactPan
       content: (
         <div className="divide-y divide-border text-sm">
           {contactDeals.map((d) => (
-            <Link key={d.id} href={`/crm/deals?id=${d.id}`} className="p-3 flex justify-between items-center hover:bg-secondary/50 transition-colors cursor-pointer group block">
+            <button
+              key={d.id}
+              type="button"
+              onClick={() => setSelectedDealId(d.id)}
+              className="w-full p-3 flex justify-between items-center hover:bg-secondary/50 transition-colors cursor-pointer group text-left"
+            >
               <div>
                 <p className="font-medium text-foreground group-hover:text-primary transition-colors">{d.title}</p>
                 <p className="text-xs text-muted-foreground">₱{d.value?.toLocaleString() ?? 0}</p>
               </div>
               <Chip>Active</Chip>
-            </Link>
+            </button>
           ))}
           {contactDeals.length === 0 && (
             <p className="p-4 text-xs text-muted-foreground text-center">No deals connected.</p>
@@ -826,6 +846,7 @@ export function ContactPanel({ open, onOpenChange, contact, onEdit }: ContactPan
   ];
 
   return (
+    <>
     <RecordPanel
       open={open}
       onOpenChange={onOpenChange}
@@ -878,6 +899,16 @@ export function ContactPanel({ open, onOpenChange, contact, onEdit }: ContactPan
         },
       ]}
     />
+
+    {/* DealPanel overlay — opens when a deal is clicked */}
+    {selectedDealId && (
+      <DealPanel
+        open={!!selectedDealId}
+        onOpenChange={(isOpen) => { if (!isOpen) setSelectedDealId(null); }}
+        deal={deals.find((d) => d.id === selectedDealId) ?? null}
+      />
+    )}
+    </>
   );
 }
 
@@ -898,12 +929,14 @@ export function AccountPanel({ open, onOpenChange, account, onEdit }: AccountPan
   // Local UI states
   const [customFields, setCustomFields] = useState<CustomFieldItem[]>([]);
   const [files, setFiles] = useState<FileRecord[]>([]);
+  const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
 
   if (!account) return null;
 
   const accountName = account.name || 'Account';
   const relatedContacts = contacts.filter((c) => c.accountId === account.id || c.companyName === accountName);
-  const relatedDeals = deals.filter((d) => d.organizationId === account.id || d.companyName === accountName);
+  const relatedDeals = deals.filter((d: Deal) => d.organizationId === account.id);
+  const selectedDeal = selectedDealId ? deals.find((d) => d.id === selectedDealId) ?? null : null;
 
   // Overflow menu items for RecordActionBar
   const overflowItems: OverflowMenuItem[] = [
@@ -1016,13 +1049,13 @@ export function AccountPanel({ open, onOpenChange, account, onEdit }: AccountPan
       content: (
         <div className="divide-y divide-border text-sm">
           {relatedDeals.map((d) => (
-            <Link key={d.id} href={`/crm/deals?id=${d.id}`} className="p-3 flex justify-between items-center hover:bg-secondary/50 transition-colors cursor-pointer group block">
+            <div key={d.id} onClick={() => setSelectedDealId(d.id)} className="p-3 flex justify-between items-center hover:bg-secondary/50 transition-colors cursor-pointer group">
               <div>
                 <p className="font-medium text-foreground group-hover:text-primary transition-colors">{d.title}</p>
                 <p className="text-xs text-muted-foreground">₱{d.value?.toLocaleString() ?? 0}</p>
               </div>
               <Chip>In Progress</Chip>
-            </Link>
+            </div>
           ))}
           {relatedDeals.length === 0 && (
             <p className="p-4 text-xs text-muted-foreground text-center">No active deals for this account.</p>
@@ -1097,52 +1130,61 @@ export function AccountPanel({ open, onOpenChange, account, onEdit }: AccountPan
   ];
 
   return (
-    <RecordPanel
-      open={open}
-      onOpenChange={onOpenChange}
-      module="account"
-      record={{
-        id: account.id,
-        title: accountName,
-        subtitle: account.industry || account.website || 'Account Profile',
-        company: accountName,
-        tags: [account.size, account.industry].filter(Boolean) as string[],
-      }}
-      statuses={DEFAULT_ACCOUNT_STATUSES}
-      status={account.customerType || 'Prospect'}
-      onStatusChange={async (s) => {
-        await updateOrganization(account.id, { customerType: s } as any);
-        toast.success(`Classification updated to ${s}`);
-      }}
-      activity={[
-        {
-          id: '1',
-          kind: 'created',
-          title: `Account established for ${accountName}`,
-          when: account.createdAt ? new Date(account.createdAt).toLocaleDateString() : 'Recent',
-        },
-      ]}
-      sections={sections}
-      manageMenu={[
-        {
-          label: 'Edit Account',
-          icon: Pencil,
-          onSelect: () => onEdit?.(account),
-        },
-        {
-          label: 'Delete Account',
-          icon: Trash2,
-          destructive: true,
-          onSelect: async () => {
-            if (window.confirm(`Delete account ${accountName}?`)) {
-              await deleteOrganization(account.id);
-              onOpenChange(false);
-              toast.success('Account deleted');
-            }
+    <>
+      <RecordPanel
+        open={open}
+        onOpenChange={onOpenChange}
+        module="account"
+        record={{
+          id: account.id,
+          title: accountName,
+          subtitle: account.industry || account.website || 'Account Profile',
+          company: accountName,
+          tags: [account.size, account.industry].filter(Boolean) as string[],
+        }}
+        statuses={DEFAULT_ACCOUNT_STATUSES}
+        status={account.customerType || 'Prospect'}
+        onStatusChange={async (s) => {
+          await updateOrganization(account.id, { customerType: s } as any);
+          toast.success(`Classification updated to ${s}`);
+        }}
+        activity={[
+          {
+            id: '1',
+            kind: 'created',
+            title: `Account established for ${accountName}`,
+            when: account.createdAt ? new Date(account.createdAt).toLocaleDateString() : 'Recent',
           },
-        },
-      ]}
-    />
+        ]}
+        sections={sections}
+        manageMenu={[
+          {
+            label: 'Edit Account',
+            icon: Pencil,
+            onSelect: () => onEdit?.(account),
+          },
+          {
+            label: 'Delete Account',
+            icon: Trash2,
+            destructive: true,
+            onSelect: async () => {
+              if (window.confirm(`Delete account ${accountName}?`)) {
+                await deleteOrganization(account.id);
+                onOpenChange(false);
+                toast.success('Account deleted');
+              }
+            },
+          },
+        ]}
+      />
+      {selectedDeal && (
+        <DealPanel
+          open={!!selectedDeal}
+          onOpenChange={(isOpen) => { if (!isOpen) setSelectedDealId(null); }}
+          deal={selectedDeal}
+        />
+      )}
+    </>
   );
 }
 

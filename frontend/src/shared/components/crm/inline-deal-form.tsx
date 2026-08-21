@@ -5,9 +5,18 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { ChevronDown, DollarSign, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/shared/components/ui/button';
 import { useData } from '@/store/DataContext';
 import { cn } from '@/lib/utils';
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function getDatePlusDays(days: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().split('T')[0]; // "YYYY-MM-DD"
+}
 
 // ── Zod Schema ─────────────────────────────────────────────────────────────
 
@@ -56,19 +65,24 @@ export function InlineDealForm({
 }: InlineDealFormProps): React.ReactElement {
   const { pipelines } = useData();
 
+  // Auto-select first pipeline and first stage as defaults
+  const defaultPipeline = pipelines[0];
+  const defaultStage = defaultPipeline?.stages?.[0];
+
   const {
     register,
     handleSubmit,
     watch,
+    reset,
     formState: { errors, isValid, isSubmitting },
   } = useForm<InlineDealFormData>({
     resolver: zodResolver(InlineDealSchema),
     defaultValues: {
       title: '',
       value: undefined,
-      pipelineId: '',
-      stageId: '',
-      expectedCloseDate: '',
+      pipelineId: defaultPipeline?.id || '',
+      stageId: defaultStage?.id || '',
+      expectedCloseDate: getDatePlusDays(30),
       confidence: 50,
       description: '',
     },
@@ -106,6 +120,9 @@ export function InlineDealForm({
     }
 
     await onSubmit(payload);
+    reset();
+    onCancel?.();
+    toast.success('Deal created successfully');
   };
 
   // ── Shared Styling ──────────────────────────────────────────────────────

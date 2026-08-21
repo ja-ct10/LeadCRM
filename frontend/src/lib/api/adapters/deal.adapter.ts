@@ -44,12 +44,30 @@ function toISODatetime(value: string | undefined | null): string | undefined {
 
 /**
  * Maps and formats fields, and strips frontend-only properties.
+ * Normalizes singular leadId/contactId into their respective arrays with deduplication.
+ * Arrays are omitted entirely when empty (never sends undefined/null values).
  * 
  * @param data - Partial frontend deal data
  * @returns Object formatted for backend CreateDealDto
  */
 export function toBackendCreateDeal(data: Partial<any>): any {
-  return {
+  // Normalize leadIds: merge singular leadId into leadIds array, deduplicate
+  let leadIds: string[] | undefined;
+  if (data.leadIds && data.leadIds.length > 0) {
+    leadIds = [...new Set([...(data.leadId ? [data.leadId] : []), ...data.leadIds])];
+  } else if (data.leadId) {
+    leadIds = [data.leadId];
+  }
+
+  // Normalize contactIds: merge singular contactId into contactIds array, deduplicate
+  let contactIds: string[] | undefined;
+  if (data.contactIds && data.contactIds.length > 0) {
+    contactIds = [...new Set([...(data.contactId ? [data.contactId] : []), ...data.contactIds])];
+  } else if (data.contactId) {
+    contactIds = [data.contactId];
+  }
+
+  const result: any = {
     pipelineId: data.pipelineId || '',
     stageId: data.stageId || '',
     title: data.title || 'Untitled Deal',
@@ -61,10 +79,13 @@ export function toBackendCreateDeal(data: Partial<any>): any {
     leadSource: data.leadSource || undefined,
     organizationId: data.companyId || data.organizationId || undefined,
     assignedUserId: data.assignedUserId || undefined,
-    contactIds: Array.isArray(data.contactIds) 
-      ? data.contactIds 
-      : (data.contactId ? [data.contactId] : undefined),
   };
+
+  // Only include arrays if they have values — never send undefined/null
+  if (leadIds && leadIds.length > 0) result.leadIds = leadIds;
+  if (contactIds && contactIds.length > 0) result.contactIds = contactIds;
+
+  return result;
 }
 
 /**
@@ -116,21 +137,53 @@ export function toFrontendDeal(backendDeal: any): any {
 
   // Derive company name
   const companyName = backendDeal.organization?.name || '';
-  
-  // Derive contact person and contact IDs from contactDeals relation
+
+  // Extract leadIds from leadDeals junction
+  let leadIds: string[] = [];
+  let leadId: string | undefined;
+  let leadPerson: { id: string; firstName: string; lastName: string } | undefined;
+
+  if (backendDeal.leadDeals && Array.isArray(backendDeal.leadDeals)) {
+    leadIds = backendDeal.leadDeals
+      .map((ld: any) => ld?.lead?.id || ld?.leadId)
+      .filter(Boolean);
+    leadId = leadIds[0] || undefined;
+
+    const firstLead = backendDeal.leadDeals[0]?.lead;
+    if (firstLead) {
+      leadPerson = {
+        id: firstLead.id,
+        firstName: firstLead.firstName || '',
+        lastName: firstLead.lastName || '',
+      };
+    }
+  }
+
+  // Derive contact person and contact IDs — handle both contactDeals and customerDeals naming
   let contactPerson = '';
   let contactIds: string[] = [];
-  
+
   if (backendDeal.contactDeals && Array.isArray(backendDeal.contactDeals)) {
     contactIds = backendDeal.contactDeals
-      .map((cd: any) => cd?.contact?.id)
+      .map((cd: any) => cd?.contact?.id || cd?.customerId)
       .filter(Boolean);
-      
+
     const firstContact = backendDeal.contactDeals[0]?.contact;
     if (firstContact) {
       contactPerson = [firstContact.firstName, firstContact.lastName]
         .filter(Boolean)
         .join(' ') || firstContact.email || '';
+    }
+  } else if (backendDeal.customerDeals && Array.isArray(backendDeal.customerDeals)) {
+    contactIds = backendDeal.customerDeals
+      .map((cd: any) => cd?.customer?.id || cd?.customerId)
+      .filter(Boolean);
+
+    const firstCustomer = backendDeal.customerDeals[0]?.customer;
+    if (firstCustomer) {
+      contactPerson = [firstCustomer.firstName, firstCustomer.lastName]
+        .filter(Boolean)
+        .join(' ') || firstCustomer.email || '';
     }
   }
 
@@ -161,6 +214,9 @@ export function toFrontendDeal(backendDeal: any): any {
     stageId: backendDeal.stageId || '',
     title: backendDeal.title || 'Untitled Deal',
     organizationId: backendDeal.organizationId || backendDeal.organization?.id || undefined,
+    leadId: leadId,
+    leadIds: leadIds.length > 0 ? leadIds : undefined,
+    leadPerson: leadPerson,
     contactId: contactIds.length > 0 ? contactIds[0] : undefined,
     contactIds: contactIds,
     companyId: backendDeal.organizationId || backendDeal.organization?.id || undefined,
