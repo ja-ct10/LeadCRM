@@ -26,25 +26,11 @@ import { DealFormSheet } from '@/features/tenant/crm/deals/ui/deal-form';
 import type { CreateDealFormData, UpdateDealFormData } from '@/features/tenant/crm/deals/ui/deal-form';
 import { PipelineKanbanBoard } from './pipeline-kanban-board';
 import { PipelineTableView } from './pipeline-table-view';
-import PipelineVelocityChart from './pipeline-velocity-chart';
 import { PIPELINE_TEMPLATES, STAGE_BADGE_CLASSES, DEFAULT_STAGE_BADGE } from './pipeline-templates';
 import { usePipelineViewMode } from '../hooks/use-pipeline-view-mode';
 import ForecastBar from './forecast-bar';
 import type { ForecastResult } from './forecast-bar';
 import { formatCurrency, getTenantCurrency } from '@/shared/utils/currency';
-
-// ── Velocity API response type ─────────────────────────────────────────────────
-interface VelocityStage {
-  stageId: string;
-  name: string;
-  avgMinutes: number;
-  dealCount: number;
-}
-
-interface VelocityResult {
-  stages: VelocityStage[];
-  avgTotalMinutes: number;
-}
 
 // ── Table columns config for PipelineTableView ────────────────────────────────
 const TABLE_COLUMNS = [
@@ -223,114 +209,6 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
   }, [deals, activePipelineId, debouncedSearchQuery, filterStatus, filterStages, filterStaff, filterPriority, activePipeline]);
 
   const selectedDeal = deals.find(d => d.id === selectedDealId);
-  // ── Velocity data (computed client-side from deal history — mock fallback) ──
-  const clientVelocityData = useMemo(() => {
-    if (!activePipeline) return null;
-    const activePipelineDeals = deals.filter(d => d.pipelineId === activePipelineId && !d.isArchived);
-
-    const stages = activePipeline.stages.map((stage: Stage, index: number) => {
-      let totalMinutes = 0;
-      let dealVisitCount = 0;
-
-      activePipelineDeals.forEach(deal => {
-        const history = deal.history || [];
-        const isCurrentlyInStage = deal.stageId === stage.id;
-        let enteredTime: number | null = null;
-        let leftTime: number | null = null;
-        const dealCreatedTime = new Date(deal.createdAt || Date.now()).getTime();
-
-        if (history.length === 0) {
-          if (isCurrentlyInStage) {
-            enteredTime = dealCreatedTime;
-            leftTime = Date.now();
-          }
-        } else {
-          const sortedHistory = [...history].sort((a, b) =>
-            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-          );
-          if (index === 0 && sortedHistory[0]?.stageId !== stage.id) {
-            enteredTime = dealCreatedTime;
-          }
-          sortedHistory.forEach((h, hIdx) => {
-            if (h.stageId === stage.id) {
-              enteredTime = new Date(h.timestamp).getTime();
-              if (hIdx < sortedHistory.length - 1) {
-                leftTime = new Date(sortedHistory[hIdx + 1].timestamp).getTime();
-              } else if (isCurrentlyInStage) {
-                leftTime = Date.now();
-              }
-            } else if (enteredTime && !leftTime) {
-              leftTime = new Date(h.timestamp).getTime();
-            }
-          });
-        }
-
-        if (enteredTime && leftTime) {
-          const minutes = (leftTime - enteredTime) / (1000 * 60);
-          totalMinutes += Math.max(30, minutes);
-          dealVisitCount++;
-        } else if (isCurrentlyInStage) {
-          const minutes = (Date.now() - dealCreatedTime) / (1000 * 60);
-          totalMinutes += Math.max(30, minutes);
-          dealVisitCount++;
-        }
-      });
-
-      const avgMinutes = dealVisitCount > 0 ? Math.round(totalMinutes / dealVisitCount) : 0;
-
-      return {
-        stageId: stage.id,
-        name: stage.name,
-        avgMinutes,
-        dealCount: dealVisitCount,
-      };
-    });
-
-    const totalAvg = stages.length > 0
-      ? Math.round(stages.reduce((sum, s) => sum + s.avgMinutes, 0) / stages.length)
-      : 0;
-
-    return { stages, avgTotalMinutes: totalAvg };
-  }, [activePipeline, deals, activePipelineId]);
-
-  // ── Velocity data from server API (production mode) ──────────────────────
-  const [apiVelocityData, setApiVelocityData] = useState<VelocityResult | null>(null);
-  const [velocityLoading, setVelocityLoading] = useState(false);
-
-  useEffect(() => {
-    if (USE_MOCK_DATA || !activePipelineId) return;
-
-    let cancelled = false;
-    setVelocityLoading(true);
-
-    apiClient
-      .get<{ success: boolean; data: VelocityResult }>('/crm/deals/velocity', {
-        params: { pipelineId: activePipelineId },
-      })
-      .then((response) => {
-        if (!cancelled) {
-          setApiVelocityData(response.data);
-        }
-      })
-      .catch(() => {
-        // Silently fall back to client-computed data on failure
-        if (!cancelled) {
-          setApiVelocityData(null);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setVelocityLoading(false);
-        }
-      });
-
-    return () => { cancelled = true; };
-  }, [activePipelineId]);
-
-  // Resolve velocity: prefer server data in production mode, fallback to client
-  const velocityData = USE_MOCK_DATA ? clientVelocityData : (apiVelocityData ?? clientVelocityData);
-  const isVelocityLoading = !USE_MOCK_DATA && velocityLoading;
-
   // ── Pipeline pagination state (production mode — grouped-by-stage) ───────
   const [stagePageMap, setStagePageMap] = useState<Record<string, number>>({});
   const [paginationLoadingStages, setPaginationLoadingStages] = useState<Set<string>>(new Set());
@@ -696,11 +574,6 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
           serverForecast={forecastData}
           tenant={tenant}
         />
-
-        {/* Velocity Chart */}
-        <ModuleErrorBoundary fallbackLabel="Velocity Chart">
-          <PipelineVelocityChart velocityData={velocityData} isLoading={isVelocityLoading} />
-        </ModuleErrorBoundary>
 
         {/* Apply Template Banner */}
         {(() => {

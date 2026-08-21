@@ -61,7 +61,6 @@ router.patch( '/companies/:id/archive', authorize('accounts.delete'), companyCon
 // ── Deals ─────────────────────────────────────────────────────────────────
 router.get(   '/deals',              authorize('deals.view'),   dealController.getDeals);
 router.get(   '/deals/forecast',     authorize('deals.view'),   dealController.getForecast);
-router.get(   '/deals/velocity',     authorize('deals.view'),   dealController.getVelocity);
 // Bulk operations (must be before :id routes to avoid param capture)
 router.post(  '/deals/bulk/archive',  authorize('deals.delete'), bulkDealsController.bulkArchive);
 router.post(  '/deals/bulk/reassign', authorize('deals.edit'),   bulkDealsController.bulkReassign);

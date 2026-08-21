@@ -1,7 +1,6 @@
 ﻿import { Request, Response, NextFunction } from 'express';
 import * as service from './deals.service';
 import * as forecastService from './forecast.service';
-import * as velocityService from './velocity.service';
 import { DealsQuerySchema } from './deals.dto';
 
 export async function getDeals(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -73,21 +72,6 @@ export async function getForecast(req: Request, res: Response, next: NextFunctio
     const result = await forecastService.computeForecast(
       req.user!.tenantId,
       pipelineId ? String(pipelineId) : undefined
-    );
-    res.json({ success: true, data: result });
-  } catch (err) { next(err); }
-}
-
-export async function getVelocity(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const { pipelineId, dateFrom, dateTo } = req.query;
-    const result = await velocityService.computeVelocity(
-      req.user!.tenantId,
-      {
-        pipelineId: pipelineId ? String(pipelineId) : undefined,
-        dateFrom: dateFrom ? String(dateFrom) : undefined,
-        dateTo: dateTo ? String(dateTo) : undefined,
-      }
     );
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
