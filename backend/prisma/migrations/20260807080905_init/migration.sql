@@ -1,1 +1,5 @@
--- Invalid alter table dropped to fix shadow db generation
+-- AlterTable
+ALTER TABLE "Deal" ALTER COLUMN "tags" DROP DEFAULT;
+
+-- AlterTable
+ALTER TABLE "Stage" ALTER COLUMN "requiredFields" DROP DEFAULT;
