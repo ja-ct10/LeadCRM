@@ -1,0 +1,132 @@
+{
+  "pbtResults": {
+    "1. Write bug condition exploration test": {
+      "status": "passed",
+      "failingExample": "Counterexample 1: [{\"table\":\"Stage\",\"column\":\"requiredFields\"}] — Migration 20260807080905_init references \"Stage\".\"requiredFields\" via ALTER COLUMN, but this column is only created in later migration \"20260807130000_add_stage_governance\" (position 10). Column does not exist at execution point of migration 6.\n\nCounterexample 2: Migration SQL content: \"-- AlterTable\\r\\nALTER TABLE \\\"Deal\\\" ALTER COLUMN \\\"tags\\\" DROP DEFAULT;\\r\\n\\r\\n-- AlterTable\\r\\nALTER TABLE \\\"Stage\\\" ALTER COLUMN \\\"requiredFields\\\" DROP DEFAULT;\\r\\n\" — contains ALTER TABLE \"Stage\" ALTER COLUMN \"requiredFields\" DROP DEFAULT but \"requiredFields\" column does not exist until migration 20260807130000_add_stage_governance (position 10 in sequence). This causes PostgreSQL error 42703 on fresh deployments.",
+      "lastRunTimestamp": 1787306453648
+    },
+    "2. Write preservation property tests (BEFORE implementing fix)": {
+      "status": "passed",
+      "lastRunTimestamp": 1787306611175
+    },
+    "3.2 Verify bug condition exploration test now passes": {
+      "status": "passed",
+      "lastRunTimestamp": 1787306743479
+    },
+    "3.3 Verify preservation tests still pass": {
+      "status": "passed",
+      "lastRunTimestamp": 1787306745498
+    }
+  },
+  "executionHistory": {
+    "1. Write bug condition exploration test": [
+      {
+        "executionId": "72ff6d7e-b06b-48e4-842d-1e65f408aad4",
+        "chatSessionId": "sess_8ed9a211-3d3c-45f6-976e-a5e59fadeb23",
+        "timestamp": 1787306311481
+      },
+      {
+        "executionId": "72ff6d7e-b06b-48e4-842d-1e65f408aad4",
+        "chatSessionId": "sess_8ed9a211-3d3c-45f6-976e-a5e59fadeb23",
+        "timestamp": 1787306325922
+      },
+      {
+        "executionId": "72ff6d7e-b06b-48e4-842d-1e65f408aad4",
+        "chatSessionId": "sess_8ed9a211-3d3c-45f6-976e-a5e59fadeb23",
+        "timestamp": 1787306469560
+      }
+    ],
+    "2. Write preservation property tests (BEFORE implementing fix)": [
+      {
+        "executionId": "72ff6d7e-b06b-48e4-842d-1e65f408aad4",
+        "chatSessionId": "sess_8ed9a211-3d3c-45f6-976e-a5e59fadeb23",
+        "timestamp": 1787306311612
+      },
+      {
+        "executionId": "72ff6d7e-b06b-48e4-842d-1e65f408aad4",
+        "chatSessionId": "sess_8ed9a211-3d3c-45f6-976e-a5e59fadeb23",
+        "timestamp": 1787306474584
+      },
+      {
+        "executionId": "72ff6d7e-b06b-48e4-842d-1e65f408aad4",
+        "chatSessionId": "sess_8ed9a211-3d3c-45f6-976e-a5e59fadeb23",
+        "timestamp": 1787306631196
+      }
+    ],
+    "3.1 Implement the fix": [
+      {
+        "executionId": "72ff6d7e-b06b-48e4-842d-1e65f408aad4",
+        "chatSessionId": "sess_8ed9a211-3d3c-45f6-976e-a5e59fadeb23",
+        "timestamp": 1787306311670
+      },
+      {
+        "executionId": "72ff6d7e-b06b-48e4-842d-1e65f408aad4",
+        "chatSessionId": "sess_8ed9a211-3d3c-45f6-976e-a5e59fadeb23",
+        "timestamp": 1787306636083
+      },
+      {
+        "executionId": "72ff6d7e-b06b-48e4-842d-1e65f408aad4",
+        "chatSessionId": "sess_8ed9a211-3d3c-45f6-976e-a5e59fadeb23",
+        "timestamp": 1787306701603
+      }
+    ],
+    "3.2 Verify bug condition exploration test now passes": [
+      {
+        "executionId": "72ff6d7e-b06b-48e4-842d-1e65f408aad4",
+        "chatSessionId": "sess_8ed9a211-3d3c-45f6-976e-a5e59fadeb23",
+        "timestamp": 1787306311720
+      },
+      {
+        "executionId": "72ff6d7e-b06b-48e4-842d-1e65f408aad4",
+        "chatSessionId": "sess_8ed9a211-3d3c-45f6-976e-a5e59fadeb23",
+        "timestamp": 1787306706719
+      },
+      {
+        "executionId": "72ff6d7e-b06b-48e4-842d-1e65f408aad4",
+        "chatSessionId": "sess_8ed9a211-3d3c-45f6-976e-a5e59fadeb23",
+        "timestamp": 1787306759414
+      }
+    ],
+    "3.3 Verify preservation tests still pass": [
+      {
+        "executionId": "72ff6d7e-b06b-48e4-842d-1e65f408aad4",
+        "chatSessionId": "sess_8ed9a211-3d3c-45f6-976e-a5e59fadeb23",
+        "timestamp": 1787306311784
+      },
+      {
+        "executionId": "72ff6d7e-b06b-48e4-842d-1e65f408aad4",
+        "chatSessionId": "sess_8ed9a211-3d3c-45f6-976e-a5e59fadeb23",
+        "timestamp": 1787306707849
+      },
+      {
+        "executionId": "72ff6d7e-b06b-48e4-842d-1e65f408aad4",
+        "chatSessionId": "sess_8ed9a211-3d3c-45f6-976e-a5e59fadeb23",
+        "timestamp": 1787306760414
+      }
+    ],
+    "4. Checkpoint - Ensure all tests pass and validate schema": [
+      {
+        "executionId": "72ff6d7e-b06b-48e4-842d-1e65f408aad4",
+        "chatSessionId": "sess_8ed9a211-3d3c-45f6-976e-a5e59fadeb23",
+        "timestamp": 1787306311851
+      },
+      {
+        "executionId": "72ff6d7e-b06b-48e4-842d-1e65f408aad4",
+        "chatSessionId": "sess_8ed9a211-3d3c-45f6-976e-a5e59fadeb23",
+        "timestamp": 1787306766068
+      },
+      {
+        "executionId": "72ff6d7e-b06b-48e4-842d-1e65f408aad4",
+        "chatSessionId": "sess_8ed9a211-3d3c-45f6-976e-a5e59fadeb23",
+        "timestamp": 1787306838844
+      }
+    ],
+    "3. Fix migration `20260807080905_init` — remove invalid requiredFields reference": [
+      {
+        "executionId": "72ff6d7e-b06b-48e4-842d-1e65f408aad4",
+        "chatSessionId": "sess_8ed9a211-3d3c-45f6-976e-a5e59fadeb23",
+        "timestamp": 1787306760581
+      }
+    ]
+  }
+}
