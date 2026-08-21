@@ -320,7 +320,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
     }
   };
 
-  const handleDealDragEnd = useCallback((dealId: string, newStageId: string): void => {
+  const handleDealDragEnd = useCallback(async (dealId: string, newStageId: string): Promise<void> => {
     const deal = deals.find(d => d.id === dealId);
     if (!deal) return;
 
@@ -351,13 +351,17 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
       });
       if (missing.length > 0) {
         toast.error(`Cannot move to "${targetStage.name}": missing ${missing.join(', ')}`);
-        return;
+        throw new Error(`Missing required fields: ${missing.join(', ')}`);
       }
     }
 
-    moveDealStage(dealId, newStageId)
-      .then(() => toast.success(`Deal moved to ${targetStage.name}`))
-      .catch((err: unknown) => toast.error(err instanceof Error ? err.message : 'Failed to move deal'));
+    try {
+      await moveDealStage(dealId, newStageId);
+      toast.success(`Deal moved to ${targetStage.name}`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to move deal');
+      throw err;
+    }
   }, [deals, activePipeline, moveDealStage]);
 
   const handleSaveLostReason = async (): Promise<void> => {
