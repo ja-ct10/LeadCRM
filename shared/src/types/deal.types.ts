@@ -21,6 +21,7 @@ export interface Deal {
   title: string;
   value?: number;
   currency?: string;
+  billingFrequency?: 'monthly' | 'one_time' | 'annual' | 'quarterly';
   priority: DealPriority;
   expectedCloseDate?: string;
   description?: string;

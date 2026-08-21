@@ -1468,7 +1468,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!USE_MOCK_DATA) {
       try {
         const res = await pipelineService.moveDealStage(id, { stageId, note, lostReason, handoff });
-        const deal = toFrontendDeal((res as any).data ?? res) as Deal;
+        const responseData = (res as any).data ?? res;
+        const rawDeal = responseData.deal ?? responseData;
+        const deal = toFrontendDeal(rawDeal) as Deal;
         setDeals((prev) => prev.map((d) => (d.id === id ? deal : d)));
 
         const pLine = pipelines.find((p) => p.id === deal.pipelineId);
@@ -1745,6 +1747,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
           dueDate:        taskData.dueDate ? (taskData.dueDate.includes('T') ? taskData.dueDate : `${taskData.dueDate}T00:00:00.000Z`) : new Date(Date.now() + 7 * 86400000).toISOString(),
           assignedUserId: taskData.assignedUserId,
           dealId:         taskData.dealId || undefined,
+          leadId:         taskData.leadId || undefined,
+          accountId:      taskData.accountId || undefined,
           contactId:      taskData.contactId || undefined,
           organizationId: taskData.organizationId || undefined,
         };

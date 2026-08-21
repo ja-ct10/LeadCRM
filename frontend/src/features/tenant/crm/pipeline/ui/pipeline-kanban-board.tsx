@@ -50,7 +50,7 @@ interface PipelineKanbanBoardProps {
   canDelete: boolean;
   currencyConfig?: CurrencyConfig;
   onDealClick: (deal: Deal) => void;
-  onDealDragEnd: (dealId: string, newStageId: string) => void;
+  onDealDragEnd: (dealId: string, newStageId: string) => Promise<void>;
   onAddDeal: (stageId: string) => void;
   onLoadMore: (stageId: string) => void;
   loadingStages: Set<string>;
@@ -397,7 +397,6 @@ export function PipelineKanbanBoard({
     const deal = deals.find((d) => d.id === event.active.id);
     if (deal) {
       setActiveDeal(deal);
-      setOptimisticStageMap({});
     }
   };
 
@@ -436,6 +435,22 @@ export function PipelineKanbanBoard({
     }
   };
 
+  // Clear optimistic entries once deals state confirms the stage move
+  React.useEffect(() => {
+    if (Object.keys(optimisticStageMap).length === 0) return;
+    setOptimisticStageMap((prev) => {
+      const next: Record<string, string> = {};
+      for (const [dealId, targetStageId] of Object.entries(prev)) {
+        const deal = deals.find((d) => d.id === dealId);
+        // Keep entry only if the deal's stageId hasn't caught up yet
+        if (deal && deal.stageId !== targetStageId) {
+          next[dealId] = targetStageId;
+        }
+      }
+      return Object.keys(next).length === Object.keys(prev).length ? prev : next;
+    });
+  }, [deals, optimisticStageMap]);
+
   const handleDragEnd = (event: DragEndEvent): void => {
     const { active, over } = event;
     const activeId = String(active.id);
@@ -444,19 +459,37 @@ export function PipelineKanbanBoard({
     const optimisticTarget = optimisticStageMap[activeId] ?? null;
 
     setActiveDeal(null);
-    setOptimisticStageMap({});
 
-    if (!over || !draggedDeal || !canEdit) return;
+    if (!over || !draggedDeal || !canEdit) {
+      // Drag cancelled — clear optimistic entry for this deal only
+      setOptimisticStageMap((prev) => {
+        const { [activeId]: _, ...rest } = prev;
+        return rest;
+      });
+      return;
+    }
 
     const overId = String(over.id);
 
     // Use optimistic target if dropped on self
     if (activeId === overId && optimisticTarget && optimisticTarget !== draggedDeal.stageId) {
-      onDealDragEnd(activeId, optimisticTarget);
+      onDealDragEnd(activeId, optimisticTarget).catch(() => {
+        setOptimisticStageMap((prev) => {
+          const { [activeId]: _, ...rest } = prev;
+          return rest;
+        });
+      });
       return;
     }
 
-    if (activeId === overId) return;
+    if (activeId === overId) {
+      // No move — clear optimistic entry for this deal
+      setOptimisticStageMap((prev) => {
+        const { [activeId]: _, ...rest } = prev;
+        return rest;
+      });
+      return;
+    }
 
     // Determine target stage
     let targetStageId: string | null = null;
@@ -471,7 +504,20 @@ export function PipelineKanbanBoard({
     }
 
     if (targetStageId && targetStageId !== draggedDeal.stageId) {
-      onDealDragEnd(activeId, targetStageId);
+      // Keep optimistic entry — it will be cleared by the useEffect once deals confirms
+      setOptimisticStageMap((prev) => ({ ...prev, [activeId]: targetStageId! }));
+      onDealDragEnd(activeId, targetStageId).catch(() => {
+        setOptimisticStageMap((prev) => {
+          const { [activeId]: _, ...rest } = prev;
+          return rest;
+        });
+      });
+    } else {
+      // No actual move — clear optimistic entry
+      setOptimisticStageMap((prev) => {
+        const { [activeId]: _, ...rest } = prev;
+        return rest;
+      });
     }
   };
 

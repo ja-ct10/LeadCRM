@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import {
   Info,
@@ -18,7 +18,9 @@ import {
   Plus,
   Paperclip,
   UserPlus,
+  ChevronDown,
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 
 import { RecordPanel, SmallAction, Chip } from './RecordPanel';
@@ -121,6 +123,528 @@ function EditableField({
 }
 
 /* -------------------------------------------------------------------------- */
+/*                         0b. EXPANDABLE INLINE CARDS                        */
+/* -------------------------------------------------------------------------- */
+
+const inlineInputCls =
+  'w-full bg-card border border-border rounded-md px-2.5 py-1.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-all focus:ring-2 focus:ring-ring/20 focus:border-primary dark:bg-card dark:border-border dark:text-foreground';
+const inlineSelectCls =
+  'w-full bg-card border border-border rounded-md pl-2.5 pr-7 py-1.5 text-sm text-foreground outline-none appearance-none cursor-pointer focus:ring-2 focus:ring-ring/20 focus:border-primary transition-all dark:bg-card dark:border-border dark:text-foreground [&>option]:bg-card';
+const inlineLabelCls = 'block text-xs text-muted-foreground mb-0.5';
+
+interface ExpandableDealCardProps {
+  deal: Deal;
+  isExpanded: boolean;
+  onToggle: () => void;
+  pipelines: Array<{ id: string; name: string; stages?: Array<{ id: string; name: string }> }>;
+  users: Array<{ id: string; firstName: string; lastName: string }>;
+  contacts: Array<{ id: string; firstName: string; lastName: string; email?: string }>;
+  onUpdate: (id: string, updates: Partial<Deal>) => Promise<void>;
+  onAddContact?: (data: any) => Promise<void>;
+}
+
+function ExpandableDealCard({ deal, isExpanded, onToggle, pipelines, users, contacts, onUpdate, onAddContact }: ExpandableDealCardProps) {
+  const currentPipeline = pipelines.find((p) => p.id === deal.pipelineId);
+  const stagesForPipeline = currentPipeline?.stages ?? [];
+
+  const [localValues, setLocalValues] = useState({
+    pipelineId: deal.pipelineId || '',
+    stageId: deal.stageId || '',
+    value: deal.value ?? 0,
+    priority: deal.priority || 'Medium',
+    expectedCloseDate: deal.expectedCloseDate?.split('T')[0] || '',
+    assignedUserId: (deal as any).assignedUserId || '',
+    contactId: deal.contactId || '',
+    billingFrequency: (deal as any).billingFrequency || '',
+    description: deal.description || '',
+  });
+  const [isDirty, setIsDirty] = useState(false);
+  const [showNewContactForm, setShowNewContactForm] = useState(false);
+  const [newContact, setNewContact] = useState({ firstName: '', lastName: '', email: '' });
+
+  // Reset local values when the deal prop changes
+  React.useEffect(() => {
+    setLocalValues({
+      pipelineId: deal.pipelineId || '',
+      stageId: deal.stageId || '',
+      value: deal.value ?? 0,
+      priority: deal.priority || 'Medium',
+      expectedCloseDate: deal.expectedCloseDate?.split('T')[0] || '',
+      assignedUserId: (deal as any).assignedUserId || '',
+      contactId: deal.contactId || '',
+      billingFrequency: (deal as any).billingFrequency || '',
+      description: deal.description || '',
+    });
+    setIsDirty(false);
+  }, [deal.id, deal.updatedAt]);
+
+  const updateLocal = (field: string, value: string | number) => {
+    setLocalValues((prev) => ({ ...prev, [field]: value }));
+    setIsDirty(true);
+  };
+
+  const handleSave = async () => {
+    try {
+      await onUpdate(deal.id, localValues as any);
+      setIsDirty(false);
+      toast.success('Deal updated successfully');
+    } catch {
+      toast.error('Failed to update deal');
+    }
+  };
+
+  const handleCancel = () => {
+    setLocalValues({
+      pipelineId: deal.pipelineId || '',
+      stageId: deal.stageId || '',
+      value: deal.value ?? 0,
+      priority: deal.priority || 'Medium',
+      expectedCloseDate: deal.expectedCloseDate?.split('T')[0] || '',
+      assignedUserId: (deal as any).assignedUserId || '',
+      contactId: deal.contactId || '',
+      billingFrequency: (deal as any).billingFrequency || '',
+      description: deal.description || '',
+    });
+    setIsDirty(false);
+  };
+
+  const handleCreateContact = async () => {
+    if (!newContact.firstName.trim()) {
+      toast.error('First name is required');
+      return;
+    }
+    try {
+      await onAddContact?.({ ...newContact });
+      setShowNewContactForm(false);
+      setNewContact({ firstName: '', lastName: '', email: '' });
+      toast.success('Contact created');
+    } catch {
+      toast.error('Failed to create contact');
+    }
+  };
+
+  // Get stages for currently selected pipeline in local state
+  const localPipeline = pipelines.find((p) => p.id === localValues.pipelineId);
+  const localStages = localPipeline?.stages ?? [];
+
+  return (
+    <div className="border-b border-border last:border-b-0">
+      {/* Collapsed header */}
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3 hover:bg-secondary/50 transition-colors cursor-pointer group text-left"
+      >
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-foreground group-hover:text-primary transition-colors">{deal.title}</p>
+          <p className="text-xs text-muted-foreground">
+            ₱{deal.value?.toLocaleString() ?? 0} · {deal.priority || 'Medium'}
+          </p>
+        </div>
+        <Chip className="bg-warning/20 text-warning-foreground">{deal.priority || 'Medium'}</Chip>
+        <ChevronDown
+          className={cn(
+            'h-4 w-4 text-muted-foreground transition-transform duration-200',
+            isExpanded && 'rotate-180'
+          )}
+        />
+      </button>
+
+      {/* Expanded area */}
+      <AnimatePresence initial={false}>
+        {isExpanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeInOut' }}
+            className="overflow-hidden"
+          >
+            <div className="border-t border-border px-4 py-2 space-y-2">
+              {/* Row 1: Pipeline + Stage */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className={inlineLabelCls}>Pipeline</label>
+                  <div className="relative">
+                    <select
+                      value={localValues.pipelineId}
+                      onChange={(e) => updateLocal('pipelineId', e.target.value)}
+                      className={inlineSelectCls}
+                    >
+                      <option value="">Select pipeline</option>
+                      {pipelines.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+                  </div>
+                </div>
+                <div>
+                  <label className={inlineLabelCls}>Stage</label>
+                  <div className="relative">
+                    <select
+                      value={localValues.stageId}
+                      onChange={(e) => updateLocal('stageId', e.target.value)}
+                      className={inlineSelectCls}
+                    >
+                      <option value="">Select stage</option>
+                      {localStages.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Row 2: Value + Billing Frequency */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className={inlineLabelCls}>Value (₱)</label>
+                  <input
+                    type="number"
+                    value={localValues.value}
+                    onChange={(e) => updateLocal('value', Number(e.target.value))}
+                    className={inlineInputCls}
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+                <div>
+                  <label className={inlineLabelCls}>Billing Frequency</label>
+                  <div className="relative">
+                    <select
+                      value={localValues.billingFrequency}
+                      onChange={(e) => updateLocal('billingFrequency', e.target.value)}
+                      className={inlineSelectCls}
+                    >
+                      <option value="">Select billing...</option>
+                      <option value="monthly">Monthly</option>
+                      <option value="quarterly">Quarterly</option>
+                      <option value="annual">Annual</option>
+                      <option value="one_time">One Time</option>
+                    </select>
+                    <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Row 3: Priority + Close Date */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className={inlineLabelCls}>Priority</label>
+                  <div className="relative">
+                    <select
+                      value={localValues.priority}
+                      onChange={(e) => updateLocal('priority', e.target.value)}
+                      className={inlineSelectCls}
+                    >
+                      <option value="Low">Low</option>
+                      <option value="Medium">Medium</option>
+                      <option value="High">High</option>
+                    </select>
+                    <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+                  </div>
+                </div>
+                <div>
+                  <label className={inlineLabelCls}>Close Date</label>
+                  <input
+                    type="date"
+                    value={localValues.expectedCloseDate}
+                    onChange={(e) => updateLocal('expectedCloseDate', e.target.value)}
+                    className={inlineInputCls}
+                  />
+                </div>
+              </div>
+
+              {/* Row 4: Contact + Assigned */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className={inlineLabelCls}>Contact</label>
+                  <div className="relative">
+                    <select
+                      value={localValues.contactId}
+                      onChange={(e) => {
+                        if (e.target.value === '__new__') {
+                          setShowNewContactForm(true);
+                        } else {
+                          updateLocal('contactId', e.target.value);
+                        }
+                      }}
+                      className={inlineSelectCls}
+                    >
+                      <option value="">Select contact...</option>
+                      {contacts.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.firstName} {c.lastName}{c.email ? ` (${c.email})` : ''}
+                        </option>
+                      ))}
+                      <option value="__new__">+ Create New Contact</option>
+                    </select>
+                    <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+                  </div>
+
+                  {/* Inline new contact form */}
+                  {showNewContactForm && (
+                    <div className="mt-2 p-2 border border-dashed border-border rounded-md space-y-2 bg-muted/30 dark:bg-muted/10">
+                      <input
+                        placeholder="First Name"
+                        value={newContact.firstName}
+                        onChange={(e) => setNewContact((p) => ({ ...p, firstName: e.target.value }))}
+                        className={inlineInputCls}
+                      />
+                      <input
+                        placeholder="Last Name"
+                        value={newContact.lastName}
+                        onChange={(e) => setNewContact((p) => ({ ...p, lastName: e.target.value }))}
+                        className={inlineInputCls}
+                      />
+                      <input
+                        placeholder="Email"
+                        type="email"
+                        value={newContact.email}
+                        onChange={(e) => setNewContact((p) => ({ ...p, email: e.target.value }))}
+                        className={inlineInputCls}
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={handleCreateContact}
+                          className="px-2.5 py-1 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                        >
+                          Create
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowNewContactForm(false)}
+                          className="px-2.5 py-1 text-xs font-medium rounded-md border border-border text-muted-foreground hover:bg-secondary transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className={inlineLabelCls}>Assigned</label>
+                  <div className="relative">
+                    <select
+                      value={localValues.assignedUserId}
+                      onChange={(e) => updateLocal('assignedUserId', e.target.value)}
+                      className={inlineSelectCls}
+                    >
+                      <option value="">Unassigned</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Row 5: Notes (full-width) */}
+              <div>
+                <label className={inlineLabelCls}>Notes</label>
+                <textarea
+                  rows={3}
+                  value={localValues.description}
+                  onChange={(e) => updateLocal('description', e.target.value)}
+                  placeholder="Add notes about this deal..."
+                  className={cn(inlineInputCls, 'resize-none')}
+                />
+              </div>
+
+              {/* Row 6: Save/Cancel — only when dirty */}
+              {isDirty && (
+                <div className="flex justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleCancel}
+                    className="px-3 py-1.5 text-xs font-medium rounded-md border border-border text-muted-foreground hover:bg-secondary transition-colors dark:border-border dark:text-muted-foreground"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    className="px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                  >
+                    Save
+                  </button>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+interface ExpandableTaskCardProps {
+  task: Task;
+  isExpanded: boolean;
+  onToggle: () => void;
+  users: Array<{ id: string; firstName: string; lastName: string }>;
+  onUpdate: (id: string, updates: Partial<Task>) => Promise<void>;
+}
+
+function ExpandableTaskCard({ task, isExpanded, onToggle, users, onUpdate }: ExpandableTaskCardProps) {
+  const handleFieldChange = async (field: string, value: string) => {
+    try {
+      await onUpdate(task.id, { [field]: value } as Partial<Task>);
+      toast.success('Task updated');
+    } catch {
+      toast.error('Failed to update task');
+    }
+  };
+
+  const handleComplete = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await onUpdate(task.id, { status: task.status === 'completed' ? 'pending' : 'completed' } as Partial<Task>);
+      toast.success(task.status === 'completed' ? 'Task reopened' : 'Task completed');
+    } catch {
+      toast.error('Failed to update task');
+    }
+  };
+
+  return (
+    <div className="border-b border-border last:border-b-0">
+      {/* Collapsed header */}
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3 hover:bg-secondary/50 transition-colors cursor-pointer group">
+        <Checkbox
+          checked={task.status === 'completed'}
+          onCheckedChange={() => handleComplete({} as React.MouseEvent)}
+          onClick={(e) => e.stopPropagation()}
+          className="h-4 w-4"
+        />
+        <button
+          type="button"
+          onClick={onToggle}
+          className="min-w-0 text-left"
+        >
+          <p className={cn(
+            'truncate text-sm font-medium text-foreground group-hover:text-primary transition-colors',
+            task.status === 'completed' && 'line-through text-muted-foreground'
+          )}>{task.title}</p>
+          <p className="text-xs text-muted-foreground">
+            Due: {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'No date'}
+          </p>
+        </button>
+        <Chip className={task.priority === 'High' ? 'text-destructive bg-destructive/10' : ''}>
+          {task.priority || 'Medium'}
+        </Chip>
+        <button type="button" onClick={onToggle}>
+          <ChevronDown
+            className={cn(
+              'h-4 w-4 text-muted-foreground transition-transform duration-200',
+              isExpanded && 'rotate-180'
+            )}
+          />
+        </button>
+      </div>
+
+      {/* Expanded area */}
+      <AnimatePresence initial={false}>
+        {isExpanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeInOut' }}
+            className="overflow-hidden"
+          >
+            <div className="border-t border-border px-4 py-2 space-y-2">
+              {/* Title edit */}
+              <div>
+                <label className={inlineLabelCls}>Title</label>
+                <input
+                  type="text"
+                  defaultValue={task.title}
+                  onBlur={(e) => {
+                    if (e.target.value !== task.title) {
+                      handleFieldChange('title', e.target.value);
+                    }
+                  }}
+                  className={inlineInputCls}
+                />
+              </div>
+
+              {/* Row 1: Status + Priority */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className={inlineLabelCls}>Status</label>
+                  <div className="relative">
+                    <select
+                      value={task.status || 'pending'}
+                      onChange={(e) => handleFieldChange('status', e.target.value)}
+                      className={inlineSelectCls}
+                    >
+                      <option value="pending">Pending</option>
+                      <option value="in_progress">In Progress</option>
+                      <option value="blocked">Blocked</option>
+                      <option value="completed">Completed</option>
+                      <option value="cancelled">Cancelled</option>
+                    </select>
+                    <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+                  </div>
+                </div>
+                <div>
+                  <label className={inlineLabelCls}>Priority</label>
+                  <div className="relative">
+                    <select
+                      value={task.priority || 'Medium'}
+                      onChange={(e) => handleFieldChange('priority', e.target.value)}
+                      className={inlineSelectCls}
+                    >
+                      <option value="Low">Low</option>
+                      <option value="Medium">Medium</option>
+                      <option value="High">High</option>
+                    </select>
+                    <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Row 2: Due Date + Assigned */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className={inlineLabelCls}>Due Date</label>
+                  <input
+                    type="date"
+                    defaultValue={task.dueDate ? task.dueDate.split('T')[0] : ''}
+                    onChange={(e) => handleFieldChange('dueDate', e.target.value)}
+                    className={inlineInputCls}
+                  />
+                </div>
+                <div>
+                  <label className={inlineLabelCls}>Assigned</label>
+                  <div className="relative">
+                    <select
+                      value={(task as any).assignedUserId || ''}
+                      onChange={(e) => handleFieldChange('assignedUserId', e.target.value)}
+                      className={inlineSelectCls}
+                    >
+                      <option value="">Unassigned</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /*                                1. LEAD PANEL                               */
 /* -------------------------------------------------------------------------- */
 
@@ -138,14 +662,21 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
     tasks,
     deals,
     organizations,
+    contacts,
     addTask,
     addDeal,
+    addContact,
+    updateDeal,
+    updateTask,
+    pipelines,
+    users,
   } = useData();
 
   // Local UI states for inline forms
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [showDealForm, setShowDealForm] = useState(false);
-  const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
+  const [expandedDealId, setExpandedDealId] = useState<string | null>(null);
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
 
   const [customFields, setCustomFields] = useState<CustomFieldItem[]>([
     { id: 'cf-1', name: 'Product Interest Keywords', type: 'text', value: 'Security, Cabling, CCTV' },
@@ -333,17 +864,14 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
       content: (
         <div className="divide-y divide-border">
           {leadTasks.map((t) => (
-            <div key={t.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-4 py-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-foreground">{t.title}</p>
-                <p className="text-xs text-muted-foreground">
-                  Due: {t.dueDate ? new Date(t.dueDate).toLocaleDateString() : 'No date'}
-                </p>
-              </div>
-              <Chip className={t.priority === 'High' ? 'text-destructive bg-destructive/10' : ''}>
-                {t.priority || 'Medium'}
-              </Chip>
-            </div>
+            <ExpandableTaskCard
+              key={t.id}
+              task={t}
+              isExpanded={expandedTaskId === t.id}
+              onToggle={() => setExpandedTaskId((prev) => (prev === t.id ? null : t.id))}
+              users={users}
+              onUpdate={updateTask}
+            />
           ))}
 
           {showTaskForm && (
@@ -397,15 +925,17 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
       content: (
         <div className="divide-y divide-border">
           {leadDeals.map((d) => (
-            <div key={d.id} onClick={() => setSelectedDealId(d.id)} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 hover:bg-secondary/50 transition-colors cursor-pointer group">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-foreground group-hover:text-primary transition-colors">{d.title}</p>
-                <p className="text-xs text-muted-foreground">
-                  ₱{d.value?.toLocaleString() ?? 0} · {d.priority || 'Medium'}
-                </p>
-              </div>
-              <Chip className="bg-warning/20 text-warning-foreground">In Progress</Chip>
-            </div>
+            <ExpandableDealCard
+              key={d.id}
+              deal={d}
+              isExpanded={expandedDealId === d.id}
+              onToggle={() => setExpandedDealId((prev) => (prev === d.id ? null : d.id))}
+              pipelines={pipelines}
+              users={users}
+              contacts={contacts}
+              onUpdate={updateDeal}
+              onAddContact={addContact}
+            />
           ))}
 
           {showDealForm && (
@@ -500,10 +1030,7 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
     },
   ];
 
-  const selectedDeal = selectedDealId ? leadDeals.find(d => d.id === selectedDealId) ?? null : null;
-
   return (
-    <>
     <RecordPanel
       open={open}
       onOpenChange={onOpenChange}
@@ -560,14 +1087,6 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
         },
       ]}
     />
-
-    {/* DealPanel overlay — opens when a deal is clicked in the list */}
-    <DealPanel
-      open={!!selectedDeal}
-      onOpenChange={(isOpen) => { if (!isOpen) setSelectedDealId(null); }}
-      deal={selectedDeal}
-    />
-    </>
   );
 }
 

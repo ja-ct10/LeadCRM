@@ -704,6 +704,7 @@ model Deal {
   title             String
   value             Float?
   currency          String?   @default("PHP")
+  billingFrequency  String?   // "monthly" | "one_time" | "annual" | "quarterly"
   priority          Priority  @default(MEDIUM)
   expectedCloseDate DateTime?
   closedAt          DateTime? // stamped when stage.isWon or stage.isLost = true
