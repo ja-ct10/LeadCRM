@@ -9,6 +9,7 @@ import { useData } from '@/store/DataContext';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { DealAccountField } from './deal-account-field';
 import { DealContactsField } from './deal-contacts-field';
+import { DealLeadsField } from './deal-leads-field';
 import { EntityCombobox } from '@/shared/components/entity-combobox';
 import { AlertCircle, ChevronDown, DollarSign } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -31,6 +32,7 @@ const CreateDealFormSchema = z.object({
   organizationId: z.string().optional(),
   assignedUserId: z.string().optional(),
   contactIds: z.array(z.string()).optional(),
+  leadIds: z.array(z.string()).optional(),
   industry: z.string().optional(),
   address: z.string().optional(),
   productInterests: z.array(z.string()).optional(),
@@ -47,6 +49,7 @@ const UpdateDealFormSchema = z.object({
   organizationId: z.string().optional(),
   assignedUserId: z.string().optional(),
   contactIds: z.array(z.string()).optional(),
+  leadIds: z.array(z.string()).optional(),
   industry: z.string().optional(),
   address: z.string().optional(),
   productInterests: z.array(z.string()).optional(),
@@ -130,6 +133,7 @@ export function DealForm({
         organizationId: '',
         assignedUserId: '',
         contactIds: [] as string[],
+        leadIds: [] as string[],
         industry: '',
         address: '',
         productInterests: [] as string[],
@@ -149,6 +153,7 @@ export function DealForm({
       organizationId: initialData?.organizationId || '',
       assignedUserId: initialData?.assignedUserId || '',
       contactIds: initialData?.contactIds || [],
+      leadIds: (initialData as any)?.leadIds || [],
       industry: initialData?.industry || '',
       address: initialData?.address || '',
       productInterests: initialData?.productInterests || [],
@@ -218,6 +223,7 @@ export function DealForm({
       organizationId: data.organizationId || undefined,
       assignedUserId: data.assignedUserId || undefined,
       contactIds: data.contactIds?.length ? data.contactIds : undefined,
+      leadIds: (data as any).leadIds?.length ? (data as any).leadIds : undefined,
       industry: data.industry || undefined,
       address: data.address || undefined,
       productInterests: data.productInterests?.length ? data.productInterests : undefined,
@@ -361,6 +367,16 @@ export function DealForm({
                 values={field.value || []}
                 onChange={(ids) => field.onChange(ids)}
                 error={errors.contactIds?.message}
+              />
+            )}
+          />
+          <Controller
+            name="leadIds"
+            control={control}
+            render={({ field }) => (
+              <DealLeadsField
+                values={field.value || []}
+                onChange={(ids) => field.onChange(ids)}
               />
             )}
           />

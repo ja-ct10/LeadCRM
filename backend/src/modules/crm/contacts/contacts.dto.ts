@@ -43,13 +43,19 @@ export type UpdateContactDto = z.infer<typeof UpdateContactSchema>;
 
 // ── Convert Lead → linked to Account + optional Deal ─────────────────────────
 export const ConvertContactSchema = z.object({
+  // Account handling
   accountId:    z.string().min(1).optional(), // link to existing account
   accountName:  z.string().min(1).optional(), // or create a new account
+  // Contact handling (new — conversion creates a Contact record from the Lead)
+  createContact:   z.boolean().default(true),
+  contactId:       z.string().min(1).optional(), // link to existing contact instead of creating
+  // Deal handling
   createDeal:      z.boolean().default(false),
   dealTitle:       z.string().min(1).max(255).optional(),
   dealValue:       z.number().positive().optional(),
   dealPipelineId:  z.string().min(1).optional(),
   dealPriority:    z.enum(['LOW', 'MEDIUM', 'HIGH']).default('MEDIUM'),
+  dealId:          z.string().min(1).optional(), // link to existing deal instead of creating
 }).refine(
   (data) => data.accountId || data.accountName,
   { message: 'Either accountId or accountName is required', path: ['accountId'] },

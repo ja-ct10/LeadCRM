@@ -151,6 +151,7 @@ export async function moveDealStage(
   movedById: string,
   note?: string,
   handoff?: { assignOwnerId?: string; kickoffDate?: string; notes?: string },
+  lostReason?: string,
 ) {
   const deal = await prisma.deal.findFirst({
     where: { id, tenantId },
@@ -171,32 +172,42 @@ export async function moveDealStage(
   const referenceTime = lastHistory ? lastHistory.movedAt : deal.createdAt;
   const timeInPrevStage = Math.floor((now.getTime() - referenceTime.getTime()) / (1000 * 60));
 
+  // Determine valid previous stage ID (prevent P2003 if stage was deleted)
+  let validPrevStageId = null;
+  if (deal.stageId) {
+    const prevStageExists = await prisma.stage.findFirst({ where: { id: deal.stageId } });
+    if (prevStageExists) validPrevStageId = deal.stageId;
+  }
+
   const result = await prisma.$transaction(async (tx) => {
     const updatedDeal = await tx.deal.update({
       where: { id },
       data: {
         stageId:    newStageId,
         pipelineId: newStage.pipelineId,
-        ...(newStage.isWon || newStage.isLost ? { closedAt: now } : {}),
+        ...(newStage.isWon || newStage.isLost ? { closedAt: now } : { closedAt: null }),
+        ...(newStage.isLost ? { lostReason } : { lostReason: null }),
       },
     });
 
     const stageHistory = await tx.dealStageHistory.create({
       data: {
         tenantId, dealId: id,
-        previousStageId: deal.stageId, newStageId, movedById,
+        previousStageId: validPrevStageId, newStageId, movedById,
         movedAt: now, timeInPrevStage, note,
       },
     });
+
+    const oldStageName = deal.stage?.name ?? 'Unknown';
 
     // Activity for every stage change
     await tx.activity.create({
       data: {
         tenantId, createdById: movedById,
         type:  'stage_change',
-        title: `Deal moved from "${deal.stage.name}" to "${newStage.name}"`,
+        title: `Deal moved from "${oldStageName}" to "${newStage.name}"`,
         dealId: deal.id,
-        accountId: deal.accountId || undefined,
+        // Remove accountId to prevent P2003 if account is deleted or invalid; activity is linked to deal
       },
     });
 
@@ -204,8 +215,8 @@ export async function moveDealStage(
     if (newStage.isWon) {
       const activeProducts = deal.productInterests || [];
 
-      if (deal.accountId) {
-        const org = deal.organization!;
+      if (deal.accountId && deal.organization) {
+        const org = deal.organization;
         const updatedProducts = Array.from(new Set([...(org.activeProducts || []), ...activeProducts]));
         await tx.account.update({
           where: { id: deal.accountId },

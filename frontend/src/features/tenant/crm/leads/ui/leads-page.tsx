@@ -16,6 +16,10 @@ import { LeadsTileView, LeadsGridView, LeadsKanbanView, LeadDrawerOverview, Lead
 import { LeadsListView } from './leads-list-view';
 import { LeadsDataGrid } from './leads-data-grid';
 import { LeadFormSheet } from './lead-form';
+import { ConvertLeadDialog } from './convert-lead-dialog';
+import { MergeRecordsDialog } from '@/shared/components/crm/merge-records-dialog';
+import { EntityCombobox } from '@/shared/components/entity-combobox';
+import { SlidingDrawer } from '@/shared/components/sliding-drawer';
 import { ImportLeadsDrawer } from './import-leads-drawer';
 import { LEADS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import { LEADS_MODULE_CONFIG } from '../leads.config';
@@ -93,6 +97,9 @@ export default function LeadsPage(): React.ReactElement {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | undefined>();
+  const [convertingLead, setConvertingLead] = useState<Lead | null>(null);
+  const [mergingLead, setMergingLead] = useState<Lead | null>(null);
+  const [mergeSecondaryId, setMergeSecondaryId] = useState<string | null>(null);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [drawerTab, setDrawerTab] = useState('overview');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -526,6 +533,8 @@ export default function LeadsPage(): React.ReactElement {
             onDelete={(lead) => {
               toast.info(`Delete "${lead.leadPerson ?? lead.displayName}" coming soon`);
             }}
+            onConvert={(lead) => setConvertingLead(lead)}
+            onMerge={(lead) => setMergingLead(lead)}
             onManageColumns={() => setIsManageColumnsOpen(true)}
             onHideColumn={async (columnId) => {
               const updated = effectiveColumns.map((col) =>
@@ -664,6 +673,50 @@ export default function LeadsPage(): React.ReactElement {
         onClose={() => setIsImportOpen(false)}
         onImportComplete={refreshContacts}
       />
+
+      {/* ── Convert Lead Dialog ─────────────────────────────────── */}
+      {convertingLead && (
+        <ConvertLeadDialog
+          isOpen={!!convertingLead}
+          onClose={() => setConvertingLead(null)}
+          lead={convertingLead}
+          onSuccess={() => setConvertingLead(null)}
+        />
+      )}
+
+      {/* ── Merge Lead: Step 1 — Pick secondary record ───────────── */}
+      {mergingLead && !mergeSecondaryId && (
+        <SlidingDrawer
+          isOpen={true}
+          onClose={() => setMergingLead(null)}
+          title="Merge Lead"
+          subtitle={`Select a record to merge with ${mergingLead.firstName} ${mergingLead.lastName}`}
+        >
+          <div className="p-6 space-y-4">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Select the duplicate lead to merge into the primary record.
+            </p>
+            <EntityCombobox
+              entityType="leads"
+              value={null}
+              onChange={(id) => { if (id) setMergeSecondaryId(id); }}
+              placeholder="Search for the duplicate lead..."
+            />
+          </div>
+        </SlidingDrawer>
+      )}
+
+      {/* ── Merge Lead: Step 2 — Full comparison ─────────────────── */}
+      {mergingLead && mergeSecondaryId && (
+        <MergeRecordsDialog
+          isOpen={true}
+          onClose={() => { setMergingLead(null); setMergeSecondaryId(null); }}
+          entityType="lead"
+          primaryId={mergingLead.id}
+          secondaryId={mergeSecondaryId}
+          onSuccess={() => { setMergingLead(null); setMergeSecondaryId(null); }}
+        />
+      )}
 
       {/* ── Manage Columns Drawer ───────────────────────────────── */}
       <ManageColumnsDrawer

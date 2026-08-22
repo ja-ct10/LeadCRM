@@ -132,12 +132,13 @@ export async function moveDealStage(id: string, tenantId: string, userId: string
     }
   }
 
-  const result = await repo.moveDealStage(id, tenantId, dto.stageId, userId, dto.note, dto.handoff);
-  if (!result) throw new NotFoundError('Deal');
-
-  if (dto.lostReason) {
-    await prisma.deal.update({ where: { id }, data: { lostReason: dto.lostReason } });
+  let result;
+  try {
+    result = await repo.moveDealStage(id, tenantId, dto.stageId, userId, dto.note, dto.handoff, dto.lostReason);
+  } catch (error) {
+    mapRepositoryError(error, 'moveDealStage');
   }
+  if (!result) throw new NotFoundError('Deal');
 
   await writeAuditLog({
     tenantId, userId,
@@ -213,25 +214,30 @@ export async function duplicateDeal(id: string, tenantId: string, userId: string
     ...copyData
   } = source as Record<string, unknown>;
 
-  const newDeal = await prisma.deal.create({
-    data: {
-      ...copyData,
-      title: `${source.title} (Copy)`,
-      tenantId,
-      ownerId: userId,
-      isArchived: false,
-      closedAt: null,
-      lostReason: null,
-    } as never,
-  });
-
-  // Copy contact associations from source deal
-  const associations = await prisma.leadDeal.findMany({ where: { dealId: id, tenantId } });
-  if (associations.length > 0) {
-    await prisma.leadDeal.createMany({
-      data: associations.map(a => ({ leadId: a.leadId, dealId: newDeal.id, tenantId, addedById: userId })),
-      skipDuplicates: true,
+  let newDeal: any;
+  try {
+    newDeal = await prisma.deal.create({
+      data: {
+        ...copyData,
+        title: `${source.title} (Copy)`,
+        tenantId,
+        ownerId: userId,
+        isArchived: false,
+        closedAt: null,
+        lostReason: null,
+      } as never,
     });
+
+    // Copy contact associations from source deal
+    const associations = await prisma.leadDeal.findMany({ where: { dealId: id, tenantId } });
+    if (associations.length > 0) {
+      await prisma.leadDeal.createMany({
+        data: associations.map(a => ({ leadId: a.leadId, dealId: newDeal.id, tenantId, addedById: userId })),
+        skipDuplicates: true,
+      });
+    }
+  } catch (error) {
+    mapRepositoryError(error, 'duplicateDeal');
   }
 
   await writeAuditLog({

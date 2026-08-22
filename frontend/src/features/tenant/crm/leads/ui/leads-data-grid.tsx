@@ -12,7 +12,7 @@
 'use client';
 
 import React, { useMemo, useCallback } from 'react';
-import { Phone, Mail, ExternalLink } from 'lucide-react';
+import { Phone, Mail, ExternalLink, GitMerge } from 'lucide-react';
 import {
   DataGrid,
   DataGridQuickFilter,
@@ -95,6 +95,10 @@ interface LeadsDataGridProps {
   onEdit?: (lead: Lead) => void;
   /** Delete a lead */
   onDelete?: (lead: Lead) => void;
+  /** Convert a lead */
+  onConvert?: (lead: Lead) => void;
+  /** Merge a lead with another */
+  onMerge?: (lead: Lead) => void;
   /** Open manage columns drawer */
   onManageColumns?: () => void;
   /** Hide a specific column */
@@ -126,6 +130,8 @@ export function LeadsDataGrid({
   canDelete = false,
   onEdit,
   onDelete,
+  onConvert,
+  onMerge,
   onManageColumns,
   onHideColumn,
   viewMode = 'clip',
@@ -364,13 +370,13 @@ export function LeadsDataGrid({
   // ─── Row Actions (⋯ menu) ─────────────────────────────────────────────
 
   const getRowActions = useCallback((lead: Lead): RowActionItem[] => {
-    return buildDefaultRowActions({
+    const actions = buildDefaultRowActions({
       onView: () => onRowClick(lead),
       onEdit: onEdit ? () => onEdit(lead) : undefined,
       onSendEmail: lead.email ? () => window.open(`mailto:${lead.email}`, '_self') : undefined,
       onCreateTask: () => { /* future: open task form */ },
       onAddTags: () => { /* future: open tags dialog */ },
-      onConvert: () => { /* future: convert lead to contact */ },
+      onConvert: onConvert ? () => onConvert(lead) : undefined,
       onDelete: onDelete ? () => onDelete(lead) : undefined,
       onCopyUrl: () => {
         navigator.clipboard.writeText(`${window.location.origin}/crm/leads/${lead.id}`);
@@ -378,7 +384,21 @@ export function LeadsDataGrid({
       canEdit,
       canDelete,
     });
-  }, [onRowClick, onEdit, onDelete, canEdit, canDelete]);
+
+    // Add Merge action (if user can edit)
+    if (onMerge && canEdit) {
+      const convertIdx = actions.findIndex((a) => a.id === 'convert');
+      const insertAt = convertIdx >= 0 ? convertIdx + 1 : actions.length - 1;
+      actions.splice(insertAt, 0, {
+        id: 'merge',
+        label: 'Merge with...',
+        icon: <GitMerge size={14} />,
+        onClick: () => onMerge(lead),
+      });
+    }
+
+    return actions;
+  }, [onRowClick, onEdit, onDelete, onConvert, onMerge, canEdit, canDelete]);
 
   // ─── Render ────────────────────────────────────────────────────────────
 

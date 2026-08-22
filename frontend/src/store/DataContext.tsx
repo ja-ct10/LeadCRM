@@ -115,6 +115,8 @@ interface DataContextType {
     contact: Omit<Contact, "id" | "tenantId" | "createdAt" | "score">,
   ) => Promise<void>;
   refreshContacts: () => Promise<void>;
+  refreshOrganizations: () => Promise<void>;
+  refreshDeals: () => Promise<void>;
   updateContact: (id: string, updates: Partial<Contact>) => Promise<void>;
   deleteContact: (id: string) => Promise<void>;
   addOrganization: (
@@ -1144,6 +1146,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setContacts((apiContacts as Contact[]).filter((c: any) => !c.isArchived));
     } catch (err) {
       console.error('[DataContext] Failed to refresh contacts:', err);
+    }
+  };
+
+  /** Re-fetch organizations/accounts from the API and update state */
+  const refreshOrganizations = async (): Promise<void> => {
+    if (USE_MOCK_DATA || !user) return;
+    try {
+      const orgsRes = await organizationsService.getAll({ limit: 100 });
+      const apiOrgs = (orgsRes?.data ?? []).map(toFrontendOrg);
+      setOrganizations((apiOrgs as Organization[]).filter((o: any) => !o.isArchived));
+    } catch (err) {
+      console.error('[DataContext] Failed to refresh organizations:', err);
+    }
+  };
+
+  /** Re-fetch deals from the API and update state */
+  const refreshDeals = async (): Promise<void> => {
+    if (USE_MOCK_DATA || !user) return;
+    try {
+      const dealsRes = await pipelineService.getDeals(undefined, 100);
+      const apiDeals = (dealsRes?.data ?? []).map(toFrontendDeal);
+      setDeals((apiDeals as Deal[]).filter((d: any) => !d.isArchived));
+    } catch (err) {
+      console.error('[DataContext] Failed to refresh deals:', err);
     }
   };
 
@@ -2717,6 +2743,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     deleteOrganization,
     addContact,
     refreshContacts,
+    refreshOrganizations,
+    refreshDeals,
     updateContact,
     deleteContact,
     addDeal,

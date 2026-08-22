@@ -121,24 +121,24 @@ model SystemAdmin {
 // Managed by SystemAdmin, consumed by Subscription
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model PricingPlan {
-  id             String   @id @default(uuid())
-  name           String   @unique // "Free" | "Pro" | "Enterprise"
-  planType       PlanType
-  monthlyPrice   Float    @default(0)
-  quarterlyPrice Float    @default(0)
-  annualPrice    Float    @default(0)
-  maxUsers       Int?
-  maxContacts    Int?
-  maxDeals       Int?
-  storageLimit   Int? // MB
-  isActive       Boolean  @default(true)
+  id                     String   @id @default(uuid())
+  name                   String   @unique // "Free" | "Pro" | "Enterprise"
+  planType               PlanType
+  monthlyPrice           Float    @default(0)
+  quarterlyPrice         Float    @default(0)
+  annualPrice            Float    @default(0)
+  maxUsers               Int?
+  maxContacts            Int?
+  maxDeals               Int?
+  storageLimit           Int? // MB
+  isActive               Boolean  @default(true)
   // -- Stripe --------------------------------------------------------
-  stripeProductId        String?  @unique  // prod_xxx � one Product per plan
-  stripeMonthlyPriceId   String?  @unique  // price_xxx for monthly billing
-  stripeQuarterlyPriceId String?  @unique  // price_xxx for quarterly billing
-  stripeAnnualPriceId    String?  @unique  // price_xxx for annual billing
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  stripeProductId        String?  @unique // prod_xxx � one Product per plan
+  stripeMonthlyPriceId   String?  @unique // price_xxx for monthly billing
+  stripeQuarterlyPriceId String?  @unique // price_xxx for quarterly billing
+  stripeAnnualPriceId    String?  @unique // price_xxx for annual billing
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   features      PlanFeature[]
   subscriptions Subscription[]
@@ -183,7 +183,7 @@ model Tenant {
   approvedById       String? // SystemAdmin id who approved
   approvedAt         DateTime?
   // -- Stripe --------------------------------------------------------
-  stripeCustomerId   String?  @unique   // cus_xxx � one customer per tenant
+  stripeCustomerId   String?            @unique // cus_xxx � one customer per tenant
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
@@ -236,21 +236,21 @@ model Tenant {
 // SUBSCRIPTION (billing source of truth)
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Subscription {
-  id              String             @id @default(uuid())
-  tenantId        String
-  planId          String
-  billingCycle    BillingCycle
-  status          SubscriptionStatus @default(TRIAL)
-  amount          Float
-  startDate       DateTime
-  endDate         DateTime?
-  nextBillingDate DateTime?
-  cancelledAt     DateTime?
+  id                      String             @id @default(uuid())
+  tenantId                String
+  planId                  String
+  billingCycle            BillingCycle
+  status                  SubscriptionStatus @default(TRIAL)
+  amount                  Float
+  startDate               DateTime
+  endDate                 DateTime?
+  nextBillingDate         DateTime?
+  cancelledAt             DateTime?
   // -- Stripe --------------------------------------------------------
-  stripeSubscriptionId   String?  @unique  // sub_xxx
-  stripeCheckoutSessionId String?          // cs_xxx � transient, kept for audit trail
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
+  stripeSubscriptionId    String?            @unique // sub_xxx
+  stripeCheckoutSessionId String? // cs_xxx � transient, kept for audit trail
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
 
   tenant   Tenant      @relation(fields: [tenantId], references: [id])
   plan     PricingPlan @relation(fields: [planId], references: [id])
@@ -289,7 +289,7 @@ model User {
   email         String
   firstName     String
   lastName      String
-  passwordHash  String?   // nullable � OAuth-only users have no password
+  passwordHash  String? // nullable � OAuth-only users have no password
   phone         String?
   jobTitle      String?
   department    String?
@@ -309,10 +309,11 @@ model User {
   sessions           Session[]
   invitationsSent    TenantInvitation[] @relation("InvitedByUser")
   organizationsOwned Account[]
-  assignedLeads        Lead[]             @relation("AssignedLeads")
-  createdLeads         Lead[]             @relation("CreatedLeads")
-  updatedLeads         Lead[]             @relation("UpdatedLeads")
-  assignedCustomers    Contact[]         @relation("AssignedCustomers")
+  assignedLeads      Lead[]             @relation("AssignedLeads")
+  createdLeads       Lead[]             @relation("CreatedLeads")
+  updatedLeads       Lead[]             @relation("UpdatedLeads")
+  convertedLeads     Lead[]             @relation("ConvertedLeads")
+  assignedCustomers  Contact[]          @relation("AssignedCustomers")
 
   assignedDeals        Deal[]             @relation("AssignedDeals")
   ownedDeals           Deal[]             @relation("OwnedDeals")
@@ -429,13 +430,13 @@ model OAuthAccount {
   id                String    @id @default(uuid())
   userId            String
   tenantId          String
-  provider          String    // "google" | "github" | "microsoft"
-  providerAccountId String    // subject claim from the OAuth provider (immutable)
-  accessToken       String?   // encrypted at rest � short-lived
-  refreshToken      String?   // encrypted at rest � long-lived
-  idToken           String?   // raw OIDC id_token for verification
-  tokenType         String?   // "Bearer"
-  scope             String?   // e.g. "openid email profile"
+  provider          String // "google" | "github" | "microsoft"
+  providerAccountId String // subject claim from the OAuth provider (immutable)
+  accessToken       String? // encrypted at rest � short-lived
+  refreshToken      String? // encrypted at rest � long-lived
+  idToken           String? // raw OIDC id_token for verification
+  tokenType         String? // "Bearer"
+  scope             String? // e.g. "openid email profile"
   expiresAt         DateTime? // access token expiry
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
@@ -543,12 +544,12 @@ model Account {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  tenant        Tenant         @relation(fields: [tenantId], references: [id])
-  assignedUser  User?          @relation(fields: [assignedUserId], references: [id])
-  leads         Lead[]
-  contacts  Contact[]
-  deals         Deal[]
-  activities    Activity[]
+  tenant       Tenant     @relation(fields: [tenantId], references: [id])
+  assignedUser User?      @relation(fields: [assignedUserId], references: [id])
+  leads        Lead[]
+  contacts     Contact[]
+  deals        Deal[]
+  activities   Activity[]
 
   @@index([tenantId, isArchived])
   @@index([tenantId, name])
@@ -583,12 +584,18 @@ model Lead {
   createdById         String?
   updatedById         String?
   lastStatusChangedAt DateTime?
+  // Conversion tracking — set when lead is converted to a Contact
+  contactId           String?
+  convertedAt         DateTime?
+  convertedById       String?
 
-  tenant       Tenant   @relation(fields: [tenantId], references: [id])
-  account      Account? @relation(fields: [accountId], references: [id])
-  assignedUser User?    @relation("AssignedLeads", fields: [assignedUserId], references: [id])
-  createdBy    User?    @relation("CreatedLeads",  fields: [createdById],  references: [id])
-  updatedBy    User?    @relation("UpdatedLeads",  fields: [updatedById],  references: [id])
+  tenant           Tenant   @relation(fields: [tenantId], references: [id])
+  account          Account? @relation(fields: [accountId], references: [id])
+  assignedUser     User?    @relation("AssignedLeads", fields: [assignedUserId], references: [id])
+  createdBy        User?    @relation("CreatedLeads", fields: [createdById], references: [id])
+  updatedBy        User?    @relation("UpdatedLeads", fields: [updatedById], references: [id])
+  convertedContact Contact? @relation("ConvertedFromLead", fields: [contactId], references: [id])
+  convertedBy      User?    @relation("ConvertedLeads", fields: [convertedById], references: [id])
 
   leadDeals         LeadDeal[]
   deals             Deal[]
@@ -605,6 +612,7 @@ model Lead {
   @@index([tenantId, createdAt])
   @@index([tenantId, accountId])
   @@index([tenantId, createdById])
+  @@index([tenantId, contactId])
 }
 
 // -----------------------------------------------------
@@ -630,21 +638,22 @@ model Contact {
   account      Account? @relation(fields: [accountId], references: [id])
   assignedUser User?    @relation("AssignedCustomers", fields: [assignedUserId], references: [id])
 
-  contactDeals      ContactDeal[]
-  deals             Deal[]
-  tasks             Task[]
-  activities        Activity[]
-  campaignContacts  CampaignContact[]
-  emailDeliveryLogs EmailDeliveryLog[]
-  SMSQueue          SMSQueue[]
-  invoices          Invoice[]
+  convertedFromLeads Lead[]             @relation("ConvertedFromLead")
+  contactDeals       ContactDeal[]
+  deals              Deal[]
+  tasks              Task[]
+  activities         Activity[]
+  campaignContacts   CampaignContact[]
+  emailDeliveryLogs  EmailDeliveryLog[]
+  SMSQueue           SMSQueue[]
+  invoices           Invoice[]
 
-  @@map("Contact")
   @@index([tenantId, status])
   @@index([tenantId, assignedUserId])
   @@index([tenantId, email])
   @@index([tenantId, createdAt])
   @@index([tenantId, accountId])
+  @@map("Contact")
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -711,7 +720,7 @@ model Deal {
   title             String
   value             Float?
   currency          String?   @default("PHP")
-  billingFrequency  String?   // "monthly" | "one_time" | "annual" | "quarterly"
+  billingFrequency  String? // "monthly" | "one_time" | "annual" | "quarterly"
   priority          Priority  @default(MEDIUM)
   expectedCloseDate DateTime?
   closedAt          DateTime? // stamped when stage.isWon or stage.isLost = true
@@ -733,12 +742,12 @@ model Deal {
   pipeline       Pipeline           @relation(fields: [pipelineId], references: [id])
   stage          Stage              @relation(fields: [stageId], references: [id])
   lead           Lead?              @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  contact  Contact?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  contact        Contact?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
   organization   Account?           @relation(fields: [accountId], references: [id])
   assignedUser   User?              @relation("AssignedDeals", fields: [assignedUserId], references: [id])
   owner          User?              @relation("OwnedDeals", fields: [ownerId], references: [id])
   leadDeals      LeadDeal[]
-  contactDeals  ContactDeal[]
+  contactDeals   ContactDeal[]
   stageHistories DealStageHistory[]
   actions        DealAction[]
   tasks          Task[]
@@ -775,23 +784,23 @@ model LeadDeal {
 }
 
 model ContactDeal {
-  id         String   @id @default(uuid())
-  contactId  String
-  dealId     String
-  tenantId   String
-  role       String?
-  addedById  String?
-  addedAt    DateTime @default(now())
+  id        String   @id @default(uuid())
+  contactId String
+  dealId    String
+  tenantId  String
+  role      String?
+  addedById String?
+  addedAt   DateTime @default(now())
 
-  contact  Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  deal     Deal    @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  tenant   Tenant  @relation(fields: [tenantId], references: [id])
-  addedBy  User?   @relation(fields: [addedById], references: [id])
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  deal    Deal    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  addedBy User?   @relation(fields: [addedById], references: [id])
 
-  @@map("ContactDeal")
   @@unique([contactId, dealId])
   @@index([dealId, tenantId])
   @@index([contactId, tenantId])
+  @@map("ContactDeal")
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -870,7 +879,7 @@ model Task {
   tenant       Tenant     @relation(fields: [tenantId], references: [id])
   deal         Deal?      @relation(fields: [dealId], references: [id], onDelete: SetNull)
   lead         Lead?      @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  contact  Contact?  @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  contact      Contact?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
   assignedUser User       @relation("AssignedTasks", fields: [assignedUserId], references: [id])
   assignedBy   User?      @relation("TaskAssignedBy", fields: [assignedById], references: [id])
   completedBy  User?      @relation("TaskCompletedBy", fields: [completedById], references: [id])
@@ -901,14 +910,14 @@ model Activity {
   invoiceId   String?
   createdAt   DateTime @default(now())
 
-  tenant       Tenant    @relation(fields: [tenantId], references: [id])
-  createdBy    User      @relation(fields: [createdById], references: [id])
-  lead         Lead?     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  contact  Contact? @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  deal         Deal?     @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  organization Account?  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  task         Task?     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  invoice      Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  createdBy    User     @relation(fields: [createdById], references: [id])
+  lead         Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  contact      Contact? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  deal         Deal?    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  organization Account? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  task         Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  invoice      Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, leadId, createdAt])
   @@index([tenantId, customerId, createdAt])
@@ -1060,9 +1069,9 @@ model CampaignContact {
   bouncedAt    DateTime?
   unsubscribed Boolean   @default(false)
 
-  tenant   Tenant    @relation(fields: [tenantId], references: [id])
-  campaign Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  lead     Lead?     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  lead     Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
   contact  Contact? @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   @@unique([campaignId, leadId])
@@ -1206,7 +1215,7 @@ model Invoice {
   subscription Subscription?        @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
   deal         Deal?                @relation(fields: [dealId], references: [id], onDelete: SetNull)
   lead         Lead?                @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  contact  Contact?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  contact      Contact?             @relation(fields: [customerId], references: [id], onDelete: SetNull)
   transactions PaymentTransaction[]
   activities   Activity[]
 
@@ -1216,30 +1225,30 @@ model Invoice {
 }
 
 model PaymentTransaction {
-  id                 String    @id @default(uuid())
-  tenantId           String
-  invoiceId          String
-  paymentMethodId    String? // FK to PaymentMethod (saved method) G�� nullable for ad-hoc
-  amount             Float
-  currency           String    @default("PHP")
-  status             String    // pending|paid|failed|refunded|partially_refunded
-  transactionRef     String?   // internal or external reference number
-  paymongoPaymentId  String?   @unique
-  paymongoPaymentUrl String?
-  paymentMethod      String?   // card|gcash|maya|bank_transfer|stripe (denorm for quick display)
-  paidAt             DateTime?
-  failureReason      String?
-  metadata           Json?
+  id                      String    @id @default(uuid())
+  tenantId                String
+  invoiceId               String
+  paymentMethodId         String? // FK to PaymentMethod (saved method) G�� nullable for ad-hoc
+  amount                  Float
+  currency                String    @default("PHP")
+  status                  String // pending|paid|failed|refunded|partially_refunded
+  transactionRef          String? // internal or external reference number
+  paymongoPaymentId       String?   @unique
+  paymongoPaymentUrl      String?
+  paymentMethod           String? // card|gcash|maya|bank_transfer|stripe (denorm for quick display)
+  paidAt                  DateTime?
+  failureReason           String?
+  metadata                Json?
   // -- Stripe --------------------------------------------------------
-  stripePaymentIntentId    String?  @unique  // pi_xxx
-  stripeCheckoutSessionId  String?           // cs_xxx � checkout origin
-  stripeInvoiceId          String?           // in_xxx � for subscription invoices
-  stripeEventId            String?           // evt_xxx � webhook event that created this record (idempotency)
-  refundedAmount           Float?            // partial refund tracking
-  refundedAt               DateTime?
-  stripeRefundId           String?  @unique  // re_xxx
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @default(now()) @updatedAt
+  stripePaymentIntentId   String?   @unique // pi_xxx
+  stripeCheckoutSessionId String? // cs_xxx � checkout origin
+  stripeInvoiceId         String? // in_xxx � for subscription invoices
+  stripeEventId           String? // evt_xxx � webhook event that created this record (idempotency)
+  refundedAmount          Float? // partial refund tracking
+  refundedAt              DateTime?
+  stripeRefundId          String?   @unique // re_xxx
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @default(now()) @updatedAt
 
   tenant      Tenant         @relation(fields: [tenantId], references: [id])
   invoice     Invoice        @relation(fields: [invoiceId], references: [id])
@@ -1309,7 +1318,7 @@ model EmailDeliveryLog {
   tenant     Tenant       @relation(fields: [tenantId], references: [id])
   campaign   Campaign?    @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   lead       Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  contact  Contact?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  contact    Contact?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
   EmailEvent EmailEvent[]
 
   @@index([tenantId, leadId])
@@ -1356,6 +1365,7 @@ model RegistrationOtpToken {
 
   @@unique([email])
 }
+
 // EMAIL ACCOUNT (Gmail OAuth2 integration per user)
 // Stores encrypted tokens for Gmail API access.
 // Each user can connect ONE Gmail account per tenant.
@@ -1403,7 +1413,7 @@ model SMSQueue {
   tenant   Tenant    @relation(fields: [tenantId], references: [id])
   campaign Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   lead     Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  contact  Contact? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  contact  Contact?  @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, status])
   @@index([tenantId, scheduledFor])
@@ -1494,15 +1504,15 @@ model TenantPreference {
 // LEAD IMPORT (CSV batch import tracking)
 // -----------------------------------------------------
 model LeadImport {
-  id                String   @id @default(uuid())
+  id                String    @id @default(uuid())
   tenantId          String
   fileName          String
-  totalRecords      Int      @default(0)
-  successfulRecords Int      @default(0)
-  failedRecords     Int      @default(0)
-  status            String   @default("pending") // pending|importing|completed|completed_with_errors|failed
+  totalRecords      Int       @default(0)
+  successfulRecords Int       @default(0)
+  failedRecords     Int       @default(0)
+  status            String    @default("pending") // pending|importing|completed|completed_with_errors|failed
   createdById       String
-  createdAt         DateTime @default(now())
+  createdAt         DateTime  @default(now())
   completedAt       DateTime?
 
   tenant    Tenant             @relation(fields: [tenantId], references: [id])
@@ -1517,19 +1527,19 @@ model LeadImport {
 // LEAD IMPORT RESULT (per-row outcome)
 // -----------------------------------------------------
 model LeadImportResult {
-  id         String   @id @default(uuid())
-  importId   String
-  rowNumber  Int
-  status     String   // imported|failed
-  leadId     String?  // set on success
-  remarks    String?  // error messages on failure
-  firstName  String?
-  lastName   String?
-  email      String?
-  phone      String?
+  id          String   @id @default(uuid())
+  importId    String
+  rowNumber   Int
+  status      String // imported|failed
+  leadId      String? // set on success
+  remarks     String? // error messages on failure
+  firstName   String?
+  lastName    String?
+  email       String?
+  phone       String?
   companyName String?
-  address    String?
-  createdAt  DateTime @default(now())
+  address     String?
+  createdAt   DateTime @default(now())
 
   import LeadImport @relation(fields: [importId], references: [id], onDelete: Cascade)
 
@@ -1537,24 +1547,23 @@ model LeadImportResult {
   @@index([importId, rowNumber])
 }
 
-
 // -----------------------------------------------------
 // ACCOUNT IMPORT (CSV batch import tracking)
 // -----------------------------------------------------
 model AccountImport {
-  id                String   @id @default(uuid())
+  id                String    @id @default(uuid())
   tenantId          String
   fileName          String
-  totalRecords      Int      @default(0)
-  successfulRecords Int      @default(0)
-  failedRecords     Int      @default(0)
-  status            String   @default("pending") // pending|importing|completed|completed_with_errors|failed
+  totalRecords      Int       @default(0)
+  successfulRecords Int       @default(0)
+  failedRecords     Int       @default(0)
+  status            String    @default("pending") // pending|importing|completed|completed_with_errors|failed
   createdById       String
-  createdAt         DateTime @default(now())
+  createdAt         DateTime  @default(now())
   completedAt       DateTime?
 
-  tenant    Tenant               @relation(fields: [tenantId], references: [id])
-  createdBy User                 @relation(fields: [createdById], references: [id])
+  tenant    Tenant                @relation(fields: [tenantId], references: [id])
+  createdBy User                  @relation(fields: [createdById], references: [id])
   results   AccountImportResult[]
 
   @@index([tenantId, status])
@@ -1565,20 +1574,20 @@ model AccountImport {
 // ACCOUNT IMPORT RESULT (per-row outcome)
 // -----------------------------------------------------
 model AccountImportResult {
-  id         String   @id @default(uuid())
-  importId   String
-  rowNumber  Int
-  status     String   // imported|failed
-  accountId  String?  // set on success
-  remarks    String?  // error messages on failure
-  name       String?
-  industry   String?
-  website    String?
-  address    String?
-  city       String?
-  province   String?
-  country    String?
-  createdAt  DateTime @default(now())
+  id        String   @id @default(uuid())
+  importId  String
+  rowNumber Int
+  status    String // imported|failed
+  accountId String? // set on success
+  remarks   String? // error messages on failure
+  name      String?
+  industry  String?
+  website   String?
+  address   String?
+  city      String?
+  province  String?
+  country   String?
+  createdAt DateTime @default(now())
 
   import AccountImport @relation(fields: [importId], references: [id], onDelete: Cascade)
 
@@ -1586,20 +1595,19 @@ model AccountImportResult {
   @@index([importId, rowNumber])
 }
 
-
 // -----------------------------------------------------
 // CONTACT IMPORT (CSV batch import tracking)
 // -----------------------------------------------------
 model ContactImport {
-  id                String   @id @default(uuid())
+  id                String    @id @default(uuid())
   tenantId          String
   fileName          String
-  totalRecords      Int      @default(0)
-  successfulRecords Int      @default(0)
-  failedRecords     Int      @default(0)
-  status            String   @default("pending")
+  totalRecords      Int       @default(0)
+  successfulRecords Int       @default(0)
+  failedRecords     Int       @default(0)
+  status            String    @default("pending")
   createdById       String
-  createdAt         DateTime @default(now())
+  createdAt         DateTime  @default(now())
   completedAt       DateTime?
 
   tenant    Tenant                @relation(fields: [tenantId], references: [id])
