@@ -43,7 +43,7 @@ export default function SidebarNav({
   const getBadgeCount = (path: string): number | undefined => {
     const counts: Record<string, number | undefined> = {
       leads: recordCounts.leads,
-      contacts: recordCounts.contacts,
+      contacts: recordCounts.leads, // Contacts shares the same count as leads (same data source)
       accounts: recordCounts.accounts,
       pipeline: recordCounts.pipeline,
     };
