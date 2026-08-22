@@ -15,12 +15,12 @@ import { CONTACTS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import { CONTACTS_MODULE_CONFIG } from '../contacts.config';
 import { ContactsDataGrid } from './contacts-data-grid';
 import { ContactFormSheet } from './contact-form';
-import { ImportContactsDrawer } from './import-contacts-drawer';
 import { ColumnsPopover } from '@/shared/components/data-grid';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { PageSizeSelect } from '@/shared/components/page-size-select';
+import { useRouter } from 'next/navigation';
 // ── Contacts Page ─────────────────────────────────────────────────────────────
 // Shows all contacts with activity flags, customer type, account links, deals
 
@@ -56,9 +56,11 @@ export default function ContactsPage(): React.ReactElement {
   const [isManageColumnsOpen, setIsManageColumnsOpen] = useState(false);
   const manageColumnsButtonRef = useRef<HTMLButtonElement>(null);
 
+  // ── Navigation ─────────────────────────────────────────────────────────
+  const router = useRouter();
+
   // ── Form State ────────────────────────────────────────────────────────
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [isImportOpen, setIsImportOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | undefined>(undefined);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
 
@@ -328,7 +330,7 @@ export default function ContactsPage(): React.ReactElement {
       moduleConfig={CONTACTS_MODULE_CONFIG}
       primaryActionLabel="Create Contact"
       onPrimaryAction={() => { setEditingContact(undefined); setIsFormOpen(true); }}
-      onImport={() => setIsImportOpen(true)}
+      onImport={() => router.push('/crm/contacts/import')}
       canCreate={canCreate}
       availableViews={['table']}
       activeView={'table' as ViewType}
@@ -534,12 +536,6 @@ export default function ContactsPage(): React.ReactElement {
       triggerRef={manageColumnsButtonRef}
     />
 
-    {/* ── Import Contacts Drawer ──────────────────────────────── */}
-    <ImportContactsDrawer
-      isOpen={isImportOpen}
-      onClose={() => setIsImportOpen(false)}
-      onImportComplete={fetchContacts}
-    />
     </>
   );
 }

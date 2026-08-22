@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Menu, Bell, Mail, Settings } from 'lucide-react';
+import { Menu, Bell, Mail } from 'lucide-react';
 import { useNotifications } from '@/features/tenant/notifications/hooks/use-notifications';
 import { getGmailStatus, fetchGmailEmails } from '@/features/tenant/inbox/services/gmail.service';
 import { useLayout, NAV_ITEMS } from './use-layout';
+import { useAuth } from '@/store/AuthContext';
 import NotificationsDropdown from '@/features/tenant/notifications/ui/notifications-dropdown';
 import { GlobalOmnibox } from '@/shared/components/global-omnibox';
 import { UserProfileDropdown } from './user-profile-dropdown';
@@ -21,11 +22,14 @@ interface TopbarProps {
 
 export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): React.ReactElement {
   const { unreadCount: notificationCount } = useNotifications();
-  const { currentPath, navigate } = useLayout();
+  const { currentPath } = useLayout();
+  const { tenant } = useAuth();
   const [inboxCount, setInboxCount] = useState(0);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [settingsBreadcrumb, setSettingsBreadcrumb] = useState<{ group: string; tab: string }>({ group: 'General', tab: 'Profile Settings' });
   const notificationButtonRef = useRef<HTMLButtonElement>(null!);
+
+  const isSandbox = tenant?.environment === 'sandbox' || tenant?.environment === 'both';
 
   // Fetch unread email count for inbox badge
   useEffect(() => {
@@ -99,6 +103,18 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
           </span>
         </div>
 
+        {/* Sandbox Environment Indicator */}
+        {isSandbox && (
+          <span
+            className="ml-2 hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[10.5px] font-semibold border border-amber-200 dark:border-amber-700/50"
+            title="You are in a sandbox environment — data here is for testing only"
+            aria-label="Sandbox environment indicator"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" aria-hidden="true" />
+            Sandbox
+          </span>
+        )}
+
       </div>
 
       {/* Center: Global Search Omnibox */}
@@ -145,21 +161,6 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
           {notificationCount > 0 && (
             <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#3B82F6]" />
           )}
-        </button>
-
-        {/* Settings */}
-        <button
-          onClick={() => navigate('settings')}
-          className={cn(
-            'w-8 h-8 rounded-lg flex items-center justify-center transition-colors',
-            currentPath === 'settings'
-              ? 'bg-[#3B82F6]/10 text-[#3B82F6]'
-              : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)]',
-          )}
-          aria-label="Settings"
-          title="Settings"
-        >
-          <Settings size={16} />
         </button>
 
         {/* User Profile Dropdown */}
