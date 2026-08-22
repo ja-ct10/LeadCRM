@@ -46,7 +46,8 @@ const optionalStringArb = fc.option(fc.uuid(), { nil: undefined });
 const optionalPriorityArb = fc.option(priorityArb, { nil: undefined });
 
 const optionalDateArb = fc.option(
-  fc.date({ min: new Date('2020-01-01'), max: new Date('2030-12-31') }).map((d) => d.toISOString()),
+  fc.integer({ min: new Date('2020-01-01T00:00:00.000Z').getTime(), max: new Date('2030-12-31T23:59:59.999Z').getTime() })
+    .map((t) => new Date(t).toISOString()),
   { nil: undefined },
 );
 
@@ -197,7 +198,7 @@ describe('Feature: deals-module-modernization, Property 4: Filter Predicate Inva
       await fc.assert(
         fc.asyncProperty(
           tenantIdArb,
-          fc.date({ min: new Date('2020-01-01'), max: new Date('2030-12-31') }).map((d) => d.toISOString()),
+          fc.integer({ min: new Date('2020-01-01T00:00:00.000Z').getTime(), max: new Date('2030-12-31T23:59:59.999Z').getTime() }).map((t) => new Date(t).toISOString()),
           async (tenantId, dateFrom) => {
             const params = buildQueryParams({ dateFrom });
             const whereClause = await callAndCaptureWhere(tenantId, params);
@@ -217,7 +218,7 @@ describe('Feature: deals-module-modernization, Property 4: Filter Predicate Inva
       await fc.assert(
         fc.asyncProperty(
           tenantIdArb,
-          fc.date({ min: new Date('2020-01-01'), max: new Date('2030-12-31') }).map((d) => d.toISOString()),
+          fc.integer({ min: new Date('2020-01-01T00:00:00.000Z').getTime(), max: new Date('2030-12-31T23:59:59.999Z').getTime() }).map((t) => new Date(t).toISOString()),
           async (tenantId, dateTo) => {
             const params = buildQueryParams({ dateTo });
             const whereClause = await callAndCaptureWhere(tenantId, params);
@@ -241,8 +242,8 @@ describe('Feature: deals-module-modernization, Property 4: Filter Predicate Inva
           priorityArb,
           fc.uuid(),
           fc.uuid(),
-          fc.date({ min: new Date('2020-01-01'), max: new Date('2025-12-31') }).map((d) => d.toISOString()),
-          fc.date({ min: new Date('2026-01-01'), max: new Date('2030-12-31') }).map((d) => d.toISOString()),
+          fc.integer({ min: new Date('2020-01-01T00:00:00.000Z').getTime(), max: new Date('2025-12-31T23:59:59.999Z').getTime() }).map((t) => new Date(t).toISOString()),
+          fc.integer({ min: new Date('2026-01-01T00:00:00.000Z').getTime(), max: new Date('2030-12-31T23:59:59.999Z').getTime() }).map((t) => new Date(t).toISOString()),
           async (tenantId, stageId, priority, pipelineId, assignedUserId, dateFrom, dateTo) => {
             const params = buildQueryParams({
               stageId,
@@ -304,8 +305,8 @@ describe('Feature: deals-module-modernization, Property 4: Filter Predicate Inva
           pipelineId: fc.uuid(),
           priority: priorityArb,
           assignedUserId: fc.uuid(),
-          dateFrom: fc.date({ min: new Date('2020-01-01'), max: new Date('2030-12-31') }).map((d) => d.toISOString()),
-          dateTo: fc.date({ min: new Date('2020-01-01'), max: new Date('2030-12-31') }).map((d) => d.toISOString()),
+          dateFrom: fc.integer({ min: new Date('2020-01-01T00:00:00.000Z').getTime(), max: new Date('2030-12-31T23:59:59.999Z').getTime() }).map((t) => new Date(t).toISOString()),
+          dateTo: fc.integer({ min: new Date('2020-01-01T00:00:00.000Z').getTime(), max: new Date('2030-12-31T23:59:59.999Z').getTime() }).map((t) => new Date(t).toISOString()),
         },
         { requiredKeys: [] },
       );

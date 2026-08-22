@@ -9,7 +9,7 @@ import { CONTACTS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 export const CONTACTS_MODULE_CONFIG: ModuleConfig = {
   moduleId: 'contacts',
   columnRegistry: CONTACTS_COLUMN_REGISTRY,
-  availableViews: ['table', 'list', 'grid', 'tile'],
+  availableViews: ['table'],
   sortableFields: [
     { id: 'firstName', label: 'Name' },
     { id: 'email', label: 'Email' },

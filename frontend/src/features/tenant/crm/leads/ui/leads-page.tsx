@@ -12,15 +12,21 @@ import { useColumnPreferences } from '@/shared/hooks/use-column-preferences';
 import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
 import { migrateLocalStorageColumns } from '../services/local-storage-migration';
 import { ManageColumnsDrawer } from '@/shared/components/manage-columns-drawer';
-import { ColumnsPopover } from '@/shared/components/data-grid';
 import { LeadsTileView, LeadsGridView, LeadsKanbanView, LeadDrawerOverview, LeadDrawerRelated } from './leads-view-components';
 import { LeadsListView } from './leads-list-view';
 import { LeadsDataGrid } from './leads-data-grid';
 import { LeadFormSheet } from './lead-form';
+import { ConvertLeadDialog } from './convert-lead-dialog';
+import { MergeRecordsDialog } from '@/shared/components/crm/merge-records-dialog';
+import { EntityCombobox } from '@/shared/components/entity-combobox';
+import { SlidingDrawer } from '@/shared/components/sliding-drawer';
+import { ImportLeadsDrawer } from './import-leads-drawer';
 import { LEADS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import { LEADS_MODULE_CONFIG } from '../leads.config';
 import { toast } from 'sonner';
-import { Edit, Phone, Mail, ListTodo, MoreHorizontal } from 'lucide-react';
+import { Edit, Phone, Mail, ListTodo, MoreHorizontal, ChevronLeft, ChevronRight } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { PageSizeSelect } from '@/shared/components/page-size-select';
 
 // ── Leads Page ────────────────────────────────────────────────────────────────
 
@@ -29,6 +35,7 @@ export default function LeadsPage(): React.ReactElement {
     contacts: leads,
     addContact: addLead,
     updateContact: updateLead,
+    refreshContacts,
     users,
     organizations,
   } = useData();
@@ -84,11 +91,15 @@ export default function LeadsPage(): React.ReactElement {
   // ── State ────────────────────────────────────────────────────────────
   const [activeView, setActiveView] = useState<ViewType>(() => (getParam('view') as ViewType) || 'list');
   const [activeTab, setActiveTab] = useState(() => getParam('tab') || 'all');
-  const [showFilters, setShowFilters] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
   const [searchTerm, setSearchTerm] = useState(() => getParam('search'));
   const [filterSearchTerm, setFilterSearchTerm] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | undefined>();
+  const [convertingLead, setConvertingLead] = useState<Lead | null>(null);
+  const [mergingLead, setMergingLead] = useState<Lead | null>(null);
+  const [mergeSecondaryId, setMergeSecondaryId] = useState<string | null>(null);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [drawerTab, setDrawerTab] = useState('overview');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -149,6 +160,9 @@ export default function LeadsPage(): React.ReactElement {
     // Tab filter
     if (activeTab === 'my') {
       result = result.filter((l) => l.assignedUserId === user?.id);
+    }
+    if (activeTab === 'active') {
+      result = result.filter((l) => l.status === 'Hot' || l.status === 'Warm' || l.status === 'Inquiry');
     }
 
     // Search
@@ -442,15 +456,15 @@ export default function LeadsPage(): React.ReactElement {
         moduleConfig={LEADS_MODULE_CONFIG}
         primaryActionLabel="Create Lead"
         onPrimaryAction={handleCreate}
-        onImport={() => toast.info('Import feature coming soon')}
+        onImport={() => setIsImportOpen(true)}
         canCreate={canCreate}
-        availableViews={['list', 'tile', 'table', 'kanban', 'grid']}
-        activeView={activeView}
+        availableViews={['table']}
+        activeView={'table' as ViewType}
         onViewChange={setActiveView}
-
         savedTabs={[
           { id: 'all', label: 'All Leads' },
           { id: 'my', label: 'My Leads' },
+          { id: 'active', label: 'Active Leads' },
         ]}
         activeTab={activeTab}
         onTabChange={setActiveTab}
@@ -468,29 +482,10 @@ export default function LeadsPage(): React.ReactElement {
         sort={sort}
         onSortChange={setSort}
         pageSize={pageSize}
-        onPageSizeChange={setPageSize}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         onRefresh={() => toast.success('Data refreshed')}
-        currentPage={currentPage}
-        paginationTotalRecords={sortedLeads.length}
-        onPageChange={setCurrentPage}
         onManageColumns={() => setIsManageColumnsOpen(true)}
-        toolbarExtra={
-          <ColumnsPopover
-            registry={LEADS_COLUMN_REGISTRY}
-            effectiveColumns={effectiveColumns}
-            onApply={(cols) => {
-              saveColumns(cols);
-              toast.success('Column visibility updated');
-            }}
-            onReset={() => {
-              resetColumns();
-              toast.success('Columns reset to default');
-            }}
-            hiddenCount={effectiveColumns.filter((c) => !c.visible).length}
-          />
-        }
         onResetColumns={() => {
           resetColumns();
           toast.success('Columns reset to default');
@@ -538,6 +533,8 @@ export default function LeadsPage(): React.ReactElement {
             onDelete={(lead) => {
               toast.info(`Delete "${lead.leadPerson ?? lead.displayName}" coming soon`);
             }}
+            onConvert={(lead) => setConvertingLead(lead)}
+            onMerge={(lead) => setMergingLead(lead)}
             onManageColumns={() => setIsManageColumnsOpen(true)}
             onHideColumn={async (columnId) => {
               const updated = effectiveColumns.map((col) =>
@@ -559,6 +556,52 @@ export default function LeadsPage(): React.ReactElement {
             }}
             viewMode={viewMode}
           />
+        )}
+
+        {/* ── Bottom Pagination + Per Page ─────────────────────── */}
+        {(activeView === 'list' || activeView === 'table') && !isColumnsLoading && sortedLeads.length > 0 && (
+          <div className="flex items-center justify-between px-4 py-3 mt-2 bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 rounded-lg">
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-slate-500 dark:text-slate-400">
+                Per page
+              </label>
+              <PageSizeSelect value={pageSize} onChange={(size) => { setPageSize(size); setCurrentPage(1); }} />
+              <span className="text-xs text-slate-400 dark:text-slate-500 ml-2">
+                {sortedLeads.length} total records
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                Page {currentPage} of {Math.ceil(sortedLeads.length / pageSize) || 1}
+              </span>
+              <button
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage <= 1}
+                className={cn(
+                  'inline-flex items-center justify-center w-7 h-7 rounded-md border transition-colors',
+                  currentPage <= 1
+                    ? 'border-slate-200 dark:border-slate-700 text-slate-300 dark:text-slate-600 cursor-not-allowed'
+                    : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700',
+                )}
+                aria-label="Previous page"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <button
+                onClick={() => setCurrentPage(Math.min(Math.ceil(sortedLeads.length / pageSize), currentPage + 1))}
+                disabled={currentPage >= Math.ceil(sortedLeads.length / pageSize)}
+                className={cn(
+                  'inline-flex items-center justify-center w-7 h-7 rounded-md border transition-colors',
+                  currentPage >= Math.ceil(sortedLeads.length / pageSize)
+                    ? 'border-slate-200 dark:border-slate-700 text-slate-300 dark:text-slate-600 cursor-not-allowed'
+                    : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700',
+                )}
+                aria-label="Next page"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
         )}
 
         {/* ── Tile View ─────────────────────────────────────────── */}
@@ -623,6 +666,57 @@ export default function LeadsPage(): React.ReactElement {
           setEditingLead(undefined);
         }}
       />
+
+      {/* ── Import Leads Drawer ─────────────────────────────────── */}
+      <ImportLeadsDrawer
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        onImportComplete={refreshContacts}
+      />
+
+      {/* ── Convert Lead Dialog ─────────────────────────────────── */}
+      {convertingLead && (
+        <ConvertLeadDialog
+          isOpen={!!convertingLead}
+          onClose={() => setConvertingLead(null)}
+          lead={convertingLead}
+          onSuccess={() => setConvertingLead(null)}
+        />
+      )}
+
+      {/* ── Merge Lead: Step 1 — Pick secondary record ───────────── */}
+      {mergingLead && !mergeSecondaryId && (
+        <SlidingDrawer
+          isOpen={true}
+          onClose={() => setMergingLead(null)}
+          title="Merge Lead"
+          subtitle={`Select a record to merge with ${mergingLead.firstName} ${mergingLead.lastName}`}
+        >
+          <div className="p-6 space-y-4">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Select the duplicate lead to merge into the primary record.
+            </p>
+            <EntityCombobox
+              entityType="leads"
+              value={null}
+              onChange={(id) => { if (id) setMergeSecondaryId(id); }}
+              placeholder="Search for the duplicate lead..."
+            />
+          </div>
+        </SlidingDrawer>
+      )}
+
+      {/* ── Merge Lead: Step 2 — Full comparison ─────────────────── */}
+      {mergingLead && mergeSecondaryId && (
+        <MergeRecordsDialog
+          isOpen={true}
+          onClose={() => { setMergingLead(null); setMergeSecondaryId(null); }}
+          entityType="lead"
+          primaryId={mergingLead.id}
+          secondaryId={mergeSecondaryId}
+          onSuccess={() => { setMergingLead(null); setMergeSecondaryId(null); }}
+        />
+      )}
 
       {/* ── Manage Columns Drawer ───────────────────────────────── */}
       <ManageColumnsDrawer

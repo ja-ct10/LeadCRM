@@ -14,10 +14,13 @@ import { ACCOUNTS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import { ACCOUNTS_MODULE_CONFIG } from '../accounts.config';
 import { AccountsDataGrid } from './accounts-data-grid';
 import AccountForm from '../ui/account-form';
+import { ImportAccountsDrawer } from './import-accounts-drawer';
 import { SideSheet } from '@/shared/components/side-sheet';
 import { ColumnsPopover } from '@/shared/components/data-grid';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { PageSizeSelect } from '@/shared/components/page-size-select';
 import type { Account } from '../types/account.types';
 import type { ColumnConfigItem } from '@leadcrm/shared';
 
@@ -55,6 +58,7 @@ export default function AccountsPage(): React.ReactElement {
   } = useColumnPreferences('accounts');
 
   const [isManageColumnsOpen, setIsManageColumnsOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const manageColumnsButtonRef = useRef<HTMLButtonElement>(null);
 
   // ── Table Preferences (pageSize, viewMode, sort) ──────────────────────
@@ -71,7 +75,7 @@ export default function AccountsPage(): React.ReactElement {
   // ── State (Synced with URL) ──────────────────────────────────────────
   const [activeView, setActiveView] = useState<ViewType>(() => (getParam('view') as ViewType) || 'list');
   const [activeTab, setActiveTab] = useState(() => getParam('tab') || 'all');
-  const [showFilters, setShowFilters] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
   const [searchTerm, setSearchTerm] = useState(() => getParam('search'));
   const [filterSearchTerm, setFilterSearchTerm] = useState('');
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
@@ -311,17 +315,16 @@ export default function AccountsPage(): React.ReactElement {
         moduleConfig={ACCOUNTS_MODULE_CONFIG}
         primaryActionLabel="Add Account"
         onPrimaryAction={handleOpenCreate}
-        onImport={() => toast.info('Import feature coming soon')}
+        onImport={() => setIsImportOpen(true)}
         canCreate={canCreate}
-        availableViews={['list', 'tile', 'table', 'grid']}
-        activeView={activeView}
+        availableViews={['table']}
+        activeView={'table' as ViewType}
         onViewChange={setActiveView}
 
         sortableFields={ACCOUNTS_COLUMN_REGISTRY.map((col) => ({ id: col.id, label: col.label }))}
         sort={sort}
         onSortChange={setSort}
         pageSize={pageSize}
-        onPageSizeChange={setPageSize}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         savedTabs={[
@@ -341,24 +344,7 @@ export default function AccountsPage(): React.ReactElement {
         onSearch={setSearchTerm}
         searchPlaceholder="Search accounts..."
         onRefresh={() => toast.success('Refreshed')}
-        currentPage={currentPage}
-        paginationTotalRecords={filteredAccounts.length}
-        onPageChange={setCurrentPage}
-        toolbarExtra={
-        <ColumnsPopover
-          registry={ACCOUNTS_COLUMN_REGISTRY}
-          effectiveColumns={effectiveColumns}
-          onApply={(cols) => {
-            saveColumns(cols);
-            toast.success('Column visibility updated');
-          }}
-          onReset={() => {
-            resetColumns();
-            toast.success('Columns reset to default');
-          }}
-          hiddenCount={effectiveColumns.filter((c) => !c.visible).length}
-        />
-        }
+        onManageColumns={() => setIsManageColumnsOpen(true)}
       >
         {/* List View — DataGrid */}
         {(activeView === 'list' || activeView === 'table') && (
@@ -396,6 +382,26 @@ export default function AccountsPage(): React.ReactElement {
               }
             }}
           />
+        )}
+
+        {/* ── Bottom Pagination + Per Page ─────────────────────── */}
+        {(activeView === 'list' || activeView === 'table') && filteredAccounts.length > 0 && (
+          <div className="flex items-center justify-between px-4 py-3 mt-2 bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 rounded-lg">
+            <div className="flex items-center gap-2">
+              <label htmlFor="accounts-page-size" className="text-xs text-slate-500 dark:text-slate-400">Per page</label>
+              <PageSizeSelect value={pageSize} onChange={(size) => { setPageSize(size); setCurrentPage(1); }} />
+              <span className="text-xs text-slate-400 dark:text-slate-500 ml-2">{filteredAccounts.length} total records</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">Page {currentPage} of {Math.ceil(filteredAccounts.length / pageSize) || 1}</span>
+              <button onClick={() => setCurrentPage(Math.max(1, currentPage - 1))} disabled={currentPage <= 1} className={cn('inline-flex items-center justify-center w-7 h-7 rounded-md border transition-colors', currentPage <= 1 ? 'border-slate-200 dark:border-slate-700 text-slate-300 dark:text-slate-600 cursor-not-allowed' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700')} aria-label="Previous page">
+                <ChevronLeft size={14} />
+              </button>
+              <button onClick={() => setCurrentPage(Math.min(Math.ceil(filteredAccounts.length / pageSize), currentPage + 1))} disabled={currentPage >= Math.ceil(filteredAccounts.length / pageSize)} className={cn('inline-flex items-center justify-center w-7 h-7 rounded-md border transition-colors', currentPage >= Math.ceil(filteredAccounts.length / pageSize) ? 'border-slate-200 dark:border-slate-700 text-slate-300 dark:text-slate-600 cursor-not-allowed' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700')} aria-label="Next page">
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
         )}
 
         {/* Tile View */}
@@ -490,6 +496,12 @@ export default function AccountsPage(): React.ReactElement {
         onSave={saveColumns}
         onReset={resetColumns}
         triggerRef={manageColumnsButtonRef}
+      />
+
+      {/* ── Import Accounts Drawer ──────────────────────────────── */}
+      <ImportAccountsDrawer
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
       />
     </>
   );

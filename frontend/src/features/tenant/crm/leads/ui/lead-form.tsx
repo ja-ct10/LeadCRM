@@ -1,13 +1,16 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Lead } from '@/store/types';
 import { SlidingDrawer } from '@/shared/components/sliding-drawer';
 import { useData } from '@/store/DataContext';
 import { useScrollToError } from '@/shared/hooks/use-scroll-to-error';
+import { useDuplicateCheck } from '@/shared/hooks/use-duplicate-check';
+import { DuplicateWarning } from '@/shared/components/crm/duplicate-warning';
+import { EntityCombobox } from '@/shared/components/entity-combobox';
 import {
   Mail,
   MapPin,
@@ -106,6 +109,8 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
     formState: { errors },
     reset,
     setFocus,
+    control,
+    watch,
   } = useForm<LeadFormData>({
     resolver: zodResolver(LeadFormSchema),
     mode: 'onBlur',
@@ -136,6 +141,21 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
   // Scroll to first error on submit via shared hook
   const formRef = useRef<HTMLFormElement>(null);
   useScrollToError({ errors, formRef, setFocus });
+
+  // Duplicate detection — check email/phone on change (only on create, not edit)
+  const watchedEmail = watch('email');
+  const watchedPhone = watch('phone');
+  const watchedFirstName = watch('firstName');
+  const watchedLastName = watch('lastName');
+  const { matches: duplicateMatches, isChecking: isDuplicateChecking, hasDuplicates, dismiss: dismissDuplicates } = useDuplicateCheck({
+    email: watchedEmail || undefined,
+    phone: phoneNumber ? `${phoneCode} ${phoneNumber}` : undefined,
+    firstName: watchedFirstName || undefined,
+    lastName: watchedLastName || undefined,
+    excludeId: initialData?.id,
+    entityTypes: ['lead', 'contact'],
+    enabled: !isEdit,
+  });
 
   useEffect(() => {
     if (initialData) {
@@ -298,6 +318,15 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
           </FieldWrap>
         </div>
 
+        {/* Duplicate Detection Warning */}
+        {hasDuplicates && (
+          <DuplicateWarning
+            matches={duplicateMatches}
+            isChecking={isDuplicateChecking}
+            onDismiss={dismissDuplicates}
+          />
+        )}
+
         {/* Section 2: Status & Interest */}
         <div className="space-y-4">
           <SectionHeader num={2} title="Status & Interest" />
@@ -364,9 +393,29 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
           </div>
         </div>
 
-        {/* Section 3: Additional Information */}
+        {/* Section 3: Organization */}
         <div className="space-y-4">
-          <SectionHeader num={3} title="Additional Information" />
+          <SectionHeader num={3} title="Organization" />
+          <FieldWrap label="Account" error={errors.accountId?.message}>
+            <Controller
+              name="accountId"
+              control={control}
+              render={({ field }) => (
+                <EntityCombobox
+                  entityType="accounts"
+                  value={field.value || null}
+                  onChange={(id) => field.onChange(id || '')}
+                  placeholder="Search accounts..."
+                  error={errors.accountId?.message}
+                />
+              )}
+            />
+          </FieldWrap>
+        </div>
+
+        {/* Section 4: Additional Information */}
+        <div className="space-y-4">
+          <SectionHeader num={4} title="Additional Information" />
           <div className="grid grid-cols-2 gap-4">
             <FieldWrap label="Lead Source">
               <div className="relative">

@@ -4,11 +4,11 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { Search, X, ChevronsUpDown, Check, AlertCircle, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useData } from '@/store/DataContext';
-import type { Organization, Contact, User, Pipeline, Stage } from '@/store/types';
+import type { Organization, Contact, User, Pipeline, Stage, Lead } from '@/store/types';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
-export type EntityType = 'accounts' | 'contacts' | 'users' | 'pipelines' | 'stages';
+export type EntityType = 'accounts' | 'contacts' | 'leads' | 'users' | 'pipelines' | 'stages';
 
 interface EntityOption {
   id: string;
@@ -63,7 +63,7 @@ const MAX_RESULTS = 50;
 const DEFAULT_DEBOUNCE_MS = 300;
 const DEFAULT_MIN_SEARCH_CHARS = 2;
 
-function getDisplayName(entity: Organization | Contact | User | Pipeline | Stage, entityType: EntityType): string {
+function getDisplayName(entity: Organization | Contact | User | Pipeline | Stage | Lead, entityType: EntityType): string {
   switch (entityType) {
     case 'accounts':
       return (entity as Organization).name;
@@ -71,6 +71,11 @@ function getDisplayName(entity: Organization | Contact | User | Pipeline | Stage
       const contact = entity as Contact;
       const parts = [contact.firstName, contact.lastName].filter(Boolean);
       return parts.length > 0 ? parts.join(' ') : contact.email || contact.contactPerson || 'Unknown';
+    }
+    case 'leads': {
+      const lead = entity as Lead;
+      const parts = [lead.firstName, lead.lastName].filter(Boolean);
+      return parts.length > 0 ? parts.join(' ') : lead.email || 'Unknown Lead';
     }
     case 'users': {
       const user = entity as User;
@@ -85,7 +90,7 @@ function getDisplayName(entity: Organization | Contact | User | Pipeline | Stage
   }
 }
 
-function getSublabel(entity: Organization | Contact | User | Pipeline | Stage, entityType: EntityType): string | undefined {
+function getSublabel(entity: Organization | Contact | User | Pipeline | Stage | Lead, entityType: EntityType): string | undefined {
   switch (entityType) {
     case 'accounts': {
       const org = entity as Organization;
@@ -94,6 +99,10 @@ function getSublabel(entity: Organization | Contact | User | Pipeline | Stage, e
     case 'contacts': {
       const contact = entity as Contact;
       return contact.email || undefined;
+    }
+    case 'leads': {
+      const lead = entity as Lead;
+      return lead.email || lead.companyName || undefined;
     }
     case 'users': {
       const user = entity as User;
@@ -165,6 +174,9 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
           break;
         case 'contacts':
           entities = dataContext.contacts;
+          break;
+        case 'leads':
+          entities = dataContext.contacts; // Leads are stored as 'contacts' in DataContext
           break;
         case 'users':
           entities = dataContext.users;

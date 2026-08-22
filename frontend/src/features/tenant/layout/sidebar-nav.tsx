@@ -35,7 +35,7 @@ export default function SidebarNav({
   // Record counts for CRM badge display
   const recordCounts = useMemo(() => ({
     leads: contacts.filter(c => !c.isArchived).length,
-    contacts: contacts.filter(c => !c.isArchived).length,
+    // contacts: contacts.filter(c => !c.isArchived).length, // TODO: Implement V2 Contacts count from real API
     accounts: organizations.filter(o => !o.isArchived).length,
     pipeline: deals.filter(d => !d.isArchived).length,
   }), [contacts, deals, organizations]);
@@ -43,7 +43,7 @@ export default function SidebarNav({
   const getBadgeCount = (path: string): number | undefined => {
     const counts: Record<string, number | undefined> = {
       leads: recordCounts.leads,
-      contacts: recordCounts.contacts,
+      contacts: recordCounts.leads, // Contacts shares the same count as leads (same data source)
       accounts: recordCounts.accounts,
       pipeline: recordCounts.pipeline,
     };

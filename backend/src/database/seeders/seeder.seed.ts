@@ -42,14 +42,14 @@ async function main() {
   await prisma.activity.deleteMany({ where: { tenantId: tenant.id } });
   await prisma.task.deleteMany({ where: { tenantId: tenant.id } });
   await prisma.leadDeal.deleteMany({ where: { tenantId: tenant.id } });
-  await prisma.customerDeal.deleteMany({ where: { tenantId: tenant.id } });
+  await prisma.contactDeal.deleteMany({ where: { tenantId: tenant.id } });
   await prisma.dealStageHistory.deleteMany({ where: { tenantId: tenant.id } });
   await prisma.dealAction.deleteMany({ where: { tenantId: tenant.id } });
   await prisma.deal.deleteMany({ where: { tenantId: tenant.id } });
   await prisma.stage.deleteMany({ where: { tenantId: tenant.id } });
   await prisma.pipeline.deleteMany({ where: { tenantId: tenant.id } });
   await prisma.lead.deleteMany({ where: { tenantId: tenant.id } });
-  await prisma.customer.deleteMany({ where: { tenantId: tenant.id } });
+  await prisma.contact.deleteMany({ where: { tenantId: tenant.id } });
   await prisma.account.deleteMany({ where: { tenantId: tenant.id } });
   
   console.log('[Seed] ✓ Old data cleaned up');
@@ -262,7 +262,7 @@ async function main() {
 
   // ── 7. Create Customers ─────────────────────────────────────────────────
   const customers = await Promise.all([
-    prisma.customer.create({
+    prisma.contact.create({
       data: {
         tenantId: tenant.id,
         accountId: accounts[3].id,
@@ -277,7 +277,7 @@ async function main() {
         status: 'Active',
       },
     }),
-    prisma.customer.create({
+    prisma.contact.create({
       data: {
         tenantId: tenant.id,
         assignedUserId: user.id,

@@ -44,11 +44,18 @@ export interface Contact {
   updatedById?: string;
   lastStatusChangedAt?: string;
 
+  // Conversion tracking (set when lead is converted to a contact)
+  contactId?: string;
+  convertedAt?: string;
+  convertedById?: string;
+
   // Joined relations (included in list/detail responses)
   assignedUser?: { id: string; firstName: string; lastName: string };
   account?: { id: string; name: string };
   createdByUser?: { id: string; firstName: string; lastName: string };
   updatedByUser?: { id: string; firstName: string; lastName: string };
+  convertedContact?: { id: string; firstName: string; lastName: string };
+  convertedByUser?: { id: string; firstName: string; lastName: string };
 }
 
 /**

@@ -27,6 +27,8 @@ import { RecordPanel, SmallAction, Chip } from './RecordPanel';
 import { PipelineProgressBar } from './pipeline-progress-bar';
 import { RecordActionBar } from './record-action-bar';
 import type { OverflowMenuItem } from './record-action-bar';
+import { ConfirmActionDialog } from './confirm-action-dialog';
+import { useConfirmDialog } from '@/shared/hooks/use-confirm-dialog';
 import { InlineTaskForm } from './inline-task-form';
 import { InlineDealForm } from './inline-deal-form';
 import { CustomFieldsSection } from './custom-fields-section';
@@ -677,6 +679,7 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
   const [showDealForm, setShowDealForm] = useState(false);
   const [expandedDealId, setExpandedDealId] = useState<string | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const { dialogProps: confirmDialogProps, confirm: showConfirm } = useConfirmDialog();
 
   const [customFields, setCustomFields] = useState<CustomFieldItem[]>([
     { id: 'cf-1', name: 'Product Interest Keywords', type: 'text', value: 'Security, Cabling, CCTV' },
@@ -747,13 +750,18 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
     {
       label: 'Delete',
       icon: <Trash2 className="size-4" />,
-      onClick: async () => {
-        if (window.confirm(`Delete lead ${leadName}?`)) {
+      onClick: () => showConfirm({
+        title: `Delete Lead?`,
+        description: `This will archive "${leadName}" and all associated data.`,
+        warning: 'This action cannot be easily reversed.',
+        variant: 'destructive',
+        confirmLabel: 'Delete Lead',
+        onConfirm: async () => {
           await deleteLead(lead.id);
           onOpenChange(false);
           toast.success('Lead deleted');
-        }
-      },
+        },
+      }),
       destructive: true,
       permission: 'contacts.delete',
     },
@@ -979,6 +987,32 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
       ),
     },
     {
+      id: 'converted-contact',
+      title: 'Converted Contact',
+      icon: UserPlus,
+      count: (lead as any).contactId ? 1 : 0,
+      collapsible: true,
+      content: (lead as any).contactId ? (
+        (() => {
+          const linkedContact = contacts.find((c) => c.id === (lead as any).contactId);
+          if (!linkedContact) return <div className="p-4 text-center text-xs text-muted-foreground">Contact record not loaded.</div>;
+          return (
+            <Link href={`/crm/contacts?id=${linkedContact.id}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 hover:bg-secondary/50 transition-colors cursor-pointer group block">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-foreground group-hover:text-primary transition-colors">{linkedContact.firstName} {linkedContact.lastName}</p>
+                <p className="text-xs text-muted-foreground">{linkedContact.email || 'Contact'}</p>
+              </div>
+              <Chip>Contact</Chip>
+            </Link>
+          );
+        })()
+      ) : (
+        <div className="p-4 text-center text-xs text-muted-foreground">
+          {lead.status === 'Converted' ? 'Contact record linked via conversion.' : 'Not yet converted to a contact.'}
+        </div>
+      ),
+    },
+    {
       id: 'contacts',
       title: 'Company / Organization',
       icon: Building,
@@ -1031,6 +1065,8 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
   ];
 
   return (
+    <>
+    <ConfirmActionDialog {...confirmDialogProps} />
     <RecordPanel
       open={open}
       onOpenChange={onOpenChange}
@@ -1087,6 +1123,7 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
         },
       ]}
     />
+    </>
   );
 }
 
@@ -1454,6 +1491,7 @@ export function AccountPanel({ open, onOpenChange, account, onEdit }: AccountPan
 
   const accountName = account.name || 'Account';
   const relatedContacts = contacts.filter((c) => c.accountId === account.id || c.companyName === accountName);
+  const relatedLeads = contacts.filter((c) => (c.accountId === account.id || c.organizationId === account.id) && c.status !== 'Converted' && c.status !== 'Merged');
   const relatedDeals = deals.filter((d: Deal) => d.organizationId === account.id);
   const selectedDeal = selectedDealId ? deals.find((d) => d.id === selectedDealId) ?? null : null;
 
@@ -1555,6 +1593,29 @@ export function AccountPanel({ open, onOpenChange, account, onEdit }: AccountPan
           ))}
           {relatedContacts.length === 0 && (
             <p className="p-4 text-xs text-muted-foreground text-center">No contacts under this account.</p>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: 'leads',
+      title: 'Leads',
+      icon: UserPlus,
+      count: relatedLeads.length,
+      collapsible: true,
+      content: (
+        <div className="divide-y divide-border text-sm">
+          {relatedLeads.map((l) => (
+            <Link key={l.id} href={`/crm/leads?id=${l.id}`} className="p-3 flex justify-between items-center hover:bg-secondary/50 transition-colors cursor-pointer group block">
+              <div>
+                <p className="font-medium text-foreground group-hover:text-primary transition-colors">{l.firstName} {l.lastName}</p>
+                <p className="text-xs text-muted-foreground">{l.email || l.phone || 'Lead'}</p>
+              </div>
+              <Chip>{l.status || 'Inquiry'}</Chip>
+            </Link>
+          ))}
+          {relatedLeads.length === 0 && (
+            <p className="p-4 text-xs text-muted-foreground text-center">No leads under this account.</p>
           )}
         </div>
       ),

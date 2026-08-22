@@ -360,7 +360,6 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
       toast.success(`Deal moved to ${targetStage.name}`);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Failed to move deal');
-      throw err;
     }
   }, [deals, activePipeline, moveDealStage]);
 

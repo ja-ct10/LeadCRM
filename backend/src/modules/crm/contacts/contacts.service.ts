@@ -83,20 +83,33 @@ export async function archiveContact(id: string, tenantId: string, userId: strin
 }
 
 /**
- * Convert a Lead contact into a full Contact with an Account link and optional Deal.
+ * Convert a Lead into a full CRM record chain:
+ * Lead → Contact (create/link) + Account (create/link) + optional Deal (create/link).
+ *
+ * After conversion:
+ * - Lead.status = 'Converted'
+ * - Lead.contactId = created/linked Contact ID
+ * - Lead.convertedAt = now
+ * - Lead.convertedById = userId
+ * - Lead.accountId = resolved Account ID
  */
 export async function convertContact(
   id: string, tenantId: string, userId: string, dto: ConvertContactDto,
 ) {
-  const contact = await repo.findContactById(id, tenantId);
-  if (!contact) throw new NotFoundError('Contact');
+  const lead = await repo.findContactById(id, tenantId);
+  if (!lead) throw new NotFoundError('Contact');
+
+  // Prevent re-conversion
+  if (lead.status === 'Converted') {
+    throw new ValidationError('This lead has already been converted');
+  }
 
   const now = new Date();
 
   const result = await prisma.$transaction(async (tx) => {
-    // 1. Resolve or create the Account
+    // ─── 1. Resolve or create the Account ─────────────────────────────────
     let accountId = dto.accountId;
-    let account: { id: string; name: string; customerSince?: Date | null; activeProducts?: string[] } | null = null;
+    let account: { id: string; name: string } | null = null;
 
     if (accountId) {
       account = await tx.account.findFirst({ where: { id: accountId, tenantId } });
@@ -108,9 +121,78 @@ export async function convertContact(
       accountId = account.id;
     }
 
-    // 2. Optionally create a Deal
-    let deal = null;
-    if (dto.createDeal && dto.dealTitle) {
+    // ─── 2. Resolve or create the Contact ─────────────────────────────────
+    let contactId: string | null = null;
+    let contact: { id: string; firstName: string; lastName: string } | null = null;
+
+    if (dto.contactId) {
+      // Link to existing contact
+      contact = await tx.contact.findFirst({ where: { id: dto.contactId, tenantId } });
+      if (!contact) throw new NotFoundError('Contact');
+      contactId = contact.id;
+
+      // Update existing contact's accountId if not already set
+      if (accountId) {
+        await tx.contact.update({
+          where: { id: contactId } as never,
+          data: { accountId } as never,
+        });
+      }
+    } else if (dto.createContact !== false) {
+      // Create new Contact from Lead data
+      contact = await tx.contact.create({
+        data: {
+          tenantId,
+          firstName: lead.firstName,
+          lastName: lead.lastName,
+          email: lead.email,
+          phone: lead.phone,
+          companyName: lead.companyName,
+          address: lead.address,
+          source: lead.source,
+          productInterest: lead.productInterest || [],
+          assignedUserId: lead.assignedUserId,
+          accountId: accountId,
+          status: 'Active',
+        } as never,
+      });
+      contactId = contact.id;
+    }
+
+    // ─── 3. Resolve or create the Deal ────────────────────────────────────
+    let deal: { id: string; title: string } | null = null;
+
+    if (dto.dealId) {
+      // Link to existing deal
+      deal = await tx.deal.findFirst({
+        where: { id: dto.dealId, tenantId },
+        select: { id: true, title: true },
+      });
+      if (!deal) throw new NotFoundError('Deal');
+
+      // Create LeadDeal junction
+      await tx.leadDeal.create({
+        data: { tenantId, dealId: deal.id, leadId: id, addedById: userId } as never,
+      });
+
+      // Create ContactDeal junction if contact exists
+      if (contactId) {
+        await tx.contactDeal.create({
+          data: { tenantId, dealId: deal.id, contactId, addedById: userId } as never,
+        }).catch(() => {
+          // Ignore if junction already exists (unique constraint)
+        });
+      }
+
+      // Update deal accountId if not set
+      if (accountId) {
+        await tx.deal.update({
+          where: { id: deal.id } as never,
+          data: { accountId } as never,
+        });
+      }
+    } else if (dto.createDeal && dto.dealTitle) {
+      // Create new deal
       const pipeline = dto.dealPipelineId
         ? await tx.pipeline.findFirst({ where: { id: dto.dealPipelineId, tenantId, isArchived: false }, include: { stages: { orderBy: { order: 'asc' } } } })
         : await tx.pipeline.findFirst({ where: { tenantId, isDefault: true, isArchived: false }, include: { stages: { orderBy: { order: 'asc' } } } });
@@ -123,11 +205,14 @@ export async function convertContact(
 
       deal = await tx.deal.create({
         data: {
-          tenantId, pipelineId: pipeline.id, stageId: entryStage.id,
+          tenantId,
+          pipelineId: pipeline.id,
+          stageId: entryStage.id,
           accountId: accountId,
           ownerId: userId,
-          assignedUserId: contact.assignedUserId || userId,
-          title: dto.dealTitle, value: dto.dealValue,
+          assignedUserId: lead.assignedUserId || userId,
+          title: dto.dealTitle,
+          value: dto.dealValue,
           priority: dto.dealPriority || 'MEDIUM',
         } as never,
       });
@@ -137,36 +222,61 @@ export async function convertContact(
         data: { tenantId, dealId: deal.id, leadId: id, addedById: userId } as never,
       });
 
+      // ContactDeal junction (if contact was created/linked)
+      if (contactId) {
+        await tx.contactDeal.create({
+          data: { tenantId, dealId: deal.id, contactId, addedById: userId } as never,
+        });
+      }
+
       // Activity for deal creation
       await tx.activity.create({
         data: {
           tenantId, createdById: userId,
-          type:  'deal_created',
+          type: 'deal_created',
           title: `Deal "${dto.dealTitle}" created via conversion`,
           dealId: deal.id, leadId: id, accountId: accountId,
         } as never,
       });
     }
 
-    // 3. Activity for conversion
-    await tx.activity.create({
+    // ─── 4. Update the Lead record ────────────────────────────────────────
+    await tx.lead.update({
+      where: { id } as never,
       data: {
-        tenantId, createdById: userId,
-        type:  'conversion',
-        title: `Contact converted — linked to ${account?.name || 'Account'}`,
-        leadId: id, accountId: accountId,
+        status: 'Converted',
+        accountId: accountId,
+        contactId: contactId,
+        convertedAt: now,
+        convertedById: userId,
       } as never,
     });
 
-    return { contact, account, deal };
+    // ─── 5. Activity for conversion ───────────────────────────────────────
+    await tx.activity.create({
+      data: {
+        tenantId, createdById: userId,
+        type: 'conversion',
+        title: `Lead converted — linked to ${account?.name || 'Account'}${contact ? `, Contact ${contact.firstName} ${contact.lastName}` : ''}`,
+        leadId: id, accountId: accountId,
+        ...(contactId ? { customerId: contactId } : {}),
+      } as never,
+    });
+
+    return { lead, contact, account, deal };
   });
 
   await writeAuditLog({
     tenantId, userId,
-    action:     'contact.converted',
+    action: 'contact.converted',
     entityType: 'Contact',
-    entityId:   id,
-    after:      { accountId: result.account?.id, dealId: result.deal?.id },
+    entityId: id,
+    after: {
+      accountId: result.account?.id,
+      contactId: result.contact?.id,
+      dealId: result.deal?.id,
+      convertedAt: now.toISOString(),
+    },
   });
 
   return result;

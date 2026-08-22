@@ -55,7 +55,7 @@ async function verifySeederData() {
     ] = await Promise.all([
       prisma.account.count({ where: { tenantId: tenant.id } }),
       prisma.lead.count({ where: { tenantId: tenant.id } }),
-      prisma.customer.count({ where: { tenantId: tenant.id } }),
+      prisma.contact.count({ where: { tenantId: tenant.id } }),
       prisma.deal.count({ where: { tenantId: tenant.id } }),
       prisma.pipeline.count({ where: { tenantId: tenant.id } }),
       prisma.stage.count({ where: { tenantId: tenant.id } }),

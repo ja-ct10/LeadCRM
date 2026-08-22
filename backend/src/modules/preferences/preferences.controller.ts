@@ -12,7 +12,7 @@ import type { ColumnSource } from '@leadcrm/shared';
 // ─────────────────────────────────────────────────────
 
 // Super roles that bypass permission checks
-const SUPER_ROLES = ['Admin', 'Super User', 'Client Admin', 'System Admin'];
+const SUPER_ROLES = ['admin', 'super user', 'client admin', 'system admin', 'client_admin', 'clientadmin', 'superuser', 'systemadmin'];
 
 // Map module IDs to their view permission key
 const MODULE_VIEW_PERMISSIONS: Record<string, string> = {
@@ -26,7 +26,7 @@ const MODULE_VIEW_PERMISSIONS: Record<string, string> = {
 function hasModuleViewPermission(req: Request, module: string): boolean {
   const role = req.user?.role;
   if (!role) return false;
-  if (SUPER_ROLES.includes(role)) return true;
+  if (SUPER_ROLES.includes(role.toLowerCase().replace(/[\s_\-]/g, ''))) return true;
   const requiredPermission = MODULE_VIEW_PERMISSIONS[module];
   if (!requiredPermission) return true;
   const rolePermissions: string[] = DEFAULT_ROLE_PERMISSIONS[role] ?? [];

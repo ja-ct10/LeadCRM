@@ -15,16 +15,35 @@ import { CONTACTS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import { CONTACTS_MODULE_CONFIG } from '../contacts.config';
 import { ContactsDataGrid } from './contacts-data-grid';
 import { ContactFormSheet } from './contact-form';
+import { ImportContactsDrawer } from './import-contacts-drawer';
 import { ColumnsPopover } from '@/shared/components/data-grid';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { PageSizeSelect } from '@/shared/components/page-size-select';
 // ── Contacts Page ─────────────────────────────────────────────────────────────
 // Shows all contacts with activity flags, customer type, account links, deals
 
 export default function ContactsPage(): React.ReactElement {
-  const { contacts, organizations, deals, users, addContact, updateContact } = useData();
+  const { organizations, deals, users } = useData();
   const { user } = useAuth();
   const canCreate = useHasPermission('contacts.create');
   const { getParam, getArrayParam, updateParams } = useFilterUrlSync('contacts');
+
+  // ── Contacts Data (fetched from /crm/contacts — Contact table) ────────
+  const [contacts, setContacts] = useState<Contact[]>([]);
+
+  const fetchContacts = useCallback(async () => {
+    try {
+      const { apiClient } = await import('@/lib/api/client');
+      const res: any = await apiClient.get('/crm/contacts', { params: { limit: 100 } });
+      setContacts((res?.data ?? []) as Contact[]);
+    } catch (err) {
+      console.error('[ContactsPage] Failed to fetch contacts:', err);
+    }
+  }, []);
+
+  useEffect(() => { fetchContacts(); }, [fetchContacts]);
 
   // ── Column Preferences ────────────────────────────────────────────────
   const {
@@ -39,6 +58,7 @@ export default function ContactsPage(): React.ReactElement {
 
   // ── Form State ────────────────────────────────────────────────────────
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | undefined>(undefined);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
 
@@ -56,7 +76,7 @@ export default function ContactsPage(): React.ReactElement {
   // ── State (Synced with URL) ──────────────────────────────────────────
   const [activeView, setActiveView] = useState<ViewType>(() => (getParam('view') as ViewType) || 'list');
   const [activeTab, setActiveTab] = useState(() => getParam('tab') || 'all');
-  const [showFilters, setShowFilters] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
   const [searchTerm, setSearchTerm] = useState(() => getParam('search'));
   const [filterSearchTerm, setFilterSearchTerm] = useState('');
   const [contactSelectedIds, setContactSelectedIds] = useState<Set<string>>(new Set());
@@ -308,23 +328,22 @@ export default function ContactsPage(): React.ReactElement {
       moduleConfig={CONTACTS_MODULE_CONFIG}
       primaryActionLabel="Create Contact"
       onPrimaryAction={() => { setEditingContact(undefined); setIsFormOpen(true); }}
-      onImport={() => toast.info('Import coming soon')}
+      onImport={() => setIsImportOpen(true)}
       canCreate={canCreate}
-      availableViews={['list', 'tile', 'table', 'grid']}
-      activeView={activeView}
+      availableViews={['table']}
+      activeView={'table' as ViewType}
       onViewChange={setActiveView}
 
       sortableFields={CONTACTS_COLUMN_REGISTRY.map((col) => ({ id: col.id, label: col.label }))}
       sort={sort}
       onSortChange={setSort}
       pageSize={pageSize}
-      onPageSizeChange={setPageSize}
       viewMode={viewMode}
       onViewModeChange={setViewMode}
       savedTabs={[
         { id: 'all', label: 'All Contacts' },
         { id: 'my', label: 'My Contacts' },
-        { id: 'active-customers', label: 'Active Customers' },
+        { id: 'active-customers', label: 'Active Contacts' },
       ]}
       activeTab={activeTab}
       onTabChange={setActiveTab}
@@ -339,24 +358,7 @@ export default function ContactsPage(): React.ReactElement {
       onSearch={setSearchTerm}
       searchPlaceholder="Search contacts..."
       onRefresh={() => toast.success('Refreshed')}
-      currentPage={currentPage}
-      paginationTotalRecords={filteredContacts.length}
-      onPageChange={setCurrentPage}
-      toolbarExtra={
-        <ColumnsPopover
-          registry={CONTACTS_COLUMN_REGISTRY}
-          effectiveColumns={effectiveColumns}
-          onApply={(cols) => {
-            saveColumns(cols);
-            toast.success('Column visibility updated');
-          }}
-          onReset={() => {
-            resetColumns();
-            toast.success('Columns reset to default');
-          }}
-          hiddenCount={effectiveColumns.filter((c) => !c.visible).length}
-        />
-      }
+      onManageColumns={() => setIsManageColumnsOpen(true)}
     >
       {/* ── List / Table View — DataGrid ─────────────────── */}
       {(activeView === 'list' || activeView === 'table') && (
@@ -397,6 +399,26 @@ export default function ContactsPage(): React.ReactElement {
             }
           }}
         />
+      )}
+
+      {/* ── Bottom Pagination + Per Page ─────────────────────── */}
+      {(activeView === 'list' || activeView === 'table') && filteredContacts.length > 0 && (
+        <div className="flex items-center justify-between px-4 py-3 mt-2 bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 rounded-lg">
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-slate-500 dark:text-slate-400">Per page</label>
+            <PageSizeSelect value={pageSize} onChange={(size) => { setPageSize(size); setCurrentPage(1); }} />
+            <span className="text-xs text-slate-400 dark:text-slate-500 ml-2">{filteredContacts.length} total records</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">Page {currentPage} of {Math.ceil(filteredContacts.length / pageSize) || 1}</span>
+            <button onClick={() => setCurrentPage(Math.max(1, currentPage - 1))} disabled={currentPage <= 1} className={cn('inline-flex items-center justify-center w-7 h-7 rounded-md border transition-colors', currentPage <= 1 ? 'border-slate-200 dark:border-slate-700 text-slate-300 dark:text-slate-600 cursor-not-allowed' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700')} aria-label="Previous page">
+              <ChevronLeft size={14} />
+            </button>
+            <button onClick={() => setCurrentPage(Math.min(Math.ceil(filteredContacts.length / pageSize), currentPage + 1))} disabled={currentPage >= Math.ceil(filteredContacts.length / pageSize)} className={cn('inline-flex items-center justify-center w-7 h-7 rounded-md border transition-colors', currentPage >= Math.ceil(filteredContacts.length / pageSize) ? 'border-slate-200 dark:border-slate-700 text-slate-300 dark:text-slate-600 cursor-not-allowed' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700')} aria-label="Next page">
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
       )}
 
       {/* ── Tile View ─────────────────────────────────────────── */}
@@ -483,14 +505,18 @@ export default function ContactsPage(): React.ReactElement {
       isOpen={isFormOpen}
       onClose={() => { setIsFormOpen(false); setEditingContact(undefined); }}
       initialData={editingContact}
-      onSave={(data) => {
-        if (editingContact) {
-          updateContact(editingContact.id, data);
-          toast.success('Contact updated successfully');
-        } else {
-          addContact(data as Omit<Contact, 'id' | 'tenantId' | 'createdAt' | 'score'>);
-          toast.success('Contact created successfully');
-        }
+      onSave={async (data) => {
+        try {
+          const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
+          if (editingContact) {
+            await fetch(`${apiUrl}/crm/contacts/${editingContact.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(data) });
+            toast.success('Contact updated successfully');
+          } else {
+            await fetch(`${apiUrl}/crm/contacts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(data) });
+            toast.success('Contact created successfully');
+          }
+          fetchContacts();
+        } catch { toast.error('Failed to save contact'); }
         setIsFormOpen(false);
         setEditingContact(undefined);
       }}
@@ -506,6 +532,13 @@ export default function ContactsPage(): React.ReactElement {
       onSave={saveColumns}
       onReset={resetColumns}
       triggerRef={manageColumnsButtonRef}
+    />
+
+    {/* ── Import Contacts Drawer ──────────────────────────────── */}
+    <ImportContactsDrawer
+      isOpen={isImportOpen}
+      onClose={() => setIsImportOpen(false)}
+      onImportComplete={fetchContacts}
     />
     </>
   );
