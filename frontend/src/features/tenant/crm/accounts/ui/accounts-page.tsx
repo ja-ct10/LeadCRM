@@ -75,7 +75,7 @@ export default function AccountsPage(): React.ReactElement {
   // ── State (Synced with URL) ──────────────────────────────────────────
   const [activeView, setActiveView] = useState<ViewType>(() => (getParam('view') as ViewType) || 'list');
   const [activeTab, setActiveTab] = useState(() => getParam('tab') || 'all');
-  const [showFilters, setShowFilters] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
   const [searchTerm, setSearchTerm] = useState(() => getParam('search'));
   const [filterSearchTerm, setFilterSearchTerm] = useState('');
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);

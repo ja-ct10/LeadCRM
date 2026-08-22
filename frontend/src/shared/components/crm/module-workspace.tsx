@@ -203,7 +203,7 @@ export function ModuleWorkspace({
   onFilterToggle,
   filterSearchTerm = '',
   onFilterSearch,
-  showFilters = true,
+  showFilters = false,
   onToggleFilters,
   totalRecords = 0,
   searchTerm = '',

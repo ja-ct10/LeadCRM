@@ -87,7 +87,7 @@ export default function LeadsPage(): React.ReactElement {
   // ── State ────────────────────────────────────────────────────────────
   const [activeView, setActiveView] = useState<ViewType>(() => (getParam('view') as ViewType) || 'list');
   const [activeTab, setActiveTab] = useState(() => getParam('tab') || 'all');
-  const [showFilters, setShowFilters] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
   const [searchTerm, setSearchTerm] = useState(() => getParam('search'));
   const [filterSearchTerm, setFilterSearchTerm] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
