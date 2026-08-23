@@ -19,20 +19,22 @@ export function useTenants({ tenants }: UseTenantsOptions) {
   const [planFilter, setPlanFilter] = useState<PlanFilter>('all');
 
   const filteredTenants = useMemo(() => {
+    const normalizedQuery = searchQuery.toLowerCase();
     return tenants.filter((t) => {
       const matchesSearch =
         !searchQuery ||
         t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        t.email.toLowerCase().includes(searchQuery.toLowerCase());
+        (t.email ?? '').toLowerCase().includes(normalizedQuery);
 
       // Map 'suspended' → 'inactive' for UI display
       const normalizedStatus = t.status === 'suspended' ? 'inactive' : t.status;
       const matchesStatus =
         statusFilter === 'all' || normalizedStatus === statusFilter;
 
-      const tenantPlan = (t as any).plan || 'Basic';
+      const rawTenantPlan = String((t as any).plan || 'FREE').toLowerCase();
+      const tenantPlan = rawTenantPlan === 'free' ? 'basic' : rawTenantPlan;
       const matchesPlan =
-        planFilter === 'all' || tenantPlan === planFilter;
+        planFilter === 'all' || tenantPlan === planFilter.toLowerCase();
 
       return matchesSearch && matchesStatus && matchesPlan;
     });
