@@ -13,6 +13,7 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { seedDemoAccounts } from '../src/database/seeders/demo.seed';
+import { seedPricingPlans } from '../src/database/seeders/pricing-plans.seed';
 import { generateTenants } from '../src/database/seeders/tenant-generator';
 
 const prisma = new PrismaClient();
@@ -26,7 +27,10 @@ async function main() {
   //             bob@democorp.com, guest@democorp.com
   await seedDemoAccounts();
 
-  // 2. Realistic multi-tenant sample data — development/staging only.
+  // 2. Pricing plans — idempotent, safe on every deploy
+  await seedPricingPlans();
+
+  // 3. Realistic multi-tenant sample data — development/staging only.
   //    Skip in production to avoid polluting real customer data.
   if (process.env.NODE_ENV !== 'production' && process.env.SKIP_DEMO_TENANTS !== 'true') {
     console.log('[Seed] Generating sample tenants (dev/staging only)...');
