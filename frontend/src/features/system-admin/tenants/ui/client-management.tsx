@@ -143,7 +143,7 @@ export default function ClientManagement(): React.ReactElement {
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-white/[0.04] text-[10px] sm:text-[11px] text-slate-700 dark:text-slate-300">
               {paginatedTenants.length > 0 ? paginatedTenants.map((tenant) => {
-                const normalizedStatus = tenant.status === 'suspended' ? 'inactive' : tenant.status;
+                const normalizedStatus: string = tenant.status === 'suspended' ? 'inactive' : tenant.status;
                 const planLabel = (tenant as { plan?: string }).plan ?? 'Basic';
                 const createdOn = new Date(tenant.createdAt).toISOString().split('T')[0];
 
