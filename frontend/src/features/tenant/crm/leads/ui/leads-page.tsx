@@ -20,7 +20,9 @@ import { ConvertLeadDialog } from './convert-lead-dialog';
 import { MergeRecordsDialog } from '@/shared/components/crm/merge-records-dialog';
 import { EntityCombobox } from '@/shared/components/entity-combobox';
 import { SlidingDrawer } from '@/shared/components/sliding-drawer';
-import { ImportLeadsDrawer } from './import-leads-drawer';
+import { useRouter } from 'next/navigation';
+// @deprecated — ImportLeadsDrawer replaced by full-page import at /crm/leads/import
+// import { ImportLeadsDrawer } from './import-leads-drawer';
 import { LEADS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import { LEADS_MODULE_CONFIG } from '../leads.config';
 import { toast } from 'sonner';
@@ -31,6 +33,7 @@ import { PageSizeSelect } from '@/shared/components/page-size-select';
 // ── Leads Page ────────────────────────────────────────────────────────────────
 
 export default function LeadsPage(): React.ReactElement {
+  const router = useRouter();
   const {
     contacts: leads,
     addContact: addLead,
@@ -95,7 +98,6 @@ export default function LeadsPage(): React.ReactElement {
   const [searchTerm, setSearchTerm] = useState(() => getParam('search'));
   const [filterSearchTerm, setFilterSearchTerm] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [isImportOpen, setIsImportOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | undefined>();
   const [convertingLead, setConvertingLead] = useState<Lead | null>(null);
   const [mergingLead, setMergingLead] = useState<Lead | null>(null);
@@ -456,7 +458,7 @@ export default function LeadsPage(): React.ReactElement {
         moduleConfig={LEADS_MODULE_CONFIG}
         primaryActionLabel="Create Lead"
         onPrimaryAction={handleCreate}
-        onImport={() => setIsImportOpen(true)}
+        onImport={() => router.push('/crm/leads/import')}
         canCreate={canCreate}
         availableViews={['table']}
         activeView={'table' as ViewType}
@@ -535,7 +537,6 @@ export default function LeadsPage(): React.ReactElement {
             }}
             onConvert={(lead) => setConvertingLead(lead)}
             onMerge={(lead) => setMergingLead(lead)}
-            onManageColumns={() => setIsManageColumnsOpen(true)}
             onHideColumn={async (columnId) => {
               const updated = effectiveColumns.map((col) =>
                 col.id === columnId ? { ...col, visible: false } : col,
@@ -667,12 +668,7 @@ export default function LeadsPage(): React.ReactElement {
         }}
       />
 
-      {/* ── Import Leads Drawer ─────────────────────────────────── */}
-      <ImportLeadsDrawer
-        isOpen={isImportOpen}
-        onClose={() => setIsImportOpen(false)}
-        onImportComplete={refreshContacts}
-      />
+      {/* ── Import Leads — now a full-page experience at /crm/leads/import ─── */}
 
       {/* ── Convert Lead Dialog ─────────────────────────────────── */}
       {convertingLead && (

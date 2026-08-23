@@ -1,0 +1,628 @@
+'use client';
+
+import React, { useState, useCallback, useMemo, useRef } from 'react';
+import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
+import {
+  Download,
+  Upload,
+  CheckCircle2,
+  AlertCircle,
+  ArrowRight,
+  ArrowLeft,
+  Loader2,
+  CircleCheck,
+  CircleX,
+  Clock,
+  ChevronDown,
+  ChevronUp,
+  Plus,
+  Sparkles,
+  Table2,
+  ShieldCheck,
+  Inbox,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { useHasPermission } from '@/shared/hooks/use-permissions';
+import { apiClient } from '@/lib/api/client';
+import { getImportConfig } from '../configs';
+import { parseCsv, autoMapColumns, createEmptyMappings, validateRow } from '../utils';
+import { ImportHistoryList } from './import-history-list';
+import type {
+  ImportModuleConfig,
+  CsvColumn,
+  ColumnMapping,
+  ValidatedRow,
+  ImportSummary,
+  FieldDefinition,
+} from '../types/import.types';
+import type { PermissionKey } from '@leadcrm/shared';
+
+// ── Props ────────────────────────────────────────────────────────────────────
+
+interface ImportPageProps {
+  moduleKey: string;
+}
+
+type WizardStep = 1 | 2 | 3;
+type PageView = 'wizard' | 'history';
+
+// ── Main Component ───────────────────────────────────────────────────────────
+
+export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactElement {
+  const config = useMemo(() => getImportConfig(moduleKey), [moduleKey]);
+  const router = useRouter();
+  const canCreate = useHasPermission(config.permission as PermissionKey);
+  const [activeView, setActiveView] = useState<PageView>('wizard');
+
+  const [step, setStep] = useState<WizardStep>(1);
+  const [file, setFile] = useState<File | null>(null);
+  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
+  const [csvRows, setCsvRows] = useState<string[][]>([]);
+  const [mappings, setMappings] = useState<Record<string, ColumnMapping>>(() => createEmptyMappings(config));
+  const [isImporting, setIsImporting] = useState(false);
+  const [importResult, setImportResult] = useState<ImportSummary | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const allFields = useMemo(() => [...config.requiredFields, ...config.optionalFields], [config]);
+
+  // ── Derived State ──────────────────────────────────────────────────────
+
+  const allRequiredMapped = useMemo(
+    () => config.requiredFields.every((f) => mappings[f.key]?.csvColumnIndex !== null),
+    [config.requiredFields, mappings],
+  );
+
+  const unmappedColumns = useMemo(() => {
+    const mappedIndices = new Set(
+      Object.values(mappings)
+        .map((m) => m.csvColumnIndex)
+        .filter((i): i is number => i !== null),
+    );
+    return csvHeaders
+      .map((name, index) => ({ name, index }))
+      .filter((col) => !mappedIndices.has(col.index));
+  }, [mappings, csvHeaders]);
+
+  const mapRow = useCallback(
+    (row: string[]): Record<string, string> => {
+      const result: Record<string, string> = {};
+      for (const field of allFields) {
+        const idx = mappings[field.key]?.csvColumnIndex;
+        result[field.key] = idx !== null && idx !== undefined ? (row[idx] || '') : '';
+      }
+      return result;
+    },
+    [mappings, allFields],
+  );
+
+  const previewRows = useMemo(() => {
+    return csvRows.slice(0, 10).map((row) => mapRow(row));
+  }, [csvRows, mapRow]);
+
+  const validatedRows = useMemo((): ValidatedRow[] => {
+    if (!allRequiredMapped) return [];
+    return csvRows.map((row, index) => validateRow(config, mapRow(row), index + 2));
+  }, [csvRows, mapRow, allRequiredMapped, config]);
+
+  const validCount = useMemo(() => validatedRows.filter((r) => r.isValid).length, [validatedRows]);
+  const errorCount = useMemo(() => validatedRows.filter((r) => !r.isValid).length, [validatedRows]);
+
+  const mappedRequiredCount = useMemo(
+    () => config.requiredFields.filter((f) => mappings[f.key]?.csvColumnIndex !== null).length,
+    [config.requiredFields, mappings],
+  );
+
+  // ── Reset ──────────────────────────────────────────────────────────────
+
+  const resetState = useCallback(() => {
+    setStep(1);
+    setFile(null);
+    setCsvHeaders([]);
+    setCsvRows([]);
+    setMappings(createEmptyMappings(config));
+    setIsImporting(false);
+    setImportResult(null);
+    setIsDragging(false);
+  }, [config]);
+
+  // ── File Processing ────────────────────────────────────────────────────
+
+  const processFile = useCallback(
+    (selectedFile: File) => {
+      if (!selectedFile.name.toLowerCase().endsWith('.csv')) {
+        toast.error('Please upload a CSV file.');
+        return;
+      }
+      if (selectedFile.size > 10 * 1024 * 1024) {
+        toast.error('File size exceeds 10MB limit.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target?.result as string;
+        if (!text || text.trim().length === 0) { toast.error('The uploaded CSV file does not contain any data.'); return; }
+        const { headers, rows } = parseCsv(text);
+        if (headers.length === 0) { toast.error("We couldn't read this CSV file. Please check its formatting."); return; }
+        if (rows.length === 0) { toast.error('The uploaded CSV file does not contain any data rows.'); return; }
+        setFile(selectedFile);
+        setCsvHeaders(headers);
+        setCsvRows(rows);
+        const columns: CsvColumn[] = headers.map((name, index) => ({ index, name }));
+        setMappings(autoMapColumns(config, columns));
+        setStep(2);
+      };
+      reader.onerror = () => { toast.error("We couldn't read this CSV file."); };
+      reader.readAsText(selectedFile);
+    },
+    [config],
+  );
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile) processFile(selectedFile);
+    if (e.target) e.target.value = '';
+  }, [processFile]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const droppedFile = e.dataTransfer.files?.[0];
+    if (droppedFile) processFile(droppedFile);
+  }, [processFile]);
+
+  const handleMappingChange = useCallback((fieldKey: string, value: string) => {
+    setMappings((prev) => {
+      const updated = { ...prev };
+      if (value === '') {
+        updated[fieldKey] = { csvColumnIndex: null, csvColumnName: null };
+      } else {
+        const colIndex = Number(value);
+        for (const key of Object.keys(updated)) {
+          if (updated[key].csvColumnIndex === colIndex) {
+            updated[key] = { csvColumnIndex: null, csvColumnName: null };
+          }
+        }
+        updated[fieldKey] = { csvColumnIndex: colIndex, csvColumnName: csvHeaders[colIndex] };
+      }
+      return updated;
+    });
+  }, [csvHeaders]);
+
+  const handleDownloadTemplate = useCallback(() => {
+    const headers = allFields.map((f) => f.label);
+    const csvContent = headers.join(',') + '\n';
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = config.templateFileName;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [allFields, config.templateFileName]);
+
+  const handleImport = useCallback(async () => {
+    if (!file || !allRequiredMapped || isImporting) return;
+    setIsImporting(true);
+    try {
+      const rows = csvRows.map((row, index) => ({ rowNumber: index + 2, ...mapRow(row) }));
+      const response = await apiClient.post<{ success: boolean; data: ImportSummary }>(config.importApiPath, { fileName: file.name, rows });
+      setImportResult(response.data);
+      toast.success(`Import completed — ${response.data.successfulRecords} records imported.`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Import failed';
+      toast.error(message);
+      setIsImporting(false);
+    }
+  }, [file, allRequiredMapped, isImporting, csvRows, mapRow, config.importApiPath]);
+
+  const firstUnmappedRequired = useMemo(
+    () => config.requiredFields.find((f) => mappings[f.key]?.csvColumnIndex === null),
+    [config.requiredFields, mappings],
+  );
+
+  // ── RBAC Guard ─────────────────────────────────────────────────────────
+
+  if (!canCreate) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
+        <div className="w-16 h-16 rounded-full bg-red-50 dark:bg-red-500/10 flex items-center justify-center mb-5">
+          <AlertCircle size={28} className="text-red-500" />
+        </div>
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Access Denied</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 max-w-sm">
+          You don&apos;t have permission to import {config.moduleLabel.toLowerCase()}.
+        </p>
+        <button onClick={() => router.push(config.backRoute)} className="mt-5 inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors cursor-pointer">
+          <ArrowLeft size={14} /> Back to {config.moduleLabel}
+        </button>
+      </div>
+    );
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────
+
+  return (
+    <div className="flex flex-col h-full min-h-0">
+      {/* ── Full-page scrollable container ─────────────────────────── */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="px-5 sm:px-8 py-6 space-y-5">
+
+          {/* ── Header Card ───────────────────────────────────────── */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl px-6 py-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <button onClick={() => router.push(config.backRoute)} className="inline-flex items-center gap-1 text-[13px] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors mb-3 cursor-pointer">
+                  <ArrowLeft size={14} /> Back to {config.moduleLabel}
+                </button>
+                <h1 className="text-[22px] font-bold text-slate-900 dark:text-white leading-tight">Import {config.moduleLabel}</h1>
+                <p className="text-[13.5px] text-slate-500 dark:text-slate-400 mt-1">
+                  {activeView === 'wizard' ? 'Upload your CSV, map your columns, and review your data before importing.' : `View your past ${config.moduleLabel.toLowerCase()} imports and their results.`}
+                </p>
+              </div>
+              {/* View Toggle */}
+              <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden shrink-0">
+                <button onClick={() => setActiveView('wizard')} className={cn('inline-flex items-center gap-1.5 px-3.5 py-2 text-[12.5px] font-medium transition-colors cursor-pointer', activeView === 'wizard' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800')} aria-pressed={activeView === 'wizard'}>
+                  <Upload size={13} /> New import
+                </button>
+                <div className="w-px h-5 bg-slate-200 dark:bg-slate-700" />
+                <button onClick={() => setActiveView('history')} className={cn('inline-flex items-center gap-1.5 px-3.5 py-2 text-[12.5px] font-medium transition-colors cursor-pointer', activeView === 'history' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800')} aria-pressed={activeView === 'history'}>
+                  <Clock size={13} /> History
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {activeView === 'history' ? (
+            <ImportHistoryList moduleKey={moduleKey} />
+          ) : importResult ? (
+            <ImportResultView config={config} result={importResult} onViewDetails={() => router.push(config.detailsRoute(importResult.id))} onStartNew={resetState} />
+          ) : (
+            <>
+              {/* ── Step Indicator Card ─────────────────────────────── */}
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl px-6 py-4">
+                <StepIndicator currentStep={step} hasErrors={step === 3 && errorCount > 0} fileName={file?.name} mappedCount={mappedRequiredCount} totalRequired={config.requiredFields.length} />
+              </div>
+
+              {/* ── Step Content Card ──────────────────────────────── */}
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl px-6 py-6">
+                {step === 1 && <Step1Upload config={config} file={file} recordCount={csvRows.length} isDragging={isDragging} fileInputRef={fileInputRef} onFileChange={handleFileChange} onDrop={handleDrop} onDragEnter={() => setIsDragging(true)} onDragLeave={() => setIsDragging(false)} onReplaceFile={() => fileInputRef.current?.click()} onDownloadTemplate={handleDownloadTemplate} />}
+                {step === 2 && <Step2MapColumns config={config} csvHeaders={csvHeaders} mappings={mappings} unmappedColumns={unmappedColumns} allRequiredMapped={allRequiredMapped} previewRows={previewRows} firstUnmappedRequired={firstUnmappedRequired} onMappingChange={handleMappingChange} mappedRequiredCount={mappedRequiredCount} totalRecords={csvRows.length} />}
+                {step === 3 && <Step3Review config={config} validatedRows={validatedRows} validCount={validCount} errorCount={errorCount} totalCount={csvRows.length} />}
+
+                {/* ── Footer (inside content card) ──────────────────── */}
+                <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                  {step === 1 ? (
+                    <button onClick={() => router.push(config.backRoute)} className="inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer">Cancel</button>
+                  ) : (
+                    <button onClick={() => setStep((s) => Math.max(1, s - 1) as WizardStep)} className="inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors cursor-pointer">
+                      <ArrowLeft size={14} /> Back
+                    </button>
+                  )}
+                  {step < 3 ? (
+                    <button onClick={() => setStep((s) => Math.min(3, s + 1) as WizardStep)} disabled={(step === 1 && !(file && csvRows.length > 0)) || (step === 2 && !allRequiredMapped)} className={cn('inline-flex items-center gap-1.5 h-9 px-5 text-[13px] font-semibold rounded-lg transition-colors', ((step === 1 && file && csvRows.length > 0) || (step === 2 && allRequiredMapped)) ? 'text-white bg-blue-600 hover:bg-blue-700 cursor-pointer' : 'text-slate-400 bg-slate-100 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed')}>
+                      Continue <ArrowRight size={14} />
+                    </button>
+                  ) : (
+                    <button onClick={handleImport} disabled={isImporting} className={cn('inline-flex items-center gap-2 h-10 px-6 text-[13px] font-semibold rounded-lg transition-colors', !isImporting ? 'text-white bg-blue-600 hover:bg-blue-700 cursor-pointer' : 'text-white bg-blue-400 cursor-not-allowed')}>
+                      {isImporting ? <><Loader2 size={14} className="animate-spin" /> Importing...</> : <><Sparkles size={14} /> Import {validCount} {config.moduleLabel.toLowerCase()}</>}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      <input ref={fileInputRef} type="file" accept=".csv" onChange={handleFileChange} className="hidden" aria-hidden="true" />
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SUB-COMPONENTS
+// ══════════════════════════════════════════════════════════════════════════════
+
+function StepIndicator({ currentStep, hasErrors, fileName, mappedCount, totalRequired }: { currentStep: WizardStep; hasErrors?: boolean; fileName?: string; mappedCount: number; totalRequired: number }): React.ReactElement {
+  const steps = [
+    { num: 1, label: 'Upload CSV', sub: fileName || 'Step 1 of 3', icon: Upload },
+    { num: 2, label: 'Map Columns', sub: `${mappedCount}/${totalRequired} required mapped`, icon: Table2 },
+    { num: 3, label: 'Review & Validate', sub: 'Final review', icon: ShieldCheck },
+  ];
+
+  return (
+    <div className="flex items-center" role="navigation" aria-label="Import steps">
+      {steps.map((s, i) => {
+        const isCompleted = currentStep > s.num;
+        const isActive = currentStep === s.num;
+        const showError = isActive && s.num === 3 && hasErrors;
+        const Icon = s.icon;
+
+        return (
+          <React.Fragment key={s.num}>
+            <div className="flex items-center gap-2.5">
+              <div className={cn('w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all', isCompleted && 'bg-emerald-500 text-white', isActive && !showError && 'bg-blue-600 text-white', isActive && showError && 'bg-amber-500 text-white', !isCompleted && !isActive && 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500')} aria-current={isActive ? 'step' : undefined}>
+                {isCompleted ? <CheckCircle2 size={18} /> : <Icon size={17} />}
+              </div>
+              <div className="hidden sm:block">
+                <p className={cn('text-[13px] font-semibold leading-tight', isActive ? 'text-slate-900 dark:text-white' : isCompleted ? 'text-slate-700 dark:text-slate-300' : 'text-slate-400 dark:text-slate-500')}>{s.label}</p>
+                <p className={cn('text-[11px] mt-0.5', isActive || isCompleted ? 'text-slate-500 dark:text-slate-400' : 'text-slate-400 dark:text-slate-500')}>{isCompleted && s.num === 1 && fileName ? fileName : s.sub}</p>
+              </div>
+            </div>
+            {i < steps.length - 1 && (
+              <div className={cn('flex-1 h-[2px] mx-4 rounded-full', isCompleted ? 'bg-emerald-400' : 'bg-slate-200 dark:bg-slate-700')} />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Step 1: Upload ───────────────────────────────────────────────────────────
+
+function Step1Upload({ config, file, recordCount, isDragging, fileInputRef, onFileChange, onDrop, onDragEnter, onDragLeave, onReplaceFile, onDownloadTemplate }: { config: ImportModuleConfig; file: File | null; recordCount: number; isDragging: boolean; fileInputRef: React.RefObject<HTMLInputElement | null>; onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void; onDrop: (e: React.DragEvent) => void; onDragEnter: () => void; onDragLeave: () => void; onReplaceFile: () => void; onDownloadTemplate: () => void }): React.ReactElement {
+  return (
+    <div className="space-y-5">
+      <div>
+        <h3 className="text-[16px] font-bold text-slate-900 dark:text-white">Upload your CSV</h3>
+        <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1">Drop the file containing the {config.moduleLabel.toLowerCase()} you want to bring into LeadCRM.</p>
+      </div>
+
+      {/* Drop zone */}
+      <div
+        onDrop={onDrop} onDragOver={(e) => e.preventDefault()} onDragEnter={onDragEnter} onDragLeave={onDragLeave}
+        onClick={() => fileInputRef.current?.click()}
+        className={cn('relative border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all', isDragging ? 'border-blue-400 bg-blue-50/50 dark:bg-blue-500/5' : 'border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-600', file && 'border-emerald-300 dark:border-emerald-700 bg-emerald-50/30 dark:bg-emerald-500/5')}
+        style={{ backgroundImage: !file ? 'radial-gradient(circle, #e2e8f0 1px, transparent 1px)' : undefined, backgroundSize: !file ? '20px 20px' : undefined }}
+        role="button" tabIndex={0} aria-label="Upload CSV file"
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click(); }}
+      >
+        {file ? (
+          <div className="flex flex-col items-center">
+            <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-500/10 flex items-center justify-center mb-3">
+              <CheckCircle2 size={24} className="text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <p className="text-[14px] font-semibold text-slate-900 dark:text-white">{file.name}</p>
+            <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1">{recordCount.toLocaleString()} records detected</p>
+            <button onClick={(e) => { e.stopPropagation(); onReplaceFile(); }} className="mt-3 text-[12px] font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 cursor-pointer">Replace file</button>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center">
+            <div className="w-12 h-12 rounded-full bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center mb-3">
+              <Upload size={22} className="text-blue-500" />
+            </div>
+            <p className="text-[14px] font-semibold text-slate-800 dark:text-slate-200">{isDragging ? 'Drop your CSV here' : 'Drag and drop your CSV here'}</p>
+            <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-1">or</p>
+            <button type="button" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }} className="mt-2.5 inline-flex items-center h-8 px-4 text-[12px] font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors cursor-pointer">Browse files</button>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-3">CSV files only &middot; Max 10MB</p>
+          </div>
+        )}
+      </div>
+
+      {/* Template helper */}
+      <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/50 rounded-xl px-5 py-3.5">
+        <div>
+          <p className="text-[13px] font-semibold text-slate-900 dark:text-white">Don&apos;t have a CSV template?</p>
+          <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">Download our template to see every field LeadCRM expects.</p>
+        </div>
+        <button onClick={onDownloadTemplate} className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 whitespace-nowrap cursor-pointer">
+          <Download size={13} /> Download CSV template
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Step 2: Map Columns ──────────────────────────────────────────────────────
+
+function Step2MapColumns({ config, csvHeaders, mappings, unmappedColumns, allRequiredMapped, previewRows, firstUnmappedRequired, onMappingChange, mappedRequiredCount, totalRecords }: { config: ImportModuleConfig; csvHeaders: string[]; mappings: Record<string, ColumnMapping>; unmappedColumns: { name: string; index: number }[]; allRequiredMapped: boolean; previewRows: Record<string, string>[]; firstUnmappedRequired: FieldDefinition | undefined; onMappingChange: (fieldKey: string, value: string) => void; mappedRequiredCount: number; totalRecords: number }): React.ReactElement {
+  const [showOptional, setShowOptional] = useState(true);
+  const allFields = [...config.requiredFields, ...config.optionalFields];
+  const mappedFields = allFields.filter((f) => mappings[f.key]?.csvColumnIndex !== null);
+
+  return (
+    <div className="space-y-6">
+      {/* Header with badge */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h3 className="text-[16px] font-bold text-slate-900 dark:text-white">Map your columns</h3>
+          <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1">Match each LeadCRM field to the corresponding column in your CSV file.</p>
+        </div>
+        <span className={cn('inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11.5px] font-semibold border shrink-0', allRequiredMapped ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-700/50' : 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-700/50')}>
+          {allRequiredMapped ? <CircleCheck size={12} /> : <AlertCircle size={12} />}
+          {mappedRequiredCount}/{config.requiredFields.length} required
+        </span>
+      </div>
+
+      {/* Required Fields */}
+      <div className="space-y-3">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Required Fields</p>
+        <div className="space-y-2">
+          {config.requiredFields.map((field) => (
+            <FieldMappingRow key={field.key} field={field} mapping={mappings[field.key]} csvHeaders={csvHeaders} onMappingChange={onMappingChange} />
+          ))}
+        </div>
+      </div>
+
+      {/* Optional Fields */}
+      {config.optionalFields.length > 0 && (
+        <div className="space-y-3">
+          <button onClick={() => setShowOptional(!showOptional)} className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors cursor-pointer" aria-expanded={showOptional}>
+            Additional Fields ({config.optionalFields.length}) {showOptional ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          </button>
+          {showOptional && (
+            <div className="space-y-2">
+              {config.optionalFields.map((field) => (
+                <FieldMappingRow key={field.key} field={field} mapping={mappings[field.key]} csvHeaders={csvHeaders} onMappingChange={onMappingChange} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Add custom column (disabled) */}
+      <button disabled className="inline-flex items-center gap-1.5 h-9 px-4 text-[12.5px] font-medium text-slate-400 dark:text-slate-500 border border-dashed border-slate-300 dark:border-slate-700 rounded-lg cursor-not-allowed" title="Custom field creation coming soon">
+        <Plus size={14} /> Add custom column
+      </button>
+
+      {/* Validation Message */}
+      {!allRequiredMapped && firstUnmappedRequired && (
+        <div className="flex items-start gap-2.5 px-4 py-3 rounded-lg bg-amber-50 dark:bg-amber-500/5 border border-amber-200 dark:border-amber-700/40" role="alert">
+          <AlertCircle size={15} className="text-amber-500 mt-0.5 shrink-0" />
+          <p className="text-[12.5px] text-amber-700 dark:text-amber-400"><span className="font-semibold">{firstUnmappedRequired.label}</span> is required. Map a CSV column to continue.</p>
+        </div>
+      )}
+
+      {/* Live Data Preview */}
+      {previewRows.length > 0 && mappedFields.length > 0 && (
+        <div className="space-y-2.5 pt-2">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Uploaded Data Preview</p>
+            <p className="text-[11.5px] text-blue-500 dark:text-blue-400">Showing first {previewRows.length} of {totalRecords} records</p>
+          </div>
+          <div className="overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-lg">
+            <table className="w-full text-[12px]">
+              <thead><tr className="border-b border-slate-200 dark:border-slate-700">
+                {mappedFields.map((f) => (<th key={f.key} className="px-3 py-2.5 text-left font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">{f.label}</th>))}
+              </tr></thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {previewRows.map((row, i) => (<tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                  {mappedFields.map((f) => (<td key={f.key} className="px-3 py-2.5 text-slate-600 dark:text-slate-300 whitespace-nowrap truncate max-w-[180px]">{row[f.key] || <span className="text-slate-300 dark:text-slate-600">—</span>}</td>))}
+                </tr>))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Field Mapping Row ────────────────────────────────────────────────────────
+
+function FieldMappingRow({ field, mapping, csvHeaders, onMappingChange }: { field: FieldDefinition; mapping: ColumnMapping; csvHeaders: string[]; onMappingChange: (fieldKey: string, value: string) => void }): React.ReactElement {
+  const isMapped = mapping?.csvColumnIndex !== null;
+
+  return (
+    <div className={cn('flex items-center rounded-lg border transition-all', isMapped ? 'bg-emerald-50/50 dark:bg-emerald-500/[0.03] border-emerald-200 dark:border-emerald-700/50' : 'bg-white dark:bg-slate-800/30 border-slate-200 dark:border-slate-700/60')}>
+      {/* Label area */}
+      <div className={cn('shrink-0 w-40 sm:w-48 px-4 py-3 border-r', isMapped ? 'border-emerald-200 dark:border-emerald-700/50 bg-emerald-50/80 dark:bg-emerald-500/[0.05]' : 'border-slate-200 dark:border-slate-700/60')}>
+        <span className="text-[13px] font-medium text-slate-900 dark:text-slate-200">{field.label}{field.required && <span className="text-red-500 ml-0.5">*</span>}</span>
+      </div>
+      {/* Select area */}
+      <div className="flex-1 px-3 py-2">
+        <select value={mapping?.csvColumnIndex !== null ? String(mapping.csvColumnIndex) : ''} onChange={(e) => onMappingChange(field.key, e.target.value)} className="w-full h-8 px-2 text-[13px] bg-transparent border-0 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-0 cursor-pointer appearance-none" aria-label={`Map CSV column for ${field.label}`}>
+          <option value="">{field.required ? '— Select CSV column —' : '— Don\u2019t import —'}</option>
+          {csvHeaders.map((h, i) => (<option key={i} value={i}>{h}</option>))}
+        </select>
+      </div>
+      {/* Status icon */}
+      <div className="shrink-0 pr-3">
+        {isMapped && <CircleCheck size={18} className="text-emerald-500" />}
+      </div>
+    </div>
+  );
+}
+
+// ── Step 3: Review ───────────────────────────────────────────────────────────
+
+function Step3Review({ config, validatedRows, validCount, errorCount, totalCount }: { config: ImportModuleConfig; validatedRows: ValidatedRow[]; validCount: number; errorCount: number; totalCount: number }): React.ReactElement {
+  const [filter, setFilter] = useState<'all' | 'valid' | 'errors'>('all');
+  const allFields = [...config.requiredFields, ...config.optionalFields];
+
+  const displayedRows = useMemo(() => {
+    const filtered = filter === 'all' ? validatedRows : filter === 'valid' ? validatedRows.filter((r) => r.isValid) : validatedRows.filter((r) => !r.isValid);
+    return filtered.slice(0, 50);
+  }, [validatedRows, filter]);
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h3 className="text-[16px] font-bold text-slate-900 dark:text-white">Review & validate</h3>
+        <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1">Records with errors are skipped — everything else is ready to import.</p>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="border border-slate-200 dark:border-slate-700 rounded-xl p-4">
+          <p className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">Total Records</p>
+          <p className="text-[28px] font-bold text-slate-900 dark:text-white leading-none tabular-nums">{totalCount}</p>
+        </div>
+        <div className="border border-emerald-200 dark:border-emerald-700/50 bg-emerald-50/50 dark:bg-emerald-500/5 rounded-xl p-4">
+          <p className="text-[10.5px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-2">Valid Records</p>
+          <p className="text-[28px] font-bold text-emerald-600 dark:text-emerald-400 leading-none tabular-nums">{validCount}</p>
+        </div>
+        <div className="border border-slate-200 dark:border-slate-700 rounded-xl p-4">
+          <p className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">Records with Errors</p>
+          <p className={cn('text-[28px] font-bold leading-none tabular-nums', errorCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-white')}>{errorCount}</p>
+        </div>
+      </div>
+
+      {/* Filter Tabs */}
+      <div className="flex items-center gap-1">
+        {(['all', 'valid', 'errors'] as const).map((tab) => (
+          <button key={tab} onClick={() => setFilter(tab)} className={cn('px-3 py-1.5 text-[12px] font-medium rounded-md border transition-colors cursor-pointer', filter === tab ? 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300')}>
+            {tab === 'all' ? `All (${totalCount})` : tab === 'valid' ? `Valid (${validCount})` : `Errors (${errorCount})`}
+          </button>
+        ))}
+      </div>
+
+      {/* Review Table */}
+      <div className="overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-lg">
+        <table className="w-full text-[12px]">
+          <thead><tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40">
+            <th className="px-3 py-2.5 text-left font-semibold text-slate-600 dark:text-slate-400 w-12">Row</th>
+            {allFields.slice(0, 6).map((f) => (<th key={f.key} className="px-3 py-2.5 text-left font-semibold text-slate-600 dark:text-slate-400 whitespace-nowrap">{f.label}</th>))}
+            <th className="px-3 py-2.5 text-left font-semibold text-slate-600 dark:text-slate-400 w-20">Status</th>
+            <th className="px-3 py-2.5 text-left font-semibold text-slate-600 dark:text-slate-400">Remarks</th>
+          </tr></thead>
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+            {displayedRows.map((row) => (
+              <tr key={row.rowNumber} className={cn('transition-colors', !row.isValid ? 'bg-red-50/30 dark:bg-red-500/[0.02]' : 'hover:bg-slate-50 dark:hover:bg-slate-800/30')}>
+                <td className="px-3 py-2.5 text-slate-400 dark:text-slate-500 font-mono text-[11px]">{row.rowNumber}</td>
+                {allFields.slice(0, 6).map((f) => (<td key={f.key} className="px-3 py-2.5 text-slate-700 dark:text-slate-300 truncate max-w-[140px]">{row.data[f.key] || '—'}</td>))}
+                <td className="px-3 py-2.5">
+                  {row.isValid
+                    ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400"><CircleCheck size={11} /> Valid</span>
+                    : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400"><CircleX size={11} /> Error</span>}
+                </td>
+                <td className="px-3 py-2.5 text-[11px] text-slate-500 dark:text-slate-400">{row.isValid ? 'Ready to import' : row.errors.join(' ')}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {validatedRows.length > 50 && <p className="text-[11px] text-slate-400 text-center">Showing first 50 rows.</p>}
+    </div>
+  );
+}
+
+// ── Import Result ────────────────────────────────────────────────────────────
+
+function ImportResultView({ config, result, onViewDetails, onStartNew }: { config: ImportModuleConfig; result: ImportSummary; onViewDetails: () => void; onStartNew: () => void }): React.ReactElement {
+  return (
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl px-6 py-6 space-y-5">
+      <div className="flex items-center gap-4">
+        <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-500/10 flex items-center justify-center">
+          <CheckCircle2 size={28} className="text-emerald-600 dark:text-emerald-400" />
+        </div>
+        <div>
+          <h3 className="text-[17px] font-bold text-slate-900 dark:text-white">Import Complete</h3>
+          <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5">{result.successfulRecords} {config.moduleLabel.toLowerCase()} imported successfully.</p>
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-3"><p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Total</p><p className="text-[16px] font-bold text-slate-900 dark:text-white">{result.totalRecords}</p></div>
+        <div className="border border-emerald-200 dark:border-emerald-700/50 bg-emerald-50/50 dark:bg-emerald-500/5 rounded-lg p-3"><p className="text-[10px] font-bold uppercase text-emerald-600 dark:text-emerald-400 mb-1">Imported</p><p className="text-[16px] font-bold text-emerald-600 dark:text-emerald-400">{result.successfulRecords}</p></div>
+        {result.failedRecords > 0 && <div className="border border-red-200 dark:border-red-700/50 bg-red-50/50 dark:bg-red-500/5 rounded-lg p-3"><p className="text-[10px] font-bold uppercase text-red-600 dark:text-red-400 mb-1">Failed</p><p className="text-[16px] font-bold text-red-600 dark:text-red-400">{result.failedRecords}</p></div>}
+      </div>
+      <div className="flex items-center gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+        <button onClick={onViewDetails} className="inline-flex items-center gap-2 h-9 px-5 text-[13px] font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors cursor-pointer">View Details <ArrowRight size={14} /></button>
+        <button onClick={onStartNew} className="text-[13px] font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer">Start new import</button>
+      </div>
+    </div>
+  );
+}

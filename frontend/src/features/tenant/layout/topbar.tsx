@@ -6,6 +6,7 @@ import { useNotifications } from '@/features/tenant/notifications/hooks/use-noti
 import { getGmailStatus, fetchGmailEmails } from '@/features/tenant/inbox/services/gmail.service';
 import { useLayout, NAV_ITEMS } from './use-layout';
 import { useAuth } from '@/store/AuthContext';
+import { usePathname } from 'next/navigation';
 import NotificationsDropdown from '@/features/tenant/notifications/ui/notifications-dropdown';
 import { GlobalOmnibox } from '@/shared/components/global-omnibox';
 import { UserProfileDropdown } from './user-profile-dropdown';
@@ -24,12 +25,13 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
   const { unreadCount: notificationCount } = useNotifications();
   const { currentPath } = useLayout();
   const { tenant } = useAuth();
+  const pathname = usePathname();
   const [inboxCount, setInboxCount] = useState(0);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [settingsBreadcrumb, setSettingsBreadcrumb] = useState<{ group: string; tab: string }>({ group: 'General', tab: 'Profile Settings' });
   const notificationButtonRef = useRef<HTMLButtonElement>(null!);
 
-  const isSandbox = tenant?.environment === 'sandbox' || tenant?.environment === 'both';
+  const isSandbox = tenant?.environment === 'sandbox' || tenant?.environment === 'both' || process.env.NODE_ENV === 'development';
 
   // Fetch unread email count for inbox badge
   useEffect(() => {
@@ -62,6 +64,7 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
   }, []);
 
   // Get current module name from navigation
+  const isImportPage = pathname?.includes('/import');
   const currentModule = currentPath === 'settings'
     ? settingsBreadcrumb.tab
     : NAV_ITEMS.find(item => item.path === currentPath)?.name ||
@@ -73,6 +76,9 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
   const groupName = currentPath === 'settings'
     ? settingsBreadcrumb.group
     : (currentGroup as any)?.group ?? '';
+
+  // Sub-page breadcrumb (e.g. "Import" for /crm/leads/import)
+  const subPageName = isImportPage ? 'Import' : null;
 
   return (
     <header className="h-[52px] bg-[var(--surface)] border-b border-[var(--border)] flex items-center justify-between px-4 lg:px-5 shrink-0 sticky top-0 z-40 transition-colors duration-200">
@@ -98,22 +104,20 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
               </span>
             </>
           )}
-          <span className="text-[var(--text-primary)] font-semibold truncate">
+          <span className={cn('font-semibold truncate', subPageName ? 'text-[var(--text-tertiary)]' : 'text-[var(--text-primary)]')}>
             {currentModule}
           </span>
+          {subPageName && (
+            <>
+              <span className="text-[var(--text-tertiary)] opacity-50">
+                &gt;
+              </span>
+              <span className="text-[var(--text-primary)] font-semibold truncate">
+                {subPageName}
+              </span>
+            </>
+          )}
         </div>
-
-        {/* Sandbox Environment Indicator */}
-        {isSandbox && (
-          <span
-            className="ml-2 hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-[10.5px] font-semibold border border-amber-200 dark:border-amber-700/50"
-            title="You are in a sandbox environment — data here is for testing only"
-            aria-label="Sandbox environment indicator"
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" aria-hidden="true" />
-            Sandbox
-          </span>
-        )}
 
       </div>
 
@@ -162,6 +166,18 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
             <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#3B82F6]" />
           )}
         </button>
+
+        {/* Sandbox Indicator */}
+        {isSandbox && (
+          <span
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold tracking-wide uppercase"
+            title="Sandbox environment — test data only"
+            aria-label="Sandbox environment"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" aria-hidden="true" />
+            Sandbox
+          </span>
+        )}
 
         {/* User Profile Dropdown */}
         <div className="ml-1">

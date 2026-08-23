@@ -8,7 +8,6 @@ import {
   CreditCard,
   Palette,
   HelpCircle,
-  Keyboard,
   LogOut,
   ExternalLink,
 } from 'lucide-react';
@@ -222,23 +221,6 @@ export function UserProfileDropdown(): React.ReactElement {
                 </span>
                 <ExternalLink size={12} className="text-slate-400 opacity-60" />
               </a>
-
-              <button
-                role="menuitem"
-                onClick={() => {
-                  setIsOpen(false);
-                  toast.info('Press / for search, # for tags, or ⌘K for Command Palette');
-                }}
-                className="w-full flex items-center justify-between px-3.5 py-2 text-[12.5px] font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer group"
-              >
-                <span className="flex items-center gap-2.5">
-                  <Keyboard size={14} className="text-slate-400 dark:text-slate-500 group-hover:text-[#2563EB] transition-colors" />
-                  Keyboard Shortcuts
-                </span>
-                <kbd className="text-[10px] font-semibold text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
-                  /
-                </kbd>
-              </button>
             </div>
 
             {/* Section 4: Log out */}
