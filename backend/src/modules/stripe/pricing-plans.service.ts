@@ -1,5 +1,4 @@
 import { AppError } from '../../shared/errors/app-error';
-import prisma from '../../config/database.config';
 import {
   findAllPlans,
   findPlanById,
@@ -51,10 +50,11 @@ const DEFAULT_PAYMENT_METHODS: Omit<PlanPaymentMethodDto, 'enabled'>[] = [
 ];
 
 /**
- * Merge the stored paymentMethods JSON with DEFAULT_PAYMENT_METHODS.
- *  - Saved `enabled` values are preserved.
- *  - New default IDs that aren't in the stored list appear with enabled:false.
- *  - IDs present in storage but removed from defaults are dropped.
+ * Merge the stored paymentMethods JSON value (from PricingPlan.paymentMethods)
+ * with DEFAULT_PAYMENT_METHODS so that:
+ *  - Saved `enabled` values are preserved per plan.
+ *  - New default IDs not yet in the stored list appear with enabled:false.
+ *  - IDs present in storage but removed from defaults are dropped gracefully.
  */
 function resolvePaymentMethods(raw: unknown): PlanPaymentMethodDto[] {
   let stored: PaymentMethodInput[] = [];
@@ -77,47 +77,11 @@ function resolvePaymentMethods(raw: unknown): PlanPaymentMethodDto[] {
   });
 }
 
-// ── Raw paymentMethods reader ─────────────────────────────────────────────────
-// The Prisma client may not yet include the paymentMethods field in its
-// generated types (column added after the last `prisma generate`).
-// We use a raw query to read the value reliably.
-
-async function readPaymentMethodsForPlan(planId: string): Promise<unknown> {
-  try {
-    const rows = await prisma.$queryRaw<Array<{ paymentMethods: unknown }>>`
-      SELECT "paymentMethods" FROM "PricingPlan" WHERE id = ${planId}
-    `;
-    return rows[0]?.paymentMethods ?? [];
-  } catch {
-    // Column might not exist in very old DB instances — return empty gracefully
-    return [];
-  }
-}
-
-async function readPaymentMethodsForPlans(
-  planIds: string[],
-): Promise<Map<string, unknown>> {
-  const result = new Map<string, unknown>();
-  if (planIds.length === 0) return result;
-  try {
-    const rows = await prisma.$queryRaw<Array<{ id: string; paymentMethods: unknown }>>`
-      SELECT id, "paymentMethods" FROM "PricingPlan" WHERE id = ANY(${planIds}::uuid[])
-    `;
-    for (const row of rows) {
-      result.set(row.id, row.paymentMethods ?? []);
-    }
-  } catch {
-    // Graceful degradation — return empty for all plans
-  }
-  return result;
-}
-
 // ── DTO mapper ────────────────────────────────────────────────────────────────
+// PricingPlan.paymentMethods is typed as Prisma.JsonValue by the generated
+// client — we pass it directly to resolvePaymentMethods which accepts `unknown`.
 
-function toDto(
-  plan: PricingPlanWithFeatures,
-  paymentMethodsRaw: unknown,
-): PricingPlanDto {
+function toDto(plan: PricingPlanWithFeatures): PricingPlanDto {
   return {
     id:             plan.id,
     name:           plan.name,
@@ -133,7 +97,7 @@ function toDto(
       name:    f.name,
       enabled: f.isEnabled,
     })),
-    paymentMethods: resolvePaymentMethods(paymentMethodsRaw),
+    paymentMethods: resolvePaymentMethods(plan.paymentMethods),
   };
 }
 
@@ -141,11 +105,8 @@ function toDto(
 
 export async function getPlans(): Promise<PricingPlanDto[]> {
   const plans = await findAllPlans();
-
-  // Batch-read paymentMethods for all plans in one raw query
-  const pmMap = await readPaymentMethodsForPlans(plans.map((p) => p.id));
-
-  return plans.map((plan) => toDto(plan, pmMap.get(plan.id) ?? []));
+  // paymentMethods is included in the Prisma response as Prisma.JsonValue
+  return plans.map(toDto);
 }
 
 export async function updatePlanById(
@@ -165,11 +126,6 @@ export async function updatePlanById(
     throw new AppError('Monthly price cannot be negative', 400);
   }
 
-  // updatePlan returns the plan with paymentMethods already attached via raw query
   const updated = await updatePlan(id, input);
-
-  // updated has paymentMethods attached by the repository; read it back
-  const pmRaw = await readPaymentMethodsForPlan(id);
-
-  return toDto(updated, pmRaw);
+  return toDto(updated);
 }

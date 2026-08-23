@@ -44,28 +44,22 @@ export async function updatePlan(
   input: UpdatePlanInput,
 ): Promise<PricingPlanWithFeatures> {
   return prisma.$transaction(async (tx) => {
-    // 1. Update scalar fields (name, monthlyPrice) via typed Prisma update
-    const scalarData: { name?: string; monthlyPrice?: number } = {};
-    if (input.name         !== undefined) scalarData.name         = input.name;
-    if (input.monthlyPrice !== undefined) scalarData.monthlyPrice = input.monthlyPrice;
+    // 1. Update scalar and JSON fields on the plan row via the typed Prisma client.
+    //    paymentMethods is a Json column — Prisma accepts InputJsonValue for it.
+    const planData: Prisma.PricingPlanUpdateInput = {};
 
-    if (Object.keys(scalarData).length > 0) {
-      await tx.pricingPlan.update({ where: { id }, data: scalarData });
-    }
-
-    // 2. Update paymentMethods via raw SQL to bypass stale Prisma client types.
-    //    The column was added via migration after the last `prisma generate`.
-    //    Once `prisma generate` is run the client will include the field and
-    //    this raw query can be replaced with the typed update above.
+    if (input.name           !== undefined) planData.name           = input.name;
+    if (input.monthlyPrice   !== undefined) planData.monthlyPrice   = input.monthlyPrice;
     if (input.paymentMethods !== undefined) {
-      await tx.$executeRaw`
-        UPDATE "PricingPlan"
-        SET    "paymentMethods" = ${JSON.stringify(input.paymentMethods)}::jsonb
-        WHERE  id = ${id}
-      `;
+      // Cast to InputJsonValue as required by Prisma for Json fields
+      planData.paymentMethods = input.paymentMethods as unknown as Prisma.InputJsonValue;
     }
 
-    // 3. Replace feature list when provided
+    if (Object.keys(planData).length > 0) {
+      await tx.pricingPlan.update({ where: { id }, data: planData });
+    }
+
+    // 2. Replace feature list when provided (full replacement, not a patch)
     if (input.features !== undefined) {
       await tx.planFeature.deleteMany({ where: { planId: id } });
 
@@ -81,32 +75,14 @@ export async function updatePlan(
       }
     }
 
-    // 4. Return the updated plan with features.
-    //    paymentMethods is read back via raw query since the Prisma client type
-    //    may not include it yet.
+    // 3. Return the updated plan with features — paymentMethods included by
+    //    the generated Prisma client as Prisma.JsonValue
     const updated = await tx.pricingPlan.findUnique({
       where:   { id },
       include: { features: { orderBy: { name: 'asc' } } },
     });
 
     if (!updated) throw new Error('Plan not found after update');
-
-    // Attach paymentMethods from a raw query so the service can read it
-    const rawRows = await tx.$queryRaw<Array<{ paymentMethods: unknown }>>`
-      SELECT "paymentMethods" FROM "PricingPlan" WHERE id = ${id}
-    `;
-    const paymentMethods = rawRows[0]?.paymentMethods ?? [];
-    return { ...updated, paymentMethods } as PricingPlanWithFeatures & { paymentMethods: unknown };
+    return updated;
   });
-}
-
-/**
- * Fetch paymentMethods for a single plan via raw SQL (bypasses stale client types).
- * Returns the raw JSON value stored in the column.
- */
-export async function findPlanPaymentMethods(id: string): Promise<unknown> {
-  const rows = await prisma.$queryRaw<Array<{ paymentMethods: unknown }>>`
-    SELECT "paymentMethods" FROM "PricingPlan" WHERE id = ${id}
-  `;
-  return rows[0]?.paymentMethods ?? [];
 }
