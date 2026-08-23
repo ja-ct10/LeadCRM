@@ -84,7 +84,6 @@ function EditableField({
     setIsEditing(false);
     if (val !== value) {
       onSave(val);
-      toast.success('Updated successfully');
     }
   };
 
@@ -796,7 +795,7 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
               icon={Mail} 
               value={lead.email || ''} 
               placeholder="Add email address..."
-              onSave={(val) => { lead.email = val; onEdit?.(lead); }} 
+              onSave={(val) => { updateLead(lead.id, { email: val }).catch(() => toast.error('Failed to update email')); }} 
             />
             {lead.email && (
               <SmallAction label="Copy Email" onClick={() => { navigator.clipboard.writeText(lead.email!); toast.success('Email copied'); }}>
@@ -810,7 +809,7 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
               icon={Phone} 
               value={lead.phone || ''} 
               placeholder="Add phone number..."
-              onSave={(val) => { lead.phone = val; onEdit?.(lead); }} 
+              onSave={(val) => { updateLead(lead.id, { phone: val }).catch(() => toast.error('Failed to update phone')); }} 
             />
             {lead.phone && (
               <SmallAction label="Copy Phone" onClick={() => { navigator.clipboard.writeText(lead.phone!); toast.success('Phone copied'); }}>
@@ -824,7 +823,7 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
               icon={MapPin} 
               value={lead.address || ''} 
               placeholder="Add physical address..."
-              onSave={(val) => { lead.address = val; onEdit?.(lead); }} 
+              onSave={(val) => { updateLead(lead.id, { address: val }).catch(() => toast.error('Failed to update address')); }} 
             />
           </div>
 
@@ -833,7 +832,7 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
               icon={Building} 
               value={lead.companyName || ''} 
               placeholder="Add company name..."
-              onSave={(val) => { lead.companyName = val; onEdit?.(lead); }} 
+              onSave={(val) => { updateLead(lead.id, { companyName: val }).catch(() => toast.error('Failed to update company')); }} 
             />
             {lead.companyName && <Chip>Company</Chip>}
           </div>
@@ -1071,6 +1070,7 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
       open={open}
       onOpenChange={onOpenChange}
       module="lead"
+      fullPageHref={`/crm/leads/${lead.id}`}
       record={{
         id: lead.id,
         title: leadName,
@@ -1204,7 +1204,7 @@ export function ContactPanel({ open, onOpenChange, contact, onEdit }: ContactPan
               icon={Mail} 
               value={contact.email || ''} 
               placeholder="Add email address..."
-              onSave={(val) => { contact.email = val; onEdit?.(contact); }} 
+              onSave={(val) => { updateContact(contact.id, { email: val }).catch(() => toast.error('Failed to update email')); }} 
             />
           </div>
           <div className="flex items-center justify-between px-4 py-2">
@@ -1212,7 +1212,7 @@ export function ContactPanel({ open, onOpenChange, contact, onEdit }: ContactPan
               icon={Phone} 
               value={contact.phone || ''} 
               placeholder="Add phone number..."
-              onSave={(val) => { contact.phone = val; onEdit?.(contact); }} 
+              onSave={(val) => { updateContact(contact.id, { phone: val }).catch(() => toast.error('Failed to update phone')); }} 
             />
           </div>
           <div className="flex items-center justify-between px-4 py-2">
@@ -1220,7 +1220,7 @@ export function ContactPanel({ open, onOpenChange, contact, onEdit }: ContactPan
               icon={MapPin} 
               value={contact.address || ''} 
               placeholder="Add physical address..."
-              onSave={(val) => { contact.address = val; onEdit?.(contact); }} 
+              onSave={(val) => { updateContact(contact.id, { address: val }).catch(() => toast.error('Failed to update address')); }} 
             />
           </div>
         </div>
@@ -1231,7 +1231,7 @@ export function ContactPanel({ open, onOpenChange, contact, onEdit }: ContactPan
       title: 'Related Account',
       icon: Building,
       content: relatedAccount ? (
-        <Link href={`/crm/accounts?id=${relatedAccount.id}`} className="p-4 flex items-center justify-between text-sm hover:bg-secondary/50 transition-colors cursor-pointer group block">
+        <Link href={`/crm/accounts/${relatedAccount.id}`} className="p-4 flex items-center justify-between text-sm hover:bg-secondary/50 transition-colors cursor-pointer group block">
           <div>
             <p className="font-semibold text-foreground group-hover:text-primary transition-colors">{relatedAccount.name}</p>
             <p className="text-xs text-muted-foreground">{relatedAccount.industry || 'Organization'}</p>
@@ -1407,6 +1407,7 @@ export function ContactPanel({ open, onOpenChange, contact, onEdit }: ContactPan
       open={open}
       onOpenChange={onOpenChange}
       module="contact"
+      fullPageHref={`/crm/contacts/${contact.id}`}
       record={{
         id: contact.id,
         title: contactName,
@@ -1540,21 +1541,21 @@ export function AccountPanel({ open, onOpenChange, account, onEdit }: AccountPan
             <EditableField 
               value={account.industry || ''} 
               placeholder="Industry"
-              onSave={(val) => { account.industry = val; onEdit?.(account); }} 
+              onSave={(val) => { updateOrganization(account.id, { industry: val }).catch(() => toast.error('Failed to update industry')); }} 
             />
           </div>
           <div className="flex justify-between px-4 py-2">
             <EditableField 
               value={account.size || ''} 
               placeholder="Company Size"
-              onSave={(val) => { account.size = val; onEdit?.(account); }} 
+              onSave={(val) => { updateOrganization(account.id, { size: val as '1-10' | '11-50' | '51-200' | '200+' }).catch(() => toast.error('Failed to update size')); }} 
             />
           </div>
           <div className="flex justify-between px-4 py-2">
             <EditableField 
               value={account.website || ''} 
               placeholder="Website"
-              onSave={(val) => { account.website = val; onEdit?.(account); }} 
+              onSave={(val) => { updateOrganization(account.id, { website: val }).catch(() => toast.error('Failed to update website')); }} 
               className="text-primary"
             />
           </div>
@@ -1564,10 +1565,11 @@ export function AccountPanel({ open, onOpenChange, account, onEdit }: AccountPan
               placeholder="Location"
               onSave={(val) => { 
                 const parts = val.split(',').map(s => s.trim());
-                if (parts[0]) account.city = parts[0];
-                if (parts[1]) account.province = parts[1];
-                if (parts[2]) account.country = parts[2];
-                onEdit?.(account); 
+                const locationUpdate: Record<string, string> = {};
+                if (parts[0]) locationUpdate.city = parts[0];
+                if (parts[1]) locationUpdate.province = parts[1];
+                if (parts[2]) locationUpdate.country = parts[2];
+                updateOrganization(account.id, locationUpdate).catch(() => toast.error('Failed to update location'));
               }} 
             />
           </div>
@@ -1583,7 +1585,7 @@ export function AccountPanel({ open, onOpenChange, account, onEdit }: AccountPan
       content: (
         <div className="divide-y divide-border text-sm">
           {relatedContacts.map((c) => (
-            <Link key={c.id} href={`/crm/contacts?id=${c.id}`} className="p-3 flex justify-between items-center hover:bg-secondary/50 transition-colors cursor-pointer group block">
+            <Link key={c.id} href={`/crm/contacts/${c.id}`} className="p-3 flex justify-between items-center hover:bg-secondary/50 transition-colors cursor-pointer group block">
               <div>
                 <p className="font-medium text-foreground group-hover:text-primary transition-colors">{c.firstName} {c.lastName}</p>
                 <p className="text-xs text-muted-foreground">{c.email || c.phone || 'Contact'}</p>
@@ -1606,7 +1608,7 @@ export function AccountPanel({ open, onOpenChange, account, onEdit }: AccountPan
       content: (
         <div className="divide-y divide-border text-sm">
           {relatedLeads.map((l) => (
-            <Link key={l.id} href={`/crm/leads?id=${l.id}`} className="p-3 flex justify-between items-center hover:bg-secondary/50 transition-colors cursor-pointer group block">
+            <Link key={l.id} href={`/crm/leads/${l.id}`} className="p-3 flex justify-between items-center hover:bg-secondary/50 transition-colors cursor-pointer group block">
               <div>
                 <p className="font-medium text-foreground group-hover:text-primary transition-colors">{l.firstName} {l.lastName}</p>
                 <p className="text-xs text-muted-foreground">{l.email || l.phone || 'Lead'}</p>
@@ -1715,6 +1717,7 @@ export function AccountPanel({ open, onOpenChange, account, onEdit }: AccountPan
         open={open}
         onOpenChange={onOpenChange}
         module="account"
+        fullPageHref={`/crm/accounts/${account.id}`}
         record={{
           id: account.id,
           title: accountName,
@@ -1935,7 +1938,7 @@ export function DealPanel({ open, onOpenChange, deal, onEdit, onOpenContactPanel
               <EditableField 
                 value={deal.value?.toString() || '0'} 
                 placeholder="0"
-                onSave={(val) => { deal.value = parseFloat(val) || 0; onEdit?.(deal); }} 
+                onSave={(val) => { updateDeal(deal.id, { value: parseFloat(val) || 0 }).catch(() => toast.error('Failed to update value')); }} 
                 className="font-bold w-[120px]"
               />
             </div>
@@ -1945,7 +1948,7 @@ export function DealPanel({ open, onOpenChange, deal, onEdit, onOpenContactPanel
             <EditableField 
               value={deal.priority || 'Medium'} 
               placeholder="Medium"
-              onSave={(val) => { deal.priority = val as Deal['priority']; onEdit?.(deal); }} 
+              onSave={(val) => { updateDeal(deal.id, { priority: val as Deal['priority'] }).catch(() => toast.error('Failed to update priority')); }} 
               className="w-[120px]"
             />
           </div>
@@ -1954,7 +1957,7 @@ export function DealPanel({ open, onOpenChange, deal, onEdit, onOpenContactPanel
             <EditableField 
               value={deal.expectedCloseDate ? new Date(deal.expectedCloseDate).toISOString().split('T')[0] : ''} 
               placeholder="YYYY-MM-DD"
-              onSave={(val) => { deal.expectedCloseDate = val; onEdit?.(deal); }} 
+              onSave={(val) => { updateDeal(deal.id, { expectedCloseDate: val }).catch(() => toast.error('Failed to update close date')); }} 
               className="w-[120px]"
             />
           </div>
@@ -2216,6 +2219,7 @@ export function DealPanel({ open, onOpenChange, deal, onEdit, onOpenContactPanel
       open={open}
       onOpenChange={onOpenChange}
       module="deal"
+      fullPageHref={`/crm/deals/${deal.id}`}
       record={{
         id: deal.id,
         title: deal.title,
