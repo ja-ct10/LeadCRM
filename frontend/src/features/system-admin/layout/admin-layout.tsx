@@ -298,7 +298,7 @@ export default function AdminLayout({ children, currentPath, navigate, subLabel 
         </header>
 
         {/* Content */}
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6 custom-scrollbar">
+        <main className="relative flex-1 overflow-y-auto p-4 lg:p-6 custom-scrollbar">
           {children}
         </main>
       </div>

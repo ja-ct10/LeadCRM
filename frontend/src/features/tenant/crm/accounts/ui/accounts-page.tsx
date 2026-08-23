@@ -14,7 +14,9 @@ import { ACCOUNTS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import { ACCOUNTS_MODULE_CONFIG } from '../accounts.config';
 import { AccountsDataGrid } from './accounts-data-grid';
 import AccountForm from '../ui/account-form';
-import { ImportAccountsDrawer } from './import-accounts-drawer';
+import { useRouter } from 'next/navigation';
+// @deprecated — ImportAccountsDrawer replaced by full-page import at /crm/accounts/import
+// import { ImportAccountsDrawer } from './import-accounts-drawer';
 import { SideSheet } from '@/shared/components/side-sheet';
 import { ColumnsPopover } from '@/shared/components/data-grid';
 import { toast } from 'sonner';
@@ -27,6 +29,7 @@ import type { ColumnConfigItem } from '@leadcrm/shared';
 // ── Accounts Page ─────────────────────────────────────────────────────────────
 
 export default function AccountsPage(): React.ReactElement {
+  const router = useRouter();
   const canCreate = useHasPermission('contacts.create');
   const canEdit = useHasPermission('contacts.edit');
   const canDelete = useHasPermission('contacts.delete');
@@ -58,7 +61,6 @@ export default function AccountsPage(): React.ReactElement {
   } = useColumnPreferences('accounts');
 
   const [isManageColumnsOpen, setIsManageColumnsOpen] = useState(false);
-  const [isImportOpen, setIsImportOpen] = useState(false);
   const manageColumnsButtonRef = useRef<HTMLButtonElement>(null);
 
   // ── Table Preferences (pageSize, viewMode, sort) ──────────────────────
@@ -315,7 +317,7 @@ export default function AccountsPage(): React.ReactElement {
         moduleConfig={ACCOUNTS_MODULE_CONFIG}
         primaryActionLabel="Add Account"
         onPrimaryAction={handleOpenCreate}
-        onImport={() => setIsImportOpen(true)}
+        onImport={() => router.push('/crm/accounts/import')}
         canCreate={canCreate}
         availableViews={['table']}
         activeView={'table' as ViewType}
@@ -362,7 +364,6 @@ export default function AccountsPage(): React.ReactElement {
             canDelete={canDelete}
             onEdit={handleOpenEdit}
             onDelete={(account) => handleDelete(account.id)}
-            onManageColumns={() => setIsManageColumnsOpen(true)}
             onHideColumn={async (columnId) => {
               const updated = effectiveColumns.map((col) =>
                 col.id === columnId ? { ...col, visible: false } : col,
@@ -498,11 +499,7 @@ export default function AccountsPage(): React.ReactElement {
         triggerRef={manageColumnsButtonRef}
       />
 
-      {/* ── Import Accounts Drawer ──────────────────────────────── */}
-      <ImportAccountsDrawer
-        isOpen={isImportOpen}
-        onClose={() => setIsImportOpen(false)}
-      />
+      {/* ── Import Accounts — now a full-page experience at /crm/accounts/import ─── */}
     </>
   );
 }

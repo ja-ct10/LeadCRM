@@ -381,7 +381,6 @@ export default function ContactsPage(): React.ReactElement {
           }}
           canEdit={false}
           canDelete={false}
-          onManageColumns={() => setIsManageColumnsOpen(true)}
           onHideColumn={async (columnId) => {
             const updated = effectiveColumns.map((col) =>
               col.id === columnId ? { ...col, visible: false } : col,

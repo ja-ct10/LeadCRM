@@ -4,6 +4,19 @@ import { apiClient } from '@/lib/api/client';
 
 // System Admin only — cross-tenant operations
 export const tenantApiService = {
+  create: (data: {
+    name: string;
+    industry: string;
+    companySize: string;
+    plan: 'FREE' | 'PRO' | 'ENTERPRISE';
+    firstName: string;
+    lastName: string;
+    email: string;
+    password: string;
+    phone?: string;
+    address?: string;
+  }) => apiClient.post<{ success: boolean; data: unknown }>('/admin/tenants', data),
+
   getAll: (params?: { page?: number; status?: string; plan?: string }) => {
     const query = new URLSearchParams();
     if (params?.page) query.set('page', String(params.page));
