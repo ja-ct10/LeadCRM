@@ -1,11 +1,18 @@
 'use client';
 
 import { apiClient } from '@/lib/api/client';
+import type { PricingPlanDto, UpdatePlanRequest } from '@leadcrm/shared';
 
 export const pricingApiService = {
+  /** GET /admin/plans — returns all active pricing plans with features */
   getPlans: () =>
-    apiClient.get<{ success: boolean; data: unknown[] }>('/admin/plans'),
+    apiClient.get<{ success: boolean; data: PricingPlanDto[] }>('/admin/plans'),
 
-  updatePlan: (planId: string, data: { price?: number; features?: string[]; billingCycles?: string[] }) =>
-    apiClient.put<{ success: boolean; data: unknown }>(`/admin/plans/${planId}`, data),
+  /**
+   * PUT /admin/plans/:id — update plan name, price, and/or feature list.
+   * Features array is the full replacement list; disabled features are
+   * stored with enabled:false so the UI can display them struck-through.
+   */
+  updatePlan: (planId: string, data: UpdatePlanRequest) =>
+    apiClient.put<{ success: boolean; data: PricingPlanDto }>(`/admin/plans/${planId}`, data),
 };
