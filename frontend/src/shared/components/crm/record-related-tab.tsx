@@ -12,6 +12,8 @@ import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/shared/components/ui/button';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
+import { DealCardList } from './deal-card-list';
+import { mapToDealCardData } from './deal-card.utils';
 import type { PermissionKey } from '@leadcrm/shared';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -54,6 +56,18 @@ export interface RelatedSectionConfig {
   emptyMessage?: string;
   /** If true, this section shows a single record (e.g., Account for a lead) */
   single?: boolean;
+  /** Render mode: 'card' renders DealCardList for deals; default is 'table' */
+  renderMode?: 'card' | 'table';
+  /** Parent entity ID — used by DealCardList for "View All" links and create pre-fill */
+  parentId?: string;
+  /** Parent entity type — used by DealCardList */
+  parentEntityType?: 'account' | 'contact' | 'lead';
+  /** Callback when a deal is edited (for card mode) */
+  onEditDeal?: (dealId: string) => void;
+  /** Callback when a deal is deleted (for card mode) */
+  onDeleteDeal?: (dealId: string) => Promise<void>;
+  /** Callback when deals list is mutated (for card mode) */
+  onDealMutated?: () => void;
 }
 
 export interface RecordRelatedTabProps {
@@ -74,6 +88,24 @@ function RelatedSectionCard({ section }: RelatedSectionCardProps): React.ReactEl
   const maxItems = section.maxItems ?? 5;
   const visibleRecords = section.records.slice(0, maxItems);
   const hasMore = section.records.length > maxItems;
+
+  // ── Card mode: render DealCardList for deals ────────────────────────────
+  if (section.renderMode === 'card' && section.entityType === 'deals') {
+    const dealCards = section.records.map(mapToDealCardData);
+    return (
+      <div className="border border-border rounded-xl bg-card overflow-hidden p-4">
+        <DealCardList
+          deals={dealCards}
+          entityType={section.parentEntityType ?? 'account'}
+          entityId={section.parentId ?? ''}
+          onCreateDeal={section.onAdd}
+          onEditDeal={section.onEditDeal}
+          onDeleteDeal={section.onDeleteDeal}
+          onDealMutated={section.onDealMutated}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="border border-border rounded-xl bg-card overflow-hidden">

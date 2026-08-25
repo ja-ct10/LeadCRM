@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Layers, Users, Clock, Paperclip } from 'lucide-react';
+import { Layers, Users, Clock, Paperclip, DollarSign, Calendar, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useRecordDetail } from '@/shared/hooks/use-record-detail';
@@ -13,7 +13,11 @@ import { RecordRelatedTab } from '@/shared/components/crm/record-related-tab';
 import { RecordTimelineTab } from '@/shared/components/crm/record-timeline-tab';
 import { RecordFilesTab } from '@/shared/components/crm/record-files-tab';
 import { PipelineProgressBar } from '@/shared/components/crm/pipeline-progress-bar';
+import { RecordMetricsStrip } from '@/shared/components/crm/record-metrics-strip';
+import type { MetricItem } from '@/shared/components/crm/record-metrics-strip';
+import { QuickActionBar } from '@/shared/components/crm/quick-action-bar';
 import { dealDetailConfig } from '../config/record-detail.config';
+import { DealFormSheet } from './deal-form';
 import type { ActionConfig } from '@/shared/components/crm/record-detail-layout';
 
 export default function DealDetailPage(): React.ReactElement {
@@ -28,6 +32,9 @@ export default function DealDetailPage(): React.ReactElement {
 
   const { updateDeal, deleteDeal, moveDealStage, pipelines } = useData();
 
+  // ── Edit drawer state ───────────────────────────────────────────────────
+  const [isEditOpen, setIsEditOpen] = useState(false);
+
   // ── Field save handler ──────────────────────────────────────────────────
   const handleFieldSave = useCallback(async (key: string, value: unknown): Promise<void> => {
     if (!recordId) return;
@@ -41,7 +48,7 @@ export default function DealDetailPage(): React.ReactElement {
       onClick: () => {
         switch (tpl.id) {
           case 'edit':
-            toast.info('Edit form coming soon — use the side panel for now');
+            setIsEditOpen(true);
             break;
           case 'duplicate':
             import('@/shared/services/deals-actions.api').then(({ duplicateDeal }) => {
@@ -110,15 +117,84 @@ export default function DealDetailPage(): React.ReactElement {
     }
   }, [recordId, moveDealStage, dealPipeline]);
 
+  // ── Key Metrics Strip ───────────────────────────────────────────────────
+  const dealMetrics: MetricItem[] = useMemo(() => {
+    if (!record) return [];
+
+    const metrics: MetricItem[] = [];
+
+    // 1. Deal Value
+    const value = typeof record.value === 'number' ? record.value : 0;
+    metrics.push({
+      icon: DollarSign,
+      label: 'Deal Value',
+      value: value > 0 ? `₱${value.toLocaleString()}` : '—',
+    });
+
+    // 2. Days in Stage
+    const lastStageChange = record.lastStageChangeDate as string | undefined;
+    const stageStartDate = lastStageChange ? new Date(lastStageChange) : (record.createdAt ? new Date(record.createdAt as string) : null);
+    let daysInStage = 0;
+    if (stageStartDate) {
+      daysInStage = Math.floor((Date.now() - stageStartDate.getTime()) / 86400000);
+    }
+    metrics.push({
+      icon: Clock,
+      label: 'Days in Stage',
+      value: `${daysInStage}d`,
+      variant: daysInStage > 30 ? 'danger' : daysInStage > 14 ? 'warning' : 'default',
+      tooltip: daysInStage > 14 ? 'This deal may need attention' : undefined,
+    });
+
+    // 3. Deal Age
+    const createdAt = record.createdAt as string | undefined;
+    let dealAge = 0;
+    if (createdAt) {
+      dealAge = Math.floor((Date.now() - new Date(createdAt).getTime()) / 86400000);
+    }
+    metrics.push({
+      icon: Calendar,
+      label: 'Deal Age',
+      value: `${dealAge}d`,
+    });
+
+    // 4. Next Step (from tasks in relationships)
+    const tasks = (relationships?.tasks as Array<{ title?: string; status?: string; dueDate?: string }>) ?? [];
+    const openTasks = tasks.filter((t) => t.status !== 'completed' && t.status !== 'done');
+    if (openTasks.length > 0) {
+      const nextTask = openTasks[0];
+      const dueDateStr = nextTask.dueDate ? new Date(nextTask.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+      metrics.push({
+        icon: CheckCircle2,
+        label: 'Next Step',
+        value: dueDateStr ? `Due ${dueDateStr}` : (nextTask.title ?? 'Task pending').slice(0, 20),
+        tooltip: nextTask.title,
+      });
+    } else {
+      metrics.push({
+        icon: CheckCircle2,
+        label: 'Next Step',
+        value: 'No tasks',
+        variant: 'warning',
+        tooltip: 'Consider adding a follow-up task',
+      });
+    }
+
+    return metrics;
+  }, [record, relationships]);
+
   const headerExtra = dealPipeline && dealStageId ? (
-    <PipelineProgressBar
-      stages={progressStages}
-      currentStageId={dealStageId}
-      isWon={isWon}
-      isLost={isLost}
-      onStageClick={handleStageClick}
-      canChangeStage={true}
-    />
+    <div className="space-y-3">
+      <PipelineProgressBar
+        stages={progressStages}
+        currentStageId={dealStageId}
+        isWon={isWon}
+        isLost={isLost}
+        onStageClick={handleStageClick}
+        canChangeStage={true}
+      />
+      <RecordMetricsStrip metrics={dealMetrics} />
+    </div>
   ) : null;
 
   // ── Avatar ──────────────────────────────────────────────────────────────
@@ -191,6 +267,7 @@ export default function DealDetailPage(): React.ReactElement {
   ], [fieldSections, relatedSections, activities, recordId, record, updateDeal, refetch]);
 
   return (
+    <>
     <RecordDetailLayout
       module="deals"
       title={`${title}${dealValue > 0 ? ` — ₱${dealValue.toLocaleString()}` : ''}`}
@@ -205,9 +282,30 @@ export default function DealDetailPage(): React.ReactElement {
       actions={actions}
       tabs={tabs}
       headerExtra={headerExtra}
+      actionBar={
+        recordId ? (
+          <QuickActionBar module="deals" recordId={recordId} onActivityCreated={refetch} />
+        ) : undefined
+      }
       isLoading={isLoading}
       isNotFound={isNotFound}
       defaultTab="overview"
     />
+
+    {/* Edit Deal Drawer */}
+    <DealFormSheet
+      isOpen={isEditOpen}
+      onClose={() => setIsEditOpen(false)}
+      mode="edit"
+      initialData={record as Partial<import('@/store/types').Deal> | undefined}
+      onSubmit={async (data) => {
+        if (!recordId) return;
+        await updateDeal(recordId, data);
+        refetch();
+        setIsEditOpen(false);
+        toast.success('Deal updated');
+      }}
+    />
+    </>
   );
 }

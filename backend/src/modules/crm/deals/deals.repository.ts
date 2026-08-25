@@ -17,6 +17,9 @@ export async function findAllDeals(tenantId: string, params: DealsQueryParams) {
     ...(params.pipelineId     ? { pipelineId: params.pipelineId }         : {}),
     ...(params.priority       ? { priority: params.priority }             : {}),
     ...(params.assignedUserId ? { assignedUserId: params.assignedUserId } : {}),
+    ...(params.organizationId ? { organizationId: params.organizationId } : {}),
+    ...(params.contactId      ? { contactDeals: { some: { contactId: params.contactId } } } : {}),
+    ...(params.leadId         ? { leadDeals: { some: { leadId: params.leadId } } }          : {}),
     ...(params.search ? { title: { contains: params.search, mode: 'insensitive' as const } } : {}),
     ...(params.dateFrom || params.dateTo ? {
       createdAt: {
@@ -38,8 +41,12 @@ export async function findAllDeals(tenantId: string, params: DealsQueryParams) {
         stage:        true,
         pipeline:     true,
         assignedUser: { select: { id: true, firstName: true, lastName: true } },
+        organization: { select: { id: true, name: true } },
         leadDeals: {
           include: { lead: { select: { id: true, firstName: true, lastName: true } } },
+        },
+        contactDeals: {
+          include: { contact: { select: { id: true, firstName: true, lastName: true } } },
         },
       },
     }),

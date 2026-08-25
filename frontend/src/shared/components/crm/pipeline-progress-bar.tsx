@@ -2,6 +2,12 @@
 
 import React, { useMemo } from 'react';
 import { cn } from '@/lib/utils';
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from '@/shared/components/ui/tooltip';
 
 // --- Types ---
 
@@ -21,6 +27,8 @@ interface PipelineProgressBarProps {
   isLost?: boolean;
   onStageClick?: (stageId: string) => void;
   canChangeStage?: boolean;
+  /** Show stage name labels below dots. Default: true */
+  showLabels?: boolean;
 }
 
 // --- Helpers ---
@@ -71,6 +79,21 @@ function getLineClasses(status: StageStatus): string {
   }
 }
 
+function getLabelClasses(status: StageStatus): string {
+  switch (status) {
+    case 'current':
+      return 'font-semibold text-primary';
+    case 'completed':
+      return 'text-muted-foreground';
+    case 'won':
+      return 'font-semibold text-emerald-600 dark:text-emerald-400';
+    case 'lost':
+      return 'font-semibold text-destructive';
+    case 'future':
+      return 'text-muted-foreground/60';
+  }
+}
+
 // --- Main Component ---
 
 export function PipelineProgressBar({
@@ -80,6 +103,7 @@ export function PipelineProgressBar({
   isLost = false,
   onStageClick,
   canChangeStage = false,
+  showLabels = true,
 }: PipelineProgressBarProps): React.ReactNode {
   const sortedStages = useMemo(
     () => [...stages].sort((a, b) => a.order - b.order),
@@ -94,53 +118,73 @@ export function PipelineProgressBar({
 
   return (
     <div className="w-full">
-      {/* Compact view for narrow panels */}
+      {/* Compact view for narrow screens — shows current stage name */}
       <div className="flex items-center justify-center sm:hidden">
         <span className="text-xs font-medium text-muted-foreground">
-          Stage {currentIndex + 1} of {sortedStages.length}
+          Stage: <span className="text-foreground font-semibold">{currentStage?.name ?? 'Unknown'}</span>
+          {' '}({currentIndex + 1}/{sortedStages.length})
         </span>
       </div>
 
       {/* Full progress bar for wider panels */}
-      <div className="hidden sm:flex items-center w-full gap-0">
-        {sortedStages.map((stage, index) => {
-          const status = getStageStatus(stage, currentOrder, isWon, isLost);
-          const isLast = index === sortedStages.length - 1;
+      <div className="hidden sm:flex items-start w-full gap-0">
+        <TooltipProvider>
+          {sortedStages.map((stage, index) => {
+            const status = getStageStatus(stage, currentOrder, isWon, isLost);
+            const isLast = index === sortedStages.length - 1;
+            const lineStatus = index < currentIndex ? 'completed' : 'future';
 
-          return (
-            <div key={stage.id} className="flex items-center flex-1 last:flex-none">
-              {/* Dot */}
-              <button
-                type="button"
-                disabled={!isClickable}
-                onClick={() => isClickable && onStageClick?.(stage.id)}
-                title={stage.name}
-                aria-label={`${stage.name}${status === 'current' ? ' (current)' : ''}`}
-                className={cn(
-                  'relative size-3 rounded-full border-2 shrink-0 transition-colors',
-                  getDotClasses(status),
-                  isClickable
-                    ? 'cursor-pointer hover:ring-2 hover:ring-primary/30'
-                    : 'cursor-default'
-                )}
-              />
+            return (
+              <div key={stage.id} className={cn('flex flex-col items-center', !isLast && 'flex-1')}>
+                {/* Dot + Line row */}
+                <div className="flex items-center w-full">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        disabled={!isClickable}
+                        onClick={() => isClickable && onStageClick?.(stage.id)}
+                        aria-label={`${stage.name}${status === 'current' ? ' (current)' : ''}`}
+                        className={cn(
+                          'relative shrink-0 rounded-full border-2 transition-all',
+                          status === 'current' ? 'size-3.5' : 'size-3',
+                          getDotClasses(status),
+                          isClickable
+                            ? 'cursor-pointer hover:ring-2 hover:ring-primary/30'
+                            : 'cursor-default'
+                        )}
+                      />
+                    </TooltipTrigger>
+                    <TooltipContent>{stage.name}</TooltipContent>
+                  </Tooltip>
 
-              {/* Connecting line */}
-              {!isLast && (
-                <div
-                  className={cn(
-                    'h-0.5 flex-1 min-w-2 transition-colors',
-                    getLineClasses(
-                      index < sortedStages.findIndex((s) => s.id === currentStageId)
-                        ? 'completed'
-                        : 'future'
-                    )
+                  {/* Connecting line */}
+                  {!isLast && (
+                    <div
+                      className={cn(
+                        'h-0.5 flex-1 min-w-2 transition-colors',
+                        getLineClasses(lineStatus)
+                      )}
+                    />
                   )}
-                />
-              )}
-            </div>
-          );
-        })}
+                </div>
+
+                {/* Label below dot */}
+                {showLabels && (
+                  <span
+                    className={cn(
+                      'text-[10px] mt-1.5 max-w-[72px] truncate text-center leading-tight',
+                      getLabelClasses(status),
+                    )}
+                    title={stage.name}
+                  >
+                    {stage.name}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </TooltipProvider>
       </div>
     </div>
   );
