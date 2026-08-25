@@ -6,7 +6,7 @@ const isDev = process.env.NODE_ENV !== 'production';
 // General API rate limit — 100 requests per minute per IP
 export const rateLimitMiddleware = rateLimit({
   windowMs: 60 * 1000,
-  max: isDev ? 10000 : 100,
+  max: isDev ? 10000 : Number(process.env.RATE_LIMIT_MAX || 500),
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, error: 'Too many requests — please try again later.' },
