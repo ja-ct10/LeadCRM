@@ -78,8 +78,15 @@ export default function AccountDetailPage(): React.ReactElement {
 
   // ── Related sections ────────────────────────────────────────────────────
   const relatedSections = useMemo(() => {
-    return accountDetailConfig.buildRelatedSections(relationships as Record<string, unknown> | null);
-  }, [relationships]);
+    const sections = accountDetailConfig.buildRelatedSections(relationships as Record<string, unknown> | null);
+    // Inject parentId/parentEntityType for DealCardList rendering
+    return sections.map((s) => {
+      if (s.entityType === 'deals' && s.renderMode === 'card') {
+        return { ...s, parentId: recordId ?? '', parentEntityType: 'account' as const };
+      }
+      return s;
+    });
+  }, [relationships, recordId]);
 
   // ── Tabs ────────────────────────────────────────────────────────────────
   const tabs = useMemo(() => [

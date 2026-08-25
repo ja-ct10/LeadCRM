@@ -82,11 +82,8 @@ export const contactDetailConfig: RecordDetailConfig = {
       icon: Trophy,
       entityType: 'deals',
       records: deals,
-      columns: [
-        { key: 'title', label: 'Title', render: (v) => <span className="text-sm font-medium text-foreground">{String(v ?? '—')}</span> },
-        { key: 'value', label: 'Value', render: (v) => <span className="text-xs text-muted-foreground">₱{Number(v ?? 0).toLocaleString()}</span> },
-        { key: 'stage', label: 'Stage', render: (_v, rec) => <span className="text-xs text-muted-foreground">{String((rec.stage as Record<string, unknown>)?.name ?? '—')}</span> },
-      ],
+      columns: [],
+      renderMode: 'card',
       canAdd: true,
       addLabel: 'Create Deal',
       addPermission: 'deals.create',

@@ -13,6 +13,7 @@ import { useDealsPage } from '../hooks/use-deals-page';
 import { DEALS_MODULE_CONFIG } from '../deals.config';
 import { DEALS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import { DealsDataGrid } from './deals-data-grid';
+import { DealsGridView } from './deals-grid-view';
 import { ManageColumnsDrawer } from '@/shared/components/manage-columns-drawer';
 import DealFilters from '../ui/deal-filters';
 import { DealFormSheet } from './deal-form';
@@ -262,13 +263,27 @@ export default function DealsPage() {
           </div>
         )}
 
-        {/* ── List / Grid / Tile views (future) ─────────────────────── */}
-        {(activeView === 'list' || activeView === 'grid' || activeView === 'tile') && (
+        {/* ── List / Grid / Tile views ────────────────────────────── */}
+        {activeView === 'list' && (
           <div className="bg-white dark:bg-slate-800/40 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-8 text-center">
             <p className="text-[13px] text-[#5A6B85] dark:text-slate-400">
-              {activeView.charAt(0).toUpperCase() + activeView.slice(1)} view coming soon.
+              List view coming soon.
             </p>
           </div>
+        )}
+        {(activeView === 'grid' || activeView === 'tile') && (
+          <DealsGridView
+            deals={paginatedDeals}
+            onEdit={(deal) => setEditingDeal(deal)}
+            onDelete={async (dealId) => {
+              try {
+                await deleteDeal(dealId);
+                toast.success('Deal deleted');
+              } catch (err: unknown) {
+                toast.error(err instanceof Error ? err.message : 'Failed to delete deal');
+              }
+            }}
+          />
         )}
       </ModuleWorkspace>
 

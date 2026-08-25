@@ -61,6 +61,8 @@ export interface RecordDetailLayoutProps {
   tabs: TabConfig[];
   /** Extra content in header (e.g., pipeline progress bar for deals) */
   headerExtra?: React.ReactNode;
+  /** Action bar rendered between header and tabs (e.g., quick action buttons) */
+  actionBar?: React.ReactNode;
   /** Loading state — shows skeleton */
   isLoading?: boolean;
   /** Not found state — shows 404 message */
@@ -186,6 +188,7 @@ export function RecordDetailLayout({
   actions,
   tabs,
   headerExtra,
+  actionBar,
   isLoading = false,
   isNotFound = false,
   defaultTab,
@@ -283,6 +286,9 @@ export function RecordDetailLayout({
           </div>
         )}
       </header>
+
+      {/* ═══════════════════════ ACTION BAR (optional) ═══════════════════════ */}
+      {actionBar}
 
       {/* ═══════════════════════ TABS + CONTENT ═══════════════════════ */}
       <Tabs defaultValue={initialTab} className="flex flex-col flex-1 min-h-0">

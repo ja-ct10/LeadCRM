@@ -82,8 +82,14 @@ export default function ContactDetailPage(): React.ReactElement {
 
   // ── Related sections ────────────────────────────────────────────────────
   const relatedSections = useMemo(() => {
-    return contactDetailConfig.buildRelatedSections(relationships as Record<string, unknown> | null);
-  }, [relationships]);
+    const sections = contactDetailConfig.buildRelatedSections(relationships as Record<string, unknown> | null);
+    return sections.map((s) => {
+      if (s.entityType === 'deals' && s.renderMode === 'card') {
+        return { ...s, parentId: recordId ?? '', parentEntityType: 'contact' as const };
+      }
+      return s;
+    });
+  }, [relationships, recordId]);
 
   // ── Tabs ────────────────────────────────────────────────────────────────
   const tabs = useMemo(() => [

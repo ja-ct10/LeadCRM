@@ -86,8 +86,14 @@ export default function LeadDetailPage(): React.ReactElement {
 
   // ── Related sections ────────────────────────────────────────────────────
   const relatedSections = useMemo(() => {
-    return leadDetailConfig.buildRelatedSections(relationships as Record<string, unknown> | null);
-  }, [relationships]);
+    const sections = leadDetailConfig.buildRelatedSections(relationships as Record<string, unknown> | null);
+    return sections.map((s) => {
+      if (s.entityType === 'deals' && s.renderMode === 'card') {
+        return { ...s, parentId: recordId ?? '', parentEntityType: 'lead' as const };
+      }
+      return s;
+    });
+  }, [relationships, recordId]);
 
   // ── Tabs ────────────────────────────────────────────────────────────────
   const tabs = useMemo(() => [

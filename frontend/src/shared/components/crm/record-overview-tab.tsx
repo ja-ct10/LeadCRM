@@ -84,13 +84,13 @@ export interface RecordOverviewTabProps {
 // ─── Field Display Value ─────────────────────────────────────────────────────
 
 function formatDisplayValue(value: unknown, type: FieldType): string {
-  if (value === null || value === undefined || value === '') return 'Not set';
+  if (value === null || value === undefined || value === '') return '—';
 
   switch (type) {
     case 'number':
       return typeof value === 'number' ? value.toLocaleString() : String(value);
     case 'date':
-      if (!value) return 'Not set';
+      if (!value) return '—';
       try {
         return new Date(String(value)).toLocaleDateString('en-US', {
           month: 'short',
@@ -102,7 +102,7 @@ function formatDisplayValue(value: unknown, type: FieldType): string {
       }
     case 'tags':
     case 'multiselect':
-      if (Array.isArray(value)) return value.length > 0 ? value.join(', ') : 'Not set';
+      if (Array.isArray(value)) return value.length > 0 ? value.join(', ') : '—';
       return String(value);
     default:
       return String(value);
@@ -212,13 +212,23 @@ function InlineEditField({ field, canEdit }: InlineEditFieldProps): React.ReactE
         </span>
         <div className="flex items-center gap-2 min-w-0">
           {field.prefix && <span className="text-sm text-muted-foreground">{field.prefix}</span>}
-          <span className={cn(
-            'text-sm truncate',
-            isEmpty ? 'text-muted-foreground italic' : 'text-foreground'
-          )}>
-            {typeof displayValue === 'string' ? displayValue : displayValue}
-          </span>
-          {isEditable && (
+          {isEmpty && isEditable ? (
+            <>
+              <span className="text-sm text-muted-foreground group-hover:hidden">—</span>
+              <span className="text-xs text-muted-foreground/70 hidden group-hover:inline-flex items-center gap-1">
+                <Pencil className="h-3 w-3" />
+                Click to add
+              </span>
+            </>
+          ) : (
+            <span className={cn(
+              'text-sm truncate',
+              isEmpty ? 'text-muted-foreground' : 'text-foreground'
+            )}>
+              {typeof displayValue === 'string' ? displayValue : displayValue}
+            </span>
+          )}
+          {isEditable && !isEmpty && (
             <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground ml-auto shrink-0" />
           )}
         </div>
