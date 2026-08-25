@@ -3,7 +3,8 @@ import GoogleProvider from 'next-auth/providers/google';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { cookies } from 'next/headers';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
+// Server-side API URL: prefer API_URL (server-only env var on Vercel), fallback to NEXT_PUBLIC_API_URL, then localhost
+const API_URL = process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
 
 const NEXTAUTH_SECRET      = process.env.NEXTAUTH_SECRET      ?? '';
 const GOOGLE_CLIENT_ID     = process.env.GOOGLE_CLIENT_ID     ?? '';
