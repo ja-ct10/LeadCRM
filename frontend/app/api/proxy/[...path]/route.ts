@@ -14,6 +14,9 @@ async function proxyRequest(req: NextRequest, params: { path: string[] }): Promi
   if (token) {
     headers['Cookie'] = 'leadcrm_token=' + token;
   }
+  // Forward real client IP for rate limiting
+  const clientIp = req.headers.get('x-forwarded-for') ?? req.headers.get('x-real-ip') ?? '127.0.0.1';
+  headers['X-Forwarded-For'] = clientIp;
   const body = req.method !== 'GET' && req.method !== 'HEAD' ? await req.text() : undefined;
   try {
     const backendRes = await fetch(url, { method: req.method, headers, body });
