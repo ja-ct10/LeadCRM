@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useRef } from 'react';
+import Link from 'next/link';
 import { motion, AnimatePresence } from 'motion/react';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -111,6 +112,8 @@ export interface RecordPanelProps {
   onAddCustomField?: (field: Omit<CustomFieldItem, 'id'>) => void;
   onAddActivity?: (activity: { kind: 'note' | 'call' | 'task' | 'email'; title: string; notes?: string }) => void;
   loading?: boolean;
+  /** URL to the full-page detail view (renders "Open Full Page" link in header) */
+  fullPageHref?: string;
 }
 
 /* -------------------------------- primitives ------------------------------ */
@@ -342,6 +345,7 @@ export function RecordPanel({
   onAddCustomField,
   onAddActivity,
   loading = false,
+  fullPageHref,
 }: RecordPanelProps) {
   const [statusOpen, setStatusOpen] = useState(false);
   const [pipelineOpen, setPipelineOpen] = useState(false);
@@ -482,6 +486,15 @@ export function RecordPanel({
                         <p className="truncate text-xs text-muted-foreground mt-0.5 font-medium">
                           {record.subtitle}
                         </p>
+                      )}
+                      {fullPageHref && (
+                        <Link
+                          href={fullPageHref}
+                          className="inline-flex items-center gap-1 mt-1 text-[11px] font-medium text-primary hover:underline transition-colors"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          Open full page
+                        </Link>
                       )}
                     </div>
                   </div>

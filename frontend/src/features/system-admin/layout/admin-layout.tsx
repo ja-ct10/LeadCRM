@@ -26,9 +26,11 @@ interface NavGroup {
 }
 
 interface AdminLayoutProps {
-  children: React.ReactNode;
-  currentPath: string;
-  navigate: (path: string) => void;
+  children:     React.ReactNode;
+  currentPath:  string;
+  navigate:     (path: string) => void;
+  /** Optional sub-page label appended to the topbar breadcrumb, e.g. "Edit Professional" */
+  subLabel?:    string | null;
 }
 
 // ── Navigation ────────────────────────────────────────────────────────────────
@@ -70,7 +72,7 @@ const SIDEBAR_COLLAPSED_KEY = 'leadcrm_admin_sidebar_collapsed';
  * Separate navigation from CrmLayout, but shares the tenant design tokens
  * so both portals stay visually consistent across all four themes.
  */
-export default function AdminLayout({ children, currentPath, navigate }: AdminLayoutProps): React.ReactElement {
+export default function AdminLayout({ children, currentPath, navigate, subLabel }: AdminLayoutProps): React.ReactElement {
   const { user } = useAuth();
   const { unreadCount: notificationCount } = useNotifications();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -243,9 +245,20 @@ export default function AdminLayout({ children, currentPath, navigate }: AdminLa
                   <span className="text-[var(--text-tertiary)] opacity-50">&gt;</span>
                 </>
               )}
-              <span className="text-[var(--text-primary)] font-semibold truncate">
+              <span className={cn(
+                'font-semibold truncate',
+                subLabel
+                  ? 'text-[var(--text-tertiary)]'
+                  : 'text-[var(--text-primary)]',
+              )}>
                 {currentModule}
               </span>
+              {subLabel && (
+                <>
+                  <span className="text-[var(--text-tertiary)] opacity-50 shrink-0">&gt;</span>
+                  <span className="text-[var(--text-primary)] font-semibold truncate">{subLabel}</span>
+                </>
+              )}
             </div>
           </div>
 
@@ -285,7 +298,7 @@ export default function AdminLayout({ children, currentPath, navigate }: AdminLa
         </header>
 
         {/* Content */}
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6 custom-scrollbar">
+        <main className="relative flex-1 overflow-y-auto p-4 lg:p-6 custom-scrollbar">
           {children}
         </main>
       </div>

@@ -41,7 +41,7 @@
 - `cn()` for conditional classes — never string concatenation
 - No inline `style={{}}` — Tailwind classes only
 - Never change layout/design unless explicitly asked
-- Detail views: drawers/sheets only — no `[id]` routes
+- Detail views: drawers/sheets for quick-view + full pages (`/crm/{entity}/[id]`) for deep CRUD (see ADR-001)
 
 ## Import Organization
 

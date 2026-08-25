@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 /**
  * Schema for a single row of lead data being imported.
- * Mirrors the 6 required CSV fields for import.
+ * Validates the 6 required fields + optional fields.
  */
 export const ImportLeadRowSchema = z.object({
   firstName:   z.string().min(1, 'First Name is required').max(100),
@@ -11,6 +11,11 @@ export const ImportLeadRowSchema = z.object({
   phone:       z.string().min(1, 'Phone Number is required'),
   companyName: z.string().min(1, 'Company Name is required').max(200),
   address:     z.string().min(1, 'Full Address is required').max(500),
+  // Optional fields (new — backward compatible)
+  website:     z.string().max(500).optional(),
+  source:      z.string().max(100).optional(),
+  description: z.string().max(2000).optional(),
+  status:      z.string().max(50).optional(),
 });
 
 export type ImportLeadRowDto = z.infer<typeof ImportLeadRowSchema>;
@@ -30,6 +35,11 @@ export const CreateLeadImportSchema = z.object({
         phone: z.string().optional().default(''),
         companyName: z.string().optional().default(''),
         address: z.string().optional().default(''),
+        // Optional fields (new — backward compatible)
+        website: z.string().optional().default(''),
+        source: z.string().optional().default(''),
+        description: z.string().optional().default(''),
+        status: z.string().optional().default(''),
       }),
     )
     .min(1, 'At least one row is required')

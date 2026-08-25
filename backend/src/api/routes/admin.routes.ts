@@ -2,6 +2,10 @@ import { Router, raw } from 'express';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { systemAdminMiddleware } from '../middleware/system-admin.middleware';
 import * as adminBillingController from '../../modules/stripe/admin-billing.controller';
+import * as pricingPlansController from '../../modules/stripe/pricing-plans.controller';
+import * as tenantController from '../../modules/system-admin/tenants/tenants.controller';
+import { validate } from '../middleware/validate.middleware';
+import { CreateTenantSchema } from '../../modules/system-admin/tenants/tenants.dto';
 
 const router = Router();
 
@@ -20,6 +24,12 @@ router.post(
 router.use(authMiddleware);
 router.use(systemAdminMiddleware);
 
+// ── Tenant Management ───────────────────────────────────────────────────────
+router.get('/tenants', tenantController.list);
+router.post('/tenants', validate(CreateTenantSchema), tenantController.create);
+router.patch('/tenants/:id/deactivate', tenantController.deactivate);
+router.patch('/tenants/:id/activate', tenantController.activate);
+
 // ── Billing Metrics ───────────────────────────────────────────────────────────
 router.get('/billing/metrics',          adminBillingController.getBillingMetrics);
 
@@ -33,6 +43,10 @@ router.patch('/billing/subscriptions/:id/cancel',         adminBillingController
 // ── Refunds ───────────────────────────────────────────────────────────────────
 router.get('/billing/refunds',          adminBillingController.getRefundablePayments);
 router.post('/billing/refunds',         adminBillingController.createRefund);
+
+// ── Pricing Plan CRUD ─────────────────────────────────────────────────────────
+router.get('/plans',     pricingPlansController.listPlans);
+router.put('/plans/:id', pricingPlansController.updatePlan);
 
 // ── Plan → Stripe Sync ────────────────────────────────────────────────────────
 router.post('/billing/plans/sync-all',  adminBillingController.syncAllPlansStripe);

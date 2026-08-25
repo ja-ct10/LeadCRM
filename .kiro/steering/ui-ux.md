@@ -111,7 +111,7 @@ Every element requires paired dark mode classes. No light-only components ship.
 - Canvas background: `--color-soft-neutral` (#F5F6F7)
 - Topbar: sticky, z-30
 - Page header: `flex items-center justify-between mb-6`
-- Detail views: drawers/sheets only — no `[id]` routes
+- Detail views: drawers/sheets for quick-view + full pages (`/crm/{entity}/[id]`) for deep CRUD (see ADR-001)
 
 ## Accessibility Minimums
 

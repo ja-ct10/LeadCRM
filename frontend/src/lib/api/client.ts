@@ -39,7 +39,17 @@ async function request<T>(
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({ error: res.statusText }));
-    const errorMessage = errorData.error || errorData.message || res.statusText || 'API request failed';
+    // Backend can return error as a string (AppError path) or as an object
+    // with { code, message } (validation error path). Extract message from both.
+    const rawError = errorData.error;
+    const errorMessage =
+      (typeof rawError === 'string' && rawError)
+        ? rawError
+        : (typeof rawError === 'object' && rawError !== null && typeof (rawError as Record<string, unknown>).message === 'string')
+          ? (rawError as Record<string, unknown>).message as string
+          : (typeof errorData.message === 'string' && errorData.message)
+            ? errorData.message
+            : res.statusText || 'API request failed';
     throw new Error(errorMessage);
   }
 
