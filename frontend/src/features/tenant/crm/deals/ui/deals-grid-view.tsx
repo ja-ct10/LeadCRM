@@ -1,13 +1,12 @@
 'use client';
 
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { Trophy } from 'lucide-react';
 import { DealCard } from '@/shared/components/crm/deal-card';
 import { DealCardMenu } from '@/shared/components/crm/deal-card-menu';
 import { mapToDealCardData } from '@/shared/components/crm/deal-card.utils';
 import type { DealCardData } from '@/shared/components/crm/deal-card.utils';
 import type { Deal } from '@/store/types';
-import { DealFormSheet } from './deal-form';
 import { useData } from '@/store/DataContext';
 import { toast } from 'sonner';
 
