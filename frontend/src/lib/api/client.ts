@@ -4,7 +4,12 @@
 // Sends HttpOnly cookies (leadcrm_token) on every request via credentials: 'include'.
 // The backend auth middleware reads the cookie directly — no Bearer token needed.
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
+// In production cross-domain deployments, route through the Next.js API proxy
+// to avoid third-party cookie blocking. The proxy forwards the leadcrm_token cookie server-side.
+const IS_BROWSER = typeof window !== 'undefined';
+const DIRECT_API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
+const USE_PROXY = IS_BROWSER && DIRECT_API_URL.startsWith('https://') && !DIRECT_API_URL.includes('localhost');
+const API_URL = USE_PROXY ? '/api/proxy' : DIRECT_API_URL;
 
 async function request<T>(
   method: string,
