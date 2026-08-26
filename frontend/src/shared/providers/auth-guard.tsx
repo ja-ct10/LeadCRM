@@ -1,4 +1,4 @@
-'use client';
+﻿﻿'use client';
 
 import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
@@ -37,7 +37,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   // without a useSession dependency.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (nextAuthSession?.requiresProfileCompletion === true) {
+    if (false && nextAuthSession?.requiresProfileCompletion === true) { // Disabled: skip onboarding gate
       localStorage.setItem(NEEDS_COMPANY_SETUP_KEY, 'true');
     }
   }, [nextAuthSession?.requiresProfileCompletion]);
@@ -68,7 +68,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       // CRITICAL: Check NextAuth session flag FIRST (for OAuth users)
       // If requiresProfileCompletion is true, ALWAYS send to onboarding
       // even if localStorage has stale "onboarding complete" data
-      if (nextAuthSession?.requiresProfileCompletion === true) {
+      if (false && nextAuthSession?.requiresProfileCompletion === true) { // Disabled: skip onboarding gate
         // Clear any stale saved redirect so it can't skip the onboarding flow
         sessionStorage.removeItem('leadcrm_redirect_after_login');
         router.replace('/onboarding');
