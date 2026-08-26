@@ -1,16 +1,14 @@
 import { AppError } from '../errors/app-error';
 import { getSystemAccessToken, sendEmailWithToken } from '../../integrations/gmail/gmail.service';
+import { Resend } from 'resend';
 
 /**
- * Email service — sends via the system Gmail account (OAuth2).
+ * Email service — multi-transport with fallback chain:
+ *   1. Gmail OAuth2 (if GMAIL_SYSTEM_SENDER_USER_ID is set)
+ *   2. Resend HTTP API (if RESEND_API_KEY is set — works on Render free tier)
+ *   3. Console log (development only — never in production)
  *
- * Required env vars:
- *   GMAIL_SYSTEM_SENDER_USER_ID — userId of the EmailAccount record for the platform sender
- *                                 Set to "system" after running the setup script.
- *   ENCRYPTION_KEY              — AES-256 key used to encrypt/decrypt stored tokens
- *
- * In development, if no system Gmail account is configured, falls back to
- * console-logging the email content so you can still test without email.
+ * At least one transport must be configured for production deployments.
  */
 
 export interface SendMailOptions {
@@ -27,42 +25,71 @@ function isGmailConfigured(): boolean {
 }
 
 /**
- * Sends an email via the system Gmail account.
- * In development without Gmail configured, logs the email to the console instead.
+ * Returns true when Resend API is configured.
+ */
+function isResendConfigured(): boolean {
+  const key = process.env.RESEND_API_KEY;
+  return !!key && !key.startsWith('re_your');
+}
+
+/**
+ * Sends an email using the configured transport (Gmail → Resend → console fallback).
  */
 export async function sendMail(options: SendMailOptions): Promise<void> {
-  if (!isGmailConfigured()) {
-    if (process.env.NODE_ENV !== 'production') {
+  // ── 1. Try Gmail OAuth2 ─────────────────────────────────────────────
+  if (isGmailConfigured()) {
+    try {
+      const accessToken = await getSystemAccessToken();
+      if (accessToken) {
+        await sendEmailWithToken(accessToken, options.to, options.subject, options.html);
+        return;
+      }
+    } catch (err: unknown) {
+      if (err instanceof AppError) throw err;
+      const message = err instanceof Error ? err.message : 'Unknown error';
       // eslint-disable-next-line no-console
-      console.log(`\n[DEV] Email would be sent to: ${options.to}`);
-      // eslint-disable-next-line no-console
-      console.log(`[DEV] Subject: ${options.subject}`);
-      // eslint-disable-next-line no-console
-      console.log('');
-      return;
+      console.error('[EmailService] Gmail send failed, trying Resend fallback:', message);
     }
-    throw new AppError(
-      'Email service is not configured. Set GMAIL_SYSTEM_SENDER_USER_ID in your environment.',
-      503,
-    );
   }
 
-  try {
-    const accessToken = await getSystemAccessToken();
-    if (!accessToken) {
-      throw new AppError(
-        'System Gmail account is not connected or token is expired. Run the setup script.',
-        503,
-      );
+  // ── 2. Try Resend HTTP API ──────────────────────────────────────────
+  if (isResendConfigured()) {
+    try {
+      const resend = new Resend(process.env.RESEND_API_KEY);
+      const from = process.env.RESEND_FROM || 'LeadCRM <onboarding@resend.dev>';
+      await resend.emails.send({
+        from,
+        to: options.to,
+        subject: options.subject,
+        html: options.html,
+      });
+      return;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      // eslint-disable-next-line no-console
+      console.error('[EmailService] Resend send failed:', message);
+      if (process.env.NODE_ENV === 'production') {
+        throw new AppError(`Failed to send email via Resend: ${message}`, 502);
+      }
     }
-    await sendEmailWithToken(accessToken, options.to, options.subject, options.html);
-  } catch (err: unknown) {
-    if (err instanceof AppError) throw err;
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    // eslint-disable-next-line no-console
-    console.error('[EmailService] Gmail send failed:', message);
-    throw new AppError(`Failed to send email via Gmail: ${message}`, 502);
   }
+
+  // ── 3. Development fallback — log to console ────────────────────────
+  if (process.env.NODE_ENV !== 'production') {
+    // eslint-disable-next-line no-console
+    console.log(`\n[DEV] Email would be sent to: ${options.to}`);
+    // eslint-disable-next-line no-console
+    console.log(`[DEV] Subject: ${options.subject}`);
+    // eslint-disable-next-line no-console
+    console.log('');
+    return;
+  }
+
+  // ── 4. Production with no transport configured — error ──────────────
+  throw new AppError(
+    'Email service is not configured. Set GMAIL_SYSTEM_SENDER_USER_ID or RESEND_API_KEY in your environment.',
+    503,
+  );
 }
 
 // ─── Shared email layout helpers ──────────────────────────────────────────────
