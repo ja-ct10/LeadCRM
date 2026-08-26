@@ -21,10 +21,18 @@ async function proxyRequest(req: NextRequest, params: { path: string[] }): Promi
   try {
     const backendRes = await fetch(url, { method: req.method, headers, body });
     const data = await backendRes.text();
-    return new NextResponse(data, {
+    const response = new NextResponse(data, {
       status: backendRes.status,
       headers: { 'Content-Type': backendRes.headers.get('content-type') ?? 'application/json' },
     });
+
+    // Forward Set-Cookie headers from backend to browser (critical for auth)
+    const setCookies = backendRes.headers.getSetCookie();
+    for (const cookie of setCookies) {
+      response.headers.append('Set-Cookie', cookie);
+    }
+
+    return response;
   } catch (err) {
     console.error('[Proxy] Backend fetch failed:', err);
     return NextResponse.json({ success: false, error: { message: 'Backend unreachable' } }, { status: 502 });
