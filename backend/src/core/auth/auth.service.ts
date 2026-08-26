@@ -212,6 +212,8 @@ export async function registerClientAdmin(dto: ClientAdminRegisterDto) {
         status: 'SANDBOX',
         subscriptionStatus: 'TRIAL',
         plan: 'FREE',
+        onboardingStep: 3,
+        onboardingCompletedAt: new Date(),
       },
     });
 
@@ -302,6 +304,8 @@ export async function registerGuest(dto: GuestRegisterDto) {
         status: 'SANDBOX',
         subscriptionStatus: 'TRIAL',
         plan: 'FREE',
+        onboardingStep: 3,
+        onboardingCompletedAt: new Date(),
       },
     });
 
