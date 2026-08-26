@@ -8,6 +8,9 @@ import type {
   CheckoutResponse,
   PortalResponse,
   CancelResponse,
+  UpgradeResponse,
+  DowngradeResponse,
+  SeatUsageResponse,
 } from '../types/billing.types';
 
 /**
@@ -43,6 +46,26 @@ export const billingService = {
     }),
 
   /**
+   * PATCH /billing/subscription/upgrade
+   * Upgrades the subscription to a higher plan with immediate proration.
+   */
+  upgradeSubscription: (planId: string, billingCycle: BillingCycle) =>
+    apiClient.patch<UpgradeResponse>('/billing/subscription/upgrade', {
+      planId,
+      billingCycle,
+    }),
+
+  /**
+   * PATCH /billing/subscription/downgrade
+   * Schedules a downgrade at the end of the current billing period.
+   */
+  downgradeSubscription: (planId: string, billingCycle: BillingCycle) =>
+    apiClient.patch<DowngradeResponse>('/billing/subscription/downgrade', {
+      planId,
+      billingCycle,
+    }),
+
+  /**
    * PATCH /billing/subscription/cancel
    * Cancels the subscription at the end of the current billing period.
    * Returns the date when the subscription will actually end.
@@ -59,4 +82,18 @@ export const billingService = {
     apiClient.post<PortalResponse>('/billing/portal-session', {
       ...(returnUrl ? { returnUrl } : {}),
     }),
+
+  /**
+   * GET /billing/seats
+   * Returns seat usage for the tenant.
+   */
+  getSeats: () =>
+    apiClient.get<SeatUsageResponse>('/billing/seats'),
+
+  /**
+   * PATCH /billing/seats
+   * Add or remove seats for the tenant's subscription.
+   */
+  updateSeats: (action: 'add' | 'remove', count: number) =>
+    apiClient.patch<SeatUsageResponse>('/billing/seats', { action, count }),
 };

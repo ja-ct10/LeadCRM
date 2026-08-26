@@ -43,6 +43,12 @@ enum BillingCycle {
   ANNUAL
 }
 
+enum WebhookEventStatus {
+  RECEIVED
+  PROCESSED
+  FAILED
+}
+
 enum UserStatus {
   ACTIVE
   INACTIVE
@@ -251,6 +257,13 @@ model Subscription {
   endDate                 DateTime?
   nextBillingDate         DateTime?
   cancelledAt             DateTime?
+  // -- Pending Downgrade ─────────────────────────────────────────────
+  pendingPlanId           String?            // Plan ID to switch to at period end
+  pendingBillingCycle     String?            // Target billing cycle for downgrade
+  pendingDowngradeAt      DateTime?          // When the downgrade takes effect
+  // -- Seats ─────────────────────────────────────────────────────────
+  additionalSeats              Int       @default(0) // Extra seats beyond plan base
+  stripeAdditionalSeatItemId   String?   // si_xxx — Stripe subscription item for seats
   // -- Stripe --------------------------------------------------------
   stripeSubscriptionId    String?            @unique // sub_xxx
   stripeCheckoutSessionId String? // cs_xxx � transient, kept for audit trail
@@ -1653,4 +1666,26 @@ model ContactImportResult {
 
   @@index([importId, status])
   @@index([importId, rowNumber])
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STRIPE WEBHOOK EVENT LOG
+// Stores every inbound Stripe webhook for idempotency, debugging, and replay.
+// No tenantId — webhook events are platform-level (cross-tenant).
+// ─────────────────────────────────────────────────────────────────────────────
+model StripeWebhookEvent {
+  id            String             @id @default(uuid())
+  stripeEventId String             @unique // evt_xxx — Stripe's unique event ID
+  type          String             // e.g. "checkout.session.completed"
+  payload       Json               // Full event object from Stripe
+  status        WebhookEventStatus @default(RECEIVED)
+  error         String?            // Error message if processing failed
+  attempts      Int                @default(0)
+  processedAt   DateTime?
+  createdAt     DateTime           @default(now())
+
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
 }

@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { tenantMiddleware } from '../middleware/tenant.middleware';
+import { subscriptionGate } from '../middleware/subscription-gate.middleware';
+import { recordLimitGate } from '../middleware/plan-gate.middleware';
 import { authorize } from '../middleware/rbac.middleware';
 import { validate } from '../middleware/validate.middleware';
 
@@ -39,6 +41,7 @@ const router = Router();
 // All CRM routes require authentication + tenant context
 router.use(authMiddleware);
 router.use(tenantMiddleware);
+router.use(subscriptionGate);
 
 // ── Duplicate Detection ───────────────────────────────────────────────────
 router.post(  '/duplicate-check',    authorize('contacts.view'),   validate(DuplicateCheckSchema), duplicateDetectionController.duplicateCheck);
@@ -54,7 +57,7 @@ router.get(   '/leads/imports/:importId',         authorize('contacts.view'),   
 router.get(   '/leads/imports/:importId/results', authorize('contacts.view'),   leadImportController.getImportResults);
 router.post(  '/leads/imports',      authorize('contacts.create'), validate(CreateLeadImportSchema), leadImportController.createImport);
 router.get(   '/leads/:id',          authorize('contacts.view'),   contactController.getContactById);
-router.post(  '/leads',              authorize('contacts.create'), validate(CreateContactSchema),  contactController.createContact);
+router.post(  '/leads',              authorize('contacts.create'), recordLimitGate('contacts'), validate(CreateContactSchema),  contactController.createContact);
 router.put(   '/leads/:id',          authorize('contacts.edit'),   validate(UpdateContactSchema),  contactController.updateContact);
 router.patch( '/leads/:id/archive',  authorize('contacts.delete'), contactController.archiveContact);
 router.post(  '/leads/:id/convert',  authorize('contacts.edit'),   validate(ConvertContactSchema), contactController.convertContact);
@@ -67,7 +70,7 @@ router.get(   '/contacts/imports/:importId',         authorize('contacts.view'),
 router.get(   '/contacts/imports/:importId/results', authorize('contacts.view'),   contactImportController.getImportResults);
 router.post(  '/contacts/imports',      authorize('contacts.create'), validate(CreateContactImportSchema), contactImportController.createImport);
 router.get(   '/contacts/:id',          authorize('contacts.view'),   contactsV2Controller.getContactById);
-router.post(  '/contacts',              authorize('contacts.create'), contactsV2Controller.createContact);
+router.post(  '/contacts',              authorize('contacts.create'), recordLimitGate('contacts'), contactsV2Controller.createContact);
 router.put(   '/contacts/:id',          authorize('contacts.edit'),   contactsV2Controller.updateContact);
 router.patch( '/contacts/:id/archive',  authorize('contacts.delete'), contactsV2Controller.archiveContact);
 router.get(   '/contacts/:id/relationships', authorize('contacts.view'), relationshipsController.getContactRelationships);
@@ -99,7 +102,7 @@ router.post(  '/deals/bulk/archive',  authorize('deals.delete'), bulkDealsContro
 router.post(  '/deals/bulk/reassign', authorize('deals.edit'),   bulkDealsController.bulkReassign);
 router.post(  '/deals/bulk/stage',    authorize('deals.edit'),   bulkDealsController.bulkStageChange);
 router.get(   '/deals/:id',          authorize('deals.view'),   dealController.getDealById);
-router.post(  '/deals',              authorize('deals.create'), validate(CreateDealSchema),    dealController.createDeal);
+router.post(  '/deals',              authorize('deals.create'), recordLimitGate('deals'), validate(CreateDealSchema),    dealController.createDeal);
 router.put(   '/deals/:id',          authorize('deals.edit'),   validate(UpdateDealSchema),    dealController.updateDeal);
 router.patch( '/deals/:id/stage',    authorize('deals.edit'),   validate(MoveDealStageSchema), dealController.moveDealStage);
 router.patch( '/deals/:id/archive',  authorize('deals.delete'), dealController.archiveDeal);

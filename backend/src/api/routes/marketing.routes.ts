@@ -1,6 +1,8 @@
 ﻿import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { tenantMiddleware } from '../middleware/tenant.middleware';
+import { subscriptionGate } from '../middleware/subscription-gate.middleware';
+import { planGate } from '../middleware/plan-gate.middleware';
 import { authorize } from '../middleware/rbac.middleware';
 import * as campaignController from '../../modules/marketing/campaigns/campaigns.controller';
 import * as templateController from '../../modules/marketing/templates/templates.controller';
@@ -9,6 +11,8 @@ const router = Router();
 
 router.use(authMiddleware);
 router.use(tenantMiddleware);
+router.use(subscriptionGate);
+router.use(planGate('marketing_campaigns'));
 
 // ── Campaigns ─────────────────────────────────────────
 router.get(   '/campaigns',          authorize('campaigns.view'),   campaignController.getCampaigns);

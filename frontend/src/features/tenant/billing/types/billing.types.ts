@@ -21,6 +21,9 @@ export interface SubscriptionDetails {
   startDate: string;
   nextBillingDate: string | null;
   cancelledAt: string | null;
+  pendingPlanId: string | null;
+  pendingBillingCycle: string | null;
+  pendingDowngradeAt: string | null;
   plan: SubscriptionPlan;
 }
 
@@ -45,6 +48,16 @@ export interface PricingPlan {
   maxDeals: number | null;
   storageLimit: number | null;
   features: PlanFeature[];
+}
+
+// ─── Seats ────────────────────────────────────────────────────────────────────
+
+export interface SeatUsage {
+  used: number;
+  included: number;
+  additional: number;
+  total: number;
+  available: number;
 }
 
 // ─── API Responses ────────────────────────────────────────────────────────────
@@ -82,4 +95,31 @@ export interface CancelResponse {
     cancelledAt: string;
     endsAt: string | null;
   };
+}
+
+export interface UpgradeResponse {
+  success: boolean;
+  data: {
+    subscriptionId: string;
+    previousPlan: string;
+    newPlan: string;
+    billingCycle: string;
+    amount: number;
+    effectiveImmediately: boolean;
+  };
+}
+
+export interface DowngradeResponse {
+  success: boolean;
+  data: {
+    subscriptionId: string;
+    currentPlan: string;
+    pendingPlan: string;
+    effectiveDate: string;
+  };
+}
+
+export interface SeatUsageResponse {
+  success: boolean;
+  data: SeatUsage;
 }

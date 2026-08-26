@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { AppError } from '../../../shared/errors/app-error';
-import { CreateCheckoutSessionDto, CreatePortalSessionDto } from './subscriptions.dto';
+import { CreateCheckoutSessionDto, CreatePortalSessionDto, UpgradeSubscriptionDto, DowngradeSubscriptionDto, UpdateSeatsDto } from './subscriptions.dto';
 import * as service from './subscriptions.service';
+import { upgradeSubscription, scheduleDowngrade, getSeatUsage, addSeats, removeSeats } from '../../stripe/stripe-subscriptions.service';
 
 // ─── GET /billing/subscription ────────────────────────────────────────────────
 
@@ -108,6 +109,119 @@ export async function createPortalSession(
 
     const tenantId = req.user!.tenantId;
     const result = await service.createPortalSession(tenantId, parsed.data);
+
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── PATCH /billing/subscription/upgrade ──────────────────────────────────────
+
+/**
+ * Upgrades the tenant's subscription to a higher plan with immediate proration.
+ */
+export async function upgradeSubscriptionEndpoint(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const parsed = UpgradeSubscriptionDto.safeParse(req.body);
+    if (!parsed.success) {
+      throw new AppError(parsed.error.errors[0]?.message ?? 'Invalid input', 400);
+    }
+
+    const tenantId = req.user!.tenantId;
+    const userId = req.user!.userId;
+    const result = await upgradeSubscription(
+      tenantId,
+      parsed.data.planId,
+      parsed.data.billingCycle,
+      userId,
+    );
+
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── PATCH /billing/subscription/downgrade ────────────────────────────────────
+
+/**
+ * Schedules a plan downgrade at the end of the current billing period.
+ */
+export async function downgradeSubscriptionEndpoint(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const parsed = DowngradeSubscriptionDto.safeParse(req.body);
+    if (!parsed.success) {
+      throw new AppError(parsed.error.errors[0]?.message ?? 'Invalid input', 400);
+    }
+
+    const tenantId = req.user!.tenantId;
+    const userId = req.user!.userId;
+    const result = await scheduleDowngrade(
+      tenantId,
+      parsed.data.planId,
+      parsed.data.billingCycle,
+      userId,
+    );
+
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+
+// ─── GET /billing/seats ───────────────────────────────────────────────────────
+
+/**
+ * Returns seat usage for the authenticated tenant.
+ */
+export async function getSeats(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const tenantId = req.user!.tenantId;
+    const usage = await getSeatUsage(tenantId);
+
+    res.json({ success: true, data: usage });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── PATCH /billing/seats ─────────────────────────────────────────────────────
+
+/**
+ * Add or remove seats for the authenticated tenant's subscription.
+ */
+export async function updateSeats(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const parsed = UpdateSeatsDto.safeParse(req.body);
+    if (!parsed.success) {
+      throw new AppError(parsed.error.errors[0]?.message ?? 'Invalid input', 400);
+    }
+
+    const tenantId = req.user!.tenantId;
+    const userId = req.user!.userId;
+    const { action, count } = parsed.data;
+
+    const result = action === 'add'
+      ? await addSeats(tenantId, count, userId)
+      : await removeSeats(tenantId, count, userId);
 
     res.json({ success: true, data: result });
   } catch (err) {
