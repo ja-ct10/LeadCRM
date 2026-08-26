@@ -53,7 +53,7 @@ export async function seedDemoAccounts(): Promise<void> {
   await prisma.user.upsert({
     where:  { tenantId_email: { tenantId: systemTenant.id, email: systemAdminEmail } },
     // update block restores correct password + ACTIVE status on every seed run
-    update: { passwordHash: systemAdminHash, status: 'ACTIVE', role: 'System Admin' },
+    update: { passwordHash: systemAdminHash, status: 'ACTIVE', role: 'System Admin', emailVerified: new Date() },
     create: {
       tenantId:     systemTenant.id,
       email:        systemAdminEmail,
@@ -62,6 +62,7 @@ export async function seedDemoAccounts(): Promise<void> {
       passwordHash: systemAdminHash,
       role:         'System Admin',
       status:       'ACTIVE',
+      emailVerified: new Date(),
     },
   });
   console.log(`[Seed] ✓ System Admin: ${systemAdminEmail}`);
@@ -73,7 +74,7 @@ export async function seedDemoAccounts(): Promise<void> {
   if (systemAdminEmail !== 'super@leadcrm.com') {
     await prisma.user.upsert({
       where:  { tenantId_email: { tenantId: systemTenant.id, email: 'super@leadcrm.com' } },
-      update: { passwordHash, status: 'ACTIVE', role: 'System Admin' },
+      update: { passwordHash, status: 'ACTIVE', role: 'System Admin', emailVerified: new Date() },
       create: {
         tenantId:     systemTenant.id,
         email:        'super@leadcrm.com',
@@ -82,6 +83,7 @@ export async function seedDemoAccounts(): Promise<void> {
         passwordHash,
         role:         'System Admin',
         status:       'ACTIVE',
+        emailVerified: new Date(),
       },
     });
     console.log('[Seed] ✓ System Admin alias: super@leadcrm.com');
@@ -120,7 +122,7 @@ export async function seedDemoAccounts(): Promise<void> {
   for (const u of demoUsers) {
     await prisma.user.upsert({
       where:  { tenantId_email: { tenantId: clientTenant.id, email: u.email } },
-      update: { passwordHash, status: 'ACTIVE', role: u.role },
+      update: { passwordHash, status: 'ACTIVE', role: u.role, emailVerified: new Date() },
       create: {
         tenantId:     clientTenant.id,
         email:        u.email,
@@ -129,6 +131,7 @@ export async function seedDemoAccounts(): Promise<void> {
         passwordHash,
         role:         u.role,
         status:       'ACTIVE',
+        emailVerified: new Date(),
       },
     });
     console.log(`[Seed] ✓ ${u.role}: ${u.email}`);
@@ -151,7 +154,7 @@ export async function seedDemoAccounts(): Promise<void> {
 
   await prisma.user.upsert({
     where:  { tenantId_email: { tenantId: guestTenant.id, email: 'guest@democorp.com' } },
-    update: { passwordHash: guestPasswordHash, status: 'ACTIVE', role: 'Restricted User' },
+    update: { passwordHash: guestPasswordHash, status: 'ACTIVE', role: 'Restricted User', emailVerified: new Date() },
     create: {
       tenantId:     guestTenant.id,
       email:        'guest@democorp.com',
@@ -160,6 +163,7 @@ export async function seedDemoAccounts(): Promise<void> {
       passwordHash: guestPasswordHash,
       role:         'Restricted User',
       status:       'ACTIVE',
+      emailVerified: new Date(),
     },
   });
   console.log('[Seed] ✓ Guest: guest@democorp.com');

@@ -59,7 +59,7 @@ async function main() {
   
   const user = await prisma.user.upsert({
     where: { tenantId_email: { tenantId: tenant.id, email: SEEDER_EMAIL } },
-    update: { passwordHash, status: 'ACTIVE', role: 'Client Admin' },
+    update: { passwordHash, status: 'ACTIVE', role: 'Client Admin', emailVerified: new Date() },
     create: {
       tenantId: tenant.id,
       email: SEEDER_EMAIL,
@@ -68,6 +68,7 @@ async function main() {
       passwordHash,
       role: 'Client Admin',
       status: 'ACTIVE',
+      emailVerified: new Date(),
     },
   });
   console.log(`[Seed] ✓ User created: ${SEEDER_EMAIL}`);
