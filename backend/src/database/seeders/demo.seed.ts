@@ -29,13 +29,15 @@ export async function seedDemoAccounts(): Promise<void> {
   // them via prisma.user.findFirst({ where: { email } }).
   const systemTenant = await prisma.tenant.upsert({
     where:  { slug: 'leadcrm-system-demo' },
-    update: { status: 'ACTIVE', subscriptionStatus: 'ACTIVE' },
+    update: { status: 'ACTIVE', subscriptionStatus: 'ACTIVE', onboardingStep: 3, onboardingCompletedAt: new Date() },
     create: {
       name:               'LeadCRM System Demo',
       slug:               'leadcrm-system-demo',
       status:             'ACTIVE',
       subscriptionStatus: 'ACTIVE',
       plan:               'ENTERPRISE',
+      onboardingStep:          3,
+      onboardingCompletedAt:   new Date(),
     },
   });
 
@@ -92,13 +94,15 @@ export async function seedDemoAccounts(): Promise<void> {
   // ── 2. Client Tenant (DemoCorp) ─────────────────────────────────────────
   const clientTenant = await prisma.tenant.upsert({
     where:  { slug: 'demo-corp' },
-    update: { status: 'ACTIVE', subscriptionStatus: 'ACTIVE' },
+    update: { status: 'ACTIVE', subscriptionStatus: 'ACTIVE', onboardingStep: 3, onboardingCompletedAt: new Date() },
     create: {
       name:               'Demo Corp',
       slug:               'demo-corp',
       status:             'ACTIVE',
       subscriptionStatus: 'ACTIVE',
       plan:               'PRO',
+      onboardingStep:          3,
+      onboardingCompletedAt:   new Date(),
     },
   });
 
@@ -140,13 +144,15 @@ export async function seedDemoAccounts(): Promise<void> {
   // ── 3. Guest Sandbox Tenant ─────────────────────────────────────────────
   const guestTenant = await prisma.tenant.upsert({
     where:  { slug: 'sandbox-guest' },
-    update: { status: 'SANDBOX' },
+    update: { status: 'SANDBOX', onboardingStep: 3, onboardingCompletedAt: new Date() },
     create: {
       name:               'Guest Sandbox',
       slug:               'sandbox-guest',
       status:             'SANDBOX',
       subscriptionStatus: 'TRIAL',
       plan:               'FREE',
+      onboardingStep:          3,
+      onboardingCompletedAt:   new Date(),
     },
   });
 

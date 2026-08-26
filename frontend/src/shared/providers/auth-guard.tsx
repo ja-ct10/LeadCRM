@@ -44,10 +44,11 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Determine System Admin (bypasses all onboarding checks)
+    // Determine System Admin (bypasses all onboarding/verification checks)
+    // Note: tenantId is always a UUID — cannot compare against slug strings.
+    // We also check tenantName from /auth/me for extra safety.
     const isSystemAdmin = user.role === 'System Admin'
-      || user.tenantId === 'system'
-      || user.tenantId === 'leadcrm-system-demo';
+      || (user as any).tenantName?.toLowerCase().includes('system');
 
     // Check if current route is exempt from gates
     const isExempt = EXEMPT_ROUTES.some((r) => pathname.startsWith(r));
