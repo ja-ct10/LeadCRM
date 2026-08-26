@@ -119,10 +119,14 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
 
   // Routes exempt from profile-completion redirect — users need access
   // to these even before finishing company setup.
+  // /billing is exempt because users must always be able to manage their
+  // subscription regardless of onboarding status (standard SaaS pattern —
+  // you never block a paying customer from accessing billing).
   const isCompletionExempt =
     pathname.startsWith('/onboarding') ||
     pathname.startsWith('/company-setup') ||
-    pathname.startsWith('/settings');
+    pathname.startsWith('/settings') ||
+    pathname.startsWith('/billing');
 
   if (isProtected && isGoogleSession) {
     // Authenticated Google user but profile not complete
