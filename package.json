@@ -10,7 +10,8 @@
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
-    "lint": "turbo run lint"
+    "lint": "turbo run lint",
+    "stripe:listen": "stripe listen --forward-to localhost:4000/api/v1/webhooks/stripe"
   },
   "devDependencies": {
     "turbo": "^2.5.4"

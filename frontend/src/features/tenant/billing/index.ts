@@ -3,4 +3,12 @@ export { default as BillingPage } from './ui/billing-page';
 export { default as ClientBillingPage } from './ui/client-billing-page';
 
 // Services
-export { billingApiService as billingService } from './services/billing.service';
+export { billingService } from './services/billing.service';
+
+// Types
+export type {
+  SubscriptionDetails,
+  PricingPlan,
+  PlanFeature,
+  BillingCycle,
+} from './types/billing.types';

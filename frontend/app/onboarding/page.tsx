@@ -40,7 +40,7 @@ export default function OnboardingRoute() {
     if (isLoading) return;
 
     // Not authenticated — send to login
-    if (!user) {
+    if (!user && !nextAuthSession) {
       router.replace('/login');
       return;
     }
@@ -60,7 +60,7 @@ export default function OnboardingRoute() {
     }
   }, [user, isLoading, router, nextAuthSession?.requiresProfileCompletion]);
 
-  if (isLoading || !user) return null;
+  if (isLoading || (!user && !nextAuthSession)) return null;
 
   const handleNavigate = (path: string) => {
     if (path === 'company-setup') {

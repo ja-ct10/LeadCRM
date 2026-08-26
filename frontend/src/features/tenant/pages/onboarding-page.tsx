@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState } from 'react';
 import { ChevronRight, CheckCircle2, Users, Zap, BarChart3 } from 'lucide-react';
@@ -87,11 +87,8 @@ export default function OnboardingPage({ onNavigate, needsCompanySetup = false }
     localStorage.setItem(ONBOARDING_COMPLETE_KEY, 'true');
     // If the user needs company setup (OAuth users), redirect there
     // Otherwise, go to dashboard
-    if (needsCompanySetup) {
-      onNavigate('company-setup');
-    } else {
-      onNavigate('dashboard');
-    }
+    // Always navigate to dashboard — company setup is optional and can be done from settings
+    onNavigate('dashboard');
   };
 
   const isLastStep = currentStep === totalSteps - 1;
