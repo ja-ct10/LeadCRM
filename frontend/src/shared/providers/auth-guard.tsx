@@ -5,42 +5,32 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { useAuth } from '@/store/AuthContext';
 
-// ── localStorage keys ─────────────────────────────────────────────────────────
+// ── localStorage keys (kept for optional dashboard tour overlay only) ─────────
 export const ONBOARDING_COMPLETE_KEY    = 'leadcrm_onboarding_complete';
 export const NEEDS_COMPANY_SETUP_KEY    = 'leadcrm_needs_company_setup';
 
+// Routes that are exempt from onboarding/verification gates
+const EXEMPT_ROUTES = ['/onboarding', '/verify-email', '/email-verification', '/billing', '/settings', '/company-setup'];
+
 /**
- * AuthGuard — redirects to /login if the user is not authenticated.
+ * AuthGuard — protects tenant routes and enforces email verification + onboarding gates.
  *
- * Post-login routing priority (highest → lowest):
- *   1. Company-setup gate — Google OAuth users who need to complete their
- *      company profile (requiresProfileCompletion=true from NextAuth session).
- *      These users see the feature-tour onboarding first, then /company-setup.
- *   2. Onboarding gate — all non-admin users who haven't seen the feature tour.
- *   3. Saved redirect — restore the originally intended URL after login.
- *   4. Role-based default — System Admin → /admin/dashboard, others → /dashboard.
+ * Gate priority (highest → lowest):
+ *   1. Email verification gate — unverified users redirected to /verify-email
+ *   2. Onboarding gate — verified but not-onboarded users redirected to /onboarding (DB-backed)
+ *   3. Saved redirect — restore the originally intended URL after login
+ *   4. Role-based default — System Admin → /admin/dashboard, others → /dashboard
  *
- * Entry points where the gate logic runs:
- *   - /  (Google OAuth callbackUrl lands here)
- *   - /login
- *   - /dashboard
+ * Source of truth for gates:
+ *   - emailVerified: from /auth/me response (server-backed)
+ *   - onboardingCompletedAt: from /auth/me response (server-backed via Tenant model)
+ *   - localStorage ONBOARDING_COMPLETE_KEY: kept ONLY for the optional dashboard tour overlay
  */
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
   const { data: nextAuthSession } = useSession();
   const router = useRouter();
   const pathname = usePathname();
-
-  // ── Sync requiresProfileCompletion from NextAuth session to localStorage ──
-  // NextAuth session is the only place this signal lives after Google OAuth.
-  // We mirror it to localStorage so the /onboarding route shell can read it
-  // without a useSession dependency.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (false && nextAuthSession?.requiresProfileCompletion === true) { // Disabled: skip onboarding gate
-      localStorage.setItem(NEEDS_COMPANY_SETUP_KEY, 'true');
-    }
-  }, [nextAuthSession?.requiresProfileCompletion]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -54,47 +44,38 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // ── Onboarding / company-setup gate (runs before saved redirect) ─────
-    // Only non-System-Admin users who land on an entry point get this check.
-    const isEntryPoint =
-      pathname === '/' || pathname === '/login' || pathname === '/dashboard';
-
-    // Determine System Admin using role + tenantId (matches use-layout.ts detection)
+    // Determine System Admin (bypasses all onboarding checks)
     const isSystemAdmin = user.role === 'System Admin'
       || user.tenantId === 'system'
       || user.tenantId === 'leadcrm-system-demo';
 
-    if (isEntryPoint && !isSystemAdmin) {
-      // CRITICAL: Check NextAuth session flag FIRST (for OAuth users)
-      // If requiresProfileCompletion is true, ALWAYS send to onboarding
-      // even if localStorage has stale "onboarding complete" data
-      if (false && nextAuthSession?.requiresProfileCompletion === true) { // Disabled: skip onboarding gate
-        // Clear any stale saved redirect so it can't skip the onboarding flow
+    // Check if current route is exempt from gates
+    const isExempt = EXEMPT_ROUTES.some((r) => pathname.startsWith(r));
+
+    if (!isSystemAdmin && !isExempt) {
+      // ── Gate 1: Email verification (server-backed) ─────────────────────
+      // If emailVerified is null/falsy, user must verify their email first
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const emailVerified = (user as any).emailVerified;
+      if (!emailVerified) {
         sessionStorage.removeItem('leadcrm_redirect_after_login');
-        router.replace('/onboarding');
+        router.replace(`/verify-email?email=${encodeURIComponent(user.email)}`);
         return;
       }
 
-      // For non-OAuth users or OAuth users who don't need profile completion,
-      // check localStorage for onboarding completion
-      const hasSeenOnboarding =
-        typeof window !== 'undefined'
-          ? localStorage.getItem(ONBOARDING_COMPLETE_KEY)
-          : 'true'; // SSR fallback — never block server render
-
-      if (!hasSeenOnboarding) {
-        // Clear any stale saved redirect so it can't skip the onboarding flow.
+      // ── Gate 2: Onboarding (server-backed via Tenant.onboardingCompletedAt) ──
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const onboardingCompletedAt = (user as any).onboardingCompletedAt;
+      if (!onboardingCompletedAt) {
         sessionStorage.removeItem('leadcrm_redirect_after_login');
-        // The /onboarding route shell reads NEEDS_COMPANY_SETUP_KEY to decide
-        // whether to show the "Get Started → company setup" path.
         router.replace('/onboarding');
         return;
       }
     }
 
-    // ── Saved redirect (post-onboarding or returning users) ──────────────
-    // Guard: never send a non-System-Admin user to an /admin/* path
-    // (stale key left over from a previous System Admin session).
+    // ── Saved redirect (post-login or returning users) ────────────────────
+    const isEntryPoint = pathname === '/' || pathname === '/login' || pathname === '/dashboard';
+
     const savedRedirect = sessionStorage.getItem('leadcrm_redirect_after_login');
     sessionStorage.removeItem('leadcrm_redirect_after_login');
     if (savedRedirect && savedRedirect !== '/login' && savedRedirect !== '/register') {
@@ -103,11 +84,9 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         router.replace(savedRedirect);
         return;
       }
-      // Fall through to role-based default landing below
     }
 
     // ── Role-based default landing ────────────────────────────────────────
-    // Only redirect when on an entry point — avoid interrupting deep links.
     if (isEntryPoint) {
       if (isSystemAdmin) {
         router.replace('/admin/dashboard');

@@ -1,26 +1,39 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, CheckCircle2, Mail } from 'lucide-react';
+import { RefreshCw, CheckCircle2, Mail, AlertCircle, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { authApi } from '@/shared/services/auth.api';
 
-const RESEND_COOLDOWN = 30;
+const RESEND_COOLDOWN = 60;
 
 interface EmailVerificationPageProps {
   email: string;
+  error?: string;
   onNavigate: (path: string) => void;
 }
 
-export default function EmailVerificationPage({ email, onNavigate }: EmailVerificationPageProps): React.ReactElement {
+export default function EmailVerificationPage({ email, error, onNavigate }: EmailVerificationPageProps): React.ReactElement {
   const [code, setCode] = useState('');
-  const [error, setError] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [countdown, setCountdown] = useState(RESEND_COOLDOWN);
   const [canResend, setCanResend] = useState(false);
   const [verificationSuccess, setVerificationSuccess] = useState(false);
 
+  // Handle magic link error states from URL params
+  useEffect(() => {
+    if (error === 'expired') {
+      setErrorMessage('Your verification link has expired. Please request a new one.');
+      setCanResend(true);
+      setCountdown(0);
+    } else if (error === 'invalid') {
+      setErrorMessage('This verification link is invalid or has already been used.');
+    }
+  }, [error]);
+
+  // Countdown timer for resend cooldown
   useEffect(() => {
     if (countdown <= 0) {
       setCanResend(true);
@@ -31,17 +44,16 @@ export default function EmailVerificationPage({ email, onNavigate }: EmailVerifi
   }, [countdown]);
 
   const handleResend = useCallback(async () => {
-    if (!canResend || isResending) return;
+    if (!canResend || isResending || !email) return;
     setIsResending(true);
-    setError('');
+    setErrorMessage('');
     try {
-      await authApi.sendRegistrationOtp(email);
-      toast.success(`New verification code sent to ${email}`);
+      await authApi.resendVerification(email);
+      toast.success('New verification email sent. Check your inbox.');
       setCountdown(RESEND_COOLDOWN);
       setCanResend(false);
     } catch {
-      toast.error('Failed to resend code. Please try again.');
-      setError('Failed to resend verification code.');
+      toast.error('Failed to resend. Please try again.');
     } finally {
       setIsResending(false);
     }
@@ -49,10 +61,10 @@ export default function EmailVerificationPage({ email, onNavigate }: EmailVerifi
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setErrorMessage('');
 
     if (code.length !== 6) {
-      setError('Please enter a valid 6-digit code.');
+      setErrorMessage('Please enter a valid 6-digit code.');
       return;
     }
 
@@ -62,14 +74,17 @@ export default function EmailVerificationPage({ email, onNavigate }: EmailVerifi
       if (response?.success) {
         setVerificationSuccess(true);
         toast.success('Email verified successfully!');
+        // Auto-login: the backend set the cookie in the response
+        // Redirect to onboarding — AuthContext will hydrate on next page load
         setTimeout(() => {
-          onNavigate('login');
-        }, 2000);
+          onNavigate('onboarding');
+        }, 1500);
       } else {
-        setError('Invalid or expired verification code.');
+        setErrorMessage('Invalid or expired verification code.');
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Verification failed. Please try again.');
+      const message = err instanceof Error ? err.message : 'Verification failed. Please try again.';
+      setErrorMessage(message);
     } finally {
       setIsVerifying(false);
     }
@@ -78,9 +93,17 @@ export default function EmailVerificationPage({ email, onNavigate }: EmailVerifi
   const handleCodeChange = (value: string) => {
     const digits = value.replace(/\D/g, '').slice(0, 6);
     setCode(digits);
-    if (error) setError('');
+    if (errorMessage) setErrorMessage('');
+    // Auto-submit when 6 digits entered
+    if (digits.length === 6 && !isVerifying) {
+      setTimeout(() => {
+        const form = document.getElementById('otp-form') as HTMLFormElement;
+        form?.requestSubmit();
+      }, 100);
+    }
   };
 
+  // Success state
   if (verificationSuccess) {
     return (
       <div className="min-h-screen bg-linear-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 flex items-center justify-center p-4">
@@ -92,11 +115,36 @@ export default function EmailVerificationPage({ email, onNavigate }: EmailVerifi
             Email Verified!
           </h2>
           <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed mb-6">
-            Your email has been successfully verified. You can now log in to your account.
+            Your email has been verified successfully. Setting up your workspace...
           </p>
           <div className="text-sm text-slate-400 dark:text-slate-500">
-            Redirecting to login...
+            Redirecting to onboarding...
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state (invalid link — no email available for resend)
+  if (error === 'invalid' && !email) {
+    return (
+      <div className="min-h-screen bg-linear-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 flex items-center justify-center p-4">
+        <div className="w-full max-w-md bg-white dark:bg-slate-900 p-8 rounded-2xl border border-gray-200 dark:border-white/5 shadow-xl text-center">
+          <div className="w-20 h-20 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <AlertCircle className="text-red-600 dark:text-red-400" size={40} />
+          </div>
+          <h2 className="font-display text-2xl font-bold text-slate-900 dark:text-white mb-3">
+            Invalid Verification Link
+          </h2>
+          <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed mb-6">
+            This link is invalid or has already been used. Please try logging in or registering again.
+          </p>
+          <button
+            onClick={() => onNavigate('login')}
+            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors"
+          >
+            Go to Login
+          </button>
         </div>
       </div>
     );
@@ -122,98 +170,119 @@ export default function EmailVerificationPage({ email, onNavigate }: EmailVerifi
           </button>
           <div className="space-y-6">
             <div className="w-16 h-16 bg-white/10 backdrop-blur-sm rounded-2xl flex items-center justify-center mb-6">
-              <Mail className="text-white" size={32} />
+              <Mail size={32} className="text-white/80" />
             </div>
-            <h1 className="font-display text-4xl font-bold leading-tight">
-              Check Your Email
-            </h1>
-            <p className="text-blue-100 text-lg max-w-md">
-              We&apos;ve sent a 6-digit verification code to your email. Enter it below to activate your account.
+            <h2 className="text-3xl font-bold leading-tight">
+              Check your inbox
+            </h2>
+            <p className="text-blue-100 text-lg leading-relaxed max-w-md">
+              We sent a verification email with a magic link and a 6-digit code. Use either to verify your account.
             </p>
           </div>
-          <div></div>
+          <div className="text-sm text-blue-200/60">
+            Secure email verification powered by LeadCRM
+          </div>
         </div>
       </div>
 
       {/* Right side - Verification form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-white dark:bg-slate-950">
-        <div className="w-full max-w-md space-y-6">
-          <div>
-            <h2 className="font-display text-3xl font-bold text-slate-900 dark:text-white mb-2">
-              Verify Your Email
-            </h2>
-            <p className="text-slate-500 dark:text-slate-400 text-sm">
-              Enter the 6-digit code sent to{' '}
-              <span className="font-semibold text-slate-700 dark:text-slate-300">{email}</span>
+      <div className="flex-1 flex items-center justify-center p-6 lg:p-12 bg-white dark:bg-slate-950">
+        <div className="w-full max-w-md">
+          {/* Back button */}
+          <button
+            onClick={() => onNavigate('register')}
+            className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 mb-8 transition-colors"
+          >
+            <ArrowLeft size={16} />
+            Wrong email? Go back
+          </button>
+
+          {/* Header */}
+          <div className="mb-8">
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
+              Verify your email
+            </h1>
+            <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">
+              We sent a verification email to{' '}
+              <span className="font-semibold text-slate-700 dark:text-slate-300">{email}</span>.
+              Click the link in the email, or enter the 6-digit code below.
             </p>
           </div>
 
-          {error && (
-            <div className="bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 p-3 rounded-xl text-sm">
-              {error}
+          {/* Error display */}
+          {errorMessage && (
+            <div className="mb-6 p-4 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl flex items-start gap-3">
+              <AlertCircle className="text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" size={18} />
+              <p className="text-sm text-red-700 dark:text-red-300">{errorMessage}</p>
             </div>
           )}
 
-          <form onSubmit={handleVerify} className="space-y-6">
+          {/* OTP Form */}
+          <form id="otp-form" onSubmit={handleVerify} className="space-y-6">
             <div>
-              <label htmlFor="code" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+              <label htmlFor="otp-input" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                 Verification Code
               </label>
               <input
-                id="code"
+                id="otp-input"
                 type="text"
                 inputMode="numeric"
-                pattern="[0-9]*"
+                autoComplete="one-time-code"
                 value={code}
                 onChange={(e) => handleCodeChange(e.target.value)}
-                className="w-full h-14 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-xl px-4 text-slate-900 dark:text-white text-center text-2xl tracking-[0.5em] font-semibold placeholder:text-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
+                className="w-full h-14 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-xl px-4 text-slate-900 dark:text-white text-center text-2xl tracking-[0.5em] font-semibold placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
                 placeholder="000000"
                 maxLength={6}
                 required
+                aria-label="6-digit verification code"
+                // eslint-disable-next-line jsx-a11y/no-autofocus
                 autoFocus
               />
-            </div>
-
-            <div className="flex items-center justify-center gap-1.5 text-sm">
-              <span className="text-slate-500 dark:text-slate-400">Didn&apos;t receive it?</span>
-              {canResend ? (
-                <button
-                  type="button"
-                  onClick={handleResend}
-                  disabled={isResending}
-                  className="flex items-center gap-1 text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium transition-colors disabled:opacity-50"
-                >
-                  {isResending ? (
-                    <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Sending...</>
-                  ) : (
-                    'Resend code'
-                  )}
-                </button>
-              ) : (
-                <span className="text-slate-400 dark:text-slate-500 tabular-nums">
-                  Resend in <span className="text-slate-600 dark:text-slate-300 font-semibold">{countdown}s</span>
-                </span>
-              )}
             </div>
 
             <button
               type="submit"
               disabled={isVerifying || code.length !== 6}
-              className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold transition-colors active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2"
             >
-              {isVerifying ? 'Verifying...' : 'Verify Email'}
+              {isVerifying ? (
+                <>
+                  <RefreshCw size={18} className="animate-spin" />
+                  Verifying...
+                </>
+              ) : (
+                'Verify Email'
+              )}
             </button>
           </form>
 
-          <p className="text-center text-sm text-slate-500 dark:text-slate-400">
-            Wrong email?{' '}
-            <button
-              onClick={() => onNavigate('register')}
-              className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-semibold transition-colors"
-            >
-              Go back
-            </button>
-          </p>
+          {/* Resend section */}
+          <div className="mt-6 text-center">
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">
+              Didn&apos;t receive the email?
+            </p>
+            {canResend ? (
+              <button
+                onClick={handleResend}
+                disabled={isResending}
+                className="text-sm font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors disabled:opacity-50"
+              >
+                {isResending ? 'Sending...' : 'Resend verification email'}
+              </button>
+            ) : (
+              <p className="text-sm text-slate-400 dark:text-slate-500">
+                Resend available in <span className="font-semibold text-slate-600 dark:text-slate-300">{countdown}s</span>
+              </p>
+            )}
+          </div>
+
+          {/* Help text */}
+          <div className="mt-8 p-4 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-white/5 rounded-xl">
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+              <span className="font-semibold">Tip:</span> Check your spam/junk folder if you don&apos;t see the email.
+              The verification link expires in 24 hours, and the code expires in 10 minutes.
+            </p>
+          </div>
         </div>
       </div>
     </div>

@@ -5,7 +5,7 @@ import { signToken } from './jwt.service';
 import { createSession } from './session.service';
 import { AppError } from '../../shared/errors/app-error';
 import { ConflictError } from '../../shared/errors/http-error';
-import { sendMail, buildPasswordResetEmail, buildRegistrationOtpEmail } from '../../shared/services/email.service';
+import { sendMail, buildPasswordResetEmail, buildRegistrationOtpEmail, buildVerificationEmail } from '../../shared/services/email.service';
 import type { ForgotPasswordDto, ResetPasswordDto } from './auth.dto';
 
 
@@ -44,6 +44,14 @@ export async function loginUser(dto: LoginDto, ctx: LoginContext = {}) {
 
   const valid = await comparePassword(dto.password, user.passwordHash);
   if (!valid) throw new AppError('Invalid email or password', 401);
+
+  // Block unverified users — they must complete email verification first
+  if (!user.emailVerified) {
+    throw new AppError(
+      'Please verify your email address before logging in. Check your inbox for a verification link, or request a new one.',
+      403,
+    );
+  }
 
   if (user.status !== 'ACTIVE') {
     throw new AppError('Account is inactive. Contact your administrator.', 403);
@@ -104,47 +112,121 @@ export async function registerUser(dto: RegisterDto) {
 
 import { ClientAdminRegisterDto, GuestRegisterDto } from './auth.dto';
 
+// ── Verification Token TTL ─────────────────────────────────────────
+const EMAIL_VERIFICATION_TOKEN_TTL_MS = parseInt(process.env.EMAIL_VERIFICATION_TOKEN_TTL_HOURS ?? '24', 10) * 60 * 60 * 1000;
+
+/**
+ * Generates dual verification credentials (magic link token + OTP code).
+ * Stores SHA-256 hash of the link token in EmailVerificationToken table.
+ * Stores bcrypt hash of the OTP in RegistrationOtpToken table.
+ * Returns plaintext values for email composition.
+ */
+async function generateVerificationCredentials(email: string, userId: string): Promise<{ token: string; otpCode: string }> {
+  const normalizedEmail = email.toLowerCase().trim();
+
+  // 1. Generate magic link token (cryptographically secure)
+  const token     = crypto.randomBytes(32).toString('hex');
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const linkExpiry = new Date(Date.now() + EMAIL_VERIFICATION_TOKEN_TTL_MS);
+
+  // Clean up any previous tokens for this email
+  await prisma.emailVerificationToken.deleteMany({ where: { email: normalizedEmail } });
+
+  await prisma.emailVerificationToken.create({
+    data: {
+      userId,
+      email: normalizedEmail,
+      tokenHash,
+      type: 'EMAIL_VERIFICATION',
+      expiresAt: linkExpiry,
+    },
+  });
+
+  // 2. Generate 6-digit OTP code
+  const otpCode   = String(Math.floor(100000 + Math.random() * 900000));
+  const codeHash  = await hashPassword(otpCode);
+  const otpExpiry = new Date(Date.now() + REG_OTP_TTL_MS);
+
+  await prisma.registrationOtpToken.upsert({
+    where:  { email: normalizedEmail },
+    update: { codeHash, expires: otpExpiry, attempts: 0 },
+    create: { email: normalizedEmail, codeHash, expires: otpExpiry },
+  });
+
+  return { token, otpCode };
+}
+
+/**
+ * Sends the combined verification email (magic link button + OTP code).
+ * Returns true if email was sent, false if send failed (non-blocking).
+ */
+async function sendVerificationEmail(email: string, token: string, otpCode: string): Promise<boolean> {
+  const appUrl = process.env.APP_URL ?? 'http://localhost:3000';
+  const verificationUrl = `${appUrl}/api/v1/auth/verify-email?token=${token}`;
+
+  try {
+    await sendMail({
+      to:      email,
+      subject: `${otpCode} — Verify your LeadCRM email`,
+      html:    buildVerificationEmail(verificationUrl, otpCode),
+    });
+    return true;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    // eslint-disable-next-line no-console
+    console.error(`[Auth] Failed to send verification email to ${email}:`, message);
+    return false;
+  }
+}
+
 export async function registerClientAdmin(dto: ClientAdminRegisterDto) {
+  const normalizedEmail = dto.email.toLowerCase().trim();
+
   const existingUser = await prisma.user.findFirst({
-    where: { email: dto.email },
+    where: { email: normalizedEmail },
   });
 
   if (existingUser) throw new ConflictError('A user with this email already exists');
 
   const passwordHash = await hashPassword(dto.password);
 
-  // Generate a unique slug for the tenant
-  const slug = dto.companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Math.random().toString(36).substring(2, 6);
+  // Check for invitation token — if present, join existing tenant
+  if (dto.invitationToken) {
+    return registerWithInvitation(dto, normalizedEmail, passwordHash, 'Client Admin');
+  }
 
-  // We use a transaction to ensure everything is created together
+  // Generate a unique slug for the tenant
+  const slug = dto.companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + crypto.randomBytes(3).toString('hex');
+
+  // Create tenant + user in transaction — user starts as PENDING until email verified
   const result = await prisma.$transaction(async (tx) => {
-    // 1. Create Tenant
+    // 1. Create Tenant (SANDBOX until onboarding completes)
     const tenant = await tx.tenant.create({
       data: {
         name: dto.companyName,
         slug,
         industry: dto.industry,
         companySize: dto.companySize,
-        status: 'ACTIVE',
+        status: 'SANDBOX',
         subscriptionStatus: 'TRIAL',
         plan: 'FREE',
       },
     });
 
-    // 2. Create User
+    // 2. Create User as PENDING (will be ACTIVE after email verification)
     const user = await tx.user.create({
       data: {
         tenantId: tenant.id,
         firstName: dto.firstName,
         lastName: dto.lastName,
-        email: dto.email,
+        email: normalizedEmail,
         passwordHash,
         role: 'Client Admin',
-        status: 'ACTIVE',
+        status: 'PENDING',
       },
     });
 
-    // 3. Create Account (replaces Organization)
+    // 3. Create Account (organization record)
     await tx.account.create({
       data: {
         tenantId: tenant.id,
@@ -155,23 +237,58 @@ export async function registerClientAdmin(dto: ClientAdminRegisterDto) {
       } as never,
     });
 
+    // 4. Seed default pipeline
+    await tx.pipeline.create({
+      data: {
+        tenantId: tenant.id,
+        name: 'Sales Pipeline',
+        isDefault: true,
+        stages: {
+          create: [
+            { name: 'Lead', order: 1, isDefault: true, tenantId: tenant.id },
+            { name: 'Contacted', order: 2, tenantId: tenant.id },
+            { name: 'Qualified', order: 3, tenantId: tenant.id },
+            { name: 'Won', order: 4, isWon: true, tenantId: tenant.id },
+            { name: 'Lost', order: 5, isLost: true, tenantId: tenant.id },
+          ],
+        },
+      },
+    });
+
     return { tenant, user };
   });
 
-  return { id: result.user.id, email: result.user.email, role: result.user.role, tenantId: result.tenant.id };
+  // Generate dual verification tokens (outside transaction — non-blocking on failure)
+  const { token, otpCode } = await generateVerificationCredentials(normalizedEmail, result.user.id);
+  const emailSent = await sendVerificationEmail(normalizedEmail, token, otpCode);
+
+  return {
+    id: result.user.id,
+    email: result.user.email,
+    role: result.user.role,
+    tenantId: result.tenant.id,
+    emailSent,
+  };
 }
 
 export async function registerGuest(dto: GuestRegisterDto) {
+  const normalizedEmail = dto.email.toLowerCase().trim();
+
   const existingUser = await prisma.user.findFirst({
-    where: { email: dto.email },
+    where: { email: normalizedEmail },
   });
 
   if (existingUser) throw new ConflictError('A user with this email already exists');
 
   const passwordHash = await hashPassword(dto.password);
-  
+
+  // Check for invitation token — if present, join existing tenant
+  if (dto.invitationToken) {
+    return registerWithInvitation(dto, normalizedEmail, passwordHash, 'Sales Rep');
+  }
+
   // Guest gets their own sandbox tenant
-  const slug = 'sandbox-' + Math.random().toString(36).substring(2, 10);
+  const slug = 'sandbox-' + crypto.randomBytes(4).toString('hex');
 
   const result = await prisma.$transaction(async (tx) => {
     const tenant = await tx.tenant.create({
@@ -191,23 +308,22 @@ export async function registerGuest(dto: GuestRegisterDto) {
         tenantId: tenant.id,
         firstName: dto.firstName,
         lastName: dto.lastName,
-        email: dto.email,
+        email: normalizedEmail,
         passwordHash,
-        role: 'Guest',
+        role: 'Client Admin', // First user in tenant is always Client Admin
         status: 'PENDING', // Set to PENDING until email is verified
-        // emailVerified will be null until verified
       },
     });
 
-    const organization = await tx.account.create({
+    await tx.account.create({
       data: {
         tenantId: tenant.id,
         name: dto.companyName || 'Demo Sandbox Org',
       } as never,
     });
 
-    // Seed some basic data for the guest
-    const pipeline = await tx.pipeline.create({
+    // Seed default pipeline
+    await tx.pipeline.create({
       data: {
         tenantId: tenant.id,
         name: 'Sales Pipeline',
@@ -219,15 +335,94 @@ export async function registerGuest(dto: GuestRegisterDto) {
             { name: 'Qualified', order: 3, tenantId: tenant.id },
             { name: 'Won', order: 4, isWon: true, tenantId: tenant.id },
             { name: 'Lost', order: 5, isLost: true, tenantId: tenant.id },
-          ]
-        }
-      }
+          ],
+        },
+      },
     });
 
     return { tenant, user };
   });
 
-  return { id: result.user.id, email: result.user.email, role: result.user.role, tenantId: result.tenant.id };
+  // Generate dual verification tokens
+  const { token, otpCode } = await generateVerificationCredentials(normalizedEmail, result.user.id);
+  const emailSent = await sendVerificationEmail(normalizedEmail, token, otpCode);
+
+  return {
+    id: result.user.id,
+    email: result.user.email,
+    role: result.user.role,
+    tenantId: result.tenant.id,
+    emailSent,
+  };
+}
+
+/**
+ * Handles registration with an invitation token.
+ * Validates the invitation, creates the user in the inviting tenant,
+ * marks the invitation as accepted, and sends verification email.
+ */
+async function registerWithInvitation(
+  dto: { firstName: string; lastName: string; email: string },
+  normalizedEmail: string,
+  passwordHash: string,
+  defaultRole: string,
+): Promise<{ id: string; email: string; role: string; tenantId: string; emailSent: boolean }> {
+  const invitation = await prisma.tenantInvitation.findFirst({
+    where: {
+      email: normalizedEmail,
+      acceptedAt: null,
+      revokedAt: null,
+    },
+    include: {
+      tenant: { select: { id: true, name: true } },
+      role: { select: { id: true, name: true } },
+    },
+  });
+
+  if (!invitation) {
+    throw new AppError('Invalid or expired invitation. Please request a new one from your administrator.', 400);
+  }
+
+  if (invitation.expiresAt < new Date()) {
+    throw new AppError('This invitation has expired. Please request a new one from your administrator.', 400);
+  }
+
+  const roleName = invitation.role?.name ?? defaultRole;
+
+  const result = await prisma.$transaction(async (tx) => {
+    // Create user in the inviting tenant
+    const user = await tx.user.create({
+      data: {
+        tenantId: invitation.tenantId,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        email: normalizedEmail,
+        passwordHash,
+        role: roleName,
+        status: 'PENDING', // Still requires email verification
+      },
+    });
+
+    // Mark invitation as accepted
+    await tx.tenantInvitation.update({
+      where: { id: invitation.id },
+      data: { acceptedAt: new Date() },
+    });
+
+    return { user, tenant: invitation.tenant };
+  });
+
+  // Generate dual verification tokens
+  const { token, otpCode } = await generateVerificationCredentials(normalizedEmail, result.user.id);
+  const emailSent = await sendVerificationEmail(normalizedEmail, token, otpCode);
+
+  return {
+    id: result.user.id,
+    email: result.user.email,
+    role: result.user.role,
+    tenantId: result.tenant.id,
+    emailSent,
+  };
 }
 
 // ── Registration Email Verification (OTP) ─────────────────────────
@@ -240,18 +435,19 @@ const REG_OTP_MAX_ATTEMPTS = 5;
  * Does NOT require an existing user account — called before the account is activated.
  */
 export async function sendRegistrationOtp(email: string): Promise<void> {
+  const normalizedEmail = email.toLowerCase().trim();
   const code     = String(Math.floor(100000 + Math.random() * 900000));
   const codeHash = await hashPassword(code);
   const expires  = new Date(Date.now() + REG_OTP_TTL_MS);
 
   await prisma.registrationOtpToken.upsert({
-    where:  { email },
+    where:  { email: normalizedEmail },
     update: { codeHash, expires, attempts: 0 },
-    create: { email, codeHash, expires },
+    create: { email: normalizedEmail, codeHash, expires },
   });
 
   await sendMail({
-    to:      email,
+    to:      normalizedEmail,
     subject: `${code} is your LeadCRM verification code`,
     html:    buildRegistrationOtpEmail(code),
   });
@@ -263,24 +459,25 @@ export async function sendRegistrationOtp(email: string): Promise<void> {
  * Activates the user account upon successful verification.
  */
 export async function verifyRegistrationOtp(email: string, code: string): Promise<boolean> {
-  const record = await prisma.registrationOtpToken.findUnique({ where: { email } });
+  const normalizedEmail = email.toLowerCase().trim();
+  const record = await prisma.registrationOtpToken.findUnique({ where: { email: normalizedEmail } });
 
   if (!record) throw new AppError('No verification code found for this email. Please request a new one.', 400);
 
   if (record.expires < new Date()) {
-    await prisma.registrationOtpToken.delete({ where: { email } });
+    await prisma.registrationOtpToken.delete({ where: { email: normalizedEmail } });
     throw new AppError('Verification code has expired. Please request a new one.', 400);
   }
 
   if (record.attempts >= REG_OTP_MAX_ATTEMPTS) {
-    await prisma.registrationOtpToken.delete({ where: { email } });
+    await prisma.registrationOtpToken.delete({ where: { email: normalizedEmail } });
     throw new AppError('Too many incorrect attempts. Please request a new code.', 429);
   }
 
   const valid = await comparePassword(code, record.codeHash);
   if (!valid) {
     await prisma.registrationOtpToken.update({
-      where: { email },
+      where: { email: normalizedEmail },
       data:  { attempts: { increment: 1 } },
     });
     const remaining = REG_OTP_MAX_ATTEMPTS - record.attempts - 1;
@@ -288,7 +485,7 @@ export async function verifyRegistrationOtp(email: string, code: string): Promis
   }
 
   // Code verified — activate the user account
-  const user = await prisma.user.findFirst({ where: { email } });
+  const user = await prisma.user.findFirst({ where: { email: normalizedEmail } });
   if (user) {
     await prisma.user.update({
       where: { id: user.id },
@@ -296,7 +493,7 @@ export async function verifyRegistrationOtp(email: string, code: string): Promis
     });
   }
 
-  await prisma.registrationOtpToken.delete({ where: { email } });
+  await prisma.registrationOtpToken.delete({ where: { email: normalizedEmail } });
   return true;
 }
 

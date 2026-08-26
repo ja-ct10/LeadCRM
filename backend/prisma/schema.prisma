@@ -193,6 +193,9 @@ model Tenant {
   maxDeals           Int?
   approvedById       String? // SystemAdmin id who approved
   approvedAt         DateTime?
+  // -- Onboarding ----------------------------------------------------
+  onboardingStep        Int       @default(0) // 0=not started, 1=workspace, 2=invite, 3=tour
+  onboardingCompletedAt DateTime?
   // -- Stripe --------------------------------------------------------
   stripeCustomerId   String?            @unique // cus_xxx � one customer per tenant
   createdAt          DateTime           @default(now())
@@ -352,6 +355,7 @@ model User {
   leadImports          LeadImport[]
   accountImports       AccountImport[]
   contactImports       ContactImport[]
+  emailVerificationTokens EmailVerificationToken[]
 
   @@unique([tenantId, email])
   @@index([tenantId, status])
@@ -1386,6 +1390,26 @@ model RegistrationOtpToken {
   createdAt DateTime @default(now())
 
   @@unique([email])
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// EMAIL VERIFICATION TOKEN (magic link verification — separate from OTP)
+// Stores SHA-256 hash of the plaintext token. Single-use, time-limited.
+// ═══════════════════════════════════════════════════════════════════════
+model EmailVerificationToken {
+  id        String    @id @default(uuid())
+  userId    String?   // nullable — may be generated before user exists (e.g. pre-registration)
+  email     String
+  tokenHash String    @unique // SHA-256 hex digest of plaintext token
+  type      String    @default("EMAIL_VERIFICATION") // "EMAIL_VERIFICATION" | "INVITATION"
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([userId])
 }
 
 // EMAIL ACCOUNT (Gmail OAuth2 integration per user)

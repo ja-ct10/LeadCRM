@@ -176,7 +176,7 @@ export default function ModernRegisterPage({ onNavigate }: ModernRegisterPagePro
         toast.success('Registration successful! Please check your email for verification code.');
         // Navigate to email verification with email as query parameter
         if (typeof window !== 'undefined') {
-          window.location.href = `/email-verification?email=${encodeURIComponent(formData.email)}`;
+          window.location.href = `/verify-email?email=${encodeURIComponent(formData.email)}`;
         }
       }
     } catch (err: unknown) {

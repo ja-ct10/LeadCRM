@@ -308,6 +308,69 @@ function wrapEmailShell(bodyContent: string, footerNote?: string): string {
 // ─── Email template builders ───────────────────────────────────────────────────
 
 /**
+ * Builds the combined verification email with both a magic link button and OTP code.
+ * Stripe-style: primary CTA button + fallback code entry.
+ * Full implementation in Task 5 — this is a functional version.
+ */
+export function buildVerificationEmail(verificationUrl: string, otpCode: string): string {
+  const digits = otpCode.split('');
+  const digitBoxes = digits.map(d => `
+    <td style="width:44px;height:52px;background:#f8fafc;border:2px solid #e2e8f0;border-radius:10px;text-align:center;font-size:24px;font-weight:700;color:#1e293b;font-family:'Plus Jakarta Sans',monospace;">
+      ${d}
+    </td>
+  `).join('<td style="width:8px;"></td>');
+
+  const bodyContent = `
+    <!-- Hero Icon + Heading -->
+    <div style="text-align:center;padding:8px 0 24px;">
+      <div style="width:64px;height:64px;background:linear-gradient(135deg,#3b82f6 0%,#2563eb 100%);border-radius:16px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:20px;">
+        <span style="font-size:28px;color:#ffffff;">✉</span>
+      </div>
+      <h1 style="font-size:24px;font-weight:800;color:#0f172a;margin:0 0 8px;">Verify your email address</h1>
+      <p style="font-size:15px;color:#64748b;margin:0;line-height:1.6;">
+        Click the button below to verify your email and get started with LeadCRM.
+      </p>
+    </div>
+
+    <!-- Primary CTA Button (Magic Link) -->
+    <div style="text-align:center;margin:32px 0;">
+      <a href="${verificationUrl}" target="_blank" style="display:inline-block;background:linear-gradient(135deg,#3b82f6 0%,#2563eb 100%);color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;padding:14px 40px;border-radius:10px;box-shadow:0 4px 14px rgba(37,99,235,0.3);">
+        Verify Email
+      </a>
+    </div>
+
+    <!-- Divider with "or" -->
+    <div style="text-align:center;margin:28px 0;position:relative;">
+      <div style="border-top:1px solid #e2e8f0;margin:0 20px;"></div>
+      <span style="position:relative;top:-10px;background:#ffffff;padding:0 16px;font-size:13px;color:#94a3b8;font-weight:500;">
+        or enter this code manually
+      </span>
+    </div>
+
+    <!-- OTP Code Display -->
+    <div style="text-align:center;margin:0 0 28px;">
+      <table cellpadding="0" cellspacing="0" style="margin:0 auto;">
+        <tr>${digitBoxes}</tr>
+      </table>
+    </div>
+
+    <!-- Expiry Notes -->
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin:24px 0;">
+      <p style="font-size:13px;color:#64748b;margin:0;line-height:1.6;">
+        <strong style="color:#475569;">⏱ Expiry:</strong> The button link is valid for 24 hours. The verification code expires in 10 minutes.
+      </p>
+    </div>
+
+    <!-- Security Note -->
+    <p style="font-size:12px;color:#94a3b8;text-align:center;margin:20px 0 0;">
+      If you didn't create a LeadCRM account, you can safely ignore this email.
+    </p>
+  `;
+
+  return wrapEmailShell(bodyContent);
+}
+
+/**
  * Builds the HTML body for a registration email verification OTP.
  * Enhanced design: enterprise SaaS, modern blue gradient header, 
  * improved digit boxes with animation-ready styling, enhanced security notice.
@@ -574,5 +637,141 @@ export function buildPasswordResetEmail(resetUrl: string): string {
   `;
 
   return wrapEmailShell(bodyContent, "You're receiving this email because a password reset was requested for your account.");
+}
+
+/**
+ * Builds the HTML body for the welcome email sent after onboarding completion.
+ * Professional, warm tone with quick-start tips.
+ */
+export function buildWelcomeEmail(firstName: string, tenantName: string): string {
+  const appUrl = process.env.APP_URL || 'http://localhost:3000';
+
+  const bodyContent = `
+    <!-- Hero Icon + Heading -->
+    <div style="text-align:center;padding:8px 0 24px;">
+      <div style="width:72px;height:72px;background:linear-gradient(135deg,#10b981 0%,#059669 100%);border-radius:18px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:20px;box-shadow:0 8px 16px rgba(16,185,129,0.2);">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M20 6L9 17L4 12" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <h1 style="font-size:26px;font-weight:800;color:#0f172a;margin:0 0 8px;letter-spacing:-0.5px;">
+        Welcome to LeadCRM, ${firstName}!
+      </h1>
+      <p style="font-size:16px;color:#64748b;margin:0;line-height:1.6;">
+        Your workspace <strong style="color:#0f172a;">${tenantName}</strong> is ready to go.
+      </p>
+    </div>
+
+    <!-- Quick Start Tips -->
+    <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:24px;margin:24px 0;">
+      <p style="font-size:14px;font-weight:700;color:#0f172a;margin:0 0 16px;">Quick Start Guide</p>
+
+      <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:14px;">
+        <div style="width:28px;height:28px;background:#dbeafe;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <span style="font-size:14px;font-weight:700;color:#2563eb;">1</span>
+        </div>
+        <div>
+          <p style="font-size:14px;font-weight:600;color:#1e293b;margin:0 0 2px;">Import your contacts</p>
+          <p style="font-size:13px;color:#64748b;margin:0;">Upload a CSV or add contacts manually to start building your pipeline.</p>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:14px;">
+        <div style="width:28px;height:28px;background:#dbeafe;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <span style="font-size:14px;font-weight:700;color:#2563eb;">2</span>
+        </div>
+        <div>
+          <p style="font-size:14px;font-weight:600;color:#1e293b;margin:0 0 2px;">Set up your sales pipeline</p>
+          <p style="font-size:13px;color:#64748b;margin:0;">Customize stages to match your sales process and start tracking deals.</p>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:flex-start;gap:12px;">
+        <div style="width:28px;height:28px;background:#dbeafe;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <span style="font-size:14px;font-weight:700;color:#2563eb;">3</span>
+        </div>
+        <div>
+          <p style="font-size:14px;font-weight:600;color:#1e293b;margin:0 0 2px;">Invite your team members</p>
+          <p style="font-size:13px;color:#64748b;margin:0;">Collaborate with your team to close more deals, faster.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- CTA Button -->
+    <div style="text-align:center;margin:32px 0;">
+      <a href="${appUrl}/dashboard" target="_blank" style="display:inline-block;background:linear-gradient(135deg,#3b82f6 0%,#2563eb 100%);color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;padding:14px 40px;border-radius:10px;box-shadow:0 4px 14px rgba(37,99,235,0.3);">
+        Go to Dashboard
+      </a>
+    </div>
+
+    <!-- Help Note -->
+    <p style="text-align:center;font-size:13px;color:#94a3b8;line-height:1.7;">
+      Questions? Reach us at
+      <a href="mailto:support@leadcrm.io" style="color:#2563eb;text-decoration:none;font-weight:600;">support@leadcrm.io</a>
+    </p>
+  `;
+
+  return wrapEmailShell(bodyContent, "You're receiving this email because you completed your LeadCRM setup.");
+}
+
+/**
+ * Builds the HTML body for a team invitation email.
+ * Clear CTA with inviter name, tenant name, and role context.
+ */
+export function buildInvitationEmail(inviterName: string, tenantName: string, inviteUrl: string, roleName: string): string {
+  const bodyContent = `
+    <!-- Hero Icon + Heading -->
+    <div style="text-align:center;padding:8px 0 24px;">
+      <div style="width:72px;height:72px;background:linear-gradient(135deg,#a78bfa 0%,#7c3aed 100%);border-radius:18px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:20px;box-shadow:0 8px 16px rgba(124,58,237,0.2);">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M16 21V19C16 17.9391 15.5786 16.9217 14.8284 16.1716C14.0783 15.4214 13.0609 15 12 15H5C3.93913 15 2.92172 15.4214 2.17157 16.1716C1.42143 16.9217 1 17.9391 1 19V21" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="8.5" cy="7" r="4" stroke="#ffffff" stroke-width="2"/>
+          <path d="M20 8V14" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+          <path d="M23 11H17" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <h1 style="font-size:24px;font-weight:800;color:#0f172a;margin:0 0 8px;letter-spacing:-0.3px;">
+        You're invited to join ${tenantName}
+      </h1>
+      <p style="font-size:15px;color:#64748b;margin:0;line-height:1.6;">
+        <strong style="color:#0f172a;">${inviterName}</strong> has invited you to join their workspace on LeadCRM as a <strong style="color:#7c3aed;">${roleName}</strong>.
+      </p>
+    </div>
+
+    <!-- What you'll get -->
+    <div style="background:#f5f3ff;border:1.5px solid #ddd6fe;border-radius:14px;padding:20px;margin:24px 0;">
+      <p style="font-size:14px;font-weight:700;color:#4c1d95;margin:0 0 12px;">What you'll be able to do:</p>
+      <ul style="margin:0;padding:0 0 0 20px;color:#5b21b6;font-size:13px;line-height:2;">
+        <li>Manage contacts and deals collaboratively</li>
+        <li>Track your sales pipeline in real-time</li>
+        <li>Access reports and team performance metrics</li>
+      </ul>
+    </div>
+
+    <!-- CTA Button -->
+    <div style="text-align:center;margin:32px 0;">
+      <a href="${inviteUrl}" target="_blank" style="display:inline-block;background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 100%);color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;padding:14px 40px;border-radius:10px;box-shadow:0 4px 14px rgba(124,58,237,0.3);">
+        Accept Invitation
+      </a>
+    </div>
+
+    <!-- Expiry Note -->
+    <div style="text-align:center;margin-bottom:24px;">
+      <span style="display:inline-flex;align-items:center;gap:6px;background:#fefce8;border:1.5px solid #fde047;border-radius:24px;padding:8px 18px;font-size:13px;font-weight:700;color:#92400e;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline;vertical-align:middle;" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" stroke="#92400e" stroke-width="2"/>
+          <path d="M12 7V12L15 14" stroke="#92400e" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        Invitation expires in 7 days
+      </span>
+    </div>
+
+    <!-- Security Note -->
+    <p style="font-size:12px;color:#94a3b8;text-align:center;margin:20px 0 0;">
+      If you don't recognize this invitation, you can safely ignore this email.
+    </p>
+  `;
+
+  return wrapEmailShell(bodyContent, "You're receiving this email because someone invited you to join their LeadCRM workspace.");
 }
 
