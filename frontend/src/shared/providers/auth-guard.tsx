@@ -24,7 +24,7 @@ const EXEMPT_ROUTES = ['/onboarding', '/verify-email', '/email-verification', '/
  * Source of truth for gates:
  *   - emailVerified: from /auth/me response (server-backed)
  *   - onboardingCompletedAt: from /auth/me response (server-backed via Tenant model)
- *   - localStorage ONBOARDING_COMPLETE_KEY: kept ONLY for the optional dashboard tour overlay
+ *   - localStorage ONBOARDING_COMPLETE_KEY: acts as immediate 'just completed' signal so the AuthGuard doesn't redirect back to /onboarding before the cached user refreshes
  */
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -64,9 +64,18 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       }
 
       // ── Gate 2: Onboarding (server-backed via Tenant.onboardingCompletedAt) ──
+      // Primary: check server-backed field from /auth/me response.
+      // Fallback: if localStorage ONBOARDING_COMPLETE_KEY is set, the user JUST
+      // completed onboarding in this session — allow through even if the cached
+      // AuthContext user object hasn't refreshed yet. The DB is already updated
+      // by the completeOnboarding() API call that ran before navigation.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const onboardingCompletedAt = (user as any).onboardingCompletedAt;
-      if (!onboardingCompletedAt) {
+      const localOnboardingDone = typeof window !== 'undefined'
+        ? localStorage.getItem(ONBOARDING_COMPLETE_KEY)
+        : null;
+
+      if (!onboardingCompletedAt && !localOnboardingDone) {
         sessionStorage.removeItem('leadcrm_redirect_after_login');
         router.replace('/onboarding');
         return;
