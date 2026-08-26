@@ -117,9 +117,16 @@ export async function middleware(req: NextRequest): Promise<NextResponse> {
   // middleware cannot see the LeadCRM HttpOnly cookie to validate them.
   const isProtected = PROTECTED_PREFIXES.some(p => pathname.startsWith(p));
 
+  // Routes exempt from profile-completion redirect — users need access
+  // to these even before finishing company setup.
+  const isCompletionExempt =
+    pathname.startsWith('/onboarding') ||
+    pathname.startsWith('/company-setup') ||
+    pathname.startsWith('/settings');
+
   if (isProtected && isGoogleSession) {
     // Authenticated Google user but profile not complete
-    if (requiresCompletion && !pathname.startsWith('/onboarding') && !pathname.startsWith('/company-setup')) {
+    if (requiresCompletion && !isCompletionExempt) {
       return NextResponse.redirect(new URL('/onboarding', req.url));
     }
   }
