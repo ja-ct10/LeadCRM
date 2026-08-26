@@ -45,8 +45,10 @@ export async function loginUser(dto: LoginDto, ctx: LoginContext = {}) {
   const valid = await comparePassword(dto.password, user.passwordHash);
   if (!valid) throw new AppError('Invalid email or password', 401);
 
-  // Block unverified users — they must complete email verification first
-  if (!user.emailVerified) {
+  // Block unverified users — they must complete email verification first.
+  // In DEMO/DEV mode, skip this check for ACTIVE users (seeded accounts may not have emailVerified set).
+  const isDemoMode = process.env.DEV_OTP_BYPASS === 'true' || process.env.DEMO_MODE === 'true';
+  if (!user.emailVerified && !(isDemoMode && user.status === 'ACTIVE')) {
     throw new AppError(
       'Please verify your email address before logging in. Check your inbox for a verification link, or request a new one.',
       403,
@@ -460,6 +462,22 @@ export async function sendRegistrationOtp(email: string): Promise<void> {
  */
 export async function verifyRegistrationOtp(email: string, code: string): Promise<boolean> {
   const normalizedEmail = email.toLowerCase().trim();
+
+  // ── DEMO/DEV bypass: accept "000000" for staging & local testing ───────
+  const isDemoBypass = process.env.DEV_OTP_BYPASS === 'true' || process.env.DEMO_MODE === 'true';
+  if (isDemoBypass && code === '000000') {
+    const user = await prisma.user.findFirst({ where: { email: normalizedEmail } });
+    if (user) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { status: 'ACTIVE', emailVerified: new Date() },
+      });
+    }
+    // Clean up any existing token
+    await prisma.registrationOtpToken.deleteMany({ where: { email: normalizedEmail } });
+    return true;
+  }
+
   const record = await prisma.registrationOtpToken.findUnique({ where: { email: normalizedEmail } });
 
   if (!record) throw new AppError('No verification code found for this email. Please request a new one.', 400);

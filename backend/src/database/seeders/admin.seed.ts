@@ -44,6 +44,7 @@ export async function seedSystemAdmin(): Promise<Tenant | null> {
         passwordHash,
         role:         'System Admin',
         status:       'ACTIVE',
+        emailVerified: new Date(),
       },
     });
     console.log(`[Seed] System Admin created: ${email}`);
