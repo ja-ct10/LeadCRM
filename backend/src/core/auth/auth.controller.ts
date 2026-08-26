@@ -19,7 +19,14 @@ import {
   ResetPasswordSchema,
   SendRegistrationOtpSchema,
   VerifyRegistrationOtpSchema,
+  OAuthGoogleSchema,
+  CompleteOAuthProfileSchema,
+  OnboardingWorkspaceSchema,
+  OnboardingStepSchema,
 } from './auth.dto';
+import { findOrCreateUserByOAuth } from './oauth.service';
+import { writeAuditLog } from '../audit/audit.service';
+import { sendMail, buildWelcomeEmail, buildVerificationEmail as buildVerifEmailTemplate } from '../../shared/services/email.service';
 
 const COOKIE_NAME = 'leadcrm_token';
 const COOKIE_OPTIONS = {
@@ -508,8 +515,6 @@ export async function resendVerification(req: Request, res: Response, next: Next
 }
 
 // ─── Google OAuth Bridge ─────────────────────────────────────────────────────
-import { OAuthGoogleSchema } from './auth.dto';
-import { findOrCreateUserByOAuth } from './oauth.service';
 
 /**
  * POST /api/v1/auth/oauth/google
@@ -621,8 +626,6 @@ export async function oauthGoogle(req: Request, res: Response, next: NextFunctio
 }
 
 // ─── Complete OAuth Profile ──────────────────────────────────────────────────
-import { CompleteOAuthProfileSchema } from './auth.dto';
-import { writeAuditLog } from '../audit/audit.service';
 
 /**
  * PATCH /api/v1/auth/oauth/complete-profile
@@ -678,8 +681,6 @@ export async function completeOAuthProfile(req: Request, res: Response, next: Ne
 }
 
 // ─── Onboarding Progress ─────────────────────────────────────────────────────
-import { OnboardingWorkspaceSchema, OnboardingStepSchema } from './auth.dto';
-import { sendMail, buildWelcomeEmail, buildVerificationEmail as buildVerifEmailTemplate } from '../../shared/services/email.service';
 
 /**
  * GET /api/v1/auth/onboarding/status
