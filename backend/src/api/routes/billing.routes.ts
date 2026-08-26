@@ -6,6 +6,7 @@ import { validate } from '../middleware/validate.middleware';
 
 import * as invoiceController  from '../../modules/billing/invoices/invoices.controller';
 import * as paymentController  from '../../modules/billing/payments/payments.controller';
+import * as subscriptionController from '../../modules/billing/subscriptions/subscriptions.controller';
 
 import {
   CreateInvoiceSchema, UpdateInvoiceSchema, MarkPaidSchema,
@@ -25,6 +26,14 @@ router.post(
 router.use(authMiddleware);
 router.use(tenantMiddleware);
 
+// ── Subscription Management (tenant self-service) ─────────────────────────────
+router.get(   '/subscription',          authorize('billing.view'),   subscriptionController.getSubscription);
+router.get(   '/plans',                 authorize('billing.view'),   subscriptionController.getPlans);
+router.post(  '/subscription/checkout', authorize('billing.manage'), subscriptionController.createCheckoutSession);
+router.patch( '/subscription/cancel',   authorize('billing.manage'), subscriptionController.cancelSubscription);
+router.post(  '/portal-session',        authorize('billing.manage'), subscriptionController.createPortalSession);
+
+// ── Invoice CRUD ──────────────────────────────────────────────────────────────
 router.get(   '/invoices',              authorize('billing.view'),   invoiceController.getInvoices);
 router.get(   '/invoices/:id',          authorize('billing.view'),   invoiceController.getInvoiceById);
 router.post(  '/invoices',              authorize('billing.manage'), validate(CreateInvoiceSchema), invoiceController.createInvoice);
