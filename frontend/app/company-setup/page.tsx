@@ -15,18 +15,18 @@ const CompanySetupPage = dynamic(
 
 export default function CompanySetupRoute() {
   const { user, isLoading } = useAuth();
-  const { update: updateSession } = useSession();
+  const { data: nextAuthSession, update: updateSession } = useSession();
   const router = useRouter();
 
   // Auth guard — unauthenticated visitors go to login
   useEffect(() => {
     if (isLoading) return;
-    if (!user) {
+    if (!user && !nextAuthSession) {
       router.replace('/login');
     }
   }, [user, isLoading, router]);
 
-  if (isLoading || !user) return null;
+  if (isLoading || (!user && !nextAuthSession)) return null;
 
   const handleNavigate = async (path: string) => {
     if (path === 'dashboard') {
