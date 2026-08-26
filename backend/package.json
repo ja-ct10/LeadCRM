@@ -22,6 +22,7 @@
     "test:gmail-connection": "ts-node src/scripts/test-gmail-connection.ts",
     "audit:hardcoded-data": "ts-node src/scripts/audit-hardcoded-data.ts",
     "gmail:setup-system-sender": "ts-node src/scripts/setup-gmail-system-sender.ts",
+    "fix:onboarding": "ts-node src/scripts/fix-null-onboarding.ts",
     "test": "vitest --run",
     "test:watch": "vitest"
   },

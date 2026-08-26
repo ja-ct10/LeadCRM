@@ -218,6 +218,8 @@ export async function findOrCreateUserByOAuth(
         status:             'SANDBOX',
         subscriptionStatus: 'TRIAL',
         plan:               'FREE',
+        onboardingStep:     3,
+        onboardingCompletedAt: new Date(),
       },
     });
 
