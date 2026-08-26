@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { useBillingData } from '../hooks/use-billing-data';
 import { billingService } from '../services/billing.service';
 import { invoicesApi } from '@/shared/services/invoices.api';
+import { SeatManagementCard } from './seat-management-card';
 import type { BillingCycle, PricingPlan } from '../types/billing.types';
 import type { Invoice } from '@/store/types';
 
@@ -54,7 +55,7 @@ function getStatusBadge(status: string): { text: string; className: string } {
 
 export default function ClientBillingPage() {
   const { tenant } = useAuth();
-  const { subscription, plans, isLoading, error, refetch } = useBillingData();
+  const { subscription, plans, seats, isLoading, error, refetch, refetchSeats } = useBillingData();
   const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'payment-methods'>('overview');
 
   // Plan selection modal state
@@ -91,15 +92,46 @@ export default function ClientBillingPage() {
   const handleUpgradePlan = useCallback(async (planId: string) => {
     try {
       setCheckoutLoading(true);
-      const response = await billingService.createCheckoutSession(planId, selectedCycle);
-      // Redirect to Stripe Checkout
-      window.location.href = response.data.checkoutUrl;
+
+      // Determine if this is an upgrade, downgrade, or fresh checkout
+      const PLAN_TIER: Record<string, number> = { FREE: 0, PRO: 1, ENTERPRISE: 2 };
+      const currentPlanType = subscription?.plan?.planType ?? 'FREE';
+      const targetPlan = plans.find((p) => p.id === planId);
+      const currentTier = PLAN_TIER[currentPlanType] ?? 0;
+      const targetTier = PLAN_TIER[targetPlan?.planType ?? 'FREE'] ?? 0;
+
+      if (!subscription) {
+        // No subscription — use checkout flow
+        const response = await billingService.createCheckoutSession(planId, selectedCycle);
+        window.location.href = response.data.checkoutUrl;
+        return;
+      }
+
+      if (targetTier > currentTier) {
+        // Upgrade — immediate with proration
+        const response = await billingService.upgradeSubscription(planId, selectedCycle);
+        toast.success(`Upgraded to ${response.data.newPlan}! Changes are effective immediately.`);
+        setShowPlanModal(false);
+        refetch();
+      } else if (targetTier < currentTier) {
+        // Downgrade — scheduled at period end
+        const response = await billingService.downgradeSubscription(planId, selectedCycle);
+        toast.success(`Downgrade to ${response.data.pendingPlan} scheduled for ${formatDate(response.data.effectiveDate)}.`);
+        setShowPlanModal(false);
+        refetch();
+      } else {
+        // Same tier, different cycle — use checkout for plan change
+        const response = await billingService.createCheckoutSession(planId, selectedCycle);
+        window.location.href = response.data.checkoutUrl;
+        return;
+      }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to create checkout session';
+      const message = err instanceof Error ? err.message : 'Failed to change plan';
       toast.error(message);
+    } finally {
       setCheckoutLoading(false);
     }
-  }, [selectedCycle]);
+  }, [selectedCycle, subscription, plans, refetch]);
 
   const handleCancelSubscription = useCallback(async () => {
     try {
@@ -340,6 +372,13 @@ export default function ClientBillingPage() {
                   </div>
                 )}
               </div>
+
+              {/* Seat Management Card */}
+              <SeatManagementCard
+                seats={seats}
+                hasSubscription={!!subscription}
+                onSeatsChanged={refetchSeats}
+              />
             </div>
 
             {/* Sidebar */}

@@ -55,4 +55,8 @@ router.post('/billing/plans/:id/sync',  adminBillingController.syncPlanStripe);
 // ── Checkout Session (for admin-initiated subscriptions) ──────────────────────
 router.post('/billing/checkout',        adminBillingController.createCheckoutSession);
 
+// ── Webhook Event Log ─────────────────────────────────────────────────────────
+router.get('/billing/webhook-events',          adminBillingController.getWebhookEvents);
+router.post('/billing/webhook-events/:id/replay', adminBillingController.replayWebhookEvent);
+
 export default router;

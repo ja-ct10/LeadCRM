@@ -9,6 +9,24 @@ export const CreateCheckoutSessionDto = z.object({
 
 export type CreateCheckoutSessionInput = z.infer<typeof CreateCheckoutSessionDto>;
 
+// ─── PATCH /billing/subscription/upgrade ──────────────────────────────────────
+
+export const UpgradeSubscriptionDto = z.object({
+  planId:       z.string().uuid('Invalid plan ID'),
+  billingCycle: z.enum(['MONTHLY', 'QUARTERLY', 'ANNUAL']),
+});
+
+export type UpgradeSubscriptionInput = z.infer<typeof UpgradeSubscriptionDto>;
+
+// ─── PATCH /billing/subscription/downgrade ────────────────────────────────────
+
+export const DowngradeSubscriptionDto = z.object({
+  planId:       z.string().uuid('Invalid plan ID'),
+  billingCycle: z.enum(['MONTHLY', 'QUARTERLY', 'ANNUAL']),
+});
+
+export type DowngradeSubscriptionInput = z.infer<typeof DowngradeSubscriptionDto>;
+
 // ─── PATCH /billing/subscription/cancel ───────────────────────────────────────
 
 export const CancelSubscriptionDto = z.object({
@@ -22,3 +40,13 @@ export const CreatePortalSessionDto = z.object({
 }).strict();
 
 export type CreatePortalSessionInput = z.infer<typeof CreatePortalSessionDto>;
+
+
+// ─── PATCH /billing/seats ─────────────────────────────────────────────────────
+
+export const UpdateSeatsDto = z.object({
+  action: z.enum(['add', 'remove']),
+  count:  z.number().int().min(1).max(100),
+});
+
+export type UpdateSeatsInput = z.infer<typeof UpdateSeatsDto>;

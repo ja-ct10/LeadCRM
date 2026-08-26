@@ -47,6 +47,27 @@ async function request<T>(
     // Backend can return error as a string (AppError path) or as an object
     // with { code, message } (validation error path). Extract message from both.
     const rawError = errorData.error;
+
+    // ─── Billing Interceptors ───────────────────────────────────────────
+    // Dispatch custom events for plan gating and payment failures so the UI
+    // can show contextual upgrade/payment modals without each component needing
+    // to handle these cases individually.
+    if (typeof window !== 'undefined' && typeof rawError === 'object' && rawError !== null) {
+      const errorCode = (rawError as Record<string, unknown>).code;
+      if (res.status === 403 && errorCode === 'PLAN_UPGRADE_REQUIRED') {
+        const { dispatchPlanUpgradeRequired } = await import('@/shared/hooks/use-billing-interceptor');
+        dispatchPlanUpgradeRequired({
+          feature: (rawError as Record<string, unknown>).feature as string ?? 'unknown',
+          currentPlan: (rawError as Record<string, unknown>).currentPlan as string ?? 'FREE',
+          requiredPlan: (rawError as Record<string, unknown>).requiredPlan as string ?? 'PRO',
+        });
+      }
+      if (res.status === 402 && errorCode === 'PAYMENT_REQUIRED') {
+        const { dispatchPaymentRequired } = await import('@/shared/hooks/use-billing-interceptor');
+        dispatchPaymentRequired();
+      }
+    }
+
     const errorMessage =
       (typeof rawError === 'string' && rawError)
         ? rawError

@@ -3,6 +3,7 @@ import { authMiddleware } from '../middleware/auth.middleware';
 import { tenantMiddleware } from '../middleware/tenant.middleware';
 import { authorize } from '../middleware/rbac.middleware';
 import { validate } from '../middleware/validate.middleware';
+import { billingMutationRateLimiter } from '../middleware/rate-limit.middleware';
 
 import * as invoiceController  from '../../modules/billing/invoices/invoices.controller';
 import * as paymentController  from '../../modules/billing/payments/payments.controller';
@@ -29,9 +30,15 @@ router.use(tenantMiddleware);
 // ── Subscription Management (tenant self-service) ─────────────────────────────
 router.get(   '/subscription',          authorize('billing.view'),   subscriptionController.getSubscription);
 router.get(   '/plans',                 authorize('billing.view'),   subscriptionController.getPlans);
-router.post(  '/subscription/checkout', authorize('billing.manage'), subscriptionController.createCheckoutSession);
-router.patch( '/subscription/cancel',   authorize('billing.manage'), subscriptionController.cancelSubscription);
+router.post(  '/subscription/checkout', authorize('billing.manage'), billingMutationRateLimiter, subscriptionController.createCheckoutSession);
+router.patch( '/subscription/upgrade',  authorize('billing.manage'), billingMutationRateLimiter, subscriptionController.upgradeSubscriptionEndpoint);
+router.patch( '/subscription/downgrade',authorize('billing.manage'), billingMutationRateLimiter, subscriptionController.downgradeSubscriptionEndpoint);
+router.patch( '/subscription/cancel',   authorize('billing.manage'), billingMutationRateLimiter, subscriptionController.cancelSubscription);
 router.post(  '/portal-session',        authorize('billing.manage'), subscriptionController.createPortalSession);
+
+// ── Seat Management ───────────────────────────────────────────────────────────
+router.get(   '/seats',                 authorize('billing.view'),   subscriptionController.getSeats);
+router.patch( '/seats',                 authorize('billing.manage'), billingMutationRateLimiter, subscriptionController.updateSeats);
 
 // ── Invoice CRUD ──────────────────────────────────────────────────────────────
 router.get(   '/invoices',              authorize('billing.view'),   invoiceController.getInvoices);

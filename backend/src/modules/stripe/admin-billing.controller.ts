@@ -7,6 +7,7 @@ import { listAllSubscriptions, cancelSubscriptionAtPeriodEnd, cancelSubscription
 import { initiateRefund, listRefundableTransactions } from './stripe-refunds.service';
 import { syncPlanToStripe, syncAllPlansToStripe } from './stripe-products.service';
 import { createSubscriptionCheckoutSession } from './stripe-checkout.service';
+import * as webhookEventRepo from './stripe-webhook-event.repository';
 
 // ─── Input Schemas ────────────────────────────────────────────────────────────
 
@@ -57,6 +58,9 @@ const CreateCheckoutSchema = z.object({
  * NO auth middleware — Stripe calls this directly.
  * Must receive raw body (registered before express.json() in app.ts).
  * Responds 200 immediately after signature verification so Stripe doesn't retry.
+ *
+ * Event logging: Every inbound event is stored in StripeWebhookEvent for
+ * idempotency, debugging, and replay capability.
  */
 export async function stripeWebhook(
   req: Request,
@@ -69,13 +73,34 @@ export async function stripeWebhook(
     // req.body is the raw Buffer when raw() middleware is used on this route
     const event = constructStripeEvent(req.body as Buffer, sig);
 
+    // Idempotency: check if this event was already processed
+    const existingEvent = await webhookEventRepo.findByStripeEventId(event.id);
+    if (existingEvent?.status === 'PROCESSED') {
+      res.json({ received: true, duplicate: true });
+      return;
+    }
+
+    // Log the event (upsert handles race conditions on duplicate delivery)
+    const webhookEvent = await webhookEventRepo.createEvent({
+      stripeEventId: event.id,
+      type: event.type,
+      payload: event as unknown as object,
+    });
+
     // Respond 200 immediately — processing is fire-and-forget for retry safety
     res.json({ received: true });
 
-    // Process asynchronously — failures here do NOT affect the 200 response
-    handleStripeEvent(event).catch((err) => {
-      console.error('[Stripe Webhook] Handler error for event', event.type, err);
-    });
+    // Process asynchronously — update event status based on result
+    try {
+      await handleStripeEvent(event);
+      await webhookEventRepo.markProcessed(webhookEvent.id);
+    } catch (handlerError) {
+      const errorMessage = handlerError instanceof Error
+        ? handlerError.message
+        : 'Unknown processing error';
+      await webhookEventRepo.markFailed(webhookEvent.id, errorMessage);
+      console.error('[Stripe Webhook] Handler error for event', event.type, handlerError);
+    }
   } catch (err) {
     next(err);
   }
@@ -272,6 +297,82 @@ export async function createCheckoutSession(
 
     const result = await createSubscriptionCheckoutSession(parsed.data);
     res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── Webhook Event Log ────────────────────────────────────────────────────────
+
+const ListWebhookEventsSchema = z.object({
+  page:      z.coerce.number().int().min(1).default(1),
+  limit:     z.coerce.number().int().min(1).max(100).default(25),
+  status:    z.enum(['RECEIVED', 'PROCESSED', 'FAILED']).optional(),
+  type:      z.string().optional(),
+  startDate: z.string().optional(),
+  endDate:   z.string().optional(),
+});
+
+/** GET /api/v1/admin/billing/webhook-events */
+export async function getWebhookEvents(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const parsed = ListWebhookEventsSchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: parsed.error.errors[0]?.message });
+      return;
+    }
+
+    const { data, total } = await webhookEventRepo.listEvents(parsed.data);
+    const { page, limit } = parsed.data;
+
+    res.json({
+      success: true,
+      data,
+      meta: { total, page, limit, hasMore: (page - 1) * limit + data.length < total },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/** POST /api/v1/admin/billing/webhook-events/:id/replay */
+export async function replayWebhookEvent(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const eventId = String(req.params.id);
+    const webhookEvent = await webhookEventRepo.findById(eventId);
+
+    if (!webhookEvent) {
+      throw new AppError('Webhook event not found', 404);
+    }
+
+    // Re-parse the stored payload and process it
+    const stripeEvent = webhookEvent.payload as unknown as import('stripe').Stripe.Event;
+
+    try {
+      await handleStripeEvent(stripeEvent);
+      await webhookEventRepo.markProcessed(webhookEvent.id);
+      res.json({
+        success: true,
+        data: { message: 'Event replayed successfully.', status: 'PROCESSED' },
+      });
+    } catch (handlerError) {
+      const errorMessage = handlerError instanceof Error
+        ? handlerError.message
+        : 'Unknown processing error';
+      await webhookEventRepo.markFailed(webhookEvent.id, errorMessage);
+      res.json({
+        success: true,
+        data: { message: 'Replay failed.', status: 'FAILED', error: errorMessage },
+      });
+    }
   } catch (err) {
     next(err);
   }

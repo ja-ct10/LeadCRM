@@ -6,6 +6,7 @@ import ClientManagement from './tenants/ui/client-management';
 import PricingPage, { type UiPlan } from './billing/ui/pricing-page';
 import PlanEditorPage, { type EditorPlan } from './billing/ui/plan-editor-page';
 import AdminBillingPage from './billing/ui/admin-billing-page';
+import WebhookEventsPage from './billing/ui/webhook-events-page';
 import AuditLogsPage from '../tenant/administration/audit/ui/audit-logs-page';
 import { useAdminSubLabel } from './layout/admin-sub-label-context';
 import type { PlanPaymentMethod } from '@leadcrm/shared';
@@ -19,7 +20,7 @@ const DEFAULT_PM: Omit<PlanPaymentMethod, 'enabled'>[] = [
   { id: 'bank_transfer', name: 'Bank Transfer',        description: 'Accept direct bank transfers.' },
 ];
 
-type TabId = 'dashboard' | 'clients' | 'pricing' | 'billing' | 'audit';
+type TabId = 'dashboard' | 'clients' | 'pricing' | 'billing' | 'webhooks' | 'audit';
 
 interface AdminConsoleProps {
   activeTabProp?: TabId;
@@ -38,6 +39,7 @@ const NON_PRICING_TAB_MAP: Partial<Record<TabId, React.ComponentType>> = {
   dashboard: AdminDashboard,
   clients:   ClientManagement,
   billing:   AdminBillingPage,
+  webhooks:  WebhookEventsPage,
   audit:     AuditLogsPage,
 };
 

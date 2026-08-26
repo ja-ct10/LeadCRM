@@ -3,6 +3,7 @@ import { getStripe, STRIPE_WEBHOOK_SECRET } from '../../config/stripe.config';
 import prisma from '../../config/database.config';
 import { AppError } from '../../shared/errors/app-error';
 import { writeAuditLog } from '../../core/audit/audit.service';
+import { invalidatePlanCache } from '../../shared/utils/plan-cache';
 
 // ─── Signature Verification ───────────────────────────────────────────────────
 
@@ -167,6 +168,9 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session):
       metadata:   { stripeSubscriptionId, checkoutSessionId: session.id },
     });
   });
+
+  // Invalidate plan cache so middleware reflects new subscription immediately
+  invalidatePlanCache(tenantId);
 }
 
 /**
@@ -366,6 +370,9 @@ async function handleInvoicePaymentFailed(stripeInvoice: Stripe.Invoice): Promis
     metadata:   { stripeInvoiceId: stripeInvoice.id, amountDue },
     severity:   'WARNING',
   });
+
+  // Invalidate plan cache so subscription gate reflects PAST_DUE immediately
+  invalidatePlanCache(subscription.tenantId);
 }
 
 /**
@@ -396,16 +403,58 @@ async function handleSubscriptionUpdated(
   const newStatus = statusMap[stripeSub.status] ?? 'PAST_DUE';
   const periodEnd = new Date(stripeSub.current_period_end * 1000);
 
+  // Detect if there's a pending plan change that has now taken effect.
+  // When Stripe applies the new price (at period end for downgrades),
+  // the subscription.updated event fires with the new price/product.
+  // If we have a pending downgrade recorded, clear it and apply the new plan.
+  const hasPendingDowngrade = !!subscription.pendingPlanId;
+
+  const subscriptionUpdateData: Record<string, unknown> = {
+    status: newStatus,
+    nextBillingDate: periodEnd,
+  };
+
+  const tenantUpdateData: Record<string, unknown> = {
+    subscriptionStatus: newStatus,
+  };
+
+  if (hasPendingDowngrade) {
+    // Pending downgrade has been applied by Stripe — update local records
+    subscriptionUpdateData.planId = subscription.pendingPlanId;
+    if (subscription.pendingBillingCycle) {
+      subscriptionUpdateData.billingCycle = subscription.pendingBillingCycle;
+    }
+    // Clear pending fields
+    subscriptionUpdateData.pendingPlanId = null;
+    subscriptionUpdateData.pendingBillingCycle = null;
+    subscriptionUpdateData.pendingDowngradeAt = null;
+
+    // Update tenant denormalized plan from the new plan record
+    const newPlan = await prisma.pricingPlan.findUnique({
+      where: { id: subscription.pendingPlanId! },
+      select: { planType: true, maxUsers: true, maxContacts: true, maxDeals: true },
+    });
+    if (newPlan) {
+      tenantUpdateData.plan = newPlan.planType;
+      tenantUpdateData.maxUsers = newPlan.maxUsers;
+      tenantUpdateData.maxContacts = newPlan.maxContacts;
+      tenantUpdateData.maxDeals = newPlan.maxDeals;
+    }
+  }
+
   await prisma.$transaction([
     prisma.subscription.update({
       where: { id: subscription.id },
-      data:  { status: newStatus as never, nextBillingDate: periodEnd },
+      data: subscriptionUpdateData as never,
     }),
     prisma.tenant.update({
       where: { id: subscription.tenantId },
-      data:  { subscriptionStatus: newStatus as never },
+      data: tenantUpdateData as never,
     }),
   ]);
+
+  // Invalidate plan cache so middleware reflects new status/plan immediately
+  invalidatePlanCache(subscription.tenantId);
 }
 
 /**
@@ -441,6 +490,9 @@ async function handleSubscriptionDeleted(
     entityId:   subscription.id,
     severity:   'WARNING',
   });
+
+  // Invalidate plan cache so middleware reflects cancelled status immediately
+  invalidatePlanCache(subscription.tenantId);
 }
 
 /**
