@@ -11,11 +11,20 @@ export const RefreshSchema = z.object({
 
 export type LoginDto = z.infer<typeof LoginSchema>;
 
+// Strong password regex: min 8 chars, at least 1 uppercase, 1 lowercase, 1 number, 1 special char
+const strongPasswordSchema = z
+  .string()
+  .min(8, 'Password must be at least 8 characters')
+  .regex(
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?`~])/,
+    'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character',
+  );
+
 export const ClientAdminRegisterSchema = z.object({
   firstName: z.string().min(2, 'First name is required'),
   lastName: z.string().min(2, 'Last name is required'),
   email: z.string().email('Valid email required'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  password: strongPasswordSchema,
   companyName: z.string().min(2, 'Company name is required'),
   companySize: z.string().optional(),
   industry: z.string().optional(),
@@ -23,17 +32,22 @@ export const ClientAdminRegisterSchema = z.object({
   acceptTerms: z.boolean().refine((val) => val === true, {
     message: 'You must accept the terms and conditions',
   }),
+  invitationToken: z.string().optional(),
 });
 
 export const GuestRegisterSchema = z.object({
   firstName: z.string().min(2, 'First name is required'),
   lastName: z.string().min(2, 'Last name is required'),
   email: z.string().email('Valid email required'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  password: strongPasswordSchema,
   companyName: z.string().min(2, 'Company name is required'),
   industry: z.string().optional(),
   companySize: z.string().optional(),
   businessWebsite: z.string().url('Invalid URL').optional().or(z.literal('')),
+  acceptTerms: z.boolean().refine((val) => val === true, {
+    message: 'You must accept the terms and conditions',
+  }).optional(), // optional for backward compat — enforced in frontend
+  invitationToken: z.string().optional(),
 });
 
 export type ClientAdminRegisterDto = z.infer<typeof ClientAdminRegisterSchema>;
@@ -95,3 +109,25 @@ export const CompleteOAuthProfileSchema = z.object({
 });
 
 export type CompleteOAuthProfileDto = z.infer<typeof CompleteOAuthProfileSchema>;
+
+// ─── Onboarding ───────────────────────────────────────────────────────────────
+export const OnboardingWorkspaceSchema = z.object({
+  companyName: z.string().min(2, 'Company name is required').max(100),
+  industry:    z.string().min(1, 'Industry is required').max(100),
+  companySize: z.string().min(1, 'Company size is required').max(20),
+  timezone:    z.string().max(50).optional(),
+});
+
+export const OnboardingStepSchema = z.object({
+  step: z.number().int().min(0).max(3),
+});
+
+export type OnboardingWorkspaceDto = z.infer<typeof OnboardingWorkspaceSchema>;
+export type OnboardingStepDto = z.infer<typeof OnboardingStepSchema>;
+
+// ─── Resend Verification ──────────────────────────────────────────────────────
+export const ResendVerificationSchema = z.object({
+  email: z.string().email('Valid email required'),
+});
+
+export type ResendVerificationDto = z.infer<typeof ResendVerificationSchema>;

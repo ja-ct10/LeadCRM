@@ -60,6 +60,8 @@ const PUBLIC_ROUTES = [
   '/onboarding',
   '/company-setup',
   '/reset-password',
+  '/verify-email',
+  '/email-verification',
   '/',
 ];
 

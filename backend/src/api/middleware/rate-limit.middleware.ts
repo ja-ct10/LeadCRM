@@ -40,6 +40,24 @@ export const passwordResetRateLimiter = rateLimit({
   message: { success: false, error: 'Too many password reset requests — try again in an hour.' },
 });
 
+// Rate limit for magic link verification — prevents token brute-force
+export const verifyEmailRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: isDev ? 10000 : 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'Too many verification attempts — try again later.' },
+});
+
+// Rate limit for resend verification — 1 per minute per IP
+export const resendVerificationRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: isDev ? 10000 : 1,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'Please wait before requesting another verification email.' },
+});
+
 // Billing mutation rate limit — 10 requests per minute per IP
 // Prevents rapid-fire upgrade/downgrade/seat operations
 export const billingMutationRateLimiter = rateLimit({

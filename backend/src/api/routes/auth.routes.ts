@@ -3,6 +3,8 @@ import {
   authRateLimiter,
   registerRateLimiter,
   passwordResetRateLimiter,
+  verifyEmailRateLimiter,
+  resendVerificationRateLimiter,
 } from '../middleware/rate-limit.middleware';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { authorize } from '../middleware/rbac.middleware';
@@ -45,6 +47,13 @@ router.post('/send-registration-otp', registerRateLimiter, validate(SendRegistra
 // POST /api/v1/auth/verify-registration-otp — verifies the code and activates the account
 router.post('/verify-registration-otp', registerRateLimiter, validate(VerifyRegistrationOtpSchema), authController.verifyRegOtp);
 
+// GET /api/v1/auth/verify-email?token=xxx — magic link email verification (public, rate-limited)
+// Validates token, activates user, issues session cookie, redirects to /onboarding
+router.get('/verify-email', verifyEmailRateLimiter, authController.verifyEmailByLink);
+
+// POST /api/v1/auth/resend-verification — resends verification email (public, strict rate-limited)
+router.post('/resend-verification', resendVerificationRateLimiter, authController.resendVerification);
+
 // POST /api/v1/auth/forgot-password — request reset link (strict rate-limited, validated)
 router.post('/forgot-password', passwordResetRateLimiter, validate(ForgotPasswordSchema), authController.forgotPassword);
 
@@ -64,5 +73,18 @@ router.post('/oauth/google', authRateLimiter, authController.oauthGoogle);
 // PATCH /api/v1/auth/oauth/complete-profile — new Google OAuth user fills in company details
 // Requires valid session cookie — tenantId sourced from JWT, never from request body
 router.patch('/oauth/complete-profile', authMiddleware, authController.completeOAuthProfile);
+
+// ── Onboarding Progress ──────────────────────────────────────────────────────
+// GET /api/v1/auth/onboarding/status — returns current onboarding step + tenant details
+router.get('/onboarding/status', authMiddleware, authController.getOnboardingStatus);
+
+// PATCH /api/v1/auth/onboarding/workspace — saves company details (step 1)
+router.patch('/onboarding/workspace', authMiddleware, authController.saveOnboardingWorkspace);
+
+// PATCH /api/v1/auth/onboarding/step — updates the step number (0-3)
+router.patch('/onboarding/step', authMiddleware, authController.updateOnboardingStep);
+
+// POST /api/v1/auth/onboarding/complete — marks done, activates tenant, sends welcome email
+router.post('/onboarding/complete', authMiddleware, authController.completeOnboarding);
 
 export default router;

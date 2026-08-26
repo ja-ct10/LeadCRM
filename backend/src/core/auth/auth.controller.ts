@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import crypto from 'crypto';
 import {
   loginUser,
   registerClientAdmin as registerClientAdminService,
@@ -8,7 +9,8 @@ import {
   sendRegistrationOtp,
   verifyRegistrationOtp,
 } from './auth.service';
-import { revokeSession } from './session.service';
+import { revokeSession, createSession } from './session.service';
+import { signToken } from './jwt.service';
 import prisma from '../../config/database.config';
 import { hashPassword } from '../../shared/helpers/crypto';
 import { AppError } from '../../shared/errors/app-error';
@@ -81,9 +83,12 @@ export async function me(req: Request, res: Response, next: NextFunction): Promi
       where: { id: req.user!.userId, tenantId: req.user!.tenantId },
       select: {
         id: true, email: true, role: true, firstName: true, lastName: true,
-        tenantId: true, status: true,
+        tenantId: true, status: true, emailVerified: true,
         tenant: {
-          select: { name: true, industry: true, companySize: true },
+          select: {
+            name: true, industry: true, companySize: true,
+            onboardingStep: true, onboardingCompletedAt: true,
+          },
         },
       },
     });
@@ -96,9 +101,11 @@ export async function me(req: Request, res: Response, next: NextFunction): Promi
       data: {
         user: {
           ...userFields,
-          tenantName:  tenant?.name        ?? null,
-          industry:    tenant?.industry    ?? null,
-          companySize: tenant?.companySize ?? null,
+          tenantName:           tenant?.name                ?? null,
+          industry:             tenant?.industry            ?? null,
+          companySize:          tenant?.companySize         ?? null,
+          onboardingStep:       tenant?.onboardingStep      ?? 0,
+          onboardingCompletedAt: tenant?.onboardingCompletedAt ?? null,
         },
       },
     });
@@ -186,6 +193,8 @@ export async function sendRegOtp(req: Request, res: Response, next: NextFunction
   }
 }
 
+const JWT_EXPIRES_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
 export async function verifyRegOtp(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const parsed = VerifyRegistrationOtpSchema.safeParse(req.body);
@@ -193,8 +202,157 @@ export async function verifyRegOtp(req: Request, res: Response, next: NextFuncti
       res.status(400).json({ success: false, error: parsed.error.errors[0]?.message ?? 'Invalid input' });
       return;
     }
+
     await verifyRegistrationOtp(parsed.data.email, parsed.data.code);
-    res.json({ success: true, message: 'Email verified successfully.' });
+
+    // Auto-login: fetch the now-active user and issue session
+    const normalizedEmail = parsed.data.email.toLowerCase().trim();
+    const user = await prisma.user.findFirst({
+      where: { email: normalizedEmail, status: 'ACTIVE' },
+    });
+
+    if (!user) {
+      // Verification succeeded but user not found/active — just return success
+      res.json({ success: true, message: 'Email verified successfully.' });
+      return;
+    }
+
+    // Issue JWT and create session
+    const token = signToken({
+      userId: user.id,
+      tenantId: user.tenantId,
+      role: user.role,
+      email: user.email,
+    });
+
+    await createSession({
+      userId: user.id,
+      tenantId: user.tenantId,
+      token,
+      userAgent: req.headers['user-agent'],
+      ipAddress: req.ip,
+      expiresInMs: JWT_EXPIRES_MS,
+    });
+
+    // Set cookie BEFORE sending response
+    res.cookie(COOKIE_NAME, token, COOKIE_OPTIONS);
+
+    // Also mark any EmailVerificationToken as used (cleanup)
+    await prisma.emailVerificationToken.updateMany({
+      where: { email: normalizedEmail, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+
+    res.json({
+      success: true,
+      message: 'Email verified successfully.',
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          tenantId: user.tenantId,
+        },
+        redirectTo: '/onboarding',
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /api/v1/auth/verify-email?token=xxx
+ * Magic link verification endpoint.
+ * Validates token, activates user, issues session cookie, redirects to frontend.
+ */
+export async function verifyEmailByLink(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const appUrl = process.env.APP_URL ?? 'http://localhost:3000';
+
+  try {
+    const rawToken = req.query.token as string | undefined;
+
+    if (!rawToken || typeof rawToken !== 'string' || rawToken.length < 32) {
+      res.redirect(`${appUrl}/verify-email?error=invalid`);
+      return;
+    }
+
+    // Hash the token to look up in DB
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    const record = await prisma.emailVerificationToken.findUnique({
+      where: { tokenHash },
+    });
+
+    if (!record) {
+      res.redirect(`${appUrl}/verify-email?error=invalid`);
+      return;
+    }
+
+    if (record.usedAt) {
+      // Token already used — redirect to login
+      res.redirect(`${appUrl}/login`);
+      return;
+    }
+
+    if (record.expiresAt < new Date()) {
+      // Token expired — redirect with error and email for resend
+      res.redirect(`${appUrl}/verify-email?error=expired&email=${encodeURIComponent(record.email)}`);
+      return;
+    }
+
+    // Find the user
+    const user = await prisma.user.findFirst({
+      where: record.userId
+        ? { id: record.userId }
+        : { email: record.email },
+    });
+
+    if (!user) {
+      res.redirect(`${appUrl}/verify-email?error=invalid`);
+      return;
+    }
+
+    // Activate user and mark token as used in a transaction
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: user.id },
+        data: { status: 'ACTIVE', emailVerified: new Date() },
+      }),
+      prisma.emailVerificationToken.update({
+        where: { tokenHash },
+        data: { usedAt: new Date() },
+      }),
+      // Clean up OTP token for same email
+      prisma.registrationOtpToken.deleteMany({
+        where: { email: record.email },
+      }),
+    ]);
+
+    // Issue JWT and create session (auto-login)
+    const jwtToken = signToken({
+      userId: user.id,
+      tenantId: user.tenantId,
+      role: user.role,
+      email: user.email,
+    });
+
+    await createSession({
+      userId: user.id,
+      tenantId: user.tenantId,
+      token: jwtToken,
+      userAgent: req.headers['user-agent'],
+      ipAddress: req.ip,
+      expiresInMs: JWT_EXPIRES_MS,
+    });
+
+    // Set HttpOnly cookie (SameSite=Lax allows top-level navigation)
+    res.cookie(COOKIE_NAME, jwtToken, COOKIE_OPTIONS);
+
+    // Redirect to onboarding
+    res.redirect(`${appUrl}/onboarding`);
   } catch (err) {
     next(err);
   }
@@ -273,6 +431,77 @@ export async function seedAdmin(req: Request, res: Response, next: NextFunction)
       message: existing ? 'System Admin already exists.' : 'System Admin created successfully.',
       email,
     });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * POST /api/v1/auth/resend-verification
+ * Invalidates old tokens, generates fresh dual verification (link + OTP), sends new email.
+ * Always returns success to avoid leaking whether email exists.
+ */
+export async function resendVerification(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const email = (req.body?.email as string || '').toLowerCase().trim();
+
+    if (!email || !email.includes('@')) {
+      res.json({ success: true, message: 'If that email is registered and not yet verified, a new verification email has been sent.' });
+      return;
+    }
+
+    // Find unverified user
+    const user = await prisma.user.findFirst({
+      where: { email, emailVerified: null },
+    });
+
+    if (!user) {
+      // Don't reveal whether email exists or is already verified
+      res.json({ success: true, message: 'If that email is registered and not yet verified, a new verification email has been sent.' });
+      return;
+    }
+
+    // Delete old tokens
+    await prisma.emailVerificationToken.deleteMany({ where: { email } });
+    await prisma.registrationOtpToken.deleteMany({ where: { email } });
+
+    // Generate fresh dual tokens
+    const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const tokenTtlHours = parseInt(process.env.EMAIL_VERIFICATION_TOKEN_TTL_HOURS ?? '24', 10);
+    const linkExpiry = new Date(Date.now() + tokenTtlHours * 60 * 60 * 1000);
+
+    await prisma.emailVerificationToken.create({
+      data: {
+        userId: user.id,
+        email,
+        tokenHash,
+        type: 'EMAIL_VERIFICATION',
+        expiresAt: linkExpiry,
+      },
+    });
+
+    const otpCode = String(Math.floor(100000 + Math.random() * 900000));
+    const codeHash = await hashPassword(otpCode);
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    await prisma.registrationOtpToken.upsert({
+      where: { email },
+      update: { codeHash, expires: otpExpiry, attempts: 0 },
+      create: { email, codeHash, expires: otpExpiry },
+    });
+
+    // Send combined verification email
+    const appUrl = process.env.APP_URL ?? 'http://localhost:3000';
+    const verificationUrl = `${appUrl}/api/v1/auth/verify-email?token=${token}`;
+
+    await sendMail({
+      to: email,
+      subject: `${otpCode} — Verify your LeadCRM email`,
+      html: buildVerifEmailTemplate(verificationUrl, otpCode),
+    });
+
+    res.json({ success: true, message: 'If that email is registered and not yet verified, a new verification email has been sent.' });
   } catch (err) {
     next(err);
   }
@@ -443,6 +672,168 @@ export async function completeOAuthProfile(req: Request, res: Response, next: Ne
     });
 
     res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── Onboarding Progress ─────────────────────────────────────────────────────
+import { OnboardingWorkspaceSchema, OnboardingStepSchema } from './auth.dto';
+import { sendMail, buildWelcomeEmail, buildVerificationEmail as buildVerifEmailTemplate } from '../../shared/services/email.service';
+
+/**
+ * GET /api/v1/auth/onboarding/status
+ * Returns the current onboarding step and completion state for the tenant.
+ */
+export async function getOnboardingStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const tenantId = req.user!.tenantId;
+
+    const tenant = await prisma.tenant.findFirst({
+      where: { id: tenantId },
+      select: {
+        name: true,
+        industry: true,
+        companySize: true,
+        onboardingStep: true,
+        onboardingCompletedAt: true,
+      },
+    });
+
+    if (!tenant) {
+      res.status(404).json({ success: false, error: 'Tenant not found' });
+      return;
+    }
+
+    res.json({
+      success: true,
+      data: {
+        step: tenant.onboardingStep,
+        completedAt: tenant.onboardingCompletedAt,
+        tenant: {
+          name: tenant.name,
+          industry: tenant.industry,
+          companySize: tenant.companySize,
+        },
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * PATCH /api/v1/auth/onboarding/workspace
+ * Saves workspace/company details during onboarding step 1.
+ * Updates Tenant record using tenantId from JWT.
+ */
+export async function saveOnboardingWorkspace(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const parsed = OnboardingWorkspaceSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: parsed.error.errors[0]?.message ?? 'Validation failed' });
+      return;
+    }
+
+    const tenantId = req.user!.tenantId;
+    const { companyName, industry, companySize, timezone } = parsed.data;
+
+    await prisma.tenant.update({
+      where: { id: tenantId },
+      data: {
+        name: companyName,
+        industry,
+        companySize,
+        onboardingStep: 1,
+      },
+    });
+
+    // Update user timezone if provided
+    if (timezone) {
+      await prisma.user.update({
+        where: { id: req.user!.userId },
+        data: { timeZone: timezone },
+      });
+    }
+
+    res.json({ success: true, message: 'Workspace details saved.' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * PATCH /api/v1/auth/onboarding/step
+ * Updates the onboarding step number (0-3).
+ */
+export async function updateOnboardingStep(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const parsed = OnboardingStepSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: parsed.error.errors[0]?.message ?? 'Validation failed' });
+      return;
+    }
+
+    const tenantId = req.user!.tenantId;
+
+    await prisma.tenant.update({
+      where: { id: tenantId },
+      data: { onboardingStep: parsed.data.step },
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * POST /api/v1/auth/onboarding/complete
+ * Marks onboarding as complete, activates tenant, sends welcome email.
+ */
+export async function completeOnboarding(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const tenantId = req.user!.tenantId;
+    const userId = req.user!.userId;
+
+    // Set onboarding complete + activate tenant
+    const tenant = await prisma.tenant.update({
+      where: { id: tenantId },
+      data: {
+        onboardingCompletedAt: new Date(),
+        onboardingStep: 3,
+        status: 'ACTIVE',
+      },
+    });
+
+    // Fetch user for welcome email
+    const user = await prisma.user.findFirst({
+      where: { id: userId },
+      select: { firstName: true, email: true },
+    });
+
+    // Send welcome email (non-blocking)
+    if (user) {
+      sendMail({
+        to: user.email,
+        subject: `Welcome to LeadCRM, ${user.firstName}!`,
+        html: buildWelcomeEmail(user.firstName, tenant.name),
+      }).catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        // eslint-disable-next-line no-console
+        console.error('[Onboarding] Welcome email failed:', message);
+      });
+    }
+
+    await writeAuditLog({
+      tenantId,
+      userId,
+      action: 'ONBOARDING_COMPLETED',
+      entityType: 'Tenant',
+      entityId: tenantId,
+    });
+
+    res.json({ success: true, message: 'Onboarding complete. Welcome to LeadCRM!' });
   } catch (err) {
     next(err);
   }

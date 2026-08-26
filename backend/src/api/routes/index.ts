@@ -11,6 +11,7 @@ import integrationsRoutes from './integrations.routes';
 import notificationsRoutes from './notifications.routes';
 import preferencesRoutes from '../../modules/preferences/preferences.routes';
 import tablePreferencesRoutes from '../../modules/preferences/table-preferences.routes';
+import invitationsRoutes from '../../modules/administration/invitations/invitations.routes';
 import adminRoutes from './admin.routes';
 
 const router = Router();
@@ -27,6 +28,7 @@ router.use('/integrations', integrationsRoutes);
 router.use('/notifications', notificationsRoutes);
 router.use('/preferences/columns', preferencesRoutes);
 router.use('/preferences/table', tablePreferencesRoutes);
+router.use('/invitations', invitationsRoutes);
 
 // ── System Admin routes (protected by systemAdminMiddleware) ──────────────────
 // /api/v1/admin/*   — all billing, subscription, and plan management

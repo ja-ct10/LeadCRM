@@ -10,6 +10,7 @@ export default function RegisterPage() {
     if (path === 'login') return router.push('/login');
     if (path === 'landing' || path === '/') return router.push('/');
     if (path === 'email-verification') return router.push('/email-verification');
+    if (path.startsWith('/verify-email')) return router.push(path);
     if (path === 'onboarding') return router.push('/onboarding');
     if (path === 'company-setup') return router.push('/company-setup');
     return router.push(PATH_TO_PATHNAME[path] ?? '/dashboard');
