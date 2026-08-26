@@ -125,8 +125,9 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
     try {
       const success = await login(email, password);
       if (success) {
-        const hasSeenOnboarding = localStorage.getItem('leadcrm_onboarding_complete');
-        onNavigate(hasSeenOnboarding ? 'dashboard' : 'onboarding');
+        // Always navigate to dashboard — AuthGuard handles role-based routing:
+        // System Admin → /admin/dashboard, unverified → /verify-email, not onboarded → /onboarding
+        onNavigate('dashboard');
       } else {
         toast.error('The email or password you entered is incorrect. Please try again.');
       }
