@@ -117,9 +117,9 @@ export async function getStripePriceId(
 
   if (!priceId) {
     throw new AppError(
-      `Stripe Price not configured for plan "${plan.name}" / ${billingCycle}. ` +
-      'Run syncPlanToStripe() first.',
-      400,
+      'Online plan upgrades are not available right now. Please contact your administrator to enable billing.',
+      503,
+      'BILLING_NOT_CONFIGURED',
     );
   }
 

@@ -395,24 +395,27 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // Defer network-heavy secondary modules to the next event-loop tick
       // so Batch 1 data (contacts, deals, pipelines) is painted first.
       setTimeout(async () => {
-        try {
-          const [tasksRes, workflowsRes, campaignsRes, templatesRes, invoicesRes, auditRes] = await Promise.all([
-            tasksApi.list({ limit: 100 }),
-            workflowsApi.list({ limit: 200 }),
-            campaignsApi.list({ limit: 100 }),
-            templatesApi.list({ limit: 100 }),
-            invoicesApi.list({ limit: 100 }),
-            auditApi.list({ limit: 50 }),
-          ]);
+        // Use allSettled so a single plan-gated/failed module (e.g. workflows or
+        // campaigns on a FREE tenant) does not abort loading the others.
+        const [tasksRes, workflowsRes, campaignsRes, templatesRes, invoicesRes, auditRes] = await Promise.allSettled([
+          tasksApi.list({ limit: 100 }),
+          workflowsApi.list({ limit: 200 }),
+          campaignsApi.list({ limit: 100 }),
+          templatesApi.list({ limit: 100 }),
+          invoicesApi.list({ limit: 100 }),
+          auditApi.list({ limit: 50 }),
+        ]);
 
-          setTasks((tasksRes?.data ?? []) as Task[]);
-          setWorkflows((workflowsRes?.data ?? []) as Workflow[]);
-          setCampaigns((campaignsRes?.data ?? []) as Campaign[]);
-          setTemplates((templatesRes?.data ?? []) as Template[]);
-          setInvoices((invoicesRes?.data ?? []) as Invoice[]);
+        // Fulfilled → set state; rejected (e.g. plan-gated 403) → default to empty.
+        setTasks(tasksRes.status === 'fulfilled' ? ((tasksRes.value?.data ?? []) as Task[]) : []);
+        setWorkflows(workflowsRes.status === 'fulfilled' ? ((workflowsRes.value?.data ?? []) as Workflow[]) : []);
+        setCampaigns(campaignsRes.status === 'fulfilled' ? ((campaignsRes.value?.data ?? []) as Campaign[]) : []);
+        setTemplates(templatesRes.status === 'fulfilled' ? ((templatesRes.value?.data ?? []) as Template[]) : []);
+        setInvoices(invoicesRes.status === 'fulfilled' ? ((invoicesRes.value?.data ?? []) as Invoice[]) : []);
 
+        if (auditRes.status === 'fulfilled') {
           // Map backend audit shape → frontend AuditLog shape
-          const mappedLogs: AuditLog[] = (auditRes?.data ?? []).map((entry: any) => ({
+          const mappedLogs: AuditLog[] = (auditRes.value?.data ?? []).map((entry: any) => ({
             id:        entry.id,
             tenantId:  entry.tenantId ?? '',
             userId:    entry.userId ?? entry.user?.id ?? 'system',
@@ -425,8 +428,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
             ipAddress: entry.ipAddress ?? '',
           }));
           setAuditLogs(mappedLogs);
-        } catch (err) {
-          console.error('[DataContext] Failed to load secondary modules from API:', err);
+        } else {
+          setAuditLogs([]);
+        }
+
+        // A plan-gated 403 for a FREE tenant is expected — keep it quiet, don't
+        // surface it as a console error. Only debug-log genuinely for diagnostics.
+        const rejected = [tasksRes, workflowsRes, campaignsRes, templatesRes, invoicesRes, auditRes]
+          .filter((settledResult): settledResult is PromiseRejectedResult => settledResult.status === 'rejected');
+        if (rejected.length > 0) {
+          console.debug('[DataContext] Some secondary modules unavailable (likely plan-gated):', rejected.map((r) => r.reason?.message ?? r.reason));
         }
       }, 0);
 

@@ -15,14 +15,13 @@ const router = Router();
 router.use(authMiddleware);
 router.use(tenantMiddleware);
 router.use(subscriptionGate);
-router.use(planGate('automation'));
 
 // ── Workflows ─────────────────────────────────────────
 router.get(   '/workflows',                   authorize('workflows.view'),     workflowController.getWorkflows);
 router.get(   '/workflows/:id',               authorize('workflows.view'),     workflowController.getWorkflowById);
-router.post(  '/workflows',                   authorize('workflows.create'),   validate(CreateWorkflowSchema), workflowController.createWorkflow);
-router.put(   '/workflows/:id',               authorize('workflows.edit'),     validate(UpdateWorkflowSchema), workflowController.updateWorkflow);
-router.patch( '/workflows/:id/toggle',        authorize('workflows.activate'), workflowController.toggleWorkflow);
+router.post(  '/workflows',                   authorize('workflows.create'),   planGate('automation'), validate(CreateWorkflowSchema), workflowController.createWorkflow);
+router.put(   '/workflows/:id',               authorize('workflows.edit'),     planGate('automation'), validate(UpdateWorkflowSchema), workflowController.updateWorkflow);
+router.patch( '/workflows/:id/toggle',        authorize('workflows.activate'), planGate('automation'), workflowController.toggleWorkflow);
 router.patch( '/workflows/:id/archive',       authorize('workflows.delete'),   workflowController.archiveWorkflow);
 router.get(   '/workflows/:id/executions',    authorize('workflows.view'),     workflowController.getWorkflowExecutions);
 

@@ -52,7 +52,10 @@ async function request<T>(
     // Dispatch custom events for plan gating and payment failures so the UI
     // can show contextual upgrade/payment modals without each component needing
     // to handle these cases individually.
-    if (typeof window !== 'undefined' && typeof rawError === 'object' && rawError !== null) {
+    // Only fire for user-initiated MUTATIONS — passive background GET reads
+    // (e.g. DataContext list calls) must NOT trigger a global upgrade/payment
+    // modal. The error is still thrown below so callers can handle it.
+    if (method !== 'GET' && typeof window !== 'undefined' && typeof rawError === 'object' && rawError !== null) {
       const errorCode = (rawError as Record<string, unknown>).code;
       if (res.status === 403 && errorCode === 'PLAN_UPGRADE_REQUIRED') {
         const { dispatchPlanUpgradeRequired } = await import('@/shared/hooks/use-billing-interceptor');
@@ -76,7 +79,12 @@ async function request<T>(
           : (typeof errorData.message === 'string' && errorData.message)
             ? errorData.message
             : res.statusText || 'API request failed';
-    throw new Error(errorMessage);
+    const error = new Error(errorMessage) as Error & { code?: string; status?: number };
+    if (typeof rawError === 'object' && rawError !== null && typeof (rawError as Record<string, unknown>).code === 'string') {
+      error.code = (rawError as Record<string, unknown>).code as string;
+    }
+    error.status = res.status;
+    throw error;
   }
 
   return res.json() as Promise<T>;
