@@ -1,0 +1,222 @@
+{
+  "pbtResults": {
+    "1. Write bug condition exploration tests (BEFORE implementing the fix)": {
+      "status": "passed",
+      "failingExample": "All 5 exploration tests FAIL on the unfixed code (correct — proves the bug). Counterexamples:\n1. Backend login contract shape — login `user` = { id, email, role, firstName, lastName, tenantId }; AssertionError: expected object to have property \"emailVerified\" (also missing onboardingCompletedAt).\n2. Backend login vs me parity — login has 6 keys; /auth/me user has 12 keys (email, emailVerified, onboardingCompletedAt, onboardingStep, tenantName, industry, companySize, status, id, firstName, lastName, role, tenantId). Shapes diverge.\n3. Frontend guard misroute — verified, onboarded user with thin payload → router.replace called with \"/verify-email?email=alice%40democorp.com\".\n4. Frontend silent blank screen — AuthGuard renders '' (empty container) while isLoading=true (returns null).\n5. Frontend auth-init failure — /auth/me throws during restoreSession; context exposes neither `authError` nor `retryAuthInit` (hasErrorState=false, hasRetryAction=false) — failure swallowed to user=null.",
+      "lastRunTimestamp": 1788209381730
+    }
+  },
+  "executionHistory": {
+    "1. Write bug condition exploration tests (BEFORE implementing the fix)": [
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788209108346
+      },
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788209120552
+      },
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788209404333
+      }
+    ],
+    "2. Write preservation property tests (BEFORE implementing the fix)": [
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788209108525
+      },
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788209409764
+      },
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788209750981
+      }
+    ],
+    "3.1 PRIMARY — Align the login response contract with `/auth/me` (backend)": [
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788209108722
+      },
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788209762532
+      },
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788209908024
+      }
+    ],
+    "3.2 SECONDARY — Re-hydrate after login + add auth-init error state (AuthContext)": [
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788209108884
+      },
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788209913664
+      },
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788210091600
+      }
+    ],
+    "3.3 SECONDARY — Replace silent `null` with visible states in AuthGuard": [
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788209109048
+      },
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788210096773
+      },
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788210212732
+      }
+    ],
+    "3.4 SECONDARY — Extract shared AuthLoadingScreen and use it in route shells": [
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788209109174
+      },
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788210218977
+      },
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788210376398
+      }
+    ],
+    "3.5 Backend unit tests for aligned shape and unchanged guards": [
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788209109310
+      },
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788210387982
+      },
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788210512283
+      }
+    ],
+    "3.6 Frontend unit tests for visible states and route shells": [
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788209109429
+      },
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788210517897
+      },
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788210694804
+      }
+    ],
+    "3.7 Verify bug condition exploration tests now pass": [
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788209109545
+      },
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788210701410
+      },
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788210843809
+      }
+    ],
+    "3.8 Verify preservation tests still pass": [
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788209109670
+      },
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788210850802
+      },
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788211028486
+      }
+    ],
+    "4. Integration tests for full flow parity": [
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788209109794
+      },
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788211036042
+      },
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788211217444
+      }
+    ],
+    "5. Checkpoint - Ensure all tests pass and verification succeeds": [
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788209109915
+      },
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788211224578
+      },
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788211680509
+      }
+    ],
+    "3. Fix for auth login blank screen (contract mismatch + silent null renders)": [
+      {
+        "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
+        "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
+        "timestamp": 1788211028839
+      }
+    ]
+  }
+}

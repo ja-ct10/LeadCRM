@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/store/AuthContext';
 import { PATH_TO_PATHNAME } from '@/lib/route-map';
+import { AuthLoadingScreen } from '@/shared/components/auth-loading-screen';
 
 const LandingPage = dynamic(
   () => import('../src/features/tenant/pages/landing-page'),
@@ -60,10 +61,11 @@ export default function Home() {
     }
   };
 
-  // While auth is resolving, render nothing to avoid landing page flash.
-  // Once isLoading=false and user=null, show the landing page.
-  if (isLoading) return null;
-  if (user) return null; // redirect in progress
+  // While auth is resolving, show a visible spinner to avoid a silent blank
+  // screen (and landing page flash). Once isLoading=false and user=null, the
+  // public landing page is rendered below.
+  if (isLoading) return <AuthLoadingScreen />;
+  if (user) return <AuthLoadingScreen />; // redirect in progress
 
   return <LandingPage onNavigate={handleNavigate} />;
 }
