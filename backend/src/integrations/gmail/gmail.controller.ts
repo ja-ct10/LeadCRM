@@ -116,12 +116,16 @@ export async function callback(req: Request, res: Response, next: NextFunction):
  * Returns whether the current user has a connected Gmail account.
  */
 export async function status(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const { userId, tenantId } = req.user!;
   try {
-    const { userId, tenantId } = req.user!;
     const connectionStatus = await getConnectionStatus(tenantId, userId);
     res.json(connectionStatus);
   } catch (error) {
-    next(error);
+    // Degrade gracefully: if the connection lookup fails (e.g. the EmailAccount
+    // table/migration isn't set up yet), treat the account as not connected
+    // rather than surfacing a 500. "Not connected" is the safe default.
+    console.error('[Gmail] status check failed:', error instanceof Error ? error.message : error);
+    res.json({ isConnected: false, email: null, connectedAt: null, lastSyncAt: null });
   }
 }
 

@@ -11,10 +11,45 @@ import { authApi } from '@/shared/services/auth.api';
 // Set NEXT_PUBLIC_USE_MOCK_AUTH=false in .env.local to use the real API.
 const USE_MOCK_AUTH = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== 'false';
 
+/**
+ * Distinguishes a genuine "no session" (unauthenticated / 401) response from a
+ * real transport failure (network down, 5xx). The API client throws a plain
+ * Error whose message is derived from the backend AppError text, so we match on
+ * the known 401 messages emitted by the auth middleware. Anything else — a
+ * `TypeError: Failed to fetch`, a timeout, or a 5xx status — is treated as a
+ * transport failure that should surface an auth-init error state.
+ */
+function isNoSessionError(error: unknown): boolean {
+  const message = (error instanceof Error ? error.message : String(error ?? '')).toLowerCase();
+  return (
+    message.includes('authentication required') ||
+    message.includes('invalid or expired token') ||
+    message.includes('unauthorized') ||
+    message.includes('401')
+  );
+}
+
 interface AuthContextType {
   user: User | null;
   tenant: Tenant | null;
   isLoading: boolean;
+  /**
+   * Set when auth initialization (`/auth/me` during session restore) fails due
+   * to a genuine transport error (network/5xx) rather than a missing session.
+   * A 401 / "no session" clears this and leaves `user === null`. The UI reads
+   * this to render an explicit recovery state instead of a silent blank screen.
+   */
+  authError: string | null;
+  /** Re-runs auth initialization (`/auth/me`) after a transport failure. */
+  retryAuthInit: () => Promise<void>;
+  /**
+   * Re-hydrates the cached user/tenant from the canonical `/auth/me` payload
+   * without toggling the full-screen loading state. Call after a server-side
+   * change to gate-relevant fields (e.g. completing onboarding, verifying
+   * email) so downstream guards see the fresh `emailVerified` /
+   * `onboardingCompletedAt` instead of a stale cached value.
+   */
+  refreshUser: () => Promise<void>;
   login: (email: string, password?: string) => Promise<boolean>;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
@@ -39,48 +74,96 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser]       = useState<User | null>(null);
   const [tenant, setTenant]   = useState<Tenant | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
 
-  // ── Restore session on mount ──────────────────────────────────────
-  useEffect(() => {
-    const restoreSession = async () => {
-      if (USE_MOCK_AUTH) {
-        // Mock: restore from localStorage
-        try {
-          const storedUser   = localStorage.getItem('leadcrm_user');
-          const storedTenant = localStorage.getItem('leadcrm_tenant');
-          if (storedUser)   setUser(JSON.parse(storedUser));
-          if (storedTenant) setTenant(JSON.parse(storedTenant));
-        } catch {
-          // Corrupted storage — clear it
-          localStorage.removeItem('leadcrm_user');
-          localStorage.removeItem('leadcrm_tenant');
-        }
-        setIsLoading(false);
-      } else {
-        // Real API — verify the HttpOnly cookie by calling /auth/me
-        try {
-          const res = await authApi.me();
-          if (res?.data?.user) {
-            const apiUser = res.data.user as unknown as User;
-            setUser(apiUser);
-            if (apiUser.tenantId && apiUser.tenantId !== 'system') {
-              setTenant({ id: apiUser.tenantId, name: '', status: 'active', environment: 'production' } as any);
-            }
-          } else {
-            setUser(null);
-            setTenant(null);
+  // ── Restore session ───────────────────────────────────────────────
+  const restoreSession = async (): Promise<void> => {
+    if (USE_MOCK_AUTH) {
+      // Mock: restore from localStorage
+      try {
+        const storedUser   = localStorage.getItem('leadcrm_user');
+        const storedTenant = localStorage.getItem('leadcrm_tenant');
+        if (storedUser)   setUser(JSON.parse(storedUser));
+        if (storedTenant) setTenant(JSON.parse(storedTenant));
+      } catch {
+        // Corrupted storage — clear it
+        localStorage.removeItem('leadcrm_user');
+        localStorage.removeItem('leadcrm_tenant');
+      }
+      setAuthError(null);
+      setIsLoading(false);
+    } else {
+      // Real API — verify the HttpOnly cookie by calling /auth/me
+      try {
+        const res = await authApi.me();
+        if (res?.data?.user) {
+          const apiUser = res.data.user as unknown as User;
+          setUser(apiUser);
+          if (apiUser.tenantId && apiUser.tenantId !== 'system') {
+            setTenant({ id: apiUser.tenantId, name: '', status: 'active', environment: 'production' } as any);
           }
-        } catch {
-          // No valid session cookie — user needs to log in
+        } else {
           setUser(null);
           setTenant(null);
         }
-        setIsLoading(false);
+        setAuthError(null);
+      } catch (err: unknown) {
+        // Distinguish "no session" (401 → logged out, not an error) from a
+        // genuine transport failure (network/5xx). A missing session clears
+        // state silently; a transport failure surfaces a recovery state so the
+        // user never lands on a silent blank screen.
+        setUser(null);
+        setTenant(null);
+        if (isNoSessionError(err)) {
+          setAuthError(null);
+        } else {
+          setAuthError(err instanceof Error ? err.message : 'Unable to verify your session');
+          if (process.env.NODE_ENV !== 'production') {
+            // eslint-disable-next-line no-console
+            console.error('[AuthContext] auth init failed:', err instanceof Error ? err.message : err);
+          }
+        }
       }
-    };
+      setIsLoading(false);
+    }
+  };
 
+  // ── Restore session on mount ──────────────────────────────────────
+  useEffect(() => {
     restoreSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Run once on mount only — session restore is not NextAuth-dependent
+
+  // ── Retry auth initialization after a transport failure ───────────
+  const retryAuthInit = async (): Promise<void> => {
+    setIsLoading(true);
+    setAuthError(null);
+    await restoreSession();
+  };
+
+  // ── Refresh cached user/tenant without toggling loading ───────────
+  // Re-hydrates from the canonical /auth/me payload after a server-side
+  // change to gate-relevant fields (onboarding, email verification) so
+  // downstream guards see fresh values instead of a stale cached user.
+  const refreshUser = async (): Promise<void> => {
+    if (USE_MOCK_AUTH) return;
+    try {
+      const res = await authApi.me();
+      if (res?.data?.user) {
+        const apiUser = res.data.user as unknown as User;
+        setUser(apiUser);
+        if (apiUser.tenantId && apiUser.tenantId !== 'system') {
+          setTenant({ id: apiUser.tenantId, name: '', status: 'active', environment: 'production' } as any);
+        }
+        setAuthError(null);
+      }
+    } catch (err: unknown) {
+      if (process.env.NODE_ENV !== 'production') {
+        // eslint-disable-next-line no-console
+        console.error('[AuthContext] refreshUser failed:', err instanceof Error ? err.message : err);
+      }
+    }
+  };
 
   // ── Login ─────────────────────────────────────────────────────────
   const login = async (email: string, password?: string): Promise<boolean> => {
@@ -91,11 +174,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const res = await authApi.login({ email, password: password ?? '' });
       if (res?.data?.user) {
-        const apiUser = res.data.user as unknown as User;
+        // Defense-in-depth: re-hydrate from the canonical /auth/me payload so
+        // the stored user always carries the gate fields (emailVerified,
+        // onboardingCompletedAt, etc.) regardless of the login response shape.
+        // Fall back to the (now-aligned) login payload if the me call fails.
+        let apiUser = res.data.user as unknown as User;
+        try {
+          const meRes = await authApi.me();
+          if (meRes?.data?.user) {
+            apiUser = meRes.data.user as unknown as User;
+          }
+        } catch (meErr: unknown) {
+          if (process.env.NODE_ENV !== 'production') {
+            // eslint-disable-next-line no-console
+            console.error('[AuthContext] post-login re-hydrate failed, using login payload:', meErr instanceof Error ? meErr.message : meErr);
+          }
+        }
         setUser(apiUser);
         if (apiUser.tenantId && apiUser.tenantId !== 'system') {
           setTenant({ id: apiUser.tenantId, name: '', status: 'active', environment: 'production' } as any);
         }
+        setAuthError(null);
         return true;
       }
       return false;
@@ -182,6 +281,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setUser(null);
     setTenant(null);
+    setAuthError(null);
     localStorage.removeItem('leadcrm_user');
     localStorage.removeItem('leadcrm_tenant');
     // Clear onboarding flags so the next user on this browser sees the
@@ -361,7 +461,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, tenant, isLoading, login, loginWithGoogle, logout, registerTenant, registerGuestAccount, requestPasswordReset, confirmPasswordReset, switchRole, updateProfile, switchDemoAccount }}>
+    <AuthContext.Provider value={{ user, tenant, isLoading, authError, retryAuthInit, refreshUser, login, loginWithGoogle, logout, registerTenant, registerGuestAccount, requestPasswordReset, confirmPasswordReset, switchRole, updateProfile, switchDemoAccount }}>
       {children}
     </AuthContext.Provider>
   );

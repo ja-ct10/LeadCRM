@@ -7,6 +7,7 @@ import dynamic from 'next/dynamic';
 import { useAuth } from '@/store/AuthContext';
 import { ONBOARDING_COMPLETE_KEY, NEEDS_COMPANY_SETUP_KEY } from '@/shared/providers/auth-guard';
 import { PATH_TO_PATHNAME } from '@/lib/route-map';
+import { AuthLoadingScreen } from '@/shared/components/auth-loading-screen';
 
 const CompanySetupPage = dynamic(
   () => import('../../src/features/tenant/pages/company-setup-page'),
@@ -26,7 +27,7 @@ export default function CompanySetupRoute() {
     }
   }, [user, isLoading, router]);
 
-  if (isLoading || (!user && !nextAuthSession)) return null;
+  if (isLoading || (!user && !nextAuthSession)) return <AuthLoadingScreen />;
 
   const handleNavigate = async (path: string) => {
     if (path === 'dashboard') {

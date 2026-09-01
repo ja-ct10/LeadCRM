@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { useAuth } from '@/store/AuthContext';
+import { AuthLoadingScreen } from '@/shared/components/auth-loading-screen';
 
 const OnboardingPage = dynamic(
   () => import('../../src/features/tenant/pages/onboarding-page'),
@@ -24,7 +25,7 @@ export default function OnboardingRoute() {
     }
   }, [user, isLoading, router]);
 
-  if (isLoading || !user) return null;
+  if (isLoading || !user) return <AuthLoadingScreen />;
 
   const handleNavigate = (path: string) => {
     if (path === 'dashboard') {

@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import {
   loginUser,
+  buildAuthUserResponse,
   registerClientAdmin as registerClientAdminService,
   registerGuest as registerGuestService,
   requestPasswordReset,
@@ -101,19 +102,12 @@ export async function me(req: Request, res: Response, next: NextFunction): Promi
     });
     if (!user) { res.status(401).json({ success: false, error: 'User not found' }); return; }
 
-    // Flatten tenant fields onto the user object for easy consumption
-    const { tenant, ...userFields } = user;
+    // Flatten tenant fields onto the user object via the shared helper so the
+    // /auth/me and POST /auth/login payloads are guaranteed identical in shape.
     res.json({
       success: true,
       data: {
-        user: {
-          ...userFields,
-          tenantName:           tenant?.name                ?? null,
-          industry:             tenant?.industry            ?? null,
-          companySize:          tenant?.companySize         ?? null,
-          onboardingStep:       tenant?.onboardingStep      ?? 0,
-          onboardingCompletedAt: tenant?.onboardingCompletedAt ?? null,
-        },
+        user: buildAuthUserResponse(user),
       },
     });
   } catch (err) { next(err); }

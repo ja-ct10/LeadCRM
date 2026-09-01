@@ -126,8 +126,16 @@ export default function ClientBillingPage() {
         return;
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to change plan';
-      toast.error(message);
+      const code = (err as { code?: string })?.code;
+      if (code === 'BILLING_NOT_CONFIGURED') {
+        toast.error('Billing isn\'t set up yet', {
+          description: 'Online plan changes aren\'t available in this environment. Please contact your administrator to enable billing.',
+        });
+        setShowPlanModal(false);
+      } else {
+        const message = err instanceof Error ? err.message : 'Failed to change plan';
+        toast.error(message);
+      }
     } finally {
       setCheckoutLoading(false);
     }

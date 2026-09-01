@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Building2, Users, Rocket, ChevronRight, ArrowLeft, Plus, X, Check, SkipForward } from 'lucide-react';
 import { toast } from 'sonner';
 import { authApi } from '@/shared/services/auth.api';
+import { useAuth } from '@/store/AuthContext';
 
 interface OnboardingPageProps {
   onNavigate: (path: string) => void;
@@ -19,6 +20,7 @@ const INDUSTRIES = [
 const COMPANY_SIZES = ['1-10', '11-50', '51-200', '201-500', '500+'];
 
 export default function OnboardingPage({ onNavigate }: OnboardingPageProps): React.ReactElement {
+  const { refreshUser } = useAuth();
   const [currentStep, setCurrentStep] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -176,6 +178,9 @@ export default function OnboardingPage({ onNavigate }: OnboardingPageProps): Rea
       if (typeof window !== 'undefined') {
         localStorage.setItem('leadcrm_onboarding_complete', 'true');
       }
+      // Re-hydrate the cached auth user so AuthGuard on /dashboard sees the
+      // fresh emailVerified + onboardingCompletedAt and does not bounce back.
+      await refreshUser();
       toast.success('Welcome to LeadCRM! Your workspace is ready.');
       onNavigate('dashboard');
     } catch (err: unknown) {

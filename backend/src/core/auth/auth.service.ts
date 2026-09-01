@@ -31,9 +31,90 @@ export interface LoginContext {
   ipAddress?: string;
 }
 
+/**
+ * Minimal user + flattened tenant fields needed to build the canonical auth
+ * user response. Kept intentionally narrow so no sensitive field (e.g.
+ * passwordHash) can leak into the payload — see buildAuthUserResponse.
+ */
+export interface AuthUserSource {
+  id: string;
+  email: string;
+  role: string;
+  firstName: string;
+  lastName: string;
+  tenantId: string;
+  status?: string;
+  emailVerified?: Date | null;
+  tenant?: {
+    name?: string | null;
+    industry?: string | null;
+    companySize?: string | null;
+    onboardingStep?: number | null;
+    onboardingCompletedAt?: Date | null;
+  } | null;
+}
+
+/**
+ * The single canonical auth user shape returned by BOTH POST /auth/login and
+ * GET /auth/me. Flattens the tenant relation onto the user object.
+ *
+ * SECURITY: This helper is the ONLY place the auth user payload is assembled,
+ * and it explicitly enumerates every exposed field. It MUST NOT include
+ * passwordHash or any other sensitive/credential field.
+ */
+export interface AuthUserResponse {
+  id: string;
+  email: string;
+  role: string;
+  firstName: string;
+  lastName: string;
+  tenantId: string;
+  status: string | null;
+  emailVerified: Date | null;
+  tenantName: string | null;
+  industry: string | null;
+  companySize: string | null;
+  onboardingStep: number;
+  onboardingCompletedAt: Date | null;
+}
+
+/**
+ * Builds the canonical, flattened auth user response used by both the login
+ * and /auth/me contracts so the two payloads are guaranteed identical in shape.
+ *
+ * Only intended gate/display fields are exposed. No sensitive fields
+ * (passwordHash, tokens, secrets) are ever included.
+ */
+export function buildAuthUserResponse(user: AuthUserSource): AuthUserResponse {
+  const tenant = user.tenant ?? null;
+  return {
+    id:                    user.id,
+    email:                 user.email,
+    role:                  user.role,
+    firstName:             user.firstName,
+    lastName:              user.lastName,
+    tenantId:              user.tenantId,
+    status:                user.status ?? null,
+    emailVerified:         user.emailVerified ?? null,
+    tenantName:            tenant?.name                 ?? null,
+    industry:              tenant?.industry             ?? null,
+    companySize:           tenant?.companySize          ?? null,
+    onboardingStep:        tenant?.onboardingStep       ?? 0,
+    onboardingCompletedAt: tenant?.onboardingCompletedAt ?? null,
+  };
+}
+
 export async function loginUser(dto: LoginDto, ctx: LoginContext = {}) {
   const user = await prisma.user.findFirst({
     where: { email: dto.email },
+    include: {
+      tenant: {
+        select: {
+          name: true, industry: true, companySize: true,
+          onboardingStep: true, onboardingCompletedAt: true,
+        },
+      },
+    },
   });
 
   // Generic message — do not reveal whether email exists
@@ -78,14 +159,9 @@ export async function loginUser(dto: LoginDto, ctx: LoginContext = {}) {
 
   return {
     token,
-    user: {
-      id:        user.id,
-      email:     user.email,
-      role:      user.role,
-      firstName: user.firstName,
-      lastName:  user.lastName,
-      tenantId:  user.tenantId,
-    },
+    // Align the login response contract with GET /auth/me by returning the
+    // same canonical, flattened shape via the shared helper.
+    user: buildAuthUserResponse(user),
   };
 }
 
