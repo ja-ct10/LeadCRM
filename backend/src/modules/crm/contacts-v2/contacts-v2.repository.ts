@@ -6,17 +6,36 @@ import { getPaginationParams } from '../../../shared/helpers/pagination';
  *
  * Field mapping (schema ↔ DB):
  *   company        → Contact.company       (plain text, company name)
- *   organizationId → Contact.organizationId (FK → Organization.id)
+ *   accountId      → Contact.accountId      (FK → Account.id)  ← CANONICAL company link (ADR-001)
+ *   organizationId → Contact.organizationId (FK → Organization.id)  ← DEPRECATED (contract phase removes it)
  *   status         → ContactStatus enum    (HOT | WARM | COLD | CANCELLED | CLOSED)
  *   productInterests → String[]
  *   isArchived     → Boolean (archive = set isArchived:true, not status change)
+ *
+ * Compatibility: a client-supplied `organizationId` is accepted as a DEPRECATED input alias
+ * and resolved to the canonical `accountId`. The stored/authoritative value is `accountId`.
  */
 
 // ── Shared include shape ───────────────────────────────────────────────────
 const CONTACT_INCLUDE = {
   assignedUser: { select: { id: true, firstName: true, lastName: true } },
+  account:      { select: { id: true, name: true } },
   organization: { select: { id: true, name: true } },
 } as const;
+
+/**
+ * Normalize a write DTO: treat a legacy `organizationId` as a deprecated alias for the
+ * canonical `accountId`. If both are present, `accountId` wins. The alias key is stripped
+ * so no new writes populate `organizationId`.
+ */
+function normalizeCompanyAlias(dto: Record<string, unknown>): Record<string, unknown> {
+  const next = { ...dto };
+  if (next.accountId == null && next.organizationId != null) {
+    next.accountId = next.organizationId;
+  }
+  delete next.organizationId;
+  return next;
+}
 
 export async function findAllContacts(tenantId: string, query: Record<string, unknown>) {
   const { page, limit } = getPaginationParams(query);
@@ -36,8 +55,11 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
     where['assignedUserId'] = String(query.assignedUserId);
   }
 
-  if (query.organizationId) {
-    where['organizationId'] = String(query.organizationId);
+  // Canonical company filter. `organizationId` accepted as a deprecated alias for accountId.
+  if (query.accountId) {
+    where['accountId'] = String(query.accountId);
+  } else if (query.organizationId) {
+    where['accountId'] = String(query.organizationId);
   }
 
   if (query.lifecycleStage) {
@@ -79,7 +101,7 @@ export async function findContactById(id: string, tenantId: string) {
 
 export async function createContact(tenantId: string, dto: Record<string, unknown>) {
   return prisma.contact.create({
-    data: { ...dto, tenantId } as never,
+    data: { ...normalizeCompanyAlias(dto), tenantId } as never,
     include: CONTACT_INCLUDE,
   });
 }
@@ -88,7 +110,7 @@ export async function updateContact(id: string, tenantId: string, dto: Record<st
   try {
     return await prisma.contact.update({
       where:   { id, tenantId } as never,
-      data:    dto as never,
+      data:    normalizeCompanyAlias(dto) as never,
       include: CONTACT_INCLUDE,
     });
   } catch {

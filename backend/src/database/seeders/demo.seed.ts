@@ -42,9 +42,20 @@ export async function seedDemoAccounts(): Promise<void> {
   });
 
   // Primary System Admin — email/password controlled by env vars.
-  // Falls back to admin@gmail.com / admin123 so fresh clones work without .env edits.
+  // SECURITY: In production, SYSTEM_ADMIN_PASSWORD must be explicitly set to a strong
+  // value in the deployment platform's secret config. The seeder refuses to run with the
+  // default 'admin123' password in production to prevent accidental weak-credential deployment.
   const systemAdminEmail    = (process.env.SYSTEM_ADMIN_EMAIL    ?? 'admin@gmail.com').toLowerCase().trim();
   const systemAdminPassword = process.env.SYSTEM_ADMIN_PASSWORD  ?? 'admin123';
+
+  if (process.env.NODE_ENV === 'production' && systemAdminPassword === 'admin123') {
+    throw new Error(
+      '[Seed] SECURITY: SYSTEM_ADMIN_PASSWORD must be set to a strong password in production. ' +
+      'Set it in your deployment platform\'s environment configuration (e.g. Render dashboard). ' +
+      'Do NOT use the default admin123 password in production.',
+    );
+  }
+
   const systemAdminHash     =
     systemAdminEmail === 'admin@gmail.com' && systemAdminPassword === 'admin123'
       ? passwordHash // reuse already-computed hash

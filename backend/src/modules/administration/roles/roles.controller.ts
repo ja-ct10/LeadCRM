@@ -47,3 +47,22 @@ export async function removeRoleFromUser(req: Request, res: Response, next: Next
     res.status(204).send();
   } catch (err) { next(err); }
 }
+
+export async function getUserPermissions(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    // Users may only retrieve their own permissions; Client Admins may retrieve any user's.
+    const targetUserId = String(req.params.id);
+    const { userId, tenantId, role } = req.user!;
+
+    const SUPER_ROLES = ['Admin', 'Super User', 'Client Admin', 'System Admin'];
+    const isAdmin = SUPER_ROLES.some(r => r.toLowerCase() === (role ?? '').toLowerCase().trim());
+
+    if (!isAdmin && targetUserId !== userId) {
+      res.status(403).json({ success: false, error: 'Access denied' });
+      return;
+    }
+
+    const permissions = await service.getUserPermissions(targetUserId, tenantId, role);
+    res.json({ success: true, data: permissions });
+  } catch (err) { next(err); }
+}

@@ -14,6 +14,7 @@ router.use(tenantMiddleware);
 
 // ── Users ─────────────────────────────────────────────
 router.get(   '/users',                  authorize('users.view'),   userController.getAll);
+router.get(   '/users/:id/permissions',  authMiddleware,            roleController.getUserPermissions);
 router.get(   '/users/:id',              authorize('users.view'),   userController.getById);
 router.post(  '/users',                  authorize('users.manage'), userController.create);
 router.put(   '/users/:id',              authorize('users.manage'), userController.update);

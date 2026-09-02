@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { PageSizeSelect } from '@/shared/components/page-size-select';
 import { useRouter } from 'next/navigation';
+import { contactsV2Api } from '@/shared/services/contacts-v2.api';
 // ── Contacts Page ─────────────────────────────────────────────────────────────
 // Shows all contacts with activity flags, customer type, account links, deals
 
@@ -28,6 +29,8 @@ export default function ContactsPage(): React.ReactElement {
   const { organizations, deals, users } = useData();
   const { user } = useAuth();
   const canCreate = useHasPermission('contacts.create');
+  const canEdit   = useHasPermission('contacts.edit');
+  const canDelete = useHasPermission('contacts.delete');
   const { getParam, getArrayParam, updateParams } = useFilterUrlSync('contacts');
 
   // ── Contacts Data (fetched from /crm/contacts — Contact table) ────────
@@ -35,11 +38,11 @@ export default function ContactsPage(): React.ReactElement {
 
   const fetchContacts = useCallback(async () => {
     try {
-      const { apiClient } = await import('@/lib/api/client');
-      const res: any = await apiClient.get('/crm/contacts', { params: { limit: 100 } });
+      const res = await contactsV2Api.list({ limit: 100 });
       setContacts((res?.data ?? []) as Contact[]);
     } catch (err) {
       console.error('[ContactsPage] Failed to fetch contacts:', err);
+      toast.error('Failed to load contacts. Please refresh the page.');
     }
   }, []);
 
@@ -379,8 +382,18 @@ export default function ContactsPage(): React.ReactElement {
             const u = users.find((usr) => usr.id === userId);
             return u ? `${u.firstName} ${u.lastName}` : '—';
           }}
-          canEdit={false}
-          canDelete={false}
+          canEdit={canEdit}
+          canDelete={canDelete}
+          onEdit={(contact) => { setEditingContact(contact); setIsFormOpen(true); }}
+          onDelete={async (contact) => {
+            try {
+              await contactsV2Api.archive(contact.id);
+              setContacts((prev) => prev.filter((c) => c.id !== contact.id));
+              toast.success('Contact archived successfully');
+            } catch (err: unknown) {
+              toast.error(err instanceof Error ? err.message : 'Failed to archive contact');
+            }
+          }}
           onHideColumn={async (columnId) => {
             const updated = effectiveColumns.map((col) =>
               col.id === columnId ? { ...col, visible: false } : col,
@@ -508,16 +521,17 @@ export default function ContactsPage(): React.ReactElement {
       initialData={editingContact}
       onSave={async (data) => {
         try {
-          const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
           if (editingContact) {
-            await fetch(`${apiUrl}/crm/contacts/${editingContact.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(data) });
+            await contactsV2Api.update(editingContact.id, data);
             toast.success('Contact updated successfully');
           } else {
-            await fetch(`${apiUrl}/crm/contacts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(data) });
+            await contactsV2Api.create(data);
             toast.success('Contact created successfully');
           }
-          fetchContacts();
-        } catch { toast.error('Failed to save contact'); }
+          await fetchContacts();
+        } catch (err: unknown) {
+          toast.error(err instanceof Error ? err.message : 'Failed to save contact');
+        }
         setIsFormOpen(false);
         setEditingContact(undefined);
       }}

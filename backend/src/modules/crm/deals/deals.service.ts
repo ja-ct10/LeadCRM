@@ -83,9 +83,13 @@ export async function updateDeal(id: string, tenantId: string, userId: string, d
   }
   if (!deal) throw new NotFoundError('Deal');
 
-  // After deal update succeeds, sync contact associations if provided
+  // After deal update succeeds, sync associations if provided.
+  // Contacts → ContactDeal, Leads → LeadDeal (distinct junctions).
   if (dto.contactIds) {
     await repo.syncContactAssociations(id, tenantId, dto.contactIds, userId);
+  }
+  if (dto.leadIds) {
+    await repo.syncLeadAssociations(id, tenantId, dto.leadIds, userId);
   }
 
   const { before: changedBefore, after: changedAfter } = buildChangeset(
@@ -228,11 +232,20 @@ export async function duplicateDeal(id: string, tenantId: string, userId: string
       } as never,
     });
 
-    // Copy contact associations from source deal
-    const associations = await prisma.leadDeal.findMany({ where: { dealId: id, tenantId } });
-    if (associations.length > 0) {
+    // Copy lead associations from source deal
+    const leadAssociations = await prisma.leadDeal.findMany({ where: { dealId: id, tenantId } });
+    if (leadAssociations.length > 0) {
       await prisma.leadDeal.createMany({
-        data: associations.map(a => ({ leadId: a.leadId, dealId: newDeal.id, tenantId, addedById: userId })),
+        data: leadAssociations.map(a => ({ leadId: a.leadId, dealId: newDeal.id, tenantId, addedById: userId })),
+        skipDuplicates: true,
+      });
+    }
+
+    // Copy contact associations from source deal
+    const contactAssociations = await prisma.contactDeal.findMany({ where: { dealId: id, tenantId } });
+    if (contactAssociations.length > 0) {
+      await prisma.contactDeal.createMany({
+        data: contactAssociations.map(a => ({ contactId: a.contactId, dealId: newDeal.id, tenantId, addedById: userId })),
         skipDuplicates: true,
       });
     }

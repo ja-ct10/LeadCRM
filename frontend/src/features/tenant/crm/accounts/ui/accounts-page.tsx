@@ -30,9 +30,9 @@ import type { ColumnConfigItem } from '@leadcrm/shared';
 
 export default function AccountsPage(): React.ReactElement {
   const router = useRouter();
-  const canCreate = useHasPermission('contacts.create');
-  const canEdit = useHasPermission('contacts.edit');
-  const canDelete = useHasPermission('contacts.delete');
+  const canCreate = useHasPermission('accounts.create');
+  const canEdit = useHasPermission('accounts.edit');
+  const canDelete = useHasPermission('accounts.delete');
 
   const {
     accounts,

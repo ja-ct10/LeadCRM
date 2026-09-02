@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import * as repo from './contacts.repository';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { NotFoundError, ValidationError } from '../../../shared/errors/http-error';
@@ -139,23 +140,27 @@ export async function convertContact(
         });
       }
     } else if (dto.createContact !== false) {
-      // Create new Contact from Lead data
-      contact = await tx.contact.create({
-        data: {
-          tenantId,
-          firstName: lead.firstName,
-          lastName: lead.lastName,
-          email: lead.email,
-          phone: lead.phone,
-          companyName: lead.companyName,
-          address: lead.address,
-          source: lead.source,
-          productInterest: lead.productInterest || [],
-          assignedUserId: lead.assignedUserId,
-          accountId: accountId,
-          status: 'Active',
-        } as never,
-      });
+      // Create new Contact from Lead data.
+      // Field mapping (Lead -> Contact): companyName -> company, productInterest -> productInterests.
+      // status must be a valid ContactStatus enum; lifecycleStage marks the converted-customer state.
+      // accountId is the canonical company link (ADR-001). Typed to catch field-name regressions.
+      const contactData: Prisma.ContactUncheckedCreateInput = {
+        tenantId,
+        firstName: lead.firstName,
+        lastName: lead.lastName,
+        email: lead.email,
+        phone: lead.phone,
+        company: lead.companyName ?? null,
+        address: lead.address,
+        source: lead.source,
+        productInterests: lead.productInterest ?? [],
+        assignedUserId: lead.assignedUserId,
+        accountId: accountId ?? null,
+        status: 'WARM',
+        lifecycleStage: 'CUSTOMER',
+        convertedAt: now,
+      };
+      contact = await tx.contact.create({ data: contactData });
       contactId = contact.id;
     }
 
@@ -229,15 +234,15 @@ export async function convertContact(
         });
       }
 
-      // Activity for deal creation
-      await tx.activity.create({
-        data: {
-          tenantId, createdById: userId,
-          type: 'deal_created',
-          title: `Deal "${dto.dealTitle}" created via conversion`,
-          dealId: deal.id, leadId: id, accountId: accountId,
-        } as never,
-      });
+      // Activity for deal creation — link to the deal only (exactly-one-FK rule).
+      const dealActivity: Prisma.ActivityUncheckedCreateInput = {
+        tenantId,
+        createdById: userId,
+        type: 'deal_created',
+        title: `Deal "${dto.dealTitle}" created via conversion`,
+        dealId: deal.id,
+      };
+      await tx.activity.create({ data: dealActivity });
     }
 
     // ─── 4. Update the Lead record ────────────────────────────────────────
@@ -253,15 +258,17 @@ export async function convertContact(
     });
 
     // ─── 5. Activity for conversion ───────────────────────────────────────
-    await tx.activity.create({
-      data: {
-        tenantId, createdById: userId,
-        type: 'conversion',
-        title: `Lead converted — linked to ${account?.name || 'Account'}${contact ? `, Contact ${contact.firstName} ${contact.lastName}` : ''}`,
-        leadId: id, accountId: accountId,
-        ...(contactId ? { customerId: contactId } : {}),
-      } as never,
-    });
+    // Activity uses typed FKs with the "exactly one non-null" rule (see Activity model).
+    // Link to the source Lead only; the account/contact names are captured in the title.
+    // (Matches the moveDealStage precedent that trims extra FKs to avoid P2003.)
+    const conversionActivity: Prisma.ActivityUncheckedCreateInput = {
+      tenantId,
+      createdById: userId,
+      type: 'conversion',
+      title: `Lead converted — linked to ${account?.name || 'Account'}${contact ? `, Contact ${contact.firstName} ${contact.lastName}` : ''}`,
+      leadId: id,
+    };
+    await tx.activity.create({ data: conversionActivity });
 
     return { lead, contact, account, deal };
   });

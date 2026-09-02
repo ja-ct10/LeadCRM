@@ -54,3 +54,39 @@ export async function assignRoleToUser(userId: string, roleId: string, tenantId:
 export async function removeRoleFromUser(userId: string, roleId: string, tenantId: string) {
   return prisma.userRole.deleteMany({ where: { userId, roleId, tenantId } });
 }
+
+/**
+ * Resolve a user's effective permissions by joining UserRole → RolePermission,
+ * ORing all boolean flags across all of the user's assigned roles.
+ * Returns a map of module → { canView, canCreate, canEdit, canDelete }.
+ */
+export async function findUserEffectivePermissions(
+  userId: string,
+  tenantId: string,
+): Promise<Record<string, { canView: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean }>> {
+  const userRoles = await prisma.userRole.findMany({
+    where: { userId, tenantId },
+    include: {
+      role: {
+        include: { permissions: true },
+      },
+    },
+  });
+
+  const resolved: Record<string, { canView: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean }> = {};
+
+  for (const ur of userRoles) {
+    for (const perm of ur.role.permissions) {
+      if (!resolved[perm.module]) {
+        resolved[perm.module] = { canView: false, canCreate: false, canEdit: false, canDelete: false };
+      }
+      // OR semantics: grant if any role grants it
+      resolved[perm.module].canView   = resolved[perm.module].canView   || perm.canView;
+      resolved[perm.module].canCreate = resolved[perm.module].canCreate || perm.canCreate;
+      resolved[perm.module].canEdit   = resolved[perm.module].canEdit   || perm.canEdit;
+      resolved[perm.module].canDelete = resolved[perm.module].canDelete || perm.canDelete;
+    }
+  }
+
+  return resolved;
+}

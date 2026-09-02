@@ -19,6 +19,8 @@ import * as fc from 'fast-check';
 const mockDealCreate = vi.fn();
 const mockLeadDealFindMany = vi.fn();
 const mockLeadDealCreateMany = vi.fn();
+const mockContactDealFindMany = vi.fn();
+const mockContactDealCreateMany = vi.fn();
 
 vi.mock('../../../../config/database.config', () => {
   return {
@@ -29,6 +31,10 @@ vi.mock('../../../../config/database.config', () => {
       leadDeal: {
         findMany: (...args: unknown[]) => mockLeadDealFindMany(...args),
         createMany: (...args: unknown[]) => mockLeadDealCreateMany(...args),
+      },
+      contactDeal: {
+        findMany: (...args: unknown[]) => mockContactDealFindMany(...args),
+        createMany: (...args: unknown[]) => mockContactDealCreateMany(...args),
       },
     },
     enforcePlanLimit: vi.fn().mockResolvedValue(undefined),
@@ -127,6 +133,8 @@ function setupMocks(): void {
   mockDealCreate.mockReset();
   mockLeadDealFindMany.mockReset();
   mockLeadDealCreateMany.mockReset();
+  mockContactDealFindMany.mockReset();
+  mockContactDealCreateMany.mockReset();
   vi.mocked(repo.findDealById).mockReset();
 
   mockDealCreate.mockImplementation(async (args: { data: Record<string, unknown> }) => ({
@@ -137,6 +145,8 @@ function setupMocks(): void {
   }));
   mockLeadDealFindMany.mockResolvedValue([]);
   mockLeadDealCreateMany.mockResolvedValue({ count: 0 });
+  mockContactDealFindMany.mockResolvedValue([]);
+  mockContactDealCreateMany.mockResolvedValue({ count: 0 });
 }
 
 // ─────────────────────────────────────────────────────

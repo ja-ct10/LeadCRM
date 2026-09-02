@@ -44,8 +44,12 @@ vi.mock('../../../../config/database.config', () => {
   };
 });
 
-// Import after mocking
-import { syncContactAssociations } from '../deals.repository';
+// Import after mocking.
+// NOTE: This suite covers the LEAD junction sync. The behavior it asserts (LeadDeal/Lead)
+// lives in `syncLeadAssociations` after the G1 fix (deal-contact-association-fix). The
+// contact junction sync (ContactDeal/Contact) is covered separately in
+// deals-contact-junction-sync.property.test.ts.
+import { syncLeadAssociations as syncContactAssociations } from '../deals.repository';
 
 // ─────────────────────────────────────────────────────
 // GENERATORS

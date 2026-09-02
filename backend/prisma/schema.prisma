@@ -578,6 +578,7 @@ model Account {
   leads        Lead[]
   deals        Deal[]
   activities   Activity[]
+  contacts     Contact[]
 
   @@index([tenantId, isArchived])
   @@index([tenantId, name])
@@ -689,6 +690,9 @@ model Contact {
   id                  String               @id @default(uuid())
   tenantId            String
   organizationId      String?
+  // Canonical company link (ADR-001). organizationId is retained during the
+  // expand->contract migration and removed in the contract phase.
+  accountId           String?
   assignedUserId      String?
   ownerId             String?
   firstName           String
@@ -723,6 +727,7 @@ model Contact {
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id])
   organization Organization? @relation(fields: [organizationId], references: [id])
+  account      Account?      @relation(fields: [accountId], references: [id])
   assignedUser User?         @relation("AssignedCustomers", fields: [assignedUserId], references: [id])
   owner        User?         @relation("OwnedContacts", fields: [ownerId], references: [id])
 
@@ -741,6 +746,7 @@ model Contact {
   @@index([tenantId, email])
   @@index([tenantId, createdAt])
   @@index([tenantId, organizationId])
+  @@index([tenantId, accountId])
   @@map("Contact")
 }
 

@@ -18,7 +18,7 @@ import { motion } from 'motion/react';
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const { contacts, deals, users, roles, tasks, tenants } = useData();
+  const { contacts, deals, users, roles, tasks, tenants, pipelines } = useData();
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -51,18 +51,18 @@ export default function Dashboard() {
       csvRows.push(['Metric', 'Value', 'Trend', 'Status']);
       
       if (isClientAdmin) {
-        csvRows.push(['Total Revenue', `₱${totalRevenue > 0 ? totalRevenue.toLocaleString() : '328,000'}`, '+12%', 'Up']);
-        csvRows.push(['Forecasted Revenue', `₱${Math.round(forecastedRevenue).toLocaleString()}`, '+8%', 'Up']);
-        csvRows.push(['Active Deals', activeDeals.length || 90, '+12', 'Up']);
-        csvRows.push(['Total Leads', contacts.length || 0, '+180', 'Up']);
-        csvRows.push(['Win Rate', `${winRate || 24}%`, '-1.2%', 'Down']);
-        csvRows.push(['Avg Velocity', `${avgVelocity} days`, '-2 days', 'Up']);
+        csvRows.push(['Total Revenue', `₱${totalRevenue.toLocaleString()}`, `${wonDeals.length} won`, 'Real data']);
+        csvRows.push(['Forecasted Revenue', `₱${Math.round(forecastedRevenue).toLocaleString()}`, `${activeDeals.length} active`, 'Real data']);
+        csvRows.push(['Active Deals', activeDeals.length, `${allActive.length} total`, 'Real data']);
+        csvRows.push(['Total Leads', contacts.length, '', 'Real data']);
+        csvRows.push(['Win Rate', `${winRate}%`, `${wonDeals.length}/${allActive.length}`, 'Real data']);
+        csvRows.push(['Avg Velocity', avgVelocity > 0 ? `${avgVelocity} days` : '—', 'to close', 'Real data']);
       } else {
         csvRows.push(['My Hot Leads', myHotLeads.length, `${myHotLeads.length} hot`, 'Active']);
         csvRows.push(['Pending Tasks', myPending.length, myOverdue.length > 0 ? `${myOverdue.length} overdue` : 'On track', myOverdue.length === 0 ? 'Good' : 'Alert']);
         csvRows.push(['My Active Deals', activeDeals.filter(d => d.assignedUserId === user.id).length, 'Active', 'Current']);
         csvRows.push(['Total Contacts', contacts.length, '+recent', 'Growing']);
-        csvRows.push(['Win Rate', `${winRate || 0}%`, 'This month', 'Tracking']);
+        csvRows.push(['Win Rate', `${winRate}%`, 'This month', 'Tracking']);
         csvRows.push(['Avg Velocity', `${avgVelocity} days`, 'To close', 'Current']);
       }
       
@@ -188,75 +188,93 @@ export default function Dashboard() {
   }
 
   // ── Tenant dashboard data ──────────────────────────────────
-  const activeDeals   = deals.filter(d => !d.isArchived && d.stageId !== 'stage_won' && d.stageId !== 'stage_lost');
-  const wonDeals      = deals.filter(d => d.stageId === 'stage_won');
-  const totalRevenue  = wonDeals.reduce((s, d) => s + d.value, 0);
-  const winRate       = deals.length > 0 ? Math.round((wonDeals.length / deals.length) * 100) : 0;
+  // Build a stage lookup from canonical pipelines data — avoids mock stage ID strings
+  const stageMap = useMemo(() => {
+    const map = new Map<string, { isWon: boolean; isLost: boolean; probability?: number; name: string; color?: string }>();
+    for (const pipeline of pipelines) {
+      for (const stage of (pipeline.stages ?? [])) {
+        map.set(stage.id, { isWon: !!stage.isWon, isLost: !!stage.isLost, probability: stage.probability, name: stage.name, color: stage.color });
+      }
+    }
+    return map;
+  }, [pipelines]);
+
+  const activeDeals   = deals.filter(d => !d.isArchived && !stageMap.get(d.stageId)?.isWon && !stageMap.get(d.stageId)?.isLost);
+  const wonDeals      = deals.filter(d => !d.isArchived && !!stageMap.get(d.stageId)?.isWon);
+  const totalRevenue  = wonDeals.reduce((s, d) => s + (d.value ?? 0), 0);
+  const allActive     = deals.filter(d => !d.isArchived);
+  const winRate       = allActive.length > 0 ? Math.round((wonDeals.length / allActive.length) * 100) : 0;
   const myTasks       = tasks.filter(t => t.assignedUserId === user.id);
   const myPending     = myTasks.filter(t => t.status === 'pending');
   const myOverdue     = myTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled' && t.dueDate && new Date(t.dueDate) < new Date());
   const myHotLeads    = contacts.filter(c => c.status === 'Hot' && c.assignedUserId === user.id);
 
+  // Forecasted revenue: deal value × stage probability / 100
   const forecastedRevenue = activeDeals.reduce((acc, d) => {
-    const prob: Record<string, number> = { stage_lead: 0.1, stage_qualified: 0.3, stage_proposal: 0.6, stage_negotiation: 0.8 };
-    return acc + d.value * (prob[d.stageId] || 0.1);
+    const prob = stageMap.get(d.stageId)?.probability ?? 10;
+    return acc + (d.value ?? 0) * (prob / 100);
   }, 0);
 
+  // Avg velocity: days from createdAt to lastStageChangeDate for won deals
   const avgVelocity = (() => {
-    const days = wonDeals.map(d => {
+    const closedWon = wonDeals.filter(d => d.lastStageChangeDate);
+    if (closedWon.length === 0) return 0;
+    const sum = closedWon.reduce((acc, d) => {
       const created = new Date(d.createdAt || Date.now()).getTime();
-      const wonH = d.history?.find(h => h.stageId === 'stage_won');
-      const closed = wonH ? new Date(wonH.timestamp).getTime() : Date.now();
-      return Math.max(1, Math.round((closed - created) / 86400000));
-    });
-    return days.length ? Math.round(days.reduce((a, b) => a + b, 0) / days.length) : 14;
+      const closed  = new Date(d.lastStageChangeDate!).getTime();
+      return acc + Math.max(1, Math.round((closed - created) / 86400000));
+    }, 0);
+    return Math.round(sum / closedWon.length);
   })();
 
-  const revenueData = [
-    { name: 'Nov', revenue: 45000, deals: 4 },
-    { name: 'Dec', revenue: 52000, deals: 5 },
-    { name: 'Jan', revenue: 48000, deals: 4 },
-    { name: 'Feb', revenue: 61000, deals: 6 },
-    { name: 'Mar', revenue: 55000, deals: 5 },
-    { name: 'Apr', revenue: totalRevenue > 0 ? totalRevenue : 68000, deals: wonDeals.length > 0 ? wonDeals.length : 7 },
-  ];
+  // Revenue trend: rolling 6 months from real won deals grouped by lastStageChangeDate month
+  const revenueData = useMemo(() => {
+    const now = new Date();
+    return Array.from({ length: 6 }, (_, i) => {
+      const d      = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+      const label  = d.toLocaleString('default', { month: 'short' });
+      const y      = d.getFullYear();
+      const m      = d.getMonth();
+      const monthWon = wonDeals.filter(deal => {
+        const closed = deal.lastStageChangeDate ? new Date(deal.lastStageChangeDate) : null;
+        return closed && closed.getFullYear() === y && closed.getMonth() === m;
+      });
+      return { name: label, revenue: monthWon.reduce((s, deal) => s + (deal.value ?? 0), 0), deals: monthWon.length };
+    });
+  }, [wonDeals]);
 
-  const stageColors: Record<string, string> = {
-    stage_lead: '#3B82F6', stage_qualified: '#8B5CF6',
-    stage_proposal: '#EC4899', stage_negotiation: '#F59E0B',
-    stage_won: '#10B981', stage_lost: '#EF4444',
-  };
-  const stageNames: Record<string, string> = {
-    stage_lead: 'Contact In', stage_qualified: 'Qualified',
-    stage_proposal: 'Proposal', stage_negotiation: 'Negotiation',
-    stage_won: 'Won', stage_lost: 'Lost',
-  };
-  const pipelineData = Object.entries(
-    deals.filter(d => d.stageId !== 'stage_lost').reduce((acc, d) => {
-      acc[d.stageId] = (acc[d.stageId] || 0) + 1; return acc;
-    }, {} as Record<string, number>)
-  ).map(([stageId, value]) => ({ name: stageNames[stageId] || stageId, value, color: stageColors[stageId] || '#64748b' }));
+  // Pipeline distribution using real stage names + colors from stageMap
+  const pipelineData = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const d of deals.filter(dl => !dl.isArchived && !stageMap.get(dl.stageId)?.isLost)) {
+      counts.set(d.stageId, (counts.get(d.stageId) ?? 0) + 1);
+    }
+    return Array.from(counts.entries()).map(([stageId, value]) => {
+      const stage = stageMap.get(stageId);
+      return { name: stage?.name ?? stageId, value, color: stage?.color ?? '#64748b' };
+    });
+  }, [deals, stageMap]);
 
   const topPerformers = users.map(u => {
     const won = wonDeals.filter(d => d.assignedUserId === u.id);
-    return { user: u, wonDeals: won.length, wonValue: won.reduce((s, d) => s + d.value, 0), activeDeals: activeDeals.filter(d => d.assignedUserId === u.id).length };
+    return { user: u, wonDeals: won.length, wonValue: won.reduce((s, d) => s + (d.value ?? 0), 0), activeDeals: activeDeals.filter(d => d.assignedUserId === u.id).length };
   }).sort((a, b) => b.wonValue - a.wonValue).slice(0, 5);
 
   // ── Stat card config ──────────────────────────────────────
   const statCards = isClientAdmin ? [
-    { label: 'Total Revenue', value: `₱${totalRevenue > 0 ? totalRevenue.toLocaleString() : '328,000'}`, icon: DollarSign, color: 'blue',    trend: '+12%', up: true },
-    { label: 'Forecasted',    value: `₱${Math.round(forecastedRevenue).toLocaleString()}`,               icon: TrendingUp, color: 'emerald', trend: '+8%',  up: true },
-    { label: 'Active Deals',  value: activeDeals.length || 90,                                           icon: Briefcase,  color: 'purple',  trend: '+12',  up: true },
-    { label: 'Total Leads',   value: contacts.length || 0,                                               icon: Users,      color: 'orange',  trend: '+180', up: true },
-    { label: 'Win Rate',      value: `${winRate || 24}%`,                                                icon: Target,     color: 'pink',    trend: '-1.2%', up: false },
-    { label: 'Avg Velocity',  value: `${avgVelocity}d`,                                                  icon: Zap,        color: 'indigo',  trend: '-2 days', up: true },
+    { label: 'Total Revenue', value: `₱${totalRevenue.toLocaleString()}`,             icon: DollarSign, color: 'blue',    trend: `${wonDeals.length} won`,  up: wonDeals.length > 0 },
+    { label: 'Forecasted',    value: `₱${Math.round(forecastedRevenue).toLocaleString()}`, icon: TrendingUp, color: 'emerald', trend: `${activeDeals.length} active`, up: true },
+    { label: 'Active Deals',  value: activeDeals.length,                              icon: Briefcase,  color: 'purple',  trend: `${allActive.length} total`, up: true },
+    { label: 'Total Leads',   value: contacts.length,                                 icon: Users,      color: 'orange',  trend: 'all leads',    up: true },
+    { label: 'Win Rate',      value: `${winRate}%`,                                   icon: Target,     color: 'pink',    trend: `${wonDeals.length}/${allActive.length}`, up: winRate > 0 },
+    { label: 'Avg Velocity',  value: avgVelocity > 0 ? `${avgVelocity}d` : '—',      icon: Zap,        color: 'indigo',  trend: 'to close', up: true },
   ] : [
     { label: 'My Hot Leads',     value: myHotLeads.length,  icon: Zap,       color: 'orange',  trend: `${myHotLeads.length} hot`,   up: true },
     { label: 'Pending Tasks',    value: myPending.length,   icon: Clock,     color: 'red',     trend: myOverdue.length > 0 ? `${myOverdue.length} overdue` : 'On track', up: myOverdue.length === 0 },
     { label: 'My Active Deals',  value: activeDeals.filter(d => d.assignedUserId === user.id).length, icon: Briefcase, color: 'blue', trend: 'Active', up: true },
-    { label: 'Total Contacts',   value: contacts.length,    icon: Users,     color: 'purple',  trend: '+recent', up: true },
-    { label: 'Win Rate',         value: `${winRate || 0}%`, icon: Target,    color: 'emerald', trend: 'This month', up: winRate > 0 },
-    { label: 'Avg Velocity',     value: `${avgVelocity}d`,  icon: Zap,       color: 'indigo',  trend: 'To close', up: true },
+    { label: 'Total Contacts',   value: contacts.length,    icon: Users,     color: 'purple',  trend: 'all contacts', up: true },
+    { label: 'Win Rate',         value: `${winRate}%`,      icon: Target,    color: 'emerald', trend: 'This month', up: winRate > 0 },
+    { label: 'Avg Velocity',     value: avgVelocity > 0 ? `${avgVelocity}d` : '—', icon: Zap, color: 'indigo', trend: 'To close', up: true },
   ];
 
   const colorMap: Record<string, { bg: string; text: string; glow: string }> = {
@@ -334,7 +352,7 @@ export default function Dashboard() {
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">6-month revenue progression</p>
             </div>
             <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">
-              <ArrowUpRight size={11} /> +15.3% Overall
+              <ArrowUpRight size={11} /> {wonDeals.length} won deals
             </span>
           </div>
           <div className="flex-1 min-h-0">
