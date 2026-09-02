@@ -3,14 +3,16 @@
 #
 # IMPORTANT: Set the following env vars in the Render dashboard (not here):
 #   DATABASE_URL             — Render Internal DB URL (postgresql://...@<internal-host>/...)
-#   JWT_SECRET               — strong random string, min 32 chars
+#   JWT_SECRET               — strong random string, min 32 chars  (run: openssl rand -base64 48)
 #   ALLOWED_ORIGINS          — https://lead-crm-frontend-pi.vercel.app
 #   APP_URL                  — https://lead-crm-frontend-pi.vercel.app
 #   NODE_ENV                 — production
-#   SYSTEM_ADMIN_EMAIL       — admin@gmail.com
-#   SYSTEM_ADMIN_PASSWORD    — admin123
-#   DEMO_MODE                — true
-#   DEV_SEED_EMAILS          — admin@gmail.com,super@leadcrm.com,admin@democorp.com,bob@democorp.com,guest@democorp.com
+#   SYSTEM_ADMIN_EMAIL       — your real admin email (never admin@gmail.com in production)
+#   SYSTEM_ADMIN_PASSWORD    — REQUIRED: a strong unique password (NOT admin123).
+#                              The seeder will throw if this is left as the default.
+#   DEMO_MODE                — DO NOT set to true in production. This enables auth bypasses.
+#   DEV_OTP_BYPASS           — DO NOT set to true in production. This bypasses email verification.
+#   DEV_SEED_EMAILS          — optional: comma-separated emails for seeded demo accounts
 #   SKIP_DEMO_TENANTS        — true  (skip faker tenant generation in production)
 #   RESEND_API_KEY           — (optional) your Resend API key for email delivery
 
