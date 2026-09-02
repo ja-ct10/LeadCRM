@@ -61,10 +61,12 @@ export async function processImport(tenantId: string, userId: string, dto: Creat
           lastName: validation.data.lastName,
           email: validation.data.email,
           phone: validation.data.phone,
-          companyName: validation.data.companyName,
+          // DB column is "company", not "companyName"
+          company: validation.data.companyName,
           address: validation.data.address,
-          status: 'Active',
-        },
+          // ContactStatus enum — WARM is the DB default
+          status: 'WARM',
+        } as never,
       });
 
       successCount++;

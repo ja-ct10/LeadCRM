@@ -1,4 +1,4 @@
-﻿﻿'use client';
+'use client';
 
 import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
@@ -20,14 +20,15 @@ const EXEMPT_ROUTES = ['/onboarding', '/verify-email', '/email-verification', '/
  *
  * Gate priority (highest → lowest):
  *   1. Email verification gate — unverified users redirected to /verify-email
- *   2. Onboarding gate — verified but not-onboarded users redirected to /onboarding (DB-backed)
+ *   2. First-time workspace setup gate — brand-new tenants with no name redirected to /onboarding
  *   3. Saved redirect — restore the originally intended URL after login
  *   4. Role-based default — System Admin → /admin/dashboard, others → /dashboard
  *
  * Source of truth for gates:
  *   - emailVerified: from /auth/me response (server-backed)
- *   - onboardingCompletedAt: from /auth/me response (server-backed via Tenant model)
- *   - localStorage ONBOARDING_COMPLETE_KEY: acts as immediate 'just completed' signal so the AuthGuard doesn't redirect back to /onboarding before the cached user refreshes
+ *   - tenantName: from /auth/me response (server-backed via Tenant model)
+ *   - localStorage ONBOARDING_COMPLETE_KEY: acts as immediate 'just completed' signal so the
+ *     AuthGuard doesn't redirect back to /onboarding before the cached AuthContext user refreshes
  */
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading, authError, retryAuthInit } = useAuth();
@@ -58,28 +59,43 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
     if (!isSystemAdmin && !isExempt) {
       // ── Gate 1: Email verification (server-backed) ─────────────────────
-      // If emailVerified is null/falsy, user must verify their email first
+      // If emailVerified is null/falsy, user must verify their email first.
+      // Exception: ACTIVE users have passed the backend's verification check
+      // (either via standard verification or the demo-mode bypass in loginUser).
+      // Redirecting ACTIVE users to /verify-email would incorrectly gate seeded
+      // and demo accounts that the backend has already admitted (RC-05 fix).
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const emailVerified = (user as any).emailVerified;
-      if (!emailVerified) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const userStatus = (user as any).status;
+      if (!emailVerified && userStatus !== 'ACTIVE') {
         sessionStorage.removeItem('leadcrm_redirect_after_login');
         router.replace(`/verify-email?email=${encodeURIComponent(user.email)}`);
         return;
       }
 
-      // ── Gate 2: Onboarding (server-backed via Tenant.onboardingCompletedAt) ──
-      // Primary: check server-backed field from /auth/me response.
-      // Fallback: if localStorage ONBOARDING_COMPLETE_KEY is set, the user JUST
-      // completed onboarding in this session — allow through even if the cached
-      // AuthContext user object hasn't refreshed yet. The DB is already updated
-      // by the completeOnboarding() API call that ran before navigation.
+      // ── Gate 2: First-time workspace setup ─────────────────────────────────
+      // Redirect to onboarding only if tenant has not completed workspace setup.
+      // Source of truth: tenantName from /auth/me (server-backed).
+      // This is set during onboarding when the user provides company details.
+      // localStorage ONBOARDING_COMPLETE_KEY acts as an immediate post-completion
+      // signal before the AuthContext cache refreshes from /auth/me.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const tenantName = (user as any).tenantName;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const onboardingCompletedAt = (user as any).onboardingCompletedAt;
       const localOnboardingDone = typeof window !== 'undefined'
         ? localStorage.getItem(ONBOARDING_COMPLETE_KEY)
         : null;
 
-      if (!onboardingCompletedAt && !localOnboardingDone) {
+      // RC-07 fix: also check onboardingCompletedAt so invited users whose
+      // tenant completed onboarding are not incorrectly sent to /onboarding.
+      // Route to onboarding only when ALL three signals indicate the tenant
+      // workspace is genuinely not yet set up:
+      //   1. No tenantName from /auth/me (tenant hasn't completed setup)
+      //   2. No local onboarding completion flag (not just finished onboarding)
+      //   3. No server-side onboardingCompletedAt timestamp
+      if (!tenantName && !localOnboardingDone && !onboardingCompletedAt) {
         sessionStorage.removeItem('leadcrm_redirect_after_login');
         router.replace('/onboarding');
         return;
@@ -93,7 +109,13 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     sessionStorage.removeItem('leadcrm_redirect_after_login');
     if (savedRedirect && savedRedirect !== '/login' && savedRedirect !== '/register') {
       const isAdminPath = savedRedirect.startsWith('/admin');
-      if (!isAdminPath || isSystemAdmin) {
+      // RC-06 fix: System Admins must ALWAYS land on /admin/* paths.
+      // A saved redirect to /dashboard (or any non-admin path) must be ignored
+      // for System Admins so they are routed through the role-based default
+      // below (/admin/dashboard). Regular users follow any saved path.
+      if (isSystemAdmin && !isAdminPath) {
+        // Fall through to role-based default routing below
+      } else if (!isAdminPath || isSystemAdmin) {
         router.replace(savedRedirect);
         return;
       }

@@ -61,7 +61,7 @@ type EnteredVia = 'login' | 'refresh';
 interface AuthScenario {
   loggedIn: boolean;             // false => user === null
   emailVerified: boolean;        // has a non-null emailVerified timestamp
-  onboardingCompleted: boolean;  // has a non-null onboardingCompletedAt timestamp
+  tenantConfigured: boolean;     // tenant has a workspace name (brand-new unconfigured = false)
   role: 'Client Admin' | 'Sales Rep' | 'System Admin';
   status: 'ACTIVE' | 'PENDING' | 'SUSPENDED';
   enteredVia: EnteredVia;
@@ -80,7 +80,7 @@ function isBugCondition(scenario: AuthScenario): boolean {
     scenario.loggedIn &&
     scenario.enteredVia === 'login' &&
     scenario.emailVerified &&
-    scenario.onboardingCompleted &&
+    scenario.tenantConfigured &&
     scenario.role !== 'System Admin'
   );
 }
@@ -121,7 +121,7 @@ function decideRoute(
     if (!scenario.emailVerified) {
       return '/verify-email';
     }
-    if (!scenario.onboardingCompleted) {
+    if (!scenario.tenantConfigured) {
       return '/onboarding';
     }
   }
@@ -156,7 +156,7 @@ function originalExpectedRoute(scenario: AuthScenario): string {
 
   if (!isSystemAdmin && !isExempt) {
     if (!scenario.emailVerified) return '/verify-email';
-    if (!scenario.onboardingCompleted) return '/onboarding';
+    if (!scenario.tenantConfigured) return '/onboarding';
   }
 
   const isEntryPoint =
@@ -176,7 +176,7 @@ function originalExpectedRoute(scenario: AuthScenario): string {
 const authScenarioArb: fc.Arbitrary<AuthScenario> = fc.record({
   loggedIn: fc.boolean(),
   emailVerified: fc.boolean(),
-  onboardingCompleted: fc.boolean(),
+  tenantConfigured: fc.boolean(),
   role: fc.constantFrom<'Client Admin' | 'Sales Rep' | 'System Admin'>(
     'Client Admin',
     'Sales Rep',
@@ -220,6 +220,7 @@ const VERIFIED_ONBOARDED_ADMIN = {
   tenantId: 'tenant-1',
   emailVerified: '2026-01-01T00:00:00.000Z',
   onboardingCompletedAt: '2026-01-02T00:00:00.000Z',
+  tenantName: 'Demo Corp',
 };
 
 const UNVERIFIED_USER = {
@@ -231,6 +232,7 @@ const UNVERIFIED_USER = {
   tenantId: 'tenant-1',
   emailVerified: null,
   onboardingCompletedAt: '2026-01-02T00:00:00.000Z',
+  tenantName: 'Demo Corp',
 };
 
 const NOT_ONBOARDED_USER = {
@@ -242,6 +244,7 @@ const NOT_ONBOARDED_USER = {
   tenantId: 'tenant-1',
   emailVerified: '2026-01-01T00:00:00.000Z',
   onboardingCompletedAt: null,
+  tenantName: null,
 };
 
 const SYSTEM_ADMIN = {
@@ -253,6 +256,7 @@ const SYSTEM_ADMIN = {
   tenantId: 'system-tenant',
   emailVerified: null,
   onboardingCompletedAt: null,
+  tenantName: null,
 };
 
 function renderGuard(): { container: HTMLElement } {
@@ -302,8 +306,8 @@ describe('Feature: auth-login-blank-screen-fix, Property 4: Preservation — Aut
     expect(verifyTarget).toBeDefined();
   });
 
-  // 3.4 — genuinely not-onboarded user
-  it('routes a genuinely not-onboarded (verified) user to /onboarding', () => {
+  // 3.4 — user with a verified email but no configured workspace name
+  it('routes a user with no configured workspace to /onboarding', () => {
     authState = { user: NOT_ONBOARDED_USER, isLoading: false };
     currentPathname = '/dashboard';
 

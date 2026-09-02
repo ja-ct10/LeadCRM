@@ -117,7 +117,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (isNoSessionError(err)) {
           setAuthError(null);
         } else {
-          setAuthError(err instanceof Error ? err.message : 'Unable to verify your session');
+          // RC-08/09 fix: distinguish network/CORS failures (TypeError: Failed to fetch)
+          // from generic auth errors so users see a connectivity-specific message.
+          const authErrMsg = err instanceof Error ? err.message : 'Unknown error';
+          const isCorsOrNetwork = err instanceof TypeError || authErrMsg.toLowerCase().includes('fetch') || authErrMsg.toLowerCase().includes('network');
+          setAuthError(
+            isCorsOrNetwork
+              ? 'Unable to connect to the server. Check your network connection or contact support.'
+              : authErrMsg || 'Unable to verify your session',
+          );
           if (process.env.NODE_ENV !== 'production') {
             // eslint-disable-next-line no-console
             console.error('[AuthContext] auth init failed:', err instanceof Error ? err.message : err);
@@ -264,10 +272,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   const loginWithGoogle = async (): Promise<void> => {
     if (USE_MOCK_AUTH) return;
-    // callbackUrl is a fallback — the NextAuth redirect callback overrides it
-    // based on role once the OAuth bridge returns the user's role.
-    // callbackUrl must be '/' so AuthGuard intercepts it and applies the
-    // onboarding gate before redirecting to /dashboard or /onboarding.
+    // callbackUrl must be '/' so AuthGuard applies role-based routing
+    // after the OAuth session is established.
     await nextAuthSignIn('google', { callbackUrl: '/' });
   };
 

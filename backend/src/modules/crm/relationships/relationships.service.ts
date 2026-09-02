@@ -70,20 +70,20 @@ export async function getLeadRelationships(id: string, tenantId: string, limit =
 export async function getContactRelationships(id: string, tenantId: string, limit = DEFAULT_LIMIT) {
   const contact = await prisma.contact.findFirst({
     where: { id, tenantId },
-    select: { id: true, accountId: true },
+    select: { id: true, organizationId: true },
   });
   if (!contact) throw new NotFoundError('Contact');
 
-  const [sourceLead, account, contactDeals, activities, tasks] = await Promise.all([
+  const [sourceLead, organization, contactDeals, activities, tasks] = await Promise.all([
     // Source lead (lead that was converted into this contact)
     prisma.lead.findFirst({
       where: { contactId: id, tenantId },
       select: { id: true, firstName: true, lastName: true, email: true, status: true, source: true },
     }),
-    // Linked account
-    contact.accountId
-      ? prisma.account.findFirst({
-          where: { id: contact.accountId, tenantId },
+    // Linked organization
+    contact.organizationId
+      ? prisma.organization.findFirst({
+          where: { id: contact.organizationId, tenantId },
           select: { id: true, name: true, industry: true, website: true },
         })
       : null,
@@ -116,7 +116,7 @@ export async function getContactRelationships(id: string, tenantId: string, limi
 
   return {
     sourceLead,
-    account,
+    organization,
     deals: contactDeals.map((cd) => cd.deal),
     activities,
     tasks,
@@ -140,12 +140,8 @@ export async function getAccountRelationships(id: string, tenantId: string, limi
       orderBy: { createdAt: 'desc' },
       select: { id: true, firstName: true, lastName: true, email: true, status: true, source: true },
     }),
-    prisma.contact.findMany({
-      where: { accountId: id, tenantId, status: { not: 'Archived' } },
-      take: limit,
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, firstName: true, lastName: true, email: true, status: true },
-    }),
+    // Contacts are linked to Organization (not Account); omit from account relationship view
+    Promise.resolve([] as Array<{ id: string; firstName: string; lastName: string; email: string | null; status: string }>),
     prisma.deal.findMany({
       where: { accountId: id, tenantId, isArchived: false },
       take: limit,

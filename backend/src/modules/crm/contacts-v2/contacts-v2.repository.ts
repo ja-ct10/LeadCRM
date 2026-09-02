@@ -2,9 +2,21 @@ import prisma from '../../../config/database.config';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
 
 /**
- * Contacts V2 Repository — queries the Contact table (formerly Customer).
- * This is separate from the leads/contacts controller which queries the Lead table.
+ * Contacts V2 Repository — queries the Contact table.
+ *
+ * Field mapping (schema ↔ DB):
+ *   company        → Contact.company       (plain text, company name)
+ *   organizationId → Contact.organizationId (FK → Organization.id)
+ *   status         → ContactStatus enum    (HOT | WARM | COLD | CANCELLED | CLOSED)
+ *   productInterests → String[]
+ *   isArchived     → Boolean (archive = set isArchived:true, not status change)
  */
+
+// ── Shared include shape ───────────────────────────────────────────────────
+const CONTACT_INCLUDE = {
+  assignedUser: { select: { id: true, firstName: true, lastName: true } },
+  organization: { select: { id: true, name: true } },
+} as const;
 
 export async function findAllContacts(tenantId: string, query: Record<string, unknown>) {
   const { page, limit } = getPaginationParams(query);
@@ -12,32 +24,47 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
 
   const where: Record<string, unknown> = {
     tenantId,
-    ...(query.status ? { status: String(query.status) } : {}),
-    ...(query.assignedUserId ? { assignedUserId: String(query.assignedUserId) } : {}),
-    ...(query.search
-      ? {
-          OR: [
-            { firstName: { contains: String(query.search), mode: 'insensitive' } },
-            { lastName: { contains: String(query.search), mode: 'insensitive' } },
-            { email: { contains: String(query.search), mode: 'insensitive' } },
-            { companyName: { contains: String(query.search), mode: 'insensitive' } },
-          ],
-        }
-      : {}),
+    isArchived: false,
   };
+
+  // Status filter — value must be a valid ContactStatus enum member
+  if (query.status) {
+    where['status'] = String(query.status);
+  }
+
+  if (query.assignedUserId) {
+    where['assignedUserId'] = String(query.assignedUserId);
+  }
+
+  if (query.organizationId) {
+    where['organizationId'] = String(query.organizationId);
+  }
+
+  if (query.lifecycleStage) {
+    where['lifecycleStage'] = String(query.lifecycleStage);
+  }
+
+  // Full-text search across name, email, company, phone
+  if (query.search) {
+    const term = String(query.search);
+    where['OR'] = [
+      { firstName: { contains: term, mode: 'insensitive' } },
+      { lastName:  { contains: term, mode: 'insensitive' } },
+      { email:     { contains: term, mode: 'insensitive' } },
+      { company:   { contains: term, mode: 'insensitive' } },
+      { phone:     { contains: term, mode: 'insensitive' } },
+    ];
+  }
 
   const [data, total] = await Promise.all([
     prisma.contact.findMany({
-      where: where as any,
+      where: where as never,
       skip,
       take: limit,
       orderBy: { createdAt: 'desc' },
-      include: {
-        assignedUser: { select: { id: true, firstName: true, lastName: true } },
-        account: { select: { id: true, name: true } },
-      },
+      include: CONTACT_INCLUDE,
     }),
-    prisma.contact.count({ where: where as any }),
+    prisma.contact.count({ where: where as never }),
   ]);
 
   return { data, total, page, limit };
@@ -45,33 +72,24 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
 
 export async function findContactById(id: string, tenantId: string) {
   return prisma.contact.findFirst({
-    where: { id, tenantId },
-    include: {
-      assignedUser: { select: { id: true, firstName: true, lastName: true } },
-      account: { select: { id: true, name: true } },
-    },
+    where: { id, tenantId, isArchived: false },
+    include: CONTACT_INCLUDE,
   });
 }
 
 export async function createContact(tenantId: string, dto: Record<string, unknown>) {
   return prisma.contact.create({
-    data: { ...dto, tenantId } as any,
-    include: {
-      assignedUser: { select: { id: true, firstName: true, lastName: true } },
-      account: { select: { id: true, name: true } },
-    },
+    data: { ...dto, tenantId } as never,
+    include: CONTACT_INCLUDE,
   });
 }
 
 export async function updateContact(id: string, tenantId: string, dto: Record<string, unknown>) {
   try {
     return await prisma.contact.update({
-      where: { id, tenantId } as any,
-      data: dto as any,
-      include: {
-        assignedUser: { select: { id: true, firstName: true, lastName: true } },
-        account: { select: { id: true, name: true } },
-      },
+      where:   { id, tenantId } as never,
+      data:    dto as never,
+      include: CONTACT_INCLUDE,
     });
   } catch {
     return null;
@@ -81,8 +99,8 @@ export async function updateContact(id: string, tenantId: string, dto: Record<st
 export async function archiveContact(id: string, tenantId: string) {
   try {
     return await prisma.contact.update({
-      where: { id, tenantId } as any,
-      data: { status: 'Archived' },
+      where: { id, tenantId } as never,
+      data:  { isArchived: true, archiveReason: 'Archived by user' },
     });
   } catch {
     return null;

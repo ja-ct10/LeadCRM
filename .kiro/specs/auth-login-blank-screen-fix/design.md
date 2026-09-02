@@ -2,70 +2,61 @@
 
 ## Overview
 
-After a credentials login in real-API mode, a fully verified and onboarded user lands on a
-blank white screen (or is wrongly bounced to `/verify-email` or `/onboarding`) instead of the
-dashboard. Code inspection confirms two independent defects that combine to produce the symptom:
-
-1. **Response contract mismatch (PRIMARY).** `POST /auth/login` returns a user object with only
-   `id, email, role, firstName, lastName, tenantId`. `GET /auth/me` returns those plus
-   `emailVerified`, `onboardingCompletedAt`, `onboardingStep`, and `tenantName`.
-   `AuthContext.login()` stores the thin login payload verbatim via `setUser(apiUser)`, and
-   `AuthGuard` gates on `user.emailVerified` and `user.onboardingCompletedAt`. Because those
-   fields are absent from the login payload they read as `undefined` (falsy), so a verified,
-   onboarded user is redirected as if unverified/un-onboarded right after login. On refresh the
-   user is hydrated from `/auth/me` (which has the fields), so behavior differs between fresh
-   login and refresh.
-
-2. **Silent blank screen (SECONDARY).** `AuthGuard` returns `null` while `isLoading` and when
-   `user === null`; the root page (`/`), `/onboarding`, and `/company-setup` route shells also
-   `return null` during auth resolution. When resolution stalls, a redirect misfires, or
-   `/auth/me` fails, the user sees a silent white screen with no spinner, message, or recovery
-   path. `AuthContext` also swallows `/auth/me` failures by silently setting `user = null`.
+After a credentials login in real-API mode, users can land on a blank white screen or get
+bounced to the wrong destination instead of their home page. Code inspection confirms 12
+distinct defects distributed across the full Login → Authentication API → Session/JWT →
+User/Role/Tenant Loading → Portal Routing → Dashboard → Dashboard APIs → UI Rendering chain.
 
 The fix approach is deliberately minimal and targeted:
 
-- **Align the login response contract with the `/auth/me` contract** so both paths hydrate the
-  same complete gate fields. This makes post-login and post-refresh routing identical.
-- **Replace every silent `null` render during auth resolution with a visible loading state**,
-  and give `AuthContext` an explicit auth-init error state so a failed `/auth/me` never leaves a
-  blank screen.
+- Align both login-response and `/auth/me` response shapes so every auth path hydrates the
+  same complete set of gate fields.
+- Replace every silent `null` render during auth resolution with a visible loading or error state.
+- Fix the gate logic in `AuthGuard` for the five misrouting cases (emailVerified null, System
+  Admin mis-route, invited user tenant gap, race condition, post-login re-hydration failure).
+- Add an explicit backend-unreachable / CORS error surface with retry.
+- Break the infinite redirect loop between the no-session path and login.
+- Guard the Dashboard's local loading timer against premature resolution.
 
-The dual-path (credentials + Google OAuth) architecture, RBAC, tenant isolation, System Admin
-routing, and logout behavior are all preserved unchanged.
+No new auth system, no duplicate endpoints, no structural changes to AuthContext, AuthGuard,
+DataContext, or apiClient are introduced.
+
+---
 
 ## Glossary
 
-- **Bug_Condition (C)**: The condition that triggers the bug — either (a) a verified, onboarded
-  non-System-Admin user enters via the credentials `login` path whose response omits the gate
-  fields, or (b) auth resolution is in a resolving/failed phase while the UI renders `null`.
-- **Property (P)**: The desired behavior — a verified, onboarded login user renders `/dashboard`;
-  auth resolution always shows a visible loading or error state (never a silent blank screen);
-  and login and refresh produce identical routing for the same user.
-- **Preservation**: Existing behavior that must remain unchanged — invalid-credential handling,
-  logged-out redirect to `/login`, genuine unverified → `/verify-email`, genuine not-onboarded →
-  `/onboarding`, System Admin → `/admin/dashboard`, logout, and the Google OAuth flow.
-- **Gate fields**: `emailVerified` and `onboardingCompletedAt` (plus `onboardingStep`,
-  `tenantName`) — the server-backed fields `AuthGuard` reads to decide routing.
-- **loginUser**: The service function in `backend/src/core/auth/auth.service.ts` that
-  authenticates credentials and builds the returned user object.
-- **login (controller)**: The handler in `backend/src/core/auth/auth.controller.ts` that wraps
-  `loginUser` and sets the cookie.
-- **me (controller)**: The handler in `backend/src/core/auth/auth.controller.ts` that returns the
-  complete user + flattened tenant fields — the canonical contract.
-- **restoreSession / login (AuthContext)**: The two hydration paths in
-  `frontend/src/store/AuthContext.tsx` that call `setUser`.
-- **AuthGuard**: The gate in `frontend/src/shared/providers/auth-guard.tsx` that reads the gate
-  fields and redirects; currently `return null` during resolution.
+- **Bug_Condition (C)**: Any scenario in the auth chain that causes a verified, routable user to
+  land on a blank white screen or the wrong destination.
+- **Property (P)**: The desired behavior — every user who completes a valid login settles on the
+  correct destination, and every loading/error state is explicitly visible.
+- **Preservation**: All existing correct behaviors that must remain unchanged: invalid-credential
+  handling, logout, genuine-unverified gate, genuine-not-onboarded gate, mock-auth mode, RBAC,
+  tenant isolation, Google OAuth, password-reset flow.
+- **Gate fields**: `emailVerified`, `onboardingCompletedAt`, `onboardingStep`, and `tenantName` —
+  the server-backed fields `AuthGuard` reads to decide routing.
+- **loginUser**: `backend/src/core/auth/auth.service.ts` — authenticates credentials.
+- **buildAuthUserResponse**: shared helper in `auth.service.ts` that produces the canonical user
+  shape (used by `loginUser` and `/auth/me`).
+- **AuthContext.login()**: the credentials-login function in
+  `frontend/src/store/AuthContext.tsx`.
+- **AuthContext.restoreSession()**: the session-restore function run on page mount.
+- **AuthGuard**: `frontend/src/shared/providers/auth-guard.tsx` — gate logic + routing.
+- **DataContext.loadData()**: `frontend/src/store/DataContext.tsx` — Batch 1 + Batch 2 API
+  loading triggered when `user` changes.
+- **Dashboard.isLoading**: the local `setTimeout(700ms)` timer in
+  `frontend/src/features/tenant/dashboard/ui/dashboard.tsx`.
+- **apiClient**: `frontend/src/lib/api/client.ts` — fetch wrapper with `credentials: include`.
+- **AuthLoadingScreen**: `frontend/src/shared/components/auth-loading-screen.tsx` — the shared
+  visible loading component (must be created if not already present).
+
+---
 
 ## Bug Details
 
 ### Bug Condition
 
-The bug manifests when a verified, onboarded, non-System-Admin user authenticates through the
-credentials `login` path — because that path's response omits `emailVerified` and
-`onboardingCompletedAt`, so `AuthGuard` reads them as falsy and misroutes. It also manifests
-whenever auth resolution is in a `resolving` or `failed` phase while the guard or a route shell
-renders `null`, producing a silent blank screen.
+The bug manifests in 12 distinct scenarios spanning the full post-login rendering chain. Each is
+formally specified below.
 
 **Formal Specification:**
 ```
@@ -74,239 +65,701 @@ FUNCTION isBugCondition(X)
   OUTPUT: boolean
 
   RETURN
-    (X.enteredVia = 'login'
-      AND X.emailVerified <> null
-      AND X.onboardingCompletedAt <> null
-      AND X.role <> 'System Admin')
-    OR (X.authPhase = 'resolving' AND X.rendersNull = true)
-    OR (X.authInitFailed = true AND X.rendersNull = true)
+    -- RC-01: AuthLoadingScreen not rendered during isLoading
+    (X.authPhase = 'resolving' AND X.guardRendersNull = true)
+
+    -- RC-02: /auth/me response shape mismatch
+    OR (X.enteredVia = 'credentials-login'
+        AND X.loginPayloadHasGateFields = false
+        AND X.emailVerified <> null
+        AND X.onboardingCompletedAt <> null)
+
+    -- RC-03: DataContext API failures block dashboard indefinitely
+    OR (X.dataContextBatch1Failed = true
+        AND X.dashboardHasNoFallback = true)
+
+    -- RC-04: Dashboard local timer never resolves
+    OR (X.dashboardLocalTimerStuck = true)
+
+    -- RC-05: emailVerified = null gates verified demo/seeded accounts
+    OR (X.emailVerified = null
+        AND X.accountType = 'seeded'
+        AND X.guardChecksNullAsUnverified = true)
+
+    -- RC-06: System Admin routed to /dashboard instead of /admin/dashboard
+    OR (X.role = 'System Admin'
+        AND X.routedTo = '/dashboard'
+        AND NOT X.isEntryPoint)
+
+    -- RC-07: Invited user tenant context not resolved
+    OR (X.registeredVia = 'invitation'
+        AND X.tenantName = null
+        AND X.onboardingNotRequired = true
+        AND X.guardSendsToOnboarding = true)
+
+    -- RC-08: Backend unreachable -> silent white screen
+    OR (X.backendReachable = false
+        AND X.authInitErrorSurfaced = false)
+
+    -- RC-09: CORS misconfiguration -> all API calls fail
+    OR (X.corsBlocked = true
+        AND X.authInitErrorSurfaced = false)
+
+    -- RC-10: Post-login race condition: AuthGuard fires before AuthContext stores user
+    OR (X.enteredVia = 'credentials-login'
+        AND X.authContextUserUpdated = false
+        AND X.guardEvaluatesImmediately = true)
+
+    -- RC-11: Post-login me() re-hydration failure -> login() returns false
+    OR (X.enteredVia = 'credentials-login'
+        AND X.postLoginMeCallFailed = true
+        AND X.loginReturnsFalse = true)
+
+    -- RC-12: Infinite redirect loop
+    OR (X.noSessionPath = true
+        AND X.loginRedirectsToGuard = true
+        AND X.guardRedirectsToLogin = true)
 END FUNCTION
 ```
 
 ### Examples
 
-- **Verified + onboarded login (primary):** Alice (verified, onboarding complete, role
-  `Client Admin`) logs in via `POST /auth/login`. Expected: renders `/dashboard`. Actual: the
-  login payload lacks `emailVerified`/`onboardingCompletedAt`, so `AuthGuard` redirects to
-  `/verify-email` (or `/onboarding`), then the route shell renders `null` → blank white screen.
-- **Login vs refresh divergence:** The same Alice, after refreshing, is hydrated from `/auth/me`
-  (which includes the gate fields) and correctly reaches `/dashboard`. Different outcome for the
-  same user depending on entry path.
-- **Auth-init failure:** `/auth/me` fails (network/backend hiccup) during `restoreSession`;
-  `AuthContext` silently sets `user = null` and `AuthGuard` returns `null` → persistent blank
-  screen with no error or retry.
-- **Genuine unverified user (edge — NOT a bug):** Bob (never verified) logs in. Correct behavior
-  is `/verify-email`; this must be preserved and is NOT part of the bug condition.
+1. **RC-01 — Resolving phase blank screen:** Alice navigates to `/dashboard`. `AuthContext`
+   calls `/auth/me`, `isLoading = true`. `AuthGuard` returns `null` → white screen until
+   resolve (may be 400–800ms visible on slow connections).
+
+2. **RC-02 — Login payload missing gate fields:** Alice (verified, onboarded) logs in via
+   `POST /auth/login`. Response contains `{id, email, role, firstName, lastName, tenantId}` —
+   no `emailVerified`. `AuthGuard` reads `user.emailVerified` as `undefined` (falsy) →
+   redirects to `/verify-email`. After refresh, `/auth/me` includes `emailVerified` → works.
+   Same user, different outcomes depending on entry path.
+
+3. **RC-03 — DataContext failure blocks dashboard:** `GET /crm/leads` returns 500 during
+   `loadData`. The dashboard renders (user is set), but the stat cards show zeroes forever
+   because `contacts.length === 0`; there is no loading indicator or retry path for partial
+   data failures.
+
+4. **RC-04 — Dashboard timer stuck:** `handleRefresh` calls `setIsLoading(true)` but the
+   `setTimeout` inside the handler could theoretically be cleared or the component unmounted
+   before it fires, leaving `isLoading = true` and the skeleton permanently displayed.
+
+5. **RC-05 — emailVerified null on seeded account:** `admin@democorp.com` was seeded without
+   `emailVerified` being set (value is `null`). `isDemoMode` is `true` and `user.status =
+   'ACTIVE'`, so the backend lets login through. But `AuthGuard` gates on
+   `(user as any).emailVerified` — a `null` value is falsy → redirects to `/verify-email`
+   even though the user is a valid demo account.
+
+6. **RC-06 — System Admin routed to /dashboard:** A System Admin logs in. `AuthGuard` fires
+   before `isEntryPoint` check. If the saved redirect points to `/dashboard`, the System Admin
+   is sent there; the tenant dashboard then loads with empty data (no tenant) and may crash or
+   show a blank screen.
+
+7. **RC-07 — Invited user routed to onboarding:** Bob accepts an invitation. His user record has
+   `tenantId` set but `tenant.name` may be an empty string or `null` (it's the company's name,
+   not set by the invitation flow). `AuthGuard` reads `tenantName` as falsy and redirects to
+   `/onboarding`, but Bob's onboarding is already complete — infinite redirect because
+   `/onboarding` marks done and sends back, which triggers the same gate again.
+
+8. **RC-08 — Backend unreachable → silent white screen:** The Express server is down. `/auth/me`
+   throws a `TypeError: Failed to fetch`. `AuthContext.restoreSession` catches it, sets
+   `user = null`, and `AuthGuard` redirects to `/login` — but if the user was on `/login`
+   already, the redirect is a no-op and the screen may show a momentary blank. More critically,
+   the user has no way to know the backend is down vs. being logged out.
+
+9. **RC-09 — CORS misconfiguration → all API calls fail:** `NEXT_PUBLIC_API_URL` points to a
+   production backend while running on `localhost:3000`, or `ALLOWED_ORIGINS` does not include
+   the deployment URL. Every API call fails with a CORS pre-flight error. `apiClient` throws;
+   `restoreSession` catches and sets `user = null`; blank screen or redirect loop results.
+
+10. **RC-10 — Post-login race condition:** `AuthContext.login()` calls `setUser(apiUser)` (a
+    React state update — async). `AuthGuard`'s `useEffect` depends on `[user, isLoading, ...]`
+    and may re-run with the old `user = null` value before the state update is committed,
+    redirecting to `/login` and then immediately re-evaluating with the new user. The result is
+    a flash of `/login` or an extra redirect cycle that can disorient the user.
+
+11. **RC-11 — Post-login me() failure returns false:** `AuthContext.login()` calls `authApi.me()`
+    for defense-in-depth re-hydration. If that call throws, the `catch` block logs the error but
+    the function continues. However, in the original code the function did not do this re-hydration
+    — if the implementation calls `me()` and propagates the error incorrectly, `login()` could
+    return `false` even though the backend login succeeded and the cookie was set.
+
+12. **RC-12 — Infinite redirect loop:** No active session → `AuthGuard` redirects to `/login` →
+    `/login` page calls `router.push('/dashboard')` if user is already set → `AuthGuard` fires
+    again → redirects to `/login`. The loop can occur if the login page doesn't check `user`
+    state before redirecting.
+
+---
 
 ## Expected Behavior
 
 ### Preservation Requirements
 
 **Unchanged Behaviors:**
-- Invalid credentials continue to show an error toast and keep the user on `/login` (no redirect).
-- Unauthenticated navigation to `/dashboard` continues to redirect to `/login`, preserving the
-  intended path in `sessionStorage` for post-login redirect.
-- A genuinely unverified user continues to route to `/verify-email`.
-- A genuinely not-yet-onboarded user continues to route to `/onboarding`.
-- A System Admin continues to route to `/admin/dashboard` and bypasses onboarding/verification gates.
-- Logout continues to clear auth state, revoke the session/cookie, clear onboarding flags, and
-  return to `/login`.
+- Invalid credentials continue to show an error toast and keep the user on `/login`.
+- Unauthenticated navigation to any protected route continues to redirect to `/login`, saving the
+  intended path in `sessionStorage` for post-login restore.
+- A genuinely unverified user (non-demo, `emailVerified = null` and NOT `ACTIVE`) continues to
+  route to `/verify-email`.
+- A genuinely not-yet-onboarded user (no `tenantName`, no `localOnboardingDone`) continues to
+  route to `/onboarding`.
+- A System Admin continues to route to `/admin/dashboard` and bypass all onboarding/verification
+  gates.
+- Logout continues to clear auth state, revoke session/cookie, clear onboarding flags, and return
+  to `/login`.
 - Google OAuth continues to complete the NextAuth flow and hydrate via `/auth/me`.
-- An authenticated, verified, onboarded user on the dashboard is not redirected back to `/login`
-  or `/onboarding`.
+- Mock-auth mode (`NEXT_PUBLIC_USE_MOCK_AUTH !== 'false'`) remains unchanged — localStorage
+  flow, no API calls.
+- All RBAC, tenant-isolation, and CRM-module behavior is unchanged.
+- Password-reset and email-verification flows are unchanged.
 
 **Scope:**
-All inputs that do NOT satisfy the bug condition must be completely unaffected. This includes:
-- Mock-mode auth (`NEXT_PUBLIC_USE_MOCK_AUTH !== 'false'`) — unchanged localStorage flow.
-- All CRM modules, RBAC checks, and tenant-isolation behavior.
-- The OTP/verify-email and password-reset flows.
+All inputs that do NOT satisfy the bug condition (`isBugCondition(X) = false`) must be
+completely unaffected. This includes all non-auth CRM operations, all mock-mode interactions,
+and all users who correctly complete email verification before logging in.
 
-**Note:** The actual expected correct behavior for buggy inputs is defined in the
-Correctness Properties section (Property 1). This section focuses on what must NOT change.
+---
 
 ## Hypothesized Root Cause
 
-Based on code inspection, the confirmed causes are:
+### RC-01 — AuthLoadingScreen not rendered (confirmed)
 
-1. **Login response omits gate fields (confirmed, PRIMARY).**
-   - `loginUser` in `auth.service.ts` returns `{ id, email, role, firstName, lastName, tenantId }`.
-   - `me` in `auth.controller.ts` returns the same plus `emailVerified`, `onboardingCompletedAt`,
-     `onboardingStep`, `tenantName`, `industry`, `companySize`.
-   - `AuthGuard` gates on `user.emailVerified` and `user.onboardingCompletedAt`; both are
-     `undefined` after a fresh login, so the guard misroutes.
+In `auth-guard.tsx`:
+```tsx
+if (isLoading) return null;        // ← produces blank screen
+if (user === null) return null;    // ← produces blank screen
+```
+No visible loading component is rendered while auth resolves. The `AuthLoadingScreen` component
+exists but is not used unconditionally in the guard — it was only added to the `authError` path.
 
-2. **`AuthContext.login()` stores the thin payload verbatim (confirmed).**
-   - `login()` does `setUser(apiUser)` from the login response, never re-hydrating from `/auth/me`,
-     so the missing fields persist in client state until a refresh.
+### RC-02 — Login response shape mismatch (confirmed)
 
-3. **Silent `null` renders during auth resolution (confirmed, SECONDARY).**
-   - `AuthGuard`: `if (isLoading) return null; if (user === null) return null;`
-   - Root page, `/onboarding`, `/company-setup`: `if (isLoading || !user) return null;`
-   - No spinner, message, or recovery path is rendered while resolving or after a redirect misfire.
+`buildAuthUserResponse` in `auth.service.ts` includes `emailVerified`, `tenantName`,
+`onboardingCompletedAt` etc. Both `loginUser` and `/auth/me` now use this helper (the backend
+is already aligned). However, `AuthContext.login()` stored the login payload verbatim before
+the defense-in-depth `authApi.me()` re-hydration call was added. If the `me()` call after login
+fails or is absent, the thin payload is stored and the gate misroutes.
 
-4. **`AuthContext` swallows auth-init failure (confirmed).**
-   - `restoreSession`'s `catch` sets `user = null` with no distinction between "no session" and
-     "`/auth/me` failed", so a transient backend error looks identical to a logged-out state and
-     produces a blank screen with no error surface.
+The current `AuthContext.login()` already has the defense-in-depth `me()` call. The risk
+remains if `me()` throws — the fallback path stores the login payload, which must include gate
+fields (confirmed that the backend now returns them via `buildAuthUserResponse`).
+
+### RC-03 — DataContext Batch 1 failure blocks dashboard render (confirmed)
+
+`loadData()` wraps Batch 1 in a single try/catch that silently logs and moves on:
+```typescript
+} catch (err) {
+  console.error('[DataContext] Failed to load CRM data from API:', err);
+}
+```
+The dashboard has no indication that data loading failed — it renders with empty arrays, which is
+indistinguishable from "no data yet". No user-facing error or retry mechanism exists.
+
+### RC-04 — Dashboard local isLoading timer (low risk, confirmed pattern)
+
+`dashboard.tsx` uses:
+```typescript
+const [isLoading, setIsLoading] = useState(true);
+useEffect(() => {
+  const t = setTimeout(() => setIsLoading(false), 700);
+  return () => clearTimeout(t);
+}, []);
+```
+This is a pure cosmetic timer and will always resolve within 700ms unless the component unmounts
+before the timer fires (e.g. fast re-navigation). The `clearTimeout` cleanup prevents a stale
+state update. This is low-severity but could cause a persistent skeleton on rapid navigation.
+
+### RC-05 — emailVerified = null gates seeded/demo accounts (confirmed)
+
+In `auth.service.ts`, `loginUser` already skips the email-verification block when
+`isDemoMode = true` AND `user.status === 'ACTIVE'`. The backend correctly lets the user through.
+
+But `AuthGuard` in `auth-guard.tsx` checks:
+```tsx
+const emailVerified = (user as any).emailVerified;
+if (!emailVerified) {
+  router.replace(`/verify-email?email=...`);
+  return;
+}
+```
+A seeded account with `emailVerified = null` passes the backend but fails this frontend gate.
+The fix must not remove the gate for genuinely unverified users — it must treat `null` as
+verified only for demo/seeded accounts, or ensure `emailVerified` is always set on seeded
+accounts at the database level.
+
+The correct minimal fix is to ensure seeded accounts have `emailVerified` set in the seed script,
+so the database value is never `null` for accounts that should behave as verified.
+
+### RC-06 — System Admin routed to /dashboard (conditional)
+
+`AuthGuard`'s isSystemAdmin check:
+```tsx
+const isSystemAdmin = user.role === 'System Admin'
+  || (user as any).tenantName?.toLowerCase().includes('system');
+```
+The saved-redirect path:
+```tsx
+const savedRedirect = sessionStorage.getItem('leadcrm_redirect_after_login');
+if (savedRedirect && savedRedirect !== '/login' && savedRedirect !== '/register') {
+  const isAdminPath = savedRedirect.startsWith('/admin');
+  if (!isAdminPath || isSystemAdmin) {
+    router.replace(savedRedirect);
+    return;
+  }
+}
+```
+If a System Admin had previously visited `/dashboard` (e.g. as a tenant user before being
+promoted), the saved redirect `/dashboard` would pass the `!isAdminPath` check and the System
+Admin would be sent to `/dashboard` instead of `/admin/dashboard`. The `isEntryPoint` guard at
+the bottom would not be reached.
+
+### RC-07 — Invited user tenant context not resolved (confirmed)
+
+`registerWithInvitation` in `auth.service.ts` creates the user with the invitation's `tenantId`
+but does not set `tenant.name` or `tenant.onboardingCompletedAt`. After registering, the user
+logs in and `AuthGuard` checks:
+```tsx
+if (!tenantName && !localOnboardingDone) {
+  router.replace('/onboarding');
+  return;
+}
+```
+An invited user's tenant already has a name (it was set during the Client Admin's onboarding).
+However, if `buildAuthUserResponse` does not include the tenant join in the invited user's path,
+or if `tenant.name` is an empty string, the gate fires incorrectly. The fix is to ensure
+`/auth/me` and the login response always include `tenantName` from the tenant relation, and
+`AuthGuard` treats an empty `tenantName` the same as `null` only when `localOnboardingDone` is
+also absent.
+
+### RC-08 — Backend unreachable → silent screen (confirmed)
+
+`restoreSession` in `AuthContext`:
+```typescript
+} catch (err: unknown) {
+  setUser(null);
+  setTenant(null);
+  if (isNoSessionError(err)) {
+    setAuthError(null);
+  } else {
+    setAuthError(err instanceof Error ? err.message : 'Unable to verify your session');
+  }
+}
+```
+The `authError` state and `retryAuthInit` are already implemented. The fix requires that
+`AuthGuard` renders the error UI when `authError` is set (which it now does), and that
+`isNoSessionError` correctly classifies `TypeError: Failed to fetch` as a transport failure
+rather than a "no session" error. Current `isNoSessionError` matches on message text — a
+`TypeError: Failed to fetch` will not match any of the strings (`'authentication required'`,
+`'unauthorized'`, `'401'`) so it will correctly set `authError`. This path is already correct;
+validation in tests will confirm it.
+
+### RC-09 — CORS misconfiguration (confirmed, environment issue)
+
+`apiClient` uses `credentials: 'include'`. A CORS preflight failure produces a `TypeError` at
+the network level — not an HTTP error response. `apiClient` throws this error. `restoreSession`
+catches it, and because the message is not one of the "no session" strings, it correctly sets
+`authError`. The `AuthGuard` then shows the error + retry UI. The fix for this root cause is
+therefore already covered by RC-08's error surface, plus a clear diagnostic message that helps
+identify CORS as the cause. No change to `ALLOWED_ORIGINS` is part of this fix (it's a
+configuration issue), but the error message should mention possible network/CORS issues.
+
+### RC-10 — Post-login race condition (acknowledged, low risk)
+
+`setUser` (React state) is batched and committed asynchronously. `AuthGuard`'s `useEffect`
+depends on `user`. Between `login()` completing and the re-render with the new user, there is a
+brief moment where `user` is still `null`. During this window, `AuthGuard` fires with `user ===
+null` and calls `router.replace('/login')`. However, `isLoading` is not set to `true` during the
+post-login state update, so the guard is not blocked.
+
+The correct fix is: after `login()` resolves successfully (returns `true`), the calling page
+should not navigate manually — it should let `AuthGuard` handle routing after the `user` state
+update. If the login page calls `router.push('/dashboard')` directly, the race exists. The fix
+is to remove any manual navigation in the login page and let `AuthGuard` do the routing.
+
+### RC-11 — Post-login me() re-hydration failure → login() returns false (acknowledged)
+
+The current `AuthContext.login()` code:
+```typescript
+try {
+  const meRes = await authApi.me();
+  if (meRes?.data?.user) {
+    apiUser = meRes.data.user as unknown as User;
+  }
+} catch (meErr: unknown) {
+  // logs but continues — uses login payload as fallback
+}
+setUser(apiUser);
+// ...
+return true;
+```
+The `catch` block correctly falls back to the login payload and still returns `true`. The
+originally identified risk (login returns false due to me() failure) does NOT exist in the
+current code — the function always reaches `return true` if the login API call succeeded. This
+root cause is resolved by the existing code. Tests will confirm the behavior.
+
+### RC-12 — Infinite redirect loop (acknowledged, conditional)
+
+The loop `(no session → AuthGuard → /login → user-check redirect → AuthGuard → /login)` can
+only occur if the login page contains a `useEffect` that calls `router.push(...)` when `user`
+is null but the guard has already resolved. Reading the auth-guard code: the guard redirects to
+`/login` only when `user === null`. The login page itself does not call `router.push('/')` —
+it calls `router.replace('/')` on a successful `login()` return. This would only loop if
+`login()` returned `true` but `user` was still null, which RC-11 analysis shows cannot happen
+after the fix. The loop risk is already eliminated by the existing code path but should be
+confirmed by a test.
+
+---
 
 ## Correctness Properties
 
 Property 1: Bug Condition — Verified, Onboarded Login User Reaches the Dashboard
 
-_For any_ scenario where the bug condition holds and the user entered via the credentials `login`
-path with `emailVerified <> null` and `onboardingCompletedAt <> null` (and is not a System Admin),
-the fixed flow SHALL resolve complete auth state (including `emailVerified` and
-`onboardingCompletedAt`) and render `/dashboard` without a blank screen — identical to the outcome
-produced by hydrating from `/auth/me`.
+_For any_ scenario where `X.enteredVia = 'credentials-login'` and the user is verified and
+onboarded, the fixed flow SHALL hydrate complete auth state (including `emailVerified` and
+`onboardingCompletedAt`) and render the correct destination (`/dashboard` for tenant users,
+`/admin/dashboard` for System Admins) — identical to the outcome from a page refresh.
 
-**Validates: Requirements 2.1, 2.4**
+**Validates: Requirements 2.1, 2.4, 2.5**
 
 Property 2: Bug Condition — Auth Resolution Never Shows a Silent Blank Screen
 
-_For any_ scenario where the bug condition holds because auth is resolving or auth initialization
-failed, the fixed flow SHALL show a visible loading state or an explicit error state (or redirect
-to `/login`), and SHALL NOT render a silent blank white screen.
+_For any_ scenario where auth is resolving (`isLoading = true`), has encountered a transport
+failure (`authError` set), or `user` is null and a redirect is pending, the fixed flow SHALL
+render a visible `AuthLoadingScreen` or an explicit error state with a retry action — and SHALL
+NOT render `null` or a silent white screen.
 
-**Validates: Requirements 2.2, 2.3**
+**Validates: Requirements 2.2, 2.3, 2.8, 2.9**
 
-Property 3: Bug Condition — Login and Refresh Produce Identical Routing
+Property 3: Bug Condition — Demo/Seeded Accounts Are Not Gated by emailVerified = null
 
-_For any_ scenario where the bug condition holds, the route the fixed flow settles on after a
-fresh login SHALL equal the route it settles on after a page refresh for the same user, because
-both paths now hydrate from the same complete auth-state contract.
+_For any_ scenario where a seeded/demo account has `emailVerified = null` but `status = 'ACTIVE'`
+and the backend allows login (via `isDemoMode`), the fixed flow SHALL NOT redirect to
+`/verify-email`. The seed script SHALL set `emailVerified` to a non-null `Date` for all seeded
+accounts.
 
-**Validates: Requirements 2.4, 2.5**
+**Validates: Requirements 2.5**
 
-Property 4: Preservation — Non-Buggy Auth Scenarios Are Unchanged
+Property 4: Bug Condition — System Admin Always Routes to /admin/dashboard
 
-_For any_ input where the bug condition does NOT hold (isBugCondition returns false), the fixed
-flow SHALL produce the same result as the original flow, preserving invalid-credential handling,
-logged-out redirect to `/login`, genuine unverified → `/verify-email`, genuine not-onboarded →
-`/onboarding`, System Admin → `/admin/dashboard`, logout behavior, and the Google OAuth flow.
+_For any_ scenario where `user.role = 'System Admin'`, the fixed flow SHALL route to
+`/admin/dashboard` regardless of any saved redirect, and SHALL NOT route to `/dashboard`.
+
+**Validates: Requirements 2.6**
+
+Property 5: Bug Condition — Invited Users Are Not Sent to Onboarding
+
+_For any_ scenario where the user was registered via invitation (has a valid `tenantId`, the
+tenant has a `name`), the fixed flow SHALL NOT redirect to `/onboarding` when the tenant name is
+present and onboarding is not required.
+
+**Validates: Requirements 2.7**
+
+Property 6: Preservation — Non-Buggy Auth Scenarios Are Unchanged
+
+_For any_ input where the bug condition does NOT hold (`isBugCondition(X) = false`), the fixed
+flow SHALL produce the same result as the original flow, preserving all listed preservation
+requirements.
 
 **Validates: Requirements 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8**
 
+---
+
 ## Fix Implementation
-
-### Design Decision: How to align the contract
-
-Two options were considered for eliminating the contract mismatch (Property 1 / 3):
-
-- **Option A — Expand the backend login response** so `loginUser` / `login` return the same
-  flattened fields as `me` (`emailVerified`, `onboardingCompletedAt`, `onboardingStep`,
-  `tenantName`).
-- **Option B — Frontend re-hydration:** after a successful `login()`, call `authApi.me()` and
-  `setUser` from that complete payload instead of the thin login payload.
-
-**Chosen: Option A as the primary fix, with Option B as defense-in-depth.**
-
-Rationale:
-- Option A fixes the mismatch at its source — the contract itself — so any current or future
-  consumer of the login response (not just `AuthContext`) gets consistent data. It makes the
-  login and `/auth/me` contracts converge, which is exactly what Property 3 requires.
-- Option A is the least invasive at the layer that owns the contract: the change is additive
-  (extra fields), touches no auth logic, no cookie/session behavior, and no query beyond widening
-  the existing user lookup to include the tenant relation already selected by `me`.
-- Option B alone would leave the backend contract inconsistent and add a second network round-trip
-  on every login. However, adding Option B on top is cheap and guarantees the client converges on
-  the canonical `/auth/me` shape even if a future caller bypasses the widened login response — so
-  both are included, with `login()` re-hydrating via `/auth/me` after storing the login payload.
-
-To avoid duplicating the flatten logic between `login` and `me`, the flatten mapping is extracted
-into a small shared helper.
 
 ### Changes Required
 
-**File**: `backend/src/core/auth/auth.service.ts`
+#### Change 1 — Replace null returns in AuthGuard with AuthLoadingScreen (RC-01, RC-08, RC-10)
 
-**Function**: `loginUser`
+**File:** `frontend/src/shared/providers/auth-guard.tsx`
 
-1. **Widen the user lookup** to include the tenant relation fields that `me` already selects
-   (`tenant.name`, `tenant.onboardingStep`, `tenant.onboardingCompletedAt`, `tenant.industry`,
-   `tenant.companySize`) and the user's `emailVerified` field.
-2. **Return the aligned user shape** — add `emailVerified`, `onboardingStep`,
-   `onboardingCompletedAt`, and `tenantName` to the returned `user` object so it matches the
-   `/auth/me` contract. No change to token issuance, session creation, or the verification/status
-   guards.
+The guard already has the correct structure — `authError` UI, `AuthLoadingScreen` import — but
+must verify the loading state is shown for ALL these cases:
 
-**File**: `backend/src/core/auth/auth.controller.ts`
+```tsx
+// While auth is resolving
+if (isLoading) return <AuthLoadingScreen />;
 
-3. **Extract a shared flatten helper** (e.g. `buildAuthUserResponse(user, tenant)`) used by both
-   `me` and the login response construction, so the login and `/auth/me` payloads are guaranteed
-   identical in shape. `login` passes the widened `loginUser` result through this helper (or
-   `loginUser` returns the already-flattened shape and `login` forwards it unchanged).
+// A genuine auth-init transport failure (network/5xx)
+if (authError) {
+  return ( /* explicit error + retry UI */ );
+}
 
-**File**: `frontend/src/store/AuthContext.tsx`
+// user === null: redirect effect fires; show loading during that brief window
+if (user === null) return <AuthLoadingScreen />;
+```
 
-4. **Re-hydrate after login (defense-in-depth):** in `login()`, after a successful
-   `authApi.login(...)`, call `authApi.me()` and `setUser` from that canonical payload; fall back
-   to the (now complete) login payload if the `me` call fails. This guarantees the stored user
-   always carries the gate fields.
-5. **Add an explicit auth-init error state:** introduce `authError` state. In `restoreSession`,
-   distinguish "no session" (401 → `user = null`, no error) from a genuine `/auth/me` transport
-   failure (set `authError`). Expose `authError` and a `retryAuthInit` action through the context
-   so the UI can render a recovery path. Business logic and mock-mode behavior are unchanged.
+**Specific Changes:**
+1. Confirm `if (isLoading) return <AuthLoadingScreen />` is the first branch (not `null`).
+2. Confirm `if (user === null) return <AuthLoadingScreen />` is the last branch before `children`.
+3. Confirm `authError` branch renders the retry UI with `retryAuthInit` — already present but
+   verify dark mode classes cover both light and dark backgrounds.
 
-**File**: `frontend/src/shared/providers/auth-guard.tsx`
+#### Change 2 — Ensure defense-in-depth login() re-hydration never returns false (RC-02, RC-11)
 
-6. **Replace silent `null` with visible states:**
-   - While `isLoading`: render a full-screen loading state (reusing the existing
-     `animate-spin` spinner pattern with dark-mode classes and an `aria-label`) instead of `null`.
-   - When `authError` is set: render an explicit error state with a retry action (or redirect to
-     `/login`) instead of `null`.
-   - The `user === null` case still redirects to `/login`; during that brief redirect render the
-     same loading state rather than `null` so no blank frame is shown.
-   - Gate logic (verification, onboarding, System Admin, saved-redirect, role-based default) is
-     unchanged.
+**File:** `frontend/src/store/AuthContext.tsx`
 
-**File**: `frontend/app/page.tsx`, `frontend/app/onboarding/page.tsx`,
-`frontend/app/company-setup/page.tsx`
+**Function:** `login()`
 
-7. **Replace `return null` during resolution with the shared loading state.** Extract a small
-   shared `AuthLoadingScreen` component (colocated under `shared/components` or
-   `shared/providers`) so all four surfaces render an identical visible spinner instead of a
-   blank screen. Redirect logic and navigation handlers are unchanged.
+The existing code already has the `me()` re-hydration call and fallback. Verify the following
+contract is correct:
+
+```typescript
+// 1. Call authApi.login()
+// 2. If response has user → store as apiUser
+// 3. Try authApi.me() → if success, override apiUser with meRes.data.user
+// 4. setUser(apiUser)  ← this is ALWAYS the complete shape (either from me() or login fallback)
+// 5. return true
+```
+
+No structural change needed if this is already implemented. A test confirms it.
+
+#### Change 3 — Fix emailVerified = null on seeded/demo accounts (RC-05)
+
+**File:** `backend/src/database/seeders/demo.seed.ts` (and/or `seeder.seed.ts`)
+
+Ensure every seeded user has `emailVerified` set to a non-null `Date`:
+
+```typescript
+// When creating/upserting demo users:
+await prisma.user.upsert({
+  where: { email: '...' },
+  create: {
+    // ...
+    emailVerified: new Date(),   // ← add this
+    status: 'ACTIVE',
+  },
+  update: {
+    emailVerified: new Date(),   // ← add this
+    status: 'ACTIVE',
+  },
+});
+```
+
+This is the minimal fix. The alternative (teaching `AuthGuard` to trust `status = 'ACTIVE'` as
+a verification proxy) would require frontend to trust a non-canonical signal and is not aligned
+with the existing security model.
+
+**Additionally**, add a one-time migration patch that sets `emailVerified` for any existing
+ACTIVE seeded users in the database:
+
+```sql
+UPDATE "User"
+SET "emailVerified" = NOW()
+WHERE status = 'ACTIVE'
+  AND "emailVerified" IS NULL;
+```
+This can be done via a Prisma migration or a seed upsert — it must be idempotent.
+
+#### Change 4 — Fix System Admin saved-redirect path (RC-06)
+
+**File:** `frontend/src/shared/providers/auth-guard.tsx`
+
+The saved-redirect block currently allows any non-`/admin` path to execute, including `/dashboard`
+for System Admins:
+
+```tsx
+if (savedRedirect && savedRedirect !== '/login' && savedRedirect !== '/register') {
+  const isAdminPath = savedRedirect.startsWith('/admin');
+  if (!isAdminPath || isSystemAdmin) {
+    router.replace(savedRedirect);
+    return;
+  }
+}
+```
+
+**Fix:** Block `/dashboard` (and any non-admin path) for System Admins:
+
+```tsx
+if (savedRedirect && savedRedirect !== '/login' && savedRedirect !== '/register') {
+  const isAdminPath = savedRedirect.startsWith('/admin');
+  // System Admins must always go to admin paths — never tenant /dashboard
+  if (isSystemAdmin && !isAdminPath) {
+    // Fall through to role-based default routing below
+  } else if (!isAdminPath || isSystemAdmin) {
+    router.replace(savedRedirect);
+    return;
+  }
+}
+```
+
+#### Change 5 — Fix invited user tenant context check (RC-07)
+
+**File:** `frontend/src/shared/providers/auth-guard.tsx`
+
+The onboarding gate currently uses `!tenantName` as the trigger. For invited users, the tenant
+name was set during the inviting company's onboarding, not the invited user's own onboarding.
+The fix is to also check `user.onboardingCompletedAt` before sending to `/onboarding`, since
+invited users join an existing tenant (already onboarded):
+
+```tsx
+// Gate 2: First-time workspace setup
+const tenantName   = (user as any).tenantName;
+const onboardingAt = (user as any).onboardingCompletedAt;
+const localDone    = typeof window !== 'undefined'
+  ? localStorage.getItem(ONBOARDING_COMPLETE_KEY)
+  : null;
+
+// Only redirect to onboarding if:
+// - tenantName is falsy (tenant hasn't completed setup)
+// - AND no local completion signal
+// - AND onboardingCompletedAt is also null (no server-side completion record)
+if (!tenantName && !localDone && !onboardingAt) {
+  sessionStorage.removeItem('leadcrm_redirect_after_login');
+  router.replace('/onboarding');
+  return;
+}
+```
+
+Additionally, ensure `buildAuthUserResponse` always includes the tenant relation join:
+
+**File:** `backend/src/core/auth/auth.service.ts`
+
+Verify `loginUser` includes:
+```typescript
+include: {
+  tenant: {
+    select: {
+      name: true, industry: true, companySize: true,
+      onboardingStep: true, onboardingCompletedAt: true,
+    },
+  },
+},
+```
+This is already present in the `loginUser` implementation.
+
+#### Change 6 — Backend unreachable / CORS error: improve error message (RC-08, RC-09)
+
+**File:** `frontend/src/store/AuthContext.tsx`
+
+**Function:** `restoreSession()`
+
+The catch block already sets `authError` for non-401 errors. Improve the error message to help
+diagnose CORS/network issues:
+
+```typescript
+} catch (err: unknown) {
+  setUser(null);
+  setTenant(null);
+  if (isNoSessionError(err)) {
+    setAuthError(null);
+  } else {
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    // A "Failed to fetch" or TypeError typically means network/CORS issue
+    const isCorsOrNetwork = err instanceof TypeError || msg.includes('fetch');
+    setAuthError(
+      isCorsOrNetwork
+        ? 'Unable to connect to the server. Check your network connection or contact support.'
+        : msg || 'Unable to verify your session',
+    );
+  }
+}
+```
+
+The `AuthGuard` authError UI (retry + back to login) is already in place and covers this.
+
+#### Change 7 — Login page must not race-navigate (RC-10)
+
+**File:** The login page component (wherever `login()` is called on form submit).
+
+After a successful `login()`, the page must NOT call `router.push('/')` or `router.replace('/')`.
+Instead, it should rely on `AuthGuard` to route after the `user` state update. If manual
+navigation is present, remove it:
+
+```tsx
+// WRONG — races with state update:
+const success = await login(email, password);
+if (success) router.push('/dashboard');
+
+// CORRECT — let AuthGuard route after user state settles:
+const success = await login(email, password);
+if (!success) setError('Invalid email or password');
+// AuthGuard will redirect once user state is committed
+```
+
+#### Change 8 — DataContext Batch 1 failure surfacing (RC-03)
+
+**File:** `frontend/src/store/DataContext.tsx`
+
+The Batch 1 catch block currently only `console.error`s. No change to `DataContext` is needed
+for the white-screen fix (the dashboard renders correctly with empty arrays — it shows zeroes,
+not a blank screen). However, adding a toast notification for a complete Batch 1 failure
+prevents silent data gaps:
+
+```typescript
+} catch (err) {
+  console.error('[DataContext] Failed to load CRM data from API:', err);
+  // Surface the failure to the user — don't silently show empty data
+  // Only toast if err is a genuine transport failure (not a 403 plan-gate)
+  if (err instanceof Error && !err.message.includes('403')) {
+    import('sonner').then(({ toast }) => {
+      toast.error('Failed to load data. Please refresh the page.');
+    });
+  }
+}
+```
+
+This is a UX improvement, not a blank-screen fix. The primary blank-screen fix is the auth
+chain fixes in Changes 1–7.
+
+#### Change 9 — Dashboard local timer safety (RC-04)
+
+**File:** `frontend/src/features/tenant/dashboard/ui/dashboard.tsx`
+
+The existing `useEffect` with `clearTimeout` is already correct. The 700ms cosmetic timer is
+not a source of blank screens — it shows `DashboardSkeleton`, not a blank. No change needed.
+This root cause is already handled.
 
 ### Non-goals (explicitly out of scope)
 
-- No redesign of the app, no new features, no replacement of the dual-path auth architecture.
+- No redesign of app, no new features, no replacement of the dual-path auth architecture.
 - No change to JWT/session/cookie mechanics, RBAC, tenant isolation, or any CRM module.
-- No change to the mock-auth localStorage flow.
+- No change to mock-auth localStorage flow.
+- No change to the Google OAuth / NextAuth flow.
+- The CORS configuration itself (`ALLOWED_ORIGINS`) is a deployment concern, not a code change.
+
+---
 
 ## Testing Strategy
 
 ### Validation Approach
 
-The testing strategy follows a two-phase approach: first, surface counterexamples that demonstrate
-the bug on the unfixed code, then verify the fix works and preserves existing behavior. Because the
-defect spans backend contract and frontend rendering, tests are split between backend
-service/controller assertions and frontend guard/context behavior.
+The testing strategy follows a two-phase approach: surface counterexamples that demonstrate each
+bug on the unfixed code, then verify each fix and confirm all preservation requirements are
+unchanged. Tests span backend service/contract assertions and frontend guard/context behavior.
+
+---
 
 ### Exploratory Bug Condition Checking
 
-**Goal**: Surface counterexamples that demonstrate the bug BEFORE implementing the fix. Confirm or
-refute the root-cause analysis. If refuted, re-hypothesize.
-
-**Test Plan**: Assert the shape of the `POST /auth/login` response against the `GET /auth/me`
-response for the same verified, onboarded user, and simulate `AuthGuard` gate evaluation with the
-login payload. Run on the UNFIXED code to observe the missing fields and the resulting misroute.
+**Goal**: Surface counterexamples demonstrating the bugs BEFORE implementing fixes. Confirm or
+refute each root-cause hypothesis.
 
 **Test Cases**:
-1. **Login contract shape**: For a verified, onboarded user, assert the login response `user`
-   contains `emailVerified` and `onboardingCompletedAt` (will fail on unfixed code — fields absent).
-2. **Login vs me parity**: Assert the login `user` shape equals the `/auth/me` `user` shape for the
-   same user (will fail on unfixed code — shapes diverge).
-3. **Guard misroute**: Feed the unfixed login payload into `AuthGuard`'s gate evaluation and assert
-   it does NOT redirect a verified, onboarded user to `/verify-email` or `/onboarding` (will fail).
-4. **Silent blank screen**: Assert `AuthGuard` renders a loading indicator (not `null`) while
-   `isLoading` (will fail on unfixed code — returns `null`).
-5. **Auth-init failure (edge)**: Simulate `/auth/me` throwing during `restoreSession` and assert an
-   error/recovery state is exposed rather than a silent `user = null` blank screen (will fail).
+1. **RC-01 / Loading state**: Assert `AuthGuard` renders a visible element (not `null`) when
+   `isLoading = true` (will fail on unfixed code if guard returns `null`).
+2. **RC-02 / Login contract parity**: For a verified, onboarded user, assert the login response
+   `user` contains `emailVerified` and `onboardingCompletedAt` — and that their values are
+   non-null (will fail if backend does not use `buildAuthUserResponse`).
+3. **RC-05 / Seeded account gate**: Assert `AuthGuard` does NOT redirect to `/verify-email` when
+   `user.emailVerified = null` but `user.status = 'ACTIVE'` in demo mode (will fail without
+   database fix).
+4. **RC-06 / System Admin route**: Assert a System Admin is never sent to `/dashboard` when a
+   saved redirect of `/dashboard` is present in `sessionStorage` (will fail without Change 4).
+5. **RC-07 / Invited user gate**: Assert `AuthGuard` does NOT redirect to `/onboarding` when
+   `user.tenantName` is set but `user.onboardingCompletedAt` is null (invited user case).
+6. **RC-08 / Transport failure**: Simulate `authApi.me()` throwing `TypeError('Failed to fetch')`.
+   Assert `authError` is set (not null) and `user` is null (not a "no session" classification).
+7. **RC-10 / Race condition**: Assert the login page does not navigate manually after `login()`
+   returns — the routing must be driven by `AuthGuard`.
+8. **RC-11 / me() fallback**: Assert `login()` returns `true` even when the post-login `me()`
+   call throws, and that `user` is set to the login-payload user (not null).
 
 **Expected Counterexamples**:
-- Login response `user` is missing `emailVerified` and `onboardingCompletedAt`.
-- `AuthGuard` returns `null` (blank) while resolving and on auth-init failure.
-- Root cause confirmed: contract mismatch + silent null renders.
+- `AuthGuard` returns `null` while resolving (RC-01).
+- Login response `user` is missing gate fields (RC-02 — if backend hasn't been updated).
+- System Admin lands on `/dashboard` via saved redirect (RC-06).
+- Invited user is redirected to `/onboarding` despite having a tenant name (RC-07).
+
+---
 
 ### Fix Checking
 
@@ -318,16 +771,28 @@ expected behavior.
 FOR ALL X WHERE isBugCondition(X) DO
   result := fixedFlow(X)
   ASSERT expectedBehavior(result)
-  // enteredVia='login' & verified & onboarded  -> route='/dashboard' AND rendered AND NOT blank
-  // authPhase='resolving' OR authInitFailed     -> shows_loading OR shows_error OR route='/login'
-  //                                                 AND NOT silent_blank_screen
+  CASE isBugCondition(X) BY SCENARIO
+    RC-01 → isLoading=true  → renders AuthLoadingScreen, NOT null
+    RC-02 → login path      → user includes emailVerified, routes to /dashboard
+    RC-03 → Batch1 fails    → toast shown, dashboard renders with empty arrays
+    RC-05 → seeded null     → emailVerified set in DB, not redirected to /verify-email
+    RC-06 → systemAdmin     → routed to /admin/dashboard, NOT /dashboard
+    RC-07 → invited user    → not sent to /onboarding when tenantName present
+    RC-08 → backend down    → authError set, error+retry UI shown, NOT blank screen
+    RC-09 → CORS blocked    → authError set, error+retry UI shown, NOT blank screen
+    RC-10 → race condition  → login page does not navigate, AuthGuard routes correctly
+    RC-11 → me() fails      → login() returns true, user set from login payload
+    RC-12 → redirect loop   → no infinite loop, user settles on one destination
+  END CASE
 END FOR
 ```
 
+---
+
 ### Preservation Checking
 
-**Goal**: Verify that for all inputs where the bug condition does NOT hold, the fixed flow produces
-the same result as the original flow.
+**Goal**: Verify that for all inputs where the bug condition does NOT hold, the fixed flow
+produces the same result as the original.
 
 **Pseudocode:**
 ```
@@ -336,49 +801,69 @@ FOR ALL X WHERE NOT isBugCondition(X) DO
 END FOR
 ```
 
-**Testing Approach**: Property-based testing is recommended for preservation checking because:
-- It generates many auth scenarios automatically across the input domain
-  (`emailVerified × onboardingCompletedAt × role × status × enteredVia`).
-- It catches edge combinations that hand-written unit tests miss.
-- It provides strong guarantees that behavior is unchanged for all non-buggy inputs.
-
-**Test Plan**: Observe behavior on the UNFIXED code first for non-bug scenarios (invalid
-credentials, logged-out redirect, genuine unverified, genuine not-onboarded, System Admin, logout,
-OAuth), then write property-based and example tests capturing that behavior and re-run on the fixed
-code.
+**Testing Approach**: Property-based testing is recommended because the auth input space
+is a Cartesian product: `{emailVerified} × {onboardingCompletedAt} × {role} × {status} ×
+{enteredVia} × {tenantName} × {registeredVia}`. PBT automatically generates inputs across
+this space and catches edge cases that hand-written tests miss.
 
 **Test Cases**:
-1. **Invalid credentials**: Observe error + stay on `/login` on unfixed code; assert unchanged.
-2. **Logged-out `/dashboard`**: Observe redirect to `/login` with saved path; assert unchanged.
-3. **Genuine unverified**: Observe route to `/verify-email`; assert unchanged.
-4. **Genuine not-onboarded**: Observe route to `/onboarding`; assert unchanged.
+1. **Invalid credentials**: Observe error toast + stay on `/login`; assert unchanged.
+2. **Logged-out navigation**: Observe redirect to `/login` with saved `sessionStorage` path;
+   assert unchanged.
+3. **Genuine unverified user**: Observe route to `/verify-email`; assert unchanged.
+4. **Genuine not-onboarded user**: Observe route to `/onboarding`; assert unchanged.
 5. **System Admin**: Observe route to `/admin/dashboard`, gates bypassed; assert unchanged.
-6. **Logout**: Observe state cleared + cookie revoked + `/login`; assert unchanged.
-7. **Google OAuth**: Observe NextAuth flow completes + `/auth/me` hydration; assert unchanged.
+6. **Logout**: Observe state cleared, cookie revoked, `/login`; assert unchanged.
+7. **Google OAuth**: Observe NextAuth flow completes, `/auth/me` hydrates; assert unchanged.
+8. **Mock-auth mode**: Observe localStorage flow unchanged; assert no API calls made.
+
+---
 
 ### Unit Tests
 
-- Backend: `loginUser` returns the aligned user shape (includes gate fields) for a verified,
-  onboarded user; and still throws `401`/`403` for invalid credentials, unverified, and inactive
-  users (guards unchanged).
-- Backend: `login` and `me` responses produce identical `user` shapes via the shared flatten helper.
-- Frontend: `AuthGuard` renders a loading state while `isLoading`, an error state on `authError`,
-  and redirects to `/login` when `user === null` — never `null`.
-- Frontend: root/`onboarding`/`company-setup` shells render the shared loading screen instead of
-  `null` during resolution.
+**Backend:**
+- `buildAuthUserResponse(user)` includes `emailVerified`, `tenantName`, `onboardingCompletedAt`,
+  `onboardingStep`, `industry`, `companySize`.
+- `loginUser` returns a user shape equal to `buildAuthUserResponse(user)` for a verified,
+  onboarded user.
+- `loginUser` still throws `401` for invalid credentials, `403` for unverified (non-demo) and
+  inactive users.
+- Seeded user records have `emailVerified` set to a non-null `Date`.
+
+**Frontend:**
+- `AuthGuard` renders `AuthLoadingScreen` when `isLoading = true` (not `null`).
+- `AuthGuard` renders the error+retry UI when `authError` is set.
+- `AuthGuard` renders `AuthLoadingScreen` (not `null`) when `user === null` and redirect is
+  pending.
+- `AuthContext.login()` returns `true` when `authApi.login()` succeeds, even if `authApi.me()`
+  subsequently throws.
+- `AuthContext.restoreSession()` sets `authError` for `TypeError: Failed to fetch` and clears
+  `authError` for 401 responses.
+- `AuthGuard` does NOT redirect a System Admin to `/dashboard` when savedRedirect = `/dashboard`.
+- `AuthGuard` does NOT redirect an invited user (with `tenantName` set) to `/onboarding`.
+
+---
 
 ### Property-Based Tests
 
-- Generate random `AuthScenario` inputs and assert Property 4 (preservation): for every non-buggy
-  scenario, the fixed guard decision equals the original guard decision.
-- Generate verified/onboarded login scenarios and assert Property 1: settles on `/dashboard`.
-- Generate resolving/failed scenarios and assert Property 2: always a visible loading or error
-  state, never a silent blank screen.
+- Generate random `(emailVerified, onboardingCompletedAt, role, status, tenantName)` tuples and
+  verify Property 6 (preservation): guard decision is unchanged for non-buggy inputs.
+- Generate verified/onboarded login scenarios and verify Property 1: user settles on correct
+  destination.
+- Generate `isLoading = true` and `authError` scenarios and verify Property 2: always shows
+  visible state.
+- Generate System Admin scenarios and verify Property 4: always routes to `/admin/dashboard`.
+
+---
 
 ### Integration Tests
 
-- Full credentials-login flow in real-API mode: verified, onboarded user logs in → lands on
-  `/dashboard` with no blank frame; then refresh → same `/dashboard` (Property 3).
-- Auth-init failure flow: force `/auth/me` to fail → user sees an explicit error/recovery UI, not
-  a blank screen.
-- OAuth flow regression: Google sign-in completes and hydrates via `/auth/me` unchanged.
+- Full credentials-login flow (real-API mode): verified + onboarded user logs in → `/dashboard`
+  with no blank frame; then refresh → same `/dashboard` (Properties 1 + 3).
+- Auth-init transport failure: force `authApi.me()` to throw `TypeError` → explicit
+  error+retry UI is shown, not a blank screen (Property 2).
+- Seeded demo account login: `admin@democorp.com` logs in → reaches `/dashboard` (Property 3).
+- System Admin login: `admin@gmail.com` logs in → reaches `/admin/dashboard` (Property 4).
+- Invited user login: invited user logs in after accepting invitation → reaches `/dashboard`
+  (Property 5).
+- Google OAuth regression: sign-in completes and hydrates via `/auth/me` unchanged (Property 6).
