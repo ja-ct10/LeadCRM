@@ -116,6 +116,93 @@ export default function Dashboard() {
   const userPerms = userRoleDef?.permissions || [];
   const isClientAdmin = user?.role === 'Client Admin';
 
+  // ── All hooks and derived data MUST be above every early return ────────────
+  // Rules of Hooks: no useMemo/useMemo calls after conditional returns.
+
+  // Build a stage lookup from canonical pipelines data
+  const stageMap = useMemo(() => {
+    const map = new Map<string, { isWon: boolean; isLost: boolean; probability?: number; name: string; color?: string }>();
+    for (const pipeline of pipelines) {
+      for (const stage of (pipeline.stages ?? [])) {
+        map.set(stage.id, { isWon: !!stage.isWon, isLost: !!stage.isLost, probability: stage.probability, name: stage.name, color: stage.color });
+      }
+    }
+    return map;
+  }, [pipelines]);
+
+  // Derived deal sets (unconditional — stageMap is now always computed above)
+  const wonDeals    = useMemo(() => deals.filter(d => !d.isArchived && !!stageMap.get(d.stageId)?.isWon), [deals, stageMap]);
+  const allActive   = useMemo(() => deals.filter(d => !d.isArchived), [deals]);
+  const activeDeals = useMemo(() => allActive.filter(d => !stageMap.get(d.stageId)?.isWon && !stageMap.get(d.stageId)?.isLost), [allActive, stageMap]);
+
+  const totalRevenue      = wonDeals.reduce((s, d) => s + (d.value ?? 0), 0);
+  const winRate           = allActive.length > 0 ? Math.round((wonDeals.length / allActive.length) * 100) : 0;
+  const myTasks           = tasks.filter(t => t.assignedUserId === user?.id);
+  const myPending         = myTasks.filter(t => t.status === 'pending');
+  const myOverdue         = myTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled' && t.dueDate && new Date(t.dueDate) < new Date());
+  const myHotLeads        = contacts.filter(c => c.status === 'Hot' && c.assignedUserId === user?.id);
+  const forecastedRevenue = activeDeals.reduce((acc, d) => acc + (d.value ?? 0) * ((stageMap.get(d.stageId)?.probability ?? 10) / 100), 0);
+
+  const avgVelocity = useMemo(() => {
+    const closedWon = wonDeals.filter(d => d.lastStageChangeDate);
+    if (closedWon.length === 0) return 0;
+    const sum = closedWon.reduce((acc, d) => {
+      const created = new Date(d.createdAt || Date.now()).getTime();
+      const closed  = new Date(d.lastStageChangeDate!).getTime();
+      return acc + Math.max(1, Math.round((closed - created) / 86400000));
+    }, 0);
+    return Math.round(sum / closedWon.length);
+  }, [wonDeals]);
+
+  const revenueData = useMemo(() => {
+    const now = new Date();
+    return Array.from({ length: 6 }, (_, i) => {
+      const d      = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+      const label  = d.toLocaleString('default', { month: 'short' });
+      const y      = d.getFullYear();
+      const m      = d.getMonth();
+      const monthWon = wonDeals.filter(deal => {
+        const closed = deal.lastStageChangeDate ? new Date(deal.lastStageChangeDate) : null;
+        return closed && closed.getFullYear() === y && closed.getMonth() === m;
+      });
+      return { name: label, revenue: monthWon.reduce((s, deal) => s + (deal.value ?? 0), 0), deals: monthWon.length };
+    });
+  }, [wonDeals]);
+
+  const pipelineData = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const d of deals.filter(dl => !dl.isArchived && !stageMap.get(dl.stageId)?.isLost)) {
+      counts.set(d.stageId, (counts.get(d.stageId) ?? 0) + 1);
+    }
+    return Array.from(counts.entries()).map(([stageId, value]) => {
+      const stage = stageMap.get(stageId);
+      return { name: stage?.name ?? stageId, value, color: stage?.color ?? '#64748b' };
+    });
+  }, [deals, stageMap]);
+
+  const topPerformers = useMemo(() => users.map(u => {
+    const won = wonDeals.filter(d => d.assignedUserId === u.id);
+    return { user: u, wonDeals: won.length, wonValue: won.reduce((s, d) => s + (d.value ?? 0), 0), activeDeals: activeDeals.filter(d => d.assignedUserId === u.id).length };
+  }).sort((a, b) => b.wonValue - a.wonValue).slice(0, 5), [users, wonDeals, activeDeals]);
+
+  const statCards = isClientAdmin ? [
+    { label: 'Total Revenue', value: `₱${totalRevenue.toLocaleString()}`,                 icon: DollarSign, color: 'blue',    trend: `${wonDeals.length} won`,                              up: wonDeals.length > 0 },
+    { label: 'Forecasted',    value: `₱${Math.round(forecastedRevenue).toLocaleString()}`, icon: TrendingUp, color: 'emerald', trend: `${activeDeals.length} active`,                        up: true },
+    { label: 'Active Deals',  value: activeDeals.length,                                   icon: Briefcase,  color: 'purple',  trend: `${allActive.length} total`,                           up: true },
+    { label: 'Total Leads',   value: contacts.length,                                      icon: Users,      color: 'orange',  trend: 'all leads',                                           up: true },
+    { label: 'Win Rate',      value: `${winRate}%`,                                        icon: Target,     color: 'pink',    trend: `${wonDeals.length}/${allActive.length}`,              up: winRate > 0 },
+    { label: 'Avg Velocity',  value: avgVelocity > 0 ? `${avgVelocity}d` : '—',           icon: Zap,        color: 'indigo',  trend: 'to close',                                            up: true },
+  ] : [
+    { label: 'My Hot Leads',    value: myHotLeads.length,                                                                 icon: Zap,      color: 'orange',  trend: `${myHotLeads.length} hot`,                                                     up: true },
+    { label: 'Pending Tasks',   value: myPending.length,                                                                  icon: Clock,    color: 'red',     trend: myOverdue.length > 0 ? `${myOverdue.length} overdue` : 'On track',              up: myOverdue.length === 0 },
+    { label: 'My Active Deals', value: activeDeals.filter(d => d.assignedUserId === user?.id).length,                    icon: Briefcase,color: 'blue',    trend: 'Active',                                                                       up: true },
+    { label: 'Total Contacts',  value: contacts.length,                                                                   icon: Users,    color: 'purple',  trend: 'all contacts',                                                                 up: true },
+    { label: 'Win Rate',        value: `${winRate}%`,                                                                     icon: Target,   color: 'emerald', trend: 'This month',                                                                   up: winRate > 0 },
+    { label: 'Avg Velocity',    value: avgVelocity > 0 ? `${avgVelocity}d` : '—',                                        icon: Zap,      color: 'indigo',  trend: 'To close',                                                                     up: true },
+  ];
+
+  // ── All hooks and derivations complete — early returns are now safe ────────
+
   if (!user || isLoading) {
     return (
       <div className="p-4 lg:p-6 space-y-6">
@@ -183,99 +270,9 @@ export default function Dashboard() {
             </tbody>
           </table>
         </div>
-        </motion.div>
+      </motion.div>
     );
   }
-
-  // ── Tenant dashboard data ──────────────────────────────────
-  // Build a stage lookup from canonical pipelines data — avoids mock stage ID strings
-  const stageMap = useMemo(() => {
-    const map = new Map<string, { isWon: boolean; isLost: boolean; probability?: number; name: string; color?: string }>();
-    for (const pipeline of pipelines) {
-      for (const stage of (pipeline.stages ?? [])) {
-        map.set(stage.id, { isWon: !!stage.isWon, isLost: !!stage.isLost, probability: stage.probability, name: stage.name, color: stage.color });
-      }
-    }
-    return map;
-  }, [pipelines]);
-
-  const activeDeals   = deals.filter(d => !d.isArchived && !stageMap.get(d.stageId)?.isWon && !stageMap.get(d.stageId)?.isLost);
-  const wonDeals      = deals.filter(d => !d.isArchived && !!stageMap.get(d.stageId)?.isWon);
-  const totalRevenue  = wonDeals.reduce((s, d) => s + (d.value ?? 0), 0);
-  const allActive     = deals.filter(d => !d.isArchived);
-  const winRate       = allActive.length > 0 ? Math.round((wonDeals.length / allActive.length) * 100) : 0;
-  const myTasks       = tasks.filter(t => t.assignedUserId === user.id);
-  const myPending     = myTasks.filter(t => t.status === 'pending');
-  const myOverdue     = myTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled' && t.dueDate && new Date(t.dueDate) < new Date());
-  const myHotLeads    = contacts.filter(c => c.status === 'Hot' && c.assignedUserId === user.id);
-
-  // Forecasted revenue: deal value × stage probability / 100
-  const forecastedRevenue = activeDeals.reduce((acc, d) => {
-    const prob = stageMap.get(d.stageId)?.probability ?? 10;
-    return acc + (d.value ?? 0) * (prob / 100);
-  }, 0);
-
-  // Avg velocity: days from createdAt to lastStageChangeDate for won deals
-  const avgVelocity = (() => {
-    const closedWon = wonDeals.filter(d => d.lastStageChangeDate);
-    if (closedWon.length === 0) return 0;
-    const sum = closedWon.reduce((acc, d) => {
-      const created = new Date(d.createdAt || Date.now()).getTime();
-      const closed  = new Date(d.lastStageChangeDate!).getTime();
-      return acc + Math.max(1, Math.round((closed - created) / 86400000));
-    }, 0);
-    return Math.round(sum / closedWon.length);
-  })();
-
-  // Revenue trend: rolling 6 months from real won deals grouped by lastStageChangeDate month
-  const revenueData = useMemo(() => {
-    const now = new Date();
-    return Array.from({ length: 6 }, (_, i) => {
-      const d      = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
-      const label  = d.toLocaleString('default', { month: 'short' });
-      const y      = d.getFullYear();
-      const m      = d.getMonth();
-      const monthWon = wonDeals.filter(deal => {
-        const closed = deal.lastStageChangeDate ? new Date(deal.lastStageChangeDate) : null;
-        return closed && closed.getFullYear() === y && closed.getMonth() === m;
-      });
-      return { name: label, revenue: monthWon.reduce((s, deal) => s + (deal.value ?? 0), 0), deals: monthWon.length };
-    });
-  }, [wonDeals]);
-
-  // Pipeline distribution using real stage names + colors from stageMap
-  const pipelineData = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const d of deals.filter(dl => !dl.isArchived && !stageMap.get(dl.stageId)?.isLost)) {
-      counts.set(d.stageId, (counts.get(d.stageId) ?? 0) + 1);
-    }
-    return Array.from(counts.entries()).map(([stageId, value]) => {
-      const stage = stageMap.get(stageId);
-      return { name: stage?.name ?? stageId, value, color: stage?.color ?? '#64748b' };
-    });
-  }, [deals, stageMap]);
-
-  const topPerformers = users.map(u => {
-    const won = wonDeals.filter(d => d.assignedUserId === u.id);
-    return { user: u, wonDeals: won.length, wonValue: won.reduce((s, d) => s + (d.value ?? 0), 0), activeDeals: activeDeals.filter(d => d.assignedUserId === u.id).length };
-  }).sort((a, b) => b.wonValue - a.wonValue).slice(0, 5);
-
-  // ── Stat card config ──────────────────────────────────────
-  const statCards = isClientAdmin ? [
-    { label: 'Total Revenue', value: `₱${totalRevenue.toLocaleString()}`,             icon: DollarSign, color: 'blue',    trend: `${wonDeals.length} won`,  up: wonDeals.length > 0 },
-    { label: 'Forecasted',    value: `₱${Math.round(forecastedRevenue).toLocaleString()}`, icon: TrendingUp, color: 'emerald', trend: `${activeDeals.length} active`, up: true },
-    { label: 'Active Deals',  value: activeDeals.length,                              icon: Briefcase,  color: 'purple',  trend: `${allActive.length} total`, up: true },
-    { label: 'Total Leads',   value: contacts.length,                                 icon: Users,      color: 'orange',  trend: 'all leads',    up: true },
-    { label: 'Win Rate',      value: `${winRate}%`,                                   icon: Target,     color: 'pink',    trend: `${wonDeals.length}/${allActive.length}`, up: winRate > 0 },
-    { label: 'Avg Velocity',  value: avgVelocity > 0 ? `${avgVelocity}d` : '—',      icon: Zap,        color: 'indigo',  trend: 'to close', up: true },
-  ] : [
-    { label: 'My Hot Leads',     value: myHotLeads.length,  icon: Zap,       color: 'orange',  trend: `${myHotLeads.length} hot`,   up: true },
-    { label: 'Pending Tasks',    value: myPending.length,   icon: Clock,     color: 'red',     trend: myOverdue.length > 0 ? `${myOverdue.length} overdue` : 'On track', up: myOverdue.length === 0 },
-    { label: 'My Active Deals',  value: activeDeals.filter(d => d.assignedUserId === user.id).length, icon: Briefcase, color: 'blue', trend: 'Active', up: true },
-    { label: 'Total Contacts',   value: contacts.length,    icon: Users,     color: 'purple',  trend: 'all contacts', up: true },
-    { label: 'Win Rate',         value: `${winRate}%`,      icon: Target,    color: 'emerald', trend: 'This month', up: winRate > 0 },
-    { label: 'Avg Velocity',     value: avgVelocity > 0 ? `${avgVelocity}d` : '—', icon: Zap, color: 'indigo', trend: 'To close', up: true },
-  ];
 
   const colorMap: Record<string, { bg: string; text: string; glow: string }> = {
     blue:   { bg: 'bg-blue-500/10',   text: 'text-blue-500',   glow: 'shadow-blue-500/20'   },
