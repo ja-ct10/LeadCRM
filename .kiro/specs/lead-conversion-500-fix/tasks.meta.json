@@ -1,0 +1,179 @@
+{
+  "pbtResults": {
+    "1. Write bug condition exploration test": {
+      "status": "passed",
+      "failingExample": "Counterexample: [\"!\"] (accountName = \"!\")\nfast-check seed: 1610108159, path: \"0:0:0:0:0:0:0:0\"\nCaused by: PrismaClientKnownRequestError: Invalid `prisma.contact.create()` invocation:\ncolumn \"lifecycleStage\" of relation \"Contact\" does not exist\nRaw query failed. Code: `42703`. Message: `ERROR: column \"lifecycleStage\" of relation \"Contact\" does not exist`\nError code: P2022, meta: { column: 'lifecycleStage', modelName: 'Contact' }\n\nInterpretation: For any non-empty accountName (even a single character \"!\"), convertContact()\npropagates PrismaClientKnownRequestError P2022 — the service does NOT swallow the schema drift\nerror. This confirms isBugCondition(X) = true and the bug is real.",
+      "lastRunTimestamp": 1788450424524
+    },
+    "2. Write preservation property tests (BEFORE implementing fix)": {
+      "status": "passed",
+      "lastRunTimestamp": 1788450638901
+    },
+    "3.5 Verify bug condition exploration test now passes": {
+      "status": "passed",
+      "lastRunTimestamp": 1788455126687
+    }
+  },
+  "executionHistory": {
+    "1. Write bug condition exploration test": [
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788450244493
+      },
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788450255438
+      },
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788450445483
+      }
+    ],
+    "2. Write preservation property tests (BEFORE implementing fix)": [
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788450244700
+      },
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788450450980
+      },
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788450655654
+      }
+    ],
+    "3.1 Apply pending migrations to live database": [
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788450244902
+      },
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788450665708
+      },
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788451377162
+      }
+    ],
+    "3.2 Harden the global error handler to catch Prisma errors": [
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788450245129
+      },
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788452811212
+      },
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788453367171
+      }
+    ],
+    "3.3 Verify field mapping correctness in `convertContact`": [
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788450245323
+      },
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788452812306
+      },
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788453368219
+      }
+    ],
+    "3.4 Verify `contacts.repository.ts` queries `prisma.lead.*` only": [
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788450245552
+      },
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788453376000
+      },
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788453411718
+      }
+    ],
+    "3.5 Verify bug condition exploration test now passes": [
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788450245690
+      },
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788453417794
+      },
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788455144376
+      }
+    ],
+    "3.6 Verify preservation tests still pass after fix": [
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788450245843
+      },
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788455149870
+      },
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788455181876
+      }
+    ],
+    "4. Checkpoint — Ensure all tests pass": [
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788450245991
+      },
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788455187094
+      },
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788455210038
+      }
+    ],
+    "3. Fix for Lead Conversion 500 Internal Server Error": [
+      {
+        "executionId": "c80d10ca-db1d-48df-b3a9-95ca22c81145",
+        "chatSessionId": "sess_431c2565-183d-4b10-ae93-7b35e03848c9",
+        "timestamp": 1788455182054
+      }
+    ]
+  }
+}

@@ -17,10 +17,11 @@ import { getPaginationParams } from '../../../shared/helpers/pagination';
  */
 
 // ── Shared include shape ───────────────────────────────────────────────────
+// `organization` relation is DEPRECATED — removed to prevent 500s caused by
+// the deprecated Organization table FK. Canonical company link is accountId → Account (ADR-001).
 const CONTACT_INCLUDE = {
   assignedUser: { select: { id: true, firstName: true, lastName: true } },
   account:      { select: { id: true, name: true } },
-  organization: { select: { id: true, name: true } },
 } as const;
 
 /**
