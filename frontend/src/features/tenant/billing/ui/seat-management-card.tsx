@@ -59,13 +59,21 @@ export function SeatManagementCard({ seats, hasSubscription, onSeatsChanged }: S
   if (!seats || !hasSubscription) {
     return (
       <div className="rounded-2xl border border-slate-200 dark:border-slate-700/60 bg-white dark:bg-slate-900 p-6">
-        <div className="flex items-center gap-3 mb-3">
+        <div className="flex items-center gap-3 mb-4">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 dark:bg-indigo-950/40">
             <Users className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
           </div>
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Team Seats</h3>
+          <div>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Team Seats</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Included with your subscription</p>
+          </div>
         </div>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Subscribe to a plan to manage team seats.</p>
+
+        <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 p-4">
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            Seat management becomes available once you subscribe to a paid plan. Paid plans include a pool of team seats, and you can add or remove seats anytime.
+          </p>
+        </div>
       </div>
     );
   }

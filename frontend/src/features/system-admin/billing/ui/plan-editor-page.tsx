@@ -278,7 +278,7 @@ export default function PlanEditorPage({
     <div className="flex flex-col min-h-full">
       {/* ── Scrollable content ───────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+        <div className="max-w-5xl mx-auto px-4 sm:px-8 lg:px-10 py-8 space-y-8">
 
           {/* Back link */}
           <button
@@ -382,8 +382,10 @@ export default function PlanEditorPage({
             </div>
           </SectionCard>
 
+          {/* ── Features + Payment Methods (side by side on large screens) ────── */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
           {/* ── Features ─────────────────────────────────────────────────────── */}
-          <SectionCard>
+          <SectionCard className="h-full">
             <SectionTitle>Features</SectionTitle>
             <SectionDescription>
               Enable, rename, add, or remove the features included in this plan.
@@ -460,7 +462,7 @@ export default function PlanEditorPage({
           </SectionCard>
 
           {/* ── Available Payment Methods ─────────────────────────────────────── */}
-          <SectionCard>
+          <SectionCard className="h-full">
             <SectionTitle>Available Payment Methods</SectionTitle>
             <SectionDescription>
               Choose the payment methods customers can use when subscribing to this plan.
@@ -515,6 +517,8 @@ export default function PlanEditorPage({
               currency, and payment eligibility.
             </p>
           </SectionCard>
+          </div>
+          {/* end Features + Payment Methods grid */}
 
           {/* Bottom spacer so content isn't hidden behind sticky bar */}
           <div className="h-4" />
@@ -522,8 +526,8 @@ export default function PlanEditorPage({
       </div>
 
       {/* ── Sticky action bar ────────────────────────────────────────────────── */}
-      <div className="shrink-0 sticky bottom-0 z-10 bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-white/[0.07] px-4 sm:px-6 py-3">
-        <div className="max-w-2xl mx-auto flex items-center justify-between gap-3">
+      <div className="shrink-0 sticky bottom-0 z-10 bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-white/[0.07] px-4 sm:px-8 lg:px-10 py-3">
+        <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
           <span className="text-xs text-slate-400 dark:text-slate-500 hidden sm:block">
             All changes saved when you click Save Changes.
           </span>
