@@ -2,13 +2,14 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Search, Eye, Download, CreditCard, Building2, RefreshCw,
+  Search, Eye, Download, CreditCard, Building2, RefreshCw, Plus,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { SideSheet } from '@/shared/components/side-sheet';
 import { Pagination } from '@/shared/components/ui/pagination';
 import { cn } from '@/lib/utils';
 import { adminStripeService } from '../services/admin-stripe.service';
+import AddBillingPage from './add-billing-page';
 import type { StripePaymentTransaction, PaymentMetrics, PaymentStatus } from '@/store/types/stripe.types';
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
@@ -45,6 +46,7 @@ export default function AdminBillingPage() {
   const [search, setSearch]               = useState('');
   const [isLoading, setIsLoading]         = useState(true);
   const [selectedTxn, setSelectedTxn]     = useState<StripePaymentTransaction | null>(null);
+  const [showAddBilling, setShowAddBilling] = useState(false);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -75,6 +77,15 @@ export default function AdminBillingPage() {
 
   const handleDownload = (id: string) => toast.success(`Downloading invoice ${id}…`);
 
+  if (showAddBilling) {
+    return (
+      <AddBillingPage
+        onClose={() => setShowAddBilling(false)}
+        onCreated={fetchAll}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -83,14 +94,23 @@ export default function AdminBillingPage() {
           <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Billing</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Stripe payment history across all tenants</p>
         </div>
-        <button
-          onClick={fetchAll}
-          aria-label="Refresh billing data"
-          className="h-9 px-3 rounded-lg border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-transparent text-slate-700 dark:text-slate-300 text-sm font-medium hover:bg-slate-50 dark:hover:bg-white/[0.05] transition-colors flex items-center gap-2"
-        >
-          <RefreshCw size={14} className={cn(isLoading && 'animate-spin')} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={fetchAll}
+            aria-label="Refresh billing data"
+            className="h-10 px-3 rounded-lg border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-transparent text-slate-700 dark:text-slate-300 text-sm font-medium hover:bg-slate-50 dark:hover:bg-white/[0.05] transition-colors flex items-center gap-2"
+          >
+            <RefreshCw size={14} className={cn(isLoading && 'animate-spin')} />
+            Refresh
+          </button>
+          <button
+            onClick={() => setShowAddBilling(true)}
+            className="flex items-center gap-2 h-10 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition-colors shadow-sm active:scale-95"
+          >
+            <Plus size={18} />
+            Add Billing
+          </button>
+        </div>
       </div>
 
       {/* Summary cards */}

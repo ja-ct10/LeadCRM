@@ -46,7 +46,6 @@ import { FormsTab } from './forms-tab';
 import { TeamManagement } from './team-management';
 import { RolesPermissions } from './roles-permissions';
 import { PlanUsageTab } from './plan-usage-tab';
-import { TelephonyUsageTab } from './telephony-usage-tab';
 
 type SettingsTab =
   | 'profile'
@@ -59,7 +58,6 @@ type SettingsTab =
   | 'archived'
   | 'account-details'
   | 'plan'
-  | 'telephony-usage'
   | 'billing'
   | 'forms';
 
@@ -112,7 +110,6 @@ const NAV_GROUPS: NavGroup[] = [
     isTree: true,
     items: [
       { id: 'plan', label: 'Plan' },
-      { id: 'telephony-usage', label: 'Telephony Usage' },
       { id: 'billing', label: 'Payment Methods' },
     ],
   },
@@ -834,10 +831,6 @@ export default function SettingsPage(): React.ReactElement {
     <PlanUsageTab />
   );
 
-  const renderTelephonyUsageTab = (): React.ReactElement => (
-    <TelephonyUsageTab />
-  );
-
   const renderBillingTab = (): React.ReactElement => (
     <div className="max-w-2xl space-y-4">
       <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-4">
@@ -886,7 +879,6 @@ export default function SettingsPage(): React.ReactElement {
     'archived': renderArchivedTab,
     'account-details': renderAccountDetailsTab,
     'plan': renderPlanTab,
-    'telephony-usage': renderTelephonyUsageTab,
     'billing': renderBillingTab,
   };
 
@@ -991,7 +983,6 @@ export default function SettingsPage(): React.ReactElement {
           activeTab === 'users' ||
           activeTab === 'roles' ||
           activeTab === 'plan' ||
-          activeTab === 'telephony-usage' ||
           (activeTab === 'forms' && isFormBuilderActive);
 
         return (
