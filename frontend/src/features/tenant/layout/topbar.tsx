@@ -65,17 +65,22 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
 
   // Get current module name from navigation
   const isImportPage = pathname?.includes('/import');
+  const isBillingPage = currentPath === 'client-billing' || currentPath === 'billing';
   const currentModule = currentPath === 'settings'
     ? settingsBreadcrumb.tab
-    : NAV_ITEMS.find(item => item.path === currentPath)?.name ||
-      (currentPath === 'notifications' ? 'Notifications' :
-       currentPath === 'inbox' ? 'Messages' : 'Dashboard');
+    : isBillingPage
+      ? 'Billing & Subscription'
+      : NAV_ITEMS.find(item => item.path === currentPath)?.name ||
+        (currentPath === 'notifications' ? 'Notifications' :
+         currentPath === 'inbox' ? 'Messages' : 'Dashboard');
 
   // Get parent group for breadcrumb
   const currentGroup = NAV_ITEMS.find(item => item.path === currentPath);
   const groupName = currentPath === 'settings'
     ? settingsBreadcrumb.group
-    : (currentGroup as any)?.group ?? '';
+    : isBillingPage
+      ? 'Billing'
+      : (currentGroup as any)?.group ?? '';
 
   // Sub-page breadcrumb (e.g. "Import" for /crm/leads/import)
   const subPageName = isImportPage ? 'Import' : null;

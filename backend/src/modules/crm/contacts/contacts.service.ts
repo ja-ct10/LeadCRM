@@ -141,23 +141,31 @@ export async function convertContact(
       }
     } else if (dto.createContact !== false) {
       // Create new Contact from Lead data.
-      // Field mapping (Lead -> Contact): companyName -> company, productInterest -> productInterests.
-      // status must be a valid ContactStatus enum; lifecycleStage marks the converted-customer state.
-      // accountId is the canonical company link (ADR-001). Typed to catch field-name regressions.
+      //
+      // ── Field mapping (Lead → Contact) ───────────────────────────────────
+      // Lead.companyName     → Contact.company          (plain text; NOT a FK)
+      // Lead.productInterest → Contact.productInterests (String[] → String[])
+      // Lead.firstName/etc   → Contact.firstName/etc    (direct copy)
+      // accountId (resolved) → Contact.accountId        (FK → Account; canonical company link per ADR-001)
+      // lifecycleStage       → 'CUSTOMER'               (ContactLifecycleStage enum — requires migration 20260807110000)
+      // status               → 'WARM'                   (ContactStatus enum; indicates active lead-converted contact)
+      //
+      // The Prisma.ContactUncheckedCreateInput type annotation provides compile-time safety:
+      // any field-name drift (e.g. renaming productInterests) will be caught by tsc --noEmit.
       const contactData: Prisma.ContactUncheckedCreateInput = {
         tenantId,
         firstName: lead.firstName,
         lastName: lead.lastName,
         email: lead.email,
         phone: lead.phone,
-        company: lead.companyName ?? null,
+        company: lead.companyName ?? null,         // Lead.companyName → Contact.company ✓
         address: lead.address,
         source: lead.source,
-        productInterests: lead.productInterest ?? [],
+        productInterests: lead.productInterest ?? [],  // Lead.productInterest → Contact.productInterests ✓
         assignedUserId: lead.assignedUserId,
-        accountId: accountId ?? null,
+        accountId: accountId ?? null,              // resolved Account ID or null ✓
         status: 'WARM',
-        lifecycleStage: 'CUSTOMER',
+        lifecycleStage: 'CUSTOMER',                // requires ContactLifecycleStage enum in DB ✓
         convertedAt: now,
       };
       contact = await tx.contact.create({ data: contactData });

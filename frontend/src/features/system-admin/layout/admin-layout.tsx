@@ -11,6 +11,7 @@ import NotificationsDropdown from '@/features/tenant/notifications/ui/notificati
 import { useThemeContainer } from '@/shared/hooks/use-theme-container';
 import { cn } from '@/lib/utils';
 import { AdminProfileDropdown } from './admin-profile-dropdown';
+import { AdminOmnibox } from './admin-omnibox';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -260,6 +261,11 @@ export default function AdminLayout({ children, currentPath, navigate, subLabel 
                 </>
               )}
             </div>
+          </div>
+
+          {/* Center: scoped admin search */}
+          <div className="hidden md:flex flex-1 max-w-[460px] mx-4 justify-center">
+            <AdminOmnibox navigate={navigate} />
           </div>
 
           {/* Right: actions */}
