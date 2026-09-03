@@ -26,29 +26,29 @@ export async function seedDemoRichData() {
   const aId = adminUser.id;
   const sId = salesUser.id;
 
-  // ── Organizations ─────────────────────────────────────────────────
+  // ── Accounts (canonical company entity — ADR-001) ─────────────────
   const orgs = await Promise.all([
-    prisma.organization.upsert({
+    prisma.account.upsert({
       where: { id: 'seed-org-techsol' },
       update: {},
       create: { id: 'seed-org-techsol', tenantId: tId, assignedUserId: sId, name: 'Tech Solutions Inc.', industry: 'Information Technology', size: '51-200', website: 'https://techsolutions.ph', address: 'BGC, Taguig, Metro Manila', country: 'Philippines', customerType: 'Active Customer' },
     }),
-    prisma.organization.upsert({
+    prisma.account.upsert({
       where: { id: 'seed-org-nexus' },
       update: {},
       create: { id: 'seed-org-nexus', tenantId: tId, assignedUserId: aId, name: 'Nexus Digital Corp', industry: 'Software Development', size: '11-50', website: 'https://nexusdigital.ph', address: 'Ortigas, Pasig, Metro Manila', country: 'Philippines', customerType: 'Prospect' },
     }),
-    prisma.organization.upsert({
+    prisma.account.upsert({
       where: { id: 'seed-org-skynet' },
       update: {},
       create: { id: 'seed-org-skynet', tenantId: tId, assignedUserId: sId, name: 'Skynet Telecom', industry: 'Telecommunications', size: '200+', website: 'https://skynettelecom.ph', address: 'Makati CBD, Metro Manila', country: 'Philippines', customerType: 'Active Customer' },
     }),
-    prisma.organization.upsert({
+    prisma.account.upsert({
       where: { id: 'seed-org-greenpeak' },
       update: {},
       create: { id: 'seed-org-greenpeak', tenantId: tId, assignedUserId: aId, name: 'Green Peak Energy', industry: 'Renewable Energy', size: '11-50', address: 'Cebu City, Cebu', country: 'Philippines', customerType: 'Prospect' },
     }),
-    prisma.organization.upsert({
+    prisma.account.upsert({
       where: { id: 'seed-org-firstbpo' },
       update: {},
       create: { id: 'seed-org-firstbpo', tenantId: tId, assignedUserId: sId, name: 'FirstBPO Services', industry: 'Business Process Outsourcing', size: '200+', website: 'https://firstbpo.com.ph', address: 'Eastwood, Quezon City', country: 'Philippines', customerType: 'Active Customer' },
@@ -57,14 +57,14 @@ export async function seedDemoRichData() {
 
   // ── Contacts ──────────────────────────────────────────────────────
   const contacts = await Promise.all([
-    prisma.contact.upsert({ where: { id: 'seed-c-1' }, update: {}, create: { id: 'seed-c-1', tenantId: tId, organizationId: orgs[0].id, assignedUserId: sId, ownerId: sId, firstName: 'Maria', lastName: 'Santos', email: 'maria.santos@techsolutions.ph', phone: '+63 917 123 4567', jobTitle: 'IT Manager', status: 'HOT', score: 92, source: 'Website', productInterests: ['CRM Enterprise', 'Workflow Automation'] } }),
-    prisma.contact.upsert({ where: { id: 'seed-c-2' }, update: {}, create: { id: 'seed-c-2', tenantId: tId, organizationId: orgs[1].id, assignedUserId: aId, ownerId: aId, firstName: 'Carlos', lastName: 'Reyes', email: 'carlos.reyes@nexusdigital.ph', phone: '+63 918 234 5678', jobTitle: 'CEO', status: 'WARM', score: 78, source: 'Referral', productInterests: ['CRM Pro'] } }),
-    prisma.contact.upsert({ where: { id: 'seed-c-3' }, update: {}, create: { id: 'seed-c-3', tenantId: tId, organizationId: orgs[2].id, assignedUserId: sId, ownerId: sId, firstName: 'Ana', lastName: 'Villanueva', email: 'ana.v@skynettelecom.ph', phone: '+63 919 345 6789', jobTitle: 'Procurement Head', status: 'HOT', score: 88, source: 'Cold Email', productInterests: ['Service Orders', 'CRM Enterprise'] } }),
-    prisma.contact.upsert({ where: { id: 'seed-c-4' }, update: {}, create: { id: 'seed-c-4', tenantId: tId, organizationId: orgs[3].id, assignedUserId: aId, ownerId: aId, firstName: 'Diego', lastName: 'Cruz', email: 'diego.cruz@greenpeak.ph', phone: '+63 920 456 7890', jobTitle: 'Operations Director', status: 'COLD', score: 45, source: 'LinkedIn', productInterests: ['CRM Pro'] } }),
-    prisma.contact.upsert({ where: { id: 'seed-c-5' }, update: {}, create: { id: 'seed-c-5', tenantId: tId, organizationId: orgs[4].id, assignedUserId: sId, ownerId: sId, firstName: 'Liza', lastName: 'Mendoza', email: 'liza.mendoza@firstbpo.com.ph', phone: '+63 921 567 8901', jobTitle: 'VP Sales', status: 'CLOSED', score: 95, source: 'Trade Show', customerType: 'Active Customer', productInterests: ['CRM Enterprise', 'Marketing Pro'] } }),
+    prisma.contact.upsert({ where: { id: 'seed-c-1' }, update: {}, create: { id: 'seed-c-1', tenantId: tId, accountId: orgs[0].id, assignedUserId: sId, ownerId: sId, firstName: 'Maria', lastName: 'Santos', email: 'maria.santos@techsolutions.ph', phone: '+63 917 123 4567', jobTitle: 'IT Manager', status: 'HOT', score: 92, source: 'Website', productInterests: ['CRM Enterprise', 'Workflow Automation'] } }),
+    prisma.contact.upsert({ where: { id: 'seed-c-2' }, update: {}, create: { id: 'seed-c-2', tenantId: tId, accountId: orgs[1].id, assignedUserId: aId, ownerId: aId, firstName: 'Carlos', lastName: 'Reyes', email: 'carlos.reyes@nexusdigital.ph', phone: '+63 918 234 5678', jobTitle: 'CEO', status: 'WARM', score: 78, source: 'Referral', productInterests: ['CRM Pro'] } }),
+    prisma.contact.upsert({ where: { id: 'seed-c-3' }, update: {}, create: { id: 'seed-c-3', tenantId: tId, accountId: orgs[2].id, assignedUserId: sId, ownerId: sId, firstName: 'Ana', lastName: 'Villanueva', email: 'ana.v@skynettelecom.ph', phone: '+63 919 345 6789', jobTitle: 'Procurement Head', status: 'HOT', score: 88, source: 'Cold Email', productInterests: ['Service Orders', 'CRM Enterprise'] } }),
+    prisma.contact.upsert({ where: { id: 'seed-c-4' }, update: {}, create: { id: 'seed-c-4', tenantId: tId, accountId: orgs[3].id, assignedUserId: aId, ownerId: aId, firstName: 'Diego', lastName: 'Cruz', email: 'diego.cruz@greenpeak.ph', phone: '+63 920 456 7890', jobTitle: 'Operations Director', status: 'COLD', score: 45, source: 'LinkedIn', productInterests: ['CRM Pro'] } }),
+    prisma.contact.upsert({ where: { id: 'seed-c-5' }, update: {}, create: { id: 'seed-c-5', tenantId: tId, accountId: orgs[4].id, assignedUserId: sId, ownerId: sId, firstName: 'Liza', lastName: 'Mendoza', email: 'liza.mendoza@firstbpo.com.ph', phone: '+63 921 567 8901', jobTitle: 'VP Sales', status: 'CLOSED', score: 95, source: 'Trade Show', customerType: 'Active Customer', productInterests: ['CRM Enterprise', 'Marketing Pro'] } }),
     prisma.contact.upsert({ where: { id: 'seed-c-6' }, update: {}, create: { id: 'seed-c-6', tenantId: tId, assignedUserId: sId, ownerId: sId, firstName: 'Ramon', lastName: 'Garcia', email: 'ramon.garcia@gmail.com', phone: '+63 922 678 9012', jobTitle: 'Freelance Consultant', status: 'WARM', score: 62, source: 'Website' } }),
-    prisma.contact.upsert({ where: { id: 'seed-c-7' }, update: {}, create: { id: 'seed-c-7', tenantId: tId, organizationId: orgs[0].id, assignedUserId: sId, ownerId: aId, firstName: 'Patricia', lastName: 'Tan', email: 'patricia.tan@techsolutions.ph', phone: '+63 923 789 0123', jobTitle: 'CTO', status: 'HOT', score: 85, source: 'Referral', productInterests: ['Workflow Automation'] } }),
-    prisma.contact.upsert({ where: { id: 'seed-c-8' }, update: {}, create: { id: 'seed-c-8', tenantId: tId, organizationId: orgs[2].id, assignedUserId: aId, ownerId: aId, firstName: 'Miguel', lastName: 'Flores', email: 'm.flores@skynettelecom.ph', phone: '+63 924 890 1234', jobTitle: 'Account Manager', status: 'WARM', score: 70, source: 'Cold Call' } }),
+    prisma.contact.upsert({ where: { id: 'seed-c-7' }, update: {}, create: { id: 'seed-c-7', tenantId: tId, accountId: orgs[0].id, assignedUserId: sId, ownerId: aId, firstName: 'Patricia', lastName: 'Tan', email: 'patricia.tan@techsolutions.ph', phone: '+63 923 789 0123', jobTitle: 'CTO', status: 'HOT', score: 85, source: 'Referral', productInterests: ['Workflow Automation'] } }),
+    prisma.contact.upsert({ where: { id: 'seed-c-8' }, update: {}, create: { id: 'seed-c-8', tenantId: tId, accountId: orgs[2].id, assignedUserId: aId, ownerId: aId, firstName: 'Miguel', lastName: 'Flores', email: 'm.flores@skynettelecom.ph', phone: '+63 924 890 1234', jobTitle: 'Account Manager', status: 'WARM', score: 70, source: 'Cold Call' } }),
   ]);
 
   // ── Pipeline + Stages ─────────────────────────────────────────────

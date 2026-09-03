@@ -346,19 +346,70 @@ export async function findDealsGroupedByStage(
   return results;
 }
 
+/**
+ * Sync a deal's Contact associations to exactly `contactIds` (set-equality) via the
+ * ContactDeal junction. New IDs are validated against the Contact table within the tenant.
+ */
 export async function syncContactAssociations(
   dealId: string, tenantId: string, contactIds: string[], userId: string
 ): Promise<void> {
   await prisma.$transaction(async (tx) => {
-    // Get current associations
+    // Current ContactDeal associations for this deal
+    const current = await tx.contactDeal.findMany({
+      where: { dealId, tenantId },
+      select: { contactId: true },
+    });
+    const currentIds = new Set(current.map(c => c.contactId));
+    const targetIds = new Set(contactIds);
+
+    // Remove associations no longer in the target set
+    const toRemove = [...currentIds].filter(id => !targetIds.has(id));
+    if (toRemove.length > 0) {
+      await tx.contactDeal.deleteMany({
+        where: { dealId, tenantId, contactId: { in: toRemove } },
+      });
+    }
+
+    // Add new associations
+    const toAdd = [...targetIds].filter(id => !currentIds.has(id));
+    if (toAdd.length > 0) {
+      // Verify all new contacts belong to the tenant
+      const validContacts = await tx.contact.findMany({
+        where: { id: { in: toAdd }, tenantId },
+        select: { id: true },
+      });
+      const validIds = new Set(validContacts.map(c => c.id));
+      const invalidIds = toAdd.filter(id => !validIds.has(id));
+
+      if (invalidIds.length > 0) {
+        throw new ValidationError(`Invalid contact IDs: ${invalidIds.join(', ')}`);
+      }
+
+      await tx.contactDeal.createMany({
+        data: toAdd.map(contactId => ({ contactId, dealId, tenantId, addedById: userId })),
+        skipDuplicates: true,
+      });
+    }
+  });
+}
+
+/**
+ * Sync a deal's Lead associations to exactly `leadIds` (set-equality) via the LeadDeal
+ * junction. New IDs are validated against the Lead table within the tenant.
+ */
+export async function syncLeadAssociations(
+  dealId: string, tenantId: string, leadIds: string[], userId: string
+): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    // Current LeadDeal associations for this deal
     const current = await tx.leadDeal.findMany({
       where: { dealId, tenantId },
       select: { leadId: true },
     });
     const currentIds = new Set(current.map(c => c.leadId));
-    const targetIds = new Set(contactIds);
+    const targetIds = new Set(leadIds);
 
-    // Remove associations no longer in the set
+    // Remove associations no longer in the target set
     const toRemove = [...currentIds].filter(id => !targetIds.has(id));
     if (toRemove.length > 0) {
       await tx.leadDeal.deleteMany({
@@ -369,16 +420,16 @@ export async function syncContactAssociations(
     // Add new associations
     const toAdd = [...targetIds].filter(id => !currentIds.has(id));
     if (toAdd.length > 0) {
-      // Verify all new contacts belong to tenant
-      const validContacts = await tx.lead.findMany({
+      // Verify all new leads belong to the tenant
+      const validLeads = await tx.lead.findMany({
         where: { id: { in: toAdd }, tenantId },
         select: { id: true },
       });
-      const validIds = new Set(validContacts.map(c => c.id));
+      const validIds = new Set(validLeads.map(c => c.id));
       const invalidIds = toAdd.filter(id => !validIds.has(id));
 
       if (invalidIds.length > 0) {
-        throw new ValidationError(`Invalid contact IDs: ${invalidIds.join(', ')}`);
+        throw new ValidationError(`Invalid lead IDs: ${invalidIds.join(', ')}`);
       }
 
       await tx.leadDeal.createMany({

@@ -256,7 +256,7 @@ export async function verifyRegOtp(req: Request, res: Response, next: NextFuncti
           lastName: user.lastName,
           tenantId: user.tenantId,
         },
-        redirectTo: '/onboarding',
+        redirectTo: user.role === 'System Admin' ? '/admin/dashboard' : '/dashboard',
       },
     });
   } catch (err) {
@@ -352,8 +352,12 @@ export async function verifyEmailByLink(req: Request, res: Response, next: NextF
     // Set HttpOnly cookie (SameSite=Lax allows top-level navigation)
     res.cookie(COOKIE_NAME, jwtToken, COOKIE_OPTIONS);
 
-    // Redirect to onboarding
-    res.redirect(`${appUrl}/onboarding`);
+    // Role-appropriate redirect: System Admin → admin portal, others → dashboard.
+    // AuthGuard will handle onboarding gate if needed.
+    // onboardingCompletedAt is already set at registration time, so /dashboard
+    // is the correct landing destination for newly verified users.
+    const redirectTarget = user.role === 'System Admin' ? '/admin/dashboard' : '/dashboard';
+    res.redirect(`${appUrl}${redirectTarget}`);
   } catch (err) {
     next(err);
   }

@@ -3,6 +3,7 @@ import { League_Spartan, Poppins } from 'next/font/google';
 import '../src/index.css';
 import { AppProviders } from '../src/shared/providers/app-providers';
 import { ThemeProvider } from '../src/shared/providers/theme-provider';
+import { ServiceWorkerRegistration } from '../src/shared/components/service-worker-registration';
 
 // Configure Google Fonts using Next.js font optimization
 const leagueSpartan = League_Spartan({
@@ -49,12 +50,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           `
         }} />
       </head>
-      <body className={poppins.className}>
+      <body className={poppins.className} suppressHydrationWarning>
         <AppProviders>
           <ThemeProvider>
             {children}
           </ThemeProvider>
         </AppProviders>
+        <ServiceWorkerRegistration />
       </body>
     </html>
   );

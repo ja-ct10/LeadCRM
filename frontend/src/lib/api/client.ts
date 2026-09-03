@@ -96,4 +96,6 @@ export const apiClient = {
   put:    <T>(path: string, body: unknown)   => request<T>('PUT',    path, body),
   patch:  <T>(path: string, body?: unknown)  => request<T>('PATCH',  path, body),
   delete: <T>(path: string)                  => request<T>('DELETE', path),
+  /** Low-level method for DELETE requests that need a JSON body. */
+  deleteWithBody: <T>(path: string, body: unknown) => request<T>('DELETE', path, body),
 };

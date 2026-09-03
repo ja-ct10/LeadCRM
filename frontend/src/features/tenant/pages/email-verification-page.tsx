@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, CheckCircle2, Mail, AlertCircle, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { authApi } from '@/shared/services/auth.api';
+import { useAuth } from '@/store/AuthContext';
 
 const RESEND_COOLDOWN = 60;
 
@@ -14,6 +15,7 @@ interface EmailVerificationPageProps {
 }
 
 export default function EmailVerificationPage({ email, error, onNavigate }: EmailVerificationPageProps): React.ReactElement {
+  const { refreshUser } = useAuth();
   const [code, setCode] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
@@ -74,10 +76,18 @@ export default function EmailVerificationPage({ email, error, onNavigate }: Emai
       if (response?.success) {
         setVerificationSuccess(true);
         toast.success('Email verified successfully!');
-        // Auto-login: the backend set the cookie in the response
-        // Redirect to onboarding — AuthContext will hydrate on next page load
+        // Re-hydrate the cached auth user from /auth/me so gate fields
+        // (emailVerified, onboardingCompletedAt) are fresh before navigation.
+        // This prevents the AuthGuard from firing the onboarding gate on a
+        // stale cache that lacks onboardingCompletedAt (which the backend
+        // already sets at registration time).
+        await refreshUser();
+        // Navigate to dashboard — AuthGuard will apply role-based routing
+        // and evaluate gates based on the freshly hydrated user.
+        // Do NOT hardcode /onboarding; onboardingCompletedAt is already set
+        // in the DB at registration time.
         setTimeout(() => {
-          onNavigate('onboarding');
+          onNavigate('dashboard');
         }, 1500);
       } else {
         setErrorMessage('Invalid or expired verification code.');
@@ -118,7 +128,7 @@ export default function EmailVerificationPage({ email, error, onNavigate }: Emai
             Your email has been verified successfully. Setting up your workspace...
           </p>
           <div className="text-sm text-slate-400 dark:text-slate-500">
-            Redirecting to onboarding...
+            Redirecting to your dashboard...
           </div>
         </div>
       </div>

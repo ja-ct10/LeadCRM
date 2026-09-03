@@ -40,7 +40,7 @@ async function cleanupLegacyRecords() {
   await prisma.contact.deleteMany({
     where: { tenantId: TENANT_ID, id: { startsWith: 'rey-' } },
   });
-  await prisma.organization.deleteMany({
+  await prisma.account.deleteMany({
     where: { tenantId: TENANT_ID, id: { startsWith: 'rey-' } },
   });
 
@@ -77,24 +77,24 @@ async function main() {
 
   // ── Organizations ──────────────────────────────────────────────────
   const orgs = await Promise.all([
-    prisma.organization.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'Antigravity Solutions Inc.', industry: 'Information Technology', size: '11-50', website: 'https://antigravity.ph', address: 'BGC, Taguig, Metro Manila', country: 'Philippines', customerType: 'Active Customer' } }),
-    prisma.organization.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'Nexwave Digital', industry: 'Software Development', size: '1-10', website: 'https://nexwave.ph', address: 'Ortigas, Pasig', country: 'Philippines', customerType: 'Prospect' } }),
-    prisma.organization.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'CloudPH Telecom', industry: 'Telecommunications', size: '200+', address: 'Makati, Metro Manila', country: 'Philippines', customerType: 'Active Customer' } }),
-    prisma.organization.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'BrightPath BPO', industry: 'Business Process Outsourcing', size: '51-200', address: 'Cebu City, Cebu', country: 'Philippines', customerType: 'Prospect' } }),
-    prisma.organization.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'GreenTech Energy PH', industry: 'Renewable Energy', size: '11-50', address: 'Davao City', country: 'Philippines', customerType: 'Prospect' } }),
+    prisma.account.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'Antigravity Solutions Inc.', industry: 'Information Technology', size: '11-50', website: 'https://antigravity.ph', address: 'BGC, Taguig, Metro Manila', country: 'Philippines', customerType: 'Active Customer' } }),
+    prisma.account.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'Nexwave Digital', industry: 'Software Development', size: '1-10', website: 'https://nexwave.ph', address: 'Ortigas, Pasig', country: 'Philippines', customerType: 'Prospect' } }),
+    prisma.account.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'CloudPH Telecom', industry: 'Telecommunications', size: '200+', address: 'Makati, Metro Manila', country: 'Philippines', customerType: 'Active Customer' } }),
+    prisma.account.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'BrightPath BPO', industry: 'Business Process Outsourcing', size: '51-200', address: 'Cebu City, Cebu', country: 'Philippines', customerType: 'Prospect' } }),
+    prisma.account.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'GreenTech Energy PH', industry: 'Renewable Energy', size: '11-50', address: 'Davao City', country: 'Philippines', customerType: 'Prospect' } }),
   ]);
   console.log('[Seed] Organizations created.');
 
   // ── Contacts ───────────────────────────────────────────────────────
   const contacts = await Promise.all([
-    prisma.contact.create({ data: { tenantId: TENANT_ID, organizationId: orgs[0].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Anna', lastName: 'Reyes', email: 'anna.reyes@antigravity.ph', phone: '+63 917 100 0001', jobTitle: 'CTO', status: 'HOT', score: 91, source: 'Referral', productInterests: ['CRM Enterprise'] } }),
-    prisma.contact.create({ data: { tenantId: TENANT_ID, organizationId: orgs[1].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Marco', lastName: 'Dela Cruz', email: 'marco@nexwave.ph', phone: '+63 918 200 0002', jobTitle: 'CEO', status: 'WARM', score: 72, source: 'LinkedIn', productInterests: ['CRM Pro'] } }),
-    prisma.contact.create({ data: { tenantId: TENANT_ID, organizationId: orgs[2].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Patricia', lastName: 'Gomez', email: 'p.gomez@cloudph.com', phone: '+63 919 300 0003', jobTitle: 'Procurement Manager', status: 'HOT', score: 85, source: 'Cold Email', productInterests: ['Service Orders', 'CRM Enterprise'] } }),
-    prisma.contact.create({ data: { tenantId: TENANT_ID, organizationId: orgs[3].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Luis', lastName: 'Santos', email: 'luis.santos@brightpath.ph', phone: '+63 920 400 0004', jobTitle: 'VP Operations', status: 'COLD', score: 38, source: 'Website' } }),
-    prisma.contact.create({ data: { tenantId: TENANT_ID, organizationId: orgs[4].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Sofia', lastName: 'Villanueva', email: 'sofia.v@greentech.ph', phone: '+63 921 500 0005', jobTitle: 'Director', status: 'WARM', score: 60, source: 'Trade Show' } }),
+    prisma.contact.create({ data: { tenantId: TENANT_ID, accountId: orgs[0].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Anna', lastName: 'Reyes', email: 'anna.reyes@antigravity.ph', phone: '+63 917 100 0001', jobTitle: 'CTO', status: 'HOT', score: 91, source: 'Referral', productInterests: ['CRM Enterprise'] } }),
+    prisma.contact.create({ data: { tenantId: TENANT_ID, accountId: orgs[1].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Marco', lastName: 'Dela Cruz', email: 'marco@nexwave.ph', phone: '+63 918 200 0002', jobTitle: 'CEO', status: 'WARM', score: 72, source: 'LinkedIn', productInterests: ['CRM Pro'] } }),
+    prisma.contact.create({ data: { tenantId: TENANT_ID, accountId: orgs[2].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Patricia', lastName: 'Gomez', email: 'p.gomez@cloudph.com', phone: '+63 919 300 0003', jobTitle: 'Procurement Manager', status: 'HOT', score: 85, source: 'Cold Email', productInterests: ['Service Orders', 'CRM Enterprise'] } }),
+    prisma.contact.create({ data: { tenantId: TENANT_ID, accountId: orgs[3].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Luis', lastName: 'Santos', email: 'luis.santos@brightpath.ph', phone: '+63 920 400 0004', jobTitle: 'VP Operations', status: 'COLD', score: 38, source: 'Website' } }),
+    prisma.contact.create({ data: { tenantId: TENANT_ID, accountId: orgs[4].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Sofia', lastName: 'Villanueva', email: 'sofia.v@greentech.ph', phone: '+63 921 500 0005', jobTitle: 'Director', status: 'WARM', score: 60, source: 'Trade Show' } }),
     prisma.contact.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Jerico', lastName: 'Tan', email: 'jerico.tan@gmail.com', phone: '+63 922 600 0006', jobTitle: 'Freelance Consultant', status: 'WARM', score: 55, source: 'Website' } }),
-    prisma.contact.create({ data: { tenantId: TENANT_ID, organizationId: orgs[0].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Camille', lastName: 'Bautista', email: 'c.bautista@antigravity.ph', phone: '+63 923 700 0007', jobTitle: 'IT Manager', status: 'HOT', score: 88, source: 'Referral', productInterests: ['Workflow Automation'] } }),
-    prisma.contact.create({ data: { tenantId: TENANT_ID, organizationId: orgs[2].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Danilo', lastName: 'Cruz', email: 'd.cruz@cloudph.com', phone: '+63 924 800 0008', jobTitle: 'Account Executive', status: 'CLOSED', score: 95, source: 'Cold Call', customerType: 'Active Customer' } }),
+    prisma.contact.create({ data: { tenantId: TENANT_ID, accountId: orgs[0].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Camille', lastName: 'Bautista', email: 'c.bautista@antigravity.ph', phone: '+63 923 700 0007', jobTitle: 'IT Manager', status: 'HOT', score: 88, source: 'Referral', productInterests: ['Workflow Automation'] } }),
+    prisma.contact.create({ data: { tenantId: TENANT_ID, accountId: orgs[2].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Danilo', lastName: 'Cruz', email: 'd.cruz@cloudph.com', phone: '+63 924 800 0008', jobTitle: 'Account Executive', status: 'CLOSED', score: 95, source: 'Cold Call', customerType: 'Active Customer' } }),
   ]);
   console.log('[Seed] Contacts created.');
 

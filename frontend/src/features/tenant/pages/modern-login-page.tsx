@@ -58,7 +58,7 @@ interface ModernLoginPageProps {
 }
 
 export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginPageProps): React.ReactElement {
-  const { login, loginWithGoogle, requestPasswordReset, confirmPasswordReset } = useAuth();
+  const { user, login, loginWithGoogle, requestPasswordReset, confirmPasswordReset } = useAuth();
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -96,6 +96,13 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [oauthError]);
 
+  // RC-10 fix: removed race-condition post-login navigation.
+  // After login() resolves, AuthContext commits the new user state and AuthGuard's
+  // useEffect fires, routing to the correct portal based on role. Calling
+  // onNavigate here raced with that effect and could send users to /dashboard
+  // before AuthGuard could apply role-based routing. AuthGuard now owns all
+  // post-login routing -- the login page only clears the error on failure.
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -124,16 +131,13 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
 
     try {
       const success = await login(email, password);
-      if (success) {
-        // Always navigate to dashboard — AuthGuard handles role-based routing:
-        // System Admin → /admin/dashboard, unverified → /verify-email, not onboarded → /onboarding
-        onNavigate('dashboard');
-      } else {
+      if (!success) {
         toast.error('The email or password you entered is incorrect. Please try again.');
+        setIsSigningIn(false);
       }
+      // If success, the useEffect above will handle navigation
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Sign in failed. Please try again.');
-    } finally {
       setIsSigningIn(false);
     }
   };

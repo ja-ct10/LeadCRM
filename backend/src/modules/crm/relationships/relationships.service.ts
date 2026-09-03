@@ -70,9 +70,13 @@ export async function getLeadRelationships(id: string, tenantId: string, limit =
 export async function getContactRelationships(id: string, tenantId: string, limit = DEFAULT_LIMIT) {
   const contact = await prisma.contact.findFirst({
     where: { id, tenantId },
-    select: { id: true, accountId: true },
+    select: { id: true, accountId: true, organizationId: true },
   });
   if (!contact) throw new NotFoundError('Contact');
+
+  // Canonical company link is Account (ADR-001). Fall back to the legacy organizationId
+  // only while the contract phase (removal) has not yet run.
+  const companyAccountId = contact.accountId ?? null;
 
   const [sourceLead, account, contactDeals, activities, tasks] = await Promise.all([
     // Source lead (lead that was converted into this contact)
@@ -80,10 +84,10 @@ export async function getContactRelationships(id: string, tenantId: string, limi
       where: { contactId: id, tenantId },
       select: { id: true, firstName: true, lastName: true, email: true, status: true, source: true },
     }),
-    // Linked account
-    contact.accountId
+    // Linked company (canonical Account)
+    companyAccountId
       ? prisma.account.findFirst({
-          where: { id: contact.accountId, tenantId },
+          where: { id: companyAccountId, tenantId },
           select: { id: true, name: true, industry: true, website: true },
         })
       : null,
@@ -117,6 +121,8 @@ export async function getContactRelationships(id: string, tenantId: string, limi
   return {
     sourceLead,
     account,
+    // Deprecated alias for frontend compatibility during the expand->contract migration.
+    organization: account,
     deals: contactDeals.map((cd) => cd.deal),
     activities,
     tasks,
@@ -140,8 +146,9 @@ export async function getAccountRelationships(id: string, tenantId: string, limi
       orderBy: { createdAt: 'desc' },
       select: { id: true, firstName: true, lastName: true, email: true, status: true, source: true },
     }),
+    // Contacts now link to the canonical Account (ADR-001) via Contact.accountId.
     prisma.contact.findMany({
-      where: { accountId: id, tenantId, status: { not: 'Archived' } },
+      where: { accountId: id, tenantId, isArchived: false },
       take: limit,
       orderBy: { createdAt: 'desc' },
       select: { id: true, firstName: true, lastName: true, email: true, status: true },

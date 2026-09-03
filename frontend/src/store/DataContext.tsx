@@ -374,6 +374,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setRoles((apiRoles as any[]).filter((r: any) => !r.isArchived));
       } catch (err) {
         console.error('[DataContext] Failed to load CRM data from API:', err);
+        // RC-03 fix: surface genuine transport failures as a user-visible toast so
+        // the dashboard never silently shows empty data without explanation.
+        // 403 plan-gate responses are excluded -- those are expected for restricted
+        // modules and should not alarm the user with a generic error.
+        if (err instanceof Error && !err.message.includes('403')) {
+          toast.error('Failed to load data. Please refresh the page.');
+        }
       }
 
       // ── Column Preferences (Batch 1 addition) ─────────────────────────────
@@ -2840,4 +2847,3 @@ export const useData = (options?: { includeArchived?: boolean }) => {
     };
   }, [context, includeArchived]);
 };
-

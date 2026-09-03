@@ -4,6 +4,11 @@
       "status": "passed",
       "failingExample": "All 5 exploration tests FAIL on the unfixed code (correct — proves the bug). Counterexamples:\n1. Backend login contract shape — login `user` = { id, email, role, firstName, lastName, tenantId }; AssertionError: expected object to have property \"emailVerified\" (also missing onboardingCompletedAt).\n2. Backend login vs me parity — login has 6 keys; /auth/me user has 12 keys (email, emailVerified, onboardingCompletedAt, onboardingStep, tenantName, industry, companySize, status, id, firstName, lastName, role, tenantId). Shapes diverge.\n3. Frontend guard misroute — verified, onboarded user with thin payload → router.replace called with \"/verify-email?email=alice%40democorp.com\".\n4. Frontend silent blank screen — AuthGuard renders '' (empty container) while isLoading=true (returns null).\n5. Frontend auth-init failure — /auth/me throws during restoreSession; context exposes neither `authError` nor `retryAuthInit` (hasErrorState=false, hasRetryAction=false) — failure swallowed to user=null.",
       "lastRunTimestamp": 1788209381730
+    },
+    "6. Write bug condition exploration tests for Phase 2 (BEFORE implementing fixes)": {
+      "status": "passed",
+      "failingExample": "RC-05 counterexample: AuthGuard called router.replace('/verify-email?email=admin%40democorp.com') for user {emailVerified: null, status: 'ACTIVE'} — bug confirmed.\n\nRC-06 counterexample: System Admin with sessionStorage saved redirect='/dashboard' was sent to '/dashboard' (wentToDashboard=true) instead of '/admin/dashboard' — bug confirmed.\n\nRC-07 (edge case) counterexample: User with tenantName='' (empty string, falsy) and onboardingCompletedAt='2026-01-01' was redirected to '/onboarding' — guard only checks !tenantName, not onboardingCompletedAt — bug confirmed.\n\nRC-08/09 counterexample: TypeError('Failed to fetch') produced authError='Failed to fetch' — not connectivity-specific (no mention of 'connect', 'network', 'server', or 'contact support') — bug confirmed.\n\nRC-10 counterexample: Login page source contains useEffect with pattern 'if (user && isSigningIn) { onNavigate(\"dashboard\") }' — race condition navigation present — bug confirmed.\n\nRC-11: PASSED as expected — login() returns true and user is set from login payload when me() throws (already resolved).\n\nRC-12: PASSED as expected — redirect loop terminates after at most 1 call to router.replace('/login') (already resolved).\n\nRC-05 seed check: PASSED — both demo.seed.ts and seeder.seed.ts already include emailVerified: new Date() in all user upsert create/update blocks.",
+      "lastRunTimestamp": 1788324018288
     }
   },
   "executionHistory": {
@@ -216,6 +221,122 @@
         "executionId": "1db7cd59-5656-43cd-b6a3-da3f36a44c8b",
         "chatSessionId": "sess_3c6eef3f-9cec-423b-b126-4d9c7234ddb0",
         "timestamp": 1788211028839
+      }
+    ],
+    "6. Write bug condition exploration tests for Phase 2 (BEFORE implementing fixes)": [
+      {
+        "executionId": "a295d455-d393-4524-9174-758647506c81",
+        "chatSessionId": "sess_fbe389cd-ee3c-4b6c-909d-d5b092befdf1",
+        "timestamp": 1788323216670
+      },
+      {
+        "executionId": "a295d455-d393-4524-9174-758647506c81",
+        "chatSessionId": "sess_fbe389cd-ee3c-4b6c-909d-d5b092befdf1",
+        "timestamp": 1788323230561
+      },
+      {
+        "executionId": "a295d455-d393-4524-9174-758647506c81",
+        "chatSessionId": "sess_fbe389cd-ee3c-4b6c-909d-d5b092befdf1",
+        "timestamp": 1788324038538
+      }
+    ],
+    "7. Write preservation property tests for Phase 2 (BEFORE implementing fixes)": [
+      {
+        "executionId": "a295d455-d393-4524-9174-758647506c81",
+        "chatSessionId": "sess_fbe389cd-ee3c-4b6c-909d-d5b092befdf1",
+        "timestamp": 1788323217063
+      },
+      {
+        "executionId": "a295d455-d393-4524-9174-758647506c81",
+        "chatSessionId": "sess_fbe389cd-ee3c-4b6c-909d-d5b092befdf1",
+        "timestamp": 1788324043036
+      },
+      {
+        "executionId": "a295d455-d393-4524-9174-758647506c81",
+        "chatSessionId": "sess_fbe389cd-ee3c-4b6c-909d-d5b092befdf1",
+        "timestamp": 1788325933415
+      }
+    ],
+    "8.1 Fix emailVerified = null on seeded and demo accounts (RC-05)": [
+      {
+        "executionId": "a295d455-d393-4524-9174-758647506c81",
+        "chatSessionId": "sess_fbe389cd-ee3c-4b6c-909d-d5b092befdf1",
+        "timestamp": 1788323217499
+      },
+      {
+        "executionId": "a295d455-d393-4524-9174-758647506c81",
+        "chatSessionId": "sess_fbe389cd-ee3c-4b6c-909d-d5b092befdf1",
+        "timestamp": 1788325938388
+      }
+    ],
+    "8.2 Fix System Admin saved-redirect path (RC-06)": [
+      {
+        "executionId": "a295d455-d393-4524-9174-758647506c81",
+        "chatSessionId": "sess_fbe389cd-ee3c-4b6c-909d-d5b092befdf1",
+        "timestamp": 1788323217899
+      }
+    ],
+    "8.3 Fix invited user onboarding gate (RC-07)": [
+      {
+        "executionId": "a295d455-d393-4524-9174-758647506c81",
+        "chatSessionId": "sess_fbe389cd-ee3c-4b6c-909d-d5b092befdf1",
+        "timestamp": 1788323218424
+      }
+    ],
+    "8.4 Improve backend-unreachable / CORS error message (RC-08, RC-09)": [
+      {
+        "executionId": "a295d455-d393-4524-9174-758647506c81",
+        "chatSessionId": "sess_fbe389cd-ee3c-4b6c-909d-d5b092befdf1",
+        "timestamp": 1788323218724
+      }
+    ],
+    "8.5 Remove race-condition manual navigation from login page (RC-10)": [
+      {
+        "executionId": "a295d455-d393-4524-9174-758647506c81",
+        "chatSessionId": "sess_fbe389cd-ee3c-4b6c-909d-d5b092befdf1",
+        "timestamp": 1788323219227
+      }
+    ],
+    "8.6 Add DataContext Batch 1 failure toast notification (RC-03, UX)": [
+      {
+        "executionId": "a295d455-d393-4524-9174-758647506c81",
+        "chatSessionId": "sess_fbe389cd-ee3c-4b6c-909d-d5b092befdf1",
+        "timestamp": 1788323219629
+      }
+    ],
+    "8.7 Confirm RC-11 (login() me() fallback) and RC-12 (redirect loop) are already resolved": [
+      {
+        "executionId": "a295d455-d393-4524-9174-758647506c81",
+        "chatSessionId": "sess_fbe389cd-ee3c-4b6c-909d-d5b092befdf1",
+        "timestamp": 1788323219894
+      }
+    ],
+    "8.8 Verify Phase 2 bug condition exploration tests now pass": [
+      {
+        "executionId": "a295d455-d393-4524-9174-758647506c81",
+        "chatSessionId": "sess_fbe389cd-ee3c-4b6c-909d-d5b092befdf1",
+        "timestamp": 1788323220164
+      }
+    ],
+    "8.9 Verify Phase 2 preservation tests still pass": [
+      {
+        "executionId": "a295d455-d393-4524-9174-758647506c81",
+        "chatSessionId": "sess_fbe389cd-ee3c-4b6c-909d-d5b092befdf1",
+        "timestamp": 1788323220402
+      }
+    ],
+    "9. Extended integration tests for Phase 2 scenarios": [
+      {
+        "executionId": "a295d455-d393-4524-9174-758647506c81",
+        "chatSessionId": "sess_fbe389cd-ee3c-4b6c-909d-d5b092befdf1",
+        "timestamp": 1788323220631
+      }
+    ],
+    "10. Final checkpoint — all phases complete": [
+      {
+        "executionId": "a295d455-d393-4524-9174-758647506c81",
+        "chatSessionId": "sess_fbe389cd-ee3c-4b6c-909d-d5b092befdf1",
+        "timestamp": 1788323220813
       }
     ]
   }

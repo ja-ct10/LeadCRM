@@ -7,6 +7,7 @@ import { AppError } from '../../shared/errors/app-error';
 import { ConflictError } from '../../shared/errors/http-error';
 import { sendMail, buildPasswordResetEmail, buildRegistrationOtpEmail, buildVerificationEmail } from '../../shared/services/email.service';
 import type { ForgotPasswordDto, ResetPasswordDto } from './auth.dto';
+import { seedSystemRoles } from '../../database/seeders/roles.seed';
 
 
 
@@ -127,9 +128,12 @@ export async function loginUser(dto: LoginDto, ctx: LoginContext = {}) {
   if (!valid) throw new AppError('Invalid email or password', 401);
 
   // Block unverified users — they must complete email verification first.
-  // In DEMO/DEV mode, skip this check for ACTIVE users (seeded accounts may not have emailVerified set).
-  const isDemoMode = process.env.DEV_OTP_BYPASS === 'true' || process.env.DEMO_MODE === 'true';
-  if (!user.emailVerified && !(isDemoMode && user.status === 'ACTIVE')) {
+  // DEMO/DEV bypass: allowed only in non-production environments.
+  // The NODE_ENV check is a hard structural gate — the bypass cannot activate
+  // in production even if DEV_OTP_BYPASS or DEMO_MODE is accidentally set.
+  const isDevBypassAllowed = process.env.NODE_ENV !== 'production' &&
+    (process.env.DEV_OTP_BYPASS === 'true' || process.env.DEMO_MODE === 'true');
+  if (!user.emailVerified && !(isDevBypassAllowed && user.status === 'ACTIVE')) {
     throw new AppError(
       'Please verify your email address before logging in. Check your inbox for a verification link, or request a new one.',
       403,
@@ -338,6 +342,12 @@ export async function registerClientAdmin(dto: ClientAdminRegisterDto) {
     return { tenant, user };
   });
 
+  // Seed system roles for the new tenant (idempotent — safe to call here)
+  await seedSystemRoles(result.tenant.id).catch((err) => {
+    console.error('[Auth] Failed to seed system roles for new tenant:', err instanceof Error ? err.message : err);
+    // Non-blocking — registration should still succeed even if role seeding fails
+  });
+
   // Generate dual verification tokens (outside transaction — non-blocking on failure)
   const { token, otpCode } = await generateVerificationCredentials(normalizedEmail, result.user.id);
   const emailSent = await sendVerificationEmail(normalizedEmail, token, otpCode);
@@ -543,8 +553,11 @@ export async function sendRegistrationOtp(email: string): Promise<void> {
 export async function verifyRegistrationOtp(email: string, code: string): Promise<boolean> {
   const normalizedEmail = email.toLowerCase().trim();
 
-  // ── DEMO/DEV bypass: accept "000000" for staging & local testing ───────
-  const isDemoBypass = process.env.DEV_OTP_BYPASS === 'true' || process.env.DEMO_MODE === 'true';
+  // ── DEMO/DEV bypass: accept "000000" only in non-production environments ──
+  // NODE_ENV !== 'production' is a hard structural gate — this branch is
+  // unreachable in production even if DEV_OTP_BYPASS or DEMO_MODE is set.
+  const isDemoBypass = process.env.NODE_ENV !== 'production' &&
+    (process.env.DEV_OTP_BYPASS === 'true' || process.env.DEMO_MODE === 'true');
   if (isDemoBypass && code === '000000') {
     const user = await prisma.user.findFirst({ where: { email: normalizedEmail } });
     if (user) {

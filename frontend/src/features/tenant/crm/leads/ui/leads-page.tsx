@@ -38,6 +38,7 @@ export default function LeadsPage(): React.ReactElement {
     contacts: leads,
     addContact: addLead,
     updateContact: updateLead,
+    deleteContact: deleteLead,
     refreshContacts,
     users,
     organizations,
@@ -498,9 +499,23 @@ export default function LeadsPage(): React.ReactElement {
                 count: selectedIds.size,
                 onClear: () => setSelectedIds(new Set()),
                 actions: (
-                  <button className="text-[12px] text-white/80 hover:text-white transition-colors">
-                    Delete
-                  </button>
+                  canDelete && (
+                    <button
+                      className="text-[12px] text-white/80 hover:text-white transition-colors"
+                      onClick={async () => {
+                        const ids = [...selectedIds];
+                        try {
+                          await Promise.all(ids.map((id) => deleteLead(id)));
+                          setSelectedIds(new Set());
+                          toast.success(`${ids.length} lead${ids.length > 1 ? 's' : ''} deleted`);
+                        } catch (err: unknown) {
+                          toast.error(err instanceof Error ? err.message : 'Failed to delete leads');
+                        }
+                      }}
+                    >
+                      Delete
+                    </button>
+                  )
                 ),
               }
             : undefined
@@ -533,7 +548,12 @@ export default function LeadsPage(): React.ReactElement {
             canDelete={canDelete}
             onEdit={(lead) => { setEditingLead(lead); setIsFormOpen(true); }}
             onDelete={(lead) => {
-              toast.info(`Delete "${lead.leadPerson ?? lead.displayName}" coming soon`);
+              if (!deleteLead) return;
+              deleteLead(lead.id).then(() => {
+                toast.success(`Lead deleted successfully`);
+              }).catch((err: unknown) => {
+                toast.error(err instanceof Error ? err.message : 'Failed to delete lead');
+              });
             }}
             onConvert={(lead) => setConvertingLead(lead)}
             onMerge={(lead) => setMergingLead(lead)}
