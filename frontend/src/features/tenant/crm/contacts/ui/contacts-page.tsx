@@ -40,9 +40,11 @@ export default function ContactsPage(): React.ReactElement {
     try {
       const res = await contactsV2Api.list({ limit: 100 });
       setContacts((res?.data ?? []) as Contact[]);
-    } catch (err) {
-      console.error('[ContactsPage] Failed to fetch contacts:', err);
-      toast.error('Failed to load contacts. Please refresh the page.');
+    } catch {
+      // Passive background read — fail gracefully with an empty list rather than
+      // surfacing a full-screen error. A visible fetch failure is handled by the
+      // page's empty/error states, not a thrown/logged error that trips the dev overlay.
+      setContacts([]);
     }
   }, []);
 

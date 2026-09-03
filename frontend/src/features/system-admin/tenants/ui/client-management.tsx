@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Search, Eye, UserX, UserCheck, CheckCircle, ChevronDown, Check, UserPlus, ArrowLeft } from 'lucide-react';
+import { Search, UserX, UserCheck, CheckCircle, ChevronDown, Check, UserPlus, ArrowLeft } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { usePagination } from '@/shared/hooks/use-pagination';
@@ -233,7 +233,11 @@ export default function ClientManagement(): React.ReactElement {
                 const createdOn = new Date(tenant.createdAt).toISOString().split('T')[0];
 
                 return (
-                  <tr key={tenant.id} className="hover:bg-gray-50 dark:hover:bg-white/[0.02] transition-colors">
+                  <tr
+                    key={tenant.id}
+                    onClick={() => setSelectedTenant(tenant)}
+                    className="hover:bg-gray-50 dark:hover:bg-white/[0.02] transition-colors cursor-pointer"
+                  >
                     <td className="p-2 sm:p-4">
                       <span className="font-semibold text-slate-900 dark:text-white block truncate" title={tenant.name}>
                         {tenant.name}
@@ -267,16 +271,10 @@ export default function ClientManagement(): React.ReactElement {
                       {createdOn}
                     </td>
                     <td className="p-2 sm:p-4">
-                      <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                        <RowAction
-                          onClick={() => setSelectedTenant(tenant)}
-                          label={`View ${tenant.name}`}
-                          tone="neutral"
-                          icon={<Eye size={12} />}
-                        >
-                          View
-                        </RowAction>
-
+                      <div
+                        className="flex items-center justify-end gap-1.5 flex-wrap"
+                        onClick={(event) => event.stopPropagation()}
+                      >
                         {normalizedStatus === 'active' && (
                           <RowAction
                             onClick={() => void handleDeactivate(tenant)}
@@ -697,7 +695,7 @@ function AddClientModal({ isOpen, onClose, onCreated }: AddClientModalProps): Re
     <div className="absolute inset-0 z-30 bg-slate-50 dark:bg-[#030712] flex flex-col">
       {/* Body - Scrollable */}
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-8 py-10 pb-32">
+        <div className="max-w-6xl mx-auto px-6 sm:px-10 lg:px-14 py-10 pb-32">
           <button
             type="button"
             onClick={onClose}
@@ -706,14 +704,14 @@ function AddClientModal({ isOpen, onClose, onCreated }: AddClientModalProps): Re
             <ArrowLeft size={14} />
             Back to Client Management
           </button>
-          <div className="mt-5 mb-6">
+          <div className="mt-5 mb-8">
             <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Add New Client</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Create a new client account and set up their admin user</p>
           </div>
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-8">
             {/* Company Information Section */}
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-white/[0.08] p-5">
-              <div className="flex items-center gap-3 mb-5">
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-white/[0.08] p-6 sm:p-8">
+              <div className="flex items-center gap-3 mb-6">
                 <div className="w-9 h-9 bg-blue-500/10 rounded-lg flex items-center justify-center">
                   <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
@@ -722,7 +720,7 @@ function AddClientModal({ isOpen, onClose, onCreated }: AddClientModalProps): Re
                 <h3 className="text-base font-semibold text-slate-900 dark:text-white">Company Information</h3>
               </div>
               
-              <div className="space-y-4">
+              <div className="space-y-5">
                 <div>
                   <label htmlFor="companyName" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
                     Company Name <span className="text-red-500">*</span>
@@ -822,9 +820,11 @@ function AddClientModal({ isOpen, onClose, onCreated }: AddClientModalProps): Re
               </div>
             </div>
 
+            {/* Admin User + Contact Information — side by side on large screens */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
             {/* Admin User Section */}
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-white/[0.08] p-5">
-              <div className="flex items-center gap-3 mb-5">
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-white/[0.08] p-6 sm:p-8 h-full">
+              <div className="flex items-center gap-3 mb-6">
                 <div className="w-9 h-9 bg-purple-500/10 rounded-lg flex items-center justify-center">
                   <svg className="w-5 h-5 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -833,8 +833,8 @@ function AddClientModal({ isOpen, onClose, onCreated }: AddClientModalProps): Re
                 <h3 className="text-base font-semibold text-slate-900 dark:text-white">Admin User</h3>
               </div>
 
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label htmlFor="firstName" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
                       First Name <span className="text-red-500">*</span>
@@ -927,8 +927,8 @@ function AddClientModal({ isOpen, onClose, onCreated }: AddClientModalProps): Re
             </div>
 
             {/* Contact Information Section */}
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-white/[0.08] p-5">
-              <div className="flex items-center gap-3 mb-5">
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-white/[0.08] p-6 sm:p-8 h-full">
+              <div className="flex items-center gap-3 mb-6">
                 <div className="w-9 h-9 bg-emerald-500/10 rounded-lg flex items-center justify-center">
                   <svg className="w-5 h-5 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -940,7 +940,7 @@ function AddClientModal({ isOpen, onClose, onCreated }: AddClientModalProps): Re
                 </div>
               </div>
               
-              <div className="space-y-4">
+              <div className="space-y-5">
                 <div>
                   <label htmlFor="phone" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
                     Phone Number
@@ -987,6 +987,8 @@ function AddClientModal({ isOpen, onClose, onCreated }: AddClientModalProps): Re
                 </div>
               </div>
             </div>
+            </div>
+            {/* end Admin User + Contact Information grid */}
 
             {/* Info Note */}
             <div className="bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 rounded-xl p-4 flex items-start gap-3">
@@ -1002,34 +1004,35 @@ function AddClientModal({ isOpen, onClose, onCreated }: AddClientModalProps): Re
       </div>
 
       {/* Footer - Sticky at Bottom */}
-      <div className="absolute bottom-0 inset-x-0 flex items-center justify-end gap-3 px-8 py-4 border-t border-gray-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 shrink-0 shadow-lg z-40">
-        <button
-          type="button"
-          onClick={onClose}
-          disabled={isSubmitting}
-          className="h-10 px-4 rounded-lg border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-transparent text-slate-700 dark:text-slate-300 text-sm font-medium hover:bg-slate-50 dark:hover:bg-white/[0.05] transition-colors active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          onClick={handleSubmit}
-          disabled={isSubmitting}
-          className="h-10 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-all shadow-md shadow-blue-500/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-        >
-          {isSubmitting ? (
-            <>
-              <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              Creating...
-            </>
-          ) : (
-            'Create Client'
-          )}
-        </button>
-      
+      <div className="absolute bottom-0 inset-x-0 border-t border-gray-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 shrink-0 shadow-lg z-40">
+        <div className="max-w-6xl mx-auto flex items-center justify-end gap-3 px-6 sm:px-10 lg:px-14 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="h-10 px-4 rounded-lg border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-transparent text-slate-700 dark:text-slate-300 text-sm font-medium hover:bg-slate-50 dark:hover:bg-white/[0.05] transition-colors active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            onClick={handleSubmit}
+            disabled={isSubmitting}
+            className="h-10 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-all shadow-md shadow-blue-500/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            {isSubmitting ? (
+              <>
+                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Creating...
+              </>
+            ) : (
+              'Create Client'
+            )}
+          </button>
+        </div>
       </div>
 
     </div>

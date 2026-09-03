@@ -8,6 +8,8 @@ import { toast } from 'sonner';
 import { useBillingData } from '../hooks/use-billing-data';
 import { billingService } from '../services/billing.service';
 import { invoicesApi } from '@/shared/services/invoices.api';
+import { ModalCloseButton } from '@/shared/components/ui/modal-close-button';
+import { BackButton } from '@/shared/components/ui/back-button';
 import { SeatManagementCard } from './seat-management-card';
 import type { BillingCycle, PricingPlan } from '../types/billing.types';
 import type { Invoice } from '@/store/types';
@@ -256,6 +258,9 @@ export default function ClientBillingPage() {
         </div>
       )}
 
+      {/* Back to Settings */}
+      <BackButton label="Back to Settings" href="/settings?tab=plan" ariaLabel="Back to Settings" />
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
@@ -369,14 +374,39 @@ export default function ClientBillingPage() {
                     </div>
                   </>
                 ) : (
-                  <div className="text-center py-8">
-                    <p className="text-slate-500 dark:text-slate-400 mb-4">You're currently on the <strong>Free</strong> plan.</p>
-                    <button
-                      onClick={() => setShowPlanModal(true)}
-                      className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition-colors shadow-sm cursor-pointer"
-                    >
-                      Upgrade to unlock more features
-                    </button>
+                  <div className="py-2">
+                    <div className="flex items-end gap-2 mb-5">
+                      <span className="text-4xl font-extrabold text-slate-900 dark:text-white">{formatCurrency(0)}</span>
+                      <span className="text-slate-500 dark:text-slate-400 mb-1">/ month</span>
+                    </div>
+
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+                      You're currently on the <strong className="text-slate-900 dark:text-white">Free</strong> plan. Upgrade to unlock automation, advanced reporting, more team members, and higher limits.
+                    </p>
+
+                    {/* Free plan highlights */}
+                    <div className="space-y-3 mb-6">
+                      {[
+                        'Basic CRM (Leads, Contacts, Deals)',
+                        'Up to 3 team members',
+                        '1,000 contacts limit',
+                        'Community support',
+                      ].map((feature) => (
+                        <div key={feature} className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+                          <CheckCircle2 size={16} className="text-emerald-500 shrink-0" /> {feature}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="pt-6 border-t border-slate-100 dark:border-slate-800">
+                      <button
+                        onClick={() => setShowPlanModal(true)}
+                        className="inline-flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition-colors shadow-sm cursor-pointer"
+                      >
+                        <Sparkles size={16} />
+                        Upgrade to unlock more features
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -611,25 +641,28 @@ function PlanSelectionModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      {/* Backdrop click target */}
+      <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
 
       {/* Modal */}
-      <div className="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-        <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Choose a Plan</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Select a plan and billing cycle to proceed to checkout.</p>
+      <div className="relative bg-gray-50 dark:bg-slate-950 rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-white/[0.05] shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+              <Sparkles size={20} />
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Choose a Plan</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Select a plan and billing cycle to proceed to checkout.</p>
+            </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-2 cursor-pointer"
-          >
-            <XCircle size={24} />
-          </button>
+          <ModalCloseButton onClose={onClose} ariaLabel="Close plan selection modal" size={20} />
         </div>
 
+        {/* Scrollable body */}
+        <div className="overflow-y-auto custom-scrollbar">
         {/* Billing cycle toggle */}
         <div className="px-6 pt-6">
           <div className="inline-flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
@@ -658,10 +691,10 @@ function PlanSelectionModal({
             return (
               <div
                 key={plan.id}
-                className={`border rounded-2xl p-5 transition-all ${
+                className={`rounded-xl p-5 border transition-all ${
                   isCurrent
                     ? 'border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/20'
-                    : 'border-slate-200 dark:border-slate-700 hover:border-blue-200 dark:hover:border-blue-800'
+                    : 'border-gray-200 dark:border-white/[0.05] bg-white dark:bg-white/[0.02] hover:border-blue-300 dark:hover:border-blue-500/50'
                 }`}
               >
                 <div className="flex items-center justify-between mb-3">
@@ -733,6 +766,7 @@ function PlanSelectionModal({
             No plans available. Contact support for assistance.
           </div>
         )}
+        </div>
       </div>
     </div>
   );
