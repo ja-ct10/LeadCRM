@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
 import type { PermissionKey } from '@leadcrm/shared';
+import { USE_MOCK_AUTH } from '@/lib/config';
 
 // Roles that bypass all permission checks (case-insensitive check)
 const SUPER_ROLES = ['admin', 'super user', 'client admin', 'system admin', 'client_admin'] as const;
@@ -50,19 +51,38 @@ export const PERMISSION_BRIDGE: Record<PermissionKey, string[]> = {
 /**
  * usePermissions — returns the resolved permission list for the current user.
  *
- * Returns p-ID strings for current mock-backed roles.
- * In Sprint 5 this will return module.action strings from the API.
+ * Priority:
+ *   1. Real-API mode + permissions loaded → reads from AuthContext.permissions
+ *      (live DB permissions fetched during session restore).
+ *   2. Fallback → mock p-ID strings from DataContext roles (mock mode / not yet loaded).
  */
 export function usePermissions(): string[] {
-  const { user } = useAuth();
+  const { user, permissions, isPermissionsLoaded } = useAuth();
   const { roles } = useData();
 
   return useMemo(() => {
     if (!user) return [];
     if (SUPER_ROLES.includes(user.role.toLowerCase().trim() as typeof SUPER_ROLES[number])) return ['*'];
+
+    // Real-API path: permissions are loaded from GET /users/:id/permissions
+    if (!USE_MOCK_AUTH && isPermissionsLoaded && Object.keys(permissions).length > 0) {
+      // Expand ResolvedPermissions map into an array of module.action strings
+      const keys: string[] = [];
+      for (const [module, flags] of Object.entries(permissions)) {
+        if (flags.canView)   keys.push(`${module}.view`);
+        if (flags.canCreate) keys.push(`${module}.create`);
+        if (flags.canEdit)   keys.push(`${module}.edit`);
+        if (flags.canDelete) keys.push(`${module}.delete`);
+        // privileged aliases
+        if (flags.canEdit) keys.push(`${module}.manage`, `${module}.export`, `${module}.send`, `${module}.activate`);
+      }
+      return keys;
+    }
+
+    // Mock / fallback path: use p-ID strings from DataContext roles
     const roleDef = roles.find(r => r.name === user.role);
     return roleDef?.permissions ?? [];
-  }, [user, roles]);
+  }, [user, permissions, isPermissionsLoaded, roles]);
 }
 
 /**

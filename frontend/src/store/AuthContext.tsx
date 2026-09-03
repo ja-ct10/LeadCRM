@@ -1,11 +1,13 @@
 'use client';
 
 import { uuid } from '@/lib/utils';
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { signIn as nextAuthSignIn, signOut as nextAuthSignOut } from 'next-auth/react';
 import { User, Tenant } from './types';
+import type { ResolvedPermissions, PermissionAction } from './types/roles.types';
 import { MOCK_USERS, MOCK_TENANTS } from './mockData';
 import { authApi } from '@/shared/services/auth.api';
+import { rolesApi } from '@/shared/services/roles.api';
 
 // When true, auth calls hit the mock localStorage data instead of the backend.
 // Set NEXT_PUBLIC_USE_MOCK_AUTH=false in .env.local to use the real API.
@@ -66,6 +68,22 @@ interface AuthContextType {
    * Returns true on success, false on failure.
    */
   switchDemoAccount: (email: string, password: string) => Promise<boolean>;
+  /**
+   * Resolved effective permissions for the current user.
+   * Map of module key → { canView, canCreate, canEdit, canDelete }.
+   * Empty object when permissions haven't loaded yet or in mock mode.
+   */
+  permissions: ResolvedPermissions;
+  /** True once permissions have been fetched from the API (or skipped in mock mode). */
+  isPermissionsLoaded: boolean;
+  /**
+   * Check whether the current user can perform `action` on `module`.
+   * Super roles (Client Admin / Admin) always return true.
+   * Falls back gracefully to false when permissions haven't loaded yet.
+   */
+  userCan: (module: string, action: PermissionAction) => boolean;
+  /** Re-fetches the current user's permissions from the API. */
+  refreshPermissions: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -75,6 +93,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [tenant, setTenant]   = useState<Tenant | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [permissions, setPermissions]           = useState<ResolvedPermissions>({});
+  const [isPermissionsLoaded, setIsPermissionsLoaded] = useState(false);
 
   // ── Restore session ───────────────────────────────────────────────
   const restoreSession = async (): Promise<void> => {
@@ -91,6 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem('leadcrm_tenant');
       }
       setAuthError(null);
+      setIsPermissionsLoaded(true);
       setIsLoading(false);
     } else {
       // Real API — verify the HttpOnly cookie by calling /auth/me
@@ -102,9 +123,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (apiUser.tenantId && apiUser.tenantId !== 'system') {
             setTenant({ id: apiUser.tenantId, name: '', status: 'active', environment: 'production' } as any);
           }
+          // Fetch effective permissions non-blocking — failure doesn't break auth
+          if (apiUser.id) {
+            rolesApi.getUserPermissions(apiUser.id)
+              .then((r) => {
+                setPermissions(r?.data ?? {});
+                setIsPermissionsLoaded(true);
+              })
+              .catch(() => {
+                // Permissions unavailable — degrade gracefully
+                setIsPermissionsLoaded(true);
+              });
+          }
         } else {
           setUser(null);
           setTenant(null);
+          setPermissions({});
+          setIsPermissionsLoaded(true);
         }
         setAuthError(null);
       } catch (err: unknown) {
@@ -114,6 +149,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // user never lands on a silent blank screen.
         setUser(null);
         setTenant(null);
+        setPermissions({});
+        setIsPermissionsLoaded(true);
         if (isNoSessionError(err)) {
           setAuthError(null);
         } else {
@@ -141,6 +178,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     restoreSession();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Run once on mount only — session restore is not NextAuth-dependent
+
+  // ── Refresh permissions ───────────────────────────────────────────
+  const refreshPermissions = useCallback(async (): Promise<void> => {
+    if (USE_MOCK_AUTH || !user?.id) return;
+    try {
+      const r = await rolesApi.getUserPermissions(user.id);
+      setPermissions(r?.data ?? {});
+    } catch {
+      // Non-critical — keep existing permissions
+    }
+  }, [user?.id]);
+
+  // ── userCan — permission guard helper ─────────────────────────────
+  // Super roles always return true. Falls back to false when not loaded.
+  const SUPER_ROLE_NAMES = ['Admin', 'Super User', 'Client Admin', 'System Admin'];
+  const userCan = useCallback((module: string, action: PermissionAction): boolean => {
+    if (!user) return false;
+    const norm = user.role?.toLowerCase().trim() ?? '';
+    if (SUPER_ROLE_NAMES.some(r => r.toLowerCase() === norm)) return true;
+    return permissions[module]?.[action] === true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, permissions]);
 
   // ── Retry auth initialization after a transport failure ───────────
   const retryAuthInit = async (): Promise<void> => {
@@ -467,7 +526,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, tenant, isLoading, authError, retryAuthInit, refreshUser, login, loginWithGoogle, logout, registerTenant, registerGuestAccount, requestPasswordReset, confirmPasswordReset, switchRole, updateProfile, switchDemoAccount }}>
+    <AuthContext.Provider value={{ user, tenant, isLoading, authError, retryAuthInit, refreshUser, login, loginWithGoogle, logout, registerTenant, registerGuestAccount, requestPasswordReset, confirmPasswordReset, switchRole, updateProfile, switchDemoAccount, permissions, isPermissionsLoaded, userCan, refreshPermissions }}>
       {children}
     </AuthContext.Provider>
   );

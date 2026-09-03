@@ -8,7 +8,7 @@ import { PATHNAME_TO_PATH, PATH_TO_PATHNAME } from '@/lib/route-map';
 import {
   LayoutDashboard, Briefcase, Workflow, Mail,
   Receipt, Building2, CreditCard, Activity, ListTodo, Settings,
-  UserCheck, Building, Target,
+  UserCheck, Building, Target, Users, Shield,
 } from 'lucide-react';
 
 export const NAV_ITEMS = [
@@ -25,6 +25,8 @@ export const NAV_ITEMS = [
   // ── Automation ──────────────────────────────────────
   { name: 'Workflows',         path: 'workflows',         icon: Workflow,        permission: 'workflows.view', roles: null,          group: 'Automation' },
   // ── Administration ──────────────────────────────────
+  { name: 'Users',             path: 'users',             icon: Users,           permission: 'users.view',     roles: null,          group: 'Administration' },
+  { name: 'Roles',             path: 'roles',             icon: Shield,          permission: 'roles.manage',   roles: null,          group: 'Administration' },
   { name: 'Audit Trail',       path: 'audit-log',         icon: Activity,        permission: 'audit.view',     roles: null,          group: 'Administration' },
   // ── System Admin (separate portal) ──────────────────
   { name: 'Dashboard',         path: 'admin-dashboard',   icon: LayoutDashboard, permission: null,             roles: ['System Admin'] as const, group: null },

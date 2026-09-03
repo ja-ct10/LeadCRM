@@ -32,31 +32,31 @@
 
 > Phase B is a substantial UI implementation. To be tackled as a separate Kiro Spec session.
 
-- [ ] B1. Backend completions: `roles.repository.ts` additions (`findUserEffectivePermissions`,
+- [x] B1. Backend completions: `roles.repository.ts` additions (`findUserEffectivePermissions`,
     `upsertPermissions`, `findRoleById` with users+permissions includes, `findRoleByName`,
     `countActiveUserRoles`); `roles.service.ts` additions (system-role guards, name uniqueness,
     archive-with-users guard, escalation prevention); update `roles.dto.ts` to Zod schemas from design.md.
   - _Requirements: 2–6, 9, 11, 14, 15_
 
-- [ ] B2. Route additions: `GET /roles`, `GET /roles/:id`, `POST /roles`, `PUT /roles/:id`,
+- [x] B2. Route additions: `GET /roles`, `GET /roles/:id`, `POST /roles`, `PUT /roles/:id`,
     `PATCH /roles/:id/archive`, `POST /roles/assign`, `DELETE /roles/unassign`, `GET /permissions`
     — all with full middleware chain.
   - _Requirements: 2.1–2.5, 3.1–3.4, 4.1–4.8, 5.1–5.6, 6.1–6.6, 7.1–7.7, 9.1–9.7_
 
-- [ ] B3. Frontend `AuthContext.tsx` — add `permissions` state, `userCan()` helper,
+- [x] B3. Frontend `AuthContext.tsx` — add `permissions` state, `userCan()` helper,
     `refreshPermissions()`, fetch on session restore via `GET /users/:id/permissions`.
   - _Requirements: 13.1–13.7_
 
-- [ ] B4. Frontend types + shared constants:
+- [x] B4. Frontend types + shared constants:
     `frontend/src/store/types/roles.types.ts`, `shared/src/constants/permission-modules.ts`,
     `shared/src/constants/role-templates.ts`.
   - _Requirements: 7.6, 8.1–8.5_
 
-- [ ] B5. Roles feature module UI:
+- [x] B5. Roles feature module UI:
     `roles-page.tsx`, `roles-tab.tsx`, `role-card.tsx`, `role-builder-modal.tsx`,
     `permission-matrix.tsx`, `permissions-tab.tsx`, `role-detail-drawer.tsx`,
     `role-users-panel.tsx`; hooks (`use-roles.ts`); service (`roles.service.ts`);
     App Router shell `app/(tenant)/administration/roles/page.tsx`.
   - _Requirements: 2.6–2.9, 3.3–3.4, 4.6–4.8, 5.5–5.6, 6.5–6.6, 7.2–7.7, 8.1–8.5, 13.3–13.5, 17–18_
 
-- [ ] B6. Phase B lint + tests + smoke.
+- [x] B6. Phase B lint + tests + smoke.
