@@ -24,6 +24,8 @@ export const NAV_ITEMS = [
   { name: 'Campaigns',         path: 'campaigns',         icon: Mail,            permission: 'campaigns.view', roles: null,          group: 'Marketing' },
   // ── Automation ──────────────────────────────────────
   { name: 'Workflows',         path: 'workflows',         icon: Workflow,        permission: 'workflows.view', roles: null,          group: 'Automation' },
+  // ── Billing (tenant self-service) ────────────────────
+  { name: 'Billing',           path: 'client-billing',    icon: CreditCard,      permission: 'billing.view',   roles: null,          group: 'Billing' },
   // ── Administration ──────────────────────────────────
   { name: 'Users',             path: 'users',             icon: Users,           permission: 'users.view',     roles: null,          group: 'Administration' },
   { name: 'Roles',             path: 'roles',             icon: Shield,          permission: 'roles.manage',   roles: null,          group: 'Administration' },
