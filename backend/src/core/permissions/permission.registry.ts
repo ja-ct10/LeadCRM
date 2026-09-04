@@ -39,6 +39,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
     Permission.DEALS_VIEW,
     Permission.ACCOUNTS_VIEW,
     Permission.BILLING_VIEW,
+    Permission.BILLING_MANAGE,  // enables billing.manage → checkout/upgrade from sandbox workspace
   ],
   
   // Legacy mappings to support existing JWT tokens before users log out

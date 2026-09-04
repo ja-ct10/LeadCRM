@@ -39,7 +39,7 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-async function repairRolePermissions(): Promise<void> {
+export async function repairRolePermissions(): Promise<void> {
   console.log('[Repair] Fixing RolePermission rows: organizations → accounts...');
 
   const result = await prisma.rolePermission.updateMany({
@@ -54,7 +54,7 @@ async function repairRolePermissions(): Promise<void> {
   }
 }
 
-async function backfillUserRoles(): Promise<void> {
+export async function backfillUserRoles(): Promise<void> {
   console.log('[Repair] Backfilling missing UserRole junction rows...');
 
   // Fetch all users — User.role is non-nullable (String with a default value)
@@ -109,11 +109,20 @@ async function backfillUserRoles(): Promise<void> {
   console.log(`[Repair] UserRole backfill: ${created} created, ${skipped} already existed or skipped.`);
 }
 
+/**
+ * runRepairs — exported composite runner called from prisma/seed.ts.
+ * Safe to call on every seed run — all operations are idempotent.
+ * Does NOT call process.exit so it can run inside a larger seed script.
+ */
+export async function runRepairs(): Promise<void> {
+  await repairRolePermissions();
+  await backfillUserRoles();
+  console.log('[Repair] Complete.');
+}
+
 async function main(): Promise<void> {
   try {
-    await repairRolePermissions();
-    await backfillUserRoles();
-    console.log('[Repair] Complete.');
+    await runRepairs();
   } catch (err) {
     console.error('[Repair] Error:', err instanceof Error ? err.message : err);
     process.exit(1);
@@ -122,4 +131,7 @@ async function main(): Promise<void> {
   }
 }
 
-main();
+// Run standalone only (not when imported by seed.ts or other scripts)
+if (require.main === module) {
+  main();
+}
