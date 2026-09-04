@@ -7,7 +7,7 @@ import { usePermissions, PERMISSION_BRIDGE } from '@/shared/hooks/use-permission
 import { PATHNAME_TO_PATH, PATH_TO_PATHNAME } from '@/lib/route-map';
 import {
   LayoutDashboard, Briefcase, Workflow, Mail,
-  Receipt, Building2, CreditCard, Activity, ListTodo, Settings,
+  Receipt, Building2, CreditCard, Activity, ListTodo,
   UserCheck, Building, Target, Users, Shield,
 } from 'lucide-react';
 
@@ -24,6 +24,8 @@ export const NAV_ITEMS = [
   { name: 'Campaigns',         path: 'campaigns',         icon: Mail,            permission: 'campaigns.view', roles: null,          group: 'Marketing' },
   // ── Automation ──────────────────────────────────────
   { name: 'Workflows',         path: 'workflows',         icon: Workflow,        permission: 'workflows.view', roles: null,          group: 'Automation' },
+  // ── Billing (tenant self-service) ────────────────────
+  { name: 'Billing',           path: 'client-billing',    icon: CreditCard,      permission: 'billing.view',   roles: null,          group: 'Billing' },
   // ── Administration ──────────────────────────────────
   { name: 'Users',             path: 'users',             icon: Users,           permission: 'users.view',     roles: null,          group: 'Administration' },
   { name: 'Roles',             path: 'roles',             icon: Shield,          permission: 'roles.manage',   roles: null,          group: 'Administration' },
@@ -37,6 +39,11 @@ export const NAV_ITEMS = [
 ] as const;
 
 type NavItem = (typeof NAV_ITEMS)[number];
+
+// Paths that should be hidden for SANDBOX tenants regardless of RBAC.
+// Sandbox users should not manage other users, roles, or see audit logs —
+// they should focus on exploring the CRM and upgrading.
+const SANDBOX_HIDDEN_PATHS = new Set(['users', 'roles', 'audit-log']);
 
 export function useLayout() {
   const router = useRouter();
@@ -55,6 +62,10 @@ export function useLayout() {
   const isSuper = userPermissions.includes('*');
   const isSystemAdminUser = user?.role === 'System Admin' || user?.tenantId === 'system' || user?.tenantId === 'leadcrm-system-demo';
 
+  // Detect sandbox tenants via tenantStatus from /auth/me (Task 8 added this field).
+  // Used to restrict the nav for demo/sandbox workspaces to CRM + Billing only.
+  const isSandboxTenant = (user as any)?.tenantStatus === 'SANDBOX';
+
   const featureEnabled = (flag?: 'billing') => {
     if (!flag) return true;
     if (flag === 'billing') return isBillingModuleEnabled;
@@ -64,6 +75,7 @@ export function useLayout() {
   const hasAccess = (item: NavItem): boolean => {
     if (!featureEnabled((item as any).featureFlag)) return false;
 
+    const itemPath = (item as any).path as string;
     const itemRoles = (item as any).roles as string[] | null | undefined;
 
     if (isSystemAdminUser) return itemRoles?.includes('System Admin') ?? false;
@@ -71,11 +83,16 @@ export function useLayout() {
     if (itemRoles && !itemRoles.includes('System Admin')) {
       return itemRoles.includes(user?.role ?? '');
     }
-    if (isSuper) return true;
-    if (user?.role === 'Guest') {
-      // Sandbox accounts have read access to all modules except Audit Trail
-      return (item as any).path !== 'audit-log';
+
+    // Sandbox tenants: hide admin/audit paths regardless of RBAC.
+    // Billing is explicitly allowed (they need to upgrade).
+    // All CRM paths (leads, contacts, accounts, deals, tasks, campaigns, workflows)
+    // are shown if the user's permissions allow them.
+    if (isSandboxTenant && SANDBOX_HIDDEN_PATHS.has(itemPath)) {
+      return false;
     }
+
+    if (isSuper) return true;
     if (!item.permission) return true;
     const legacyIds = (PERMISSION_BRIDGE as Record<string, string[]>)[item.permission] ?? [];
     return userPermissions.includes(item.permission) || legacyIds.some(id => userPermissions.includes(id));
