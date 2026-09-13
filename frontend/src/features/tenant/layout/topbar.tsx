@@ -13,14 +13,14 @@ import { MobileSearchOverlay } from '@/shared/components/mobile-search-overlay';
 import { UserProfileDropdown } from './user-profile-dropdown';
 import { cn } from '@/lib/utils';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// -- Types ---------------------------------------------------------------------
 
 interface TopbarProps {
   onOpenSidebar: () => void;
   onOpenInbox: () => void;
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// -- Component -----------------------------------------------------------------
 
 export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): React.ReactElement {
   const { unreadCount: notificationCount } = useNotifications();
@@ -34,7 +34,7 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
   const notificationButtonRef = useRef<HTMLButtonElement>(null!);
 
   // isSandbox: derived from server-backed tenantStatus (SANDBOX = pre-subscription).
-  // Reads from user.tenantStatus — same source sidebar uses correctly.
+  // Reads from user.tenantStatus � same source sidebar uses correctly.
   // Never reads tenant.environment which was previously hardcoded to 'production'.
   const isSandbox = (user as any)?.tenantStatus === 'SANDBOX';
 
@@ -53,7 +53,7 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
           setInboxCount(result.emails.length);
         }
       })
-      .catch(() => { /* silently ignore — Gmail may not be connected */ });
+      .catch(() => { /* silently ignore � Gmail may not be connected */ });
 
     return () => { isMounted = false; };
   }, []);
@@ -92,14 +92,24 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
 
   return (
     <header className="h-[52px] bg-[var(--surface)] border-b border-[var(--border)] flex items-center justify-between px-4 lg:px-5 shrink-0 sticky top-0 z-40 transition-colors duration-200">
-      {/* Left: Mobile hamburger + Breadcrumb */}
-      <div className="flex items-center gap-3 flex-1 min-w-0">
+      {/* Left: Mobile hamburger + Mobile search + Breadcrumb */}
+      <div className="flex items-center gap-1 flex-1 min-w-0">
         <button
           className="lg:hidden text-[var(--text-tertiary)] hover:text-[var(--text-primary)] p-1.5 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-colors"
           onClick={onOpenSidebar}
           aria-label="Open sidebar"
         >
           <Menu size={18} />
+        </button>
+
+        {/* Mobile search trigger — in left group so it stays clearly separate from right icons */}
+        <button
+          type="button"
+          className="md:hidden flex items-center justify-center min-w-[44px] min-h-[44px] rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)] transition-colors"
+          onClick={() => setIsMobileSearchOpen(true)}
+          aria-label="Search"
+        >
+          <Search size={16} />
         </button>
 
         {/* Breadcrumb */}
@@ -138,16 +148,6 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
 
       {/* Right: Actions */}
       <div className="flex items-center gap-1.5 flex-none md:flex-1 justify-end">
-        {/* Mobile search trigger — sits next to Inbox, visible on <md where GlobalOmnibox is hidden */}
-        <button
-          type="button"
-          className="md:hidden flex items-center justify-center min-w-[44px] min-h-[44px] rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)] transition-colors"
-          onClick={() => setIsMobileSearchOpen(true)}
-          aria-label="Search"
-        >
-          <Search size={16} />
-        </button>
-
         {/* Inbox (Gmail) */}
         <button
           onClick={onOpenInbox}
@@ -190,8 +190,8 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
         {/* Sandbox Indicator */}
         {isSandbox && (
           <span
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold tracking-wide uppercase"
-            title="Sandbox environment — test data only"
+            className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold tracking-wide uppercase"
+            title="Sandbox environment � test data only"
             aria-label="Sandbox environment"
           >
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" aria-hidden="true" />
@@ -212,7 +212,7 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
         triggerRef={notificationButtonRef}
       />
 
-      {/* Mobile Search Overlay — fullscreen search panel for <md viewports */}
+      {/* Mobile Search Overlay � fullscreen search panel for <md viewports */}
       <MobileSearchOverlay
         isOpen={isMobileSearchOpen}
         onClose={() => setIsMobileSearchOpen(false)}
