@@ -102,16 +102,6 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
           <Menu size={18} />
         </button>
 
-        {/* Mobile search trigger — visible on mobile/tablet, hidden at md+ where GlobalOmnibox shows */}
-        <button
-          type="button"
-          className="md:hidden flex items-center justify-center min-w-[44px] min-h-[44px] rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)] transition-colors"
-          onClick={() => setIsMobileSearchOpen(true)}
-          aria-label="Search"
-        >
-          <Search size={16} />
-        </button>
-
         {/* Breadcrumb */}
         <div className="hidden lg:flex items-center gap-1.5 text-[13px] min-w-0">
           {groupName && (
@@ -148,6 +138,16 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
 
       {/* Right: Actions */}
       <div className="flex items-center gap-1.5 flex-1 justify-end">
+        {/* Mobile search trigger — sits next to Inbox, visible on <md where GlobalOmnibox is hidden */}
+        <button
+          type="button"
+          className="md:hidden flex items-center justify-center min-w-[44px] min-h-[44px] rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)] transition-colors"
+          onClick={() => setIsMobileSearchOpen(true)}
+          aria-label="Search"
+        >
+          <Search size={16} />
+        </button>
+
         {/* Inbox (Gmail) */}
         <button
           onClick={onOpenInbox}
