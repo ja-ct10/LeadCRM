@@ -323,7 +323,7 @@ async function sendVerificationEmail(email: string, token: string, otpCode: stri
     console.error(
       `[Auth] ⚠️  FAILED to send verification email to ${email}. User is stuck in PENDING status.\n` +
       `[Auth] Error: ${message}\n` +
-      `[Auth] Check: GMAIL_SYSTEM_SENDER_USER_ID, ENCRYPTION_KEY, RESEND_API_KEY env vars on Render.`,
+      `[Auth] Check: BREVO_API_KEY, BREVO_FROM_EMAIL env vars on Render.`,
     );
     return false;
   }
