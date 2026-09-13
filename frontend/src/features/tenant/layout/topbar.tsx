@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Menu, Bell, Mail, Search } from 'lucide-react';
@@ -137,7 +137,7 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
       </div>
 
       {/* Right: Actions */}
-      <div className="flex items-center gap-1.5 flex-1 justify-end">
+      <div className="flex items-center gap-1.5 flex-none md:flex-1 justify-end">
         {/* Mobile search trigger — sits next to Inbox, visible on <md where GlobalOmnibox is hidden */}
         <button
           type="button"
