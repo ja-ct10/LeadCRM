@@ -10,7 +10,11 @@ import { getTenantCurrency, formatCurrency } from '@/shared/utils/currency';
 
 type ScopedModule = 'all' | 'leads' | 'contacts' | 'accounts' | 'deals';
 
-export function GlobalOmnibox() {
+interface GlobalOmniboxProps {
+  autoFocus?: boolean;
+}
+
+export function GlobalOmnibox({ autoFocus = false }: GlobalOmniboxProps) {
   const [query, setQuery] = useState('');
   const [module, setModule] = useState<ScopedModule>('all');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -53,6 +57,20 @@ export function GlobalOmnibox() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  // 2. autoFocus — when used inside MobileSearchOverlay, focus the input on mount
+  useEffect(() => {
+    if (!autoFocus) return;
+    const timer = setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+        setIsDropdownOpen(true);
+        setIsFocused(true);
+      }
+    }, 50);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally runs once on mount
 
   // Close on outside click
   useEffect(() => {

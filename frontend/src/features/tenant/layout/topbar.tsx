@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Menu, Bell, Mail } from 'lucide-react';
+import { Menu, Bell, Mail, Search } from 'lucide-react';
 import { useNotifications } from '@/features/tenant/notifications/hooks/use-notifications';
 import { getGmailStatus, fetchGmailEmails } from '@/features/tenant/inbox/services/gmail.service';
 import { useLayout, NAV_ITEMS } from './use-layout';
@@ -9,6 +9,7 @@ import { useAuth } from '@/store/AuthContext';
 import { usePathname } from 'next/navigation';
 import NotificationsDropdown from '@/features/tenant/notifications/ui/notifications-dropdown';
 import { GlobalOmnibox } from '@/shared/components/global-omnibox';
+import { MobileSearchOverlay } from '@/shared/components/mobile-search-overlay';
 import { UserProfileDropdown } from './user-profile-dropdown';
 import { cn } from '@/lib/utils';
 
@@ -28,6 +29,7 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
   const pathname = usePathname();
   const [inboxCount, setInboxCount] = useState(0);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [settingsBreadcrumb, setSettingsBreadcrumb] = useState<{ group: string; tab: string }>({ group: 'General', tab: 'Profile Settings' });
   const notificationButtonRef = useRef<HTMLButtonElement>(null!);
 
@@ -93,11 +95,21 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
       {/* Left: Mobile hamburger + Breadcrumb */}
       <div className="flex items-center gap-3 flex-1 min-w-0">
         <button
-          className="lg:hidden text-[var(--text-tertiary)] hover:text-[var(--text-primary)] p-1.5 rounded-lg transition-colors"
+          className="lg:hidden text-[var(--text-tertiary)] hover:text-[var(--text-primary)] p-1.5 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-colors"
           onClick={onOpenSidebar}
           aria-label="Open sidebar"
         >
           <Menu size={18} />
+        </button>
+
+        {/* Mobile search trigger — visible on mobile/tablet, hidden at md+ where GlobalOmnibox shows */}
+        <button
+          type="button"
+          className="md:hidden flex items-center justify-center min-w-[44px] min-h-[44px] rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)] transition-colors"
+          onClick={() => setIsMobileSearchOpen(true)}
+          aria-label="Search"
+        >
+          <Search size={16} />
         </button>
 
         {/* Breadcrumb */}
@@ -140,7 +152,7 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
         <button
           onClick={onOpenInbox}
           className={cn(
-            'relative w-8 h-8 rounded-lg flex items-center justify-center transition-colors',
+            'relative w-8 h-8 min-w-[44px] min-h-[44px] rounded-lg flex items-center justify-center transition-colors',
             currentPath === 'inbox'
               ? 'bg-[#3B82F6]/10 text-[#3B82F6]'
               : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)]',
@@ -161,7 +173,7 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
           ref={notificationButtonRef}
           onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
           className={cn(
-            'relative w-8 h-8 rounded-lg flex items-center justify-center transition-colors',
+            'relative w-8 h-8 min-w-[44px] min-h-[44px] rounded-lg flex items-center justify-center transition-colors',
             isNotificationsOpen
               ? 'bg-[#3B82F6]/10 text-[#3B82F6]'
               : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)]',
@@ -198,6 +210,12 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
         isOpen={isNotificationsOpen}
         onClose={() => setIsNotificationsOpen(false)}
         triggerRef={notificationButtonRef}
+      />
+
+      {/* Mobile Search Overlay — fullscreen search panel for <md viewports */}
+      <MobileSearchOverlay
+        isOpen={isMobileSearchOpen}
+        onClose={() => setIsMobileSearchOpen(false)}
       />
     </header>
   );
