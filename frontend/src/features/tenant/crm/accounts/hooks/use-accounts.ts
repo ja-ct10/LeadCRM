@@ -3,21 +3,17 @@
 /**
  * useAccounts — route-scoped, server-paginated hook for the Accounts page.
  *
- * Replaces the prior implementation that fetched accountsService.getAll()
- * independently while DataContext also fetched organizationsService.getAll()
- * for the same endpoint — causing a double-fetch on every authenticated load.
+ * Integrates with the shared page cache so return navigation shows data
+ * instantly without a skeleton, followed by a silent background refresh.
  *
- * Now uses the shared useModuleData hook (server-side pagination, AbortController,
- * stale-while-revalidate) and exposes the same public API shape as before so
- * accounts-page.tsx requires minimal changes.
- *
- * DataContext organizations array is NOT used here — those are for cross-module
- * consumers (sidebar, panels, omnibox, deals-page). This hook owns the list fetch.
+ * Cache key: tenantId + module('accounts') + { page, pageSize, sort, search, filter }
+ * Mutations call invalidatePageCache('accounts', tenantId) to evict stale entries.
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useModuleData } from '@/shared/hooks/use-module-data';
 import { toFrontendOrg } from '@/lib/api/adapters/organization.adapter';
+import { getPageCache, setPageCache, invalidatePageCache } from '@/shared/cache/page-cache';
 import { accountsService } from '../services/accounts.service';
 import { USE_MOCK_DATA } from '@/lib/config';
 import { useAuth } from '@/store/AuthContext';
@@ -25,9 +21,6 @@ import { uuid } from '@/lib/utils';
 import type { Account, AccountFilters } from '../types/account.types';
 import type { AccountFormValues } from '../schemas/account.schema';
 import type { SortPreference } from '@/shared/services/table-preferences.api';
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
 import type { FilterCondition } from '@leadcrm/shared';
 
 export interface UseAccountsParams {
@@ -50,30 +43,50 @@ const REFRESH_INTERVAL_MS = 60_000;
 
 export function useAccounts(params?: UseAccountsParams) {
   const { tenant } = useAuth();
+  const tenantId = tenant?.id ?? '';
+
+  // All parameters that affect the server response — used as cache key.
+  const cacheParams = useMemo<Record<string, unknown>>(() => ({
+    page:     params?.page     ?? 1,
+    pageSize: params?.pageSize ?? 100,
+    sort:     params?.sort     ?? null,
+    search:   params?.search   ?? '',
+    filter:   params?.filter   ?? null,
+  }), [params?.page, params?.pageSize, params?.sort, params?.search, params?.filter]);
+
+  // ── Initialize from cache (synchronous — no flicker on return navigation) ─
+  const cachedResult = useMemo<Account[] | null>(() => {
+    if (USE_MOCK_DATA || !tenantId) return null;
+    const cached = getPageCache<Account[]>('accounts', tenantId, cacheParams);
+    return cached?.data ?? null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally empty — only read cache on first mount
 
   // ── Server fetch (real-API mode) ─────────────────────────────────────────
   const { data, meta, isLoading: isFetching, error, refetch } = useModuleData({
     moduleId: 'accounts',
-    page: params?.page ?? 1,
+    page:     params?.page     ?? 1,
     pageSize: params?.pageSize ?? 100,
-    sort: params?.sort ?? null,
-    search: params?.search,
-    filter: params?.filter,
+    sort:     params?.sort     ?? null,
+    search:   params?.search,
+    filter:   params?.filter,
   });
 
   // ── Stale-while-revalidate ───────────────────────────────────────────────
-  const [displayAccounts, setDisplayAccounts] = useState<Account[]>([]);
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [displayAccounts, setDisplayAccounts] = useState<Account[]>(cachedResult ?? []);
+  const [hasLoadedOnce,   setHasLoadedOnce]   = useState(cachedResult !== null);
 
   useEffect(() => {
-    if (!isFetching && error === null && !USE_MOCK_DATA) {
+    if (!isFetching && error === null && !USE_MOCK_DATA && tenantId) {
       const mapped = data.map((raw) => toFrontendOrg(raw)) as Account[];
-      setDisplayAccounts(mapped.filter((a) => !a.isArchived));
+      const filtered = mapped.filter((a) => !a.isArchived);
+      setDisplayAccounts(filtered);
+      setPageCache<Account[]>('accounts', tenantId, cacheParams, filtered);
       setHasLoadedOnce(true);
     }
-  }, [data, isFetching, error]);
+  }, [data, isFetching, error, tenantId, cacheParams]);
 
-  // ── Mock mode (localStorage) — preserves existing dev workflow ──────────
+  // ── Mock mode (localStorage) ─────────────────────────────────────────────
   useEffect(() => {
     if (!USE_MOCK_DATA || !tenant) return;
     const raw = localStorage.getItem('leadcrm_accounts');
@@ -83,7 +96,7 @@ export function useAccounts(params?: UseAccountsParams) {
   }, [tenant]);
 
   const isInitialLoad = isFetching && !hasLoadedOnce && !USE_MOCK_DATA;
-  const isLoading = isInitialLoad; // alias used by accounts-page
+  const isLoading = isInitialLoad;
 
   // ── Background refresh ───────────────────────────────────────────────────
   const refetchRef = useRef(refetch);
@@ -91,7 +104,7 @@ export function useAccounts(params?: UseAccountsParams) {
 
   useEffect(() => {
     if (USE_MOCK_DATA) return;
-    const interval = setInterval(() => { refetchRef.current(); }, REFRESH_INTERVAL_MS);
+    const interval   = setInterval(() => { refetchRef.current(); }, REFRESH_INTERVAL_MS);
     const handleFocus = (): void => { refetchRef.current(); };
     window.addEventListener('focus', handleFocus);
     return () => {
@@ -129,6 +142,7 @@ export function useAccounts(params?: UseAccountsParams) {
         setDisplayAccounts((prev) => [...prev, newAccount]);
       } else {
         await accountsService.create({ ...formData, tenantId: tenant.id });
+        invalidatePageCache('accounts', tenant.id);
         refetch();
       }
       setIsFormOpen(false);
@@ -148,6 +162,7 @@ export function useAccounts(params?: UseAccountsParams) {
         setDisplayAccounts((prev) => prev.map((c) => c.id === id ? { ...c, ...formData } : c));
       } else {
         await accountsService.update(id, formData as unknown as Record<string, unknown>);
+        invalidatePageCache('accounts', tenant?.id ?? '');
         refetch();
       }
       setIsFormOpen(false);
@@ -155,7 +170,7 @@ export function useAccounts(params?: UseAccountsParams) {
     } catch (err) {
       console.error('[useAccounts] Failed to update account:', err);
     }
-  }, [refetch]);
+  }, [tenant, refetch]);
 
   const handleDelete = useCallback(async (id: string) => {
     try {
@@ -168,12 +183,13 @@ export function useAccounts(params?: UseAccountsParams) {
         setDisplayAccounts((prev) => prev.filter((c) => c.id !== id));
       } else {
         await accountsService.archive(id);
+        invalidatePageCache('accounts', tenant?.id ?? '');
         refetch();
       }
     } catch (err) {
       console.error('[useAccounts] Failed to delete account:', err);
     }
-  }, [refetch]);
+  }, [tenant, refetch]);
 
   const handleOpenCreate = useCallback(() => { setEditTarget(null); setIsFormOpen(true); }, []);
   const handleOpenEdit   = useCallback((account: Account) => { setEditTarget(account); setIsFormOpen(true); }, []);

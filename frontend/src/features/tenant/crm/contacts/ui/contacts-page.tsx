@@ -23,31 +23,47 @@ import { ActionableEmptyState } from '@/shared/components/actionable-empty-state
 import { PageSizeSelect } from '@/shared/components/page-size-select';
 import { useRouter } from 'next/navigation';
 import { contactsV2Api } from '@/shared/services/contacts-v2.api';
+import { getPageCache, setPageCache } from '@/shared/cache/page-cache';
+import { USE_MOCK_DATA } from '@/lib/config';
 // ── Contacts Page ─────────────────────────────────────────────────────────────
 // Shows all contacts with activity flags, customer type, account links, deals
 
 export default function ContactsPage(): React.ReactElement {
   const { organizations, deals, users } = useData();
-  const { user } = useAuth();
+  const { user, tenant } = useAuth();
+  const tenantId = tenant?.id ?? '';
   const canCreate = useHasPermission('contacts.create');
   const canEdit   = useHasPermission('contacts.edit');
   const canDelete = useHasPermission('contacts.delete');
   const { getParam, getArrayParam, updateParams } = useFilterUrlSync('contacts');
 
+  // Cache params — only limit is sent to the API today (search/filter are client-side)
+  const CONTACTS_CACHE_PARAMS: Record<string, unknown> = { limit: 100 };
+
   // ── Contacts Data (fetched from /crm/contacts — Contact table) ────────
-  const [contacts, setContacts] = useState<Contact[]>([]);
+  // Initialize from cache to avoid skeleton on return navigation
+  const initialCache = useMemo<Contact[] | null>(() => {
+    if (USE_MOCK_DATA || !tenantId) return null;
+    const cached = getPageCache<Contact[]>('contacts', tenantId, CONTACTS_CACHE_PARAMS);
+    return cached?.data ?? null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // only read on first mount
+
+  const [contacts, setContacts] = useState<Contact[]>(initialCache ?? []);
 
   const fetchContacts = useCallback(async () => {
     try {
       const res = await contactsV2Api.list({ limit: 100 });
-      setContacts((res?.data ?? []) as Contact[]);
+      const result = (res?.data ?? []) as Contact[];
+      setContacts(result);
+      if (tenantId && !USE_MOCK_DATA) {
+        setPageCache<Contact[]>('contacts', tenantId, CONTACTS_CACHE_PARAMS, result);
+      }
     } catch {
-      // Passive background read — fail gracefully with an empty list rather than
-      // surfacing a full-screen error. A visible fetch failure is handled by the
-      // page's empty/error states, not a thrown/logged error that trips the dev overlay.
       setContacts([]);
     }
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId]);
 
   useEffect(() => { fetchContacts(); }, [fetchContacts]);
 

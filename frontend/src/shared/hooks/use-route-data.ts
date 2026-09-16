@@ -33,6 +33,12 @@ interface UseRouteDataOptions {
   intervalMs: number;
   /** When true, skip real-API fetching (e.g. USE_MOCK_DATA mode). */
   disabled?: boolean;
+  /**
+   * When true, the hook starts with hasLoadedOnce=true and isFetching=false.
+   * Use when the consumer has pre-populated state from the page cache on mount —
+   * this suppresses the initial skeleton while still triggering a background refresh.
+   */
+  initiallyLoaded?: boolean;
 }
 
 export interface UseRouteDataReturn {
@@ -51,9 +57,13 @@ export function useRouteData({
   fetchFn,
   intervalMs,
   disabled = false,
+  initiallyLoaded = false,
 }: UseRouteDataOptions): UseRouteDataReturn {
-  const [isFetching,    setIsFetching]    = useState(!disabled);
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  // When the consumer provides cached data on mount, skip the skeleton:
+  //   isFetching starts false (no spinner), hasLoadedOnce starts true (data visible).
+  // The initial fetch useEffect still fires to background-refresh the stale data.
+  const [isFetching,    setIsFetching]    = useState(disabled ? false : !initiallyLoaded);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(initiallyLoaded);
   const [error,         setError]         = useState<string | null>(null);
 
   const mountedRef = useRef(true);

@@ -12,6 +12,7 @@ import { MOCK_USERS, MOCK_TENANTS } from './mockData';
 import { authApi } from '@/shared/services/auth.api';
 import { rolesApi } from '@/shared/services/roles.api';
 import { clearModuleCountsCache } from '@/shared/hooks/use-module-counts';
+import { clearPageCache }         from '@/shared/cache/page-cache';
 
 // When true, auth calls hit the mock localStorage data instead of the backend.
 // Set NEXT_PUBLIC_USE_MOCK_AUTH=false in .env.local to use the real API.
@@ -445,6 +446,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Clear sidebar badge count cache — prevents stale counts leaking to a
     // different tenant session that may start in the same browser tab.
     clearModuleCountsCache();
+    clearPageCache(); // evict all cross-route module data — prevents stale data after re-login
     localStorage.removeItem('leadcrm_user');
     localStorage.removeItem('leadcrm_tenant');
     // Clear onboarding flags so the next user on this browser sees the

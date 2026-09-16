@@ -12,6 +12,8 @@ import type {
   TaskCompletion,
   ContactStatusCount,
 } from '@/shared/services/reporting.api';
+import { getPageCache, setPageCache } from '@/shared/cache/page-cache';
+import { USE_MOCK_DATA } from '@/lib/config';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip as ChartTooltip, Legend, ResponsiveContainer,
@@ -75,13 +77,37 @@ const CHART_COLORS = ['#0A6EFF', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#E
 export default function ReportsPage(): React.ReactElement {
   const { contacts, deals, users, pipelines } = useData();
   const { tenant }          = useAuth();
+  const tenantId            = tenant?.id ?? '';
   const tenantCurrency      = useMemo(() => getTenantCurrency(tenant), [tenant]);
   const currencySymbol      = tenantCurrency.symbol;
 
+  // Reports cache key: no params — fixed tenant-wide aggregates
+  const REPORTS_CACHE_PARAMS: Record<string, unknown> = {};
+
+  // ── Initialize from cache ─────────────────────────────────────────────────
+  type ReportsCacheData = {
+    velocity: DealVelocity | null;
+    tasks:    TaskCompletion | null;
+    status:   ContactStatusCount[] | null;
+  };
+
+  const initialCache = useMemo<ReportsCacheData | null>(() => {
+    if (USE_MOCK_DATA || !tenantId) return null;
+    const cached = getPageCache<ReportsCacheData>('reports', tenantId, REPORTS_CACHE_PARAMS);
+    return cached?.data ?? null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // only read on first mount
+
   // ── API state ──────────────────────────────────────────────────────────────
-  const [velocity, setVelocity]   = useState<ApiState<DealVelocity>>({ data: null, loading: true, error: null });
-  const [tasks, setTasks]         = useState<ApiState<TaskCompletion>>({ data: null, loading: true, error: null });
-  const [statusApi, setStatusApi] = useState<ApiState<ContactStatusCount[]>>({ data: null, loading: true, error: null });
+  const [velocity, setVelocity]   = useState<ApiState<DealVelocity>>({
+    data: initialCache?.velocity ?? null, loading: !initialCache, error: null,
+  });
+  const [tasks, setTasks]         = useState<ApiState<TaskCompletion>>({
+    data: initialCache?.tasks ?? null, loading: !initialCache, error: null,
+  });
+  const [statusApi, setStatusApi] = useState<ApiState<ContactStatusCount[]>>({
+    data: initialCache?.status ?? null, loading: !initialCache, error: null,
+  });
 
   const fetchReports = useCallback(async (): Promise<void> => {
     // Fire all three API calls in parallel — non-blocking relative to each other
@@ -91,24 +117,37 @@ export default function ReportsPage(): React.ReactElement {
       reportingApi.contactStatus(),
     ]);
 
+    const velocityData = velocityRes.status === 'fulfilled' ? (velocityRes.value as { data: DealVelocity }).data : null;
+    const tasksData    = tasksRes.status === 'fulfilled'    ? (tasksRes.value as { data: TaskCompletion }).data    : null;
+    const statusData   = statusRes.status === 'fulfilled'   ? (statusRes.value as { data: ContactStatusCount[] }).data : null;
+
     setVelocity({
-      data:    velocityRes.status === 'fulfilled' ? (velocityRes.value as { data: DealVelocity }).data : null,
+      data:    velocityData,
       loading: false,
       error:   velocityRes.status === 'rejected'  ? (velocityRes.reason instanceof Error ? velocityRes.reason.message : 'Failed to load') : null,
     });
 
     setTasks({
-      data:    tasksRes.status === 'fulfilled' ? (tasksRes.value as { data: TaskCompletion }).data : null,
+      data:    tasksData,
       loading: false,
       error:   tasksRes.status === 'rejected'  ? (tasksRes.reason instanceof Error ? tasksRes.reason.message : 'Failed to load') : null,
     });
 
     setStatusApi({
-      data:    statusRes.status === 'fulfilled' ? (statusRes.value as { data: ContactStatusCount[] }).data : null,
+      data:    statusData,
       loading: false,
       error:   statusRes.status === 'rejected'  ? (statusRes.reason instanceof Error ? statusRes.reason.message : 'Failed to load') : null,
     });
-  }, []);
+
+    // Write combined result to cache when all three succeeded
+    if (tenantId && !USE_MOCK_DATA && velocityData && tasksData) {
+      setPageCache('reports', tenantId, REPORTS_CACHE_PARAMS, {
+        velocity: velocityData,
+        tasks:    tasksData,
+        status:   statusData,
+      });
+    }
+  }, [tenantId]);
 
   useEffect(() => { void fetchReports(); }, [fetchReports]);
 

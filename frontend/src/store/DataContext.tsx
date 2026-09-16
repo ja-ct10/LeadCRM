@@ -55,6 +55,7 @@ import { uuid } from "@/lib/utils";
 import { toast } from 'sonner';
 import { usersService } from "@/features/tenant/administration/users/services/users.service";
 import { USE_MOCK_DATA } from "@/lib/config";
+import { invalidatePageCache } from "@/shared/cache/page-cache";
 import { leadsService as contactsService } from "@/features/tenant/crm/leads/services/leads.service";
 import { accountsService as organizationsService } from "@/features/tenant/crm/accounts/services/accounts.service";
 import { pipelineService } from "@/features/tenant/crm/pipeline/services/pipeline.service";
@@ -1079,6 +1080,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const res = await organizationsService.create(dto);
         const org = toFrontendOrg((res as any).data ?? res) as Organization;
         setOrganizations((prev) => [org, ...prev]);
+        invalidatePageCache('accounts', tenant?.id || user?.tenantId || '');
         addAuditLog("Created Organization", `Organization "${org.name}" was added.`);
         return org.id;
       } catch (err: unknown) {
@@ -1105,6 +1107,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const res = await organizationsService.update(id, dto);
         const org = toFrontendOrg((res as any).data ?? res) as Organization;
         setOrganizations((prev) => prev.map((o) => (o.id === id ? org : o)));
+        invalidatePageCache('accounts', tenant?.id || user?.tenantId || '');
         addAuditLog("Updated Organization", `Organization "${org.name}" was updated.`);
       } catch (err: unknown) {
         throw new Error(err instanceof Error ? err.message : 'Failed to update organization');
@@ -1129,6 +1132,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setOrganizations((prev) =>
           prev.map((o) => (o.id === id ? { ...o, isArchived: true, archivedAt: new Date().toISOString(), archivedBy: user?.id } : o)),
         );
+        invalidatePageCache('accounts', tenant?.id || user?.tenantId || '');
         addAuditLog("Organization Archived", `Archived organization id '${id}'.`);
       } catch (err: unknown) {
         throw new Error(err instanceof Error ? err.message : 'Failed to archive organization');
@@ -1192,6 +1196,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const res = await contactsService.create(dto);
         const contact = toFrontendContact((res as any).data ?? res) as Contact;
         setContacts((prev) => [contact, ...prev]);
+        // Invalidate leads + contacts page cache so next navigation shows fresh data
+        const cTenantId = tenant?.id || user?.tenantId || '';
+        invalidatePageCache('leads',    cTenantId);
+        invalidatePageCache('contacts', cTenantId);
         addAuditLog(
           "Contact Created",
           `Added contact '${contact.contactPerson}' (${contact.companyName}) with status '${contact.status}'.`,
@@ -1228,6 +1236,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const res = await contactsService.update(id, dto);
         const contact = toFrontendContact((res as any).data ?? res) as Contact;
         setContacts((prev) => prev.map((l) => (l.id === id ? contact : l)));
+        invalidatePageCache('leads',    tenant?.id || user?.tenantId || '');
+        invalidatePageCache('contacts', tenant?.id || user?.tenantId || '');
         addAuditLog("Contact Updated", `Updated contact '${contact.contactPerson}'.`, id);
       } catch (err: unknown) {
         throw new Error(err instanceof Error ? err.message : 'Failed to update contact');
@@ -1284,6 +1294,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setContacts((prev) =>
           prev.map((l) => (l.id === id ? { ...l, isArchived: true, archivedAt: new Date().toISOString(), archivedBy: user?.id } : l)),
         );
+        invalidatePageCache('leads',    tenant?.id || user?.tenantId || '');
+        invalidatePageCache('contacts', tenant?.id || user?.tenantId || '');
         addAuditLog("Contact Archived", `Archived contact id '${id}'.`);
       } catch (err: unknown) {
         throw new Error(err instanceof Error ? err.message : 'Failed to archive contact');
@@ -1952,6 +1964,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const res = await campaignsApi.create(campaignData);
         const created = res?.data ?? res;
         setCampaigns((prev) => [created as Campaign, ...prev]);
+        invalidatePageCache('campaigns', tenant?.id || user?.tenantId || '');
         addAuditLog("Campaign Created", `Created campaign '${(created as any).name || 'new'}'.`);
       } catch (err: unknown) {
         toast.error(err instanceof Error ? err.message : "Failed to create campaign");
@@ -1972,6 +1985,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const res = await campaignsApi.update(id, updates);
         const updated = res?.data ?? res;
         setCampaigns((prev) => prev.map((c) => (c.id === id ? (updated as Campaign) : c)));
+        invalidatePageCache('campaigns', tenant?.id || user?.tenantId || '');
         addAuditLog("Campaign Updated", `Updated campaign '${(updated as any).name || id}'.`);
       } catch (err: unknown) {
         toast.error(err instanceof Error ? err.message : "Failed to update campaign");
@@ -1988,6 +2002,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       try {
         await campaignsApi.archive(id);
         setCampaigns((prev) => prev.filter((c) => c.id !== id));
+        invalidatePageCache('campaigns', tenant?.id || user?.tenantId || '');
         addAuditLog("Campaign Archived", `Archived campaign id '${id}'.`);
       } catch (err: unknown) {
         toast.error(err instanceof Error ? err.message : "Failed to archive campaign");
@@ -2006,6 +2021,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const res = await templatesApi.create(templateData);
         const created = res?.data ?? res;
         setTemplates((prev) => [created as Template, ...prev]);
+        invalidatePageCache('campaigns', tenant?.id || user?.tenantId || '');
         addAuditLog("Template Created", `Created template '${(created as any).name || 'new'}'.`);
       } catch (err: unknown) {
         toast.error(err instanceof Error ? err.message : "Failed to create template");
@@ -2022,6 +2038,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const res = await templatesApi.update(id, updates);
         const updated = res?.data ?? res;
         setTemplates((prev) => prev.map((t) => (t.id === id ? (updated as Template) : t)));
+        invalidatePageCache('campaigns', tenant?.id || user?.tenantId || '');
       } catch (err: unknown) {
         toast.error(err instanceof Error ? err.message : "Failed to update template");
       }
@@ -2035,6 +2052,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       try {
         await templatesApi.archive(id);
         setTemplates((prev) => prev.filter((t) => t.id !== id));
+        invalidatePageCache('campaigns', tenant?.id || user?.tenantId || '');
         addAuditLog("Template Archived", `Archived template id '${id}'.`);
       } catch (err: unknown) {
         toast.error(err instanceof Error ? err.message : "Failed to archive template");
@@ -2487,6 +2505,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const res = await activitiesService.create(activityData as any);
         if (res.data) {
           setActivities((prev) => [res.data as unknown as Activity, ...prev]);
+          invalidatePageCache('activities', currentTenantId);
         }
       } catch (error) {
         console.error('Failed to create activity via API', error);
@@ -2522,6 +2541,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const res = await invoicesApi.create(dto as any);
         const created = res?.data ?? res;
         setInvoices((prev) => [created as Invoice, ...prev]);
+        invalidatePageCache('invoices', tenant?.id || user?.tenantId || '');
         addAuditLog('Invoice Created', `Created invoice for '${(created as any).companyName || 'client'}'.`);
       } catch (err: unknown) {
         toast.error(err instanceof Error ? err.message : "Failed to create invoice");
@@ -2547,6 +2567,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const res = await invoicesApi.update(id, dto as any);
         const updated = res?.data ?? res;
         setInvoices((prev) => prev.map((inv) => (inv.id === id ? (updated as Invoice) : inv)));
+        invalidatePageCache('invoices', tenant?.id || user?.tenantId || '');
       } catch (err: unknown) {
         toast.error(err instanceof Error ? err.message : "Failed to update invoice");
       }
@@ -2563,6 +2584,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       try {
         await invoicesApi.archive(id);
         setInvoices((prev) => prev.filter((inv) => inv.id !== id));
+        invalidatePageCache('invoices', tenant?.id || user?.tenantId || '');
         addAuditLog('Invoice Archived', `Archived invoice id '${id}'.`);
       } catch (err: unknown) {
         toast.error(err instanceof Error ? err.message : "Failed to archive invoice");
