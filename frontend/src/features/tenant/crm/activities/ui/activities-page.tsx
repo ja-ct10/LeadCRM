@@ -207,17 +207,38 @@ export default function ActivitiesPage(): React.ReactElement {
   const [dateRange, setDateRange]           = useState<DateRangeFilter>('all');
   const [selectedUserId, setSelectedUserId] = useState('');
 
+  // ── Initialize from cache (mount-time only — uses default page=1/pageSize=25) ─
+  // Cache key at mount time uses the defaults; after the user changes filters the
+  // hook re-fetches and writes a new cache entry for the updated params.
+  const initialCache = useMemo(() => {
+    if (USE_MOCK_DATA || !tenantId) return null;
+    const cached = getPageCache<{ activities: ActivityRecord[]; total: number }>(
+      'activities', tenantId,
+      { page: 1, pageSize: 25, type: 'all', dateRange: 'all', userId: null },
+    );
+    return cached?.data ?? null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // only read on first mount
+
+  // ── Data state — declare BEFORE usePagination so totalItems is in scope ──
+  const [activities, setActivities] = useState<ActivityRecord[]>(initialCache?.activities ?? []);
+  const [isLoading, setIsLoading]   = useState(!initialCache && !USE_MOCK_DATA);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [totalItems, setTotalItems] = useState(initialCache?.total ?? 0);
+
   // ── Pagination ────────────────────────────────────────────────────────────
-  // Defined before cache read so currentPage/pageSize are available for the key.
-  const paginationState = usePagination({
-    totalItems,   // reactive — updates after fetch sets totalItems
+  const {
+    currentPage, totalPages, pageSize,
+    goToPage, setPageSize,
+  } = usePagination({
+    totalItems,
     initialPageSize: 25,
     pageSizeOptions: [10, 25, 50],
     resetDeps: [debouncedSearch, typeFilter, dateRange, selectedUserId],
   });
-  const { currentPage, totalPages, pageSize, goToPage, setPageSize, paginateItems } = paginationState;
 
   // Build cache params — every param that affects the server response.
+  // Defined after pagination so currentPage/pageSize are available.
   const cacheParams = useMemo<Record<string, unknown>>(() => ({
     page:      currentPage,
     pageSize,
@@ -225,22 +246,6 @@ export default function ActivitiesPage(): React.ReactElement {
     dateRange,
     userId:    selectedUserId || null,
   }), [currentPage, pageSize, typeFilter, dateRange, selectedUserId]);
-
-  // ── Initialize from cache (synchronous — no skeleton on return nav) ───────
-  const initialCache = useMemo(() => {
-    if (USE_MOCK_DATA || !tenantId) return null;
-    const cached = getPageCache<{ activities: ActivityRecord[]; total: number }>(
-      'activities', tenantId, cacheParams,
-    );
-    return cached?.data ?? null;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // only read on first mount
-
-  // ── Data state ────────────────────────────────────────────────────────────
-  const [activities, setActivities] = useState<ActivityRecord[]>(initialCache?.activities ?? []);
-  const [isLoading, setIsLoading]   = useState(!initialCache && !USE_MOCK_DATA);
-  const [fetchError, setFetchError] = useState<string | null>(null);
-  const [totalItems, setTotalItems] = useState(initialCache?.total ?? 0);
 
   // ── Fetch ─────────────────────────────────────────────────────────────────
   const fetchActivities = useCallback(async (): Promise<void> => {
