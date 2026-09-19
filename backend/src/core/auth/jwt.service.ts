@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import jwt from 'jsonwebtoken';
 import { appConfig } from '../../config/app.config';
 
@@ -11,6 +12,7 @@ export interface JwtPayload {
 export function signToken(payload: JwtPayload): string {
   return jwt.sign(payload, appConfig.jwtSecret, {
     expiresIn: appConfig.jwtExpiresIn,
+    jwtid: randomUUID(),
   });
 }
 

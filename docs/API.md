@@ -11,14 +11,15 @@ http://localhost:4000/api/v1
 ```
 
 ## Authentication
-All `/api/v1/*` routes require a JWT Bearer token (issued on login).
-```
-Authorization: Bearer <token>
-```
 
-Token payload: `{ userId, tenantId, role, roleId, email }`
+Protected endpoints accept the HttpOnly `leadcrm_token` cookie or a persisted
+session's Bearer token. Browser clients use the same-origin /api/proxy transport.
+Public registration, login, verification and recovery endpoints do not require
+a session. See [Authentication and onboarding](authentication.md).
 
-> `roleId` is used by the backend to resolve `RolePermission` rows for RBAC checks.
+Signed identity is verified against the session store and current database
+user/role. Tenant context comes from the authenticated session. CRM endpoints
+also enforce onboarding readiness, subscription restrictions and RBAC.
 
 ## Standard Response Envelope
 ```typescript
@@ -36,27 +37,55 @@ Token payload: `{ userId, tenantId, role, roleId, email }`
 
 ## Auth Endpoints
 
-| Method | Path | Description | Auth |
-|---|---|---|---|
-| `POST` | `/api/v1/auth/login` | Login with email + password | None |
-| `POST` | `/api/v1/auth/register` | Register new tenant + admin user | None |
-| `POST` | `/api/v1/auth/refresh` | Refresh JWT token | Bearer |
+All paths below are relative to /api/v1.
 
-**Login Request:**
-```json
-{ "email": "user@example.com", "password": "SecurePass1" }
-```
+| Method | Path | Responsibility |
+| --- | --- | --- |
+| POST | /auth/register/guest | Account-only signup; pending Guest owner and step-0 workspace |
+| POST | /auth/register/client-admin | Legacy alias; new founders still start Guest |
+| POST | /auth/login | Password login; canonical user and HttpOnly session cookie |
+| GET | /auth/me | Current database user/workspace state |
+| POST | /auth/logout | Revoke the session and expire the cookie |
+| POST | /auth/oauth/google | Verify Google ID token; return the existing or new Guest session to the server bridge |
+| POST | /auth/verify-registration-otp | Activate pending account using email and six-digit code; issue session |
+| GET | /auth/verify-email?token=... | Browser: frontend handoff; Accept: application/json: consume link and issue session |
+| POST | /auth/resend-verification | Request a fresh verification email |
+| POST | /auth/send-registration-otp | Compatibility alias for verification delivery |
+| POST | /auth/forgot-password | Request a password reset |
+| POST | /auth/reset-password | Complete a password reset |
+| GET | /auth/onboarding/status | Authenticated canonical user snapshot; frontend uses /auth/me |
+| PATCH | /auth/onboarding/step | Owner-only adjacent progress with expectedStep |
+| POST | /auth/onboarding/complete | Owner-only final company save and completion |
+| PATCH | /auth/onboarding/workspace | Compatibility alias for final company completion; same state checks |
+| PATCH | /auth/oauth/complete-profile | Compatibility alias for final company completion; same state checks |
 
-**Login Response:**
-```json
-{ "success": true, "data": { "token": "jwt...", "user": { "id", "email", "role", "firstName", "lastName" } } }
-```
+Registration accepts firstName, lastName, email, password and acceptTerms=true.
+An invitationToken uses the existing tenant and explicitly invited role instead.
+Registration returns `{ success: true, data: { user: { id, email, role, tenantId, emailSent } } }`;
+it does not establish a session before verification.
+
+Authenticated responses use `{ success: true, data: { user: AuthUser } }`.
+The shared [AuthUser contract](../shared/src/contracts/auth.contract.ts) includes
+role, status, emailVerified, tenant/company fields, onboardingStep,
+onboardingCompletedAt and isTenantOwner. Login does not return a token in browser
+JSON; the Google server bridge consumes its token server-side.
+
+Progress example: `{ "expectedStep": 0, "step": 1 }`.
+Only adjacent transitions among 0/1/2 are accepted. Final completion requires
+persisted step 2 and companyName, industry, companySize, optional website and
+timezone. It atomically sets step 3 and onboardingCompletedAt, preserving Guest.
+A repeated completion returns existing state. Stale transitions return 409;
+ownership/verification violations return 403. Old empty completion payloads fail
+validation.
+
+Errors may use `{ success: false, error: { code, message } }` as well as a string
+error. Clients must preserve HTTP status and code for recovery.
 
 ---
 
 ## CRM Endpoints (`/api/v1/crm/`)
 
-All require: `Authorization: Bearer <token>`
+All require an authenticated session and completed workspace onboarding.
 
 ### Contacts
 

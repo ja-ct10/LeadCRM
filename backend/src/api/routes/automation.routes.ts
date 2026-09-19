@@ -1,8 +1,6 @@
 ﻿import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.middleware';
-import { tenantMiddleware } from '../middleware/tenant.middleware';
-import { subscriptionGate } from '../middleware/subscription-gate.middleware';
-import { planGate } from '../middleware/plan-gate.middleware';
+import { tenantMiddleware, workspaceReadyMiddleware } from '../middleware/tenant.middleware';
 import { authorize } from '../middleware/rbac.middleware';
 import { validate } from '../middleware/validate.middleware';
 import * as workflowController from '../../modules/automation/workflows/workflows.controller';
@@ -14,14 +12,14 @@ const router = Router();
 
 router.use(authMiddleware);
 router.use(tenantMiddleware);
-router.use(subscriptionGate);
+router.use(workspaceReadyMiddleware);
 
 // ── Workflows ─────────────────────────────────────────
 router.get(   '/workflows',                   authorize('workflows.view'),     workflowController.getWorkflows);
 router.get(   '/workflows/:id',               authorize('workflows.view'),     workflowController.getWorkflowById);
-router.post(  '/workflows',                   authorize('workflows.create'),   planGate('automation'), validate(CreateWorkflowSchema), workflowController.createWorkflow);
-router.put(   '/workflows/:id',               authorize('workflows.edit'),     planGate('automation'), validate(UpdateWorkflowSchema), workflowController.updateWorkflow);
-router.patch( '/workflows/:id/toggle',        authorize('workflows.activate'), planGate('automation'), workflowController.toggleWorkflow);
+router.post(  '/workflows',                   authorize('workflows.create'),   validate(CreateWorkflowSchema), workflowController.createWorkflow);
+router.put(   '/workflows/:id',               authorize('workflows.edit'),     validate(UpdateWorkflowSchema), workflowController.updateWorkflow);
+router.patch( '/workflows/:id/toggle',        authorize('workflows.activate'), workflowController.toggleWorkflow);
 router.patch( '/workflows/:id/archive',       authorize('workflows.delete'),   workflowController.archiveWorkflow);
 router.get(   '/workflows/:id/executions',    authorize('workflows.view'),     workflowController.getWorkflowExecutions);
 

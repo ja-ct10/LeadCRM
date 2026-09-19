@@ -23,6 +23,8 @@
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface CacheEntry<T = unknown> {
+  module: string;
+  expiresAt: number;
   data:      T;
   fetchedAt: number;  // Date.now() when written
   staleAt:   number;  // Date.now() when background refresh should fire
@@ -69,6 +71,16 @@ const DEFAULT_CONFIG: ModuleCacheConfig = { ttlMs: 5 * 60_000, staleMs: 60_000 }
 // Cleared atomically on logout to prevent cross-tenant leakage.
 
 const pageCache = new Map<string, CacheEntry>();
+const MAX_ENTRIES = 100;
+let generation = 0;
+const moduleVersions = new Map<string, number>();
+
+/** Reject responses started before logout or a mutation invalidated this module. */
+export function createPageCacheGuard(module: string): () => boolean {
+  const startedGeneration = generation;
+  const version = moduleVersions.get(module) ?? 0;
+  return () => generation === startedGeneration && (moduleVersions.get(module) ?? 0) === version;
+}
 
 // ── Deterministic recursive serializer ───────────────────────────────────────
 // Handles nested objects (e.g. FilterCondition[]) without ambiguity.
@@ -82,7 +94,7 @@ function stableStringify(value: unknown): string {
     return '[' + value.map(stableStringify).join(',') + ']';
   }
   const sorted = (Object.entries(value as Record<string, unknown>))
-    .filter(([, v]) => v !== undefined && v !== null && v !== '')
+    .filter(([, v]) => v !== undefined)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`);
   return '{' + sorted.join(',') + '}';
@@ -97,7 +109,7 @@ export function buildCacheKey(
   tenantId: string,
   params:   Record<string, unknown>,
 ): string {
-  return `${tenantId}:${module}:${stableStringify(params)}`;
+  return JSON.stringify([tenantId, module, stableStringify(params)]);
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -112,17 +124,16 @@ export function getPageCache<T>(
   tenantId: string,
   params:   Record<string, unknown>,
 ): CacheResult<T> | null {
-  if (!tenantId) return null;
+  if (!tenantId || typeof window === 'undefined') return null;
   const key   = buildCacheKey(module, tenantId, params);
   const entry = pageCache.get(key) as CacheEntry<T> | undefined;
   if (!entry) return null;
   // Belt-and-suspenders: reject entry if tenantId mismatches
   if (entry.tenantId !== tenantId) { pageCache.delete(key); return null; }
   const now    = Date.now();
-  const config = MODULE_CONFIG[module] ?? DEFAULT_CONFIG;
   // Evict on TTL expiry
-  if (now - entry.fetchedAt > config.ttlMs) { pageCache.delete(key); return null; }
-  return { data: entry.data, isStale: now > entry.staleAt };
+  if (now >= entry.expiresAt) { pageCache.delete(key); return null; }
+  return { data: entry.data, isStale: now >= entry.staleAt };
 }
 
 /**
@@ -135,13 +146,22 @@ export function setPageCache<T>(
   params:   Record<string, unknown>,
   data:     T,
 ): void {
-  if (!tenantId) return;
+  if (!tenantId || typeof window === 'undefined') return;
   const key    = buildCacheKey(module, tenantId, params);
   const config = MODULE_CONFIG[module] ?? DEFAULT_CONFIG;
+  const now = Date.now();
+  // Expired search/filter entries must not accumulate for the lifetime of the tab.
+  for (const [entryKey, entry] of pageCache) {
+    if (now >= entry.expiresAt) pageCache.delete(entryKey);
+  }
+  pageCache.delete(key);
+  if (pageCache.size >= MAX_ENTRIES) pageCache.delete(pageCache.keys().next().value!);
   pageCache.set(key, {
+    module,
+    expiresAt: now + config.ttlMs,
     data,
-    fetchedAt: Date.now(),
-    staleAt:   Date.now() + config.staleMs,
+    fetchedAt: now,
+    staleAt:   now + config.staleMs,
     tenantId,
   });
 }
@@ -150,11 +170,11 @@ export function setPageCache<T>(
  * Evict all cache entries for a specific module + tenant.
  * Call after mutations that affect a module's list view.
  */
-export function invalidatePageCache(module: string, tenantId: string): void {
-  if (!tenantId) return;
-  const prefix = `${tenantId}:${module}:`;
-  for (const key of pageCache.keys()) {
-    if (key.startsWith(prefix)) pageCache.delete(key);
+export function invalidatePageCache(module: string, tenantId?: string): void {
+  if (tenantId === '') return;
+  moduleVersions.set(module, (moduleVersions.get(module) ?? 0) + 1);
+  for (const [key, entry] of pageCache) {
+    if (entry.module === module && (tenantId === undefined || entry.tenantId === tenantId)) pageCache.delete(key);
   }
 }
 
@@ -163,6 +183,8 @@ export function invalidatePageCache(module: string, tenantId: string): void {
  * Called on logout to prevent cross-session data leakage.
  */
 export function clearPageCache(): void {
+  generation++;
+  moduleVersions.clear();
   pageCache.clear();
 }
 

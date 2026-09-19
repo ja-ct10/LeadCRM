@@ -1,22 +1,21 @@
 'use client';
 
-import { uuid } from '@/lib/utils';
+import { normalizeMockUser } from './auth-state';
+import type { AuthUser } from '@leadcrm/shared';
 import React, {
   createContext, useContext, useState, useEffect,
   useCallback, useRef, ReactNode,
 } from 'react';
-import { signIn as nextAuthSignIn, signOut as nextAuthSignOut } from 'next-auth/react';
 import { User, Tenant } from './types';
 import type { ResolvedPermissions, PermissionAction } from './types/roles.types';
 import { MOCK_USERS, MOCK_TENANTS } from './mockData';
 import { authApi } from '@/shared/services/auth.api';
 import { rolesApi } from '@/shared/services/roles.api';
-import { clearModuleCountsCache } from '@/shared/hooks/use-module-counts';
 import { clearPageCache }         from '@/shared/cache/page-cache';
 
 // When true, auth calls hit the mock localStorage data instead of the backend.
 // Set NEXT_PUBLIC_USE_MOCK_AUTH=false in .env.local to use the real API.
-const USE_MOCK_AUTH = process.env.NEXT_PUBLIC_USE_MOCK_AUTH !== 'false';
+const USE_MOCK_AUTH = process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_USE_MOCK_AUTH === 'true';
 
 // ─── Super-role names ─────────────────────────────────────────────────────────
 // Module-level constant — never recreated per render.
@@ -25,15 +24,11 @@ const SUPER_ROLE_NAMES = ['Client Admin', 'System Admin'] as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/**
- * Distinguishes a genuine "no session" (unauthenticated / 401) response from a
- * real transport failure (network down, 5xx). The API client throws a plain
- * Error whose message is derived from the backend AppError text, so we match on
- * the known 401 messages emitted by the auth middleware. Anything else — a
- * `TypeError: Failed to fetch`, a timeout, or a 5xx status — is treated as a
- * transport failure that should surface an auth-init error state.
- */
+/** Prefer the API status; retain message matching for older clients and mock errors. */
 export function isNoSessionError(error: unknown): boolean {
+  if (typeof error === 'object' && error !== null && 'status' in error && typeof error.status === 'number') {
+    return error.status === 401;
+  }
   let message = '';
   try {
     message = (error instanceof Error ? error.message : String(error ?? '')).toLowerCase();
@@ -82,40 +77,6 @@ export function buildTenantFromApiUser(apiUser: Record<string, unknown>): Tenant
   } as unknown as Tenant;
 }
 
-// ─── Registration payload types ──────────────────────────────────────────────
-
-/** Payload for registering a new Client Admin (new company). */
-export interface RegisterTenantPayload {
-  companyName: string;
-  industry?: string;
-  size?: string;
-  businessEmail?: string;
-  phone?: string;
-  address?: string;
-  businessReqs?: { requirements: string; documentName?: string };
-  verificationDocs?: { businessPermit?: string; taxId?: string; validId?: string; uploadedAt: string };
-}
-
-export interface RegisterAdminPayload {
-  firstName: string;
-  lastName: string;
-  email: string;
-  password: string;
-}
-
-/** Payload for registering a Guest (sandbox/demo) account. */
-export interface RegisterGuestPayload {
-  firstName:        string;
-  lastName:         string;
-  email:            string;
-  password:         string;
-  confirmPassword?: string; // UI validation field — not sent to backend
-  companyName?:     string;
-  industry?:        string;
-  companySize?:     string;
-  businessWebsite?: string;
-}
-
 // ─── Context interface ────────────────────────────────────────────────────────
 
 interface AuthContextType {
@@ -126,11 +87,10 @@ interface AuthContextType {
   authError: string | null;
   retryAuthInit: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  applyAuthUser: (user: AuthUser, expectedUserId?: string) => void;
   login: (email: string, password?: string) => Promise<boolean>;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
-  registerTenant: (tenantData: RegisterTenantPayload, adminData: RegisterAdminPayload) => Promise<boolean>;
-  registerGuestAccount: (guestData: RegisterGuestPayload) => Promise<boolean>;
   requestPasswordReset: (email: string) => Promise<boolean>;
   confirmPasswordReset: (token: string, password: string) => Promise<boolean>;
   switchRole: (role: string) => void;
@@ -153,136 +113,93 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [permissions, setPermissions]           = useState<ResolvedPermissions>({});
   const [isPermissionsLoaded, setIsPermissionsLoaded] = useState(false);
 
-  // ── Restore session ───────────────────────────────────────────────
+  const requestGeneration = useRef(0);
+  const permissionGeneration = useRef(0);
+  const activeUserId = useRef<string | null>(null);
+  activeUserId.current = user?.id ?? null;
+
+  const applyAuthUser = useCallback((apiUser: AuthUser, expectedUserId?: string) => {
+    if (expectedUserId && activeUserId.current !== expectedUserId) return;
+    requestGeneration.current += 1;
+    activeUserId.current = apiUser.id;
+    setUser({
+      ...apiUser,
+      status: apiUser.status as User['status'],
+      avatarUrl: apiUser.avatarUrl ?? undefined,
+      timeZone: apiUser.timeZone ?? undefined,
+    });
+    setTenant(apiUser.role === 'System Admin' ? null : buildTenantFromApiUser({ ...apiUser }));
+    setAuthError(null);
+    setIsLoading(false);
+  }, []);
+
   const restoreSession = async (): Promise<void> => {
+    const generation = ++requestGeneration.current;
     if (USE_MOCK_AUTH) {
-      // Mock: restore from localStorage
       try {
-        const storedUser   = localStorage.getItem('leadcrm_user');
+        const storedUser = localStorage.getItem('leadcrm_user');
         const storedTenant = localStorage.getItem('leadcrm_tenant');
-        if (storedUser)   setUser(JSON.parse(storedUser));
+        if (storedUser) setUser(normalizeMockUser(JSON.parse(storedUser)));
         if (storedTenant) setTenant(JSON.parse(storedTenant));
       } catch {
-        // Corrupted storage — clear it
         localStorage.removeItem('leadcrm_user');
         localStorage.removeItem('leadcrm_tenant');
       }
       setAuthError(null);
       setIsPermissionsLoaded(true);
       setIsLoading(false);
-    } else {
-      // Real API — verify the HttpOnly cookie by calling /auth/me
-      try {
-        const res = await authApi.me();
-        if (res?.data?.user) {
-          const apiUser = res.data.user as unknown as User;
-          setUser(apiUser);
-          // tenantId is always a UUID for real users — skip setTenant only for System Admin
-          // (System Admin has no customer tenant; buildTenantFromApiUser is harmless but unnecessary)
-          if (apiUser.role?.toLowerCase() !== 'system admin') {
-            setTenant(buildTenantFromApiUser(apiUser as unknown as Record<string, unknown>));
-          }
-          // Fetch effective permissions non-blocking — failure doesn't break auth
-          if (apiUser.id) {
-            rolesApi.getUserPermissions(apiUser.id)
-              .then((r) => {
-                setPermissions(r?.data ?? {});
-                setIsPermissionsLoaded(true);
-              })
-              .catch(() => {
-                // Permissions unavailable — degrade gracefully
-                setIsPermissionsLoaded(true);
-              });
-          }
-        } else {
-          setUser(null);
-          setTenant(null);
-          setPermissions({});
-          setIsPermissionsLoaded(true);
-        }
-        setAuthError(null);
-      } catch (err: unknown) {
-        // Distinguish "no session" (401 → logged out, not an error) from a
-        // genuine transport failure (network/5xx). A missing session clears
-        // state silently; a transport failure surfaces a recovery state so the
-        // user never lands on a silent blank screen.
-        setUser(null);
-        setTenant(null);
-        setPermissions({});
-        setIsPermissionsLoaded(true);
-        if (isNoSessionError(err)) {
-          setAuthError(null);
-        } else {
-          // RC-08/09 fix: distinguish network/CORS failures (TypeError: Failed to fetch)
-          // from generic auth errors so users see a connectivity-specific message.
-          const authErrMsg = err instanceof Error ? err.message : 'Unknown error';
-          const isCorsOrNetwork = err instanceof TypeError || authErrMsg.toLowerCase().includes('fetch') || authErrMsg.toLowerCase().includes('network');
-          setAuthError(
-            isCorsOrNetwork
-              ? 'Unable to connect to the server. Check your network connection or contact support.'
-              : authErrMsg || 'Unable to verify your session',
-          );
-          if (process.env.NODE_ENV !== 'production') {
-            // eslint-disable-next-line no-console
-            console.error('[AuthContext] auth init failed:', err instanceof Error ? err.message : err);
-          }
-        }
-      }
+      return;
+    }
+    try {
+      const response = await authApi.me();
+      if (generation !== requestGeneration.current) return;
+      applyAuthUser(response.data.user);
+    } catch (error) {
+      if (generation !== requestGeneration.current) return;
+      setUser(null);
+      setTenant(null);
+      setPermissions({});
+      setIsPermissionsLoaded(true);
+      setAuthError(isNoSessionError(error) ? null
+        : error instanceof TypeError ? 'Unable to connect to the server. Check your network connection.'
+        : error instanceof Error ? error.message : 'Unable to load your session');
       setIsLoading(false);
     }
   };
 
-  // ── Restore session on mount ──────────────────────────────────────
   useEffect(() => {
-    restoreSession();
+    void restoreSession();
+    return () => { requestGeneration.current += 1; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run once on mount only — session restore is not NextAuth-dependent
+  }, []);
 
-  // ── Periodic permission refresh (every 5 minutes) ─────────────────
-  // Propagates role/permission changes made by admins without requiring
-  // the affected user to log out and back in.
-  // Uses a ref for the user ID to avoid re-creating the interval on every
-  // render — Context arrays in useEffect deps cause infinite loops.
-  const userIdRef = useRef<string | undefined>(undefined);
-  userIdRef.current = user?.id;
-
-  useEffect(() => {
-    if (USE_MOCK_AUTH) return;
-
-    const PERMISSION_REFRESH_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-
-    const intervalId = setInterval(async () => {
-      const uid = userIdRef.current;
-      if (!uid) return; // Not logged in — skip
-      try {
-        const r = await rolesApi.getUserPermissions(uid);
-        if (r?.data) {
-          setPermissions(r.data);
-        }
-      } catch {
-        // Non-critical — keep cached permissions until next tick
-      }
-    }, PERMISSION_REFRESH_INTERVAL_MS);
-
-    return () => clearInterval(intervalId);
-  }, []); // Deliberately empty — interval is stable, userIdRef.current is read live
-
-  // ── Refresh permissions ───────────────────────────────────────────
   const refreshPermissions = useCallback(async (): Promise<void> => {
     if (USE_MOCK_AUTH || !user?.id) return;
+    const id = user.id;
+    const generation = ++permissionGeneration.current;
     try {
-      const r = await rolesApi.getUserPermissions(user.id);
-      setPermissions(r?.data ?? {});
+      const response = await rolesApi.getUserPermissions(id);
+      if (activeUserId.current === id && permissionGeneration.current === generation) {
+        setPermissions(response.data ?? {});
+        setIsPermissionsLoaded(true);
+      }
     } catch {
-      // Non-critical — keep existing permissions
+      if (activeUserId.current === id && permissionGeneration.current === generation) {
+        setIsPermissionsLoaded(true);
+      }
     }
   }, [user?.id]);
 
+  useEffect(() => {
+    setPermissions({});
+    setIsPermissionsLoaded(USE_MOCK_AUTH || !user);
+    void refreshPermissions();
+    const interval = setInterval(() => { void refreshPermissions(); }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [user?.id, user?.role, refreshPermissions]);
+
   // ── userCan — permission guard helper ─────────────────────────────
   // Super roles bypass RolePermission evaluation.
-  // NOTE: Client Admin is a super role for RBAC (bypasses permission checks) but
-  // is NOT exempt from the subscription gate — a Client Admin on a SANDBOX/NONE
-  // tenant is still a sandbox user until Stripe payment is confirmed.
   const userCan = useCallback((module: string, action: PermissionAction): boolean => {
     if (!user) return false;
     const norm = user.role?.toLowerCase().trim() ?? '';
@@ -297,76 +214,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await restoreSession();
   };
 
-  // ── Refresh cached user/tenant without toggling loading ───────────
-  // Re-hydrates from the canonical /auth/me payload after a server-side
-  // change to gate-relevant fields (onboarding, email verification) so
-  // downstream guards see fresh values instead of a stale cached user.
   const refreshUser = async (): Promise<void> => {
     if (USE_MOCK_AUTH) return;
+    const generation = ++requestGeneration.current;
     try {
-      const res = await authApi.me();
-      if (res?.data?.user) {
-        const apiUser = res.data.user as unknown as User;
-        setUser(apiUser);
-        // tenantId is always a UUID for real users — skip setTenant only for System Admin
-        if (apiUser.role?.toLowerCase() !== 'system admin') {
-          setTenant(buildTenantFromApiUser(apiUser as unknown as Record<string, unknown>));
+      const response = await authApi.me();
+      if (generation === requestGeneration.current) applyAuthUser(response.data.user);
+    } catch (error) {
+      if (generation === requestGeneration.current) {
+        if (isNoSessionError(error)) {
+          setUser(null);
+          setTenant(null);
+          setPermissions({});
+        } else {
+          setAuthError(error instanceof Error ? error.message : 'Unable to refresh your session');
         }
-        setAuthError(null);
       }
-    } catch (err: unknown) {
-      if (process.env.NODE_ENV !== 'production') {
-        // eslint-disable-next-line no-console
-        console.error('[AuthContext] refreshUser failed:', err instanceof Error ? err.message : err);
-      }
+      throw error;
     }
   };
 
-  // ── Login ─────────────────────────────────────────────────────────
-  //
-  // CONTRACT: throws on any API/network failure so the caller receives the
-  // real error message from the backend (e.g. "Invalid email or password",
-  // "Account is inactive", "Backend unreachable"). Returns false only for
-  // the structural edge-case where the API returns 2xx but no user object.
-  //
-  // Previously the catch block swallowed all errors and returned false,
-  // making every failure — wrong password, backend down, seed not run, 502
-  // from the proxy — indistinguishable from a bad-credentials attempt. The
-  // login page displayed the same generic toast regardless of root cause,
-  // giving users (and developers) no actionable information.
   const login = async (email: string, password?: string): Promise<boolean> => {
-    if (USE_MOCK_AUTH) {
-      return mockLogin(email);
-    }
-
-    // Let the error propagate naturally — the login page catches and displays it.
-    const res = await authApi.login({ email, password: password ?? '' });
-
-    if (!res?.data?.user) {
-      // 2xx but no user object — structural backend response issue.
-      return false;
-    }
-
-    // Use the login response directly — it returns the same canonical shape as
-    // /auth/me via buildAuthUserResponse, so no re-hydration call is needed.
-    //
-    // The previous pattern called authApi.me() immediately after login() resolved,
-    // but in a cross-origin proxy deployment (Vercel → Render) the browser has not
-    // yet committed the Set-Cookie header from the login response to storage by the
-    // time the /me request fires. This race causes /me to return 401 ("Authentication
-    // required" — no cookie on the request), leaving the user stuck on the login page.
-    //
-    // The login endpoint already calls buildAuthUserResponse() which returns every
-    // gate field (emailVerified, onboardingCompletedAt, tenantName, etc.), so the
-    // login payload is authoritative and complete. No second round-trip is needed.
-    const apiUser = res.data.user as unknown as User;
-
-    setUser(apiUser);
-    // tenantId is always a UUID for real users — skip setTenant only for System Admin
-    if (apiUser.role?.toLowerCase() !== 'system admin') {
-      setTenant(buildTenantFromApiUser(apiUser as unknown as Record<string, unknown>));
-    }
-    setAuthError(null);
+    if (USE_MOCK_AUTH) return mockLogin(email);
+    const generation = ++requestGeneration.current;
+    const response = await authApi.login({ email, password: password ?? '' });
+    if (generation !== requestGeneration.current) return false;
+    applyAuthUser(response.data.user);
     return true;
   };
 
@@ -395,6 +268,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (!foundUser) return false;
 
+    foundUser = normalizeMockUser(foundUser);
     setUser(foundUser);
     localStorage.setItem('leadcrm_user', JSON.stringify(foundUser));
 
@@ -411,41 +285,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
-  // ── Login with Google (NextAuth OAuth flow) ──────────────────────
-  /**
-   * Triggers the NextAuth Google OAuth redirect flow.
-   * NextAuth will:
-   *   1. Redirect to Google consent screen
-   *   2. On success, call our signIn callback which posts to /auth/oauth/google
-   *   3. The backend sets the LeadCRM HttpOnly JWT cookie
-   *   4. NextAuth redirects to callbackUrl
-   *
-   * After the redirect completes, the page re-mounts and restoreSession()
-   * re-hydrates AuthContext from the new cookie via /auth/me.
-   *
-   * In mock mode, Google sign-in is not available.
-   */
+  /** Compatibility for old consumers; Google account authentication is retired. */
   const loginWithGoogle = async (): Promise<void> => {
-    if (USE_MOCK_AUTH) return;
-    // callbackUrl must be '/' so AuthGuard applies role-based routing
-    // after the OAuth session is established.
-    await nextAuthSignIn('google', { callbackUrl: '/' });
+    throw new Error('Use your employee email and password to sign in.');
   };
 
   // ── Logout ────────────────────────────────────────────────────────
   const logout = async (): Promise<void> => {
+    requestGeneration.current += 1;
     if (!USE_MOCK_AUTH) {
       // Revoke the LeadCRM backend session + clear HttpOnly JWT cookie
-      try { await authApi.logout(); } catch { /* ignore — clear local state regardless */ }
-      // Also clear the NextAuth JWT cookie (used by Google OAuth flow)
-      try { await nextAuthSignOut({ redirect: false }); } catch { /* non-critical */ }
+      await authApi.logout();
     }
     setUser(null);
     setTenant(null);
     setAuthError(null);
-    // Clear sidebar badge count cache — prevents stale counts leaking to a
-    // different tenant session that may start in the same browser tab.
-    clearModuleCountsCache();
+    activeUserId.current = null;
+    permissionGeneration.current += 1;
+    setPermissions({});
+    setIsPermissionsLoaded(true);
     clearPageCache(); // evict all cross-route module data — prevents stale data after re-login
     localStorage.removeItem('leadcrm_user');
     localStorage.removeItem('leadcrm_tenant');
@@ -456,98 +314,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Clear any saved post-login redirect so a new user doesn't inherit the
     // previous session's destination (e.g. System Admin → /admin/dashboard).
     sessionStorage.removeItem('leadcrm_redirect_after_login');
-  };
-
-  // ── Register tenant ────────────────────────────────────────────────
-  const registerTenant = async (
-    tenantData: RegisterTenantPayload,
-    adminData:  RegisterAdminPayload,
-  ): Promise<boolean> => {
-    if (USE_MOCK_AUTH) {
-      const allTenants = JSON.parse(localStorage.getItem('leadcrm_tenants') || JSON.stringify(MOCK_TENANTS));
-      const allUsers   = JSON.parse(localStorage.getItem('leadcrm_users')   || JSON.stringify(MOCK_USERS));
-
-      const newTenantId = uuid();
-      const newTenant: Tenant = {
-        id:               newTenantId,
-        name:             tenantData.companyName,
-        industry:         tenantData.industry ?? '',
-        size:             tenantData.size ?? '',
-        email:            tenantData.businessEmail ?? '',
-        phone:            tenantData.phone ?? '',
-        address:          tenantData.address ?? '',
-        status:           'pending',
-        approvalStep:     'basic',
-        environment:      'none',
-        createdAt:        new Date().toISOString(),
-        businessReqs:     tenantData.businessReqs,
-        verificationDocs: tenantData.verificationDocs,
-      };
-
-      const newUser: User = {
-        id:        uuid(),
-        tenantId:  newTenantId,
-        firstName: adminData.firstName,
-        lastName:  adminData.lastName,
-        email:     adminData.email,
-        role:      'Admin',
-        status:    'active',
-      };
-
-      localStorage.setItem('leadcrm_tenants', JSON.stringify([...allTenants, newTenant]));
-      localStorage.setItem('leadcrm_users',   JSON.stringify([...allUsers, newUser]));
-      return true;
-    }
-
-    try {
-      await authApi.registerClientAdmin({
-        companyName: tenantData.companyName,
-        industry:    tenantData.industry,
-        companySize: tenantData.size,
-        country:     'US',
-        firstName:   adminData.firstName,
-        lastName:    adminData.lastName,
-        email:       adminData.email,
-        password:    adminData.password,
-        acceptTerms: true,
-      });
-      return true;
-    } catch (err: unknown) {
-      if (process.env.NODE_ENV !== 'production') {
-        // eslint-disable-next-line no-console
-        console.error('[AuthContext] registerTenant failed:', err instanceof Error ? err.message : err);
-      }
-      return false;
-    }
-  };
-
-  const registerGuestAccount = async (guestData: RegisterGuestPayload): Promise<boolean> => {
-    if (USE_MOCK_AUTH) {
-      return true; // Simplified mock — guest registration not exercised without a backend
-    }
-
-    try {
-      // The registerGuest endpoint generates the OTP and sends the combined
-      // magic-link + OTP verification email — no second send needed here.
-      await authApi.registerGuest({
-        firstName:       guestData.firstName,
-        lastName:        guestData.lastName,
-        email:           guestData.email,
-        password:        guestData.password,
-        companyName:     guestData.companyName ?? '',
-        industry:        guestData.industry,
-        companySize:     guestData.companySize,
-        businessWebsite: guestData.businessWebsite,
-      });
-      return true;
-    } catch (err: unknown) {
-      if (process.env.NODE_ENV !== 'production') {
-        // eslint-disable-next-line no-console
-        console.error('[AuthContext] registerGuestAccount failed:', err instanceof Error ? err.message : err);
-      }
-      // Re-throw so the calling UI can surface a specific error message
-      throw err;
-    }
   };
 
   // ── Password reset ─────────────────────────────────────────────────
@@ -586,7 +352,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ── Switch role (demo / development helper) ───────────────────────
   const switchRole = (role: string): void => {
-    if (!user) return;
+    if (!USE_MOCK_AUTH || !user) return;
     const updated = { ...user, role };
     setUser(updated);
     localStorage.setItem('leadcrm_user', JSON.stringify(updated));
@@ -627,7 +393,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, tenant, isLoading, authError, retryAuthInit, refreshUser, login, loginWithGoogle, logout, registerTenant, registerGuestAccount, requestPasswordReset, confirmPasswordReset, switchRole, updateProfile, switchDemoAccount, permissions, isPermissionsLoaded, userCan, refreshPermissions, restoreSession }}>
+    <AuthContext.Provider value={{
+      user, tenant, isLoading, authError, retryAuthInit, refreshUser, applyAuthUser,
+      login, loginWithGoogle, logout, requestPasswordReset, confirmPasswordReset,
+      switchRole, updateProfile, switchDemoAccount, permissions, isPermissionsLoaded,
+      userCan, refreshPermissions, restoreSession,
+    }}>
       {children}
     </AuthContext.Provider>
   );

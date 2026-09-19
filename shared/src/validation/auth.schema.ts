@@ -1,0 +1,51 @@
+import { z } from 'zod';
+
+export const StrongPasswordSchema = z.string().min(8).max(72).regex(
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z0-9\s])/,
+  'Use uppercase and lowercase letters, a number, and a special character',
+);
+
+export const RegisterSchema = z.object({
+  firstName: z.string().trim().min(2, 'First name is required').max(100),
+  lastName: z.string().trim().min(2, 'Last name is required').max(100),
+  email: z.string().trim().toLowerCase().email('Valid email required'),
+  password: StrongPasswordSchema,
+  acceptTerms: z.boolean().optional(),
+  invitationToken: z.string().min(1).optional(),
+}).superRefine((data, ctx) => {
+  if (!data.invitationToken && data.acceptTerms !== true) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['acceptTerms'],
+      message: 'You must accept the terms and conditions',
+    });
+  }
+});
+
+const WebsiteSchema = z.string().trim().max(2048).url('Enter a valid website URL')
+  .refine(value => /^https?:\/\//i.test(value), 'Use an http or https website');
+
+export const CompanySetupSchema = z.object({
+  companyName: z.string().trim().min(2, 'Company name is required').max(100),
+  industry: z.string().trim().min(1, 'Industry is required').max(100),
+  companySize: z.string().trim().min(1, 'Company size is required').max(20),
+  website: WebsiteSchema.or(z.literal('')).optional(),
+  timezone: z.string().max(100).refine(value => {
+    try {
+      new Intl.DateTimeFormat('en', { timeZone: value });
+      return true;
+    } catch { return false; }
+  }, 'Choose a valid time zone').optional(),
+});
+
+export const OnboardingProgressSchema = z.object({
+  expectedStep: z.number().int().min(0).max(2),
+  step: z.number().int().min(0).max(2),
+}).refine(data => Math.abs(data.step - data.expectedStep) === 1, {
+  message: 'Move one onboarding step at a time',
+  path: ['step'],
+});
+
+export type RegisterInput = z.infer<typeof RegisterSchema>;
+export type CompanySetupInput = z.infer<typeof CompanySetupSchema>;
+export type OnboardingProgressInput = z.infer<typeof OnboardingProgressSchema>;

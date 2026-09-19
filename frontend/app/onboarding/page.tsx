@@ -1,57 +1,6 @@
-'use client';
+import { AuthGuard } from '@/shared/providers/auth-guard';
+import OnboardingPage from '@/features/tenant/onboarding/ui/onboarding-page';
 
-import React, { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import dynamic from 'next/dynamic';
-import { useAuth } from '@/store/AuthContext';
-import { AuthLoadingScreen } from '@/shared/components/auth-loading-screen';
-
-const OnboardingPage = dynamic(
-  () => import('../../src/features/tenant/pages/onboarding-page'),
-  { ssr: false },
-);
-
-export default function OnboardingRoute(): React.ReactElement {
-  const { user, isLoading } = useAuth();
-  const router = useRouter();
-  // OAuth-only users (hasPassword=false) need to complete /company-setup after onboarding.
-  // Manual registration users (hasPassword=true or undefined) go straight to dashboard.
-  const needsCompanySetup = user?.hasPassword === false;
-
-  useEffect(() => {
-    if (isLoading) return;
-
-    // Not authenticated — send to login
-    if (!user) {
-      router.replace('/login');
-    }
-    // Note: we intentionally do NOT redirect away when onboardingCompletedAt is set,
-    // because the OnboardingPage component handles that state internally by showing
-    // the SetupCompleteCard. Redirecting here would cause a flash when the user
-    // refreshes after completing setup and wants to navigate to billing.
-  }, [user, isLoading, router]);
-
-  if (isLoading || !user) return <AuthLoadingScreen />;
-
-  const handleNavigate = (path: string): void => {
-    if (path === 'billing') {
-      router.push('/billing/client');
-      return;
-    }
-    if (path === 'company-setup') {
-      router.push('/company-setup');
-      return;
-    }
-    if (path === 'dashboard') {
-      router.push('/dashboard');
-      return;
-    }
-    if (path === 'login') {
-      router.push('/login');
-      return;
-    }
-    router.push('/dashboard');
-  };
-
-  return <OnboardingPage onNavigate={handleNavigate} needsCompanySetup={needsCompanySetup} />;
+export default function OnboardingRoute() {
+  return <AuthGuard><OnboardingPage /></AuthGuard>;
 }

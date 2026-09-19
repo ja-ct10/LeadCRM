@@ -157,11 +157,6 @@ export function AdminProfileDropdown({ navigate }: AdminProfileDropdownProps): R
                 label="Client Management"
                 onClick={() => handleMenuClick('admin-clients')}
               />
-              <MenuItem
-                icon={<Receipt size={14} />}
-                label="Billing"
-                onClick={() => handleMenuClick('admin-billing')}
-              />
             </div>
 
             {/* Appearance */}

@@ -1,5 +1,6 @@
 'use client';
 
+import { isOnboardingComplete } from "@leadcrm/shared";
 import React, {
   createContext,
   useContext,
@@ -296,6 +297,12 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const { user, tenant } = useAuth();
+  const workspaceReady = Boolean(user && (user.role === "System Admin" ||
+    (user.emailVerified && user.status?.toUpperCase() === "ACTIVE" && isOnboardingComplete(user))));
+
+  const dataIdentity = `${user?.id ?? ''}:${tenant?.id ?? ''}:${workspaceReady}`;
+  const dataIdentityRef = useRef(dataIdentity);
+  dataIdentityRef.current = dataIdentity;
 
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -339,6 +346,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   };
 
   const loadData = async () => {
+    if (!USE_MOCK_DATA && !workspaceReady) return;
+    const identity = dataIdentityRef.current;
+    const isCurrent = () => identity === dataIdentityRef.current;
     // ── REAL-API MODE ──────────────────────────────────────────────────────────
     if (!USE_MOCK_DATA) {
       if (!user) return;
@@ -378,6 +388,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           usersService.getAll({ limit: 200 }),
         ]);
 
+        if (!isCurrent()) return;
         const apiOrgs      = (orgsRes?.data ?? []).map(toFrontendOrg);
         const apiDeals     = (dealsRes?.data ?? []).map(toFrontendDeal);
         const apiPipelines = Array.isArray((pipelinesRes as any)?.data)
@@ -390,6 +401,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setPipelines((apiPipelines as Pipeline[]).filter((p: any) => !p.isArchived));
         setUsers((apiUsers as any[]).filter((u: any) => !u.isArchived));
       } catch (err) {
+        if (!isCurrent()) return;
         console.error('[DataContext] Failed to load CRM data from API:', err);
         // RC-03 fix: surface genuine transport failures as a user-visible toast so
         // the dashboard never silently shows empty data without explanation.
@@ -400,17 +412,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
       }
 
+      if (!isCurrent()) return;
       // Batch 1b — admin-only data (roles). Silently ignored for non-admin roles
       // such as Guest (sandbox) which lack roles.manage permission.
       try {
         const rolesRes = await usersService.getRoles();
+        if (!isCurrent()) return;
         const apiRoles = rolesRes?.data ?? [];
         setRoles((apiRoles as any[]).filter((r: any) => !r.isArchived));
       } catch {
+        if (!isCurrent()) return;
         // 403 for Guest/User roles is expected — leave roles as empty array
         setRoles([]);
       }
 
+      if (!isCurrent()) return;
       // Batch 2 — deferred after initial paint so Batch 1 data renders first
       // Module flags are synchronous — load them now
       setIsBillingModuleEnabled(safeParse("leadcrm_billing_enabled", true));
@@ -424,6 +440,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // Batch 2 REMAINING (cross-module consumers — tasks: dashboard, RecordPanels,
       //   deals-page, leads-table; workflows: workflows-page, campaign-builder):
       setTimeout(async () => {
+        if (!isCurrent()) return;
         // Use allSettled so a single plan-gated module (e.g. workflows on FREE tenant)
         // does not abort loading the other.
         const [tasksRes, workflowsRes] = await Promise.allSettled([
@@ -431,6 +448,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           workflowsApi.list({ limit: 200 }),
         ]);
 
+        if (!isCurrent()) return;
         // Fulfilled → set state; rejected (e.g. plan-gated 403) → default to empty.
         setTasks(tasksRes.status === 'fulfilled' ? ((tasksRes.value?.data ?? []) as Task[]) : []);
         setWorkflows(workflowsRes.status === 'fulfilled' ? ((workflowsRes.value?.data ?? []) as Workflow[]) : []);
@@ -668,11 +686,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    if (!USE_MOCK_DATA) {
+      setOrganizations([]); setContacts([]); setDeals([]); setPipelines([]);
+      setWorkflows([]); setCampaigns([]); setTemplates([]); setRoles([]);
+      setPermissions([]); setUsers([]); setTenants([]); setTasks([]);
+      setWorkflowExecutions([]); setWorkflowExecutionRuns([]); setWorkflowExecutionSteps([]);
+      setActivities([]); setInvoices([]); setPendingActions([]); setAuditLogs([]);
+    }
     // Only load data when we have a confirmed authenticated user
-    if (!USE_MOCK_DATA && !user) return;
+    if (!USE_MOCK_DATA && !workspaceReady) return;
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, tenant?.id]);
+  }, [user?.id, tenant?.id, workspaceReady]);
 
   // Delegates to extracted pure service: src/modules/workflows/services/workflowConditionEvaluator.ts
   const evaluateWorkflowConditionDirectly = (

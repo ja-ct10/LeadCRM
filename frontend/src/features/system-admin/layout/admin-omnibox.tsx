@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type AdminScope = 'all' | 'admin-clients' | 'admin-pricing' | 'admin-billing';
+type AdminScope = 'all' | 'admin-clients';
 
 interface AdminSearchTarget {
   /** route-map path key handled by AdminLayout.navigate */
@@ -23,7 +23,7 @@ interface AdminOmniboxProps {
   navigate: (path: string) => void;
 }
 
-// ── Searchable admin destinations (Client Management, Pricing, Billing only) ──
+// ── Searchable admin destinations (Client Management) ──
 
 const SEARCH_TARGETS: AdminSearchTarget[] = [
   {
@@ -34,37 +34,20 @@ const SEARCH_TARGETS: AdminSearchTarget[] = [
     icon:        Building2,
     accent:      'text-blue-500',
   },
-  {
-    path:        'admin-pricing',
-    title:       'Pricing',
-    description: 'Manage subscription tiers, plans, and features',
-    keywords:    ['pricing', 'plan', 'plans', 'subscription', 'tier', 'edit plan', 'features', 'price'],
-    icon:        CreditCard,
-    accent:      'text-purple-500',
-  },
-  {
-    path:        'admin-billing',
-    title:       'Billing',
-    description: 'Stripe payment history and add billing',
-    keywords:    ['billing', 'invoice', 'invoices', 'payment', 'payments', 'stripe', 'add billing', 'transaction'],
-    icon:        Receipt,
-    accent:      'text-emerald-500',
-  },
+
+
 ];
 
 const SCOPE_OPTIONS: { value: AdminScope; label: string }[] = [
   { value: 'all',            label: 'All Modules' },
   { value: 'admin-clients',  label: 'Client Management' },
-  { value: 'admin-pricing',  label: 'Pricing' },
-  { value: 'admin-billing',  label: 'Billing' },
 ];
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 /**
  * System Admin search bar. Mirrors the tenant GlobalOmnibox visual language but
- * is scoped to the operator's three platform modules: Client Management,
- * Pricing, and Billing. Selecting a result navigates within the admin portal.
+ * is scoped to Client Management. Selecting a result navigates within the admin portal.
  */
 export function AdminOmnibox({ navigate }: AdminOmniboxProps): React.ReactElement {
   const [query, setQuery]           = useState('');

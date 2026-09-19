@@ -1,5 +1,7 @@
 'use client';
 
+import { invalidateApiPageCache } from '@/shared/cache/invalidate-api-page-cache';
+
 // LeadCRM API Client
 // Sends HttpOnly cookies (leadcrm_token) on every request via credentials: 'include'.
 // The backend auth middleware reads the cookie directly — no Bearer token needed.
@@ -8,14 +10,15 @@
 // to avoid third-party cookie blocking. The proxy forwards the leadcrm_token cookie server-side.
 const IS_BROWSER = typeof window !== 'undefined';
 const DIRECT_API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
-const USE_PROXY = IS_BROWSER && DIRECT_API_URL.startsWith('https://') && !DIRECT_API_URL.includes('localhost');
+const USE_PROXY = IS_BROWSER;
 const API_URL = USE_PROXY ? '/api/proxy' : DIRECT_API_URL;
 
 async function request<T>(
   method: string,
   path: string,
   body?: unknown,
-  params?: Record<string, unknown>
+  params?: Record<string, unknown>,
+  signal?: AbortSignal,
 ): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -39,6 +42,7 @@ async function request<T>(
     method,
     headers,
     credentials: 'include', // sends HttpOnly leadcrm_token cookie automatically
+    signal,
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
 
@@ -47,45 +51,6 @@ async function request<T>(
     // Backend can return error as a string (AppError path) or as an object
     // with { code, message } (validation error path). Extract message from both.
     const rawError = errorData.error;
-
-    // ─── Billing Interceptors ───────────────────────────────────────────
-    // Dispatch custom events for plan gating and payment failures so the UI
-    // can show contextual upgrade/payment modals without each component needing
-    // to handle these cases individually.
-    // Only fire for user-initiated MUTATIONS — passive background GET reads
-    // (e.g. DataContext list calls) must NOT trigger a global upgrade/payment
-    // modal. The error is still thrown below so callers can handle it.
-    if (method !== 'GET' && typeof window !== 'undefined' && typeof rawError === 'object' && rawError !== null) {
-      const errorCode = (rawError as Record<string, unknown>).code;
-      if (res.status === 403 && errorCode === 'PLAN_UPGRADE_REQUIRED') {
-        const { dispatchPlanUpgradeRequired } = await import('@/shared/hooks/use-billing-interceptor');
-        dispatchPlanUpgradeRequired({
-          feature: (rawError as Record<string, unknown>).feature as string ?? 'unknown',
-          currentPlan: (rawError as Record<string, unknown>).currentPlan as string ?? 'STARTER',
-          requiredPlan: (rawError as Record<string, unknown>).requiredPlan as string ?? 'PRO',
-        });
-      }
-      // SUBSCRIPTION_REQUIRED — fully unsubscribed user attempted a mutation.
-      // Dispatch a custom event so the CRM layout can show the upgrade prompt.
-      if (res.status === 403 && errorCode === 'SUBSCRIPTION_REQUIRED') {
-        const { dispatchSubscriptionRequired } = await import('@/shared/hooks/use-billing-interceptor');
-        dispatchSubscriptionRequired({ reason: 'subscription' });
-      }
-      // RECORD_LIMIT_REACHED — Free/sandbox user hit a plan limit (100 contacts, 3 users).
-      // Reuse the sandbox upgrade modal with limit-specific messaging.
-      if (res.status === 403 && errorCode === 'RECORD_LIMIT_REACHED') {
-        const { dispatchSubscriptionRequired } = await import('@/shared/hooks/use-billing-interceptor');
-        dispatchSubscriptionRequired({
-          reason: 'record_limit',
-          entityType: (rawError as Record<string, unknown>).entityType as string ?? 'records',
-          max: (rawError as Record<string, unknown>).max as number ?? undefined,
-        });
-      }
-      if (res.status === 402 && errorCode === 'PAYMENT_REQUIRED') {
-        const { dispatchPaymentRequired } = await import('@/shared/hooks/use-billing-interceptor');
-        dispatchPaymentRequired();
-      }
-    }
 
     const errorMessage =
       (typeof rawError === 'string' && rawError)
@@ -103,11 +68,12 @@ async function request<T>(
     throw error;
   }
 
+  if (method !== 'GET') invalidateApiPageCache(path);
   return res.json() as Promise<T>;
 }
 
 export const apiClient = {
-  get:    <T>(path: string, config?: { params?: Record<string, unknown> }) => request<T>('GET',    path, undefined, config?.params),
+  get:    <T>(path: string, config?: { params?: Record<string, unknown>; signal?: AbortSignal }) => request<T>('GET', path, undefined, config?.params, config?.signal),
   post:   <T>(path: string, body: unknown)   => request<T>('POST',   path, body),
   put:    <T>(path: string, body: unknown)   => request<T>('PUT',    path, body),
   patch:  <T>(path: string, body?: unknown)  => request<T>('PATCH',  path, body),

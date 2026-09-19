@@ -112,6 +112,7 @@ export async function assignRoleToUser(
   const role = await repo.findRoleById(roleId, tenantId);
   if (!role) throw new NotFoundError('Role');
 
+  if (role.name === 'System Admin') throw new ForbiddenError('System Admin cannot be assigned from the client portal');
   const assignment = await repo.assignRoleToUser(targetUserId, roleId, tenantId);
   await writeAuditLog({
     tenantId, userId: actorId,

@@ -222,7 +222,8 @@ describe('Feature: auth-login-blank-screen-fix, Integration — credentials logi
     expect(captured?.authError).toBeNull();
 
     // AuthGuard settles on /dashboard and does NOT misroute to verify-email / onboarding.
-    await waitFor(() => expect(redirectTargets()).toContain('/dashboard'));
+    await waitFor(() => expect(screen.getByTestId('dashboard-content')).toBeTruthy());
+    expect(redirectTargets()).not.toContain('/dashboard');
     const misroutes = redirectTargets().filter(
       (target) => target.startsWith('/verify-email') || target.startsWith('/onboarding'),
     );
@@ -242,7 +243,8 @@ describe('Feature: auth-login-blank-screen-fix, Integration — credentials logi
     await waitFor(() => expect(captured?.user?.id).toBe('user-1'));
 
     // Same routing outcome as the login path: settles on /dashboard, no misroute, no blank.
-    await waitFor(() => expect(redirectTargets()).toContain('/dashboard'));
+    await waitFor(() => expect(screen.getByTestId('dashboard-content')).toBeTruthy());
+    expect(redirectTargets()).not.toContain('/dashboard');
     const misroutes = redirectTargets().filter(
       (target) => target.startsWith('/verify-email') || target.startsWith('/onboarding'),
     );
@@ -309,7 +311,7 @@ describe('Feature: auth-login-blank-screen-fix, Integration — auth-init failur
     expect(captured?.user).toBeNull();
 
     // AuthGuard renders the explicit error state with a retry action — never a silent blank.
-    expect(screen.getByText('Unable to load your session')).toBeTruthy();
+    expect(screen.getByText('Unable to continue to your workspace')).toBeTruthy();
     expect(screen.getByText('Try again')).toBeTruthy();
     // The protected content is NOT rendered while the error state is shown.
     expect(screen.queryByTestId('dashboard-content')).toBeNull();
@@ -333,7 +335,8 @@ describe('Feature: auth-login-blank-screen-fix, Integration — auth-init failur
     // Recovered: error cleared, user hydrated, guard settles on /dashboard, content renders.
     await waitFor(() => expect(captured?.authError).toBeNull());
     expect(captured?.user?.id).toBe('user-1');
-    await waitFor(() => expect(redirectTargets()).toContain('/dashboard'));
+    await waitFor(() => expect(screen.getByTestId('dashboard-content')).toBeTruthy());
+    expect(redirectTargets()).not.toContain('/dashboard');
     await waitFor(() => expect(screen.getByTestId('dashboard-content')).toBeTruthy());
   });
 });
@@ -373,10 +376,10 @@ describe('Feature: auth-login-blank-screen-fix, Integration — Google OAuth flo
     await waitFor(() => expect(captured?.isLoading).toBe(false));
 
     await act(async () => {
-      await captured!.loginWithGoogle();
+      await expect(captured!.loginWithGoogle()).rejects.toThrow('employee email');
     });
 
-    expect(nextAuthSignIn).toHaveBeenCalledWith('google', { callbackUrl: '/' });
+    expect(nextAuthSignIn).not.toHaveBeenCalled();
   });
 
   it('after the OAuth redirect completes, a fresh mount hydrates auth state via /auth/me', async () => {

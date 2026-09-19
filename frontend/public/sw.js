@@ -1,4 +1,4 @@
-const CACHE_NAME = 'leadcrm-cache-v2';
+const CACHE_NAME = 'leadcrm-cache-v3';
 const STATIC_ASSETS = [
   '/manifest.json'
 ];
@@ -17,7 +17,7 @@ self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
       .then(keys => Promise.all(
-        keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
+        keys.filter(k => k.startsWith('leadcrm-cache-') && k !== CACHE_NAME).map(k => caches.delete(k))
       ))
       .then(() => self.clients.claim())
   );
@@ -50,16 +50,28 @@ self.addEventListener('fetch', event => {
     return;
   }
 
+  // Only cache known public assets. In particular, Next.js RSC/prefetch requests
+  // are fetches to page URLs, not navigations, and must never enter this cache.
+  const isPublicAsset = url.origin === self.location.origin && (
+    url.pathname.startsWith('/_next/static/') ||
+    STATIC_ASSETS.includes(url.pathname) ||
+    ['/leadcrm_logo.png', '/leadcrm_logo.ico'].includes(url.pathname)
+  );
+  if (!isPublicAsset) return;
+
   // Static assets — stale-while-revalidate
   event.respondWith(
     caches.open(CACHE_NAME).then(cache =>
       cache.match(request).then(cached => {
-        const networkFetch = fetch(request).then(response => {
-          if (response.ok) {
-            cache.put(request, response.clone());
+        const networkFetch = fetch(request).then(async response => {
+          if (response.ok && !/no-store|private/i.test(response.headers.get('Cache-Control') || '')) {
+            // A full or unavailable cache must not break a successful network response.
+            await cache.put(request, response.clone()).catch(() => {});
           }
           return response;
         });
+        // Keep the update alive and handle an offline refresh of a cache hit.
+        event.waitUntil(networkFetch.then(() => undefined, () => undefined));
         return cached || networkFetch;
       })
     )

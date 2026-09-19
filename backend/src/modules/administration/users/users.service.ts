@@ -1,3 +1,5 @@
+import { CreateUsersSchema, UpdateUsersSchema } from './users.dto';
+import { requireEmployeeAccount } from '../../../core/auth/account-access';
 import { randomBytes } from 'crypto';
 import prisma from '../../../config/database.config';
 import { writeAuditLog } from '../../../core/audit/audit.service';
@@ -50,9 +52,11 @@ export async function getById(id: string, tenantId: string) {
 export async function create(tenantId: string, actorId: string, dto: {
   firstName: string; lastName: string; email: string; password?: string; role?: string; phone?: string; jobTitle?: string; department?: string; avatarUrl?: string; timeZone?: string;
 }) {
+  dto = CreateUsersSchema.parse(dto);
   if (isSystemAdminRole(dto.role)) {
     throw new ForbiddenError('Cannot assign System Admin role via tenant user management');
   }
+  requireEmployeeAccount({ email: dto.email, role: dto.role ?? Role.USER });
   const existing = await prisma.user.findFirst({ where: { email: dto.email, tenantId } });
   if (existing) throw new ConflictError('A user with this email already exists in this tenant');
 
@@ -60,8 +64,8 @@ export async function create(tenantId: string, actorId: string, dto: {
   const secureRandomPassword = dto.password || randomBytes(32).toString('hex');
   const passwordHash = await hashPassword(secureRandomPassword);
   const user = await prisma.user.create({
-    data: { 
-      tenantId, firstName: dto.firstName, lastName: dto.lastName, email: dto.email, passwordHash, role: dto.role ?? Role.USER,
+    data: {
+      tenantId, firstName: dto.firstName, lastName: dto.lastName, email: dto.email.trim().toLowerCase(), passwordHash, mustChangePassword: true, role: dto.role ?? Role.USER,
       phone: dto.phone, jobTitle: dto.jobTitle, department: dto.department, avatarUrl: dto.avatarUrl, timeZone: dto.timeZone
     },
     select: SAFE_USER_SELECT,
@@ -73,13 +77,14 @@ export async function create(tenantId: string, actorId: string, dto: {
 export async function update(id: string, tenantId: string, actorId: string, dto: {
   firstName?: string; lastName?: string; role?: string; status?: string; phone?: string; jobTitle?: string; department?: string; avatarUrl?: string; timeZone?: string;
 }) {
+  dto = UpdateUsersSchema.parse(dto);
   if (isSystemAdminRole(dto.role)) {
     throw new ForbiddenError('Cannot assign System Admin role via tenant user management');
   }
   if (dto.status && !['ACTIVE', 'INACTIVE', 'PENDING'].includes(dto.status)) {
     throw new ValidationError('Invalid status value provided');
   }
-  
+
   const existing = await prisma.user.findFirst({ where: { id, tenantId } });
   if (!existing) throw new NotFoundError('User');
 
@@ -125,11 +130,12 @@ export async function deleteRecord(id: string, tenantId: string, actorId: string
 }
 
 export async function bulkUpdate(ids: string[], tenantId: string, actorId: string, dto: Record<string, any>) {
+  dto = UpdateUsersSchema.parse(dto);
   if (isSystemAdminRole(dto.role)) throw new ForbiddenError('Cannot assign System Admin role');
   if (dto.status && !['ACTIVE', 'INACTIVE', 'PENDING'].includes(dto.status)) {
     throw new ValidationError('Invalid status value provided');
   }
-  
+
   await prisma.user.updateMany({
     // Prevent bulk updating System Admins — use mode: 'insensitive' for case-safe exclusion
     where: {
@@ -144,7 +150,7 @@ export async function bulkUpdate(ids: string[], tenantId: string, actorId: strin
 
 export async function bulkDelete(ids: string[], tenantId: string, actorId: string) {
   if (ids.includes(actorId)) throw new ForbiddenError('Cannot delete your own account in a bulk operation');
-  
+
   await prisma.user.deleteMany({
     // Prevent bulk deleting System Admins — use mode: 'insensitive' for case-safe exclusion
     where: {

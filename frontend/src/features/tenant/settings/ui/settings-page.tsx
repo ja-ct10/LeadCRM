@@ -46,21 +46,17 @@ import { ACCENT_COLORS, applyAccentColor, ACCENT_KEY } from "@/lib/accent-colors
 import { FormsTab } from './forms-tab';
 import { TeamManagement } from './team-management';
 import { RolesPermissions } from './roles-permissions';
-import { PlanUsageTab } from './plan-usage-tab';
 import AuditLogsPage from '@/features/tenant/administration/audit/ui/audit-logs-page';
 
 type SettingsTab =
   | 'profile'
   | 'appearance'
-  | 'memberships'
   | 'org-general'
   | 'users'
   | 'roles'
   | 'custom-fields'
   | 'archived'
   | 'account-details'
-  | 'plan'
-  | 'billing'
   | 'forms'
   | 'audit';
 
@@ -77,7 +73,6 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: 'profile', label: 'Profile Settings', icon: User },
       { id: 'appearance', label: 'Appearance', icon: Palette },
-      { id: 'memberships', label: 'Memberships', icon: Building },
     ],
   },
   {
@@ -113,15 +108,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'audit', label: 'Audit Trail', icon: Activity },
     ],
   },
-  {
-    label: 'BILLING',
-    icon: Banknote,
-    isTree: true,
-    items: [
-      { id: 'plan', label: 'Plan' },
-      { id: 'billing', label: 'Payment Methods' },
-    ],
-  },
+
 ];
 
 export default function SettingsPage(): React.ReactElement {
@@ -137,8 +124,6 @@ export default function SettingsPage(): React.ReactElement {
     users,
     roles,
     restoreRecord,
-    isBillingModuleEnabled,
-    toggleBillingModule,
     updateTenant,
   } = useData();
 
@@ -394,10 +379,7 @@ export default function SettingsPage(): React.ReactElement {
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Account ID</p>
             <p className="text-xs font-mono text-slate-700 dark:text-slate-300">{tenant?.id || 'N/A'}</p>
           </div>
-          <div className="p-3 bg-slate-50 dark:bg-[#1B252F] rounded-xl border border-slate-100 dark:border-slate-700/60">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Subscription Plan</p>
-            <span className="px-2 py-0.5 bg-[#3B82F6]/10 text-[#3B82F6] dark:text-[#60A5FA] text-[10px] font-bold rounded-full border border-[#3B82F6]/20">Professional</span>
-          </div>
+
           <div className="p-3 bg-slate-50 dark:bg-[#1B252F] rounded-xl border border-slate-100 dark:border-slate-700/60">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Status</p>
             <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold rounded-full border border-emerald-500/20">Active</span>
@@ -412,18 +394,7 @@ export default function SettingsPage(): React.ReactElement {
           </div>
         </div>
       </div>
-      <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-3">
-        <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-          <CreditCard className="w-4 h-4 text-[#3B82F6]" /> Billing Summary
-        </h3>
-        <div className="flex items-center justify-between p-4 bg-[#3B82F6]/5 border border-[#3B82F6]/20 rounded-xl">
-          <div>
-            <p className="text-xs font-bold text-slate-900 dark:text-white">Professional Plan {"\u00B7"} Monthly</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">Next billing: September 8, 2026</p>
-          </div>
-          <p className="text-sm font-bold text-slate-900 dark:text-white">₱3,600<span className="text-[10px] text-slate-400 font-normal">/mo</span></p>
-        </div>
-      </div>
+
     </div>
   );
 
@@ -669,28 +640,6 @@ export default function SettingsPage(): React.ReactElement {
     </div>
   );
 
-  // -- Memberships Tab --
-  const renderMembershipsTab = (): React.ReactElement => (
-    <div className="max-w-2xl space-y-4">
-      <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5">
-        <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-          <Building size={14} className="text-[#3B82F6]" /> Organization Membership
-        </h3>
-        <div className="p-4 bg-slate-50 dark:bg-[#1B252F] rounded-xl border border-slate-100 dark:border-slate-700/60 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-white dark:bg-[#2E3B48] border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400">
-            <Building2 size={16} />
-          </div>
-          <div>
-            <p className="text-xs font-bold text-slate-800 dark:text-slate-200">{tenant?.name || "Organization"}</p>
-            <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mt-0.5">{user?.role || "Member"}</p>
-          </div>
-        </div>
-        <p className="text-xs text-slate-400 dark:text-slate-500 mt-3">Contact a system administrator to change your organization membership.</p>
-      </div>
-    </div>
-  );
-
-  // â”€â”€ Org General Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const renderOrgGeneralTab = (): React.ReactElement => (
     <div className="max-w-2xl space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -845,35 +794,6 @@ export default function SettingsPage(): React.ReactElement {
     );
   };
 
-  // â”€â”€ Plan & Billing Tabs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const renderPlanTab = (): React.ReactElement => (
-    <PlanUsageTab />
-  );
-
-  const renderBillingTab = (): React.ReactElement => (
-    <div className="max-w-2xl space-y-4">
-      <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-4">
-        <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-          <Receipt className="w-4 h-4 text-[#3B82F6]" /> Payment Methods & Billing Profile
-        </h3>
-        <div className="p-4 border border-dashed border-gray-200 dark:border-slate-700 rounded-xl text-center space-y-3">
-          <Receipt className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto" />
-          <div>
-            <p className="text-xs font-semibold text-slate-900 dark:text-white">Primary Payment Card</p>
-            <p className="text-xs text-slate-400">Visa ending in â€¢â€¢â€¢â€¢ 4242 (Expires 12/28)</p>
-          </div>
-          <button 
-            type="button"
-            onClick={() => toast.success('Payment method update link generated!')}
-            className="px-4 py-2 bg-[#3B82F6] hover:bg-[#2563EB] text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer"
-          >
-            Update Payment Method
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
   const renderCustomFieldsTab = (): React.ReactElement => (
     <div className="max-w-2xl space-y-4">
       <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5">
@@ -891,17 +811,14 @@ export default function SettingsPage(): React.ReactElement {
   const tabContentMap: Record<Exclude<SettingsTab, 'forms' | 'roles' | 'audit'>, () => React.ReactElement> = {
     'profile': renderProfileTab,
     'appearance': renderAppearanceTab,
-    'memberships': renderMembershipsTab,
     'org-general': renderOrgGeneralTab,
     'users': renderUsersTab,
     'custom-fields': renderCustomFieldsTab,
     'archived': renderArchivedTab,
     'account-details': renderAccountDetailsTab,
-    'plan': renderPlanTab,
-    'billing': renderBillingTab,
   };
 
-  const VALID_TABS: SettingsTab[] = ['profile', 'appearance', 'memberships', 'org-general', 'users', 'roles', 'custom-fields', 'archived', 'account-details', 'plan', 'billing', 'forms', 'audit'];
+  const VALID_TABS: SettingsTab[] = ['profile', 'appearance', 'org-general', 'users', 'roles', 'custom-fields', 'archived', 'account-details', 'forms', 'audit'];
   useEffect(() => {
     if (tabFromUrl && VALID_TABS.includes(tabFromUrl as SettingsTab)) {
       setActiveTab(tabFromUrl as SettingsTab);
@@ -1004,7 +921,6 @@ export default function SettingsPage(): React.ReactElement {
           activeTab === 'users' ||
           activeTab === 'roles' ||
           activeTab === 'audit' ||
-          activeTab === 'plan' ||
           (activeTab === 'forms' && isFormBuilderActive);
 
         return (

@@ -15,8 +15,7 @@ import { Pagination } from '@/shared/components/ui/pagination';
 import { ActionableEmptyState } from '@/shared/components/actionable-empty-state';
 import { cn } from '@/lib/utils';
 import { activitiesService, type ActivityRecord } from '../services/activities.service';
-import { getPageCache, setPageCache } from '@/shared/cache/page-cache';
-import { USE_MOCK_DATA } from '@/lib/config';
+import { useCachedPage } from '@/shared/hooks/use-cached-page';
 import { useRouter } from 'next/navigation';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -197,8 +196,6 @@ export default function ActivitiesPage(): React.ReactElement {
   const { user } = useAuth();
   const { users }  = useData();
   const router     = useRouter();
-  const { tenant } = useAuth();
-  const tenantId   = tenant?.id ?? '';
 
   // ── Filter state ──────────────────────────────────────────────────────────
   const [searchTerm, setSearchTerm]         = useState('');
@@ -207,80 +204,32 @@ export default function ActivitiesPage(): React.ReactElement {
   const [dateRange, setDateRange]           = useState<DateRangeFilter>('all');
   const [selectedUserId, setSelectedUserId] = useState('');
 
-  // ── Initialize from cache (mount-time only — uses default page=1/pageSize=25) ─
-  // Cache key at mount time uses the defaults; after the user changes filters the
-  // hook re-fetches and writes a new cache entry for the updated params.
-  const initialCache = useMemo(() => {
-    if (USE_MOCK_DATA || !tenantId) return null;
-    const cached = getPageCache<{ activities: ActivityRecord[]; total: number }>(
-      'activities', tenantId,
-      { page: 1, pageSize: 25, type: 'all', dateRange: 'all', userId: null },
-    );
-    return cached?.data ?? null;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // only read on first mount
-
-  // ── Data state — declare BEFORE usePagination so totalItems is in scope ──
-  const [activities, setActivities] = useState<ActivityRecord[]>(initialCache?.activities ?? []);
-  const [isLoading, setIsLoading]   = useState(!initialCache && !USE_MOCK_DATA);
-  const [fetchError, setFetchError] = useState<string | null>(null);
-  const [totalItems, setTotalItems] = useState(initialCache?.total ?? 0);
-
-  // ── Pagination ────────────────────────────────────────────────────────────
-  const {
-    currentPage, totalPages, pageSize,
-    goToPage, setPageSize,
-  } = usePagination({
+  // Preserve the total during page changes so pagination does not reset to page 1.
+  const [totalItems, setTotalItems] = useState(0);
+  const { currentPage, totalPages, pageSize, goToPage, setPageSize } = usePagination({
     totalItems,
     initialPageSize: 25,
     pageSizeOptions: [10, 25, 50],
     resetDeps: [debouncedSearch, typeFilter, dateRange, selectedUserId],
   });
-
-  // Build cache params — every param that affects the server response.
-  // Defined after pagination so currentPage/pageSize are available.
-  const cacheParams = useMemo<Record<string, unknown>>(() => ({
-    page:      currentPage,
-    pageSize,
-    type:      typeFilter,
-    dateRange,
-    userId:    selectedUserId || null,
-  }), [currentPage, pageSize, typeFilter, dateRange, selectedUserId]);
-
-  // ── Fetch ─────────────────────────────────────────────────────────────────
-  const fetchActivities = useCallback(async (): Promise<void> => {
-    setIsLoading(true);
-    setFetchError(null);
-    try {
-      const dateParams = resolveDateRange(dateRange);
-      const res = await activitiesService.getAll({
-        page:        currentPage,
-        limit:       pageSize,
-        ...(typeFilter !== 'all'   ? { type:        typeFilter }      : {}),
-        ...(selectedUserId         ? { createdById: selectedUserId }  : {}),
-        ...(dateParams.dateFrom    ? { dateFrom:    dateParams.dateFrom } : {}),
-        ...(dateParams.dateTo      ? { dateTo:      dateParams.dateTo }   : {}),
-      });
-
-      const raw = res as unknown as { data?: ActivityRecord[]; meta?: { total?: number } };
-      const result = raw.data ?? [];
-      const total  = raw.meta?.total ?? 0;
-      setActivities(result);
-      setTotalItems(total);
-      // Write to cache — only when mounted and not mock mode
-      if (tenantId && !USE_MOCK_DATA) {
-        setPageCache('activities', tenantId, cacheParams, { activities: result, total });
-      }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to load activities';
-      setFetchError(message);
-      setActivities([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [currentPage, pageSize, typeFilter, dateRange, selectedUserId, tenantId, cacheParams]);
-
-  useEffect(() => { void fetchActivities(); }, [fetchActivities]);
+  const query = {
+    page: currentPage,
+    limit: pageSize,
+    ...(typeFilter !== 'all' ? { type: typeFilter } : {}),
+    ...(selectedUserId ? { createdById: selectedUserId } : {}),
+  };
+  const activityData = useCachedPage({
+    module: 'activities',
+    params: { ...query, dateRange, day: dateRange === 'all' ? undefined : new Date().toDateString() },
+    fetchFn: () => activitiesService.getAll({ ...query, ...resolveDateRange(dateRange) }),
+  });
+  const activities = activityData.data?.data ?? [];
+  const isLoading = activityData.isInitialLoad;
+  const fetchError = activityData.error;
+  const fetchActivities = activityData.refetch;
+  useEffect(() => {
+    if (activityData.data) setTotalItems(activityData.data.meta?.total ?? 0);
+  }, [activityData.data]);
 
   // ── Client-side title search (applied to current page) ───────────────────
   // The backend activity endpoint doesn't support a free-text title search,

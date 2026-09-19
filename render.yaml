@@ -1,46 +1,18 @@
-# render.yaml — Render deployment configuration for LeadCRM backend
-# Docs: https://render.com/docs/infrastructure-as-code
-#
-# IMPORTANT: Set the following env vars in the Render dashboard (not here):
-#   DATABASE_URL             — Render Internal DB URL (postgresql://...@<internal-host>/...)
-#   JWT_SECRET               — strong random string, min 32 chars  (run: openssl rand -base64 48)
-#   ALLOWED_ORIGINS          — https://lead-crm-frontend-pi.vercel.app
-#   APP_URL                  — https://lead-crm-frontend-pi.vercel.app
-#   NODE_ENV                 — production
-#   SYSTEM_ADMIN_EMAIL       — your real admin email (never admin@gmail.com in production)
-#   SYSTEM_ADMIN_PASSWORD    — REQUIRED: a strong unique password (NOT admin123).
-#                              The seeder will throw if this is left as the default.
-#   DEMO_MODE                — DO NOT set to true in production. This enables auth bypasses.
-#   DEV_OTP_BYPASS           — DO NOT set to true in production. This bypasses email verification.
-#   DEV_SEED_EMAILS          — optional: comma-separated emails for seeded demo accounts
-#   SKIP_DEMO_TENANTS        — true  (skip faker tenant generation in production)
-#   RESEND_API_KEY           — (optional) your Resend API key for email delivery
-
+# Use the repository root so the backend can compile ../shared and install workspaces.
 services:
   - type: web
     name: leadcrm-backend
     runtime: node
-    rootDir: backend
-
-    # Install deps (including devDeps for ts-node), generate Prisma client, compile TypeScript
-    buildCommand: >
-      npm install --include=dev &&
-      npx prisma generate &&
-      npx tsc &&
-      node -e "require('fs').copyFileSync('start.js','dist/start.js')"
-
-    # Apply migrations, run idempotent seed to repair accounts, then start the server.
-    # - prisma migrate deploy: safe for production (no data loss, no destructive resets)
-    # - SKIP_DEMO_TENANTS=true: skip the faker 10-tenant generator in production
-    # - npx ts-node prisma/seed.ts: runs the seed in-place using devDeps installed during build
-    #   Seeds admin@gmail.com with SYSTEM_ADMIN_PASSWORD from env vars (upsert — idempotent)
-    # - node dist/start.js: boots the compiled Express server via the module-alias shim
-    startCommand: >
-      npx prisma migrate deploy &&
-      SKIP_DEMO_TENANTS=true npx ts-node prisma/seed.ts &&
-      node dist/start.js
-
+    buildCommand: npm ci --include=dev && npm --prefix backend run build
+    # Apply committed migrations before accepting requests. Account seeding remains
+    # in the existing server bootstrap; do not invoke a second seeder here.
+    startCommand: npm --prefix backend run db:deploy && npm --prefix backend start
+    healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
-      # All secret env vars must be set in the Render dashboard — never committed here
+      - key: SKIP_DEMO_TENANTS
+        value: "true"
+    # Configure DATABASE_URL, DIRECT_URL, JWT_SECRET, APP_URL, ALLOWED_ORIGINS,
+    # GOOGLE_CLIENT_ID, BREVO_API_KEY, BREVO_FROM_EMAIL and system-admin credentials
+    # in Render's dashboard. See docs/setup/deployment.md.

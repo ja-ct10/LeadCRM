@@ -5,6 +5,8 @@ import { Permission } from '../../../shared/constants/permissions';
 import { registerRateLimiter } from '../../../api/middleware/rate-limit.middleware';
 import * as invitationsController from './invitations.controller';
 
+import { workspaceReadyMiddleware } from '../../../api/middleware/tenant.middleware';
+
 const router = Router();
 
 // GET /api/v1/invitations/validate/:token — PUBLIC, no auth required
@@ -19,6 +21,7 @@ router.get(
 router.post(
   '/',
   authMiddleware,
+  workspaceReadyMiddleware,
   authorize(Permission.USERS_MANAGE),
   registerRateLimiter,
   invitationsController.create,
@@ -28,6 +31,7 @@ router.post(
 router.get(
   '/',
   authMiddleware,
+  workspaceReadyMiddleware,
   invitationsController.list,
 );
 
@@ -35,6 +39,7 @@ router.get(
 router.delete(
   '/:id',
   authMiddleware,
+  workspaceReadyMiddleware,
   authorize(Permission.USERS_MANAGE),
   invitationsController.revoke,
 );

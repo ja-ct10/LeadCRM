@@ -1,3 +1,6 @@
+> Superseded by [the Guest-first lifecycle plan](../../../docs/plans/auth-onboarding-lifecycle.md).
+> Retained as historical context. Tenant names and localStorage do not prove onboarding completion.
+
 # Onboarding Redirect Fix — Bugfix Design
 
 ## Overview

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
-import { buildAuthUserResponse } from '../auth.service';
-import type { AuthUserSource, AuthUserResponse } from '../auth.service';
+import { buildAuthUserResponse } from '../auth-user';
+import type { AuthUserSource, AuthUserResponse } from '../auth-user';
 
 /**
  * Unit tests for buildAuthUserResponse.
@@ -23,6 +23,7 @@ import type { AuthUserSource, AuthUserResponse } from '../auth.service';
 // This is the source of truth. If a field is added to AuthUserResponse,
 // add it here too. If it's not here, it must not appear in the output.
 const CANONICAL_USER_KEYS: Array<keyof AuthUserResponse> = [
+  'mustChangePassword', 'avatarUrl', 'timeZone', 'website', 'isTenantOwner', 'hasPassword',
   'id',
   'email',
   'role',
@@ -164,7 +165,7 @@ describe('buildAuthUserResponse — tenant field flattening', () => {
 
   it('flattens tenant.onboardingCompletedAt', () => {
     const result = buildAuthUserResponse(makeUser());
-    expect(result.onboardingCompletedAt).toEqual(new Date('2026-01-02T00:00:00.000Z'));
+    expect(result.onboardingCompletedAt).toEqual('2026-01-02T00:00:00.000Z');
   });
 });
 
@@ -256,7 +257,7 @@ describe('buildAuthUserResponse — core user field pass-through', () => {
   it('preserves emailVerified directly from user', () => {
     const ts = new Date('2025-06-15T10:00:00Z');
     const result = buildAuthUserResponse(makeUser({ emailVerified: ts }));
-    expect(result.emailVerified).toEqual(ts);
+    expect(result.emailVerified).toEqual(ts.toISOString());
   });
 });
 

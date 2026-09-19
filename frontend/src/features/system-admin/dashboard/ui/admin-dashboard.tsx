@@ -39,14 +39,6 @@ const RANGE_OPTIONS: RangeOption[] = [
   { id: '12m', label: '12M', months: 12 },
 ];
 
-const REVENUE_DATA = [
-  { month: 'Jan', amount: 180000 }, { month: 'Feb', amount: 195000 },
-  { month: 'Mar', amount: 210000 }, { month: 'Apr', amount: 225000 },
-  { month: 'May', amount: 240000 }, { month: 'Jun', amount: 248000 },
-  { month: 'Jul', amount: 255000 }, { month: 'Aug', amount: 265000 },
-  { month: 'Sep', amount: 272000 }, { month: 'Oct', amount: 280000 },
-  { month: 'Nov', amount: 285000 }, { month: 'Dec', amount: 290000 },
-];
 
 const CLIENT_GROWTH_DATA = [
   { month: 'Jan', count: 140 }, { month: 'Feb', count: 165 },
@@ -75,17 +67,7 @@ const CHURN_DATA = [
   { month: 'Nov', new: 240, churned: 30 }, { month: 'Dec', new: 260, churned: 28 },
 ];
 
-const PLAN_DISTRIBUTION: BreakdownSlice[] = [
-  { name: 'Basic',      value: 31, detail: '$89,500',  hex: '#3B82F6', swatchClass: 'bg-blue-500' },
-  { name: 'Pro',        value: 50, detail: '$142,800', hex: '#10B981', swatchClass: 'bg-emerald-500' },
-  { name: 'Enterprise', value: 19, detail: '$52,290',  hex: '#F59E0B', swatchClass: 'bg-amber-500' },
-];
 
-const SUBSCRIPTION_HEALTH: BreakdownSlice[] = [
-  { name: 'Active',   value: 95, detail: '1186 clients', hex: '#3B82F6', swatchClass: 'bg-blue-500' },
-  { name: 'Past Due', value: 3,  detail: '38 clients',   hex: '#F59E0B', swatchClass: 'bg-amber-500' },
-  { name: 'Canceled', value: 2,  detail: '24 clients',   hex: '#EF4444', swatchClass: 'bg-red-500' },
-];
 
 const CHART_COLORS = {
   primary: '#3B82F6',
@@ -97,8 +79,7 @@ const CHART_COLORS = {
 
 /**
  * System Admin — Dashboard.
- * Platform-level KPIs for the LeadCRM operator: MRR, client growth, churn,
- * plan distribution and subscription health.
+ * Platform-level account activity for the LeadCRM operator.
  */
 export default function AdminDashboard(): React.ReactElement {
   const { isDark } = useTheme();
@@ -106,7 +87,6 @@ export default function AdminDashboard(): React.ReactElement {
 
   const months = RANGE_OPTIONS.find((option) => option.id === range)?.months ?? 12;
 
-  const revenueSeries      = useMemo(() => REVENUE_DATA.slice(-months), [months]);
   const signupSeries       = useMemo(() => CLIENT_GROWTH_DATA.slice(-months), [months]);
   const activeClientSeries = useMemo(() => ACTIVE_CLIENTS_DATA.slice(-months), [months]);
   const churnSeries        = useMemo(() => CHURN_DATA.slice(-months), [months]);
@@ -166,15 +146,7 @@ export default function AdminDashboard(): React.ReactElement {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard
-          icon={<DollarSign size={18} />}
-          label="Monthly Recurring Revenue"
-          value="$284,590"
-          sub="Total MRR"
-          delta="+12.5%"
-          isImproving
-        />
-        <KpiCard
+<KpiCard
           icon={<Users size={18} />}
           label="Total Clients"
           value="8,429"
@@ -202,15 +174,7 @@ export default function AdminDashboard(): React.ReactElement {
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ChartCard title="Revenue Growth (MRR)" subtitle="Monthly recurring revenue over time">
-          <LineChart data={revenueSeries} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
-            <XAxis dataKey="month" stroke={axisColor} fontSize={12} tickLine={false} axisLine={false} />
-            <YAxis stroke={axisColor} fontSize={12} tickLine={false} axisLine={false} />
-            <Tooltip {...tooltipProps} formatter={(value: number) => [`$${value.toLocaleString()}`, 'MRR']} />
-            <Line type="monotone" dataKey="amount" stroke={CHART_COLORS.primary} strokeWidth={2} dot={{ r: 3, fill: CHART_COLORS.primary }} />
-          </LineChart>
-        </ChartCard>
+
 
         <ChartCard title="New Signups" subtitle="Client registrations over time">
           <LineChart data={signupSeries} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
@@ -244,8 +208,6 @@ export default function AdminDashboard(): React.ReactElement {
           </BarChart>
         </ChartCard>
 
-        <PieBreakdown title="Revenue by Plan"     data={PLAN_DISTRIBUTION}    tooltipProps={tooltipProps} />
-        <PieBreakdown title="Subscription Health" data={SUBSCRIPTION_HEALTH} tooltipProps={tooltipProps} />
       </div>
     </div>
   );

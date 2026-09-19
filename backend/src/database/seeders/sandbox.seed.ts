@@ -1,6 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
+import prisma from '../../config/database.config';
 
-const prisma = new PrismaClient();
 
 /**
  * seedSandboxData — seeds isolated, realistic CRM data into a guest sandbox tenant.
@@ -17,18 +17,19 @@ const prisma = new PrismaClient();
  * Call site: registerGuest() in auth.service.ts — awaited synchronously before
  * returning the registration response so the sandbox is fully populated on first login.
  */
-export async function seedSandboxData(tenantId: string, userId: string): Promise<void> {
+export async function seedSandboxData(tenantId: string, userId: string, transaction?: Prisma.TransactionClient): Promise<void> {
+  const db = transaction ?? prisma;
   // Idempotency check: if any Account exists for this tenant, we are already seeded.
   // The transaction in registerGuest() creates one Account; seedSandboxData creates
   // additional ones. Checking count > 0 means any prior seeding prevents a re-run.
-  const existingCount = await prisma.account.count({ where: { tenantId } });
+  const existingCount = await db.account.count({ where: { tenantId } });
   if (existingCount > 0) {
     return; // Already seeded — safe to call multiple times
   }
 
   // Resolve the pipeline created during registerGuest() transaction.
   // That transaction always creates a default pipeline with stages.
-  const existingPipeline = await prisma.pipeline.findFirst({
+  const existingPipeline = await db.pipeline.findFirst({
     where: { tenantId, isDefault: true, isArchived: false },
     include: { stages: { orderBy: { order: 'asc' } } },
   });
@@ -49,7 +50,7 @@ export async function seedSandboxData(tenantId: string, userId: string): Promise
   const stageContacted  = stageByName('Contacted');
   const stageQualified  = stageByName('Qualified');
 
-  await prisma.$transaction(async (tx) => {
+  const seed = async (tx: Prisma.TransactionClient) => {
     // ── 1. Account ─────────────────────────────────────────────────────────
     const account = await tx.account.create({
       data: {
@@ -61,7 +62,7 @@ export async function seedSandboxData(tenantId: string, userId: string): Promise
         size:           '51-200',
         website:        'https://acme-corp.example.com',
         country:        'Philippines',
-      } as never,
+      },
     });
 
     // ── 2. Contacts — all linked to Acme via accountId (ADR-001) ───────────
@@ -81,7 +82,7 @@ export async function seedSandboxData(tenantId: string, userId: string): Promise
           score:         90,
           source:        'Referral',
           productInterests: ['CRM Enterprise'],
-        } as never,
+        },
       }),
       tx.contact.create({
         data: {
@@ -98,7 +99,7 @@ export async function seedSandboxData(tenantId: string, userId: string): Promise
           score:         72,
           source:        'Website',
           productInterests: ['CRM Pro', 'Workflow Automation'],
-        } as never,
+        },
       }),
       tx.contact.create({
         data: {
@@ -114,7 +115,7 @@ export async function seedSandboxData(tenantId: string, userId: string): Promise
           status:        'COLD',
           score:         45,
           source:        'LinkedIn',
-        } as never,
+        },
       }),
     ]);
 
@@ -183,7 +184,7 @@ export async function seedSandboxData(tenantId: string, userId: string): Promise
           currency:      'PHP',
           priority:      'HIGH',
           expectedCloseDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        } as never,
+        },
       }),
       tx.deal.create({
         data: {
@@ -199,7 +200,7 @@ export async function seedSandboxData(tenantId: string, userId: string): Promise
           currency:      'PHP',
           priority:      'MEDIUM',
           expectedCloseDate: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000),
-        } as never,
+        },
       }),
       tx.deal.create({
         data: {
@@ -215,33 +216,33 @@ export async function seedSandboxData(tenantId: string, userId: string): Promise
           currency:      'PHP',
           priority:      'LOW',
           expectedCloseDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
-        } as never,
+        },
       }),
     ]);
 
     // ── 5. ContactDeal junctions (canonical multi-contact deal path) ────────
     await Promise.all([
       tx.contactDeal.create({
-        data: { tenantId, dealId: deal1.id, contactId: contactJohn.id, addedById: userId } as never,
+        data: { tenantId, dealId: deal1.id, contactId: contactJohn.id, addedById: userId },
       }),
       tx.contactDeal.create({
-        data: { tenantId, dealId: deal2.id, contactId: contactMaria.id, addedById: userId } as never,
+        data: { tenantId, dealId: deal2.id, contactId: contactMaria.id, addedById: userId },
       }),
       tx.contactDeal.create({
-        data: { tenantId, dealId: deal3.id, contactId: contactDavid.id, addedById: userId } as never,
+        data: { tenantId, dealId: deal3.id, contactId: contactDavid.id, addedById: userId },
       }),
     ]);
 
     // ── 6. LeadDeal junctions ───────────────────────────────────────────────
     await Promise.all([
       tx.leadDeal.create({
-        data: { tenantId, dealId: deal1.id, leadId: leadJohn.id, addedById: userId } as never,
+        data: { tenantId, dealId: deal1.id, leadId: leadJohn.id, addedById: userId },
       }),
       tx.leadDeal.create({
-        data: { tenantId, dealId: deal2.id, leadId: leadMaria.id, addedById: userId } as never,
+        data: { tenantId, dealId: deal2.id, leadId: leadMaria.id, addedById: userId },
       }),
       tx.leadDeal.create({
-        data: { tenantId, dealId: deal3.id, leadId: leadDavid.id, addedById: userId } as never,
+        data: { tenantId, dealId: deal3.id, leadId: leadDavid.id, addedById: userId },
       }),
     ]);
 
@@ -275,7 +276,9 @@ export async function seedSandboxData(tenantId: string, userId: string): Promise
         },
       }),
     ]);
-  });
+  };
+  if (transaction) await seed(transaction);
+  else await prisma.$transaction(seed);
 
   console.log(`[Sandbox] Seeded CRM data for tenant ${tenantId}: 1 Account, 3 Contacts, 3 Leads, 3 Deals, 3 Activities.`);
 }

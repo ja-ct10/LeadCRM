@@ -192,16 +192,7 @@ export function UserProfileDropdown(): React.ReactElement {
                 </span>
               </button>
 
-              <button
-                role="menuitem"
-                onClick={() => { setIsOpen(false); router.push('/settings?tab=plan'); }}
-                className="w-full flex items-center justify-between px-3.5 py-2 text-[12.5px] font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer group"
-              >
-                <span className="flex items-center gap-2.5">
-                  <CreditCard size={14} className="text-slate-400 dark:text-slate-500 group-hover:text-[#2563EB] transition-colors" />
-                  Billing & Plans
-                </span>
-              </button>
+
             </div>
 
             {/* Section 3: Support & Resources */}

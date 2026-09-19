@@ -1,114 +1,170 @@
-# LeadCRM Authentication Architecture
+# Authentication and onboarding
 
-> **Last updated:** 2026-08-09
-> This document reflects the current implementation — OTP-based login, JWT in HttpOnly cookies, custom `AuthContext`. NextAuth is **not** used.
+The [implementation plan and source audit](plans/auth-onboarding-lifecycle.md)
+records the original failures, affected files, rollout order, and acceptance matrix.
+The persistent source of truth is PostgreSQL through Prisma.
 
-## Overview
+## Registration and sign-in
 
-Authentication uses a two-step OTP flow. Credentials are verified first, then a one-time code is emailed for the user to confirm. On success, the backend issues a JWT stored in an HttpOnly cookie. All session state lives in `AuthContext` — not in NextAuth.
+Both self-service registration methods create a **Guest** owner of a new
+SANDBOX workspace with no paid plan, step 0, and no completion timestamp.
+Ownership is `Tenant.ownerUserId`; it does not grant Client Admin.
+Completing onboarding never promotes the Guest. Existing subscription promotion
+and RBAC remain separate.
 
-## Auth Stack
+Manual registration collects first/last name, email, password, and accepted terms.
+The backend normalizes email, creates a PENDING user, provisions the workspace,
+roles, Guest assignment, default pipeline and sandbox sample data in one
+serializable transaction, and creates verification credentials. Email delivery
+happens after commit; a failed send leaves a recoverable account and returns
+`emailSent: false`. The user verifies using the one-time link or six-digit code.
+Verification activates only an eligible pending account and establishes a session.
+A returning unverified password user is directed back to verification.
 
-| Concern | Implementation |
-|---|---|
-| Session token | JWT in HttpOnly cookie (`leadcrm_token`) |
-| Password hashing | `bcryptjs` (12 salt rounds) |
-| OTP storage | `LoginOtpToken` model — bcrypt hash of code, `attempts` counter, upsert on resend |
-| Email delivery | Resend (`onboarding@resend.dev` until custom domain verified) |
-| Frontend state | `AuthContext` (`store/AuthContext.tsx`) |
-| Route protection | `AuthGuard` component (client-side) — no Next.js middleware |
+Google uses NextAuth only for the provider handshake. Its server callback sends
+the Google ID token to the backend. The backend verifies signature, expiry,
+issuer, audience, subject and verified email using the installed Google library.
+An existing provider subject returns its existing user and workspace. New
+identities use the same Guest provisioner with ACTIVE/verified status.
+Ambiguous email matches require recovery. Pending manual registrations must
+verify first; existing third-party email accounts cannot be silently linked
+based on a Google email claim alone.
 
-## Login Flow (Two-Step OTP)
+An accepted invitation remains a separate association with the invitation's
+existing tenant and assigned role. It neither provisions a founder workspace nor
+adds a team invitation step to onboarding.
 
-```
-1. POST /auth/send-otp   { email, password }
-   → Validates credentials against DB
-   → Creates/updates LoginOtpToken (bcrypt hash, 5-minute expiry, upsert)
-   → Emails OTP code via Resend
-   → Returns { success: true } — no JWT yet
-   → AuthContext.login() returns true to mean "OTP sent"
+## Onboarding state and access
 
-2. POST /auth/verify-otp  { email, otp }
-   → Validates code against LoginOtpToken.hash
-   → Increments attempts on failure (max 5)
-   → On success: issues JWT, sets HttpOnly cookie, returns full user object
-   → AuthContext.verifyOtp() sets user + tenant state
-```
+| Stored step | Completion timestamp | Screen |
+| --- | --- | --- |
+| 0 | null | LeadCRM introduction |
+| 1 | null | Basic CRM workflow |
+| 2 | null | Company Setup |
+| 3 | present | Dashboard |
+| Any contradictory combination | inconsistent | Recovery/support |
 
-## Session Restore
+The two information pages introduce LeadCRM, customer records, sales pipelines,
+and follow-up work. Company Setup is last: company name, industry, size, optional
+website, and timezone. There is no Invite Team or required payment step.
 
-```
-GET /auth/me
-  → Reads leadcrm_token cookie
-  → Queries User table by userId + tenantId from JWT (not raw JWT payload)
-  → Returns full user: id, email, role, firstName, lastName, tenantId
-  → AuthContext.restoreSession() called on app mount
-```
+Progress saves an adjacent transition using `expectedStep`. A stale request
+returns 409; the client reloads the server snapshot. Only the active, verified
+workspace owner can change progress or company details. Final submission requires
+step 2 and atomically saves company details, completion timestamp, and audit log.
+A repeated completion preserves the original result. Welcome mail is a best-effort
+post-commit send; delivery is not a condition of completion.
 
-The `/auth/me` endpoint queries the database — it never returns the raw JWT payload. This confirms the user still exists and returns `firstName`/`lastName` which the JWT does not carry.
+`shared/src/constants/onboarding.ts` defines state interpretation.
+`frontend/src/shared/auth/auth-routing.ts` defines route decisions.
+AuthGuard applies them without rendering protected children during restoration,
+failure, or a pending redirect. AuthContext applies the canonical server response;
+mutations do not trigger a redundant status or session fetch. Tenant names,
+password presence, localStorage, and NextAuth flags cannot complete onboarding.
 
-## Frontend API Client
+Refresh and login restore the database step through `/auth/me` or the login
+response. Incomplete owners resume setup, completed users reach Dashboard, and
+members of incomplete workspaces see an owner-required recovery screen.
+Only the exact System Admin role uses the admin portal bypass.
+DataContext waits for workspace readiness before fetching CRM data.
 
-All requests must include `credentials: 'include'` so the browser sends the HttpOnly cookie:
+Backend authentication checks signed identity, persisted session, and current
+database user/role. CRM route groups additionally require verified email and
+completed onboarding, then apply existing subscription, tenant and RBAC rules.
+Account recovery, session operations, own-permission lookup, and billing APIs
+remain available as appropriate. A database failure is a server error, not a
+false unauthenticated response.
 
-```typescript
-// CORRECT — cookie sent automatically
-const res = await fetch(`${API_URL}${path}`, {
-  credentials: 'include',
-  headers: { 'Content-Type': 'application/json' },
-});
+## Session and proxy responsibilities
 
-// WRONG — no session is established without the cookie
-const res = await fetch(`${API_URL}${path}`);
-```
+The browser authenticates with the `leadcrm_token` HttpOnly cookie, Path=/,
+SameSite=Lax, Secure in production. Sessions are revocable and stored by token
+hash. Password login, OTP verification, magic links, and Google converge on the
+same LeadCRM session. Canonical auth responses contain user state, not a browser
+bearer token. The NextAuth bridge consumes its backend token server-side and
+does not put it in the NextAuth JWT/session.
 
-## Password Reset Flow
+Keep `frontend/app/api/proxy/[...path]/route.ts`: it forwards browser requests to
+the separately hosted backend, keeping cookies on the frontend origin.
+All browser API-client requests use this transport, including local development.
+Cookie forwarding preserves deletion and expiry semantics and removes a backend
+Domain attribute. This proxy makes no onboarding decisions.
 
-```
-POST /auth/forgot-password  { email }
-  → Creates PasswordResetToken (bcrypt hash, 1-hour expiry)
-  → Emails link: /reset-password?token=...
-  → app/reset-password/page.tsx must exist (Next.js returns 404 otherwise)
+The removed `frontend/middleware.ts` was a second redirect authority based on
+NextAuth state. It forced new Google users into company setup and could override
+the first introduction. Common AuthGuard routing and backend authorization replace
+that responsibility; there is no replacement redirect middleware.
 
-POST /auth/reset-password   { token, newPassword }
-  → Validates token hash
-  → Updates User.passwordHash with new bcryptjs hash
-  → Invalidates token
-```
+Verification mail points to the frontend's `/api/verify-email?token=...`.
+That route consumes the one-time credential through the backend JSON endpoint,
+forwards its cookie, and redirects to root for normal state resolution.
+Legacy backend-host links first hand off the unconsumed credential.
+Responses use no-store/no-referrer; a session JWT never goes in a redirect URL.
 
-**Dev note:** If `RESEND_FROM` / SMTP is unconfigured, the reset URL is logged to console in development and the flow continues — it does not crash.
+Logout revokes the backend session, expires the cookie, signs out NextAuth, and
+clears frontend identity, permissions and cached data. Failures are reported.
+Onboarding progress remains in the database.
 
-## Security Rules
+## Code ownership
 
-- JWT payload contains only: `userId`, `tenantId`, `role` — no PII
-- Logout invalidates the server-side session (cookie cleared)
-- Login rate-limited: 5 attempts / 15 min
-- Password reset rate-limited: 3 requests / hour
-- OTP brute-force: 5 attempts before token invalidated
-- Passwords never stored in plain text — bcryptjs 12 rounds
-- `tenantId` is included in the login response (`res.data.user.tenantId`) — required for `AuthContext` to set the `tenant` state
+| Responsibility | Location |
+| --- | --- |
+| Shared response/validation | `shared/src/contracts/auth.contract.ts`, `validation/auth.schema.ts` |
+| Workspace provisioning | `backend/src/core/auth/provision-workspace.service.ts` |
+| Manual signup / Google identity | `registration.service.ts`, `google-identity.service.ts`, `oauth.service.ts` |
+| Verification / onboarding | `verification.service.ts`, `onboarding.service.ts` |
+| Session construction / snapshot | `auth-session.ts`, `auth-user.ts` |
+| Browser state | `frontend/src/store/AuthContext.tsx` |
+| Route policy | `frontend/src/shared/auth/auth-routing.ts` |
+| Information and company UI | `frontend/src/features/tenant/onboarding` |
+| Cookie forwarding | `frontend/src/lib/auth/cookies.ts` |
 
-## Required Backend Response Shape (Login)
+The tracked CommonJS siblings under shared/src are generated from their TypeScript
+sources; keep emitted artifacts synchronized rather than implementing a second rule.
 
-```typescript
-// /auth/verify-otp response — must include tenantId
-{
-  success: true,
-  data: {
-    user: {
-      id: string,
-      email: string,
-      role: string,
-      firstName: string,
-      lastName: string,
-      tenantId: string   // required — AuthContext reads this to set tenant
-    }
-  }
-}
-```
+## Configuration and rollout
 
-## Dependencies
+- Frontend: `API_URL` is the backend base including /api/v1; configure
+  `NEXTAUTH_URL`, `NEXTAUTH_SECRET`, `GOOGLE_CLIENT_ID`, and `GOOGLE_CLIENT_SECRET`.
+- Backend: configure the same `GOOGLE_CLIENT_ID`, existing JWT/database/email
+  settings, and `APP_URL` as the frontend origin.
+- Set `NEXT_PUBLIC_USE_MOCK_AUTH=false` and
+  `NEXT_PUBLIC_USE_MOCK_DATA=false` for live acceptance tests.
+- Apply `20260917000000_tenant_company_website` before deploying code that selects
+  the new optional Tenant.website column. No new onboarding tables are required.
+- Regenerate Prisma Client, then deploy backend and frontend together.
+- Review legacy onboarding rows before strict state routing reaches them.
+  Do not infer completion from a company name or bulk-demote Client Admins.
 
-- **Backend:** `jsonwebtoken`, `bcryptjs`, `@prisma/client`, `resend`
-- **Frontend:** `AuthContext` (`store/AuthContext.tsx`), `AuthGuard` (`shared/providers/auth-guard.tsx`)
-- **Not used:** `next-auth`, `argon2`, `next-auth/react`, `getSession()`
+## Reviewed legacy repair
+
+`npm --prefix backend run fix:onboarding -- --dry-run` inventories persisted
+state without modifying it. The tool was prepared but has not been run against
+a database during this implementation.
+
+Apply only a reviewed JSON manifest:
+`npm --prefix backend run fix:onboarding -- --apply reviewed-manifest.json`.
+Each item in `changes` needs tenantId, expectedUpdatedAt, expectedOwnerUserId
+(nullable), expectedStep, expectedCompletedAt (nullable), resumeStep (0 or 2),
+and an explanatory reason of at least 10 characters.
+
+Optional controls are `assignOwnerUserId` (only when ownership is missing),
+`repairDefaults`, and `demoteGoogleFounder`. Demotion additionally requires
+an unpaid SANDBOX Google founder with no password and no subscription history.
+The manifest must be reviewed against actual account/promotion history;
+eligibility checks alone do not prove the historical assignment was wrong.
+
+The repair checks expected values in a serializable transaction, updates role
+and assignment together when needed, revokes demoted sessions, and records an
+audit entry. Existing sample/customer records are not reseeded. Each tenant
+commits separately; if a later item fails, reinventory before retrying.
+Back up affected rows before any apply operation.
+
+## Verification limits
+
+Automated tests import the real lifecycle services, route handlers and React
+components, with database, Google and mail boundaries mocked. They do not prove
+PostgreSQL rollback/concurrency, real Google configuration, SMTP delivery, or
+separate-origin browser cookie behavior. Run those checks against an isolated
+test environment before release. See the plan for current command results and
+remaining release checks.

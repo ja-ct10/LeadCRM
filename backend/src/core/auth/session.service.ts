@@ -73,9 +73,11 @@ export async function validateSession(token: string): Promise<{ userId: string; 
  */
 export async function revokeSession(token: string): Promise<void> {
   const tokenHash = hashToken(token);
-  await prisma.session
-    .update({ where: { tokenHash }, data: { revokedAt: new Date() } })
-    .catch(() => {/* session may not exist — safe to ignore */});
+  // Missing sessions are already logged out; database failures must reach the caller.
+  await prisma.session.updateMany({
+    where: { tokenHash, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
 }
 
 /**

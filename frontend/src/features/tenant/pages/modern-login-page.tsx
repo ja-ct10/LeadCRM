@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/store/AuthContext';
 import { ArrowLeft, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
-import { GoogleSignInButton } from '@/shared/components/google-sign-in-button';
 import { z } from 'zod';
 
 const loginSchema = z.object({
@@ -58,8 +57,8 @@ interface ModernLoginPageProps {
 }
 
 export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginPageProps): React.ReactElement {
-  const { user, login, loginWithGoogle, requestPasswordReset, confirmPasswordReset } = useAuth();
-  
+  const { user, login, requestPasswordReset, confirmPasswordReset } = useAuth();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -76,25 +75,6 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const [isSigningIn, setIsSigningIn] = useState(false);
-
-  // OAuth error mapping
-  const OAUTH_ERROR_MESSAGES: Record<string, string> = {
-    AccessDenied: 'Google sign-in failed. Please make sure the backend server is running and try again.',
-    OAuthAccountNotLinked: 'This email is already registered with a different sign-in method. Please use your original login method.',
-    Configuration: 'Authentication is misconfigured. Please contact support.',
-    OAuthSignin: 'Could not start the Google sign-in flow. Please try again.',
-    OAuthCallback: 'Google sign-in callback failed. Please try again.',
-    Default: 'An unexpected authentication error occurred. Please try again.',
-  };
-
-  useEffect(() => {
-    if (oauthError) {
-      const message = OAUTH_ERROR_MESSAGES[oauthError] ?? OAUTH_ERROR_MESSAGES.Default;
-      setError(message);
-      toast.error(message);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [oauthError]);
 
   // RC-10 fix: removed race-condition post-login navigation.
   // After login() resolves, AuthContext commits the new user state and AuthGuard's
@@ -118,7 +98,7 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
     e.preventDefault();
     setError('');
     setIsSigningIn(true);
-    
+
     try {
       loginSchema.parse({ email, password });
     } catch (err: unknown) {
@@ -144,7 +124,9 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
       // the user knows what actually went wrong instead of a generic fallback.
       // Examples: "Invalid email or password", "Account is inactive",
       // "Backend unreachable", "Unable to reach the server."
+
       const message = err instanceof Error ? err.message : 'Sign in failed. Please try again.';
+      setError(message);
       toast.error(message);
       setIsSigningIn(false);
     }
@@ -191,9 +173,9 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
         <div className="w-full max-w-md bg-white dark:bg-slate-900 p-4 sm:p-8 rounded-2xl border border-gray-200 dark:border-white/5 shadow-xl">
           <div className="flex flex-col items-center mb-8">
             <div className="w-16 h-16 bg-white dark:bg-slate-800 rounded-lg ring-1 ring-slate-200 dark:ring-slate-700 flex items-center justify-center mb-4">
-              <img 
-                src="/leadcrm_logo.png" 
-                alt="LeadCRM Logo" 
+              <img
+                src="/leadcrm_logo.png"
+                alt="LeadCRM Logo"
                 className="w-10 h-10"
               />
             </div>
@@ -294,7 +276,7 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
     return (
       <div className="min-h-screen flex">
         {/* Left side - Blue gradient section */}
-        <div 
+        <div
           className="hidden lg:flex lg:w-1/2 relative overflow-hidden"
           style={{
             background: 'linear-gradient(135deg, #60a5fa 0%, #3b82f6 50%, #2563eb 100%)'
@@ -305,17 +287,17 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
             <div className="absolute top-20 left-20 w-64 h-64 bg-white rounded-full blur-3xl"></div>
             <div className="absolute bottom-20 right-20 w-96 h-96 bg-blue-300 rounded-full blur-3xl"></div>
           </div>
-          
+
           <div className="relative z-10 flex flex-col justify-between p-12 text-white w-full">
             {/* Logo */}
-            <button 
-              onClick={() => onNavigate('landing')}
+            <button
+              onClick={() => onNavigate('login')}
               className="flex items-center gap-3 hover:opacity-80 transition-opacity w-fit"
             >
               <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shadow-lg">
-                <img 
-                  src="/leadcrm_logo.png" 
-                  alt="LeadCRM Logo" 
+                <img
+                  src="/leadcrm_logo.png"
+                  alt="LeadCRM Logo"
                   className="w-7 h-7 object-contain"
                 />
               </div>
@@ -340,7 +322,7 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
             <div className="w-20 h-20 bg-emerald-50 dark:bg-emerald-500/10 border-2 border-emerald-200 dark:border-emerald-500/20 rounded-2xl flex items-center justify-center mx-auto">
               <CheckCircle2 className="text-emerald-600 dark:text-emerald-400" size={40} />
             </div>
-            
+
             <div>
               <h2 className="font-display text-3xl font-bold text-slate-900 dark:text-white mb-3">
                 Check your email
@@ -373,7 +355,7 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
     return (
       <div className="min-h-screen flex">
         {/* Left side - Blue gradient section */}
-        <div 
+        <div
           className="hidden lg:flex lg:w-1/2 relative overflow-hidden"
           style={{
             background: 'linear-gradient(135deg, #60a5fa 0%, #3b82f6 50%, #2563eb 100%)'
@@ -384,17 +366,17 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
             <div className="absolute top-20 left-20 w-64 h-64 bg-white rounded-full blur-3xl"></div>
             <div className="absolute bottom-20 right-20 w-96 h-96 bg-blue-300 rounded-full blur-3xl"></div>
           </div>
-          
+
           <div className="relative z-10 flex flex-col justify-between p-12 text-white w-full">
             {/* Logo */}
-            <button 
-              onClick={() => onNavigate('landing')}
+            <button
+              onClick={() => onNavigate('login')}
               className="flex items-center gap-3 hover:opacity-80 transition-opacity w-fit"
             >
               <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shadow-lg">
-                <img 
-                  src="/leadcrm_logo.png" 
-                  alt="LeadCRM Logo" 
+                <img
+                  src="/leadcrm_logo.png"
+                  alt="LeadCRM Logo"
                   className="w-7 h-7 object-contain"
                 />
               </div>
@@ -422,7 +404,7 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
             >
               <ArrowLeft size={16} /> Back to Login
             </button>
-            
+
             <div>
               <h2 className="font-display text-3xl font-bold text-slate-900 dark:text-white mb-2">
                 Forgot password?
@@ -465,7 +447,7 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
   return (
     <div className="min-h-screen flex">
       {/* Left side - Blue gradient section with product preview */}
-      <div 
+      <div
         className="hidden lg:flex lg:w-1/2 relative overflow-hidden"
         style={{
           background: 'linear-gradient(135deg, #60a5fa 0%, #3b82f6 50%, #2563eb 100%)'
@@ -476,17 +458,17 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
           <div className="absolute top-20 left-20 w-64 h-64 bg-white rounded-full blur-3xl"></div>
           <div className="absolute bottom-20 right-20 w-96 h-96 bg-blue-300 rounded-full blur-3xl"></div>
         </div>
-        
+
         <div className="relative z-10 flex flex-col justify-between p-12 text-white w-full">
           {/* Logo */}
-          <button 
-            onClick={() => onNavigate('landing')}
+          <button
+            onClick={() => onNavigate('login')}
             className="flex items-center gap-3 hover:opacity-80 transition-opacity w-fit"
           >
             <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shadow-lg">
-              <img 
-                src="/leadcrm_logo.png" 
-                alt="LeadCRM Logo" 
+              <img
+                src="/leadcrm_logo.png"
+                alt="LeadCRM Logo"
                 className="w-7 h-7 object-contain"
               />
             </div>
@@ -501,7 +483,7 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
             <p className="text-blue-100 text-lg max-w-md">
               See the analytics and grow your data remotely, from anywhere.
             </p>
-            
+
             {/* Product preview mockup */}
             <div className="mt-12 relative">
               <div className="bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 p-6 shadow-2xl">
@@ -611,31 +593,7 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
                 </button>
               </form>
 
-              {/* Divider */}
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-200 dark:border-white/8"></div>
-                </div>
-                <div className="relative flex justify-center">
-                  <span className="px-4 text-xs font-medium text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-950">
-                    or
-                  </span>
-                </div>
-              </div>
-
-              {/* Google Sign In */}
-              <GoogleSignInButton onClick={loginWithGoogle} />
-
-              {/* Sign up link */}
-              <p className="text-center text-sm text-slate-500 dark:text-slate-400">
-                Don't have an account?{' '}
-                <button
-                  onClick={() => onNavigate('register')}
-                  className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-semibold transition-colors"
-                >
-                  Sign up
-                </button>
-              </p>
+              <p className="text-center text-sm text-slate-500">LeadCRM is Camxian Technologies’ internal workspace for leads, customers, pipelines, and workflows. Use your @camxian.com employee account. Contact your administrator for access.</p>
         </div>
       </div>
     </div>

@@ -105,12 +105,11 @@ export default function InviteAcceptPage({ token }: InviteAcceptPageProps): Reac
     try {
       // Call the client-admin registration endpoint with the invitation token.
       // companyName is optional when invitationToken is present (backend validates this).
-      await authApi.registerClientAdmin({
+      await authApi.acceptInvitation({
         firstName:       values.firstName,
         lastName:        values.lastName,
         email:           invitationInfo.email,
         password:        values.password,
-        companyName:     invitationInfo.tenant.name, // tenant name from invitation — satisfies optional field
         invitationToken: token,
         acceptTerms:     true,
       });
@@ -119,16 +118,11 @@ export default function InviteAcceptPage({ token }: InviteAcceptPageProps): Reac
       // The invitee is now PENDING until they verify their email.
       setIsSuccess(true);
 
-      // Auto-trigger OTP send so the user can verify immediately
-      await authApi.sendRegistrationOtp(invitationInfo.email).catch(() => {
-        // Non-critical — user can request resend from the verify-email page
-      });
-
-      toast.success('Account created! Check your email to verify your account.');
+      toast.success('Account created. Sign in with your employee email and password.');
 
       // Redirect to email verification page
       setTimeout(() => {
-        router.push(`/verify-email?email=${encodeURIComponent(invitationInfo.email)}`);
+        router.push('/login');
       }, 1500);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to accept invitation.';

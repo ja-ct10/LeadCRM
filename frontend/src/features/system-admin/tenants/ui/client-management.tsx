@@ -20,7 +20,6 @@ import { tenantApiService } from '../services/tenants.service';
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type StatusFilter = 'all' | 'pending' | 'active' | 'inactive' | 'rejected';
-type PlanFilter = 'all' | 'Basic' | 'Pro' | 'Enterprise';
 
 const PHONE_COUNTRIES = [
   { code: '+63', label: 'PH +63' },
@@ -49,12 +48,6 @@ const STATUS_OPTIONS: FilterOption<StatusFilter>[] = [
   { id: 'inactive', label: 'Inactive' },
 ];
 
-const PLAN_OPTIONS: FilterOption<PlanFilter>[] = [
-  { id: 'all',        label: 'All Plans' },
-  { id: 'Enterprise', label: 'Enterprise' },
-  { id: 'Pro',        label: 'Pro' },
-  { id: 'Basic',      label: 'Basic' },
-];
 
 const STATUS_BADGE: Record<string, string> = {
   active:  'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
@@ -78,7 +71,6 @@ export default function ClientManagement(): React.ReactElement {
     filteredTenants,
     searchQuery, setSearchQuery,
     statusFilter, setStatusFilter,
-    planFilter, setPlanFilter,
   } = useTenants({ tenants: visibleTenants });
 
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
@@ -90,7 +82,7 @@ export default function ClientManagement(): React.ReactElement {
   } = usePagination({
     totalItems: filteredTenants.length,
     initialPageSize: 10,
-    resetDeps: [searchQuery, statusFilter, planFilter],
+    resetDeps: [searchQuery, statusFilter],
   });
 
   const paginatedTenants = paginateItems(filteredTenants);
@@ -142,7 +134,6 @@ export default function ClientManagement(): React.ReactElement {
   }, []);
 
   const activeStatusLabel = STATUS_OPTIONS.find((option) => option.id === statusFilter)?.label ?? 'All Status';
-  const activePlanLabel = PLAN_OPTIONS.find((option) => option.id === planFilter)?.label ?? 'All Plans';
 
   return (
     <>
@@ -202,13 +193,7 @@ export default function ClientManagement(): React.ReactElement {
             selected={statusFilter}
             onSelect={(value) => setStatusFilter(value)}
           />
-          <FilterDropdown<PlanFilter>
-            label="Plan"
-            activeLabel={activePlanLabel}
-            options={PLAN_OPTIONS}
-            selected={planFilter}
-            onSelect={(value) => setPlanFilter(value)}
-          />
+
         </div>
       </div>
 
@@ -221,7 +206,6 @@ export default function ClientManagement(): React.ReactElement {
                 <th scope="col" className="p-2 sm:p-4 py-2 sm:py-3 font-semibold w-[28%]">Company Name</th>
                 <th scope="col" className="p-2 sm:p-4 py-2 sm:py-3 font-semibold w-[18%] hidden sm:table-cell">Industry</th>
                 <th scope="col" className="p-2 sm:p-4 py-2 sm:py-3 font-semibold w-[12%]">Status</th>
-                <th scope="col" className="p-2 sm:p-4 py-2 sm:py-3 font-semibold w-[10%]">Plan</th>
                 <th scope="col" className="p-2 sm:p-4 py-2 sm:py-3 font-semibold w-[14%] hidden md:table-cell">Created</th>
                 <th scope="col" className="p-2 sm:p-4 py-2 sm:py-3 font-semibold text-right w-[18%]">Actions</th>
               </tr>
@@ -229,7 +213,6 @@ export default function ClientManagement(): React.ReactElement {
             <tbody className="divide-y divide-gray-100 dark:divide-white/[0.04] text-[10px] sm:text-[11px] text-slate-700 dark:text-slate-300">
               {paginatedTenants.length > 0 ? paginatedTenants.map((tenant) => {
                 const normalizedStatus: string = tenant.status === 'suspended' ? 'inactive' : tenant.status;
-                const planLabel = (tenant as { plan?: string }).plan ?? 'Basic';
                 const createdOn = new Date(tenant.createdAt).toISOString().split('T')[0];
 
                 return (
@@ -259,14 +242,7 @@ export default function ClientManagement(): React.ReactElement {
                         {normalizedStatus}
                       </span>
                     </td>
-                    <td className="p-2 sm:p-4">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                        {planLabel}
-                      </span>
-                      <span className="text-[9px] text-slate-400 dark:text-slate-500 font-mono md:hidden block mt-1">
-                        {createdOn}
-                      </span>
-                    </td>
+
                     <td className="p-2 sm:p-4 text-slate-500 dark:text-slate-400 hidden md:table-cell font-mono text-[10px]">
                       {createdOn}
                     </td>
@@ -324,7 +300,7 @@ export default function ClientManagement(): React.ReactElement {
                 );
               }) : (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-slate-500 dark:text-slate-400 text-sm">
+                  <td colSpan={5} className="px-4 py-12 text-center text-slate-500 dark:text-slate-400 text-sm">
                     No clients found matching your criteria.
                   </td>
                 </tr>
@@ -446,11 +422,9 @@ interface TenantDetailSheetProps {
 }
 
 function TenantDetailSheet({ tenant, onClose, onApprove }: TenantDetailSheetProps): React.ReactElement {
-  const planLabel = (tenant as { plan?: string }).plan ?? 'Basic';
 
   const summary: [string, string][] = [
     ['Status', tenant.status],
-    ['Plan', planLabel],
     ['Created', new Date(tenant.createdAt).toLocaleDateString()],
   ];
 
@@ -539,9 +513,7 @@ interface AddClientModalProps {
 interface ClientFormData {
   companyName: string;
   industry: string;
-  companySize: string;
-  plan: string;
-  firstName: string;
+  companySize: string;  firstName: string;
   lastName: string;
   adminEmail: string;
   adminPassword: string;
@@ -554,9 +526,7 @@ function AddClientModal({ isOpen, onClose, onCreated }: AddClientModalProps): Re
   const [formData, setFormData] = useState<ClientFormData>({
     companyName: '',
     industry: '',
-    companySize: '',
-    plan: '',
-    firstName: '',
+    companySize: '',    firstName: '',
     lastName: '',
     adminEmail: '',
     adminPassword: '',
@@ -564,7 +534,7 @@ function AddClientModal({ isOpen, onClose, onCreated }: AddClientModalProps): Re
     phoneCountryCode: '+63',
     address: '',
   });
-  
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [credentialsUnlocked, setCredentialsUnlocked] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof ClientFormData, string>>>({});
@@ -595,9 +565,7 @@ function AddClientModal({ isOpen, onClose, onCreated }: AddClientModalProps): Re
     if (!formData.companySize) {
       newErrors.companySize = 'Company size is required';
     }
-    if (!formData.plan) {
-      newErrors.plan = 'Subscription plan is required';
-    }
+
     if (!formData.firstName.trim()) {
       newErrors.firstName = 'First name is required';
     }
@@ -645,9 +613,7 @@ function AddClientModal({ isOpen, onClose, onCreated }: AddClientModalProps): Re
       const response = await tenantApiService.create({
         name: formData.companyName,
         industry: formData.industry,
-        companySize: formData.companySize,
-        plan: formData.plan as 'STARTER' | 'PRO' | 'ENTERPRISE',
-        firstName: formData.firstName,
+        companySize: formData.companySize,        firstName: formData.firstName,
         lastName: formData.lastName,
         email: formData.adminEmail,
         password: formData.adminPassword,
@@ -665,17 +631,15 @@ function AddClientModal({ isOpen, onClose, onCreated }: AddClientModalProps): Re
           environment: 'production',
         } as Tenant);
       }
-      
+
       toast.success(`Client "${formData.companyName}" created successfully!`);
       onClose();
-      
+
       // Reset form
       setFormData({
         companyName: '',
         industry: '',
-        companySize: '',
-        plan: '',
-        firstName: '',
+        companySize: '',        firstName: '',
         lastName: '',
         adminEmail: '',
         adminPassword: '',
@@ -719,7 +683,7 @@ function AddClientModal({ isOpen, onClose, onCreated }: AddClientModalProps): Re
                 </div>
                 <h3 className="text-base font-semibold text-slate-900 dark:text-white">Company Information</h3>
               </div>
-              
+
               <div className="space-y-5">
                 <div>
                   <label htmlFor="companyName" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
@@ -794,28 +758,7 @@ function AddClientModal({ isOpen, onClose, onCreated }: AddClientModalProps): Re
                     )}
                   </div>
 
-                  <div>
-                    <label htmlFor="plan" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                      Subscription Plan <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      id="plan"
-                      value={formData.plan}
-                      onChange={(e) => handleChange('plan', e.target.value)}
-                      className={cn(
-                        "w-full h-11 bg-white dark:bg-slate-800 border rounded-lg px-4 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all",
-                        errors.plan ? "border-red-500" : "border-gray-200 dark:border-white/[0.08]"
-                      )}
-                    >
-                      <option value="">Select...</option>
-                      <option value="FREE">Free</option>
-                      <option value="PRO">Pro</option>
-                      <option value="ENTERPRISE">Enterprise</option>
-                    </select>
-                    {errors.plan && (
-                      <p className="text-xs text-red-500 mt-1">{errors.plan}</p>
-                    )}
-                  </div>
+
                 </div>
               </div>
             </div>
@@ -939,7 +882,7 @@ function AddClientModal({ isOpen, onClose, onCreated }: AddClientModalProps): Re
                   <p className="text-xs text-slate-500 dark:text-slate-400">Optional</p>
                 </div>
               </div>
-              
+
               <div className="space-y-5">
                 <div>
                   <label htmlFor="phone" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">

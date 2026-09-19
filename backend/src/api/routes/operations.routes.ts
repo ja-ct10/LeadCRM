@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.middleware';
-import { tenantMiddleware } from '../middleware/tenant.middleware';
-import { subscriptionGate } from '../middleware/subscription-gate.middleware';
+import { tenantMiddleware, workspaceReadyMiddleware } from '../middleware/tenant.middleware';
 import { authorize } from '../middleware/rbac.middleware';
 import { validate } from '../middleware/validate.middleware';
 
@@ -13,7 +12,7 @@ const router = Router();
 
 router.use(authMiddleware);
 router.use(tenantMiddleware);
-router.use(subscriptionGate);
+router.use(workspaceReadyMiddleware);
 
 // -- Tasks ---------------------------------------------
 // Note: tasks use deals.* permissions since they are tightly coupled to deals

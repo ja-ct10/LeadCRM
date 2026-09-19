@@ -3,7 +3,6 @@ import { useMemo, useState } from 'react';
 import { Tenant } from '@/store/types';
 
 type StatusFilter = 'all' | 'pending' | 'active' | 'inactive' | 'rejected';
-type PlanFilter = 'all' | 'Basic' | 'Pro' | 'Enterprise';
 
 interface UseTenantsOptions {
   tenants: Tenant[];
@@ -16,7 +15,6 @@ interface UseTenantsOptions {
 export function useTenants({ tenants }: UseTenantsOptions) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [planFilter, setPlanFilter] = useState<PlanFilter>('all');
 
   const filteredTenants = useMemo(() => {
     const normalizedQuery = searchQuery.toLowerCase();
@@ -31,14 +29,9 @@ export function useTenants({ tenants }: UseTenantsOptions) {
       const matchesStatus =
         statusFilter === 'all' || normalizedStatus === statusFilter;
 
-      const rawTenantPlan = String((t as any).plan || 'STARTER').toLowerCase();
-      const tenantPlan = rawTenantPlan === 'starter' ? 'starter' : rawTenantPlan;
-      const matchesPlan =
-        planFilter === 'all' || tenantPlan === planFilter.toLowerCase();
-
-      return matchesSearch && matchesStatus && matchesPlan;
+      return matchesSearch && matchesStatus;
     });
-  }, [tenants, searchQuery, statusFilter, planFilter]);
+  }, [tenants, searchQuery, statusFilter]);
 
   const counts = useMemo(() => ({
     total: tenants.length,
@@ -55,7 +48,5 @@ export function useTenants({ tenants }: UseTenantsOptions) {
     setSearchQuery,
     statusFilter,
     setStatusFilter,
-    planFilter,
-    setPlanFilter,
   };
 }

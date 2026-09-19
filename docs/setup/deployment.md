@@ -1,195 +1,153 @@
-# LeadCRM — Vercel + Supabase Deployment Guide
+# Running LeadCRM locally and on Vercel / Render
 
-A step-by-step guide to deploying **LeadCRM** using **Vercel** (for the Next.js Frontend), **Supabase** (for the PostgreSQL Database), and **Render / Railway** (for the Express.js Backend API).
+LeadCRM is an npm-workspace monorepo. The Next.js frontend and Express backend
+both depend on shared source under `shared/`. Keep the repository root lockfile.
 
----
+## Local development
 
-## 🎯 Architecture Overview
+1. Run `npm ci` from the repository root.
+2. Copy `backend/.env.example` to `backend/.env` and
+   `frontend/.env.example` to `frontend/.env.local`; supply your own credentials.
+   Existing configured files do not need to be replaced.
+3. Configure DATABASE_URL and DIRECT_URL for the intended database. The direct
+   connection (or session pooler) is used for migrations; the runtime URL can use
+   a transaction pooler with the provider's recommended parameters.
+4. With the backend stopped, run `npm --prefix backend run db:generate`.
+5. Review pending migrations, then run `npm --prefix backend run db:deploy`
+   against the intended database. This applies committed migrations and does not
+   run the legacy onboarding data repair.
+6. Run `npm run dev` from the root. Open http://localhost:3000.
+   Backend health is http://localhost:4000/health.
 
-```
-                                +-----------------------------------+
-                                |         Vercel (Frontend)         |
-                                |     https://your-app.vercel.app   |
-                                +-----------------------------------+
-                                                  |
-                                   HTTP REST API Requests (CORS Scoped)
-                                                  |
-                                                  v
-                                +-----------------------------------+
-                                |   Render / Railway (Express API)  |
-                                | https://leadcrm-api.onrender.com  |
-                                +-----------------------------------+
-                                                  |
-                                    Prisma ORM (Connection Pooler)
-                                                  |
-                                                  v
-                                +-----------------------------------+
-                                |   Supabase (PostgreSQL 16 DB)     |
-                                |      db.xyz.supabase.co:6543      |
-                                +-----------------------------------+
-```
+Local backend settings include APP_URL=http://localhost:3000 and
+ALLOWED_ORIGINS=http://localhost:3000. The frontend's server-only API_URL must be
+http://localhost:4000/api/v1. NEXT_PUBLIC_API_URL remains a legacy fallback; do not
+omit /api/v1 when using it.
 
----
+Use NEXT_PUBLIC_USE_MOCK_AUTH=false and NEXT_PUBLIC_USE_MOCK_DATA=false to verify
+real authentication. NextAuth needs NEXTAUTH_URL, NEXTAUTH_SECRET and the Google
+client ID/secret. Backend Google token verification uses GOOGLE_CLIENT_ID, with
+GOOGLE_OAUTH_CLIENT_ID supported for existing installations. It must identify the
+same Google application as the frontend.
 
-## 📋 STEP 1: Supabase Database Setup
+### Build output isolation
 
-### 1.1 Create a Supabase Project
-1. Go to **[https://supabase.com](https://supabase.com)** and sign in with GitHub.
-2. Click **New Project**.
-3. Fill in the details:
-   - **Name**: `leadcrm-production`
-   - **Database Password**: Set a strong password (e.g., `SuperSecurePass2026!`) and **save it safely**.
-   - **Region**: Choose the region closest to your target users (e.g., *Singapore* or *US East*).
-4. Click **Create new project** and wait ~2 minutes for provision completion.
+Next development writes to `frontend/.next-dev`; production build/start use
+`frontend/.next`. Running a frontend production build while dev is active no
+longer overwrites the development manifest and chunks. Production keeps the
+standard Next.js output directory expected by hosting platforms.
+See [Next.js distDir](https://nextjs.org/docs/app/api-reference/config/next-config-js/distDir).
 
-### 1.2 Copy Connection Strings
-1. In your Supabase Dashboard, go to **Project Settings (Gear Icon)** → **Database**.
-2. Scroll to **Connection Strings**:
-   - Under **Transaction Pooler (Port 6543)**, copy the URI:
-     ```env
-     DATABASE_URL="postgres://postgres.YOUR_PROJECT_REF:[YOUR-PASSWORD]@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true"
-     ```
-   - Under **Direct Connection (Port 5432)**, copy the URI:
-     ```env
-     DIRECT_URL="postgres://postgres.YOUR_PROJECT_REF:[YOUR-PASSWORD]@db.YOUR_PROJECT_REF.supabase.co:5432/postgres"
-     ```
-3. Replace `[YOUR-PASSWORD]` in both strings with your actual database password.
+On Windows, stop the backend before regenerating Prisma Client: the running
+process can lock query_engine-windows.dll.node. Do not kill every Node process.
+A stale Next.js process must also be stopped before starting another on port 3000.
 
----
+For a full production build, stop the dev servers and run `npm run build`.
+For a frontend-only build, run `npm --prefix frontend run build`.
+Google Fonts are downloaded by next/font during compilation, so the build needs
+outbound HTTPS access.
 
-## 🛠️ STEP 2: Database Migration & Seeding from Local Machine
+## Render backend
 
-Run the Prisma migrations against your live Supabase database before starting the backend.
+Use the repository's `render.yaml`, or configure equivalent settings:
 
-1. Open a terminal in your project root:
-   ```bash
-   cd backend
-   ```
-2. Set the `DATABASE_URL` environment variable temporarily and run migrations:
+| Setting | Value |
+| --- | --- |
+| Root directory | Repository root (leave blank) |
+| Build command | `npm ci --include=dev && npm --prefix backend run build` |
+| Start command | `npm --prefix backend run db:deploy && npm --prefix backend start` |
+| Health check | `/health` |
+| NODE_ENV | `production` |
+| SKIP_DEMO_TENANTS | `true` |
 
-   **On Windows (PowerShell):**
-   ```powershell
-   $env:DATABASE_URL="postgres://postgres.YOUR_PROJECT_REF:YOUR_PASSWORD@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true"
-   $env:DIRECT_URL="postgres://postgres.YOUR_PROJECT_REF:YOUR_PASSWORD@db.YOUR_PROJECT_REF.supabase.co:5432/postgres"
+Do not set rootDir to backend: the compilation needs ../shared, tsconfig.base.json,
+and the workspace lockfile. Files outside a Render root directory are unavailable
+to that service. See [Render monorepo support](https://render.com/docs/monorepo-support).
 
-   # Deploy Prisma Schema (creates all 30 tables in Supabase)
-   npx prisma migrate deploy
+The build generates Prisma Client, compiles backend plus shared TypeScript, and
+copies the existing production launcher. npm start uses dist/start.js so
+@leadcrm/shared resolves to compiled JavaScript rather than source TypeScript.
+Dependency installation runs once in the hosting install/build command.
 
-   # Seed the database with System Admin + default pipeline stages + default roles
-   npm run db:seed
-   ```
+Configure these secrets and settings in Render, not in committed files:
 
-   **On macOS / Linux:**
-   ```bash
-   export DATABASE_URL="postgres://postgres.YOUR_PROJECT_REF:YOUR_PASSWORD@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true"
-   export DIRECT_URL="postgres://postgres.YOUR_PROJECT_REF:YOUR_PASSWORD@db.YOUR_PROJECT_REF.supabase.co:5432/postgres"
+- DATABASE_URL and DIRECT_URL for the production database.
+- JWT_SECRET: a strong unique secret.
+- APP_URL: the exact public frontend origin.
+- ALLOWED_ORIGINS: comma-separated permitted frontend origins; do not use * with cookies.
+- GOOGLE_CLIENT_ID: the same client ID used by the frontend.
+- BREVO_API_KEY and BREVO_FROM_EMAIL; BREVO_FROM_NAME if desired.
+  The existing production server requires a valid Brevo configuration.
+- SYSTEM_ADMIN_EMAIL and a strong SYSTEM_ADMIN_PASSWORD for the existing
+  startup seeder. Do not use default/demo credentials.
+- Existing Stripe/Gmail/integration settings used by enabled features.
 
-   npx prisma migrate deploy
-   npm run db:seed
-   ```
+Render provides PORT; the backend reads it. Do not enable DEV_OTP_BYPASS or
+DEMO_MODE in production. The existing server bootstrap handles its account seed;
+the Render command does not invoke a second seeder.
 
-3. Open **Supabase Dashboard** → **Table Editor** to confirm all 30 tables (`Tenant`, `User`, `Contact`, `Deal`, `SystemAdmin`, etc.) are populated!
+Before updating an existing Render service, correct its saved Root Directory and
+commands too: committing a Blueprint does not guarantee that a manually configured
+service adopts it. Review migrations before deployment; do not baseline/reset a
+database or run the historical onboarding repair automatically.
 
----
+## Vercel frontend
 
-## ⚙️ STEP 3: Backend API Deployment (Render or Railway)
+Create/import a Next.js project with Root Directory `frontend`.
+Enable **Include source files outside of the Root Directory in the Build Step**
+so the build can read `shared/` and the repository workspace files.
+Use the workspace-root install (`npm ci`, or `cd .. && npm ci` when overriding
+a command that Vercel runs inside frontend), build with `npm run build`, and
+leave Output Directory at the Next.js default.
+See [Vercel monorepo settings](https://vercel.com/docs/monorepos/monorepo-faq).
 
-Because LeadCRM has an Express.js API server (`backend/`), we deploy it to a Node.js host. We recommend **Render.com** (free/affordable) or **Railway.app**.
+| Variable | Value |
+| --- | --- |
+| API_URL | https://your-backend.onrender.com/api/v1 |
+| NEXT_PUBLIC_USE_MOCK_AUTH | false |
+| NEXT_PUBLIC_USE_MOCK_DATA | false |
+| NEXTAUTH_URL | https://your-frontend.vercel.app |
+| NEXTAUTH_SECRET | Strong random secret |
+| GOOGLE_CLIENT_ID | Google web application client ID |
+| GOOGLE_CLIENT_SECRET | Google web application client secret |
 
-### 3.1 Deploying to Render.com
+Use the appropriate environment values for preview and production deployments.
+Redeploy after changing build-time NEXT_PUBLIC variables. Keep secrets out of
+next.config's env object; that object embeds values into bundles.
 
-1. Go to **[https://render.com](https://render.com)** and log in.
-2. Click **New +** → **Web Service**.
-3. Connect your GitHub repository `OWN-CRM-1`.
-4. Configure Web Service settings:
-   - **Name**: `leadcrm-backend-api`
-   - **Region**: Same region as Supabase (e.g. *Singapore* or *US East*)
-   - **Branch**: `main`
-   - **Root Directory**: `backend`
-   - **Runtime**: `Node`
-   - **Build Command**: `npm install && npx prisma generate && npm run build`
-   - **Start Command**: `npm run start`
-5. Scroll to **Environment Variables** and add:
+The browser sends API requests to same-origin /api/proxy; Next.js forwards the
+LeadCRM session cookie to Render. This avoids depending on third-party browser
+cookies. AuthGuard controls page navigation; backend middleware enforces access.
 
-   | Key | Value |
-   |---|---|
-   | `NODE_ENV` | `production` |
-   | `PORT` | `10000` |
-   | `DATABASE_URL` | *(Your Supabase Transaction Pooler URL from Step 1)* |
-   | `DIRECT_URL` | *(Your Supabase Direct Connection URL from Step 1)* |
-   | `JWT_SECRET` | `a_min_32_character_super_secret_jwt_string_key_2026` |
-   | `ALLOWED_ORIGINS` | `https://your-leadcrm.vercel.app` *(or `*` temporarily)* |
-   | `SYSTEM_ADMIN_EMAIL` | `admin@leadcrm.io` |
-   | `SYSTEM_ADMIN_PASSWORD` | `admin123` |
+## Google and verification URLs
 
-6. Click **Create Web Service**. Render will build and deploy your Express API.
-7. Once deployed, copy your Render API URL (e.g., `https://leadcrm-backend-api.onrender.com`).
+Configure Google authorized redirect URIs for both environments:
 
----
+- http://localhost:3000/api/auth/callback/google
+- https://your-frontend.vercel.app/api/auth/callback/google
 
-## 🌐 STEP 4: Frontend Deployment on Vercel
+Set backend APP_URL to the corresponding frontend origin. Email verification
+uses /api/verify-email on that origin, then normal account/onboarding routing.
+See [authentication and onboarding](../authentication.md).
 
-### 4.1 Import Repository to Vercel
-1. Go to **[https://vercel.com](https://vercel.com)** and sign in.
-2. Click **Add New...** → **Project**.
-3. Select your GitHub repository: `reymarkjpanes/OWN-CRM-1`.
+## Release smoke checks
 
-### 4.2 Configure Vercel Project Settings
-1. **Framework Preset**: Select **Next.js**.
-2. **Root Directory**: Click *Edit* and select `frontend`.
-3. **Build & Development Settings**: Leave default (`npm run build`).
+- /, /login and /register render successfully in the browser.
+- Backend /health returns 200.
+- An anonymous /api/proxy/auth/me request returns 401 JSON, not HTML/500.
+- Both signup paths create Guest workspace owners and begin the first introduction.
+- Verification, refresh, logout/login, company completion and dashboard access
+  follow the [lifecycle acceptance matrix](../plans/auth-onboarding-lifecycle.md).
+- Confirm Render can read the migrated schema and that real Google/email
+  credentials work. A local build alone does not prove hosted deployment success.
 
-### 4.3 Set Environment Variables on Vercel
-Expand **Environment Variables** and add:
+## September 18 local repair
 
-| Environment Variable | Value | Description |
-|---|---|---|
-| `NEXT_PUBLIC_API_URL` | `https://leadcrm-backend-api.onrender.com` | Points to your Render backend URL |
-| `NEXT_PUBLIC_USE_MOCK_DATA` | `false` | Disables localStorage mock mode & connects to real API |
+The local frontend was returning bare HTTP 500 after production and development
+compilers had used the same output directory. Separating the outputs and restarting
+the affected dev tree restored HTTP 200. Prisma generation succeeded once that
+backend process released its Windows DLL.
 
-> [!TIP]
-> If you want an offline demo deployment on Vercel without backend server dependency, set `NEXT_PUBLIC_USE_MOCK_DATA=true`.
-
-### 4.4 Click Deploy!
-Vercel will compile Next.js 15, bundle assets, and deploy to a URL like `https://own-crm-1.vercel.app`.
-
----
-
-## 🔒 STEP 5: Final CORS Alignment & Production Check
-
-1. Go back to **Render Dashboard** → **Environment Variables**.
-2. Set `ALLOWED_ORIGINS` to your exact Vercel deployment domain:
-   ```env
-   ALLOWED_ORIGINS="https://own-crm-1.vercel.app"
-   ```
-3. Save changes — Render will automatically restart.
-
----
-
-## 🧪 STEP 6: Testing & Launching
-
-1. Open your Vercel URL: `https://own-crm-1.vercel.app`.
-2. Login with your initial System Admin credentials:
-   - **Email**: `admin@leadcrm.io` (or your `SYSTEM_ADMIN_EMAIL`)
-   - **Password**: `admin123` (or your `SYSTEM_ADMIN_PASSWORD`)
-3. Access System Admin Console at `https://own-crm-1.vercel.app/admin`.
-4. Test creating a new Client Tenant, logging into CRM Portal, and managing Deals/Pipeline.
-
----
-
-## 📱 Mobile PWA Installation in Production
-
-Once deployed to Vercel:
-1. Open `https://own-crm-1.vercel.app` on Safari (iOS) or Chrome (Android).
-2. Tap **Share / Menu** → **Add to Home Screen**.
-3. LeadCRM will install as a native-feeling application with offline capabilities and push-style responsiveness.
-
----
-
-## ❓ Frequently Asked Questions
-
-### Q: Why do we need Render/Railway in addition to Vercel?
-Next.js on Vercel hosts the **Frontend UI**. Because LeadCRM includes an **Express.js REST API backend** (`backend/`) with Prisma ORM and 85+ API endpoints, hosting the backend on Render/Railway provides a persistent Node runtime to handle CORS, database connections, and JWT sessions seamlessly.
-
-### Q: Can I run frontend and backend together on Vercel?
-Yes, using `NEXT_PUBLIC_USE_MOCK_DATA=true`, the frontend runs standalone on Vercel with zero external server dependencies! For live PostgreSQL database integration, the recommended setup is Vercel (Frontend) + Render (Backend) + Supabase (Database).
+A read-only check also found the configured Supabase database lacked Tenant.website.
+With user approval, only the pending 20260917000000_tenant_company_website migration
+was applied. It adds a nullable column; no historical role/onboarding repair was run.

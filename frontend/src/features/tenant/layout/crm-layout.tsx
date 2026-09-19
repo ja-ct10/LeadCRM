@@ -5,11 +5,6 @@ import SidebarNav from './sidebar-nav';
 import Topbar from './topbar';
 import { useLayout } from './use-layout';
 import { useAuth } from '@/store/AuthContext';
-import { PaymentFailureBanner } from '@/shared/components/payment-failure-banner';
-import { SandboxBillingBanner } from '@/shared/components/sandbox-billing-banner';
-import { SandboxUpgradeModal } from '@/shared/components/sandbox-upgrade-modal';
-import { PlanUpgradeModal } from '@/shared/components/plan-upgrade-modal';
-import { useBillingInterceptor } from '@/shared/hooks/use-billing-interceptor';
 
 const SIDEBAR_COLLAPSED_KEY = 'leadcrm_sidebar_collapsed';
 
@@ -24,20 +19,6 @@ export default function CrmLayout({ children }: { children: React.ReactNode }) {
   const { navigate } = useLayout();
   const { user } = useAuth();
 
-  // Billing interceptor — listens for API-level billing errors and drives modals
-  const {
-    upgradeInfo,
-    showUpgradeModal,
-    closeUpgradeModal,
-    showSubscriptionModal,
-    subscriptionInfo,
-    closeSubscriptionModal,
-  } = useBillingInterceptor();
-
-  // Billing state — comes from /auth/me response via AuthContext
-  // null-safe defaults: NONE so sandbox banner shows for brand-new users
-  const subscriptionStatus = user?.subscriptionStatus ?? 'NONE';
-  const tenantStatus = user?.tenantStatus;
   const containerRef = useRef<HTMLDivElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);       // mobile overlay open
   const [isCollapsed, setIsCollapsed] = useState(false);       // desktop collapsed
@@ -143,14 +124,7 @@ export default function CrmLayout({ children }: { children: React.ReactNode }) {
           onOpenInbox={() => navigate('inbox')}
         />
 
-        {/* Sandbox banner — shown for pre-subscription (SANDBOX/NONE) users */}
-        <SandboxBillingBanner
-          tenantStatus={tenantStatus}
-          subscriptionStatus={subscriptionStatus}
-        />
 
-        {/* Payment failure banner — shown for PAST_DUE, CANCELLED, EXPIRED */}
-        <PaymentFailureBanner subscriptionStatus={subscriptionStatus} />
 
         <main className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">
           {children}
@@ -166,21 +140,7 @@ export default function CrmLayout({ children }: { children: React.ReactNode }) {
         />
       )}
 
-      {/* Sandbox upgrade modal — fires when a Free/Guest user hits a limit or a fully unsubscribed user attempts a mutation */}
-      <SandboxUpgradeModal
-        isOpen={showSubscriptionModal}
-        info={subscriptionInfo}
-        onClose={closeSubscriptionModal}
-      />
 
-      {/* Plan upgrade modal — fires when a paid user needs a higher tier */}
-      <PlanUpgradeModal
-        isOpen={showUpgradeModal}
-        feature={upgradeInfo?.feature ?? ''}
-        currentPlan={upgradeInfo?.currentPlan ?? 'STARTER'}
-        requiredPlan={upgradeInfo?.requiredPlan ?? 'PRO'}
-        onClose={closeUpgradeModal}
-      />
     </div>
   );
 }

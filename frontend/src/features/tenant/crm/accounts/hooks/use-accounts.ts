@@ -10,10 +10,10 @@
  * Mutations call invalidatePageCache('accounts', tenantId) to evict stale entries.
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useModuleData } from '@/shared/hooks/use-module-data';
 import { toFrontendOrg } from '@/lib/api/adapters/organization.adapter';
-import { getPageCache, setPageCache, invalidatePageCache } from '@/shared/cache/page-cache';
+import { invalidatePageCache } from '@/shared/cache/page-cache';
 import { accountsService } from '../services/accounts.service';
 import { USE_MOCK_DATA } from '@/lib/config';
 import { useAuth } from '@/store/AuthContext';
@@ -37,54 +37,26 @@ const EMPTY_FILTERS: AccountFilters = {
   sizes: [],
 };
 
-const REFRESH_INTERVAL_MS = 60_000;
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 export function useAccounts(params?: UseAccountsParams) {
   const { tenant } = useAuth();
-  const tenantId = tenant?.id ?? '';
 
-  // All parameters that affect the server response — used as cache key.
-  const cacheParams = useMemo<Record<string, unknown>>(() => ({
-    page:     params?.page     ?? 1,
-    pageSize: params?.pageSize ?? 100,
-    sort:     params?.sort     ?? null,
-    search:   params?.search   ?? '',
-    filter:   params?.filter   ?? null,
-  }), [params?.page, params?.pageSize, params?.sort, params?.search, params?.filter]);
-
-  // ── Initialize from cache (synchronous — no flicker on return navigation) ─
-  const cachedResult = useMemo<Account[] | null>(() => {
-    if (USE_MOCK_DATA || !tenantId) return null;
-    const cached = getPageCache<Account[]>('accounts', tenantId, cacheParams);
-    return cached?.data ?? null;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // intentionally empty — only read cache on first mount
-
-  // ── Server fetch (real-API mode) ─────────────────────────────────────────
-  const { data, meta, isLoading: isFetching, error, refetch } = useModuleData({
+  const { data, meta, isInitialLoad, isRefreshing, error, refetch } = useModuleData({
     moduleId: 'accounts',
-    page:     params?.page     ?? 1,
+    page: params?.page ?? 1,
     pageSize: params?.pageSize ?? 100,
-    sort:     params?.sort     ?? null,
-    search:   params?.search,
-    filter:   params?.filter,
+    sort: params?.sort ?? null,
+    search: params?.search,
+    filter: params?.filter,
   });
-
-  // ── Stale-while-revalidate ───────────────────────────────────────────────
-  const [displayAccounts, setDisplayAccounts] = useState<Account[]>(cachedResult ?? []);
-  const [hasLoadedOnce,   setHasLoadedOnce]   = useState(cachedResult !== null);
-
-  useEffect(() => {
-    if (!isFetching && error === null && !USE_MOCK_DATA && tenantId) {
-      const mapped = data.map((raw) => toFrontendOrg(raw)) as Account[];
-      const filtered = mapped.filter((a) => !a.isArchived);
-      setDisplayAccounts(filtered);
-      setPageCache<Account[]>('accounts', tenantId, cacheParams, filtered);
-      setHasLoadedOnce(true);
-    }
-  }, [data, isFetching, error, tenantId, cacheParams]);
+  const serverAccounts = useMemo(
+    () => (data.map(toFrontendOrg) as Account[]).filter((account) => !account.isArchived),
+    [data],
+  );
+  const [mockAccounts, setDisplayAccounts] = useState<Account[]>([]);
+  const displayAccounts = USE_MOCK_DATA ? mockAccounts : serverAccounts;
 
   // ── Mock mode (localStorage) ─────────────────────────────────────────────
   useEffect(() => {
@@ -92,26 +64,9 @@ export function useAccounts(params?: UseAccountsParams) {
     const raw = localStorage.getItem('leadcrm_accounts');
     const all: Account[] = raw ? JSON.parse(raw) : [];
     setDisplayAccounts(all.filter((c) => c.tenantId === tenant.id && !c.isArchived));
-    setHasLoadedOnce(true);
   }, [tenant]);
 
-  const isInitialLoad = isFetching && !hasLoadedOnce && !USE_MOCK_DATA;
   const isLoading = isInitialLoad;
-
-  // ── Background refresh ───────────────────────────────────────────────────
-  const refetchRef = useRef(refetch);
-  refetchRef.current = refetch;
-
-  useEffect(() => {
-    if (USE_MOCK_DATA) return;
-    const interval   = setInterval(() => { refetchRef.current(); }, REFRESH_INTERVAL_MS);
-    const handleFocus = (): void => { refetchRef.current(); };
-    window.addEventListener('focus', handleFocus);
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, []);
 
   // ── Client-side filter state (drives filter rail UI in accounts-page) ──
   const [filters, setFilters] = useState<AccountFilters>(EMPTY_FILTERS);
@@ -206,7 +161,7 @@ export function useAccounts(params?: UseAccountsParams) {
     setFilters,
     isLoading,
     /** True during background refresh (existing data remains visible). */
-    isRefreshing: isFetching && hasLoadedOnce && !USE_MOCK_DATA,
+    isRefreshing,
     error,
     refetch: loadAccounts,
     isFormOpen,

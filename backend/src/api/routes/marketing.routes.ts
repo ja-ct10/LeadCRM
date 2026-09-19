@@ -1,8 +1,6 @@
 ﻿import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.middleware';
-import { tenantMiddleware } from '../middleware/tenant.middleware';
-import { subscriptionGate } from '../middleware/subscription-gate.middleware';
-import { planGate } from '../middleware/plan-gate.middleware';
+import { tenantMiddleware, workspaceReadyMiddleware } from '../middleware/tenant.middleware';
 import { authorize } from '../middleware/rbac.middleware';
 import { validate } from '../middleware/validate.middleware';
 import * as campaignController from '../../modules/marketing/campaigns/campaigns.controller';
@@ -14,21 +12,21 @@ const router = Router();
 
 router.use(authMiddleware);
 router.use(tenantMiddleware);
-router.use(subscriptionGate);
+router.use(workspaceReadyMiddleware);
 
 // ── Campaigns ─────────────────────────────────────────
 router.get(   '/campaigns',             authorize('campaigns.view'),   campaignController.getCampaigns);
 router.get(   '/campaigns/:id',         authorize('campaigns.view'),   campaignController.getCampaignById);
-router.post(  '/campaigns',             authorize('campaigns.create'), planGate('marketing_campaigns'), campaignController.createCampaign);
-router.put(   '/campaigns/:id',         authorize('campaigns.edit'),   planGate('marketing_campaigns'), campaignController.updateCampaign);
-router.patch( '/campaigns/:id/send',    authorize('campaigns.send'),   planGate('marketing_campaigns'), campaignController.sendCampaign);
+router.post(  '/campaigns',             authorize('campaigns.create'), campaignController.createCampaign);
+router.put(   '/campaigns/:id',         authorize('campaigns.edit'),   campaignController.updateCampaign);
+router.patch( '/campaigns/:id/send',    authorize('campaigns.send'),   campaignController.sendCampaign);
 router.patch( '/campaigns/:id/archive', authorize('campaigns.delete'), campaignController.archiveCampaign);
 
 // ── Templates ─────────────────────────────────────────
 router.get(   '/templates',             authorize('campaigns.view'),   templateController.getTemplates);
 router.get(   '/templates/:id',         authorize('campaigns.view'),   templateController.getTemplateById);
-router.post(  '/templates',             authorize('campaigns.create'), planGate('marketing_campaigns'), templateController.createTemplate);
-router.put(   '/templates/:id',         authorize('campaigns.edit'),   planGate('marketing_campaigns'), templateController.updateTemplate);
+router.post(  '/templates',             authorize('campaigns.create'), templateController.createTemplate);
+router.put(   '/templates/:id',         authorize('campaigns.edit'),   templateController.updateTemplate);
 router.patch( '/templates/:id/archive', authorize('campaigns.delete'), templateController.archiveTemplate);
 
 // ── Forms ──────────────────────────────────────────────

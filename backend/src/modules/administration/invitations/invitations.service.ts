@@ -1,3 +1,4 @@
+import { requireEmployeeAccount } from '../../../core/auth/account-access';
 import crypto from 'crypto';
 import prisma from '../../../config/database.config';
 import { AppError } from '../../../shared/errors/app-error';
@@ -32,7 +33,7 @@ export async function createInvitations(
     select: { id: true, name: true },
   });
 
-  if (!role) {
+  if (!role || role.name === 'System Admin') {
     throw new AppError('Role not found for this tenant.', 400);
   }
 
@@ -54,6 +55,7 @@ export async function createInvitations(
 
   for (const rawEmail of emails) {
     const email = rawEmail.toLowerCase().trim();
+    requireEmployeeAccount({ email, role: role.name });
 
     // Check if user already exists in this tenant
     const existingUser = await prisma.user.findFirst({

@@ -1,3 +1,6 @@
+import { seedSystemRoles } from '../../../database/seeders/roles.seed';
+import { seedDefaultPipeline } from '../../../database/seeders/pipeline.seed';
+import { requireEmployeeAccount } from '../../../core/auth/account-access';
 import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
 import { hashPassword } from '../../../shared/helpers/crypto';
@@ -86,6 +89,7 @@ export async function activateTenant(id: string, actorId: string) {
 
 export async function createTenant(dto: CreateTenantDto, actorId: string) {
   const email = dto.email.trim().toLowerCase();
+  requireEmployeeAccount({ email, role: Role.CLIENT_ADMIN });
   const existingUser = await prisma.user.findFirst({
     where: { email: { equals: email, mode: 'insensitive' } },
   });
@@ -101,18 +105,6 @@ export async function createTenant(dto: CreateTenantDto, actorId: string) {
   });
   if (existingTenant) throw new ConflictError('A client with the same company and admin details already exists');
 
-  let plan = await prisma.pricingPlan.findFirst({
-    where: { planType: dto.plan, isActive: true },
-  });
-  if (!plan && dto.plan === 'STARTER') {
-    plan = await prisma.pricingPlan.upsert({
-      where: { name: 'Starter' },
-      update: { planType: 'STARTER', isActive: true },
-      create: { name: 'Starter', planType: 'STARTER', monthlyPrice: 1350, isActive: true },
-    });
-  }
-  if (!plan) throw new NotFoundError('Subscription plan');
-
   const passwordHash = await hashPassword(dto.password);
   const result = await prisma.$transaction(async (tx) => {
     const tenant = await tx.tenant.create({
@@ -125,11 +117,7 @@ export async function createTenant(dto: CreateTenantDto, actorId: string) {
         phone: dto.phone || undefined,
         address: dto.address || undefined,
         status: 'ACTIVE',
-        subscriptionStatus: 'ACTIVE',
-        plan: dto.plan,
-        maxUsers: plan.maxUsers,
-        maxContacts: plan.maxContacts,
-        maxDeals: plan.maxDeals,
+        onboardingStep: 0,
       },
     });
 
@@ -140,6 +128,7 @@ export async function createTenant(dto: CreateTenantDto, actorId: string) {
         lastName:      dto.lastName,
         email,
         passwordHash,
+        mustChangePassword: true,
         role:          Role.CLIENT_ADMIN,
         status:        'ACTIVE',
         // System Admin is explicitly creating a pre-verified, active account —
@@ -159,16 +148,11 @@ export async function createTenant(dto: CreateTenantDto, actorId: string) {
       },
     });
 
-    await tx.subscription.create({
-      data: {
-        tenantId: tenant.id,
-        planId: plan.id,
-        billingCycle: 'MONTHLY',
-        status: 'ACTIVE',
-        amount: plan.monthlyPrice,
-        startDate: new Date(),
-      },
-    });
+    await tx.tenant.update({ where: { id: tenant.id }, data: { ownerUserId: user.id } });
+    await seedSystemRoles(tenant.id, tx);
+    await seedDefaultPipeline(tenant.id, tx);
+    const role = await tx.roleDefinition.findUniqueOrThrow({ where: { tenantId_name: { tenantId: tenant.id, name: Role.CLIENT_ADMIN } } });
+    await tx.userRole.create({ data: { userId: user.id, tenantId: tenant.id, roleId: role.id } });
 
     return { tenant, user };
   });
@@ -180,7 +164,7 @@ export async function createTenant(dto: CreateTenantDto, actorId: string) {
       action: 'tenant.created',
       entityType: 'Tenant',
       entityId: result.tenant.id,
-      changeset: { name: dto.name, plan: dto.plan, adminEmail: result.user.email } as Prisma.InputJsonValue,
+      changeset: { name: dto.name, adminEmail: result.user.email } as Prisma.InputJsonValue,
     },
   });
 

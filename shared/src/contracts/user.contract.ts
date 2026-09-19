@@ -20,7 +20,4 @@ export interface UserListResponse {
   meta: { total: number; page: number; limit: number; hasMore: boolean };
 }
 
-export interface AuthResponse {
-  token: string;
-  user: Pick<User, 'id' | 'email' | 'firstName' | 'lastName' | 'role' | 'tenantId'>;
-}
+export type { AuthResponse } from './auth.contract';

@@ -1,8 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.middleware';
-import { tenantMiddleware } from '../middleware/tenant.middleware';
-import { subscriptionGate } from '../middleware/subscription-gate.middleware';
-import { recordLimitGate } from '../middleware/plan-gate.middleware';
+import { tenantMiddleware, workspaceReadyMiddleware } from '../middleware/tenant.middleware';
 import { authorize } from '../middleware/rbac.middleware';
 import { validate } from '../middleware/validate.middleware';
 import * as userController       from '../../modules/administration/users/users.controller';
@@ -19,13 +17,16 @@ const router = Router();
 
 router.use(authMiddleware);
 router.use(tenantMiddleware);
-router.use(subscriptionGate);
+router.get('/users/:id/permissions', (req, res, next) => {
+  if (req.params.id === req.user!.userId) return next();
+  return workspaceReadyMiddleware(req, res, next);
+}, roleController.getUserPermissions);
+router.use(workspaceReadyMiddleware);
 
 // -- Users ---------------------------------------------
 router.get(   '/users',                  authorize('users.view'),   userController.getAll);
-router.get(   '/users/:id/permissions',  authMiddleware,            roleController.getUserPermissions);
 router.get(   '/users/:id',              authorize('users.view'),   userController.getById);
-router.post(  '/users',                  authorize('users.manage'), recordLimitGate('users'), userController.create);
+router.post(  '/users',                  authorize('users.manage'), userController.create);
 router.put(   '/users/:id',              authorize('users.manage'), userController.update);
 router.delete('/users/:id',              authorize('users.manage'), userController.deleteRecord);
 router.patch( '/users/:id/archive',      authorize('users.manage'), userController.archive);

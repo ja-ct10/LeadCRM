@@ -1,13 +1,13 @@
 'use client';
 
+import { StrongPasswordSchema } from '@leadcrm/shared';
 import React, { useMemo } from 'react';
 import { Check, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ─── Password requirement rules ───────────────────────────────────────────────
 // Each rule maps to a boolean test against the candidate password.
-// These are the single source of truth for both the UI checklist and the
-// isPasswordValid() helper the register form uses for submit gating.
+// Display hints mirror the shared schema, which owns submit validation.
 
 export interface PasswordRule {
   id: string;
@@ -16,15 +16,16 @@ export interface PasswordRule {
 }
 
 export const PASSWORD_RULES: PasswordRule[] = [
+  { id: 'lowercase', label: 'At least 1 lowercase', test: (p) => /[a-z]/.test(p) },
   { id: 'uppercase', label: 'At least 1 uppercase', test: (p) => /[A-Z]/.test(p) },
   { id: 'number',    label: 'At least 1 number',    test: (p) => /[0-9]/.test(p) },
-  { id: 'special',   label: 'At least 1 special character', test: (p) => /[^A-Za-z0-9]/.test(p) },
-  { id: 'length',    label: 'At least 8 characters', test: (p) => p.length >= 8 },
+  { id: 'special',   label: 'At least 1 special character', test: (p) => /[^A-Za-z0-9\s]/.test(p) },
+  { id: 'length',    label: '8 to 72 characters', test: (p) => p.length >= 8 && p.length <= 72 },
 ];
 
 /** True only when every password rule passes. Used by the form to gate submit. */
 export function isPasswordValid(password: string): boolean {
-  return PASSWORD_RULES.every((rule) => rule.test(password));
+  return StrongPasswordSchema.safeParse(password).success;
 }
 
 /** Number of satisfied rules — drives the segmented strength bar. */
@@ -42,17 +43,7 @@ interface PasswordStrengthMeterProps {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-/**
- * PasswordStrengthMeter
- *
- * Renders a 3-segment strength bar plus a live requirement checklist:
- *   ✓ At least 1 uppercase
- *   ✓ At least 1 number
- *   ✓ At least 8 characters
- *
- * Segment colors: 1 rule → red (Weak), 2 rules → amber (Fair), 3 rules → green (Strong).
- * Satisfied rules show a green check; unmet rules show a muted X.
- */
+/** Displays one strength segment per requirement and an accessible checklist. */
 export function PasswordStrengthMeter({
   password,
   hideWhenEmpty = true,
@@ -93,7 +84,7 @@ export function PasswordStrengthMeter({
         className={cn(
           'text-xs font-medium',
           satisfied <= 1 && 'text-red-500',
-          satisfied === 2 && 'text-amber-600 dark:text-amber-400',
+          satisfied > 1 && satisfied < total && 'text-amber-600 dark:text-amber-400',
           satisfied === total && 'text-emerald-600 dark:text-emerald-400',
         )}
       >

@@ -5,6 +5,7 @@ node_modules/
 build/
 dist/
 .next/
+.next-dev/
 out/
 
 # Coverage
@@ -44,3 +45,6 @@ src/main.tsx
 
 # Turborepo cache
 .turbo/
+
+# Reviewed onboarding repair is maintained source, not a scratch script.
+!backend/src/scripts/fix-null-onboarding.ts

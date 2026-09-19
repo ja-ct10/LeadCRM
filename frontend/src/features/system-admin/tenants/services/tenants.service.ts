@@ -8,7 +8,6 @@ export const tenantApiService = {
     name: string;
     industry: string;
     companySize: string;
-    plan: 'STARTER' | 'PRO' | 'ENTERPRISE';
     firstName: string;
     lastName: string;
     email: string;

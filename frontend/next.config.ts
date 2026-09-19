@@ -1,12 +1,9 @@
 import type { NextConfig } from 'next';
+import { PHASE_DEVELOPMENT_SERVER } from 'next/constants';
 
-const nextConfig: NextConfig = {
-  experimental: {},
-  env: {
-    GEMINI_API_KEY: process.env.GEMINI_API_KEY ?? '',
-    APP_URL: process.env.APP_URL ?? '',
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1',
-  },
-};
-
-export default nextConfig;
+// Dev and production must never write to the same compiler output directory.
+export default function nextConfig(phase: string): NextConfig {
+  return {
+    distDir: phase === PHASE_DEVELOPMENT_SERVER ? '.next-dev' : '.next',
+  };
+}

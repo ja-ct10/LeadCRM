@@ -121,7 +121,7 @@ describe('Feature: auth-login-blank-screen-fix, Property 4: Preservation — Aut
     );
   }
 
-  it('logout revokes the backend session, clears the NextAuth session, and clears local state', async () => {
+  it('logout revokes the backend session, clears local state without calling retired OAuth routes', async () => {
     renderProvider();
     await waitFor(() => expect(captured?.isLoading).toBe(false));
 
@@ -136,7 +136,7 @@ describe('Feature: auth-login-blank-screen-fix, Property 4: Preservation — Aut
 
     // Backend session revoked (cookie cleared server-side) + NextAuth cleared.
     expect(logoutApiMock).toHaveBeenCalledTimes(1);
-    expect(nextAuthSignOut).toHaveBeenCalledWith({ redirect: false });
+    expect(nextAuthSignOut).not.toHaveBeenCalled();
 
     // Auth state cleared -> user === null (AuthGuard will route to /login).
     expect(captured?.user).toBeNull();
@@ -148,18 +148,14 @@ describe('Feature: auth-login-blank-screen-fix, Property 4: Preservation — Aut
     expect(window.sessionStorage.getItem('leadcrm_redirect_after_login')).toBeNull();
   });
 
-  it('logout still clears local state even if the backend logout call fails', async () => {
+  it('surfaces failed server logout rather than claiming the session was revoked', async () => {
     logoutApiMock.mockRejectedValueOnce(new Error('network down'));
-
     renderProvider();
     await waitFor(() => expect(captured?.isLoading).toBe(false));
-
     await act(async () => {
-      await captured!.logout();
+      await expect(captured!.logout()).rejects.toThrow('network down');
     });
-
-    expect(captured?.user).toBeNull();
-    expect(captured?.tenant).toBeNull();
+    expect(nextAuthSignOut).not.toHaveBeenCalled();
   });
 
   it('loginWithGoogle triggers the NextAuth signIn flow with the / callback', async () => {
@@ -169,10 +165,10 @@ describe('Feature: auth-login-blank-screen-fix, Property 4: Preservation — Aut
     await waitFor(() => expect(captured?.isLoading).toBe(false));
 
     await act(async () => {
-      await captured!.loginWithGoogle();
+      await expect(captured!.loginWithGoogle()).rejects.toThrow('employee email');
     });
 
-    expect(nextAuthSignIn).toHaveBeenCalledWith('google', { callbackUrl: '/' });
+    expect(nextAuthSignIn).not.toHaveBeenCalled();
   });
 });
 

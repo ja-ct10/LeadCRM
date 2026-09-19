@@ -33,10 +33,7 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
   const [settingsBreadcrumb, setSettingsBreadcrumb] = useState<{ group: string; tab: string }>({ group: 'General', tab: 'Profile Settings' });
   const notificationButtonRef = useRef<HTMLButtonElement>(null!);
 
-  // isSandbox: derived from server-backed tenantStatus (SANDBOX = pre-subscription).
-  // Reads from user.tenantStatus � same source sidebar uses correctly.
-  // Never reads tenant.environment which was previously hardcoded to 'production'.
-  const isSandbox = (user as any)?.tenantStatus === 'SANDBOX';
+
 
   // Fetch unread email count for inbox badge
   useEffect(() => {
@@ -70,12 +67,9 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
 
   // Get current module name from navigation
   const isImportPage = pathname?.includes('/import');
-  const isBillingPage = currentPath === 'client-billing' || currentPath === 'billing';
   const currentModule = currentPath === 'settings'
     ? settingsBreadcrumb.tab
-    : isBillingPage
-      ? 'Billing & Subscription'
-      : NAV_ITEMS.find(item => item.path === currentPath)?.name ||
+    : NAV_ITEMS.find(item => item.path === currentPath)?.name ||
         (currentPath === 'notifications' ? 'Notifications' :
          currentPath === 'inbox' ? 'Messages' : 'Dashboard');
 
@@ -83,9 +77,7 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
   const currentGroup = NAV_ITEMS.find(item => item.path === currentPath);
   const groupName = currentPath === 'settings'
     ? settingsBreadcrumb.group
-    : isBillingPage
-      ? 'Billing'
-      : (currentGroup as any)?.group ?? '';
+    : (currentGroup as any)?.group ?? '';
 
   // Sub-page breadcrumb (e.g. "Import" for /crm/leads/import)
   const subPageName = isImportPage ? 'Import' : null;
@@ -187,17 +179,7 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
           )}
         </button>
 
-        {/* Sandbox Indicator */}
-        {isSandbox && (
-          <span
-            className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold tracking-wide uppercase"
-            title="Sandbox environment � test data only"
-            aria-label="Sandbox environment"
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" aria-hidden="true" />
-            Sandbox
-          </span>
-        )}
+
 
         {/* User Profile Dropdown */}
         <div className="ml-1">

@@ -51,6 +51,10 @@ export interface User {
   industry?: string | null;
   /** True when the user registered with a password (manual). False for OAuth-only users. */
   hasPassword?: boolean;
+  mustChangePassword?: boolean;
+  companySize?: string | null;
+  website?: string | null;
+  isTenantOwner?: boolean;
 }
 
 export interface Tenant {

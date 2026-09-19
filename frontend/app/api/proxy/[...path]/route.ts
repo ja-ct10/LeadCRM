@@ -1,6 +1,8 @@
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from 'next/server';
+import { forwardAuthCookies } from '@/lib/auth/cookies';
 
 // Prefer the server-only API_URL env var (set in Vercel dashboard, never
 // exposed to the browser bundle). Fall back to NEXT_PUBLIC_API_URL for
@@ -25,67 +27,6 @@ if (BACKEND_URL.includes('localhost')) {
   );
 }
 
-/**
- * Rewrites a raw Set-Cookie string from the Render backend so it is valid
- * for the Vercel frontend domain.
- *
- * Problem: the backend sets cookies with no Domain attribute, which causes
- * the browser to scope the cookie to the backend's domain (onrender.com).
- * When the proxy forwards this raw header to the browser, the browser sees
- * the cookie as coming from vercel.app but with attributes set by a
- * different origin — some browsers silently drop it.
- *
- * Fix: parse the raw Set-Cookie string and rebuild it with:
- *   - No Domain attribute (browser defaults to the current origin = vercel.app)
- *   - Secure flag preserved for production
- *   - SameSite=Lax preserved (required for top-level navigation cookie delivery)
- *   - Path=/ so the cookie is available across the entire frontend
- *   - Original name, value, and Max-Age preserved exactly
- */
-function rewriteSetCookie(raw: string): string {
-  const parts = raw.split(/;\s*/);
-  const [nameValue, ...attributes] = parts;
-
-  // Rebuild attribute map from the backend's cookie, normalising keys to lowercase
-  const attrMap = new Map<string, string | null>();
-  for (const attr of attributes) {
-    const eqIdx = attr.indexOf('=');
-    if (eqIdx === -1) {
-      attrMap.set(attr.toLowerCase(), null);
-    } else {
-      attrMap.set(attr.slice(0, eqIdx).toLowerCase(), attr.slice(eqIdx + 1));
-    }
-  }
-
-  // Build the new Set-Cookie string. Omit Domain entirely so the browser
-  // scopes the cookie to the vercel.app origin (the page's origin).
-  const rebuilt: string[] = [nameValue];
-
-  // Path — always / so the cookie is sent on every frontend route
-  rebuilt.push('Path=/');
-
-  // Max-Age — preserve from backend, default to 7 days if missing
-  const maxAge = attrMap.get('max-age') ?? String(7 * 24 * 60 * 60);
-  rebuilt.push(`Max-Age=${maxAge}`);
-
-  // HttpOnly — always set for the auth token cookie
-  rebuilt.push('HttpOnly');
-
-  // Secure — set when the frontend is served over HTTPS
-  // Check VERCEL env var as a reliable production signal
-  const isSecure =
-    process.env.VERCEL === '1' ||
-    process.env.NODE_ENV === 'production' ||
-    attrMap.has('secure');
-  if (isSecure) rebuilt.push('Secure');
-
-  // SameSite — Lax allows the cookie to be sent on top-level navigation
-  // (required so the cookie survives AuthGuard redirects post-login).
-  rebuilt.push('SameSite=Lax');
-
-  return rebuilt.join('; ');
-}
-
 async function proxyRequest(
   req: NextRequest,
   params: { path: string[] },
@@ -96,6 +37,7 @@ async function proxyRequest(
   const token = req.cookies.get('leadcrm_token')?.value;
   const headers: Record<string, string> = {
     'Content-Type': req.headers.get('content-type') ?? 'application/json',
+    'Accept': 'application/json',
   };
 
   // Forward the HttpOnly cookie server-side — this is the whole reason the
@@ -125,14 +67,14 @@ async function proxyRequest(
     }
   }
 
-  // 9-second timeout ? Vercel serverless limit is 10s.
-  // Render Free tier cold starts can take 30-60s, causing silent 502s without this.
+  // Allow cold starts and transactional workspace provisioning.
+  // Longer cold starts return an explicit retryable error.
   // When the signal fires, fetch throws AbortError, caught below and returned as 503.
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 9000);
+  const timeoutId = setTimeout(() => controller.abort(), 25000);
 
   try {
-    const backendRes = await fetch(url, { method: req.method, headers, body, signal: controller.signal });
+    const backendRes = await fetch(url, { method: req.method, headers, body, signal: controller.signal, cache: 'no-store', redirect: 'manual' });
     clearTimeout(timeoutId);
     const data = await backendRes.text();
 
@@ -149,10 +91,8 @@ async function proxyRequest(
     // cookie via Set-Cookie. We rewrite each cookie to strip the backend's
     // Domain attribute and ensure SameSite/Secure are correct for the frontend
     // origin so the browser accepts and stores the cookie.
-    const setCookies = backendRes.headers.getSetCookie();
-    for (const cookie of setCookies) {
-      response.headers.append('Set-Cookie', rewriteSetCookie(cookie));
-    }
+    forwardAuthCookies(backendRes.headers, response.headers);
+    response.headers.set('Cache-Control', 'no-store');
 
     return response;
   } catch (err: unknown) {
@@ -162,7 +102,7 @@ async function proxyRequest(
     console.error('[Proxy] Backend fetch failed for %s %s: %s', req.method, path, message);
 
     if (isTimeout) {
-      // Render Free tier cold start exceeded the 9s proxy timeout.
+      // Render Free tier cold start exceeded the 25s proxy timeout.
       // Return 503 so the frontend can show a "server waking up" message.
       return NextResponse.json(
         { success: false, error: { message: 'The server is warming up. Please wait a moment and try again.' } },

@@ -1,5 +1,9 @@
+import { requireEmployeeAccount } from '../../core/auth/account-access';
+import { isOnboardingComplete } from '@leadcrm/shared';
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import type { AuthUser } from '@leadcrm/shared';
+import { readAuthUser } from '../../core/auth/auth-user';
 import { appConfig } from '../../config/app.config';
 import { AppError } from '../../shared/errors/app-error';
 import { validateSession } from '../../core/auth/session.service';
@@ -15,6 +19,7 @@ declare global {
   namespace Express {
     interface Request {
       user?: AuthenticatedUser;
+      authUser?: AuthUser;
     }
   }
 }
@@ -37,12 +42,36 @@ export async function authMiddleware(req: Request, _res: Response, next: NextFun
 
     // 2. Validate against Session store — catches revoked tokens
     //    (deactivated user, forced logout, logout from all devices)
-    await validateSession(token);
+    const session = await validateSession(token);
+    if (session.userId !== payload.userId || session.tenantId !== payload.tenantId) {
+      throw new AppError('Invalid or expired token', 401);
+    }
 
-    req.user = payload;
+    const user = await readAuthUser(payload.userId, payload.tenantId);
+    if (user.status !== 'ACTIVE') throw new AppError('Account is inactive.', 401);
+    requireEmployeeAccount(user);
+    const authPath = req.baseUrl?.endsWith('/auth') ? req.path : '';
+    const recovery = ['/me', '/change-password', '/logout'].includes(authPath);
+    if (user.role !== 'System Admin') {
+      if (['SUSPENDED', 'REJECTED'].includes(user.tenantStatus ?? '')) {
+        throw new AppError('Workspace access is suspended.', 403);
+      }
+      if (user.mustChangePassword && !recovery) {
+        throw new AppError('Change your temporary password first.', 403, 'PASSWORD_CHANGE_REQUIRED');
+      }
+      if (user.role === 'Client Admin' && !isOnboardingComplete(user) && !recovery &&
+          !['/onboarding/status', '/onboarding/complete'].includes(authPath)) {
+        throw new AppError('Complete the LeadCRM introduction first.', 403, 'ONBOARDING_REQUIRED');
+      }
+    }
+    req.authUser = user;
+    req.user = { ...payload, role: user.role, email: user.email };
     next();
   } catch (err) {
-    if (err instanceof AppError) return next(err);
-    next(new AppError('Invalid or expired token', 401));
+    if (err instanceof jwt.JsonWebTokenError || err instanceof jwt.NotBeforeError) {
+      return next(new AppError('Invalid or expired token', 401));
+    }
+    // A database outage is a retryable server failure, not proof of a missing session.
+    next(err);
   }
 }

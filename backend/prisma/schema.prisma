@@ -183,6 +183,7 @@ model Tenant {
   slug               String             @unique
   industry           String?
   companySize        String? // "1-10" | "11-50" | "51-200" | "200+"
+  website            String?
   currency           String?   @default("PHP") // ISO 4217 — e.g. "USD", "EUR", "GBP". Drives all money formatting UI-side.
   email              String?
   phone              String?
@@ -202,7 +203,7 @@ model Tenant {
   businessType                String?   // Sole Proprietorship | Corporation | Partnership | Cooperative | Other
   verificationRejectionReason String?   // Reason provided by admin on REJECTED or REQUIRES_RESUBMISSION
   // -- Onboarding ----------------------------------------------------
-  onboardingStep        Int       @default(0) // 0=not started, 1=workspace, 2=invite, 3=tour
+  onboardingStep        Int       @default(0) // 0=introduction, 1=workflow, 2=company, 3=completed
   onboardingCompletedAt DateTime?
   // -- Stripe --------------------------------------------------------
   stripeCustomerId   String?            @unique // cus_xxx � one customer per tenant
@@ -326,6 +327,7 @@ model User {
   email         String
   firstName     String
   lastName      String
+  mustChangePassword Boolean @default(true)
   passwordHash  String? // nullable � OAuth-only users have no password
   phone         String?
   jobTitle      String?
@@ -335,7 +337,7 @@ model User {
   lastLoginAt   DateTime?
   // role kept as String for JWT compatibility during UserRole migration.
   // New code should read role from UserRole junction; this is the legacy fallback.
-  role          String     @default("Guest")
+  role          String     @default("User")
   status        UserStatus @default(ACTIVE)
   emailVerified DateTime?
   createdAt     DateTime   @default(now())

@@ -162,7 +162,7 @@ export default function AuditLogsPage(): React.ReactElement {
         ...(to              ? { to }                     : {}),
         page:  currentPage,
         limit: pageSize,
-      });
+      }, user?.role === 'System Admin');
 
       const responseData = res as unknown as {
         data?: AuditLogEntry[];
@@ -179,7 +179,7 @@ export default function AuditLogsPage(): React.ReactElement {
     } finally {
       setIsLoading(false);
     }
-  }, [debouncedSearch, selectedCategory, selectedSeverity, selectedDateRange, currentPage, pageSize]);
+  }, [debouncedSearch, selectedCategory, selectedSeverity, selectedDateRange, currentPage, pageSize, user?.role]);
 
   useEffect(() => {
     void fetchLogs();

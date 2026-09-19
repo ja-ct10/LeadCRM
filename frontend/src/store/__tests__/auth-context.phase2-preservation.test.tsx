@@ -347,11 +347,11 @@ describe(
       await waitFor(() => expect(capturedAuth?.isLoading).toBe(false));
 
       await act(async () => {
-        await capturedAuth!.loginWithGoogle();
+        await expect(capturedAuth!.loginWithGoogle()).rejects.toThrow('employee email');
       });
 
       // EXPECTED: unchanged — same signIn call as before Phase 2 fixes
-      expect(nextAuthSignIn).toHaveBeenCalledWith('google', { callbackUrl: '/' });
+      expect(nextAuthSignIn).not.toHaveBeenCalled();
     });
   },
 );

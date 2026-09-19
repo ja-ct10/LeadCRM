@@ -6,6 +6,7 @@ import {
   clearPageCache,
   buildCacheKey,
   getPageCacheSize,
+  createPageCacheGuard,
 } from '../page-cache';
 
 /**
@@ -24,6 +25,38 @@ const TENANT_B = 'tenant-bbb';
 beforeEach(() => {
   clearPageCache();
   vi.useFakeTimers();
+});
+
+describe('bounded storage and invalidation races', () => {
+  it('caps the number of retained search results', () => {
+    for (let page = 0; page < 150; page++) setPageCache('leads', TENANT_A, { page }, [page]);
+    expect(getPageCacheSize()).toBe(100);
+    expect(getPageCache('leads', TENANT_A, { page: 0 })).toBeNull();
+    expect(getPageCache('leads', TENANT_A, { page: 149 })?.data).toEqual([149]);
+  });
+
+  it('prunes expired entries without requiring each old query to be read', () => {
+    setPageCache('leads', TENANT_A, { search: 'old' }, ['old']);
+    vi.advanceTimersByTime(5 * 60_000);
+    setPageCache('accounts', TENANT_A, {}, ['new']);
+    expect(getPageCacheSize()).toBe(1);
+  });
+
+  it('blocks pending responses after clear or invalidation', () => {
+    const oldSession = createPageCacheGuard('leads');
+    clearPageCache();
+    expect(oldSession()).toBe(false);
+    const oldList = createPageCacheGuard('leads');
+    const unrelated = createPageCacheGuard('accounts');
+    invalidatePageCache('leads', TENANT_A);
+    expect(oldList()).toBe(false);
+    expect(unrelated()).toBe(true);
+  });
+
+  it('does not collapse empty and null nested filter values', () => {
+    expect(buildCacheKey('leads', TENANT_A, { filter: { value: '' } }))
+      .not.toBe(buildCacheKey('leads', TENANT_A, { filter: { value: null } }));
+  });
 });
 
 afterEach(() => {

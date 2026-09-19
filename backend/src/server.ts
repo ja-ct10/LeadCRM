@@ -2,9 +2,6 @@
 import app from './app';
 import { startCampaignScheduler } from './core/scheduler/campaign-scheduler.service';
 import { purgeExpiredSessions } from './core/auth/session.service';
-import { startTrialExpirationJob } from './jobs/trial-expiration.job';
-import { startPendingDowngradeJob } from './jobs/pending-downgrade.job';
-import { checkStripeReadiness } from './config/stripe-readiness';
 import { seedDemoAccounts } from './database/seeders/demo.seed';
 
 // Guard against missing required env vars at startup
@@ -89,11 +86,6 @@ app.listen(PORT, () => {
   // Start background services
   startCampaignScheduler();
   startSessionPurgeScheduler();
-  startTrialExpirationJob();
-  startPendingDowngradeJob();
 
-  // Stripe readiness check — non-blocking, read-only diagnostics
-  checkStripeReadiness().catch((err: unknown) => {
-    console.warn('[Stripe] Readiness check failed:', err instanceof Error ? err.message : err);
-  });
+
 });

@@ -23,14 +23,31 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"],
-      "@/components/*": ["./src/components/*", "./src/shared/components/*"],
-      "@/features/tenant/*": ["./src/features/tenant/*"],
-      "@/features/system-admin/*": ["./src/features/system-admin/*"],
-      "@/shared/*": ["./src/shared/*"],
-      "@/store/*": ["./src/store/*"],
-      "@/lib/*": ["./src/lib/*"],
-      "@leadcrm/shared": ["../shared/src/index.ts"]
+      "@/*": [
+        "./*"
+      ],
+      "@/components/*": [
+        "./src/components/*",
+        "./src/shared/components/*"
+      ],
+      "@/features/tenant/*": [
+        "./src/features/tenant/*"
+      ],
+      "@/features/system-admin/*": [
+        "./src/features/system-admin/*"
+      ],
+      "@/shared/*": [
+        "./src/shared/*"
+      ],
+      "@/store/*": [
+        "./src/store/*"
+      ],
+      "@/lib/*": [
+        "./src/lib/*"
+      ],
+      "@leadcrm/shared": [
+        "../shared/src/index.ts"
+      ]
     },
     "strictNullChecks": true
   },
@@ -38,9 +55,11 @@
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    ".next/types/**/*.ts"
+    ".next/types/**/*.ts",
+    ".next-dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "build"
   ]
 }

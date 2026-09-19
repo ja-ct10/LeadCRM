@@ -1,0 +1,31 @@
+/** Serialized account state returned by every authentication/onboarding endpoint. */
+export interface AuthUser {
+  id: string;
+  email: string;
+  role: string;
+  firstName: string;
+  lastName: string;
+  tenantId: string;
+  status: string | null;
+  emailVerified: string | null;
+  avatarUrl: string | null;
+  timeZone: string | null;
+  tenantName: string | null;
+  tenantStatus: string | null;
+  subscriptionStatus: string | null;
+  plan: string | null;
+  industry: string | null;
+  companySize: string | null;
+  website: string | null;
+  currency: string | null;
+  onboardingStep: number;
+  onboardingCompletedAt: string | null;
+  isTenantOwner: boolean;
+  hasPassword: boolean;
+  mustChangePassword?: boolean;
+}
+
+export interface AuthResponse {
+  success: boolean;
+  data: { user: AuthUser };
+}
