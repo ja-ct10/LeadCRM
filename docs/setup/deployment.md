@@ -1,3 +1,7 @@
+# Internal CRM deployment update
+
+Apply `20260919000000_internal_accounts` before deploying the new backend. Public signup, Google account authentication, OTP, subscriptions, pricing, and SaaS billing are retired. Gmail integration credentials remain separate. Follow [current authentication deployment requirements](../authentication.md#deployment). The older rollout notes below are historical.
+
 # Running LeadCRM locally and on Vercel / Render
 
 LeadCRM is an npm-workspace monorepo. The Next.js frontend and Express backend

@@ -1,3 +1,4 @@
+import { ForbiddenError, NotFoundError } from '../../../shared/errors/http-error';
 import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
 
@@ -171,3 +172,20 @@ export async function findUserEffectivePermissions(
 
 // Prisma type alias kept for import compatibility
 export type { Prisma };
+
+/** User management selects a primary role; update both RBAC representations in its transaction. */
+export async function replaceUserRole(
+  tx: Prisma.TransactionClient, userId: string, tenantId: string, roleName: string,
+): Promise<void> {
+  const [user, role] = await Promise.all([
+    tx.user.findFirst({ where: { id: userId, tenantId } }),
+    tx.roleDefinition.findFirst({ where: { tenantId, name: roleName, isArchived: false } }),
+  ]);
+  if (!user || !role) throw new NotFoundError('User or role');
+  if (user.role === 'System Admin' || role.name === 'System Admin') {
+    throw new ForbiddenError('System Admin assignments are managed outside the client portal');
+  }
+  await tx.user.update({ where: { id: user.id }, data: { role: role.name } });
+  await tx.userRole.deleteMany({ where: { userId, tenantId } });
+  await tx.userRole.create({ data: { userId, tenantId, roleId: role.id } });
+}

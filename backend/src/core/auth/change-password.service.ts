@@ -27,6 +27,6 @@ export async function changePassword(actor: { userId: string; tenantId: string }
     await tx.auditLog.create({ data: {
       tenantId: user.tenantId, userId: user.id, action: 'PASSWORD_CHANGED', entityType: 'User', entityId: user.id,
     } });
-    return readAuthUser(user.id, user.tenantId, tx);
+
   });
 }

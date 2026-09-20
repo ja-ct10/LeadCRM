@@ -1,3 +1,4 @@
+import { replaceUserRole } from '../roles/roles.repository';
 import { CreateUsersSchema, UpdateUsersSchema } from './users.dto';
 import { requireEmployeeAccount } from '../../../core/auth/account-access';
 import { randomBytes } from 'crypto';
@@ -63,12 +64,19 @@ export async function create(tenantId: string, actorId: string, dto: {
   // Use a secure random password if none is provided, requiring the user to reset it later
   const secureRandomPassword = dto.password || randomBytes(32).toString('hex');
   const passwordHash = await hashPassword(secureRandomPassword);
-  const user = await prisma.user.create({
-    data: {
-      tenantId, firstName: dto.firstName, lastName: dto.lastName, email: dto.email.trim().toLowerCase(), passwordHash, mustChangePassword: true, role: dto.role ?? Role.USER,
-      phone: dto.phone, jobTitle: dto.jobTitle, department: dto.department, avatarUrl: dto.avatarUrl, timeZone: dto.timeZone
-    },
-    select: SAFE_USER_SELECT,
+  const user = await prisma.$transaction(async tx => {
+    const created = await tx.user.create({
+      data: {
+        tenantId, firstName: dto.firstName, lastName: dto.lastName,
+        email: dto.email.trim().toLowerCase(), passwordHash,
+        mustChangePassword: true, role: dto.role ?? Role.USER,
+        phone: dto.phone, jobTitle: dto.jobTitle, department: dto.department,
+        avatarUrl: dto.avatarUrl, timeZone: dto.timeZone,
+      },
+      select: SAFE_USER_SELECT,
+    });
+    await replaceUserRole(tx, created.id, tenantId, created.role);
+    return created;
   });
   await writeAuditLog({ tenantId, userId: actorId, action: 'user.created', entityType: 'User', entityId: user.id, after: { email: dto.email, role: user.role } });
   return user;
@@ -96,7 +104,10 @@ export async function update(id: string, tenantId: string, actorId: string, dto:
   const updateData: any = { ...dto };
   if (dto.status) updateData.status = dto.status as any; // Cast as enum
 
-  const user = await prisma.user.update({ where: { id }, data: updateData, select: SAFE_USER_SELECT });
+  const user = await prisma.$transaction(async tx => {
+    if (dto.role) await replaceUserRole(tx, id, tenantId, dto.role);
+    return tx.user.update({ where: { id }, data: updateData, select: SAFE_USER_SELECT });
+  });
   await writeAuditLog({ tenantId, userId: actorId, action: 'user.updated', entityType: 'User', entityId: id, after: dto as Record<string, unknown> });
   return user;
 }
@@ -136,14 +147,13 @@ export async function bulkUpdate(ids: string[], tenantId: string, actorId: strin
     throw new ValidationError('Invalid status value provided');
   }
 
-  await prisma.user.updateMany({
-    // Prevent bulk updating System Admins — use mode: 'insensitive' for case-safe exclusion
-    where: {
-      id: { in: ids },
-      tenantId,
-      NOT: { role: { equals: Role.SYSTEM_ADMIN, mode: 'insensitive' } },
-    },
-    data: dto
+  await prisma.$transaction(async tx => {
+    const where = { id: { in: ids }, tenantId, NOT: { role: { equals: Role.SYSTEM_ADMIN, mode: 'insensitive' as const } } };
+    if (dto.role) {
+      const targets = await tx.user.findMany({ where, select: { id: true } });
+      for (const target of targets) await replaceUserRole(tx, target.id, tenantId, dto.role);
+    }
+    await tx.user.updateMany({ where, data: dto });
   });
   await writeAuditLog({ tenantId, userId: actorId, action: 'user.bulk_updated', entityType: 'User', after: { ids, updates: dto }, severity: 'WARNING' });
 }

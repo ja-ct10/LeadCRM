@@ -14,12 +14,11 @@ http://localhost:4000/api/v1
 
 Protected endpoints accept the HttpOnly `leadcrm_token` cookie or a persisted
 session's Bearer token. Browser clients use the same-origin /api/proxy transport.
-Public registration, login, verification and recovery endpoints do not require
-a session. See [Authentication and onboarding](authentication.md).
+Login and password recovery do not require a session. Account creation requires an administrator-issued invitation. See [Authentication and onboarding](authentication.md).
 
 Signed identity is verified against the session store and current database
 user/role. Tenant context comes from the authenticated session. CRM endpoints
-also enforce onboarding readiness, subscription restrictions and RBAC.
+also enforce employee-domain access, password-change requirements, onboarding readiness, and RBAC.
 
 ## Standard Response Envelope
 ```typescript
@@ -37,49 +36,22 @@ also enforce onboarding readiness, subscription restrictions and RBAC.
 
 ## Auth Endpoints
 
-All paths below are relative to /api/v1.
+All paths are relative to /api/v1. See [authentication and onboarding](authentication.md).
 
 | Method | Path | Responsibility |
 | --- | --- | --- |
-| POST | /auth/register/guest | Account-only signup; pending Guest owner and step-0 workspace |
-| POST | /auth/register/client-admin | Legacy alias; new founders still start Guest |
-| POST | /auth/login | Password login; canonical user and HttpOnly session cookie |
-| GET | /auth/me | Current database user/workspace state |
-| POST | /auth/logout | Revoke the session and expire the cookie |
-| POST | /auth/oauth/google | Verify Google ID token; return the existing or new Guest session to the server bridge |
-| POST | /auth/verify-registration-otp | Activate pending account using email and six-digit code; issue session |
-| GET | /auth/verify-email?token=... | Browser: frontend handoff; Accept: application/json: consume link and issue session |
-| POST | /auth/resend-verification | Request a fresh verification email |
-| POST | /auth/send-registration-otp | Compatibility alias for verification delivery |
-| POST | /auth/forgot-password | Request a password reset |
-| POST | /auth/reset-password | Complete a password reset |
-| GET | /auth/onboarding/status | Authenticated canonical user snapshot; frontend uses /auth/me |
-| PATCH | /auth/onboarding/step | Owner-only adjacent progress with expectedStep |
-| POST | /auth/onboarding/complete | Owner-only final company save and completion |
-| PATCH | /auth/onboarding/workspace | Compatibility alias for final company completion; same state checks |
-| PATCH | /auth/oauth/complete-profile | Compatibility alias for final company completion; same state checks |
+| POST | /auth/login | Employee email/password login; canonical user and HttpOnly session cookie |
+| GET | /auth/me | Current database-backed account state, including mustChangePassword |
+| POST | /auth/logout | Revoke session and expire cookie |
+| POST | /auth/change-password | Verify currentPassword, store strong password, clear first-login flag and revoke old sessions |
+| POST | /auth/forgot-password | Request password recovery |
+| POST | /auth/reset-password | Complete password recovery and revoke sessions |
+| POST | /auth/invitations/accept | Accept an administrator-issued employee invitation |
+| GET | /auth/onboarding/status | Canonical account state |
+| POST | /auth/onboarding/complete | Client Admin informational acknowledgment; empty body |
 
-Registration accepts firstName, lastName, email, password and acceptTerms=true.
-An invitationToken uses the existing tenant and explicitly invited role instead.
-Registration returns `{ success: true, data: { user: { id, email, role, tenantId, emailSent } } }`;
-it does not establish a session before verification.
+Public signup, Google sign-in, OTP, verification, company setup, and step-progression routes are not registered. System Admin provisioning uses /admin/tenants with no plan selection. SaaS billing, seat, document-verification, pricing, checkout, and payment-method APIs are retired. Customer invoice APIs under /billing/invoices remain tenant-scoped and permission-protected.
 
-Authenticated responses use `{ success: true, data: { user: AuthUser } }`.
-The shared [AuthUser contract](../shared/src/contracts/auth.contract.ts) includes
-role, status, emailVerified, tenant/company fields, onboardingStep,
-onboardingCompletedAt and isTenantOwner. Login does not return a token in browser
-JSON; the Google server bridge consumes its token server-side.
-
-Progress example: `{ "expectedStep": 0, "step": 1 }`.
-Only adjacent transitions among 0/1/2 are accepted. Final completion requires
-persisted step 2 and companyName, industry, companySize, optional website and
-timezone. It atomically sets step 3 and onboardingCompletedAt, preserving Guest.
-A repeated completion returns existing state. Stale transitions return 409;
-ownership/verification violations return 403. Old empty completion payloads fail
-validation.
-
-Errors may use `{ success: false, error: { code, message } }` as well as a string
-error. Clients must preserve HTTP status and code for recovery.
 
 ---
 

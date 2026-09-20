@@ -1,5 +1,7 @@
 # LeadCRM
 
+LeadCRM is the internally managed CRM for Camxian Technologies. Start at `/login`. See [current authentication and onboarding](docs/authentication.md) and the [internal CRM migration notes](docs/plans/internal-camxian-crm.md); historical SaaS descriptions below do not define current access behavior.
+
 > **Enterprise-Grade Multi-Tenant CRM & Automated Workflow Execution Platform**  
 > Tailored for IT Solutions Providers, Security Firms, Managed Service Providers (MSPs), and Telecom Agencies.
 
