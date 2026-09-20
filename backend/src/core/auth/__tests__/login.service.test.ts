@@ -9,6 +9,13 @@ vi.mock('../session.service', () => ({ createSession: vi.fn(), revokeSession: vi
 vi.mock('../jwt.service', () => ({ signToken: vi.fn().mockReturnValue('server-only-token') }));
 import { db, user, resetDb } from './auth-test-db';
 import { loginUser } from '../auth.service';
+
+it.each(['Guest', 'GUEST', ' guest '])('rejects legacy %s login even with a valid employee email/password', async role => {
+  user.role = role;
+  vi.mocked(comparePassword).mockResolvedValue(true);
+  await expect(loginUser({ email: user.email, password: 'secret' })).rejects.toHaveProperty('code', 'ROLE_RETIRED');
+  expect(signToken).not.toHaveBeenCalled();
+});
 import { readAuthUser } from '../auth-user';
 import { login } from '../auth.controller';
 import { comparePassword } from '../../../shared/helpers/crypto';
@@ -21,11 +28,11 @@ beforeEach(() => {
   vi.stubEnv('NODE_ENV', 'production');
   vi.mocked(comparePassword).mockResolvedValue(true);
 });
-it('login and session restore return the same Guest onboarding state', async () => {
+it('login and session restore return the same Sales onboarding state', async () => {
   const result = await loginUser({ email: user.email, password: 'secret' });
   expect(result.user).toEqual(await readAuthUser(user.id, user.tenantId));
   expect(result.user).toMatchObject({
-    role: 'Guest', onboardingStep: 0, onboardingCompletedAt: null, isTenantOwner: true,
+    role: 'Sales', onboardingStep: 0, onboardingCompletedAt: null, isTenantOwner: true,
   });
   expect(createSession).toHaveBeenCalledOnce();
 });

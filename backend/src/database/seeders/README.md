@@ -14,7 +14,6 @@ Main demo account seeder used in production and development.
 - `super@leadcrm.com` / `admin123` — System Admin alias
 - `admin@democorp.com` / `admin123` — Client Admin (Demo Corp)
 - `bob@democorp.com` / `admin123` — Sales Rep (Demo Corp)
-- `guest@democorp.com` / `guest123` — Guest (Sandbox)
 
 **Run:**
 
@@ -147,7 +146,6 @@ SYSTEM_ADMIN_PASSWORD=admin123
 
 # Demo Mode (for OTP bypass)
 DEMO_MODE=true
-DEV_SEED_EMAILS=admin@gmail.com,super@leadcrm.com,admin@democorp.com,bob@democorp.com,guest@democorp.com
 ```
 
 ## Safety Notes

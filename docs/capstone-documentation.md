@@ -1,3 +1,5 @@
+> Historical design: superseded by [the current authentication and role model](authentication.md). The registration/subscription flows below are not active.
+
 # LeadCRM: A SaaS-Based Progressive Web CRM System for Lead Management and Workflow Automation
 
 ## A Capstone Project Proposal

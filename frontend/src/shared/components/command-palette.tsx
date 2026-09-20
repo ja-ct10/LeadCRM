@@ -117,9 +117,7 @@ export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandP
     }
     if (item.name === 'Admin Console') return false;
     if (user?.role?.toLowerCase() === 'client admin') return true;
-    if (user?.role?.toLowerCase() === 'guest') {
-      return ['Dashboard', 'Leads', 'Pipeline', 'Workflows', 'Campaigns'].includes(item.name);
-    }
+
     if (item.roles?.some((r) => r.toLowerCase() === user?.role?.toLowerCase())) return true;
     if (item.permissions?.some((p) => userPermissions.includes(p))) return true;
     return false;

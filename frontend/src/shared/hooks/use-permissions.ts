@@ -7,7 +7,7 @@ import type { PermissionKey } from '@leadcrm/shared';
 import { USE_MOCK_AUTH } from '@/lib/config';
 
 // Roles that bypass all permission checks (case-insensitive check)
-const SUPER_ROLES = ['guest', 'user', 'client admin', 'system admin', 'client_admin'] as const;
+const SUPER_ROLES = ['client admin', 'system admin'] as const;
 
 /**
  * PERMISSION_BRIDGE — exported for CrmLayout nav access checks.
@@ -67,7 +67,8 @@ export function usePermissions(): string[] {
     if (SUPER_ROLES.includes(user.role.toLowerCase().trim() as typeof SUPER_ROLES[number])) return ['*'];
 
     // Real-API path: permissions are loaded from GET /users/:id/permissions
-    if (!USE_MOCK_AUTH && isPermissionsLoaded && Object.keys(permissions).length > 0) {
+    if (!USE_MOCK_AUTH) {
+      if (!isPermissionsLoaded) return [];
       // Expand ResolvedPermissions map into an array of module.action strings
       const keys: string[] = [];
       for (const [module, flags] of Object.entries(permissions)) {

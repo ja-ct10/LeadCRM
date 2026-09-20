@@ -2,16 +2,17 @@
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { NotFoundError, ForbiddenError, ConflictError } from '../../../shared/errors/http-error';
 import { isSuperRole as checkIsSuperRole } from '../../../shared/utils/is-super-role';
-import type { CreateRoleDto, UpdateRoleDto, AssignRoleDto } from './roles.dto';
+import type { CreateRoleDto, UpdateRoleDto } from './roles.dto';
+import prisma from '../../../config/database.config';
 
 // Reserved names that cannot be used for custom roles (case-insensitive).
 // Includes legacy role names to prevent re-creation of removed system roles.
 const RESERVED_ROLE_NAMES = [
-  'user', 'guest', 'client admin', 'system admin',
+  'guest', 'clientadmin', 'systemadmin',
 ];
 
 function isReservedName(name: string): boolean {
-  return RESERVED_ROLE_NAMES.includes(name.toLowerCase().trim());
+  return RESERVED_ROLE_NAMES.includes(name.toLowerCase().replace(/[\s_-]/g, ''));
 }
 
 // ── Queries ───────────────────────────────────────────────────────────────
@@ -56,6 +57,7 @@ export async function updateRole(id: string, tenantId: string, userId: string, d
 
   // Name uniqueness — exclude the current role
   if (dto.name) {
+    if (isReservedName(dto.name)) throw new ConflictError('This role name is reserved');
     const existing = await repo.findRoleByName(dto.name, tenantId);
     if (existing && existing.id !== id) throw new ConflictError('A role with this name already exists');
   }
@@ -112,7 +114,9 @@ export async function assignRoleToUser(
   const role = await repo.findRoleById(roleId, tenantId);
   if (!role) throw new NotFoundError('Role');
 
-  if (role.name === 'System Admin') throw new ForbiddenError('System Admin cannot be assigned from the client portal');
+  if (role.isArchived || role.isSystemRole || isReservedName(role.name)) {
+    throw new ForbiddenError('Select an active custom role');
+  }
   const assignment = await repo.assignRoleToUser(targetUserId, roleId, tenantId);
   await writeAuditLog({
     tenantId, userId: actorId,
@@ -142,11 +146,12 @@ export async function removeRoleFromUser(
 export async function getUserPermissions(
   userId: string,
   tenantId: string,
-  userRole?: string,
 ): Promise<Record<string, { canView: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean }>> {
   const FULL_ACCESS = { canView: true, canCreate: true, canEdit: true, canDelete: true };
 
-  if (checkIsSuperRole(userRole ?? '')) {
+  const target = await prisma.user.findFirst({ where: { id: userId, tenantId }, select: { role: true } });
+  if (!target) throw new NotFoundError('User');
+  if (checkIsSuperRole(target.role)) {
     const modules = ['dashboard','contacts','accounts','deals','tasks','campaigns','workflows','settings','users','roles','reports','billing','audit'];
     return Object.fromEntries(modules.map(m => [m, FULL_ACCESS]));
   }

@@ -1,3 +1,5 @@
+> Historical implementation record. The final role model is documented in [authentication](../authentication.md) and [role migration](../plans/final-role-model.md).
+
 # Camxian internal CRM implementation
 
 ## Inspection and implementation scope

@@ -31,9 +31,8 @@ interface AccountDropdownProps {
 const SWITCH_ACCOUNTS: SwitchAccount[] = [
   { email: 'admin@gmail.com',    password: 'admin123', label: 'System Admin',  role: 'System Admin', initials: 'SA' },
   { email: 'super@leadcrm.com', password: 'admin123', label: 'System Admin',  role: 'System Admin', initials: 'SA' },
-  { email: 'admin@democorp.com', password: 'admin123', label: 'Alice Admin',   role: 'Client Admin', initials: 'AA' },
-  { email: 'bob@democorp.com',   password: 'admin123', label: 'Bob Sales',     role: 'User',         initials: 'BS' },
-  { email: 'guest@democorp.com', password: 'guest123', label: 'Guest User',    role: 'Guest',        initials: 'GU' },
+  { email: 'admin@camxian.com', password: 'admin123', label: 'Alice Admin',   role: 'Client Admin', initials: 'AA' },
+  { email: 'bob@camxian.com',   password: 'admin123', label: 'Bob Sales',     role: 'User',         initials: 'BS' },
 ];
 
 // â”€â”€ Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

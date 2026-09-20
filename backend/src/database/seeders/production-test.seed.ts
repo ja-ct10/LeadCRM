@@ -10,6 +10,7 @@
 import prisma from '../../config/database.config';
 import bcrypt from 'bcryptjs';
 import { Role } from '../../shared/constants/roles';
+import { seedSystemRoles } from './roles.seed';
 
 const TEST_TENANT_ID = 'tenant_test_prod';
 const TEST_USER_ID = 'user_test_prod';
@@ -53,7 +54,7 @@ async function seedProductionTestData() {
 
     // 2. Create test user
     console.log('👤 Creating test user...');
-    const hashedPassword = await bcrypt.hash('TestPassword123!', 10);
+    const hashedPassword = await bcrypt.hash(process.env.TEST_USER_PASSWORD || (() => { throw new Error('TEST_USER_PASSWORD is required'); })(), 10);
     
     await prisma.user.upsert({
       where: { id: TEST_USER_ID },
@@ -61,13 +62,21 @@ async function seedProductionTestData() {
       create: {
         id: TEST_USER_ID,
         tenantId: TEST_TENANT_ID,
-        email: 'test-user@leadcrm.local',
+        email: 'test-user@camxian.com',
         firstName: 'Test',
         lastName: 'User',
         passwordHash: hashedPassword,
         role: Role.CLIENT_ADMIN,
         status: 'ACTIVE',
       },
+    });
+    await seedSystemRoles(TEST_TENANT_ID);
+    const adminRole = await prisma.roleDefinition.findUniqueOrThrow({
+      where: { tenantId_name: { tenantId: TEST_TENANT_ID, name: Role.CLIENT_ADMIN } },
+    });
+    await prisma.userRole.upsert({
+      where: { userId_roleId_tenantId: { userId: TEST_USER_ID, roleId: adminRole.id, tenantId: TEST_TENANT_ID } },
+      create: { userId: TEST_USER_ID, roleId: adminRole.id, tenantId: TEST_TENANT_ID }, update: {},
     });
     console.log('✅ Test user created/updated');
 

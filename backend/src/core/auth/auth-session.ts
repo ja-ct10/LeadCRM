@@ -1,6 +1,7 @@
 import { signToken } from './jwt.service';
 import { createSession } from './session.service';
 import { readAuthUser } from './auth-user';
+import { requireEmployeeAccount } from './account-access';
 
 export const AUTH_COOKIE_NAME = 'leadcrm_token';
 export const AUTH_COOKIE_OPTIONS = {
@@ -20,6 +21,7 @@ export async function createAuthSessionToken(
   user: { id: string; tenantId: string; role: string; email: string },
   ctx: SessionContext = {},
 ) {
+  requireEmployeeAccount(user);
   const token = signToken({
     userId: user.id,
     tenantId: user.tenantId,

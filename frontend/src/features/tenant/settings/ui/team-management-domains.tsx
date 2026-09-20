@@ -18,7 +18,7 @@ const DEFAULT_SETTINGS: TenantDomainSettings = {
   tenantId: '',
   restrictToEmailDomains: false,
   joinPolicy: 'after_approval',
-  defaultRole: 'User',
+  defaultRole: '',
   createdAt: null,
   updatedAt: null,
 };

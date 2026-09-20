@@ -2,7 +2,7 @@
  * environmentGate — enforces subscription-based production access.
  *
  * This is a named re-export of subscriptionGate with explicit documentation
- * of the Guest lifecycle security model.
+ * of the legacy subscription lifecycle security model.
  *
  * ╔══════════════════════════════════════════════════════════════════╗
  * ║  CRITICAL: isSuperRole() and environmentGate are SEPARATE        ║
@@ -25,7 +25,7 @@
  * Access policy (delegated to subscriptionGate):
  *   System Admin           → bypass (platform operator)
  *   ACTIVE subscription    → full access
- *   NONE (sandbox/guest)   → GET passes, mutations → 403 SUBSCRIPTION_REQUIRED
+ *   NONE (sandbox)   → GET passes, mutations → 403 SUBSCRIPTION_REQUIRED
  *   PAST_DUE               → GET passes, mutations → 402 PAYMENT_REQUIRED
  *   CANCELLED / EXPIRED    → GET passes, mutations → 402 PAYMENT_REQUIRED
  *

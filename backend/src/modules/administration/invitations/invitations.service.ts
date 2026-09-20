@@ -29,11 +29,11 @@ export async function createInvitations(
 
   // Validate role exists for this tenant
   const role = await prisma.roleDefinition.findFirst({
-    where: { id: roleId, tenantId },
+    where: { id: roleId, tenantId, isArchived: false, isSystemRole: false },
     select: { id: true, name: true },
   });
 
-  if (!role || role.name === 'System Admin') {
+  if (!role || ['guest', 'systemadmin', 'clientadmin'].includes(role.name.toLowerCase().replace(/[\s_-]/g, ''))) {
     throw new AppError('Role not found for this tenant.', 400);
   }
 

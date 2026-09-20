@@ -23,7 +23,7 @@ import type { AuthUserSource, AuthUserResponse } from '../auth-user';
 // This is the source of truth. If a field is added to AuthUserResponse,
 // add it here too. If it's not here, it must not appear in the output.
 const CANONICAL_USER_KEYS: Array<keyof AuthUserResponse> = [
-  'mustChangePassword', 'avatarUrl', 'timeZone', 'website', 'isTenantOwner', 'hasPassword',
+  'activeEnvironment', 'mustChangePassword', 'avatarUrl', 'timeZone', 'website', 'isTenantOwner', 'hasPassword',
   'id',
   'email',
   'role',

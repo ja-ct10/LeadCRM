@@ -31,6 +31,8 @@ export interface RegisterResponse {
  * Used by AuthContext when NEXT_PUBLIC_USE_MOCK_AUTH !== 'true'.
  */
 export const authApi = {
+  changeEnvironment: (environment: import('@leadcrm/shared').CrmEnvironment) =>
+    apiClient.patch<import('@leadcrm/shared').EnvironmentResponse>('/auth/environment', { environment }),
   login: (payload: LoginPayload) =>
     apiClient.post<AuthResponse>('/auth/login', payload),
 

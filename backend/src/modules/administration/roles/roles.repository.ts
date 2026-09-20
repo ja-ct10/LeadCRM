@@ -1,12 +1,13 @@
 import { ForbiddenError, NotFoundError } from '../../../shared/errors/http-error';
 import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
+import { requireEmployeeAccount } from '../../../core/auth/account-access';
 
 // ── Read ──────────────────────────────────────────────────────────────────
 
 export async function findAllRoles(tenantId: string) {
   return prisma.roleDefinition.findMany({
-    where: { tenantId, isArchived: false },
+    where: { tenantId, isArchived: false, NOT: { name: { equals: 'Guest', mode: 'insensitive' } } },
     orderBy: { name: 'asc' },
     include: {
       _count: { select: { userRoles: true } },
@@ -20,7 +21,7 @@ export async function findAllRoles(tenantId: string) {
 /** Full detail: includes RolePermission rows and assigned users. */
 export async function findRoleById(id: string, tenantId: string) {
   return prisma.roleDefinition.findFirst({
-    where: { id, tenantId },
+    where: { id, tenantId, isArchived: false, NOT: { name: { equals: 'Guest', mode: 'insensitive' } } },
     include: {
       _count: { select: { userRoles: true } },
       permissions: {
@@ -82,7 +83,13 @@ export async function updateRoleMeta(
   const existing = await prisma.roleDefinition.findFirst({ where: { id, tenantId } });
   if (!existing) return null;
   if (existing.isSystemRole) return null;
-  return prisma.roleDefinition.update({ where: { id }, data });
+  return prisma.$transaction(async tx => {
+    const role = await tx.roleDefinition.update({ where: { id }, data });
+    if (data.name && data.name !== existing.name) {
+      await tx.user.updateMany({ where: { tenantId, role: existing.name }, data: { role: data.name } });
+    }
+    return role;
+  });
 }
 
 /**
@@ -123,15 +130,24 @@ export async function archiveRole(id: string, tenantId: string) {
 // ── User–Role junction ────────────────────────────────────────────────────
 
 export async function assignRoleToUser(userId: string, roleId: string, tenantId: string) {
-  return prisma.userRole.upsert({
-    where: { userId_roleId_tenantId: { userId, roleId, tenantId } },
-    create: { userId, roleId, tenantId },
-    update: {},
+  return prisma.$transaction(async tx => {
+    const role = await tx.roleDefinition.findFirst({ where: { id: roleId, tenantId, isArchived: false } });
+    if (!role) throw new NotFoundError('Role');
+    await replaceUserRole(tx, userId, tenantId, role.name);
+    return tx.userRole.findUniqueOrThrow({ where: { userId_roleId_tenantId: { userId, roleId, tenantId } } });
   });
 }
 
 export async function removeRoleFromUser(userId: string, roleId: string, tenantId: string) {
-  return prisma.userRole.deleteMany({ where: { userId, roleId, tenantId } });
+  return prisma.$transaction(async tx => {
+    const user = await tx.user.findFirst({ where: { id: userId, tenantId } });
+    const role = await tx.roleDefinition.findFirst({ where: { id: roleId, tenantId } });
+    if (!user || !role) throw new NotFoundError('User or role');
+    if (user.role === 'System Admin' || user.role === 'Client Admin' || user.role === role.name) {
+      throw new ForbiddenError('Assign a replacement custom role before removing the primary role');
+    }
+    return tx.userRole.deleteMany({ where: { userId, roleId, tenantId } });
+  });
 }
 
 export async function countActiveUserRoles(roleId: string, tenantId: string): Promise<number> {
@@ -149,8 +165,8 @@ export async function findUserEffectivePermissions(
   tenantId: string,
 ): Promise<Record<string, { canView: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean }>> {
   const userRoles = await prisma.userRole.findMany({
-    where: { userId, tenantId },
-    include: { role: { include: { permissions: true } } },
+    where: { userId, tenantId, user: { tenantId }, role: { tenantId, isArchived: false, NOT: { name: { equals: 'Guest', mode: 'insensitive' } } } },
+    include: { role: { include: { permissions: { where: { tenantId } } } } },
   });
 
   const resolved: Record<string, { canView: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean }> = {};
@@ -182,9 +198,11 @@ export async function replaceUserRole(
     tx.roleDefinition.findFirst({ where: { tenantId, name: roleName, isArchived: false } }),
   ]);
   if (!user || !role) throw new NotFoundError('User or role');
-  if (user.role === 'System Admin' || role.name === 'System Admin') {
-    throw new ForbiddenError('System Admin assignments are managed outside the client portal');
+  if (['System Admin', 'Client Admin'].includes(user.role) || role.isSystemRole ||
+      ['guest', 'systemadmin', 'clientadmin'].includes(role.name.toLowerCase().replace(/[\s_-]/g, ''))) {
+    throw new ForbiddenError('Select an active custom role for a non-administrator user');
   }
+  requireEmployeeAccount({ role: role.name, email: user.email });
   await tx.user.update({ where: { id: user.id }, data: { role: role.name } });
   await tx.userRole.deleteMany({ where: { userId, tenantId } });
   await tx.userRole.create({ data: { userId, tenantId, roleId: role.id } });

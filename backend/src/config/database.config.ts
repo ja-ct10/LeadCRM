@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { AppError } from '../shared/errors/app-error';
+import { installEnvironmentScoping } from '../core/environment/environment-prisma';
 
 // ── Singleton raw Prisma client ───────────────────────
 // This is the default export used by all repositories and services.
@@ -7,6 +8,7 @@ import { AppError } from '../shared/errors/app-error';
 const prisma = new PrismaClient({
   log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
 });
+installEnvironmentScoping(prisma);
 
 export default prisma;
 

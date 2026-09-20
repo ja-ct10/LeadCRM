@@ -442,7 +442,7 @@ async function handleSubscriptionDeleted(
       where: { id: subscription.id },
       data:  { status: 'CANCELLED', cancelledAt: new Date() },
     }),
-    // Return tenant to Guest state — no subscription, no plan, sandbox only.
+    // Return tenant to unsubscribed state — no subscription, no plan, sandbox only.
     // subscriptionStatus: NONE (not CANCELLED) so the billing UI shows "no plan"
     // rather than a confusing "cancelled" state for a re-subscribable tenant.
     prisma.tenant.update({

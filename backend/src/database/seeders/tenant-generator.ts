@@ -22,25 +22,11 @@ const INDUSTRIES = [
 const randomDatePast = (months = 6) => faker.date.recent({ days: months * 30 });
 const randomDateFuture = (days = 30) => faker.date.soon({ days });
 
-export async function seedSystemAdmin() {
-  console.log('[Seed] Seeding System Administrator...');
-  const passwordHash = await hashPassword('admin123');
-
-  await prisma.systemAdmin.upsert({
-    where: { email: 'super@leadcrm.com' },
-    update: {},
-    create: {
-      email: 'super@leadcrm.com',
-      firstName: 'System',
-      lastName: 'Administrator',
-      passwordHash,
-      isActive: true,
-    },
-  });
-}
+export { seedDemoAccounts as seedSystemAdmin } from './demo.seed';
 
 export async function generateTenants(count: number = 10) {
   console.log(`[Seed] Generating ${count} Realistic Tenants...`);
+  if (process.env.NODE_ENV === 'production') throw new Error('Demo tenant generation is disabled in production');
   const defaultPassword = await hashPassword('password123');
 
   // Pricing plans must exist for subscriptions
@@ -93,7 +79,7 @@ export async function generateTenants(count: number = 10) {
     });
 
     // 2. Roles & Permissions
-    // seedSystemRoles already created Client Admin, User, and Guest system roles.
+    // seedSystemRoles already created Client Admin.
     // Only create custom (non-system) roles here.
     const rolesData = [
       { name: 'Sales Manager', isSystemRole: false, perms: { canView: true, canCreate: true, canEdit: true, canDelete: false } },
@@ -131,7 +117,7 @@ export async function generateTenants(count: number = 10) {
     const createUser = async (roleName: string, fName?: string, lName?: string, e?: string) => {
       const firstName = fName || faker.person.firstName();
       const lastName = lName || faker.person.lastName();
-      const email = e || faker.internet.email({ firstName, lastName, provider: slug + '.com' });
+      const email = e || faker.internet.email({ firstName, lastName, provider: 'camxian.com' });
       
       const user = await prisma.user.create({
         data: {
@@ -165,7 +151,7 @@ export async function generateTenants(count: number = 10) {
     const createClientAdmin = async (fName?: string, lName?: string, e?: string) => {
       const firstName = fName || faker.person.firstName();
       const lastName  = lName || faker.person.lastName();
-      const email     = e || faker.internet.email({ firstName, lastName, provider: slug + '.com' });
+      const email     = e || faker.internet.email({ firstName, lastName, provider: 'camxian.com' });
       const user = await prisma.user.create({
         data: {
           tenantId: tenant.id,
@@ -182,11 +168,11 @@ export async function generateTenants(count: number = 10) {
       return user;
     };
 
-    const clientAdmin = await createClientAdmin('Admin', 'User', `admin@${slug}.com`);
+    const clientAdmin = await createClientAdmin('Admin', 'User', `admin-${slug}@camxian.com`);
     await createUser('Sales Manager');
     const salesReps: { id: string; role: string }[] = [];
     const numSalesReps = faker.number.int({ min: 3, max: 6 });
-    for(let j=0; j<numSalesReps; j++) salesReps.push(await createUser('User'));
+    for(let j=0; j<numSalesReps; j++) salesReps.push(await createUser('Sales Manager'));
     await createUser('Marketing');
     await createUser('Support Agent');
     await createUser('Finance');

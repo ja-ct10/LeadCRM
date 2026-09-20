@@ -3,7 +3,7 @@ import prisma from '../../config/database.config';
 import { hashPassword } from '../../shared/helpers/crypto';
 import { Role } from '../../shared/constants/roles';
 import { loginUser } from './auth.service';
-import { registerClientAdmin as registerClientAdminService, registerGuest as registerGuestService } from './registration.service';
+import { acceptInvitation as acceptInvitationService } from './registration.service';
 import { requestPasswordReset, resetPasswordWithToken } from './password-reset.service';
 import { ForgotPasswordSchema, ResetPasswordSchema } from './auth.dto';
 import { revokeSession } from './session.service';
@@ -136,26 +136,12 @@ export async function seedDemo(_req: Request, res: Response, next: NextFunction)
   }
 }
 
-export async function registerClientAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function acceptInvitation(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const result = await registerClientAdminService(req.body);
+    const result = await acceptInvitationService(req.body);
     res.status(201).json({
       success: true,
       data: { user: result },
-      ...(result.emailSent === false ? { warning: 'Account created but verification email could not be sent. Use the resend option on the verification page.' } : {}),
-    });
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function registerGuest(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const result = await registerGuestService(req.body);
-    res.status(201).json({
-      success: true,
-      data: { user: result },
-      ...(result.emailSent === false ? { warning: 'Account created but verification email could not be sent. Use the resend option on the verification page.' } : {}),
     });
   } catch (err) {
     next(err);

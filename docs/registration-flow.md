@@ -1,3 +1,5 @@
+> Historical design: superseded by [the current authentication and role model](authentication.md). The registration/subscription flows below are not active.
+
 # Registration & Onboarding Flow
 
 > **Last updated:** 2026-08-09

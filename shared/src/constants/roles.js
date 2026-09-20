@@ -1,11 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Role = void 0;
-// RBAC Roles — defined once, imported by both frontend and backend
-// Adding a new role: add it here only. Code elsewhere stays the same.
+// Predefined administrator identities. Custom roles are tenant data.
 exports.Role = {
-    ADMIN: 'Admin',
-    SUPER_USER: 'Super User',
-    USER: 'User',
-    RESTRICTED_USER: 'Restricted User',
+    CLIENT_ADMIN: 'Client Admin',
+    SYSTEM_ADMIN: 'System Admin',
 };

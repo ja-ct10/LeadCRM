@@ -414,7 +414,7 @@ For detailed architectural specifications and guidelines, consult the files in [
 | [`docs/API.md`](./docs/API.md)                                                 | Full REST API specification (85+ endpoints)                                 |
 | [`docs/authentication.md`](./docs/authentication.md)                           | Authentication Architecture & NextAuth integration                          |
 | [`docs/user-roles.md`](./docs/user-roles.md)                                   | Role-Based Access Control (RBAC) overview                                   |
-| [`docs/registration-flow.md`](./docs/registration-flow.md)                     | Client vs. Guest Registration flows                                         |
+| [`docs/registration-flow.md`](./docs/registration-flow.md)                     | Historical registration flows (superseded)                                         |
 | [`docs/demo-accounts.md`](./docs/demo-accounts.md)                             | Database seeder & demo credentials                                          |
 | [`docs/database/erd.md`](./docs/database/erd.md)                               | Database Schema v2 Mermaid ERD & entity descriptions                        |
 | [`docs/security/permission-matrix.md`](./docs/security/permission-matrix.md)   | Exhaustive RBAC permission matrix and role specifications                   |

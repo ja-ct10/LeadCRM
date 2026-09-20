@@ -4,7 +4,7 @@
  * Blocks Stripe checkout for SANDBOX tenants that have not been
  * verified by an admin.
  *
- * Only applies to SANDBOX tenants (new guests before their first subscription).
+ * Only applies to SANDBOX tenants (legacy subscription accounts).
  * Existing ACTIVE subscribers bypass this gate — they're already verified.
  *
  * Placement in middleware chain:

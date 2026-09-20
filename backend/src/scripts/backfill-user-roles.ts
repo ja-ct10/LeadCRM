@@ -19,7 +19,7 @@ async function main(): Promise<void> {
   for (const user of users) {
     // Find the RoleDefinition matching the user's role string in their tenant
     const roleDef = await prisma.roleDefinition.findFirst({
-      where: { tenantId: user.tenantId, name: user.role },
+      where: { tenantId: user.tenantId, name: user.role, isArchived: false },
     });
 
     if (!roleDef) {

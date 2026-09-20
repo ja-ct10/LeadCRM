@@ -9,6 +9,12 @@ import { validateSession } from '../../../core/auth/session.service';
 import { appConfig } from '../../../config/app.config';
 
 const claims = { userId: 'user-1', tenantId: 'tenant-1', role: 'Client Admin' };
+it('rejects an existing session after its current database role is retired', async () => {
+  vi.mocked(readAuthUser).mockResolvedValue({ role: 'Guest', email: 'staff@camxian.com', status: 'ACTIVE' } as never);
+  const next = vi.fn();
+  await authMiddleware(request() as never, {} as never, next);
+  expect(next).toHaveBeenCalledWith(expect.objectContaining({ code: 'ROLE_RETIRED' }));
+});
 const request = () => ({
   cookies: { leadcrm_token: jwt.sign(claims, appConfig.jwtSecret) }, headers: {},
 });
@@ -16,7 +22,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(validateSession).mockResolvedValue(claims);
   vi.mocked(readAuthUser).mockResolvedValue({
-    id: 'user-1', tenantId: 'tenant-1', role: 'Guest', status: 'ACTIVE',
+    id: 'user-1', tenantId: 'tenant-1', role: 'Sales', status: 'ACTIVE',
     email: 'owner@camxian.com',
   } as never);
 });
@@ -24,7 +30,7 @@ it('uses the current database role instead of a stale Client Admin JWT role', as
   const req = request();
   const next = vi.fn();
   await authMiddleware(req as never, {} as never, next);
-  expect(req).toHaveProperty('user.role', 'Guest');
+  expect(req).toHaveProperty('user.role', 'Sales');
   expect(req).toHaveProperty('authUser.id', 'user-1');
   expect(next).toHaveBeenCalledWith();
 });

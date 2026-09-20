@@ -39,6 +39,6 @@ Public signup, Google account sign-in, OTP, email-verification sessions, company
 
 Apply migration 20260919000000_internal_accounts before starting the new backend. It adds User.mustChangePassword with default true, exempts existing System Admins, and changes the default new-user role to User. Existing non-System Admin accounts will be asked to change their password once. Passwordless legacy Google accounts need password recovery or administrator provisioning.
 
-The migration does not rewrite email addresses, promote Guest accounts, erase historical subscriptions, or modify existing custom-role permissions. Legacy Guest records are retained for compatibility; new tenant role seeding offers Client Admin and User, with custom roles managed through the existing RBAC tools.
+The final role migration disables historical Guest accounts, revokes their sessions and pending invitations, and archives their role definitions without deleting identities, CRM data, assignments, or permissions. Only Client Admin is seeded as a predefined tenant role. There is no automatic User role: an administrator must select an existing custom role. Existing User definitions become editable custom roles with unchanged permissions. See [migration and verification](plans/final-role-model.md).
 
 See [implementation and retirement inventory](plans/internal-camxian-crm.md) for affected files, preserved dependencies, and verification.

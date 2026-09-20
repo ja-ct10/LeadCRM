@@ -80,7 +80,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
   },
   {
     key:         'viewer',
-    name:        'Viewer / Guest',
+    name:        'Viewer',
     description: 'Read-only access to CRM, campaigns, workflows, reports, and settings.',
     permissions: {
       dashboard:     V,

@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 
 /**
  * Seeds a complete seeder account with tenant, user, and sample CRM data.
- * Credentials: seeder@leadcrm.com / seeder123
+ * Credentials: seeder@camxian.com / seeder123
  * Tenant: seeder-company
  * 
  * Run: npm run db:seed:seeder
@@ -15,8 +15,9 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('[Seed] Seeding Seeder Company tenant data...');
 
-  const SEEDER_EMAIL = 'seeder@leadcrm.com';
-  const SEEDER_PASSWORD = 'seeder123';
+  const SEEDER_EMAIL = 'seeder@camxian.com';
+  const SEEDER_PASSWORD = process.env.SEEDER_PASSWORD ?? (process.env.NODE_ENV === 'production' ? '' : 'seeder123');
+  if (!SEEDER_PASSWORD) throw new Error('SEEDER_PASSWORD is required in production');
 
   // ── 1. Create Tenant ────────────────────────────────────────────────────
   const tenant = await prisma.tenant.upsert({
@@ -82,12 +83,19 @@ async function main() {
         name: Role.CLIENT_ADMIN,
       },
     },
-    update: {},
+    update: { isSystemRole: true },
     create: {
       tenantId: tenant.id,
       name: Role.CLIENT_ADMIN,
+      isSystemRole: true,
       description: 'Full access to all tenant features',
     },
+  });
+
+  await prisma.userRole.upsert({
+    where: { userId_roleId_tenantId: { userId: user.id, roleId: clientAdminRole.id, tenantId: tenant.id } },
+    create: { userId: user.id, roleId: clientAdminRole.id, tenantId: tenant.id },
+    update: {},
   });
 
   const modules = [

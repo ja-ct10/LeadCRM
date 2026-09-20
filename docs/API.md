@@ -42,6 +42,7 @@ All paths are relative to /api/v1. See [authentication and onboarding](authentic
 | --- | --- | --- |
 | POST | /auth/login | Employee email/password login; canonical user and HttpOnly session cookie |
 | GET | /auth/me | Current database-backed account state, including mustChangePassword |
+| PATCH | /auth/environment | Persist the authenticated tenant user's Sandbox/Live preference; see [CRM environments](crm-environments.md) |
 | POST | /auth/logout | Revoke session and expire cookie |
 | POST | /auth/change-password | Verify currentPassword, store strong password, clear first-login flag and revoke old sessions |
 | POST | /auth/forgot-password | Request password recovery |

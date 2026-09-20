@@ -8,10 +8,10 @@ import { ConflictError } from '../../shared/errors/http-error';
 import { authTransaction } from './auth-transaction';
 
 /** Only administrator-issued, single-use invitations can create an account. */
-export async function registerGuest(dto: RegisterInput) {
+export async function acceptInvitation(dto: RegisterInput) {
   const email = dto.email.trim().toLowerCase();
   if (!dto.invitationToken) throw new AppError('Accounts are provisioned by your administrator.', 403);
-  requireEmployeeAccount({ email, role: 'User' });
+  requireEmployeeAccount({ email, role: '' });
   const passwordHash = await hashPassword(dto.password);
   const result = await authTransaction(async tx => {
     const existing = await tx.user.findFirst({
@@ -26,7 +26,7 @@ export async function registerGuest(dto: RegisterInput) {
   return { id, email, role, tenantId, emailSent };
 }
 
-export const registerClientAdmin = registerGuest;
+
 
 async function joinInvitation(
   tx: Prisma.TransactionClient,
@@ -46,7 +46,7 @@ async function joinInvitation(
   if (!invitation.role || invitation.role.tenantId !== invitation.tenantId) {
     throw new AppError('The invitation role is no longer available.', 400);
   }
-  if (invitation.role.name === 'System Admin') throw new AppError('Invalid invitation role.', 403);
+  if (invitation.role.isArchived || invitation.role.isSystemRole || ['guest', 'systemadmin', 'clientadmin'].includes(invitation.role.name.toLowerCase().replace(/[\s_-]/g, ''))) throw new AppError('Invalid invitation role.', 403);
   const user = await tx.user.create({
     data: {
       tenantId: invitation.tenantId,

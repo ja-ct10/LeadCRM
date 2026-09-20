@@ -4,7 +4,7 @@ import * as service from './preferences.service';
 import * as repo from './preferences.repository';
 import { isValidModule } from './column-registry';
 import { AppError } from '../../shared/errors/app-error';
-import { DEFAULT_ROLE_PERMISSIONS } from '../../core/permissions/permission.registry';
+import { findUserEffectivePermissions } from '../administration/roles/roles.repository';
 import { isSuperRole } from '../../shared/utils/is-super-role';
 import type { ColumnSource } from '@leadcrm/shared';
 
@@ -21,14 +21,14 @@ const MODULE_VIEW_PERMISSIONS: Record<string, string> = {
 };
 
 /** R12 AC2: Check module-level view permission (returns 404 to not reveal existence) */
-function hasModuleViewPermission(req: Request, module: string): boolean {
+async function hasModuleViewPermission(req: Request, module: string): Promise<boolean> {
   const role = req.user?.role;
   if (!role) return false;
   if (isSuperRole(role)) return true;
   const requiredPermission = MODULE_VIEW_PERMISSIONS[module];
   if (!requiredPermission) return true;
-  const rolePermissions: string[] = DEFAULT_ROLE_PERMISSIONS[role] ?? [];
-  return rolePermissions.includes(requiredPermission);
+  const permissions = await findUserEffectivePermissions(req.user!.userId, req.user!.tenantId);
+  return permissions[requiredPermission.split('.')[0]]?.canView === true;
 }
 
 /**
@@ -49,7 +49,7 @@ export async function getEffectiveColumns(
     }
 
     // R12 AC2: Check module-level view permission
-    if (!hasModuleViewPermission(req, module)) {
+    if (!await hasModuleViewPermission(req, module)) {
       throw new AppError('Not found', 404);
     }
 
@@ -82,7 +82,7 @@ export async function saveUserPreference(
     }
 
     // R17.8: Check module-level view permission (returns 404 to not reveal existence)
-    if (!hasModuleViewPermission(req, module)) {
+    if (!await hasModuleViewPermission(req, module)) {
       throw new AppError('Not found', 404);
     }
 
@@ -120,7 +120,7 @@ export async function deleteUserPreference(
     }
 
     // R17.8: Check module-level view permission (returns 404 to not reveal existence)
-    if (!hasModuleViewPermission(req, module)) {
+    if (!await hasModuleViewPermission(req, module)) {
       throw new AppError('Not found', 404);
     }
 
@@ -156,7 +156,7 @@ export async function saveTenantDefault(
     }
 
     // R17.8: Check module-level view permission (returns 404 to not reveal existence)
-    if (!hasModuleViewPermission(req, module)) {
+    if (!await hasModuleViewPermission(req, module)) {
       throw new AppError('Not found', 404);
     }
 
@@ -197,7 +197,7 @@ export async function deleteTenantDefault(
     }
 
     // R17.8: Check module-level view permission (returns 404 to not reveal existence)
-    if (!hasModuleViewPermission(req, module)) {
+    if (!await hasModuleViewPermission(req, module)) {
       throw new AppError('Not found', 404);
     }
 

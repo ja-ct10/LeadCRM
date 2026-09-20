@@ -4,6 +4,7 @@
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { NotFoundError, ConflictError } from '../../../shared/errors/http-error';
 import * as repo from './domains.repository';
+import prisma from '../../../config/database.config';
 
 export async function getAll(tenantId: string) {
   return repo.findAllDomains(tenantId);
@@ -57,7 +58,7 @@ export async function getSettings(tenantId: string) {
     tenantId,
     restrictToEmailDomains: false,
     joinPolicy: 'after_approval',
-    defaultRole: 'User',
+    defaultRole: '',
     createdAt: null,
     updatedAt: null,
   };
@@ -68,6 +69,12 @@ export async function updateSettings(
   actorId: string,
   data: { restrictToEmailDomains: boolean; joinPolicy: string; defaultRole: string },
 ) {
+  const role = await prisma.roleDefinition.findFirst({
+    where: { tenantId, name: data.defaultRole, isArchived: false, isSystemRole: false },
+  });
+  if (!role || ['guest', 'systemadmin', 'clientadmin'].includes(role.name.toLowerCase().replace(/[\s_-]/g, ''))) {
+    throw new NotFoundError('Custom role');
+  }
   const settings = await repo.upsertDomainSettings(tenantId, data);
   await writeAuditLog({
     tenantId, userId: actorId,

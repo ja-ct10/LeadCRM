@@ -6,7 +6,7 @@ import { createAuthSessionToken, type SessionContext } from './auth-session';
 import { authTenantSelect, buildAuthUserResponse } from './auth-user';
 export { buildAuthUserResponse } from './auth-user';
 export type { AuthUserSource, AuthUserResponse } from './auth-user';
-export { registerGuest, registerClientAdmin } from './registration.service';
+export { acceptInvitation } from './registration.service';
 export { sendRegistrationOtp, verifyRegistrationOtp } from './verification.service';
 export { requestPasswordReset, resetPasswordWithToken } from './password-reset.service';
 

@@ -222,7 +222,7 @@ function UserFormModal({ mode, user, roleNames, onSave, onClose }: UserFormModal
   const [lastName, setLastName] = useState(user?.lastName ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
   const [phone, setPhone] = useState(user?.phone ?? '');
-  const [role, setRole] = useState(user?.role ?? (roleNames[0] ?? 'User'));
+  const [role, setRole] = useState(user?.role ?? '');
   const [jobTitle, setJobTitle] = useState(user?.jobTitle ?? '');
   const [department, setDepartment] = useState(user?.department ?? '');
   const [status, setStatus] = useState(user?.status ?? 'active');
@@ -230,7 +230,8 @@ function UserFormModal({ mode, user, roleNames, onSave, onClose }: UserFormModal
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) { toast.error('Email is required'); return; }
-    onSave({ firstName, lastName, email, phone, role, jobTitle, department, status });
+    if (mode === 'add' && !roleNames.includes(role)) { toast.error('Select a custom role first'); return; }
+    onSave({ firstName, lastName, ...(mode === 'add' ? { email } : {}), phone, ...(role !== user?.role ? { role } : {}), jobTitle, department, status });
   };
 
   return (
@@ -271,6 +272,7 @@ function UserFormModal({ mode, user, roleNames, onSave, onClose }: UserFormModal
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Role</label>
               <select value={role} onChange={(e) => setRole(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg text-xs focus:outline-none focus:border-blue-500">
+                <option value="">Select a custom role</option>
                 {roleNames.map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
             </div>
@@ -387,8 +389,8 @@ export function UsersSubTab(): React.ReactElement {
     () => allUsers.filter((u) => u.tenantId === tenantId),
     [allUsers, tenantId],
   );
-  const roleNames = useMemo(() => roles.filter((r) => !r.isArchived).map((r) => r.name), [roles]);
-  const roleObjs = useMemo(() => roles.filter((r) => !r.isArchived).map((r) => ({ id: r.id, name: r.name })), [roles]);
+  const roleNames = useMemo(() => roles.filter((r) => !r.isArchived && !r.isSystemRole).map((r) => r.name), [roles]);
+  const roleObjs = useMemo(() => roles.filter((r) => !r.isArchived && !r.isSystemRole).map((r) => ({ id: r.id, name: r.name })), [roles]);
 
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<string[]>([]);

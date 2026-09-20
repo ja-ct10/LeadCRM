@@ -130,7 +130,7 @@ export async function backfillUserRoles(): Promise<void> {
 
     // Find matching RoleDefinition within the same tenant — never cross-tenant
     const roleDef = await prisma.roleDefinition.findFirst({
-      where: { tenantId: user.tenantId, name: user.role },
+      where: { tenantId: user.tenantId, name: user.role, isArchived: false },
       select: { id: true, tenantId: true },
     });
 

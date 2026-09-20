@@ -39,6 +39,8 @@ async function proxyRequest(
     'Content-Type': req.headers.get('content-type') ?? 'application/json',
     'Accept': 'application/json',
   };
+  const environment = req.headers.get('x-crm-environment');
+  if (environment) headers['X-CRM-Environment'] = environment;
 
   // Forward the HttpOnly cookie server-side — this is the whole reason the
   // proxy exists. Browsers block third-party cookies on cross-origin fetches,

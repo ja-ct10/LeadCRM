@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 export function useNotifications() {
   const { tenant, user } = useAuth();
   const tenantId = tenant?.id ?? user?.tenantId ?? '';
-  const params = { page: 1, limit: 20, userId: user?.id, role: user?.role };
+  const params = { page: 1, limit: 20, userId: user?.id, role: user?.role, environment: user?.activeEnvironment };
   const scope = buildCacheKey('notifications', tenantId, params);
   const enabled = !USE_MOCK_DATA && !!user?.id;
   const cached = enabled ? getPageCache<NotificationsResponse>('notifications', tenantId, params)?.data : undefined;

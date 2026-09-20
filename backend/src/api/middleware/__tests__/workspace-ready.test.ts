@@ -9,7 +9,7 @@ it.each([0, 1, 2, 3])('rejects direct CRM access at incomplete step %s', step =>
   workspaceReadyMiddleware({ authUser: { ...user, onboardingStep: step } } as never, {} as never, next);
   expect(next).toHaveBeenCalledWith(expect.objectContaining({ code: 'ONBOARDING_REQUIRED' }));
 });
-it('permits a completed Guest workspace independently of paid subscription status', () => {
+it('permits a completed Sales workspace independently of paid subscription status', () => {
   const next = vi.fn();
   workspaceReadyMiddleware({ authUser: { ...user, onboardingStep: 3,
     onboardingCompletedAt: '2026-01-02' } } as never, {} as never, next);

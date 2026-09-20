@@ -10,7 +10,7 @@ import * as fc from 'fast-check';
  * Key invariants:
  * 1. System Admin sees only platform management items (no tenant CRM)
  * 2. Client Admin sees all items
- * 3. Guest sees only a restricted set
+ * 3. Custom roles use their assigned permissions
  * 4. Nav items are filtered by query string case-insensitively
  * 5. Items with enabled=false are always hidden
  */
@@ -38,9 +38,7 @@ function hasAccess(item: NavItem, user: UserContext): boolean {
   }
   if (item.name === 'Admin Console') return false;
   if (user.role.toLowerCase() === 'client admin') return true;
-  if (user.role.toLowerCase() === 'guest') {
-    return ['Dashboard', 'Leads', 'Pipeline', 'Workflows', 'Campaigns'].includes(item.name);
-  }
+
   if (item.roles?.some((r) => r.toLowerCase() === user.role.toLowerCase())) return true;
   if (item.permissions?.some((p) => user.permissions.includes(p))) return true;
   return false;
@@ -79,7 +77,6 @@ const ALL_NAV_ITEMS: NavItem[] = [
 
 const systemAdmin:  UserContext = { role: 'System Admin',  permissions: ['*'] };
 const clientAdmin:  UserContext = { role: 'Client Admin',  permissions: ['*'] };
-const guestUser:    UserContext = { role: 'Guest',         permissions: [] };
 const regularUser:  UserContext = { role: 'User',          permissions: ['contacts.view', 'deals.view'] };
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -118,20 +115,6 @@ describe('CommandPalette — role-based navigation access', () => {
     });
   });
 
-  describe('Guest', () => {
-    it('sees only Dashboard, Leads, Pipeline, Workflows, Campaigns', () => {
-      const allowed = ALL_NAV_ITEMS.filter((i) => hasAccess(i, guestUser));
-      const names = allowed.map((i) => i.name);
-      expect(names).toContain('Dashboard');
-      expect(names).toContain('Leads');
-      expect(names).toContain('Workflows');
-      expect(names).toContain('Campaigns');
-      expect(names).not.toContain('Admin Console');
-      expect(names).not.toContain('Users');
-      expect(names).not.toContain('Settings');
-    });
-  });
-
   describe('Regular User with specific permissions', () => {
     it('sees items matching their permissions', () => {
       const allowed = ALL_NAV_ITEMS.filter((i) => hasAccess(i, regularUser));
@@ -144,7 +127,7 @@ describe('CommandPalette — role-based navigation access', () => {
   });
 
   describe('Admin Console is never visible to non-System-Admin roles', () => {
-    const nonAdminRoles = ['Client Admin', 'User', 'Guest', 'Sales Manager'];
+    const nonAdminRoles = ['Client Admin', 'Sales', 'Sales Manager'];
 
     nonAdminRoles.forEach((role) => {
       it(`Admin Console hidden for role: ${role}`, () => {

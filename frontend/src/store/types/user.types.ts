@@ -1,6 +1,6 @@
 // ─── User, Tenant, RBAC ────────────────────────────────────────────────────
 
-export type Role = 'System Admin' | 'Client Admin' | 'User' | 'Guest' | string;
+export type Role = string;
 
 export interface Permission {
   id: string;
@@ -22,6 +22,7 @@ export interface RoleDefinition {
 }
 
 export interface User {
+  activeEnvironment?: import('@leadcrm/shared').CrmEnvironment | null;
   id: string;
   tenantId: string;
   firstName: string;

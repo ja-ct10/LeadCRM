@@ -139,7 +139,7 @@ See [authentication and onboarding](../authentication.md).
 - /, /login and /register render successfully in the browser.
 - Backend /health returns 200.
 - An anonymous /api/proxy/auth/me request returns 401 JSON, not HTML/500.
-- Both signup paths create Guest workspace owners and begin the first introduction.
+- Public signup and Google account provisioning are disabled. System Admin provisions Client Admin accounts; Client Admin selects custom roles for users.
 - Verification, refresh, logout/login, company completion and dashboard access
   follow the [lifecycle acceptance matrix](../plans/auth-onboarding-lifecycle.md).
 - Confirm Render can read the migrated schema and that real Google/email

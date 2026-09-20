@@ -40,32 +40,11 @@ it('rejects an unverified Google email', async () => {
   }) });
   await expect(verifyGoogleIdentity('token')).rejects.toMatchObject({ statusCode: 401 });
 });
-it('creates a Guest owner and the same pipeline/role provisioning as manual signup', async () => {
-  db.user.findMany.mockResolvedValue([]);
-  const result = await findOrCreateUserByOAuth(identity);
-  expect(result.isNewUser).toBe(true);
-  expect(db.user.create).toHaveBeenCalledWith({
-    data: expect.objectContaining({ role: 'Guest', passwordHash: null, status: 'ACTIVE' }),
-  });
-  expect(db.userRole.create).toHaveBeenCalled();
-  expect(db.pipeline.create).toHaveBeenCalledOnce();
-  expect(result.user).toMatchObject({ onboardingStep: 0, onboardingCompletedAt: null });
-});
-it('uses the stable provider identity on repeat sign-in without creating another tenant', async () => {
-  db.oAuthAccount.findUnique.mockResolvedValue({ user });
-  const result = await findOrCreateUserByOAuth(identity);
-  expect(result.isNewUser).toBe(false);
-  expect(db.user.findMany).not.toHaveBeenCalled();
+it('rejects OAuth provisioning without creating users, workspaces or sessions', async () => {
+  await expect(findOrCreateUserByOAuth(identity)).rejects.toHaveProperty('code', 'SELF_SERVICE_DISABLED');
+  expect(db.user.create).not.toHaveBeenCalled();
   expect(db.tenant.create).not.toHaveBeenCalled();
-});
-it('links a verified Gmail identity to an existing active account, preserving its role/tenant', async () => {
-  user.role = 'User';
-  const result = await findOrCreateUserByOAuth(identity);
-  expect(result.user.role).toBe('User');
-  expect(db.tenant.create).not.toHaveBeenCalled();
-  expect(db.oAuthAccount.create).toHaveBeenCalledWith({
-    data: expect.objectContaining({ userId: user.id, tenantId: user.tenantId }),
-  });
+  expect(createSession).not.toHaveBeenCalled();
 });
 it.each(['ambiguous', 'pending', 'third-party-email'])('rejects unsafe linking: %s', async mode => {
   if (mode === 'ambiguous') db.user.findMany.mockResolvedValue([user, { ...user, id: 'other' }]);

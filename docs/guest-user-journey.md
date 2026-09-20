@@ -1,3 +1,5 @@
+> This document uses “guest” to mean an external prospect, not an authenticated LeadCRM role.
+
 # User Journey: The Guest (Potential Client / Lead)
 
 In a CRM system, a "Guest" is essentially a potential client or external lead interacting with the public-facing side of the company. Here is the step-by-step journey of how a guest experiences the system:

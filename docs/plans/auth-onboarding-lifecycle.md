@@ -1,3 +1,5 @@
+> Historical implementation record. The final role model is documented in [authentication](../authentication.md) and [role migration](../plans/final-role-model.md).
+
 # LeadCRM authentication and onboarding implementation plan
 
 Status: Implemented in the working tree; deployment and live acceptance checks remain pending.

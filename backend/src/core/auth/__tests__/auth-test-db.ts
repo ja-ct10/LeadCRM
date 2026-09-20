@@ -7,7 +7,7 @@ export const tenant = {
 };
 export const user = {
   id: 'user-1', tenantId: tenant.id, email: 'alice@gmail.com', firstName: 'Alice',
-  lastName: 'Owner', role: 'Guest', status: 'ACTIVE', emailVerified: new Date('2026-01-01'),
+  lastName: 'Owner', role: 'Sales', status: 'ACTIVE', emailVerified: new Date('2026-01-01'),
   mustChangePassword: false,
   passwordHash: 'hash', avatarUrl: null, timeZone: null, tenant,
 };
@@ -28,7 +28,7 @@ export function resetDb() {
     ownerUserId: user.id, onboardingStep: 0, onboardingCompletedAt: null,
     name: 'Workspace', industry: null, companySize: null, website: null,
   });
-  Object.assign(user, { email: 'alice@camxian.com', mustChangePassword: false, role: 'Guest', status: 'ACTIVE', emailVerified: new Date('2026-01-01') });
+  Object.assign(user, { email: 'alice@camxian.com', mustChangePassword: false, role: 'Sales', status: 'ACTIVE', emailVerified: new Date('2026-01-01') });
   db.$transaction.mockImplementation(work => work(db));
   db.user.findFirst.mockResolvedValue(user);
   db.user.findMany.mockResolvedValue([user]);
@@ -43,8 +43,8 @@ export function resetDb() {
     Object.assign(tenant, data);
     return { count: 1 };
   });
-  db.roleDefinition.upsert.mockResolvedValue({ id: 'guest-role' });
-  db.roleDefinition.findUniqueOrThrow.mockResolvedValue({ id: 'guest-role', tenantId: tenant.id });
+  db.roleDefinition.upsert.mockResolvedValue({ id: 'sales-role' });
+  db.roleDefinition.findUniqueOrThrow.mockResolvedValue({ id: 'sales-role', tenantId: tenant.id });
   // Existing sandbox seeder is tested independently; avoid creating sample data in service tests.
   db.account.count.mockResolvedValue(1);
   db.oAuthAccount.findUnique.mockResolvedValue(null);

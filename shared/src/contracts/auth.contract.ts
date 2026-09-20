@@ -1,5 +1,6 @@
 /** Serialized account state returned by every authentication/onboarding endpoint. */
 export interface AuthUser {
+  activeEnvironment?: import('./environment.contract').CrmEnvironment | null;
   id: string;
   email: string;
   role: string;

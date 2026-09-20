@@ -229,7 +229,7 @@ export default function UsersPage() {
   const [formLastName, setFormLastName] = useState("");
   const [formEmail, setFormEmail] = useState("");
   const [formPhone, setFormPhone] = useState("");
-  const [formRole, setFormRole] = useState("User");
+  const [formRole, setFormRole] = useState("");
   const [formJobTitle, setFormJobTitle] = useState("");
   const [formDepartment, setFormDepartment] = useState("");
   const [formStatus, setFormStatus] = useState("Active");
@@ -1446,7 +1446,7 @@ export default function UsersPage() {
                         className="w-full pl-10 pr-4 py-2.5 bg-slate-800/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all appearance-none cursor-pointer"
                       >
                         <option value="">Select a role to copy from...</option>
-                        {roles.map((r) => (
+                        {roles.filter(r => !r.isArchived && !r.isSystemRole).map((r) => (
                           <option key={r.id} value={r.id}>
                             {r.name}
                           </option>
@@ -1666,7 +1666,7 @@ export default function UsersPage() {
     setFormLastName("");
     setFormEmail("");
     setFormPhone("");
-    setFormRole("User");
+    setFormRole("");
     setFormJobTitle("");
     setFormDepartment("");
     setFormStatus("Active");
@@ -1685,9 +1685,8 @@ export default function UsersPage() {
         await updateUser(selectedUser.id, {
           firstName: formFirstName,
           lastName: formLastName,
-          email: formEmail,
           phone: formPhone,
-          role: formRole,
+          ...(formRole !== selectedUser.role ? { role: formRole } : {}),
           jobTitle: formJobTitle,
           department: formDepartment,
           status: formStatus === "Active" ? "active" : "inactive",
@@ -1703,6 +1702,10 @@ export default function UsersPage() {
 
   const handleCreateUserSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!roles.some(r => r.name === formRole && !r.isSystemRole && !r.isArchived)) {
+      toast.error('Select a custom role. Create one in Roles & Permissions if needed.');
+      return;
+    }
     if (!formFirstName.trim() || !formLastName.trim() || !formEmail.trim()) {
       toast.error("First Name, Last Name and Email are required.");
       return;
@@ -1889,7 +1892,7 @@ export default function UsersPage() {
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 cursor-pointer"
                   >
                     <option value="">Select a role…</option>
-                    {roles.filter(r => !r.isArchived).map(r => (
+                    {roles.filter(r => !r.isArchived && !r.isSystemRole).map(r => (
                       <option key={r.id} value={r.id}>{r.name}</option>
                     ))}
                   </select>
@@ -2695,10 +2698,11 @@ export default function UsersPage() {
                             onChange={(e) => setFormRole(e.target.value)}
                             className="w-full appearance-none bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-white/[0.06] text-slate-900 dark:text-white rounded-xl px-4 py-3 pr-10 text-sm focus:outline-none focus:border-blue-500 cursor-pointer [&>option]:text-slate-900 [&>option]:bg-white dark:[&>option]:text-white dark:[&>option]:bg-slate-800"
                           >
+                            <option value="">Select a custom role</option>
                             {roles.length === 0 ? (
                               <option value="">No Roles Available</option>
                             ) : (
-                              roles.map((r) => (
+                              roles.filter(r => !r.isArchived && !r.isSystemRole).map((r) => (
                                 <option key={r.id} value={r.name}>
                                   {r.name}
                                 </option>
@@ -2913,10 +2917,11 @@ export default function UsersPage() {
                             onChange={(e) => setFormRole(e.target.value)}
                             className="w-full appearance-none bg-slate-50 dark:bg-slate-800 border border-gray-200 dark:border-white/[0.06] text-slate-900 dark:text-white rounded-xl px-4 py-2.5 pr-10 text-sm focus:outline-none focus:border-blue-500 cursor-pointer [&>option]:text-slate-900 [&>option]:bg-white dark:[&>option]:text-white dark:[&>option]:bg-slate-800"
                           >
+                            <option value="">Select a custom role</option>
                             {roles.length === 0 ? (
                               <option value="">No Roles Available</option>
                             ) : (
-                              roles.map((r) => (
+                              roles.filter(r => !r.isArchived && !r.isSystemRole).map((r) => (
                                 <option key={r.id} value={r.name}>
                                   {r.name}
                                 </option>

@@ -21,7 +21,7 @@ type UserLike = Parameters<typeof isSandboxUser>[0];
 
 function makeSandboxUser(overrides: Partial<NonNullable<UserLike>> = {}): NonNullable<UserLike> {
   return {
-    role:               'Guest',
+    role:               'Sales',
     tenantStatus:       'SANDBOX',
     subscriptionStatus: 'NONE',
     ...overrides,
@@ -44,7 +44,7 @@ describe('isSandboxUser — returns true (sandbox state)', () => {
   });
 
   it('is not role-dependent — any role with SANDBOX + NONE is a sandbox user', () => {
-    for (const role of ['Guest', 'Client Admin', 'User', 'Viewer']) {
+    for (const role of ['Sales', 'Client Admin', 'User', 'Viewer']) {
       expect(isSandboxUser(makeSandboxUser({ role }))).toBe(true);
     }
   });

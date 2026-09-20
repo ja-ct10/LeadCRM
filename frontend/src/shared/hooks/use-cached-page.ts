@@ -18,7 +18,7 @@ export function useCachedPage<T>({ module, params, fetchFn, intervalMs, disabled
   const { tenant, user } = useAuth();
   const tenantId = tenant?.id ?? '';
   // Responses (especially notifications) can depend on the user and their role.
-  const scopedParams = { query: params, userId: user?.id, role: user?.role };
+  const scopedParams = { query: params, userId: user?.id, role: user?.role, environment: user?.activeEnvironment };
   const key = buildCacheKey(module, tenantId, scopedParams);
   const enabled = !disabled && !!tenantId && !!user?.id;
   const cached = enabled ? getPageCache<T>(module, tenantId, scopedParams) : null;

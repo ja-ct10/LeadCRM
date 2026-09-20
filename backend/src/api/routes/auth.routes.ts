@@ -1,5 +1,8 @@
+import { ChangeEnvironmentSchema } from '@leadcrm/shared';
+import { tenantMiddleware, workspaceReadyMiddleware } from '../middleware/tenant.middleware';
+import { updateEnvironment } from '../../core/environment/environment.controller';
 import { Router } from 'express';
-import { ClientAdminRegisterSchema } from '../../core/auth/auth.dto';
+import { InvitationAcceptSchema } from '../../core/auth/auth.dto';
 import { authRateLimiter, passwordResetRateLimiter } from '../middleware/rate-limit.middleware';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { validate } from '../middleware/validate.middleware';
@@ -9,7 +12,8 @@ import { ChangePasswordSchema } from '../../core/auth/change-password.service';
 import { changePasswordController } from '../../core/auth/change-password.controller';
 
 const router = Router();
-router.post('/invitations/accept', authRateLimiter, validate(ClientAdminRegisterSchema), authController.registerClientAdmin);
+router.patch('/environment', authMiddleware, tenantMiddleware, workspaceReadyMiddleware, validate(ChangeEnvironmentSchema), updateEnvironment);
+router.post('/invitations/accept', authRateLimiter, validate(InvitationAcceptSchema), authController.acceptInvitation);
 router.post('/login', authRateLimiter, validate(LoginSchema), authController.login);
 router.post('/logout', authController.logout);
 router.get('/me', authMiddleware, authController.me);

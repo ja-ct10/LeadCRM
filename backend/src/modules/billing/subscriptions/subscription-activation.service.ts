@@ -2,7 +2,6 @@ import prisma from '../../../config/database.config';
 import { AppError } from '../../../shared/errors/app-error';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { invalidatePlanCache } from '../../../shared/utils/plan-cache';
-import { Role } from '../../../shared/constants/roles';
 
 // ─── Input ────────────────────────────────────────────────────────────────────
 
@@ -23,17 +22,11 @@ export interface ActivateTenantSubscriptionInput {
  * activateTenantSubscription
  *
  * The single authoritative function for transitioning a tenant from
- * SANDBOX to ACTIVE and promoting its founding user to Client Admin.
+ * SANDBOX to ACTIVE for historical billing records. Roles are never changed.
  *
  * Used by:
  *   - Stripe webhook (checkout.session.completed) — activationSource: 'STRIPE_WEBHOOK'
  *   - System Admin bypass endpoint              — activationSource: 'SYSTEM_ADMIN_BYPASS'
- *
- * Invariant preserved:
- *   Tenant.ownerUserId → User.role = CLIENT_ADMIN
- *                      → UserRole → Client Admin RoleDefinition
- *   Both updated in a single prisma.$transaction. Never derived from
- *   request body, logged-in user, or Stripe customer data.
  *
  * Idempotency:
  *   - If stripeSubscriptionId is non-null and a Subscription with that ID exists → no-op
@@ -86,7 +79,7 @@ export async function activateTenantSubscription(
 
   // ── Atomic transaction ───────────────────────────────────────────────────
   // All mutations run in a single transaction so the DB never ends up in a
-  // half-promoted state (e.g. tenant ACTIVE but owner still Restricted User).
+  // partially activated subscription state.
   await prisma.$transaction(async (tx) => {
     // 1. Create the Subscription record
     const subscription = await tx.subscription.create({
@@ -114,37 +107,7 @@ export async function activateTenantSubscription(
       },
     });
 
-    // 3. Promote founding user to Client Admin via ownerUserId (invariant)
-    //    Re-query inside the transaction to get the most current ownerUserId.
-    //    Never derive the owner from request body or Stripe customer data.
-    const tenantRecord = await tx.tenant.findUnique({
-      where:  { id: tenantId },
-      select: { ownerUserId: true },
-    });
-
-    if (tenantRecord?.ownerUserId) {
-      const ownerId = tenantRecord.ownerUserId;
-
-      // 3a. Update User.role string (drives JWT super-role bypass on next login)
-      await tx.user.update({
-        where: { id: ownerId },
-        data:  { role: Role.CLIENT_ADMIN },
-      });
-
-      // 3b. Update UserRole junction (drives live RolePermission lookup)
-      const clientAdminDef = await tx.roleDefinition.findFirst({
-        where: { tenantId, name: Role.CLIENT_ADMIN },
-      });
-      if (clientAdminDef) {
-        // Remove existing role junction rows (idempotent — handles re-runs)
-        await tx.userRole.deleteMany({
-          where: { userId: ownerId, tenantId },
-        });
-        await tx.userRole.create({
-          data: { userId: ownerId, roleId: clientAdminDef.id, tenantId },
-        });
-      }
-    }
+    // Subscription records never grant or change application roles.
 
     // 4. Audit log — activationSource distinguishes Stripe vs bypass in audit trail
     await writeAuditLog({
@@ -160,7 +123,6 @@ export async function activateTenantSubscription(
         amount,
         stripeSubscriptionId:    stripeSubscriptionId ?? null,
         stripeCheckoutSessionId: stripeCheckoutSessionId ?? null,
-        ownerPromoted:           !!(tenantRecord?.ownerUserId),
       },
     });
   });

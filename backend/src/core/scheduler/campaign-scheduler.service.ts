@@ -10,6 +10,7 @@
  * every minute to ensure reliable delivery.
  */
 
+import { environmentContext } from '../environment/environment-context';
 import prisma from '../../config/database.config';
 import { writeAuditLog } from '../audit/audit.service';
 
@@ -109,7 +110,7 @@ async function processDueCampaigns(): Promise<void> {
 
     for (const campaign of dueCampaigns) {
       try {
-        await processSingleCampaign(campaign as any);
+        await environmentContext.run({ tenantId: campaign.tenantId, environment: campaign.environment }, () => processSingleCampaign(campaign as any));
       } catch (error) {
         console.error(`[scheduler] Error processing campaign ${campaign.id}:`, error);
         

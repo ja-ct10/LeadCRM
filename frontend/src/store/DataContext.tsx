@@ -6,6 +6,7 @@ import React, {
   useContext,
   useState,
   useEffect,
+  useLayoutEffect,
   useCallback,
   useRef,
   useMemo,
@@ -298,9 +299,10 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
 export function DataProvider({ children }: { children: ReactNode }) {
   const { user, tenant } = useAuth();
   const workspaceReady = Boolean(user && (user.role === "System Admin" ||
-    (user.emailVerified && user.status?.toUpperCase() === "ACTIVE" && isOnboardingComplete(user))));
+    (user.status?.toUpperCase() === "ACTIVE" && !user.mustChangePassword &&
+      (user.role !== "Client Admin" || isOnboardingComplete(user)))));
 
-  const dataIdentity = `${user?.id ?? ''}:${tenant?.id ?? ''}:${workspaceReady}`;
+  const dataIdentity = `${user?.id ?? ''}:${tenant?.id ?? ''}:${workspaceReady}:${user?.activeEnvironment ?? ''}`;
   const dataIdentityRef = useRef(dataIdentity);
   dataIdentityRef.current = dataIdentity;
 
@@ -345,7 +347,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const sharedIdentity = `${user?.id ?? ""}:${tenant?.id ?? ""}`;
+  const loadedSharedIdentity = useRef<string | null>(null);
+  const [visibleIdentity, setVisibleIdentity] = useState(dataIdentity);
+
   const loadData = async () => {
+    const loadShared = loadedSharedIdentity.current !== sharedIdentity;
     if (!USE_MOCK_DATA && !workspaceReady) return;
     const identity = dataIdentityRef.current;
     const isCurrent = () => identity === dataIdentityRef.current;
@@ -354,8 +361,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (!user) return;
 
       try {
-        // Batch 1 — core CRM data (roles excluded — admin-only, 403 for Guest)
-        // usersService.getRoles() requires roles.manage which Guest does not have.
+        // Batch 1 — core CRM data (roles excluded — admin-only, 403 for custom roles)
+        // usersService.getRoles() requires roles.manage which custom roles does not have.
         // Moving it to a separate non-blocking call prevents a 403 from killing
         // the entire Batch 1 load (deals, pipelines, users).
         //
@@ -385,7 +392,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           organizationsService.getAll({ limit: 100 }),
           pipelineService.getDeals(undefined, 100),
           pipelineService.getPipelines(),
-          usersService.getAll({ limit: 200 }),
+          loadShared ? usersService.getAll({ limit: 200 }) : Promise.resolve(null),
         ]);
 
         if (!isCurrent()) return;
@@ -399,7 +406,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setOrganizations((apiOrgs as Organization[]).filter((o: any) => !o.isArchived));
         setDeals((apiDeals as Deal[]).filter((d: any) => !d.isArchived));
         setPipelines((apiPipelines as Pipeline[]).filter((p: any) => !p.isArchived));
-        setUsers((apiUsers as any[]).filter((u: any) => !u.isArchived));
+        if (loadShared) setUsers((apiUsers as any[]).filter((u: any) => !u.isArchived));
       } catch (err) {
         if (!isCurrent()) return;
         console.error('[DataContext] Failed to load CRM data from API:', err);
@@ -414,16 +421,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
       if (!isCurrent()) return;
       // Batch 1b — admin-only data (roles). Silently ignored for non-admin roles
-      // such as Guest (sandbox) which lack roles.manage permission.
+      // such as custom roles which lack roles.manage permission.
       try {
+        if (loadShared) {
         const rolesRes = await usersService.getRoles();
         if (!isCurrent()) return;
         const apiRoles = rolesRes?.data ?? [];
         setRoles((apiRoles as any[]).filter((r: any) => !r.isArchived));
+        loadedSharedIdentity.current = sharedIdentity;
+        }
       } catch {
         if (!isCurrent()) return;
-        // 403 for Guest/User roles is expected — leave roles as empty array
-        setRoles([]);
+        // 403 for custom roles is expected — leave roles as empty array
+        if (loadShared) { setRoles([]); loadedSharedIdentity.current = sharedIdentity; }
       }
 
       if (!isCurrent()) return;
@@ -558,7 +568,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const w = safeParse("leadcrm_workflows", MOCK_WORKFLOWS);
     const c = safeParse("leadcrm_campaigns", MOCK_CAMPAIGNS);
     const tpl = safeParse("leadcrm_templates", MOCK_TEMPLATES);
-    const r = safeParse("leadcrm_roles", MOCK_ROLES);
+    const r = safeParse("leadcrm_roles", MOCK_ROLES).filter((role: RoleDefinition) => role.name.trim().toLowerCase() !== 'guest');
     const perm = safeParse("leadcrm_permissions", MOCK_PERMISSIONS);
     const u = safeParse("leadcrm_users", MOCK_USERS);
     const t = safeParse("leadcrm_tenants", MOCK_TENANTS).map((tenant: Tenant) => {
@@ -685,19 +695,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!USE_MOCK_DATA) {
       setOrganizations([]); setContacts([]); setDeals([]); setPipelines([]);
-      setWorkflows([]); setCampaigns([]); setTemplates([]); setRoles([]);
-      setPermissions([]); setUsers([]); setTenants([]); setTasks([]);
+      setWorkflows([]); setCampaigns([]); setTemplates([]); setTasks([]);
+      if (loadedSharedIdentity.current !== sharedIdentity) {
+        setRoles([]); setPermissions([]); setUsers([]); setTenants([]);
+      }
       setWorkflowExecutions([]); setWorkflowExecutionRuns([]); setWorkflowExecutionSteps([]);
       setActivities([]); setInvoices([]); setPendingActions([]); setAuditLogs([]);
     }
+    setVisibleIdentity(dataIdentity);
     // Only load data when we have a confirmed authenticated user
     if (!USE_MOCK_DATA && !workspaceReady) return;
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, tenant?.id, workspaceReady]);
+  }, [user?.id, tenant?.id, workspaceReady, user?.activeEnvironment]);
 
   // Delegates to extracted pure service: src/modules/workflows/services/workflowConditionEvaluator.ts
   const evaluateWorkflowConditionDirectly = (
@@ -2190,6 +2203,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const firstName = userData.firstName || "New";
     const lastName = userData.lastName || "User";
 
+    if (!userData.role || !roles.some(r => r.name === userData.role && !r.isSystemRole && !r.isArchived)) {
+      throw new Error('Select an active custom role before creating a user.');
+    }
     const newUser: User = {
       id:
         userData.id ||
@@ -2198,7 +2214,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       firstName,
       lastName,
       email: userData.email || "",
-      role: userData.role || "User",
+      role: userData.role,
       status: userData.status || "active",
       phone: userData.phone || "",
       jobTitle: userData.jobTitle || "",
@@ -2854,7 +2870,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   ]);
 
   return (
-    <DataContext.Provider value={contextValue}>
+    <DataContext.Provider value={visibleIdentity === dataIdentity ? contextValue : { ...contextValue, organizations: [], contacts: [], deals: [], pipelines: [], workflows: [], campaigns: [], templates: [], tasks: [], workflowExecutions: [], workflowExecutionRuns: [], workflowExecutionSteps: [], activities: [], invoices: [], pendingActions: [], auditLogs: [] }}>
       {children}
     </DataContext.Provider>
   );

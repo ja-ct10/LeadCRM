@@ -5,7 +5,7 @@ const profileFields = {
   department: z.string().max(100).optional(), avatarUrl: z.string().optional(), timeZone: z.string().max(100).optional(),
 };
 export const CreateUsersSchema = CreateUserSchema.extend({
-  ...profileFields, password: StrongPasswordSchema.optional(), role: z.string().min(1).default('User'),
+  ...profileFields, password: StrongPasswordSchema.optional(), role: z.string().trim().min(1),
 });
 // Never accept tenant, credentials, or password-gate state through profile updates.
 export const UpdateUsersSchema = z.object({

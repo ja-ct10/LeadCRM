@@ -3,7 +3,7 @@ import { Request, Response, NextFunction } from 'express';
 import * as repo from './preferences.repository';
 import { isValidModule, isValidSortField } from './column-registry';
 import { AppError } from '../../shared/errors/app-error';
-import { DEFAULT_ROLE_PERMISSIONS } from '../../core/permissions/permission.registry';
+import { findUserEffectivePermissions } from '../administration/roles/roles.repository';
 import { isSuperRole } from '../../shared/utils/is-super-role';
 
 // ─────────────────────────────────────────────────────
@@ -26,7 +26,7 @@ const MODULE_VIEW_PERMISSIONS: Record<string, string> = {
  * Check if user has view permission for the given module.
  * Returns true for super roles. Returns 404 (not 403) when denied.
  */
-function hasModuleViewPermission(req: Request, module: string): boolean {
+async function hasModuleViewPermission(req: Request, module: string): Promise<boolean> {
   const role = req.user?.role;
   if (!role) return false;
 
@@ -36,8 +36,8 @@ function hasModuleViewPermission(req: Request, module: string): boolean {
   const requiredPermission = MODULE_VIEW_PERMISSIONS[module];
   if (!requiredPermission) return true; // Unknown module — let isValidModule catch it
 
-  const rolePermissions: string[] = DEFAULT_ROLE_PERMISSIONS[role] ?? [];
-  return rolePermissions.includes(requiredPermission);
+  const permissions = await findUserEffectivePermissions(req.user!.userId, req.user!.tenantId);
+  return permissions[requiredPermission.split('.')[0]]?.canView === true;
 }
 
 // Valid page sizes
@@ -67,7 +67,7 @@ export async function getTablePreferences(
     }
 
     // R12 AC2: Check module-level view permission (returns 404 to not reveal existence)
-    if (!hasModuleViewPermission(req, module)) {
+    if (!await hasModuleViewPermission(req, module)) {
       throw new AppError('Not found', 404);
     }
 
@@ -112,7 +112,7 @@ export async function savePageSize(
     }
 
     // R17.8: Check module-level view permission (returns 404 to not reveal existence)
-    if (!hasModuleViewPermission(req, module)) {
+    if (!await hasModuleViewPermission(req, module)) {
       throw new AppError('Not found', 404);
     }
 
@@ -154,7 +154,7 @@ export async function saveViewMode(
     }
 
     // R17.8: Check module-level view permission (returns 404 to not reveal existence)
-    if (!hasModuleViewPermission(req, module)) {
+    if (!await hasModuleViewPermission(req, module)) {
       throw new AppError('Not found', 404);
     }
 
@@ -196,7 +196,7 @@ export async function saveSort(
     }
 
     // R17.8: Check module-level view permission (returns 404 to not reveal existence)
-    if (!hasModuleViewPermission(req, module)) {
+    if (!await hasModuleViewPermission(req, module)) {
       throw new AppError('Not found', 404);
     }
 
@@ -280,7 +280,7 @@ export async function getViewType(
     }
 
     // R17.8: Check module-level view permission (returns 404 to not reveal existence)
-    if (!hasModuleViewPermission(req, module)) {
+    if (!await hasModuleViewPermission(req, module)) {
       throw new AppError('Not found', 404);
     }
 
@@ -317,7 +317,7 @@ export async function saveViewType(
     }
 
     // R17.8: Check module-level view permission (returns 404 to not reveal existence)
-    if (!hasModuleViewPermission(req, module)) {
+    if (!await hasModuleViewPermission(req, module)) {
       throw new AppError('Not found', 404);
     }
 
@@ -359,7 +359,7 @@ export async function saveFilters(
     }
 
     // R17.8: Check module-level view permission (returns 404 to not reveal existence)
-    if (!hasModuleViewPermission(req, module)) {
+    if (!await hasModuleViewPermission(req, module)) {
       throw new AppError('Not found', 404);
     }
 

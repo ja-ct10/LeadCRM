@@ -3,6 +3,7 @@ import { clearPageCache, invalidatePageCache } from './page-cache';
 /** Successful writes invalidate every cached view of the affected data, including imports and drawers. */
 export function invalidateApiPageCache(path: string): void {
   const [area, resource] = path.split('?')[0].split('/').filter(Boolean);
+  if (area === 'auth' && resource === 'environment') return; // AuthContext commits cache + preference atomically
   if (area === 'auth') {
     clearPageCache();
     return;

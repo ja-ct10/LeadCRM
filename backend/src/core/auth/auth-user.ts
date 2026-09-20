@@ -10,6 +10,7 @@ export const authTenantSelect = {
 } satisfies Prisma.TenantSelect;
 
 export interface AuthUserSource {
+  activeEnvironment?: import('@leadcrm/shared').CrmEnvironment;
   id: string;
   email: string;
   role: string;
@@ -43,6 +44,7 @@ export type AuthUserResponse = AuthUser;
 export function buildAuthUserResponse(user: AuthUserSource): AuthUser {
   const tenant = user.tenant;
   return {
+    activeEnvironment: user.role === 'System Admin' ? null : user.activeEnvironment ?? 'SANDBOX',
     id: user.id,
     email: user.email,
     role: user.role,

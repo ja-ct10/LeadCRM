@@ -1,6 +1,7 @@
 'use client';
 
 import { invalidateApiPageCache } from '@/shared/cache/invalidate-api-page-cache';
+import { environmentSnapshot, isEnvironmentPath, trackEnvironmentMutation } from './environment-transport';
 
 // LeadCRM API Client
 // Sends HttpOnly cookies (leadcrm_token) on every request via credentials: 'include'.
@@ -20,9 +21,13 @@ async function request<T>(
   params?: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<T> {
+  const scoped = isEnvironmentPath(path);
+  const snapshot = environmentSnapshot();
+  if (scoped && snapshot.switching) throw new Error('Switching environment. Please wait.');
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
+  if (scoped && snapshot.environment) headers['X-CRM-Environment'] = snapshot.environment;
 
   let finalPath = path;
   if (params && Object.keys(params).length > 0) {
@@ -38,13 +43,17 @@ async function request<T>(
     }
   }
 
-  const res = await fetch(`${API_URL}${finalPath}`, {
+  const pending = fetch(`${API_URL}${finalPath}`, {
     method,
     headers,
     credentials: 'include', // sends HttpOnly leadcrm_token cookie automatically
     signal,
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
+  const res = await (scoped && method !== 'GET' ? trackEnvironmentMutation(pending) : pending);
+  if (scoped && snapshot.generation !== environmentSnapshot().generation) {
+    throw new DOMException('Environment changed', 'AbortError');
+  }
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({ error: res.statusText }));
@@ -69,7 +78,9 @@ async function request<T>(
   }
 
   if (method !== 'GET') invalidateApiPageCache(path);
-  return res.json() as Promise<T>;
+  const data = await res.json() as T;
+  if (scoped && snapshot.generation !== environmentSnapshot().generation) throw new DOMException('Environment changed', 'AbortError');
+  return data;
 }
 
 export const apiClient = {

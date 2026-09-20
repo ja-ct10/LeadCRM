@@ -12,6 +12,9 @@ import { MOCK_USERS, MOCK_TENANTS } from './mockData';
 import { authApi } from '@/shared/services/auth.api';
 import { rolesApi } from '@/shared/services/roles.api';
 import { clearPageCache }         from '@/shared/cache/page-cache';
+import { beginEnvironmentSwitch, endEnvironmentSwitch, setTransportEnvironment, environmentSnapshot } from '@/lib/api/environment-transport';
+import type { CrmEnvironment } from '@leadcrm/shared';
+import { USE_MOCK_DATA } from '@/lib/config';
 
 // When true, auth calls hit the mock localStorage data instead of the backend.
 // Set NEXT_PUBLIC_USE_MOCK_AUTH=false in .env.local to use the real API.
@@ -80,6 +83,8 @@ export function buildTenantFromApiUser(apiUser: Record<string, unknown>): Tenant
 // ─── Context interface ────────────────────────────────────────────────────────
 
 interface AuthContextType {
+  switchEnvironment: (environment: CrmEnvironment) => Promise<void>;
+  isSwitchingEnvironment: boolean;
   user: User | null;
   tenant: Tenant | null;
   isLoading: boolean;
@@ -110,6 +115,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [tenant, setTenant]   = useState<Tenant | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [isSwitchingEnvironment, setIsSwitchingEnvironment] = useState(false);
+  const switchingEnvironment = useRef(false);
   const [permissions, setPermissions]           = useState<ResolvedPermissions>({});
   const [isPermissionsLoaded, setIsPermissionsLoaded] = useState(false);
 
@@ -121,6 +128,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const applyAuthUser = useCallback((apiUser: AuthUser, expectedUserId?: string) => {
     if (expectedUserId && activeUserId.current !== expectedUserId) return;
     requestGeneration.current += 1;
+    const environment = apiUser.role === 'System Admin' ? null : apiUser.activeEnvironment ?? 'SANDBOX';
+    if (environmentSnapshot().environment !== environment) clearPageCache();
+    setTransportEnvironment(environment);
     activeUserId.current = apiUser.id;
     setUser({
       ...apiUser,
@@ -132,6 +142,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthError(null);
     setIsLoading(false);
   }, []);
+
+  const switchEnvironment = async (environment: CrmEnvironment): Promise<void> => {
+    if (switchingEnvironment.current || !user || user.role === 'System Admin' || environment === user.activeEnvironment) return;
+    // Demo stores contain a single legacy dataset; never label it as isolated Live data.
+    if (USE_MOCK_AUTH || USE_MOCK_DATA) throw new Error('Environment switching requires the connected CRM backend. Disable mock mode.');
+    switchingEnvironment.current = true;
+    setIsSwitchingEnvironment(true);
+    const expectedUser = user.id;
+    const commit = (value: CrmEnvironment) => {
+      if (activeUserId.current !== expectedUser) return;
+      requestGeneration.current += 1;
+      clearPageCache();
+      setTransportEnvironment(value);
+      setUser(current => current?.id === expectedUser ? { ...current, activeEnvironment: value } : current);
+    };
+    try {
+      await beginEnvironmentSwitch();
+      const response = await authApi.changeEnvironment(environment);
+      commit(response.data.environment);
+    } catch (error) {
+      // A lost response may follow a committed update. Reconcile only ambiguous failures.
+      const status = (error as { status?: number })?.status;
+      if (!status || status >= 500) {
+        const restored = await authApi.me().catch(() => null);
+        if (restored?.data.user.id === expectedUser && restored.data.user.activeEnvironment === environment) {
+          commit(environment);
+          return;
+        }
+      }
+      throw error;
+    } finally {
+      endEnvironmentSwitch();
+      switchingEnvironment.current = false;
+      setIsSwitchingEnvironment(false);
+    }
+  };
 
   const restoreSession = async (): Promise<void> => {
     const generation = ++requestGeneration.current;
@@ -254,9 +300,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const DEMO_EMAILS = [
       'admin@gmail.com',
       'super@leadcrm.com',
-      'admin@democorp.com',
-      'bob@democorp.com',
-      'guest@democorp.com',
+      'admin@camxian.com',
+      'bob@camxian.com',
     ];
     if (!foundUser && DEMO_EMAILS.includes(email)) {
       allUsers   = MOCK_USERS;
@@ -266,7 +311,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       foundUser = allUsers.find((u: User) => u.email === email);
     }
 
-    if (!foundUser) return false;
+    if (!foundUser || foundUser.role.trim().toLowerCase() === 'guest') return false;
 
     foundUser = normalizeMockUser(foundUser);
     setUser(foundUser);
@@ -299,6 +344,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setUser(null);
     setTenant(null);
+    setTransportEnvironment(null);
     setAuthError(null);
     activeUserId.current = null;
     permissionGeneration.current += 1;
@@ -395,6 +441,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider value={{
       user, tenant, isLoading, authError, retryAuthInit, refreshUser, applyAuthUser,
+      switchEnvironment, isSwitchingEnvironment,
       login, loginWithGoogle, logout, requestPasswordReset, confirmPasswordReset,
       switchRole, updateProfile, switchDemoAccount, permissions, isPermissionsLoaded,
       userCan, refreshPermissions, restoreSession,

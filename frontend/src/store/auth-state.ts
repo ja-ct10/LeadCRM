@@ -2,6 +2,7 @@ import type { User } from './types';
 
 /** Only used in explicitly enabled mock mode; real accounts always use API state. */
 export function normalizeMockUser(user: User): User {
+  if (user.role.trim().toLowerCase() === 'guest') throw new Error('Retired account role');
   const hasProgress = user.onboardingStep !== undefined;
   return {
     ...user,

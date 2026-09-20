@@ -51,13 +51,13 @@ export async function getById(id: string, tenantId: string) {
 }
 
 export async function create(tenantId: string, actorId: string, dto: {
-  firstName: string; lastName: string; email: string; password?: string; role?: string; phone?: string; jobTitle?: string; department?: string; avatarUrl?: string; timeZone?: string;
+  firstName: string; lastName: string; email: string; password?: string; role: string; phone?: string; jobTitle?: string; department?: string; avatarUrl?: string; timeZone?: string;
 }) {
   dto = CreateUsersSchema.parse(dto);
   if (isSystemAdminRole(dto.role)) {
     throw new ForbiddenError('Cannot assign System Admin role via tenant user management');
   }
-  requireEmployeeAccount({ email: dto.email, role: dto.role ?? Role.USER });
+  requireEmployeeAccount({ email: dto.email, role: dto.role });
   const existing = await prisma.user.findFirst({ where: { email: dto.email, tenantId } });
   if (existing) throw new ConflictError('A user with this email already exists in this tenant');
 
@@ -69,7 +69,7 @@ export async function create(tenantId: string, actorId: string, dto: {
       data: {
         tenantId, firstName: dto.firstName, lastName: dto.lastName,
         email: dto.email.trim().toLowerCase(), passwordHash,
-        mustChangePassword: true, role: dto.role ?? Role.USER,
+        mustChangePassword: true, role: dto.role,
         phone: dto.phone, jobTitle: dto.jobTitle, department: dto.department,
         avatarUrl: dto.avatarUrl, timeZone: dto.timeZone,
       },

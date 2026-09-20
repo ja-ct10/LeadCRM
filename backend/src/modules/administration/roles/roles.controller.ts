@@ -57,7 +57,7 @@ export async function getUserPermissions(req: Request, res: Response, next: Next
     const targetUserId = String(req.params.id);
     const { userId, tenantId, role } = req.user!;
 
-    const SUPER_ROLES = ['Guest', 'User', 'Client Admin', 'System Admin'];
+    const SUPER_ROLES = ['Client Admin', 'System Admin'];
     const isAdmin = SUPER_ROLES.some(r => r.toLowerCase() === (role ?? '').toLowerCase().trim());
 
     if (!isAdmin && targetUserId !== userId) {
@@ -65,7 +65,7 @@ export async function getUserPermissions(req: Request, res: Response, next: Next
       return;
     }
 
-    const permissions = await service.getUserPermissions(targetUserId, tenantId, role);
+    const permissions = await service.getUserPermissions(targetUserId, tenantId);
     res.json({ success: true, data: permissions });
   } catch (err) { next(err); }
 }

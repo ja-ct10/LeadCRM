@@ -12,6 +12,7 @@ import { GlobalOmnibox } from '@/shared/components/global-omnibox';
 import { MobileSearchOverlay } from '@/shared/components/mobile-search-overlay';
 import { UserProfileDropdown } from './user-profile-dropdown';
 import { cn } from '@/lib/utils';
+import { EnvironmentSwitcher } from './environment-switcher';
 
 // -- Types ---------------------------------------------------------------------
 
@@ -135,11 +136,12 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
 
       {/* Center: Global Search Omnibox */}
       <div className="hidden md:flex flex-1 max-w-[460px] mx-4 justify-center">
-        <GlobalOmnibox />
+        <GlobalOmnibox key={user?.activeEnvironment} />
       </div>
 
       {/* Right: Actions */}
       <div className="flex items-center gap-1.5 flex-none md:flex-1 justify-end">
+        {user?.role !== 'System Admin' && <EnvironmentSwitcher />}
         {/* Inbox (Gmail) */}
         <button
           onClick={onOpenInbox}

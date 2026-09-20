@@ -95,7 +95,7 @@ async function fetchTenantPlanData(tenantId: string): Promise<TenantPlanData> {
   }
 
   // For SANDBOX/NONE tenants — apply Free plan defaults when limits aren't set yet.
-  // These defaults are also set on the Tenant row at registration via registerGuest,
+  // These defaults are also set on the Tenant row at registration via legacy provisioning,
   // but this fallback ensures existing tenants created before that change also get limits.
   const isSandboxFree = tenant.status === 'SANDBOX' && tenant.subscriptionStatus === 'NONE';
   const maxUsers    = tenant.maxUsers    ?? (isSandboxFree ? SANDBOX_MAX_USERS    : null);
