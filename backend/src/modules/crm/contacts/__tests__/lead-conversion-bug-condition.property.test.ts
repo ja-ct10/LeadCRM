@@ -51,7 +51,6 @@ vi.mock('../../../../config/database.config', () => ({
   default: {
     $transaction: (cb: (tx: unknown) => Promise<unknown>) => mockTransaction(cb),
   },
-  enforcePlanLimit: vi.fn(),
 }));
 
 vi.mock('../../../../core/audit/audit.service', () => ({

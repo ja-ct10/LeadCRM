@@ -27,7 +27,7 @@ leadcrm/
 | Concern | CRM Portal | Admin Portal |
 |---|---|---|
 | Audience | Tenant users (Client Admin, Sales Rep, Viewer, Technician) | LeadCRM operator (System Admin) |
-| Purpose | Daily CRM work — contacts, pipeline, campaigns, automation | Platform control — tenant management, pricing, infrastructure |
+| Purpose | Daily CRM work — contacts, pipeline, campaigns, automation | Platform control — tenant management and audit |
 | Physical path | `frontend/src/features/tenant/` | `frontend/src/features/system-admin/` |
 | App Router group | `app/(tenant)/` | `app/(system-admin)/` |
 
@@ -106,7 +106,7 @@ backend/
     │   ├── automation/    ← workflows, triggers, actions
     │   ├── operations/    ← service-orders, tasks
     │   ├── administration/ ← users, roles, role-permissions, audit
-    │   ├── billing/        ← invoices, subscriptions, payment-methods, pricing-plans
+    │   ├── billing/        ← customer invoices and payments
     │   └── reporting/     ← reports
     ├── integrations/      ← gmail/, paymongo/
     ├── core/              ← auth/, permissions/, audit/, tenant/

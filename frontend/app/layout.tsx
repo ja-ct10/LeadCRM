@@ -21,7 +21,7 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: 'LeadCRM - Smart SaaS CRM',
+  title: 'LeadCRM - Camxian Technologies',
   description: 'The premier CRM platform for IT solutions providers, security firms, and telecom agencies.',
   icons: {
     icon: '/leadcrm_logo.ico',

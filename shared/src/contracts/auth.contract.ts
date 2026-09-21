@@ -13,8 +13,6 @@ export interface AuthUser {
   timeZone: string | null;
   tenantName: string | null;
   tenantStatus: string | null;
-  subscriptionStatus: string | null;
-  plan: string | null;
   industry: string | null;
   companySize: string | null;
   website: string | null;

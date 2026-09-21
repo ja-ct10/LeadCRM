@@ -37,7 +37,6 @@ vi.mock('../../../../config/database.config', () => {
         createMany: (...args: unknown[]) => mockContactDealCreateMany(...args),
       },
     },
-    enforcePlanLimit: vi.fn().mockResolvedValue(undefined),
   };
 });
 

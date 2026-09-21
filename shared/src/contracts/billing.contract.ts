@@ -1,9 +1,5 @@
-import { Invoice, PlanType, BillingCycle } from '../types/billing.types';
+import { Invoice } from '../types/billing.types';
 
-export interface UpgradePlanRequest {
-  plan: PlanType;
-  billingCycle: BillingCycle;
-}
 
 export interface InvoiceListResponse {
   data: Invoice[];

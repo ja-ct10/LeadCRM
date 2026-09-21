@@ -29,23 +29,11 @@ export async function generateTenants(count: number = 10) {
   if (process.env.NODE_ENV === 'production') throw new Error('Demo tenant generation is disabled in production');
   const defaultPassword = await hashPassword('password123');
 
-  // Pricing plans must exist for subscriptions
-  const planPro = await prisma.pricingPlan.upsert({
-    where: { name: 'Pro' },
-    update: {},
-    create: { name: 'Pro', planType: 'PRO', monthlyPrice: 49, isActive: true }
-  });
-  const planEnterprise = await prisma.pricingPlan.upsert({
-    where: { name: 'Enterprise' },
-    update: {},
-    create: { name: 'Enterprise', planType: 'ENTERPRISE', monthlyPrice: 99, isActive: true }
-  });
-
   for (let i = 0; i < count; i++) {
     const industry = INDUSTRIES[i % INDUSTRIES.length];
     const companyName = faker.company.name();
     const slug = faker.helpers.slugify(companyName).toLowerCase() + '-' + i;
-    
+
     console.log(`\n--- Generating Tenant ${i+1}/${count}: ${companyName} (${industry}) ---`);
 
     // 1. Create Tenant
@@ -59,24 +47,10 @@ export async function generateTenants(count: number = 10) {
         phone: faker.phone.number(),
         address: faker.location.streetAddress(),
         status: 'ACTIVE',
-        subscriptionStatus: 'ACTIVE',
-        plan: i % 2 === 0 ? 'PRO' : 'ENTERPRISE',
       }
     });
 
     await seedSystemRoles(tenant.id);
-
-    // Create Subscription
-    await prisma.subscription.create({
-      data: {
-        tenantId: tenant.id,
-        planId: i % 2 === 0 ? planPro.id : planEnterprise.id,
-        billingCycle: 'MONTHLY',
-        status: 'ACTIVE',
-        amount: i % 2 === 0 ? 49 : 99,
-        startDate: randomDatePast(12),
-      }
-    });
 
     // 2. Roles & Permissions
     // seedSystemRoles already created Client Admin.
@@ -87,7 +61,7 @@ export async function generateTenants(count: number = 10) {
       { name: 'Support Agent', isSystemRole: false, perms: { canView: true, canCreate: true, canEdit: true, canDelete: false } },
       { name: 'Finance',       isSystemRole: false, perms: { canView: true, canCreate: false, canEdit: false, canDelete: false } },
     ];
-    
+
     const roleEntities: Record<string, { id: string }> = {};
     const modules = ['contacts', 'deals', 'organizations', 'campaigns', 'tasks', 'invoices', 'users', 'reports'];
 
@@ -113,12 +87,12 @@ export async function generateTenants(count: number = 10) {
 
     // 3. Users
     const usersList: { id: string; role: string }[] = [];
-    
+
     const createUser = async (roleName: string, fName?: string, lName?: string, e?: string) => {
       const firstName = fName || faker.person.firstName();
       const lastName = lName || faker.person.lastName();
       const email = e || faker.internet.email({ firstName, lastName, provider: 'camxian.com' });
-      
+
       const user = await prisma.user.create({
         data: {
           tenantId: tenant.id,
@@ -386,7 +360,7 @@ export async function generateTenants(count: number = 10) {
         engagement: 25.5,
       }
     });
-    
+
     console.log(`[Seed] Finished generating data for Tenant: ${companyName}`);
   }
 }

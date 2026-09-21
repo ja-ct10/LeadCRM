@@ -49,7 +49,6 @@ frontend/
 │   │   ├── automation/
 │   │   │   └── workflows/page.tsx
 │   │   ├── reporting/page.tsx
-│   │   ├── billing/page.tsx
 │   │   ├── settings/page.tsx
 │   │   └── administration/
 │   │       ├── users/page.tsx
@@ -59,8 +58,6 @@ frontend/
 │       └── admin/
 │           ├── dashboard/page.tsx
 │           ├── clients/page.tsx
-│           ├── billing/page.tsx
-│           ├── pricing/page.tsx
 │           └── environments/page.tsx
 │
 ├── src/
@@ -101,7 +98,6 @@ frontend/
 │   │   │   │   ├── assets/
 │   │   │   │   └── inventory/
 │   │   │   ├── reporting/
-│   │   │   ├── billing/
 │   │   │   ├── administration/
 │   │   │   │   ├── users/
 │   │   │   │   └── audit/
@@ -113,7 +109,6 @@ frontend/
 │   │   └── system-admin/         ← LeadCRM operator console (cross-tenant)
 │   │       ├── dashboard/        ← AdminDashboard.tsx
 │   │       ├── tenants/          ← ClientManagement.tsx
-│   │       ├── billing/          ← AdminBillingPage.tsx, ui/pricing-page.tsx
 │   │       └── layout/           ← AdminLayout.tsx, AdminLayoutShell.tsx
 │   │
 │   ├── shared/                   ← Reusable UI (used by both portals)
@@ -274,7 +269,7 @@ shared/
     │   ├── deal.types.ts         ← Deal, Pipeline, Stage, DealPriority
     │   ├── user.types.ts         ← User, UserStatus
     │   ├── campaign.types.ts     ← Campaign, CampaignType, CampaignStatus
-    │   ├── billing.types.ts      ← Invoice, PlanType, BillingCycle, PaymentStatus
+    │   ├── billing.types.ts      ← Invoice, BillingCycle, PaymentStatus
     │   ├── tenant.types.ts       ← Tenant, TenantStatus
     │   ├── api.types.ts          ← ApiResponse, PaginatedResponse, PaginationMeta
     │   └── index.ts              ← Re-exports all types
@@ -287,14 +282,12 @@ shared/
     ├── contracts/
     │   ├── contact.contract.ts   ← CreateContactRequest, ContactListResponse
     │   ├── user.contract.ts      ← CreateUserRequest, AuthResponse
-    │   ├── billing.contract.ts   ← UpgradePlanRequest, InvoiceListResponse
     │   ├── campaign.contract.ts  ← CreateCampaignRequest
     │   └── index.ts
     │
     ├── validation/
     │   ├── contact.schema.ts     ← Zod: ContactSchema, UpdateContactSchema
     │   ├── user.schema.ts        ← Zod: LoginSchema, RegisterSchema, CreateUserSchema
-    │   ├── billing.schema.ts     ← Zod: UpgradePlanSchema
     │   └── index.ts
     │
     └── index.ts                  ← Main barrel export (@leadcrm/shared entry)

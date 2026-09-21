@@ -30,7 +30,6 @@ vi.mock('../../../../config/database.config', () => ({
     task:     { count:     (...args: unknown[]) => mockTaskCount(...args) },
     campaign: { findMany:  (...args: unknown[]) => mockCampaignFindMany(...args) },
   },
-  enforcePlanLimit: vi.fn(),
 }));
 
 import {

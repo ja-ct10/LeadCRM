@@ -34,8 +34,6 @@ const CANONICAL_USER_KEYS: Array<keyof AuthUserResponse> = [
   'emailVerified',
   'tenantName',
   'tenantStatus',
-  'subscriptionStatus',
-  'plan',
   'industry',
   'companySize',
   'currency',
@@ -58,8 +56,6 @@ function makeUser(overrides: Partial<AuthUserSource> = {}): AuthUserSource {
     tenant: {
       name:                  'Acme Corp',
       status:                'ACTIVE',
-      subscriptionStatus:    'ACTIVE',
-      plan:                  'PRO',
       industry:              'IT Services',
       companySize:           '11-50',
       currency:              'USD',
@@ -133,15 +129,7 @@ describe('buildAuthUserResponse — tenant field flattening', () => {
     expect(result.tenantStatus).toBe('ACTIVE');
   });
 
-  it('flattens tenant.subscriptionStatus', () => {
-    const result = buildAuthUserResponse(makeUser());
-    expect(result.subscriptionStatus).toBe('ACTIVE');
-  });
 
-  it('flattens tenant.plan', () => {
-    const result = buildAuthUserResponse(makeUser());
-    expect(result.plan).toBe('PRO');
-  });
 
   it('flattens tenant.industry', () => {
     const result = buildAuthUserResponse(makeUser());
@@ -202,8 +190,6 @@ describe('buildAuthUserResponse — null/undefined safety', () => {
     const result = buildAuthUserResponse(makeUser({ tenant: null }));
     expect(result.tenantName).toBeNull();
     expect(result.tenantStatus).toBeNull();
-    expect(result.subscriptionStatus).toBeNull();
-    expect(result.plan).toBeNull();
     expect(result.industry).toBeNull();
     expect(result.companySize).toBeNull();
     expect(result.currency).toBeNull();
@@ -289,8 +275,6 @@ describe('buildAuthUserResponse — property-based invariants', () => {
             tenant: {
               name:                  'Test Co',
               status:                'ACTIVE',
-              subscriptionStatus:    'ACTIVE',
-              plan:                  'STARTER',
               industry:              'Tech',
               companySize:           '1-10',
               currency:              'PHP',

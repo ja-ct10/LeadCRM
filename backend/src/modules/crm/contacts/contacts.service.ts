@@ -2,7 +2,6 @@ import { Prisma } from '@prisma/client';
 import * as repo from './contacts.repository';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { NotFoundError, ValidationError } from '../../../shared/errors/http-error';
-import { enforcePlanLimit } from '../../../config/database.config';
 import { CreateContactDto, UpdateContactDto, ConvertContactDto } from './contacts.dto';
 import { paginate } from '../../../shared/helpers/pagination';
 import { fireContactCreated, fireContactStatusChanged, fireLeadCreated, fireLeadStatusChanged } from '../../automation/triggers/triggers.service';
@@ -21,7 +20,6 @@ export async function getContactById(id: string, tenantId: string) {
 }
 
 export async function createContact(tenantId: string, userId: string, dto: CreateContactDto) {
-  await enforcePlanLimit(tenantId, 'contacts');
   const contact = await repo.createContact(tenantId, dto, userId);
 
   await writeAuditLog({

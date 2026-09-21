@@ -9,6 +9,7 @@ import {
   DEFAULT_PIPELINE,
 } from './moduleConfig';
 import { Info } from 'lucide-react';
+vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => false }));
 
 describe('moduleConfig defaults', () => {
   it('defines valid lead statuses with tones', () => {
@@ -44,17 +45,16 @@ describe('RecordPanel Component', () => {
   const dummyActivity = [
     {
       id: 'act-1',
-      kind: 'created' as const,
+      type: 'created',
       title: 'Lead created for Acme Corporation',
-      when: 'Aug 18',
-      actor: { name: 'Reymark Panes', initials: 'RP' },
+      createdAt: '2026-08-18T12:00:00Z',
+      createdBy: { id: 'actor', firstName: 'Reymark', lastName: 'Panes', email: 'reymark@camxian.com' },
     },
     {
       id: 'act-2',
-      kind: 'status' as const,
-      from: 'Inquiry',
-      to: 'Hot',
-      when: 'Just now',
+      type: 'stage_change',
+      title: 'Status changed from Inquiry to Hot',
+      createdAt: '2026-08-19T12:00:00Z',
     },
   ];
 
@@ -90,7 +90,7 @@ describe('RecordPanel Component', () => {
     expect(screen.getAllByText('Hot').length).toBeGreaterThanOrEqual(1);
   });
 
-  it('renders activity items with actor initials and status transition chips', () => {
+  it('renders activity items with the recorded actor and status history', () => {
     render(
       <RecordPanel
         open={true}
@@ -106,9 +106,8 @@ describe('RecordPanel Component', () => {
     );
 
     expect(screen.getByText('Lead created for Acme Corporation')).toBeDefined();
-    expect(screen.getByText('Status changed from')).toBeDefined();
-    expect(screen.getByText('Inquiry')).toBeDefined();
-    expect(screen.getByText('RP')).toBeDefined();
+    expect(screen.getByText('Status changed from Inquiry to Hot')).toBeDefined();
+    expect(screen.getByText('Reymark Panes')).toBeDefined();
   });
 
   it('triggers action callbacks when action buttons are clicked', () => {

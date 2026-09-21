@@ -38,22 +38,16 @@ export async function seedDemoAccounts(): Promise<string> {
   }
 
   // Upsert the canonical system tenant. Using 'ACTIVE' + 'ENTERPRISE' ensures
-  // the System Admin bypasses any subscription gate checks on the backend.
   const systemTenant = await prisma.tenant.upsert({
     where:  { slug: 'leadcrm-system' },
     update: {
-      status:               'ACTIVE',
-      subscriptionStatus:   'ACTIVE',
-      onboardingStep:       3,
+      status:               'ACTIVE',      onboardingStep:       3,
       onboardingCompletedAt: new Date(),
     },
     create: {
       name:                 'LeadCRM System',
       slug:                 'leadcrm-system',
-      status:               'ACTIVE',
-      subscriptionStatus:   'ACTIVE',
-      plan:                 'ENTERPRISE',
-      onboardingStep:       3,
+      status:               'ACTIVE',      onboardingStep:       3,
       onboardingCompletedAt: new Date(),
     },
   });

@@ -78,7 +78,7 @@ export async function repairClientAdminRoleDefinitions(): Promise<void> {
       create: {
         tenantId:     tenant.id,
         name:         'Client Admin',
-        description:  'Full tenant ownership. Manages users, roles, billing, and all CRM data. Assigned after successful subscription.',
+        description:  'Full tenant ownership. Manages users, roles, billing, and all CRM data.',
         isSystemRole: true,
       },
     });

@@ -7,12 +7,6 @@ import { AuthLoadingScreen } from '@/shared/components/auth-loading-screen';
 import { AuthRecoveryScreen } from '@/shared/components/auth-recovery-screen';
 import { getPostLoginDestination, getSetupIssue, resolveAuthRoute } from '@/shared/auth/auth-routing';
 
-export function isSandboxUser(
-  user: { role?: string; tenantStatus?: string | null; subscriptionStatus?: string | null } | null,
-): boolean {
-  return user?.tenantStatus === 'SANDBOX' &&
-    (!user.subscriptionStatus || user.subscriptionStatus === 'NONE');
-}
 
 /** Route UX only. The backend independently enforces account, tenant and RBAC access. */
 export function AuthGuard({

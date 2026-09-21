@@ -1,41 +1,12 @@
 'use client';
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import Link from 'next/link';
+import { RecordTimelineTab } from './record-timeline-tab';
+import type { TimelineActivity } from '@/shared/hooks/use-record-activities';
 import { motion, AnimatePresence } from 'motion/react';
 import type { LucideIcon } from 'lucide-react';
-import {
-  Mail,
-  MessageSquare,
-  Phone,
-  Plus,
-  MoreHorizontal,
-  Search,
-  SlidersHorizontal,
-  CheckCircle2,
-  History,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  FileText,
-  Trash2,
-  Zap,
-  GitMerge,
-  Eye,
-  Pencil,
-  Download,
-  Upload,
-  Calendar,
-  Layers,
-  Sparkles,
-  Copy,
-  Building,
-  User,
-  Clock,
-  Send,
-  AlertCircle,
-  ExternalLink,
-} from 'lucide-react';
+import { Mail, MessageSquare, Phone, Plus, MoreHorizontal, History, Check, ChevronDown, ChevronRight, FileText, Trash2, Zap, GitMerge, Eye, Pencil, Download, Upload, Layers, Copy, Building, User, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
@@ -43,8 +14,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import { Textarea } from '@/shared/components/ui/textarea';
-import { Checkbox } from '@/shared/components/ui/checkbox';
-import { Separator } from '@/shared/components/ui/separator';
+
+
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/shared/components/ui/tabs';
 import {
   DropdownMenu,
@@ -59,7 +30,6 @@ import type {
   RecordModule,
   StatusOption,
   PipelineStage,
-  ActivityItem,
   FileItem,
   SectionConfig,
   CustomFieldItem,
@@ -92,7 +62,9 @@ export interface RecordPanelProps {
     current: string;
     onChange: (stage: string) => void;
   };
-  activity: ActivityItem[];
+  activity: TimelineActivity[];
+  activityError?: string | null;
+  onActivityCreated?: () => void;
   sections: SectionConfig[];
   files?: FileItem[];
   actions?: {
@@ -110,7 +82,6 @@ export interface RecordPanelProps {
   onUploadFile?: (file: File) => void;
   onDeleteFile?: (id: string) => void;
   onAddCustomField?: (field: Omit<CustomFieldItem, 'id'>) => void;
-  onAddActivity?: (activity: { kind: 'note' | 'call' | 'task' | 'email'; title: string; notes?: string }) => void;
   loading?: boolean;
   /** URL to the full-page detail view (renders "Open Full Page" link in header) */
   fullPageHref?: string;
@@ -343,7 +314,8 @@ export function RecordPanel({
   onUploadFile,
   onDeleteFile,
   onAddCustomField,
-  onAddActivity,
+  activityError,
+  onActivityCreated,
   loading = false,
   fullPageHref,
 }: RecordPanelProps) {
@@ -351,40 +323,8 @@ export function RecordPanel({
   const [pipelineOpen, setPipelineOpen] = useState(false);
   const [customFieldOpen, setCustomFieldOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('activity');
-  const [activityFilter, setActivityFilter] = useState<string>('All');
-  const [activitySearch, setActivitySearch] = useState<string>('');
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Quick Composer State for Sales Reps
-  const [composerMode, setComposerMode] = useState<'note' | 'call' | 'task' | 'email'>('note');
-  const [composerText, setComposerText] = useState('');
-  const [composerSubmitting, setComposerSubmitting] = useState(false);
-  const [localActivities, setLocalActivities] = useState<ActivityItem[]>([]);
-
-  // Combined activities (props + locally logged)
-  const combinedActivities = useMemo(() => {
-    return [...localActivities, ...activity];
-  }, [localActivities, activity]);
-
-  // Filter activities based on pill and search
-  const filteredActivities = useMemo(() => {
-    return combinedActivities.filter((item) => {
-      // Category filter
-      if (activityFilter === 'Notes' && item.kind !== 'note') return false;
-      if (activityFilter === 'Calls & Emails' && item.kind !== 'email' && item.kind !== 'call') return false;
-      if (activityFilter === 'Tasks' && item.kind !== 'task') return false;
-      if (activityFilter === 'Status' && item.kind !== 'status') return false;
-
-      // Keyword search
-      if (activitySearch.trim()) {
-        const query = activitySearch.toLowerCase();
-        const textToMatch = `${item.title || ''} ${item.from || ''} ${item.to || ''} ${item.actor?.name || ''}`.toLowerCase();
-        return textToMatch.includes(query);
-      }
-      return true;
-    });
-  }, [combinedActivities, activityFilter, activitySearch]);
 
   const moduleLabel = module.charAt(0).toUpperCase() + module.slice(1);
 
@@ -392,36 +332,6 @@ export function RecordPanel({
   const handleCopy = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     toast.success(`${label} copied to clipboard`);
-  };
-
-  // Quick Activity Submit
-  const handlePostActivity = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!composerText.trim()) return;
-
-    setComposerSubmitting(true);
-    const newTitle = composerText.trim();
-    
-    if (onAddActivity) {
-      onAddActivity({
-        kind: composerMode,
-        title: newTitle,
-      });
-    } else {
-      // Fallback local append
-      const newAct: ActivityItem = {
-        id: `local-act-${Date.now()}`,
-        kind: composerMode,
-        title: newTitle,
-        when: 'Just now',
-        actor: { name: 'You (Current User)', initials: 'ME' },
-      };
-      setLocalActivities((prev) => [newAct, ...prev]);
-      toast.success(`${composerMode.charAt(0).toUpperCase() + composerMode.slice(1)} logged successfully`);
-    }
-
-    setComposerText('');
-    setComposerSubmitting(false);
   };
 
   // File Upload Handlers
@@ -459,15 +369,15 @@ export function RecordPanel({
           className="flex w-full flex-col gap-0 border-l border-border bg-background p-0 sm:max-w-[620px] lg:max-w-[680px]"
         >
           <TooltipProvider delayDuration={150}>
-            <Tabs defaultValue="activity" value={activeTab} onValueChange={setActiveTab} className="flex h-full flex-col">
-              
+            <Tabs defaultValue="activity" value={activeTab} onValueChange={setActiveTab} className="flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain [--panel-gutter:1rem] sm:[--panel-gutter:1.5rem]">
+
               {/* ========================================================================= */}
               {/*                                HEADER SECTION                            */}
               {/* ========================================================================= */}
-              <div className="sticky top-0 z-10 shrink-0 border-b border-border/60 bg-card/95 px-6 pt-6 backdrop-blur-md">
-                
+              <div className="relative shrink-0 border-b border-border/60 bg-card/95 px-[var(--panel-gutter)] pb-0 pt-14">
+
                 {/* 1. Main Title & Status Row */}
-                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
+                <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
                   <div className="flex min-w-0 items-start gap-3.5">
                     <AvatarTile title={record.title} avatar={record.avatar} />
                     <div className="min-w-0 pt-0.5">
@@ -479,11 +389,11 @@ export function RecordPanel({
                           <Chip key={tag} className="text-[10px] py-0">{tag}</Chip>
                         ))}
                       </div>
-                      <h2 className="truncate font-subtitle text-2xl font-bold tracking-tight text-foreground mt-1">
+                      <h2 className="break-words [overflow-wrap:anywhere] font-subtitle text-2xl font-bold tracking-tight text-foreground mt-1">
                         {record.title}
                       </h2>
                       {record.subtitle && (
-                        <p className="truncate text-xs text-muted-foreground mt-0.5 font-medium">
+                        <p className="break-words [overflow-wrap:anywhere] text-xs text-muted-foreground mt-0.5 font-medium">
                           {record.subtitle}
                         </p>
                       )}
@@ -500,7 +410,7 @@ export function RecordPanel({
                   </div>
 
                   {/* Status Dropdown Selector */}
-                  <div className="flex shrink-0 flex-col items-end gap-1.5">
+                  <div className="flex min-w-0 flex-col items-start gap-1.5 sm:items-end">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <button
@@ -517,7 +427,7 @@ export function RecordPanel({
                                 : 'bg-primary'
                             )}
                           />
-                          <span className="truncate max-w-[130px]">{status || 'Set Status'}</span>
+                          <span className="max-w-48 break-words text-left [overflow-wrap:anywhere]">{status || 'Set Status'}</span>
                           <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                         </button>
                       </DropdownMenuTrigger>
@@ -566,7 +476,7 @@ export function RecordPanel({
                         <Mail className="h-3.5 w-3.5 text-primary/80" />
                         <a
                           href={`mailto:${contactEmail}`}
-                          className="font-medium text-foreground hover:underline truncate max-w-[180px]"
+                          className="font-medium text-foreground hover:underline min-w-0 break-all"
                         >
                           {contactEmail}
                         </a>
@@ -603,7 +513,7 @@ export function RecordPanel({
                       <div className="flex items-center gap-1 text-muted-foreground">
                         <span className="text-border">|</span>
                         <Building className="h-3.5 w-3.5" />
-                        <span className="font-medium text-foreground truncate max-w-[140px]">{record.company}</span>
+                        <span className="font-medium text-foreground min-w-0 break-words [overflow-wrap:anywhere]">{record.company}</span>
                       </div>
                     )}
 
@@ -760,7 +670,7 @@ export function RecordPanel({
                     <History className="h-3.5 w-3.5" />
                     <span>Activity</span>
                     <span className="rounded bg-muted px-1.5 py-0.2 text-[10px] text-muted-foreground font-medium">
-                      {combinedActivities.length}
+                      {activity.length}
                     </span>
                   </TabsTrigger>
 
@@ -793,197 +703,15 @@ export function RecordPanel({
               {/* ========================================================================= */}
               {/*                                BODY CONTENT AREA                         */}
               {/* ========================================================================= */}
-              <div className="flex-1 overflow-hidden bg-background">
-                
+              <div className="min-h-0 bg-background">
+
                 {/* ----------------------------- TAB 1: ACTIVITY ------------------------- */}
-                <TabsContent value="activity" className="h-full overflow-y-auto custom-scrollbar m-0 outline-none">
-                  <div className="p-6 space-y-5">
-                    
-                    {/* Quick Composer Widget */}
-                    <div className="overflow-hidden rounded-xl border border-border/70 bg-card shadow-sm">
-                      <div className="flex items-center justify-between border-b border-border/40 bg-secondary/30 px-4 py-2">
-                        <div className="flex items-center gap-1">
-                          {(['note', 'call', 'task', 'email'] as const).map((mode) => (
-                            <button
-                              key={mode}
-                              type="button"
-                              onClick={() => setComposerMode(mode)}
-                              className={cn(
-                                'flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all duration-200',
-                                composerMode === mode
-                                  ? 'bg-background text-foreground shadow-xs font-semibold'
-                                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
-                              )}
-                            >
-                              {mode === 'note' && <FileText className="h-3.5 w-3.5 text-primary" />}
-                              {mode === 'call' && <Phone className="h-3.5 w-3.5 text-success" />}
-                              {mode === 'task' && <CheckCircle2 className="h-3.5 w-3.5 text-warning-foreground" />}
-                              {mode === 'email' && <Mail className="h-3.5 w-3.5 text-primary" />}
-                              <span className="capitalize">{mode}</span>
-                            </button>
-                          ))}
-                        </div>
-                        <span className="text-[11px] text-muted-foreground">Quick Log</span>
-                      </div>
-
-                      <form onSubmit={handlePostActivity} className="p-3">
-                        <Textarea
-                          value={composerText}
-                          onChange={(e) => setComposerText(e.target.value)}
-                          placeholder={
-                            composerMode === 'note'
-                              ? 'Write meeting notes, observations, or follow-up summary...'
-                              : composerMode === 'call'
-                              ? 'Log call outcome, duration, and key discussion points...'
-                              : composerMode === 'task'
-                              ? 'Describe next action required...'
-                              : 'Log sent or received email summary...'
-                          }
-                          className="min-h-[70px] resize-none border-0 bg-transparent p-1 text-sm shadow-none focus-visible:ring-0 placeholder:text-muted-foreground/60"
-                        />
-                        <div className="mt-2 flex items-center justify-between border-t border-border/40 pt-2">
-                          <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-                            <Clock className="h-3 w-3" /> Will be timestamped now
-                          </span>
-                          <Button
-                            type="submit"
-                            size="sm"
-                            disabled={!composerText.trim() || composerSubmitting}
-                            className="h-7 px-3 text-xs gap-1.5 font-medium"
-                          >
-                            <Send className="h-3 w-3" />
-                            <span>Save {composerMode.charAt(0).toUpperCase() + composerMode.slice(1)}</span>
-                          </Button>
-                        </div>
-                      </form>
-                    </div>
-
-                    {/* Timeline Controls: Search & Category Filter Pills */}
-                    <div className="flex flex-col gap-3">
-                      <div className="flex items-center justify-between">
-                        <h4 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                          Activity Timeline ({filteredActivities.length})
-                        </h4>
-                        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
-                          {['All', 'Notes', 'Calls & Emails', 'Tasks', 'Status'].map((f) => (
-                            <button
-                              key={f}
-                              type="button"
-                              onClick={() => setActivityFilter(f)}
-                              className={cn(
-                                'rounded-full px-2.5 py-1 text-xs whitespace-nowrap transition-all duration-200 active:scale-95',
-                                activityFilter === f
-                                  ? 'bg-secondary font-medium text-foreground ring-1 ring-border/60 shadow-xs'
-                                  : 'text-muted-foreground hover:bg-accent/80'
-                              )}
-                            >
-                              {f}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Search Bar */}
-                      <div className="relative min-w-0">
-                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                          placeholder="Search keywords, actions, or reps..."
-                          value={activitySearch}
-                          onChange={(e) => setActivitySearch(e.target.value)}
-                          className="h-8.5 rounded-lg pl-9 text-xs border-border/60 shadow-xs focus-visible:border-primary"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Timeline List */}
-                    {loading ? (
-                      <div className="space-y-3 pt-2" aria-busy="true">
-                        {[1, 2, 3].map((n) => (
-                          <div key={n} className="h-14 w-full animate-pulse rounded-lg bg-muted" />
-                        ))}
-                      </div>
-                    ) : filteredActivities.length > 0 ? (
-                      <div className="relative pl-6 space-y-4 before:absolute before:left-2.5 before:top-3 before:bottom-3 before:w-[2px] before:bg-border/60">
-                        {filteredActivities.map((a, i) => (
-                          <div
-                            key={a.id || i}
-                            className="group relative rounded-xl border border-border/60 bg-card p-3.5 shadow-xs transition-all duration-200 hover:border-border hover:shadow-sm"
-                          >
-                            {/* Icon Marker */}
-                            <span
-                              className={cn(
-                                'absolute -left-[27px] top-3.5 grid h-6 w-6 place-items-center rounded-full shadow-xs ring-4 ring-background',
-                                a.kind === 'task' && 'bg-warning/20 text-warning-foreground',
-                                a.kind === 'status' && 'bg-muted text-muted-foreground',
-                                a.kind === 'email' && 'bg-primary/15 text-primary',
-                                a.kind === 'call' && 'bg-success/20 text-success',
-                                a.kind === 'created' && 'bg-primary/20 text-primary',
-                                a.kind === 'note' && 'bg-secondary text-secondary-foreground'
-                              )}
-                            >
-                              {a.kind === 'task' && <CheckCircle2 className="h-3.5 w-3.5" />}
-                              {a.kind === 'status' && <History className="h-3.5 w-3.5" />}
-                              {a.kind === 'email' && <Mail className="h-3 w-3" />}
-                              {a.kind === 'call' && <Phone className="h-3 w-3" />}
-                              {a.kind === 'created' && <Sparkles className="h-3 w-3" />}
-                              {a.kind === 'note' && <FileText className="h-3 w-3" />}
-                            </span>
-
-                            {/* Activity Header */}
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0">
-                                <p className="text-sm font-medium text-foreground leading-snug">
-                                  {a.kind === 'status' ? (
-                                    <span className="flex flex-wrap items-center gap-1.5">
-                                      <span className="text-muted-foreground font-normal">Status changed from</span>
-                                      {a.from && <Chip>{a.from}</Chip>}
-                                      <span className="text-muted-foreground">→</span>
-                                      {a.to && <Chip className="bg-primary/10 text-primary">{a.to}</Chip>}
-                                    </span>
-                                  ) : a.kind === 'task' ? (
-                                    <span>
-                                      <span className="text-muted-foreground font-normal">Task: </span>
-                                      {a.title}
-                                    </span>
-                                  ) : (
-                                    <span>{a.title}</span>
-                                  )}
-                                </p>
-                                {a.actor?.name && (
-                                  <p className="text-[11px] text-muted-foreground mt-0.5">
-                                    by {a.actor.name}
-                                  </p>
-                                )}
-                              </div>
-
-                              <div className="flex shrink-0 items-center gap-1.5">
-                                {a.actor?.initials && (
-                                  <span className="inline-grid h-5 w-5 place-items-center rounded-full bg-gradient-brand text-[9px] font-bold text-primary-foreground">
-                                    {a.actor.initials}
-                                  </span>
-                                )}
-                                <span className="text-xs text-muted-foreground whitespace-nowrap">
-                                  {a.when}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center p-12 text-center rounded-xl border border-dashed border-border/70 bg-card/40">
-                        <History className="h-8 w-8 text-muted-foreground/40" />
-                        <h4 className="mt-3 font-medium text-foreground text-sm">No activity recorded</h4>
-                        <p className="mt-1 text-xs text-muted-foreground max-w-xs">
-                          Use the composer above to log your first note, call outcome, or reminder.
-                        </p>
-                      </div>
-                    )}
-                  </div>
+                <TabsContent value="activity" className="m-0 min-h-0 flex-1 outline-none">
+                  <RecordTimelineTab key={record.id} activities={activity} module={({ lead: 'leads', contact: 'contacts', account: 'accounts', deal: 'deals' } as const)[module]} recordId={record.id} onActivityCreated={onActivityCreated} loading={loading} error={activityError} />
                 </TabsContent>
 
                 {/* ----------------------------- TAB 2: DETAILS -------------------------- */}
-                <TabsContent value="details" className="h-full overflow-y-auto custom-scrollbar m-0 bg-secondary/10 p-6 outline-none">
+                <TabsContent value="details" className="min-h-0 m-0 bg-secondary/10 px-[var(--panel-gutter)] py-5 outline-none">
                   {loading ? (
                     <div className="space-y-4" aria-busy="true">
                       {[1, 2, 3].map((n) => (
@@ -1014,7 +742,7 @@ export function RecordPanel({
                 </TabsContent>
 
                 {/* ----------------------------- TAB 3: FILES ---------------------------- */}
-                <TabsContent value="files" className="h-full overflow-y-auto custom-scrollbar m-0 p-6 outline-none">
+                <TabsContent value="files" className="min-h-0 m-0 px-[var(--panel-gutter)] py-5 outline-none">
                   <input ref={fileInputRef} type="file" onChange={handleFileChange} className="hidden" />
 
                   {/* Dropzone */}

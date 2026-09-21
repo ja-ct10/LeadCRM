@@ -13,7 +13,6 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { seedDemoAccounts } from '../src/database/seeders/demo.seed';
-import { seedPricingPlans } from '../src/database/seeders/pricing-plans.seed';
 import { generateTenants } from '../src/database/seeders/tenant-generator';
 import { runRepairs } from '../src/database/scripts/repair-role-permissions';
 import { encryptToken } from '../src/core/encryption/crypto.service';
@@ -99,8 +98,6 @@ async function main() {
   //    All other tenant/user accounts are created through the normal user workflow.
   await seedDemoAccounts();
 
-  // 2. Pricing plans — idempotent, safe on every deploy
-  await seedPricingPlans();
 
   // 3. Realistic multi-tenant sample data — development/staging only.
   //    Skip in production to avoid polluting real customer data.

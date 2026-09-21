@@ -370,11 +370,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         //
         // COMPLETED — no longer fetched at startup:
         //   ✅ contacts/leads   → useLeadsData (leads-page.tsx) — server-paginated + server-filtered
-        //   ✅ activities       → activities-page.tsx fetches independently
+        //   ✅ activities       → record timelines fetch contextually
         //   ✅ column prefs     → useColumnPreferences per module
         //   ✅ campaigns        → useCampaignsData (campaigns-page.tsx)
         //   ✅ templates        → useCampaignsData (campaigns-page.tsx, same hook)
-        //   ✅ invoices         → useInvoicesData (billing-page.tsx)
         //   ✅ auditLogs        → TimelineDrawer fetches on-demand (settings page)
         //   ✅ accounts list    → useAccounts (accounts-page.tsx) — server-paginated + server-filtered
         //
@@ -412,7 +411,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         console.error('[DataContext] Failed to load CRM data from API:', err);
         // RC-03 fix: surface genuine transport failures as a user-visible toast so
         // the dashboard never silently shows empty data without explanation.
-        // 403 plan-gate responses are excluded -- those are expected for restricted
+        // 403 permission responses are excluded -- those are expected for restricted
         // modules and should not alarm the user with a generic error.
         if (err instanceof Error && !err.message.includes('403')) {
           toast.error('Failed to load data. Please refresh the page.');
@@ -446,12 +445,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       //   ✅ auditLogs  → TimelineDrawer fetches on-demand
       //   ✅ campaigns  → useCampaignsData hook (campaigns-page.tsx)
       //   ✅ templates  → useCampaignsData hook (same)
-      //   ✅ invoices   → useInvoicesData hook (billing-page.tsx)
       // Batch 2 REMAINING (cross-module consumers — tasks: dashboard, RecordPanels,
       //   deals-page, leads-table; workflows: workflows-page, campaign-builder):
       setTimeout(async () => {
         if (!isCurrent()) return;
-        // Use allSettled so a single plan-gated module (e.g. workflows on FREE tenant)
+        // Use allSettled so a single permission-restricted module (e.g. workflows without view permission)
         // does not abort loading the other.
         const [tasksRes, workflowsRes] = await Promise.allSettled([
           tasksApi.list({ limit: 100 }),
@@ -459,15 +457,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
         ]);
 
         if (!isCurrent()) return;
-        // Fulfilled → set state; rejected (e.g. plan-gated 403) → default to empty.
+        // Fulfilled → set state; rejected (e.g. permission-restricted 403) → default to empty.
         setTasks(tasksRes.status === 'fulfilled' ? ((tasksRes.value?.data ?? []) as Task[]) : []);
         setWorkflows(workflowsRes.status === 'fulfilled' ? ((workflowsRes.value?.data ?? []) as Workflow[]) : []);
 
-        // A plan-gated 403 for a FREE tenant is expected — keep it quiet.
+        // A permission-restricted 403 for a restricted role is expected — keep it quiet.
         const rejected = [tasksRes, workflowsRes]
           .filter((settledResult): settledResult is PromiseRejectedResult => settledResult.status === 'rejected');
         if (rejected.length > 0) {
-          console.debug('[DataContext] Some secondary modules unavailable (likely plan-gated):', rejected.map((r) => r.reason?.message ?? r.reason));
+          console.debug('[DataContext] Some secondary modules unavailable (likely permission-restricted):', rejected.map((r) => r.reason?.message ?? r.reason));
         }
       }, 0);
 
@@ -492,7 +490,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const parsedLeads = l || [];
       const leadMap = new Map(parsedLeads.map((x: any) => [x.id, x]));
       const mergedLeadsList = [...parsedLeads];
-      
+
       MOCK_LEADS.forEach((ml) => {
         if (!leadMap.has(ml.id)) {
           mergedLeadsList.push(ml);
@@ -1440,7 +1438,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const res = await pipelineService.updateDeal(id, dto);
         const deal = toFrontendDeal((res as any).data ?? res) as Deal;
         setDeals((prev) => prev.map((d) => (d.id === id ? deal : d)));
-        
+
         if (updates.stageId) {
           const pLine = pipelines.find((p) => p.id === updates.pipelineId || p.id === deal.pipelineId);
           const newName = pLine?.stages.find((s) => s.id === updates.stageId)?.name || updates.stageId;
@@ -1591,7 +1589,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     } else {
       const original = deals.find((d) => d.id === id);
       if (!original) return;
-      
+
       const newDeals = deals.map((d) => {
         if (d.id === id) {
           const updated = {
@@ -1609,7 +1607,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
               },
             ],
           };
-          
+
           addActivity({
             type: 'stage_change',
             relatedToType: 'deal',
@@ -1619,12 +1617,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
             createdAt: new Date().toISOString(),
             metadata: { previousStageId: d.stageId, newStageId: stageId },
           });
-          
+
           return updated;
         }
         return d;
       });
-      
+
       saveAndSet("leadcrm_deals", newDeals, setDeals);
       addAuditLog("Deal Stage Changed", `Moved deal '${original.title}' to stage '${stageId}'.`, id);
     }
@@ -2556,6 +2554,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     const newActivity: Activity = {
       ...activityData,
+      environment: user?.activeEnvironment ?? 'SANDBOX',
       id: uuid(),
       tenantId: currentTenantId,
       createdAt: new Date().toISOString(),

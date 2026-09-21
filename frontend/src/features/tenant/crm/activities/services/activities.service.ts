@@ -55,7 +55,7 @@ export interface ActivityQueryParams {
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export const activitiesService = {
-  getAll: (params?: ActivityQueryParams): Promise<PaginatedResponse<ActivityRecord>> => {
+  getAll: (params?: ActivityQueryParams, signal?: AbortSignal): Promise<PaginatedResponse<ActivityRecord>> => {
     const query = new URLSearchParams();
     if (params?.page)        query.set('page',        String(params.page));
     if (params?.limit)       query.set('limit',       String(params.limit));
@@ -68,7 +68,7 @@ export const activitiesService = {
     if (params?.dateFrom)    query.set('dateFrom',    params.dateFrom);
     if (params?.dateTo)      query.set('dateTo',      params.dateTo);
     const qs = query.toString();
-    return apiClient.get<PaginatedResponse<ActivityRecord>>(`/crm/activities${qs ? `?${qs}` : ''}`);
+    return apiClient.get<PaginatedResponse<ActivityRecord>>(`/crm/activities${qs ? `?${qs}` : ''}`, { signal });
   },
 
   getById: (id: string): Promise<ApiResponse<ActivityRecord>> =>

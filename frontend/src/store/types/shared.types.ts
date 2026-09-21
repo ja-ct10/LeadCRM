@@ -12,6 +12,7 @@ export type ActivityType =
   | 'deal_action' | 'file_upload';
 
 export interface Activity {
+  environment?: import('@leadcrm/shared').CrmEnvironment;
   id: string;
   tenantId: string;
   type: ActivityType;

@@ -1,8 +1,8 @@
 import { vi } from 'vitest';
 
 export const tenant = {
-  id: 'tenant-1', name: 'Workspace', status: 'SANDBOX', subscriptionStatus: 'NONE',
-  plan: null, industry: null, companySize: null, website: null, currency: 'PHP',
+  id: 'tenant-1', name: 'Workspace', status: 'SANDBOX',
+  industry: null, companySize: null, website: null, currency: 'PHP',
   ownerUserId: 'user-1', onboardingStep: 0, onboardingCompletedAt: null as Date | null,
 };
 export const user = {

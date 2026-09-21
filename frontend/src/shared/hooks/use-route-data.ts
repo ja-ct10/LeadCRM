@@ -3,7 +3,7 @@
 /**
  * useRouteData — shared SWR fetch primitive for route-scoped data hooks.
  *
- * Encapsulates the repeated boilerplate across useCampaignsData, useInvoicesData,
+ * Encapsulates the repeated boilerplate across useCampaignsData,
  * and similar route-scoped hooks:
  *   - mountedRef (prevents setState after unmount)
  *   - hasLoadedOnce (distinguishes initial load from background refresh)

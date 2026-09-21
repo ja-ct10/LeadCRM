@@ -12,7 +12,7 @@ export type { ApiResponse, PaginatedResponse, PaginationMeta } from '../types/ap
 export interface ApiError {
   success: false;
   error: {
-    code:      string;    // e.g. CONTACT_NOT_FOUND | PLAN_LIMIT_EXCEEDED
+    code:      string;    // e.g. CONTACT_NOT_FOUND | PERMISSION_DENIED
     message:   string;
     field?:    string;    // for validation errors
     requestId: string;

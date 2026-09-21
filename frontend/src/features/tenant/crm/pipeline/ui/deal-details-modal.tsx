@@ -532,19 +532,6 @@ export function DealDetailsModal({
               {isClosedWon && (
                 <div className="space-y-3 pt-1">
                   <h4 className="text-xs font-bold text-emerald-500 uppercase tracking-widest">Next Steps</h4>
-                  <button onClick={() => isBillingModuleEnabled ? onNavigate('billing') : toast.error('Billing module is not enabled. Go to Settings to activate it.')}
-                    className="w-full flex items-center justify-between p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl hover:bg-emerald-500/20 transition-all group">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-110 transition-transform">
-                        <Receipt size={20} />
-                      </div>
-                      <div className="text-left">
-                        <p className="text-sm font-semibold text-slate-900 dark:text-white">Convert to Invoice</p>
-                        <p className="text-xs text-slate-500">Generate billing for this deal</p>
-                      </div>
-                    </div>
-                    <ChevronRight size={18} className="text-slate-500 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all" />
-                  </button>
                   <button onClick={() => onNavigate('workflows')}
                     className="w-full flex items-center justify-between p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl hover:bg-blue-500/20 transition-all group">
                     <div className="flex items-center gap-3">

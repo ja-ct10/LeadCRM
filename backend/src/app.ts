@@ -45,15 +45,7 @@ app.use(
 app.use(compression());
 
 // ── Body Parsing ─────────────────────────────────────
-// Stripe webhooks require a raw body Buffer for signature verification.
-// Skip express.json() on the webhook path — that route registers raw() itself.
-app.use((req, res, next) => {
-  if (req.originalUrl === '/api/v1/webhooks/stripe') {
-    next(); // raw() applied at route level in admin.routes.ts
-  } else {
-    express.json({ limit: '1mb' })(req, res, next);
-  }
-});
+app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser());
 

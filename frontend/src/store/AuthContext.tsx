@@ -74,8 +74,6 @@ export function buildTenantFromApiUser(apiUser: Record<string, unknown>): Tenant
     approvalStep:       'completed' as Tenant['approvalStep'],
     environment:        tenantStatus === 'SANDBOX' ? 'sandbox' : 'production',
     createdAt:          '',
-    subscriptionStatus: (apiUser.subscriptionStatus as string | null) ?? null,
-    plan:               (apiUser.plan as string | null) ?? null,
     currency:           (apiUser.currency as string | null) ?? null,
   } as unknown as Tenant;
 }

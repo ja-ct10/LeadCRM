@@ -23,7 +23,8 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 
-import { RecordPanel, SmallAction, Chip } from './RecordPanel';
+import { RecordPanel, SmallAction, Chip, type RecordPanelProps } from './RecordPanel';
+import { useRecordActivities } from '@/shared/hooks/use-record-activities';
 import { PipelineProgressBar } from './pipeline-progress-bar';
 import { RecordActionBar } from './record-action-bar';
 import type { OverflowMenuItem } from './record-action-bar';
@@ -43,16 +44,14 @@ import { toFrontendContact } from '@/lib/api/adapters/contact.adapter';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/store/AuthContext';
 import { getTenantCurrency, formatCurrency } from '@/shared/utils/currency';
-import type { CurrencyConfig } from '@/shared/utils/currency';
-import {
-  DEFAULT_LEAD_STATUSES,
-  DEFAULT_CONTACT_STATUSES,
-  DEFAULT_ACCOUNT_STATUSES,
-  DEFAULT_PIPELINE,
-  type ActivityItem,
-  type FileItem,
-  type CustomFieldItem,
-} from './moduleConfig';
+
+import { DEFAULT_LEAD_STATUSES, DEFAULT_CONTACT_STATUSES, DEFAULT_ACCOUNT_STATUSES, DEFAULT_PIPELINE, type CustomFieldItem } from './moduleConfig';
+
+const timelineModules = { lead: 'leads', contact: 'contacts', account: 'accounts', deal: 'deals' } as const;
+function ContextualRecordPanel(props: Omit<RecordPanelProps, 'activity'>) {
+  const timeline = useRecordActivities(timelineModules[props.module], props.record.id, props.open);
+  return <RecordPanel {...props} activity={timeline.activities} loading={timeline.isInitialLoad} activityError={timeline.error} onActivityCreated={timeline.refetch} />;
+}
 
 /* -------------------------------------------------------------------------- */
 /*                                0. SHARED COMPONENTS                        */
@@ -115,7 +114,7 @@ function EditableField({
   }
 
   return (
-    <div 
+    <div
       className={cn("group flex min-w-0 flex-1 items-center gap-3 cursor-pointer rounded-md hover:bg-accent/50 px-1 -mx-1 py-0.5 transition-colors", className)}
       onClick={() => setIsEditing(true)}
     >
@@ -706,36 +705,6 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
     (d: Deal) => d.leadId === lead.id || (d.leadIds ?? []).includes(lead.id)
   );
 
-  // Dynamic activity generator
-  const activityItems: ActivityItem[] = [
-    {
-      id: 'act-1',
-      kind: 'created',
-      title: `Lead record created for ${leadName}`,
-      when: lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : 'Recently',
-      actor: { name: 'System Admin', initials: 'SA' },
-    },
-    ...(lead.status
-      ? [
-          {
-            id: 'act-2',
-            kind: 'status' as const,
-            from: 'Inquiry',
-            to: lead.status,
-            when: 'Recent',
-            actor: { name: 'Lead Agent', initials: 'LA' },
-          },
-        ]
-      : []),
-    ...leadTasks.map((t, idx) => ({
-      id: `act-task-${t.id || idx}`,
-      kind: 'task' as const,
-      title: `${t.status === 'completed' ? 'Task completed' : 'Task pending'}: ${t.title}`,
-      when: t.dueDate ? new Date(t.dueDate).toLocaleDateString() : 'Scheduled',
-      actor: { name: 'Assigned User', initials: 'AU' },
-    })),
-  ];
-
   // Handlers
   const handleStatusChange = async (newStatus: string) => {
     try {
@@ -800,11 +769,11 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
       content: (
         <div className="divide-y divide-border text-sm">
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-4 py-2">
-            <EditableField 
-              icon={Mail} 
-              value={lead.email || ''} 
+            <EditableField
+              icon={Mail}
+              value={lead.email || ''}
               placeholder="Add email address..."
-              onSave={(val) => { updateLead(lead.id, { email: val }).catch(() => toast.error('Failed to update email')); }} 
+              onSave={(val) => { updateLead(lead.id, { email: val }).catch(() => toast.error('Failed to update email')); }}
             />
             {lead.email && (
               <SmallAction label="Copy Email" onClick={() => { navigator.clipboard.writeText(lead.email!); toast.success('Email copied'); }}>
@@ -814,11 +783,11 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
           </div>
 
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-4 py-2">
-            <EditableField 
-              icon={Phone} 
-              value={lead.phone || ''} 
+            <EditableField
+              icon={Phone}
+              value={lead.phone || ''}
               placeholder="Add phone number..."
-              onSave={(val) => { updateLead(lead.id, { phone: val }).catch(() => toast.error('Failed to update phone')); }} 
+              onSave={(val) => { updateLead(lead.id, { phone: val }).catch(() => toast.error('Failed to update phone')); }}
             />
             {lead.phone && (
               <SmallAction label="Copy Phone" onClick={() => { navigator.clipboard.writeText(lead.phone!); toast.success('Phone copied'); }}>
@@ -828,20 +797,20 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
           </div>
 
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-4 py-2">
-            <EditableField 
-              icon={MapPin} 
-              value={lead.address || ''} 
+            <EditableField
+              icon={MapPin}
+              value={lead.address || ''}
               placeholder="Add physical address..."
-              onSave={(val) => { updateLead(lead.id, { address: val }).catch(() => toast.error('Failed to update address')); }} 
+              onSave={(val) => { updateLead(lead.id, { address: val }).catch(() => toast.error('Failed to update address')); }}
             />
           </div>
 
           <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-4 py-2">
-            <EditableField 
-              icon={Building} 
-              value={lead.companyName || ''} 
+            <EditableField
+              icon={Building}
+              value={lead.companyName || ''}
               placeholder="Add company name..."
-              onSave={(val) => { updateLead(lead.id, { companyName: val }).catch(() => toast.error('Failed to update company')); }} 
+              onSave={(val) => { updateLead(lead.id, { companyName: val }).catch(() => toast.error('Failed to update company')); }}
             />
             {lead.companyName && <Chip>Company</Chip>}
           </div>
@@ -1075,7 +1044,7 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
   return (
     <>
     <ConfirmActionDialog {...confirmDialogProps} />
-    <RecordPanel
+    <ContextualRecordPanel
       open={open}
       onOpenChange={onOpenChange}
       module="lead"
@@ -1093,7 +1062,6 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
       statuses={DEFAULT_LEAD_STATUSES}
       status={lead.status || 'Inquiry'}
       onStatusChange={handleStatusChange}
-      activity={activityItems}
       sections={sections}
       actions={{
         email: () => {
@@ -1224,27 +1192,27 @@ export function ContactPanel({ open, onOpenChange, contact, onEdit }: ContactPan
       content: (
         <div className="divide-y divide-border text-sm">
           <div className="flex items-center justify-between px-4 py-2">
-            <EditableField 
-              icon={Mail} 
-              value={contact.email || ''} 
+            <EditableField
+              icon={Mail}
+              value={contact.email || ''}
               placeholder="Add email address..."
-              onSave={(val) => { updateContact(contact.id, { email: val }).catch(() => toast.error('Failed to update email')); }} 
+              onSave={(val) => { updateContact(contact.id, { email: val }).catch(() => toast.error('Failed to update email')); }}
             />
           </div>
           <div className="flex items-center justify-between px-4 py-2">
-            <EditableField 
-              icon={Phone} 
-              value={contact.phone || ''} 
+            <EditableField
+              icon={Phone}
+              value={contact.phone || ''}
               placeholder="Add phone number..."
-              onSave={(val) => { updateContact(contact.id, { phone: val }).catch(() => toast.error('Failed to update phone')); }} 
+              onSave={(val) => { updateContact(contact.id, { phone: val }).catch(() => toast.error('Failed to update phone')); }}
             />
           </div>
           <div className="flex items-center justify-between px-4 py-2">
-            <EditableField 
-              icon={MapPin} 
-              value={contact.address || ''} 
+            <EditableField
+              icon={MapPin}
+              value={contact.address || ''}
               placeholder="Add physical address..."
-              onSave={(val) => { updateContact(contact.id, { address: val }).catch(() => toast.error('Failed to update address')); }} 
+              onSave={(val) => { updateContact(contact.id, { address: val }).catch(() => toast.error('Failed to update address')); }}
             />
           </div>
         </div>
@@ -1428,7 +1396,7 @@ export function ContactPanel({ open, onOpenChange, contact, onEdit }: ContactPan
   return (
     <>
     <ConfirmActionDialog {...confirmDialogProps} />
-    <RecordPanel
+    <ContextualRecordPanel
       open={open}
       onOpenChange={onOpenChange}
       module="contact"
@@ -1448,14 +1416,6 @@ export function ContactPanel({ open, onOpenChange, contact, onEdit }: ContactPan
         await updateContact(contact.id, { status: s });
         toast.success(`Status updated to ${s}`);
       }}
-      activity={[
-        {
-          id: '1',
-          kind: 'created',
-          title: `Contact created for ${contactName}`,
-          when: contact.createdAt ? new Date(contact.createdAt).toLocaleDateString() : 'Recent',
-        },
-      ]}
       sections={sections}
       actions={{
         email: () => contact.email && (window.location.href = `mailto:${contact.email}`),
@@ -1598,39 +1558,39 @@ export function AccountPanel({ open, onOpenChange, account, onEdit }: AccountPan
       content: (
         <div className="divide-y divide-border text-sm">
           <div className="flex justify-between px-4 py-2">
-            <EditableField 
-              value={account.industry || ''} 
+            <EditableField
+              value={account.industry || ''}
               placeholder="Industry"
-              onSave={(val) => { updateOrganization(account.id, { industry: val }).catch(() => toast.error('Failed to update industry')); }} 
+              onSave={(val) => { updateOrganization(account.id, { industry: val }).catch(() => toast.error('Failed to update industry')); }}
             />
           </div>
           <div className="flex justify-between px-4 py-2">
-            <EditableField 
-              value={account.size || ''} 
+            <EditableField
+              value={account.size || ''}
               placeholder="Company Size"
-              onSave={(val) => { updateOrganization(account.id, { size: val as '1-10' | '11-50' | '51-200' | '200+' }).catch(() => toast.error('Failed to update size')); }} 
+              onSave={(val) => { updateOrganization(account.id, { size: val as '1-10' | '11-50' | '51-200' | '200+' }).catch(() => toast.error('Failed to update size')); }}
             />
           </div>
           <div className="flex justify-between px-4 py-2">
-            <EditableField 
-              value={account.website || ''} 
+            <EditableField
+              value={account.website || ''}
               placeholder="Website"
-              onSave={(val) => { updateOrganization(account.id, { website: val }).catch(() => toast.error('Failed to update website')); }} 
+              onSave={(val) => { updateOrganization(account.id, { website: val }).catch(() => toast.error('Failed to update website')); }}
               className="text-primary"
             />
           </div>
           <div className="flex justify-between px-4 py-2">
-            <EditableField 
-              value={[account.city, account.province, account.country].filter(Boolean).join(', ') || ''} 
+            <EditableField
+              value={[account.city, account.province, account.country].filter(Boolean).join(', ') || ''}
               placeholder="Location"
-              onSave={(val) => { 
+              onSave={(val) => {
                 const parts = val.split(',').map(s => s.trim());
                 const locationUpdate: Record<string, string> = {};
                 if (parts[0]) locationUpdate.city = parts[0];
                 if (parts[1]) locationUpdate.province = parts[1];
                 if (parts[2]) locationUpdate.country = parts[2];
                 updateOrganization(account.id, locationUpdate).catch(() => toast.error('Failed to update location'));
-              }} 
+              }}
             />
           </div>
         </div>
@@ -1774,7 +1734,7 @@ export function AccountPanel({ open, onOpenChange, account, onEdit }: AccountPan
   return (
     <>
       <ConfirmActionDialog {...confirmDialogProps} />
-      <RecordPanel
+      <ContextualRecordPanel
         open={open}
         onOpenChange={onOpenChange}
         module="account"
@@ -1792,14 +1752,6 @@ export function AccountPanel({ open, onOpenChange, account, onEdit }: AccountPan
           await updateOrganization(account.id, { customerType: s } as any);
           toast.success(`Classification updated to ${s}`);
         }}
-        activity={[
-          {
-            id: '1',
-            kind: 'created',
-            title: `Account established for ${accountName}`,
-            when: account.createdAt ? new Date(account.createdAt).toLocaleDateString() : 'Recent',
-          },
-        ]}
         sections={sections}
         manageMenu={[
           {
@@ -2029,29 +1981,29 @@ export function DealPanel({ open, onOpenChange, deal, onEdit, onOpenContactPanel
             <span className="text-muted-foreground self-center">Deal Value</span>
             <div className="flex items-center">
               <span className="text-muted-foreground mr-1">{tenantCurrency.symbol}</span>
-              <EditableField 
-                value={deal.value?.toString() || '0'} 
+              <EditableField
+                value={deal.value?.toString() || '0'}
                 placeholder="0"
-                onSave={(val) => { updateDeal(deal.id, { value: parseFloat(val) || 0 }).catch(() => toast.error('Failed to update value')); }} 
+                onSave={(val) => { updateDeal(deal.id, { value: parseFloat(val) || 0 }).catch(() => toast.error('Failed to update value')); }}
                 className="font-bold w-[120px]"
               />
             </div>
           </div>
           <div className="flex justify-between px-4 py-2">
             <span className="text-muted-foreground self-center">Priority</span>
-            <EditableField 
-              value={deal.priority || 'Medium'} 
+            <EditableField
+              value={deal.priority || 'Medium'}
               placeholder="Medium"
-              onSave={(val) => { updateDeal(deal.id, { priority: val as Deal['priority'] }).catch(() => toast.error('Failed to update priority')); }} 
+              onSave={(val) => { updateDeal(deal.id, { priority: val as Deal['priority'] }).catch(() => toast.error('Failed to update priority')); }}
               className="w-[120px]"
             />
           </div>
           <div className="flex justify-between px-4 py-2">
             <span className="text-muted-foreground self-center">Expected Close</span>
-            <EditableField 
-              value={deal.expectedCloseDate ? new Date(deal.expectedCloseDate).toISOString().split('T')[0] : ''} 
+            <EditableField
+              value={deal.expectedCloseDate ? new Date(deal.expectedCloseDate).toISOString().split('T')[0] : ''}
               placeholder="YYYY-MM-DD"
-              onSave={(val) => { updateDeal(deal.id, { expectedCloseDate: val }).catch(() => toast.error('Failed to update close date')); }} 
+              onSave={(val) => { updateDeal(deal.id, { expectedCloseDate: val }).catch(() => toast.error('Failed to update close date')); }}
               className="w-[120px]"
             />
           </div>
@@ -2311,7 +2263,7 @@ export function DealPanel({ open, onOpenChange, deal, onEdit, onOpenContactPanel
   return (
     <>
     <ConfirmActionDialog {...confirmDialogProps} />
-    <RecordPanel
+    <ContextualRecordPanel
       open={open}
       onOpenChange={onOpenChange}
       module="deal"
@@ -2344,14 +2296,6 @@ export function DealPanel({ open, onOpenChange, deal, onEdit, onOpenContactPanel
           }
         },
       }}
-      activity={[
-        {
-          id: '1',
-          kind: 'created',
-          title: `Deal created: ${deal.title}`,
-          when: deal.createdAt ? new Date(deal.createdAt).toLocaleDateString() : 'Recent',
-        },
-      ]}
       sections={sections}
       manageMenu={[
         {

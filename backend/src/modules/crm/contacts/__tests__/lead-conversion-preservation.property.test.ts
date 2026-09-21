@@ -48,7 +48,6 @@ vi.mock('../../../../config/database.config', () => ({
       count:    (...args: unknown[]) => mockLeadCount(...args),
     },
   },
-  enforcePlanLimit: vi.fn(),
 }));
 
 vi.mock('../../../../core/audit/audit.service', () => ({

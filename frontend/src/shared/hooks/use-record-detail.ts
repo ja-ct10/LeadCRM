@@ -3,8 +3,10 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { apiClient } from '@/lib/api/client';
 import { useData } from '@/store/DataContext';
-import { activitiesService } from '@/features/tenant/crm/activities/services/activities.service';
-import type { Activity } from '@/store/types/shared.types';
+import { useAuth } from '@/store/AuthContext';
+import { USE_MOCK_DATA } from '@/lib/config';
+import { useRecordActivities, type TimelineActivity } from './use-record-activities';
+
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -27,7 +29,7 @@ export interface UseRecordDetailReturn {
   /** Related entities from the /relationships endpoint */
   relationships: RelationshipData | null;
   /** Activity timeline entries for this record */
-  activities: Activity[];
+  activities: TimelineActivity[];
   /** Whether initial fetch is in progress */
   isLoading: boolean;
   /** Whether a refetch is in progress */
@@ -49,12 +51,6 @@ interface UseRecordDetailParams {
 
 // ─── Activity filter key mapping ─────────────────────────────────────────────
 
-const ACTIVITY_FILTER_MAP: Record<RecordModule, string> = {
-  leads: 'contactId',
-  contacts: 'contactId',
-  accounts: 'organizationId',
-  deals: 'dealId',
-};
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
@@ -63,19 +59,23 @@ const ACTIVITY_FILTER_MAP: Record<RecordModule, string> = {
  *
  * Data flow:
  * 1. Immediately returns DataContext fallback (if record is in memory)
- * 2. Fires parallel API calls: GET /:id + GET /:id/relationships + GET /activities
+ * 2. Reads record/relationships in parallel; the shared reader supplies contextual activities
  * 3. Merges API response as authoritative data
  * 4. Stays reactive to DataContext updates (edits in panels/list sync here)
  *
  * Performance:
- * - P1: All 3 API calls fired in parallel via Promise.allSettled
+ * - P1: Independent API calls fired in parallel via Promise.allSettled
  * - Abort on unmount or ID change (prevents stale responses)
  * - DataContext fallback gives instant rendering (no flash)
  */
 export function useRecordDetail({ module, id }: UseRecordDetailParams): UseRecordDetailReturn {
   const [apiRecord, setApiRecord] = useState<Record<string, unknown> | null>(null);
   const [relationships, setRelationships] = useState<RelationshipData | null>(null);
-  const [activities, setActivities] = useState<Activity[]>([]);
+  const { user } = useAuth();
+  const identity = [user?.id, user?.tenantId, user?.activeEnvironment, module, id].join(':');
+  const [loadedIdentity, setLoadedIdentity] = useState(identity);
+  const sameIdentity = identity === loadedIdentity;
+  const timeline = useRecordActivities(module, id, true, module === 'contacts' ? (sameIdentity ? relationships?.activities : []) ?? [] : undefined);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefetching, setIsRefetching] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -112,7 +112,7 @@ export function useRecordDetail({ module, id }: UseRecordDetailParams): UseRecor
 
   // ── Fetch logic ─────────────────────────────────────────────────────────
   const fetchData = useCallback(async (isRefetch = false): Promise<void> => {
-    if (!id) {
+    if (!id || USE_MOCK_DATA) {
       setIsLoading(false);
       return;
     }
@@ -129,20 +129,23 @@ export function useRecordDetail({ module, id }: UseRecordDetailParams): UseRecor
     } else {
       setIsLoading(true);
     }
+    setLoadedIdentity(identity);
+    setApiRecord(null);
+    setRelationships(null);
     setError(null);
     setIsNotFound(false);
 
+    const requestController = abortControllerRef.current;
     try {
-      // P1 waterfall elimination: fire all 3 calls in parallel
-      const activityFilterKey = ACTIVITY_FILTER_MAP[module];
+      // P1 waterfall elimination: fire record and relationship calls in parallel
 
-      const [recordResult, relationshipsResult, activitiesResult] = await Promise.allSettled([
-        apiClient.get<{ success: boolean; data: Record<string, unknown> }>(`/crm/${module}/${id}`),
-        apiClient.get<{ success: boolean; data: RelationshipData }>(`/crm/${module}/${id}/relationships?limit=50`),
-        activitiesService.getAll({ [activityFilterKey]: id, limit: 50 }),
+
+      const [recordResult, relationshipsResult] = await Promise.allSettled([
+        apiClient.get<{ success: boolean; data: Record<string, unknown> }>(`/crm/${module}/${encodeURIComponent(id)}`, { signal: abortControllerRef.current!.signal }),
+        apiClient.get<{ success: boolean; data: RelationshipData }>(`/crm/${module}/${encodeURIComponent(id)}/relationships?limit=50`, { signal: abortControllerRef.current!.signal }),
       ]);
 
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || requestController?.signal.aborted) return;
 
       // Process record
       if (recordResult.status === 'fulfilled') {
@@ -164,24 +167,18 @@ export function useRecordDetail({ module, id }: UseRecordDetailParams): UseRecor
         setRelationships((relData as { data: RelationshipData }).data ?? relData as unknown as RelationshipData);
       }
 
-      // Process activities (non-blocking)
-      if (activitiesResult.status === 'fulfilled') {
-        const actData = activitiesResult.value;
-        const activityArray = (actData as unknown as { data: Activity[] }).data ?? [];
-        setActivities(activityArray);
-      }
     } catch (err: unknown) {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || requestController?.signal.aborted) return;
       // Ignore abort errors
       if (err instanceof Error && err.name === 'AbortError') return;
       setError(err instanceof Error ? err.message : 'Failed to load record');
     } finally {
-      if (mountedRef.current) {
+      if (mountedRef.current && !requestController?.signal.aborted) {
         setIsLoading(false);
         setIsRefetching(false);
       }
     }
-  }, [id, module]);
+  }, [id, module, identity]);
 
   // ── Mount/unmount lifecycle ──────────────────────────────────────────────
   useEffect(() => {
@@ -201,17 +198,18 @@ export function useRecordDetail({ module, id }: UseRecordDetailParams): UseRecor
 
   // ── Public refetch function ─────────────────────────────────────────────
   const refetch = useCallback((): void => {
-    fetchData(true);
-  }, [fetchData]);
+    void fetchData(true);
+    void timeline.refetch();
+  }, [fetchData, timeline.refetch]);
 
   // ── Merge: API record is authoritative, DataContext is fallback ─────────
   // If API has responded, use that. Otherwise fall back to DataContext for instant render.
-  const record = apiRecord ?? dataContextRecord;
+  const record = (sameIdentity ? apiRecord : null) ?? dataContextRecord;
 
   return {
     record,
-    relationships,
-    activities,
+    relationships: sameIdentity ? relationships : null,
+    activities: timeline.activities,
     isLoading: isLoading && !dataContextRecord, // Don't show loading if we have a DataContext fallback
     isRefetching,
     error,

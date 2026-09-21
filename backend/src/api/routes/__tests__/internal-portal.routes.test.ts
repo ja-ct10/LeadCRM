@@ -15,7 +15,7 @@ it('does not register public signup, OTP, Google, or company-setup endpoints', (
   expect(enabled).toContain('/onboarding/complete');
 });
 it('does not register System Admin billing, plan, or production activation APIs', () => {
-  expect(paths(adminRoutes).filter(path => /billing|plans|activate-subscription/.test(path))).toEqual([]);
+  expect(paths(adminRoutes).filter(path => /billing|plans|activate-subscription|stripe/.test(path))).toEqual([]);
   expect(paths(adminRoutes)).toContain('/tenants');
 });
 it('retains customer invoices but removes self-service SaaS APIs', () => {

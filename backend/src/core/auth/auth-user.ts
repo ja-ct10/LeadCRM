@@ -4,7 +4,7 @@ import prisma from '../../config/database.config';
 import { AppError } from '../../shared/errors/app-error';
 
 export const authTenantSelect = {
-  name: true, status: true, subscriptionStatus: true, plan: true,
+  name: true, status: true,
   industry: true, companySize: true, website: true, currency: true,
   onboardingStep: true, onboardingCompletedAt: true, ownerUserId: true,
 } satisfies Prisma.TenantSelect;
@@ -26,8 +26,6 @@ export interface AuthUserSource {
   tenant?: {
     name?: string | null;
     status?: string | null;
-    subscriptionStatus?: string | null;
-    plan?: string | null;
     industry?: string | null;
     companySize?: string | null;
     website?: string | null;
@@ -57,8 +55,6 @@ export function buildAuthUserResponse(user: AuthUserSource): AuthUser {
     timeZone: user.timeZone ?? null,
     tenantName: tenant?.name ?? null,
     tenantStatus: tenant?.status ?? null,
-    subscriptionStatus: tenant?.subscriptionStatus ?? null,
-    plan: tenant?.plan ?? null,
     industry: tenant?.industry ?? null,
     companySize: tenant?.companySize ?? null,
     website: tenant?.website ?? null,

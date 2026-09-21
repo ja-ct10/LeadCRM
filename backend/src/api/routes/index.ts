@@ -44,8 +44,7 @@ router.use('/invitations', invitationsRoutes);
 
 // ── System Admin routes (protected by systemAdminMiddleware) ──────────────────
 // /api/v1/admin/* — platform account management and audit
-// /api/v1/webhooks/* — Stripe webhook (no auth, raw body)
 router.use('/admin', adminRoutes);
-router.use('/webhooks', adminRoutes);
+
 
 export default router;

@@ -16,11 +16,10 @@ export const tenantApiService = {
     address?: string;
   }) => apiClient.post<{ success: boolean; data: unknown }>('/admin/tenants', data),
 
-  getAll: (params?: { page?: number; status?: string; plan?: string }) => {
+  getAll: (params?: { page?: number; status?: string }) => {
     const query = new URLSearchParams();
     if (params?.page) query.set('page', String(params.page));
     if (params?.status) query.set('status', params.status);
-    if (params?.plan) query.set('plan', params.plan);
     return apiClient.get<{ success: boolean; data: unknown[] }>(`/admin/tenants?${query.toString()}`);
   },
 

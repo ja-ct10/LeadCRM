@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Users, Briefcase, LayoutDashboard, Workflow, Mail, Settings, ShieldAlert, Receipt, Activity } from 'lucide-react';
+import { Search, Users, Briefcase, LayoutDashboard, Workflow, Mail, Settings, ShieldAlert, Activity } from 'lucide-react';
 import { useData } from '../../store/DataContext';
 import { useAuth } from '../../store/AuthContext';
 import { useDebounce } from '@/shared/hooks/use-debounce';
@@ -19,7 +19,7 @@ interface CommandPaletteProps {
 
 export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandPaletteProps) {
   const [query, setQuery] = useState('');
-  const { isBillingModuleEnabled, roles } = useData();
+  const { roles } = useData();
   const { user } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -102,7 +102,6 @@ export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandP
     { name: 'Leads',           path: 'leads',      icon: Users,           permissions: ['contacts.view', 'p2', 'p2_own'] },
     { name: 'Accounts',        path: 'accounts',   icon: Users,           permissions: ['accounts.view', 'p2', 'p2_own'] },
     { name: 'Deals',           path: 'deals',      icon: Briefcase,       permissions: ['deals.view', 'p7', 'p7_own'] },
-    { name: 'Contract Billing',path: 'billing',    icon: Receipt,         permissions: ['billing.view', 'p29'], enabled: isBillingModuleEnabled },
     { name: 'Workflows',       path: 'workflows',  icon: Workflow,        permissions: ['workflows.view', 'p12'] },
     { name: 'Campaigns',       path: 'campaigns',  icon: Mail,            permissions: ['campaigns.view', 'p17'] },
     { name: 'Users',           path: 'users',      icon: Users,           permissions: ['users.view', 'p22'] },
@@ -125,7 +124,6 @@ export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandP
 
   const filteredNav = navItems.filter((item) =>
     hasAccess(item) &&
-    (item.enabled === undefined || item.enabled === true) &&
     item.name.toLowerCase().includes(query.toLowerCase()),
   );
 

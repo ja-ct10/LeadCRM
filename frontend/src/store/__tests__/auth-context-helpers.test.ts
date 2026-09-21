@@ -167,8 +167,6 @@ describe('buildTenantFromApiUser', () => {
       tenantId:           'tenant-abc',
       tenantName:         'Acme Corp',
       tenantStatus:       'ACTIVE',
-      subscriptionStatus: 'ACTIVE',
-      plan:               'PRO',
       industry:           'IT Services',
       currency:           'USD',
       ...overrides,
@@ -244,32 +242,6 @@ describe('buildTenantFromApiUser', () => {
     it('preserves PHP as a valid currency code', () => {
       const result = buildTenantFromApiUser(makeApiUser({ currency: 'PHP' }));
       expect(result.currency).toBe('PHP');
-    });
-  });
-
-  describe('subscription fields', () => {
-    it('maps subscriptionStatus', () => {
-      const result = buildTenantFromApiUser(makeApiUser({ subscriptionStatus: 'PAST_DUE' })) as unknown as Record<string, unknown>;
-      expect(result.subscriptionStatus).toBe('PAST_DUE');
-    });
-
-    it('returns null subscriptionStatus when absent', () => {
-      const user = makeApiUser();
-      delete user.subscriptionStatus;
-      const result = buildTenantFromApiUser(user) as unknown as Record<string, unknown>;
-      expect(result.subscriptionStatus).toBeNull();
-    });
-
-    it('maps plan', () => {
-      const result = buildTenantFromApiUser(makeApiUser({ plan: 'ENTERPRISE' })) as unknown as Record<string, unknown>;
-      expect(result.plan).toBe('ENTERPRISE');
-    });
-
-    it('returns null plan when absent', () => {
-      const user = makeApiUser();
-      delete user.plan;
-      const result = buildTenantFromApiUser(user) as unknown as Record<string, unknown>;
-      expect(result.plan).toBeNull();
     });
   });
 

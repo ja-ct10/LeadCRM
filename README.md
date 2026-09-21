@@ -2,7 +2,7 @@
 
 LeadCRM is the internally managed CRM for Camxian Technologies. Start at `/login`. See [current authentication and onboarding](docs/authentication.md) and the [internal CRM migration notes](docs/plans/internal-camxian-crm.md); historical SaaS descriptions below do not define current access behavior.
 
-> **Enterprise-Grade Multi-Tenant CRM & Automated Workflow Execution Platform**  
+> **Enterprise-Grade Multi-Tenant CRM & Automated Workflow Execution Platform**
 > Tailored for IT Solutions Providers, Security Firms, Managed Service Providers (MSPs), and Telecom Agencies.
 
 [![Next.js 15](https://img.shields.io/badge/Next.js-15.5-black?logo=next.js)](https://nextjs.org)
@@ -107,8 +107,8 @@ LeadCRM solves these challenges by providing a single, unified platform:
 
 ### 7. 🛡️ System Administration (`(system-admin)`)
 
-- **System Admin Console**: Operator-level multi-tenant management (`/admin/dashboard`, `/admin/clients`, `/admin/pricing`, `/admin/billing`, `/admin/audit`).
-- **Tenant Management**: Provisioning client accounts, adjusting subscription plans, and managing global system pricing.
+- **System Admin Console**: Operator-level multi-tenant management (`/admin/dashboard`, `/admin/clients`, `/admin/audit`).
+- **Tenant Management**: Provisioning employee Client Admin accounts and managing tenant access.
 - **RBAC & Security Audit**: Configurable module permissions (`contacts`, `deals`, `workflows`, `marketing`, etc.) and system-wide immutable audit logging.
 
 ---

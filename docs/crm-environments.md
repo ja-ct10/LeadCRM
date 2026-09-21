@@ -66,6 +66,16 @@ The legacy mock store has one dataset. Switching is deliberately unavailable wit
 
 ## Verification
 
+Implementation verification completed:
+
+- Workspace lint/type checking: passed for backend, frontend, and shared.
+- Production build: passed for backend and frontend (46 static pages generated).
+- Prisma validation, migration application with legacy fixtures, and schema-drift comparison: passed.
+- Backend: 39 test files / 351 tests passed, including eight real PostgreSQL and authenticated HTTP environment tests.
+- Frontend: 60 test files / 605 tests passed; the final focused environment retry passed 13 tests.
+- A worker-process startup timeout during a parallel retry was resolved by using `--pool=threads --maxWorkers=1`; no assertions were disabled.
+- UI verification used React DOM interaction tests, not a manual browser smoke test.
+
 Use the regular lint, test, and build commands. For migration and real PostgreSQL/HTTP isolation verification:
 
 ```sh

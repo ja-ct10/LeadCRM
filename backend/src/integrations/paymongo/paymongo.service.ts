@@ -1,6 +1,6 @@
 /**
  * PayMongo Integration Service
- * Handles subscription payments for LeadCRM plans.
+ * Handles payments for customer invoices.
  * All API keys sourced from environment variables — never hardcoded.
  */
 

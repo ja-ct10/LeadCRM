@@ -122,7 +122,7 @@ model SystemAdmin {
   passwordHash String
   isActive               Boolean  @default(true)
   // -- Payment methods (per-plan config, stored as JSON) ------------
-  paymentMethods         Json     @default("[]")
+  paymentMethods         Json     @default("[]") @ignore
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
@@ -131,6 +131,7 @@ model SystemAdmin {
 // PRICING PLAN (global G�� not tenant-scoped)
 // Managed by SystemAdmin, consumed by Subscription
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+// Retired storage only; excluded from Prisma Client. See docs/internal-crm-cleanup.md.
 model PricingPlan {
   id                     String   @id @default(uuid())
   name                   String   @unique // "Free" | "Pro" | "Enterprise"
@@ -155,11 +156,13 @@ model PricingPlan {
 
   features      PlanFeature[]
   subscriptions Subscription[]
+  @@ignore
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // PLAN FEATURE
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+// Retired storage only; excluded from Prisma Client. See docs/internal-crm-cleanup.md.
 model PlanFeature {
   id          String  @id @default(uuid())
   planId      String
@@ -170,6 +173,7 @@ model PlanFeature {
   plan PricingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
 
   @@index([planId])
+  @@ignore
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -189,24 +193,24 @@ model Tenant {
   phone              String?
   address            String?
   status             TenantStatus       @default(SANDBOX)
-  subscriptionStatus SubscriptionStatus @default(NONE)
-  plan               PlanType?          // denorm cache � source of truth = Subscription; null when no active subscription
-  trialEndsAt        DateTime?
-  subscriptionEndsAt DateTime?
-  maxUsers           Int?
-  maxContacts        Int?
-  maxDeals           Int?
-  approvedById       String? // SystemAdmin id who approved
-  approvedAt         DateTime?
+  subscriptionStatus SubscriptionStatus @default(NONE) @ignore
+  plan               PlanType? @ignore // denorm cache � source of truth = Subscription; null when no active subscription
+  trialEndsAt        DateTime? @ignore
+  subscriptionEndsAt DateTime? @ignore
+  maxUsers           Int? @ignore
+  maxContacts        Int? @ignore
+  maxDeals           Int? @ignore
+  approvedById       String? @ignore // SystemAdmin id who approved
+  approvedAt         DateTime? @ignore
   // -- Business Verification ─────────────────────────────────────────────────
-  verificationStatus          String    @default("NOT_SUBMITTED") // NOT_SUBMITTED | PENDING | APPROVED | REJECTED | REQUIRES_RESUBMISSION
-  businessType                String?   // Sole Proprietorship | Corporation | Partnership | Cooperative | Other
-  verificationRejectionReason String?   // Reason provided by admin on REJECTED or REQUIRES_RESUBMISSION
+  verificationStatus          String    @default("NOT_SUBMITTED") @ignore // NOT_SUBMITTED | PENDING | APPROVED | REJECTED | REQUIRES_RESUBMISSION
+  businessType                String? @ignore // Sole Proprietorship | Corporation | Partnership | Cooperative | Other
+  verificationRejectionReason String? @ignore // Reason provided by admin on REJECTED or REQUIRES_RESUBMISSION
   // -- Onboarding ----------------------------------------------------
   onboardingStep        Int       @default(0) // 0=introduction, 1=workflow, 2=company, 3=completed
   onboardingCompletedAt DateTime?
   // -- Stripe --------------------------------------------------------
-  stripeCustomerId   String?            @unique // cus_xxx � one customer per tenant
+  stripeCustomerId   String?            @unique @ignore // cus_xxx � one customer per tenant
   ownerUserId        String?            // ID of the founding/registering user — set once at registration, immutable
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
@@ -216,8 +220,8 @@ model Tenant {
   roleDefinitions    RoleDefinition[]
   sessions           Session[]
   invitations        TenantInvitation[]
-  subscriptions      Subscription[]
-  paymentMethods     PaymentMethod[]
+  subscriptions      Subscription[] @ignore
+  paymentMethods     PaymentMethod[] @ignore
   organizations      Account[]
   leads              Lead[]
   contacts           Contact[]
@@ -244,7 +248,7 @@ model Tenant {
   notifications      Notification[]
   auditLogs          AuditLog[]
   emailDeliveryLogs  EmailDeliveryLog[]
-  documents          TenantDocument[]
+  documents          TenantDocument[] @ignore
   environments       Environment[]
   SMSQueue           SMSQueue[]
   EmailEvent         EmailEvent[]
@@ -264,6 +268,7 @@ model Tenant {
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // SUBSCRIPTION (billing source of truth)
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+// Retired storage only; excluded from Prisma Client. See docs/internal-crm-cleanup.md.
 model Subscription {
   id                      String             @id @default(uuid())
   tenantId                String
@@ -294,11 +299,13 @@ model Subscription {
 
   @@index([tenantId, status])
   @@index([stripeSubscriptionId])
+  @@ignore
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // PAYMENT METHOD (saved methods per tenant)
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+// Retired storage only; excluded from Prisma Client. See docs/internal-crm-cleanup.md.
 model PaymentMethod {
   id            String   @id @default(uuid())
   tenantId      String
@@ -316,6 +323,7 @@ model PaymentMethod {
   transactions PaymentTransaction[]
 
   @@index([tenantId, isActive])
+  @@ignore
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -587,6 +595,7 @@ model TenantDomainSettings {
 
 // TENANT DOCUMENT (onboarding files, contracts, etc.)
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+// Retired storage only; excluded from Prisma Client. See docs/internal-crm-cleanup.md.
 model TenantDocument {
   id             String    @id @default(uuid())
   tenantId       String
@@ -606,6 +615,7 @@ model TenantDocument {
 
   @@unique([tenantId, documentKey])
   @@index([tenantId, status])
+  @@ignore
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -1132,7 +1142,7 @@ model TargetAudience {
   description String?
   isActive               Boolean  @default(true)
   // -- Payment methods (per-plan config, stored as JSON) ------------
-  paymentMethods         Json     @default("[]")
+  paymentMethods         Json     @default("[]") @ignore
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -1408,7 +1418,7 @@ model Invoice {
   environment CrmEnvironment @default(PRODUCTION)
   id              String    @id @default(uuid())
   tenantId        String
-  subscriptionId  String? // link to Subscription for recurring billing invoices
+  subscriptionId  String? @ignore // link to Subscription for recurring billing invoices
   dealId          String?
   leadId          String?
   customerId      String?
@@ -1433,7 +1443,7 @@ model Invoice {
   updatedAt       DateTime  @updatedAt
 
   tenant       Tenant               @relation(fields: [tenantId], references: [id])
-  subscription Subscription?        @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  subscription Subscription?        @relation(fields: [subscriptionId], references: [id], onDelete: SetNull) @ignore
   deal         Deal?                @relation(fields: [dealId], references: [id], onDelete: SetNull)
   lead         Lead?                @relation(fields: [leadId], references: [id], onDelete: SetNull)
   contact      Contact?             @relation(fields: [customerId], references: [id], onDelete: SetNull)
@@ -1451,7 +1461,7 @@ model PaymentTransaction {
   id                      String    @id @default(uuid())
   tenantId                String
   invoiceId               String
-  paymentMethodId         String? // FK to PaymentMethod (saved method) G�� nullable for ad-hoc
+  paymentMethodId         String? @ignore // FK to PaymentMethod (saved method) G�� nullable for ad-hoc
   amount                  Float
   currency                String    @default("PHP")
   status                  String // pending|paid|failed|refunded|partially_refunded
@@ -1463,19 +1473,19 @@ model PaymentTransaction {
   failureReason           String?
   metadata                Json?
   // -- Stripe --------------------------------------------------------
-  stripePaymentIntentId   String?   @unique // pi_xxx
-  stripeCheckoutSessionId String? // cs_xxx � checkout origin
-  stripeInvoiceId         String? // in_xxx � for subscription invoices
-  stripeEventId           String? // evt_xxx � webhook event that created this record (idempotency)
+  stripePaymentIntentId   String?   @unique @ignore // pi_xxx
+  stripeCheckoutSessionId String? @ignore // cs_xxx � checkout origin
+  stripeInvoiceId         String? @ignore // in_xxx � for subscription invoices
+  stripeEventId           String? @ignore // evt_xxx � webhook event that created this record (idempotency)
   refundedAmount          Float? // partial refund tracking
   refundedAt              DateTime?
-  stripeRefundId          String?   @unique // re_xxx
+  stripeRefundId          String?   @unique @ignore // re_xxx
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @default(now()) @updatedAt
 
   tenant      Tenant         @relation(fields: [tenantId], references: [id])
   invoice     Invoice        @relation(fields: [invoiceId], references: [id])
-  savedMethod PaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  savedMethod PaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull) @ignore
 
   @@index([tenantId, status])
   @@index([invoiceId])
@@ -1629,7 +1639,7 @@ model EmailAccount {
   scopes         String[] // granted OAuth scopes
   isActive               Boolean  @default(true)
   // -- Payment methods (per-plan config, stored as JSON) ------------
-  paymentMethods         Json     @default("[]")
+  paymentMethods         Json     @default("[]") @ignore
   lastSyncAt     DateTime?
   syncCursor     String? // Gmail history ID for incremental sync
   connectedAt    DateTime  @default(now())
@@ -1706,7 +1716,7 @@ model AutomationRule {
   actions     Json // what to do (e.g., schedule campaign)
   isActive               Boolean  @default(true)
   // -- Payment methods (per-plan config, stored as JSON) ------------
-  paymentMethods         Json     @default("[]")
+  paymentMethods         Json     @default("[]") @ignore
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -1911,6 +1921,7 @@ model ContactImportResult {
 // Stores every inbound Stripe webhook for idempotency, debugging, and replay.
 // No tenantId — webhook events are platform-level (cross-tenant).
 // ─────────────────────────────────────────────────────────────────────────────
+// Retired storage only; excluded from Prisma Client. See docs/internal-crm-cleanup.md.
 model StripeWebhookEvent {
   id            String             @id @default(uuid())
   stripeEventId String             @unique // evt_xxx — Stripe's unique event ID
@@ -1925,4 +1936,5 @@ model StripeWebhookEvent {
   @@index([type])
   @@index([status])
   @@index([createdAt])
+  @@ignore
 }

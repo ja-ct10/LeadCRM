@@ -600,7 +600,7 @@ export default function ProfileSettingsPage({
                   <span>Modules & Features</span>
                 </h3>
                 <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                  Configure corporate structures, pipelines, and premium
+                  Configure corporate structures, pipelines, and optional
                   dashboards active within safety domains.
                 </p>
               </div>
@@ -633,7 +633,7 @@ export default function ProfileSettingsPage({
                         )}
                       </h4>
                       <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 leading-snug">
-                        Manage subscriptions, recurring fees, and auto-renewals.
+                        Manage customer contracts, recurring fees, and renewals.
                       </p>
                     </div>
                   </div>
@@ -680,7 +680,7 @@ export default function ProfileSettingsPage({
                   <span className="font-bold text-slate-700 dark:text-slate-305 block mb-0.5">
                     Automated Navigation Integration
                   </span>
-                  SaaS premium modules configure real-time workspace scopes.
+                  Configure the modules available in this workspace.
                   Toggling will instantly synchronize with the systems sidebar
                   menus and dynamic workspace triggers. No custom compilation
                   needed.

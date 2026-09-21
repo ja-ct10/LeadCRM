@@ -24,7 +24,6 @@ vi.mock('../../../../config/database.config', () => {
         update: vi.fn(),
       },
     },
-    enforcePlanLimit: vi.fn().mockResolvedValue(undefined),
   };
 });
 

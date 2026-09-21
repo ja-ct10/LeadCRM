@@ -17,7 +17,7 @@ const user = {
   id: 'user', tenantId: 'tenant', role: 'Sales', firstName: 'Alice', lastName: 'Owner',
   email: 'alice@example.com', status: 'ACTIVE', emailVerified: '2026-01-01',
   onboardingStep: 0, onboardingCompletedAt: null, isTenantOwner: true,
-  tenantName: 'Workspace', tenantStatus: 'SANDBOX', subscriptionStatus: 'NONE',
+  tenantName: 'Workspace', tenantStatus: 'SANDBOX',
   avatarUrl: null, timeZone: null,
 };
 function Probe() { auth = useAuth(); return null; }

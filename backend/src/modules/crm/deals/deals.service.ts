@@ -3,7 +3,6 @@ import prisma from '../../../config/database.config';
 import * as repo from './deals.repository';
 import { writeAuditLog, buildChangeset } from '../../../core/audit/audit.service';
 import { NotFoundError, ValidationError, ConflictError } from '../../../shared/errors/http-error';
-import { enforcePlanLimit } from '../../../config/database.config';
 import { CreateDealDto, UpdateDealDto, MoveDealStageDto, DealsQueryParams } from './deals.dto';
 import { paginate } from '../../../shared/helpers/pagination';
 import { fireDealCreated, fireDealStageChanged } from '../../automation/triggers/triggers.service';
@@ -51,7 +50,6 @@ export async function getDealById(id: string, tenantId: string) {
 }
 
 export async function createDeal(tenantId: string, userId: string, dto: CreateDealDto) {
-  await enforcePlanLimit(tenantId, 'deals');
 
   let deal;
   try {
@@ -262,7 +260,6 @@ export async function restoreDeal(id: string, tenantId: string, userId: string) 
 }
 
 export async function duplicateDeal(id: string, tenantId: string, userId: string) {
-  await enforcePlanLimit(tenantId, 'deals');
 
   const source = await repo.findDealById(id, tenantId);
   if (!source) throw new NotFoundError('Deal');

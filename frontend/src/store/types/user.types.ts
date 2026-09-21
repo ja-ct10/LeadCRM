@@ -44,8 +44,6 @@ export interface User {
   emailVerified?: string | null;
   tenantName?: string | null;
   tenantStatus?: string | null;
-  subscriptionStatus?: string | null;
-  plan?: string | null;
   onboardingStep?: number;
   onboardingCompletedAt?: string | null;
   /** Flattened from tenant — used for OAuth company-setup gate in AuthGuard */
@@ -73,8 +71,6 @@ export interface Tenant {
   timezone?: string;
   currency?: string;
   domain?: string;
-  businessReqs?: { requirements: string; documentName?: string };
-  verificationDocs?: { businessPermit?: string; taxId?: string; validId?: string; uploadedAt: string };
   adminNotes?: string;
   healthMetrics?: {
     cpuUsage: number;

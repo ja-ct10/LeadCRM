@@ -24,6 +24,8 @@ const mockUpdateTask = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('@/store/DataContext', () => ({
   useData: () => ({
+    activities: [],
+    addActivity: vi.fn(),
     pipelines: [
       {
         id: 'pipe-1',

@@ -3,31 +3,6 @@
  * Use these instead of magic strings/numbers scattered across components.
  */
 
-// ─── SaaS Plan Limits ──────────────────────────────────────────────────────
-export const PLAN_LIMITS = {
-  free: {
-    contacts: 250,
-    users: 3,
-    campaigns: 2,
-    workflows: 3,
-    storageGB: 1,
-  },
-  pro: {
-    contacts: 5000,
-    users: 15,
-    campaigns: 20,
-    workflows: 25,
-    storageGB: 10,
-  },
-  enterprise: {
-    contacts: Infinity,
-    users: Infinity,
-    campaigns: Infinity,
-    workflows: Infinity,
-    storageGB: Infinity,
-  },
-} as const;
-
 // ─── Contact Status Options ────────────────────────────────────────────────
 export const CONTACT_STATUSES = ['Hot', 'Warm', 'Cold', 'Closed', 'Cancelled'] as const;
 export type ContactStatus = typeof CONTACT_STATUSES[number];
@@ -87,15 +62,11 @@ export const ROUTES = {
   SETTINGS: 'settings',
   ACCOUNT_DETAILS: 'account-details',
   PROFILE_SETTINGS: 'profile-settings',
-  BILLING: 'billing',
-  CLIENT_BILLING: 'client-billing',
   AUDIT_LOG: 'audit-log',
 
   // Admin Portal
   ADMIN_DASHBOARD: 'admin-dashboard',
   ADMIN_CLIENTS: 'admin-clients',
-  ADMIN_PRICING: 'admin-pricing',
-  ADMIN_BILLING: 'admin-billing',
   ADMIN_AUDIT_LOG: 'admin-audit-log',
 } as const;
 

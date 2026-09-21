@@ -2,13 +2,12 @@
 
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/store/AuthContext';
-import { useData } from '@/store/DataContext';
 import { usePermissions, PERMISSION_BRIDGE } from '@/shared/hooks/use-permissions';
 import { PATHNAME_TO_PATH, PATH_TO_PATHNAME } from '@/lib/route-map';
 import {
   LayoutDashboard, Briefcase, Workflow, Mail, Settings,
-  Receipt, Building2, CreditCard, Activity, ListTodo,
-  UserCheck, Building, Target, History,
+  Building2, Activity, ListTodo,
+  UserCheck, Building, Target,
 } from 'lucide-react';
 
 export const NAV_ITEMS = [
@@ -18,7 +17,6 @@ export const NAV_ITEMS = [
   { name: 'Contacts',          path: 'contacts',          icon: UserCheck,       permission: 'contacts.view',  roles: null,          group: 'CRM' },
   { name: 'Accounts',          path: 'accounts',          icon: Building,        permission: 'accounts.view',  roles: null,          group: 'CRM' },
   { name: 'Deals',             path: 'pipeline',          icon: Briefcase,       permission: 'deals.view',     roles: null,          group: 'CRM' },
-  { name: 'Activities',        path: 'activities',        icon: History,         permission: 'contacts.view',  roles: null,          group: 'CRM' },
   // ── Operations ──────────────────────────────────────
   { name: 'Tasks',             path: 'tasks',             icon: ListTodo,        permission: 'contacts.view',  roles: null,          group: 'Operations' },
   // ── Marketing ───────────────────────────────────────
@@ -26,7 +24,7 @@ export const NAV_ITEMS = [
   // ── Automation ──────────────────────────────────────
   { name: 'Workflows',         path: 'workflows',         icon: Workflow,        permission: 'workflows.view', roles: null,          group: 'Automation' },
   // ── Settings ────────────────────────────────────────
-  // Single entry point for all configuration including Billing and Roles & Permissions.
+  // Single entry point for all configuration including Roles & Permissions.
   { name: 'Settings',          path: 'settings',          icon: Settings,        permission: 'settings.view',  roles: null,          group: 'Settings' },
   // ── System Admin (separate portal) ──────────────────
   { name: 'Dashboard',         path: 'admin-dashboard',   icon: LayoutDashboard, permission: null,             roles: ['System Admin'] as const, group: null },
@@ -40,7 +38,6 @@ export function useLayout() {
   const router = useRouter();
   const pathname = usePathname();
   const { user } = useAuth();
-  const { isBillingModuleEnabled } = useData();
   const userPermissions = usePermissions();
 
   const currentPath = PATHNAME_TO_PATH[pathname] ?? 'dashboard';
@@ -53,17 +50,9 @@ export function useLayout() {
   const isSuper = userPermissions.includes('*');
   const isSystemAdminUser = user?.role === 'System Admin' || user?.tenantId === 'system' || user?.tenantId === 'leadcrm-system-demo';
 
-  const featureEnabled = (flag?: 'billing') => {
-    if (!flag) return true;
-    if (flag === 'billing') return isBillingModuleEnabled;
-    return true;
-  };
-
   const hasAccess = (item: NavItem): boolean => {
-    if (!featureEnabled((item as any).featureFlag)) return false;
 
-    const itemPath = (item as any).path as string;
-    const itemRoles = (item as any).roles as string[] | null | undefined;
+    const itemRoles: readonly string[] | null = item.roles;
 
     if (isSystemAdminUser) return itemRoles?.includes('System Admin') ?? false;
     if (itemRoles?.includes('System Admin')) return false;

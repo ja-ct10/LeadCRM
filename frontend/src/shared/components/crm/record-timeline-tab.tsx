@@ -20,14 +20,20 @@ import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import { Textarea } from '@/shared/components/ui/textarea';
 import { activitiesService } from '@/features/tenant/crm/activities/services/activities.service';
-import type { Activity, ActivityType } from '@/store/types/shared.types';
+import type { TimelineActivity } from '@/shared/hooks/use-record-activities';
+import { useHasPermission } from '@/shared/hooks/use-permissions';
+import { useAuth } from '@/store/AuthContext';
+import { useData } from '@/store/DataContext';
+import { USE_MOCK_DATA } from '@/lib/config';
 import type { RecordModule } from '@/shared/hooks/use-record-detail';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface RecordTimelineTabProps {
   /** Activities from the useRecordDetail hook */
-  activities: Activity[];
+  activities: TimelineActivity[];
+  loading?: boolean;
+  error?: string | null;
   /** Module type for creating new activities */
   module: RecordModule;
   /** Record ID for creating new activities */
@@ -64,12 +70,6 @@ const FILTER_MAPPING: Record<FilterType, string[]> = {
   Status: ['stage_change', 'stage-change', 'deal_action'],
 };
 
-const ACTIVITY_FILTER_KEY_MAP: Record<RecordModule, string> = {
-  leads: 'contactId',
-  contacts: 'contactId',
-  accounts: 'organizationId',
-  deals: 'dealId',
-};
 
 // ─── Relative time formatter ─────────────────────────────────────────────────
 
@@ -97,6 +97,8 @@ interface QuickComposerProps {
 }
 
 function QuickComposer({ module, recordId, onCreated }: QuickComposerProps): React.ReactElement {
+  const { addActivity } = useData();
+  const { user } = useAuth();
   const [mode, setMode] = useState<ComposerMode>('note');
   const [text, setText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -110,20 +112,19 @@ function QuickComposer({ module, recordId, onCreated }: QuickComposerProps): Rea
 
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
-    if (!text.trim()) return;
+    if (!text.trim() || isSubmitting) return;
 
     setIsSubmitting(true);
     try {
-      const filterKey = ACTIVITY_FILTER_KEY_MAP[module];
-      await activitiesService.create({
-        type: mode as ActivityType,
-        title: text.trim(),
-        relatedToType: module === 'accounts' ? 'company' : module === 'deals' ? 'deal' : 'contact',
-        relatedToId: recordId,
-        [filterKey]: recordId,
-        createdBy: 'current-user',
-        createdAt: new Date().toISOString(),
-      } as unknown as Omit<Activity, 'id' | 'tenantId' | 'createdAt'>);
+      if (USE_MOCK_DATA) {
+        if (!user) throw new Error('Sign in to log activity');
+        await addActivity({ type: mode, title: text.trim(), relatedToType: module === 'accounts' ? 'company' : module === 'deals' ? 'deal' : 'contact', relatedToId: recordId, createdBy: user.id, createdAt: new Date().toISOString() });
+      } else {
+        // The current API supports these record links. Never send a stripped or
+        // unknown field, which would create an unlinked activity.
+        if (module !== 'accounts' && module !== 'deals') throw new Error('Activity logging is unavailable for this record');
+        await activitiesService.create({ type: mode, title: text.trim(), ...(module === 'accounts' ? { accountId: recordId } : { dealId: recordId }) });
+      }
       setText('');
       toast.success(`${mode.charAt(0).toUpperCase() + mode.slice(1)} logged`);
       onCreated?.();
@@ -137,7 +138,7 @@ function QuickComposer({ module, recordId, onCreated }: QuickComposerProps): Rea
   return (
     <form onSubmit={handleSubmit} className="border border-border rounded-xl bg-card overflow-hidden">
       {/* Mode selector */}
-      <div className="flex items-center gap-1 px-4 pt-3 pb-2 border-b border-border/50">
+      <div className="flex flex-wrap items-center gap-1 px-4 pt-3 pb-2 border-b border-border/50">
         {modes.map((m) => (
           <button
             key={m.id}
@@ -164,6 +165,8 @@ function QuickComposer({ module, recordId, onCreated }: QuickComposerProps): Rea
           onChange={(e) => setText(e.target.value)}
           placeholder={`Write a ${mode}...`}
           className="min-h-[60px] resize-none border-0 p-0 shadow-none focus-visible:ring-0 text-sm"
+          aria-label="Activity description"
+          maxLength={255}
           disabled={isSubmitting}
         />
       </div>
@@ -188,7 +191,7 @@ function QuickComposer({ module, recordId, onCreated }: QuickComposerProps): Rea
 // ─── Timeline Entry ──────────────────────────────────────────────────────────
 
 interface TimelineEntryProps {
-  activity: Activity;
+  activity: TimelineActivity;
 }
 
 function TimelineEntry({ activity }: TimelineEntryProps): React.ReactElement {
@@ -196,7 +199,7 @@ function TimelineEntry({ activity }: TimelineEntryProps): React.ReactElement {
   const Icon = config.icon;
 
   return (
-    <div className="flex gap-3 px-4 py-3 hover:bg-accent/30 transition-colors group">
+    <div className="grid grid-cols-[2rem_minmax(0,1fr)] items-start gap-3 p-4 hover:bg-accent/30 transition-colors group">
       {/* Icon */}
       <div className={cn('h-8 w-8 rounded-full flex items-center justify-center shrink-0', config.color)}>
         <Icon className="h-4 w-4" />
@@ -204,20 +207,19 @@ function TimelineEntry({ activity }: TimelineEntryProps): React.ReactElement {
 
       {/* Content */}
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-foreground leading-snug">
+        <p className="text-sm text-foreground leading-snug break-words [overflow-wrap:anywhere]">
           {activity.title}
         </p>
         {activity.description && (
-          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+          <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
             {activity.description}
           </p>
         )}
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          {activity.createdBy && <span className="break-words [overflow-wrap:anywhere]">{[activity.createdBy.firstName, activity.createdBy.lastName].filter(Boolean).join(' ')}</span>}
+          <time dateTime={activity.createdAt} title={new Date(activity.createdAt).toLocaleString()}>{formatRelativeTime(activity.createdAt)}</time>
+        </div>
       </div>
-
-      {/* Timestamp */}
-      <span className="text-xs text-muted-foreground shrink-0 pt-0.5">
-        {formatRelativeTime(activity.createdAt)}
-      </span>
     </div>
   );
 }
@@ -229,7 +231,11 @@ export function RecordTimelineTab({
   module,
   recordId,
   onActivityCreated,
+  loading = false,
+  error,
 }: RecordTimelineTabProps): React.ReactElement {
+  const canCreate = useHasPermission('contacts.create');
+  const canLog = canCreate && (USE_MOCK_DATA || module === 'accounts' || module === 'deals');
   const [filter, setFilter] = useState<FilterType>('All');
   const [searchTerm, setSearchTerm] = useState('');
   const [visibleCount, setVisibleCount] = useState(20);
@@ -252,7 +258,8 @@ export function RecordTimelineTab({
       result = result.filter(
         (a) =>
           a.title.toLowerCase().includes(query) ||
-          (a.description?.toLowerCase().includes(query) ?? false)
+          (a.description?.toLowerCase().includes(query) ?? false) ||
+          ([a.createdBy?.firstName, a.createdBy?.lastName].filter(Boolean).join(' ').toLowerCase().includes(query))
       );
     }
 
@@ -267,18 +274,22 @@ export function RecordTimelineTab({
   }, []);
 
   return (
-    <div className="p-6 space-y-4 max-w-4xl">
+    <div className="w-full min-w-0 px-[var(--panel-gutter,1.5rem)] py-5 space-y-4">
       {/* Quick Composer */}
-      <QuickComposer module={module} recordId={recordId} onCreated={onActivityCreated} />
+      {canLog ? <QuickComposer key={recordId} module={module} recordId={recordId} onCreated={onActivityCreated} /> : canCreate ? <p className="rounded-lg border border-border p-3 text-sm text-muted-foreground">Activity history is available below. Quick Log is currently unavailable for this record.</p> : null}
+      <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Activity Timeline ({activities.length})</h3>
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      {loading && <p role="status" className="text-sm text-muted-foreground">Loading activity history…</p>}
 
       {/* Filter bar */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-        <div className="flex items-center gap-1 overflow-x-auto scrollbar-none">
+      <div className="flex min-w-0 flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-1">
           {filters.map((f) => (
             <button
               key={f}
               type="button"
-              onClick={() => setFilter(f)}
+              aria-pressed={filter === f}
+              onClick={() => { setFilter(f); setVisibleCount(20); }}
               className={cn(
                 'px-3 py-1.5 text-xs font-medium rounded-full whitespace-nowrap transition-colors',
                 filter === f
@@ -292,13 +303,14 @@ export function RecordTimelineTab({
         </div>
 
         {/* Search */}
-        <div className="relative w-full sm:w-auto sm:ml-auto">
+        <div className="relative w-full">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => { setSearchTerm(e.target.value); setVisibleCount(20); }}
+            aria-label="Search activities"
             placeholder="Search activities..."
-            className="pl-8 h-8 text-xs w-full sm:w-[200px]"
+            className="pl-8 h-9 text-xs w-full"
           />
         </div>
       </div>
@@ -329,7 +341,7 @@ export function RecordTimelineTab({
             <Plus className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
             <p className="text-sm text-muted-foreground">
               {activities.length === 0
-                ? 'No activity yet. Log your first note above.'
+                ? 'No activity recorded for this record.'
                 : 'No activities match your filter.'}
             </p>
           </div>

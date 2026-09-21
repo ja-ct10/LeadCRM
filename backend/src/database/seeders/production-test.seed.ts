@@ -1,9 +1,9 @@
 /**
  * PRODUCTION TEST DATA SEEDER
- * 
+ *
  * Seeds the database with test data needed for production campaign testing.
  * Creates test tenant, user, leads, and verifies Gmail connection.
- * 
+ *
  * Run: npm run db:seed:production-test
  */
 
@@ -22,7 +22,7 @@ const TEST_RECIPIENTS = [
     status: 'hot',
   },
   {
-    email: 'durussy1@gmail.com', 
+    email: 'durussy1@gmail.com',
     firstName: 'Duruss',
     lastName: 'Y',
     status: 'warm',
@@ -42,10 +42,7 @@ async function seedProductionTestData() {
         id: TEST_TENANT_ID,
         name: 'Production Test Tenant',
         subdomain: 'test-prod',
-        plan: 'PRO' as const,
         status: 'ACTIVE',
-        maxUsers: 10,
-        maxContacts: 1000,
         contactsUsed: 2,
         usersUsed: 1,
       },
@@ -55,7 +52,7 @@ async function seedProductionTestData() {
     // 2. Create test user
     console.log('👤 Creating test user...');
     const hashedPassword = await bcrypt.hash(process.env.TEST_USER_PASSWORD || (() => { throw new Error('TEST_USER_PASSWORD is required'); })(), 10);
-    
+
     await prisma.user.upsert({
       where: { id: TEST_USER_ID },
       update: {},
@@ -110,7 +107,7 @@ async function seedProductionTestData() {
 
     // 4. Create role permissions for the test user
     console.log('🔐 Setting up role permissions...');
-    
+
     // Check if role exists
     const clientAdminRole = await prisma.roleDefinition.findUnique({
       where: {

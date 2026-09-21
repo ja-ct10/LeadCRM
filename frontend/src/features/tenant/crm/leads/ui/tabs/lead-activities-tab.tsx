@@ -73,7 +73,7 @@ export function LeadActivitiesTab({
           <input
             type="text"
             required
-            placeholder={`e.g. Discussed subscription configuration during outbound ${logType.toLowerCase()}...`}
+            placeholder={`e.g. Discussed customer requirements during outbound ${logType.toLowerCase()}...`}
             value={logNotes}
             onChange={e => onSetLogNotes(e.target.value)}
             className="flex-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-lg px-3 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none"

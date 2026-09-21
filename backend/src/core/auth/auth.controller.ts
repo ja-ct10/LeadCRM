@@ -107,8 +107,6 @@ export async function seedDemo(_req: Request, res: Response, next: NextFunction)
         name:               'Demo Corp Solutions',
         slug:               'demo-corp',
         status:             'ACTIVE',
-        subscriptionStatus: 'ACTIVE',
-        plan:               'ENTERPRISE',
       },
     });
 
@@ -230,12 +228,11 @@ export async function seedAdmin(req: Request, res: Response, next: NextFunction)
 
     // ── System tenant upsert ───────────────────────────────────────────────
     // Ensure the reserved system tenant exists and is properly configured so
-    // AuthGuard's onboarding and subscription gates can never block System Admin.
+    // AuthGuard's onboarding checks can never block System Admin.
     const tenant = await prisma.tenant.upsert({
       where:  { slug: 'leadcrm-system' },
       update: {
         status:                'ACTIVE',
-        subscriptionStatus:    'ACTIVE',
         onboardingStep:        3,
         onboardingCompletedAt: new Date(),
       },
@@ -243,8 +240,6 @@ export async function seedAdmin(req: Request, res: Response, next: NextFunction)
         name:                  'LeadCRM System',
         slug:                  'leadcrm-system',
         status:                'ACTIVE',
-        subscriptionStatus:    'ACTIVE',
-        plan:                  'ENTERPRISE',
         onboardingStep:        3,
         onboardingCompletedAt: new Date(),
       },

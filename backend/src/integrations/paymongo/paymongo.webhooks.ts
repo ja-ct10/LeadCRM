@@ -21,7 +21,7 @@ export function handleWebhookEvent(payload: PayMongoWebhookPayload): void {
 
   switch (eventType) {
     case 'payment.paid':
-      // TODO: activate tenant subscription, create invoice record
+      // TODO: record the customer invoice payment
       console.log('[PayMongo] payment.paid received');
       break;
     case 'payment.failed':

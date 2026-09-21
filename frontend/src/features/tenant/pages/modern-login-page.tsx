@@ -5,6 +5,7 @@ import { useAuth } from '@/store/AuthContext';
 import { ArrowLeft, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';
+import { CamxianBrandPanel } from './camxian-brand-panel';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -445,69 +446,8 @@ export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginP
 
   // Main login view with split-screen layout
   return (
-    <div className="min-h-screen flex">
-      {/* Left side - Blue gradient section with product preview */}
-      <div
-        className="hidden lg:flex lg:w-1/2 relative overflow-hidden"
-        style={{
-          background: 'linear-gradient(135deg, #60a5fa 0%, #3b82f6 50%, #2563eb 100%)'
-        }}
-      >
-        {/* Geometric pattern overlay */}
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-20 left-20 w-64 h-64 bg-white rounded-full blur-3xl"></div>
-          <div className="absolute bottom-20 right-20 w-96 h-96 bg-blue-300 rounded-full blur-3xl"></div>
-        </div>
-
-        <div className="relative z-10 flex flex-col justify-between p-12 text-white w-full">
-          {/* Logo */}
-          <button
-            onClick={() => onNavigate('login')}
-            className="flex items-center gap-3 hover:opacity-80 transition-opacity w-fit"
-          >
-            <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shadow-lg">
-              <img
-                src="/leadcrm_logo.png"
-                alt="LeadCRM Logo"
-                className="w-7 h-7 object-contain"
-              />
-            </div>
-            <span className="text-xl font-bold">LeadCRM</span>
-          </button>
-
-          {/* Center content */}
-          <div className="space-y-6">
-            <h1 className="font-display text-4xl font-bold leading-tight">
-              Designed for Individuals
-            </h1>
-            <p className="text-blue-100 text-lg max-w-md">
-              See the analytics and grow your data remotely, from anywhere.
-            </p>
-
-            {/* Product preview mockup */}
-            <div className="mt-12 relative">
-              <div className="bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 p-6 shadow-2xl">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-8 h-8 bg-white/20 rounded-lg"></div>
-                  <div className="flex-1">
-                    <div className="h-3 bg-white/20 rounded w-32 mb-2"></div>
-                    <div className="h-2 bg-white/10 rounded w-24"></div>
-                  </div>
-                  <div className="w-8 h-8 bg-white/90 rounded-full"></div>
-                </div>
-                <div className="space-y-2">
-                  <div className="h-16 bg-white/20 rounded-lg"></div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="h-12 bg-white/10 rounded-lg"></div>
-                    <div className="h-12 bg-white/10 rounded-lg"></div>
-                    <div className="h-12 bg-white/10 rounded-lg"></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+    <div className="min-h-screen flex flex-col lg:flex-row">
+      <CamxianBrandPanel onNavigate={onNavigate} />
 
       {/* Right side - Login form */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-4 sm:p-8 bg-white dark:bg-slate-950">

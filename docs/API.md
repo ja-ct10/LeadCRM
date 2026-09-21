@@ -193,22 +193,6 @@ All require an authenticated session and completed workspace onboarding.
 | `PUT` | `/billing/invoices/:id` | Update invoice |
 | `POST` | `/billing/invoices/:id/send` | Send invoice to customer |
 
-### Subscriptions
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/billing/subscription` | Active subscription for current tenant |
-| `POST` | `/billing/subscription` | Create subscription |
-| `PATCH` | `/billing/subscription/cancel` | Cancel subscription |
-| `POST` | `/billing/upgrade` | Upgrade to a new PricingPlan |
-
-### Payment Methods
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/billing/payment-methods` | List saved PaymentMethods |
-| `POST` | `/billing/payment-methods` | Add PaymentMethod |
-| `PATCH` | `/billing/payment-methods/:id/default` | Set as default |
-| `DELETE` | `/billing/payment-methods/:id` | Remove PaymentMethod |
-
 ---
 
 ## Reporting Endpoints (`/api/v1/reporting/`) — Stub
@@ -223,46 +207,17 @@ All require an authenticated session and completed workspace onboarding.
 
 ## System Admin Endpoints (`/api/v1/admin/`) — System Admin only
 
-### Tenant Management
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/admin/tenants` | List all tenants (paginated) |
-| `GET` | `/admin/tenants/:id` | Tenant details + subscription + documents |
-| `POST` | `/admin/tenants/:id/approve` | Approve tenant application |
-| `POST` | `/admin/tenants/:id/reject` | Reject application |
-| `PATCH` | `/admin/tenants/:id/suspend` | Suspend tenant |
-| `PATCH` | `/admin/tenants/:id/activate` | Reactivate tenant |
+### Tenant management and audit
 
-### Tenant Documents
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/admin/tenants/:id/documents` | List TenantDocuments |
-| `PATCH` | `/admin/tenants/:id/documents/:docId/verify` | Verify a document |
-| `PATCH` | `/admin/tenants/:id/documents/:docId/reject` | Reject a document |
+| GET | /admin/tenants | List tenants |
+| POST | /admin/tenants | Provision employee Client Admin and tenant |
+| PATCH | /admin/tenants/:id/deactivate | Suspend tenant |
+| PATCH | /admin/tenants/:id/activate | Reactivate tenant |
+| GET | /admin/audit-logs | Platform audit history |
 
-### Pricing Plans
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/admin/plans` | List PricingPlans + features |
-| `POST` | `/admin/plans` | Create PricingPlan |
-| `PUT` | `/admin/plans/:id` | Update PricingPlan pricing/limits |
-| `DELETE` | `/admin/plans/:id` | Deactivate PricingPlan |
-| `POST` | `/admin/plans/:id/features` | Add PlanFeature |
-| `DELETE` | `/admin/plans/:id/features/:featureId` | Remove PlanFeature |
-
-### Cross-Tenant Billing
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/admin/billing` | All invoices across tenants |
-| `GET` | `/admin/billing/metrics` | Platform billing metrics |
-| `GET` | `/admin/billing/overdue` | All overdue invoices |
-
-### Environments
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/admin/tenants/:id/environments` | List tenant environments |
-| `POST` | `/admin/tenants/:id/environments` | Create environment |
-| `PATCH` | `/admin/tenants/:id/environments/:envId` | Update metrics snapshot |
+Pricing, subscription activation, business verification, and Stripe webhooks are removed. See [internal CRM cleanup](internal-crm-cleanup.md).
 
 ---
 
