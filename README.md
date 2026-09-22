@@ -254,8 +254,8 @@ leadcrm/                                 ← Monorepo Root (Turborepo)
 
 | Requirement    | Required Version    | Verification Command |
 | -------------- | ------------------- | -------------------- |
-| **Node.js**    | `v20.0.0` or higher | `node --version`     |
-| **npm**        | `v9.0.0` or higher  | `npm --version`      |
+| **Node.js**    | `20.19+`, `22.13+`, or `24+` | `node --version`     |
+| **npm**        | `11.19.1` (project-pinned) | `npx --yes npm@11.19.1 --version` |
 | **PostgreSQL** | `v16.0` or higher   | `psql --version`     |
 | **Git**        | Any modern version  | `git --version`      |
 
@@ -277,7 +277,7 @@ cd OWN-CRM-1
 
 ```bash
 # Installs dependencies for frontend, backend, and shared packages in one step
-npm install
+npx --yes npm@11.19.1 ci
 ```
 
 #### 3. Configure Environment Variables

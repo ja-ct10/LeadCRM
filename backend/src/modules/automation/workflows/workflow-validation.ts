@@ -1,5 +1,6 @@
 import type { WorkflowDraft } from '@leadcrm/shared';
 import { ValidationError } from '../../../shared/errors/http-error';
+import { AppError } from '../../../shared/errors/app-error';
 import { findTrigger } from '../triggers/trigger-catalog';
 import { validateAction } from '../actions/action-validation';
 
@@ -25,7 +26,10 @@ export async function validateWorkflow(draft: WorkflowDraft, tenantId: string): 
   if (!draft.actions.length) throw new ValidationError('Add at least one action before activating.');
   for (const [index, action] of draft.actions.entries()) {
     try { await validateAction(action, trigger.entity, tenantId); }
-    catch (error) { throw new ValidationError(`Action ${index + 1}: ${error instanceof Error ? error.message : 'Check the action configuration.'}`); }
+    catch (error) {
+      if (!(error instanceof AppError)) throw error;
+      throw new ValidationError(`Action ${index + 1}: ${error.message}`);
+    }
   }
 }
 

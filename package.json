@@ -1,7 +1,16 @@
 {
   "name": "leadcrm",
   "private": true,
-  "packageManager": "npm@11.13.0",
+  "packageManager": "npm@11.19.1",
+  "engines": {
+    "node": "^20.19.0 || >=22.13.0"
+  },
+  "overrides": {
+    "postcss": "^8.5.28",
+    "gaxios": {
+      "uuid": "^11.1.1"
+    }
+  },
   "workspaces": [
     "frontend",
     "backend",

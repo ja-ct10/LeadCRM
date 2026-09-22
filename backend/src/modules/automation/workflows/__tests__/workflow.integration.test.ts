@@ -83,12 +83,16 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
   });
   it('keeps Client Profile actions attached to Contact, with the relationship Status unchanged', async () => {
     const workflow = await create([{ type: 'assign_owner', config: { userId: owner.id } }, { type: 'update_field', config: { field: 'notes', value: 'Client follow-up' } },
-      { type: 'create_task', config: { title: 'Call Client Profile' } }], { trigger: 'contact.created' });
+      { type: 'create_task', config: { title: 'Call Client Profile', priority: '', dueDaysFromNow: '' } }], { trigger: 'contact.created' });
     await fire('contact', contact);
     expect((await runs(workflow.id))[0].status).toBe('completed');
     const updated = await prisma.contact.findUniqueOrThrow({ where: { id: contact.id } });
     expect(updated.status).toBe(contact.status); expect(updated.notes).toBe('Client follow-up'); expect(updated.assignedUserId).toBe(owner.id);
-    expect((await prisma.task.findFirstOrThrow({ where: { customerId: contact.id } })).leadId).toBeNull();
+    const task = await prisma.task.findFirstOrThrow({ where: { customerId: contact.id } });
+    expect(task.leadId).toBeNull();
+    expect(task.priority).toBe('Medium');
+    expect(task.dueDate!.getTime() - task.createdAt.getTime()).toBeGreaterThan(2 * 86400000);
+    expect(task.dueDate!.getTime() - task.createdAt.getTime()).toBeLessThanOrEqual(3 * 86400000);
   });
   it('uses the stage domain service, records one history entry, and never changes Lead/Contact Status', async () => {
     const workflow = await create([{ type: 'move_deal_stage', config: { stageId: won.id } }], { trigger: 'deal.stage_changed' });

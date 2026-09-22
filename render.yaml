@@ -3,7 +3,7 @@ services:
   - type: web
     name: leadcrm-backend
     runtime: node
-    buildCommand: npm ci --include=dev && npm --prefix backend run build
+    buildCommand: npx --yes npm@11.19.1 ci --include=dev && npm --prefix backend run build
     # Apply committed migrations before accepting requests. Account seeding remains
     # in the existing server bootstrap; do not invoke a second seeder here.
     startCommand: npm --prefix backend run db:deploy && npm --prefix backend start

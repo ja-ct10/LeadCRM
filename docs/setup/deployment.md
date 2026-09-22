@@ -9,7 +9,7 @@ both depend on shared source under `shared/`. Keep the repository root lockfile.
 
 ## Local development
 
-1. Run `npm ci` from the repository root.
+1. Run `npx --yes npm@11.19.1 ci` from the repository root. The pinned npm release correctly applies workspace security overrides.
 2. Copy `backend/.env.example` to `backend/.env` and
    `frontend/.env.example` to `frontend/.env.local`; supply your own credentials.
    Existing configured files do not need to be replaced.
@@ -58,7 +58,7 @@ Use the repository's `render.yaml`, or configure equivalent settings:
 | Setting | Value |
 | --- | --- |
 | Root directory | Repository root (leave blank) |
-| Build command | `npm ci --include=dev && npm --prefix backend run build` |
+| Build command | `npx --yes npm@11.19.1 ci --include=dev && npm --prefix backend run build` |
 | Start command | `npm --prefix backend run db:deploy && npm --prefix backend start` |
 | Health check | `/health` |
 | NODE_ENV | `production` |
@@ -100,7 +100,7 @@ database or run the historical onboarding repair automatically.
 Create/import a Next.js project with Root Directory `frontend`.
 Enable **Include source files outside of the Root Directory in the Build Step**
 so the build can read `shared/` and the repository workspace files.
-Use the workspace-root install (`npm ci`, or `cd .. && npm ci` when overriding
+Use the workspace-root install (`npx --yes npm@11.19.1 ci`, or `cd .. && npx --yes npm@11.19.1 ci` when overriding
 a command that Vercel runs inside frontend), build with `npm run build`, and
 leave Output Directory at the Next.js default.
 See [Vercel monorepo settings](https://vercel.com/docs/monorepos/monorepo-faq).

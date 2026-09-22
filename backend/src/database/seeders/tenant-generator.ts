@@ -1,5 +1,4 @@
 import { PrismaClient } from '@prisma/client';
-import { faker } from '@faker-js/faker';
 import { hashPassword } from '../../shared/helpers/crypto';
 import { seedSystemRoles } from './roles.seed';
 
@@ -18,15 +17,15 @@ const INDUSTRIES = [
   'Financial Services'
 ];
 
-// Helper for dates
-const randomDatePast = (months = 6) => faker.date.recent({ days: months * 30 });
-const randomDateFuture = (days = 30) => faker.date.soon({ days });
-
 export { seedDemoAccounts as seedSystemAdmin } from './demo.seed';
 
 export async function generateTenants(count: number = 10) {
   console.log(`[Seed] Generating ${count} Realistic Tenants...`);
   if (process.env.NODE_ENV === 'production') throw new Error('Demo tenant generation is disabled in production');
+  // Faker is a development-only ESM dependency; load it only for an explicit demo seed.
+  const { faker } = await import('@faker-js/faker');
+  const randomDatePast = (months = 6) => faker.date.recent({ days: months * 30 });
+  const randomDateFuture = (days = 30) => faker.date.soon({ days });
   const defaultPassword = await hashPassword('password123');
 
   for (let i = 0; i < count; i++) {
