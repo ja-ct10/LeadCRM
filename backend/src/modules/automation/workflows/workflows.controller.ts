@@ -41,6 +41,14 @@ export async function archiveWorkflow(req: Request, res: Response, next: NextFun
 
 export async function getWorkflowExecutions(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    res.json({ success: true, data: await service.getWorkflowExecutions(String(req.params.id), req.user!.tenantId) });
+    const requestedPage = Number(req.query.page);
+    const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+    res.json({ success: true, data: await service.getWorkflowExecutions(String(req.params.id), req.user!.tenantId, page) });
+  } catch (err) { next(err); }
+}
+
+export async function testWorkflow(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    res.json({ success: true, data: await service.testWorkflow(String(req.params.id), req.user!.tenantId, req.body.entityId) });
   } catch (err) { next(err); }
 }

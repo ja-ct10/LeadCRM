@@ -1,354 +1,70 @@
-﻿/**
- * Workflow Execution Engine
- *
- * Evaluates WorkflowCondition JSON as pure data — NEVER eval()'d as code.
- * Dispatches WorkflowAction steps and records execution history.
- */
-
-import prisma from '../../../config/database.config';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { WorkflowDraftSchema, type WorkflowDraft } from '@leadcrm/shared';
+import { environmentContext } from '../../../core/environment/environment-context';
+import { ValidationError, NotFoundError } from '../../../shared/errors/http-error';
 import * as repo from './workflows.repository';
-import { moveDealStage as repoMoveDealStage } from '../../crm/deals/deals.repository';
-import { writeAuditLog } from '../../../core/audit/audit.service';
-import { createNotification } from '../../notifications/notifications.service';
+import { findTrigger } from '../triggers/trigger-catalog';
+import { evaluateCondition } from './workflow-conditions';
+import { dispatchAction, safeWorkflowError } from '../actions/action-dispatcher';
+import { validateWorkflow } from './workflow-validation';
+export { evaluateCondition } from './workflow-conditions';
 
-// System actor identifier used for workflow-engine-initiated mutations.
-// Matches the 'system_job' convention used by background jobs, making audit
-// entries clearly attributable to automation rather than a human user.
-const WORKFLOW_ENGINE_ACTOR = 'workflow_engine';
-
-// ─────────────────────────────────────────────────────
-// Types (mirrors shared/contracts/workflow.contracts.ts)
-// ─────────────────────────────────────────────────────
-
-interface WorkflowConditionRule {
-  field:    string;
-  operator: string;
-  value:    string | number | boolean | null;
-}
-
-interface WorkflowCondition {
-  operator:   'AND' | 'OR';
-  conditions: WorkflowConditionRule[];
-}
-
-interface WorkflowAction {
-  type:   string;
-  config: Record<string, unknown>;
-}
-
-// ─────────────────────────────────────────────────────
-// Condition Evaluator
-// ─────────────────────────────────────────────────────
-
-/**
- * Safely evaluate a WorkflowCondition against a context object.
- * Pure data evaluation — no eval(), no dynamic code execution.
- */
-export function evaluateCondition(
-  condition: WorkflowCondition,
-  context: Record<string, unknown>,
-): boolean {
-  const results = condition.conditions.map((rule: WorkflowConditionRule) => evaluateRule(rule, context));
-  return condition.operator === 'AND'
-    ? results.every(Boolean)
-    : results.some(Boolean);
-}
-
-function evaluateRule(
-  rule: WorkflowConditionRule,
-  context: Record<string, unknown>,
-): boolean {
-  const fieldValue = resolveField(rule.field, context);
-
-  switch (rule.operator) {
-    case 'equals':             return fieldValue == rule.value;
-    case 'not_equals':         return fieldValue != rule.value;
-    case 'greater_than':       return Number(fieldValue) > Number(rule.value);
-    case 'less_than':          return Number(fieldValue) < Number(rule.value);
-    case 'greater_than_or_equal': return Number(fieldValue) >= Number(rule.value);
-    case 'less_than_or_equal': return Number(fieldValue) <= Number(rule.value);
-    case 'contains':           return String(fieldValue ?? '').toLowerCase().includes(String(rule.value).toLowerCase());
-    case 'not_contains':       return !String(fieldValue ?? '').toLowerCase().includes(String(rule.value).toLowerCase());
-    case 'starts_with':        return String(fieldValue ?? '').startsWith(String(rule.value));
-    case 'ends_with':          return String(fieldValue ?? '').endsWith(String(rule.value));
-    case 'is_empty':           return fieldValue == null || fieldValue === '';
-    case 'is_not_empty':       return fieldValue != null && fieldValue !== '';
-    default:                   return false;
-  }
-}
-
-/** Resolve a dot-notation field path against a context object */
-function resolveField(fieldPath: string, context: Record<string, unknown>): unknown {
-  return fieldPath.split('.').reduce<unknown>((obj, key) => {
-    if (obj && typeof obj === 'object') return (obj as Record<string, unknown>)[key];
-    return undefined;
-  }, context);
-}
-
-// ─────────────────────────────────────────────────────
-// Action Dispatcher
-// ─────────────────────────────────────────────────────
-
-type ActionResult = { success: boolean; output?: object; error?: string };
-
-async function dispatchAction(
-  action: WorkflowAction,
-  context: Record<string, unknown>,
-  tenantId: string,
-): Promise<ActionResult> {
-  try {
-    switch (action.type) {
-      case 'create_task':
-        return await actionCreateTask(action.config, context, tenantId);
-      case 'create_notification':
-        return await actionCreateNotification(action.config, context, tenantId);
-      case 'update_field':
-        return await actionUpdateField(action.config, context, tenantId);
-      case 'send_email':
-        // Email sending is handled by the Gmail integration — log intent here
-        return { success: true, output: { queued: true, type: 'send_email' } };
-      case 'assign_owner':
-        return await actionAssignOwner(action.config, context, tenantId);
-      case 'move_deal_stage':
-        return await actionMoveDealStage(action.config, context, tenantId);
-      default:
-        return { success: false, error: `Unknown action type: ${action.type}` };
-    }
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
-  }
-}
-
-async function actionCreateTask(
-  config: Record<string, unknown>,
-  context: Record<string, unknown>,
-  tenantId: string,
-): Promise<ActionResult> {
-  const assignedUserId = String(config.assignedUserId ?? context['deal.assignedUserId'] ?? context['contact.assignedUserId'] ?? '');
-  if (!assignedUserId) return { success: false, error: 'assignedUserId required for create_task action' };
-
-  const task = await prisma.task.create({
-    data: {
-      tenantId,
-      title:          String(config.title ?? 'Workflow Task'),
-      description:    config.description ? String(config.description) : undefined,
-      status:         'pending',
-      priority:       String(config.priority ?? 'Medium'),
-      dueDate:        new Date(Date.now() + Number(config.dueDaysFromNow ?? 3) * 86400000),
-      assignedUserId,
-      dealId:         context['deal.id']     ? String(context['deal.id'])     : undefined,
-      leadId:         context['contact.id']  ? String(context['contact.id'])  : undefined,
-    },
-  });
-  return { success: true, output: { taskId: task.id } };
-}
-
-async function actionCreateNotification(
-  config: Record<string, unknown>,
-  context: Record<string, unknown>,
-  tenantId: string,
-): Promise<ActionResult> {
-  const userId = String(config.userId ?? context['deal.assignedUserId'] ?? context['contact.assignedUserId'] ?? '');
-  if (!userId) return { success: false, error: 'userId required for create_notification action' };
-
-  const notification = await prisma.notification.create({
-    data: {
-      tenantId,
-      userId,
-      type:       String(config.type ?? 'workflow_triggered'),
-      title:      String(config.title ?? 'Workflow notification'),
-      body:       config.body ? String(config.body) : undefined,
-      entityType: config.entityType ? String(config.entityType) : undefined,
-      entityId:   config.entityId   ? String(config.entityId)   : undefined,
-    },
-  });
-  return { success: true, output: { notificationId: notification.id } };
-}
-
-async function actionUpdateField(
-  config: Record<string, unknown>,
-  context: Record<string, unknown>,
-  tenantId: string,
-): Promise<ActionResult> {
-  const { entity, field, value } = config as { entity: string; field: string; value: unknown };
-  const entityId = context[`${entity}.id`] ? String(context[`${entity}.id`]) : undefined;
-  if (!entityId) return { success: false, error: `No ${entity}.id in context` };
-
-  if (entity === 'contact') {
-    await prisma.lead.update({ where: { id: entityId, tenantId }, data: { [field]: value } as never });
-  } else if (entity === 'deal') {
-    await prisma.deal.update({ where: { id: entityId, tenantId }, data: { [field]: value } });
-  }
-  return { success: true, output: { updated: { [field]: value } } };
-}
-
-async function actionAssignOwner(
-  config: Record<string, unknown>,
-  context: Record<string, unknown>,
-  tenantId: string,
-): Promise<ActionResult> {
-  const newOwnerId = String(config.userId ?? '');
-  if (!newOwnerId) return { success: false, error: 'userId required for assign_owner action' };
-
-  const dealId = context['deal.id'] ? String(context['deal.id']) : undefined;
-  if (dealId) {
-    await prisma.deal.update({ where: { id: dealId, tenantId }, data: { assignedUserId: newOwnerId } });
-  }
-  return { success: true, output: { assignedUserId: newOwnerId } };
-}
-
-/**
- * Move a deal to a new pipeline stage via the workflow engine.
- *
- * Uses the deals repository directly (not the service layer) to avoid
- * creating a circular dependency: engine → service → triggers → engine.
- *
- * The repository's moveDealStage handles:
- * - SEC-1 tenant-scoped stage lookup
- * - DealStageHistory creation with timeInPrevStage computation
- * - Activity record ("Deal moved from X to Y")
- * - Account and Lead status updates on Won
- *
- * The engine additionally writes an audit log entry and fires deal-won/
- * deal-lost notifications so automated stage moves are indistinguishable
- * from user-initiated moves in the audit trail and notification inbox.
- */
-async function actionMoveDealStage(
-  config: Record<string, unknown>,
-  context: Record<string, unknown>,
-  tenantId: string,
-): Promise<ActionResult> {
-  const dealId  = context['deal.id'] ? String(context['deal.id']) : undefined;
-  const stageId = String(config.stageId ?? '');
-  if (!dealId || !stageId) return { success: false, error: 'deal.id and stageId required' };
-
-  // Route through the repository — this creates DealStageHistory + Activity records
-  // and handles Won/Lost side-effects (Account update, Lead status update).
-  const result = await repoMoveDealStage(dealId, tenantId, stageId, WORKFLOW_ENGINE_ACTOR);
-  if (!result) return { success: false, error: 'Stage not found or deal does not belong to this tenant' };
-
-  const { deal, stageHistory } = result;
-
-  // Audit log — attribute the stage change to the workflow engine
-  void writeAuditLog({
-    tenantId,
-    userId:     WORKFLOW_ENGINE_ACTOR,
-    action:     'deal.stage_changed',
-    entityType: 'Deal',
-    entityId:   dealId,
-    after: {
-      newStageId:  stageId,
-      triggeredBy: 'workflow_engine',
-      historyId:   stageHistory.id,
-    },
-  });
-
-  // Deal-won / deal-lost notifications — only if the deal has an assigned user
-  if (deal.assignedUserId) {
-    const stageName = (deal.stage as { name: string } | null)?.name ?? 'new stage';
-
-    if ((deal.stage as { isWon: boolean } | null)?.isWon) {
-      void createNotification({
-        tenantId,
-        userId:     deal.assignedUserId,
-        type:       'deal_won',
-        title:      'Deal closed — Won 🎉',
-        body:       `"${deal.title}" was moved to "${stageName}" by a workflow.`,
-        entityType: 'Deal',
-        entityId:   dealId,
-      });
-    } else if ((deal.stage as { isLost: boolean } | null)?.isLost) {
-      void createNotification({
-        tenantId,
-        userId:     deal.assignedUserId,
-        type:       'deal_lost',
-        title:      'Deal closed — Lost',
-        body:       `"${deal.title}" was moved to "${stageName}" by a workflow.`,
-        entityType: 'Deal',
-        entityId:   dealId,
-      });
-    }
-  }
-
-  return { success: true, output: { newStageId: stageId, historyId: stageHistory.id } };
-}
-
-// ─────────────────────────────────────────────────────
-// Main: Execute a Workflow
-// ─────────────────────────────────────────────────────
-
+const chain = new AsyncLocalStorage<ReadonlySet<string>>();
 export interface WorkflowFireParams {
-  triggerType: string;
-  entityType:  string;
-  entityId:    string;
-  tenantId:    string;
-  context:     Record<string, unknown>; // flattened entity data for condition evaluation
+  triggerType: string; entityType: string; entityId: string; tenantId: string;
+  actorId?: string; context: Record<string, unknown>;
 }
-
-/**
- * Find all active workflows matching the trigger, evaluate conditions,
- * and execute matching workflows. Records full execution history.
- */
 export async function fireWorkflowTrigger(params: WorkflowFireParams): Promise<void> {
-  const { triggerType, entityType, entityId, tenantId, context } = params;
-
-  // Find workflows matching this trigger type for this tenant
-  const workflows = await prisma.workflow.findMany({
-    where: { tenantId, trigger: triggerType, isActive: true, isArchived: false },
-  });
-
+  const scope = environmentContext.getStore();
+  if (!scope || scope.tenantId !== params.tenantId) throw new ValidationError('A matching CRM environment is required for automation.');
+  const trigger = findTrigger(params.triggerType);
+  if (!trigger) throw new ValidationError('Unsupported workflow trigger.');
+  const context = await repo.entityContext(trigger.entity, params.entityId, params.tenantId);
+  if (!context) throw new NotFoundError('Triggering record');
+  const actorId = params.actorId;
+  if (!actorId || !await repo.findActor(actorId, params.tenantId)) throw new NotFoundError('Workflow actor');
+  const visited = chain.getStore() ?? new Set<string>();
+  if (visited.size >= 10) return;
+  const workflows = await repo.activeWorkflows(params.tenantId, params.triggerType);
   for (const workflow of workflows) {
-    // Evaluate conditions if present — skip workflow if conditions not met
-    if (workflow.conditions) {
-      const conditions = workflow.conditions as unknown as WorkflowCondition;
+    if (visited.has(workflow.id)) continue;
+    await chain.run(new Set([...visited, workflow.id]), async () => {
+      const run = await repo.startRun({ tenantId: params.tenantId, workflowId: workflow.id, triggerType: params.triggerType,
+        entityType: trigger.entity, entityId: params.entityId });
+      let status = 'completed';
+      let errorMessage: string | undefined;
+      let recordedSteps = 0;
       try {
-        const matches = evaluateCondition(conditions, context);
-        if (!matches) continue;
-      } catch {
-        continue; // Malformed conditions — skip silently
+        const parsed = WorkflowDraftSchema.safeParse({ name: workflow.name, description: workflow.description, trigger: workflow.trigger,
+          conditions: workflow.conditions, actions: workflow.actions, isActive: workflow.isActive });
+        if (!parsed.success) throw new ValidationError('This workflow uses an invalid configuration. Edit and save it before activating.');
+        const draft: WorkflowDraft = parsed.data;
+        await validateWorkflow(draft, params.tenantId);
+        if (draft.conditions && !evaluateCondition(draft.conditions, context)) status = 'skipped';
+        for (let index = 0; index < draft.actions.length; index++) {
+          const action = draft.actions[index];
+          const current = await repo.findWorkflowById(workflow.id, params.tenantId);
+          if (!current?.isActive || current.isArchived) status = status === 'failed' ? status : 'skipped';
+          if (status !== 'completed') {
+            await repo.createExecutionStep({ tenantId: params.tenantId, executionId: run.id, stepIndex: index, actionType: action.type, status: 'skipped' });
+            recordedSteps++;
+            continue;
+          }
+          const freshContext = await repo.entityContext(trigger.entity, params.entityId, params.tenantId);
+          const result = freshContext ? await dispatchAction(action, freshContext, params.tenantId, actorId)
+            : { success: false, error: 'The triggering record is no longer available.' };
+          await repo.createExecutionStep({ tenantId: params.tenantId, executionId: run.id, stepIndex: index,
+            actionType: action.type, status: result.success ? 'success' : 'failed', output: result.output, error: result.error });
+          recordedSteps++;
+          if (!result.success) { status = 'failed'; errorMessage = result.error; }
+        }
+      } catch (error) {
+        status = 'failed'; errorMessage = safeWorkflowError(error);
+        if (!recordedSteps) await repo.createExecutionStep({ tenantId: params.tenantId, executionId: run.id,
+          stepIndex: 0, actionType: 'validation', status: 'failed', error: errorMessage });
       }
-    }
-
-    // Record the trigger
-    const triggerRecord = await repo.recordTrigger({
-      tenantId, workflowId: workflow.id, triggerType,
-      entityType, entityId, payload: context as object,
-    });
-
-    // Create execution run
-    const run = await repo.createExecutionRun({
-      tenantId, workflowId: workflow.id, triggerId: triggerRecord.id,
-      entityType, entityId,
-    });
-
-    // Execute each action step
-    const actions = (workflow.actions as unknown) as WorkflowAction[];
-    let overallStatus = 'completed';
-
-    for (let i = 0; i < actions.length; i++) {
-      const action = actions[i];
-      const result = await dispatchAction(action, context, tenantId);
-
-      await repo.createExecutionStep({
-        tenantId,
-        executionId: run.id,
-        stepIndex:   i,
-        actionType:  action.type,
-        status:      result.success ? 'success' : 'failed',
-        output:      result.output,
-        error:       result.error,
-      });
-
-      if (!result.success) {
-        overallStatus = 'failed';
-        break; // Stop on first failure (configurable in future)
-      }
-    }
-
-    // Finalize the run
-    await repo.updateExecutionRun(run.id, {
-      status:      overallStatus,
-      completedAt: new Date(),
+      await repo.updateExecutionRun(run.id, params.tenantId, { status, errorMessage, completedAt: new Date() });
+      await repo.recordRunActivity(params.tenantId, actorId, trigger.entity, params.entityId, workflow.id, run.id, workflow.name, status);
     });
   }
 }

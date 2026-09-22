@@ -154,15 +154,7 @@ export function DealDetailsModal({
   const nextStage = pipeline.stages[currentStageIdx + 1];
   const isClosedWon = currentStageName === 'Closed Won';
 
-  // Automation tab data
-  const { workflowExecutionRuns, workflowExecutionSteps } = useData();
-  const dealRuns = useMemo(() =>
-    workflowExecutionRuns
-      .filter(r => r.entityId === deal.id)
-      .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()),
-    [workflowExecutionRuns, deal.id],
-  );
-  const automationCount = dealRuns.length;
+
   const isClosedLost = currentStageName === 'Closed Lost';
 
   const dealTasks = useMemo(
@@ -279,11 +271,6 @@ export function DealDetailsModal({
               {tab === 'tasks' && dealTasks.length > 0 && (
                 <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-400">
                   {dealTasks.length}
-                </span>
-              )}
-              {tab === 'automation' && automationCount > 0 && (
-                <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-500/20 text-orange-400">
-                  {automationCount}
                 </span>
               )}
               {activeTab === tab && (
@@ -854,106 +841,11 @@ export function DealDetailsModal({
 
           {/* ── AUTOMATION TAB ───────────────────────────────────────────── */}
           {activeTab === 'automation' && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 mb-1">
-                <Zap className="w-4 h-4 text-orange-500" />
-                <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
-                  Workflow Executions
-                </h4>
-                {automationCount > 0 && (
-                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-500/20 text-orange-400">
-                    {automationCount}
-                  </span>
-                )}
-              </div>
-
-              {dealRuns.length === 0 ? (
-                <div className="py-10 text-center">
-                  <Zap className="w-8 h-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
-                  <p className="text-sm text-slate-400 dark:text-slate-500">
-                    No automations have run on this deal yet.
-                  </p>
-                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-                    Automations will appear here when a workflow triggers actions on this deal.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {dealRuns.map(run => {
-                    const steps = workflowExecutionSteps.filter(s => s.executionId === run.id);
-                    const statusColors: Record<string, string> = {
-                      completed: 'text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/10',
-                      failed:    'text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-500/10',
-                      running:   'text-amber-600 bg-amber-50 dark:text-amber-400 dark:bg-amber-500/10',
-                      skipped:   'text-slate-500 bg-slate-100 dark:text-slate-400 dark:bg-white/[0.05]',
-                    };
-                    const stepStatusIcon: Record<string, string> = {
-                      success: '✓', failed: '✗', skipped: '—',
-                    };
-                    const stepStatusColor: Record<string, string> = {
-                      success: 'text-emerald-500',
-                      failed:  'text-red-500',
-                      skipped: 'text-slate-400',
-                    };
-
-                    return (
-                      <div key={run.id}
-                        className="bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06] rounded-xl overflow-hidden">
-                        {/* Run header */}
-                        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-white/[0.04]">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <Zap className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-                            <span className="text-sm font-semibold text-slate-900 dark:text-white truncate">
-                              {run.workflowName}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${statusColors[run.status] ?? statusColors.skipped}`}>
-                              {run.status}
-                            </span>
-                            <span className="text-[10px] text-slate-400">
-                              {new Date(run.startedAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Steps */}
-                        {steps.length > 0 && (
-                          <div className="px-4 py-2 space-y-1.5">
-                            {steps
-                              .sort((a, b) => a.stepIndex - b.stepIndex)
-                              .map(step => (
-                                <div key={step.id} className="flex items-center gap-2 text-xs">
-                                  <span className={`font-bold w-3 shrink-0 ${stepStatusColor[step.status] ?? 'text-slate-400'}`}>
-                                    {stepStatusIcon[step.status] ?? '—'}
-                                  </span>
-                                  <span className="text-slate-600 dark:text-slate-300 font-medium">
-                                    {step.actionType.replace(/_/g, ' ')}
-                                  </span>
-                                  {step.output && Object.keys(step.output).length > 0 && (
-                                    <span className="text-slate-400 truncate">
-                                      → {Object.values(step.output)[0] as string}
-                                    </span>
-                                  )}
-                                  {step.error && (
-                                    <span className="text-red-400 truncate">→ {step.error}</span>
-                                  )}
-                                </div>
-                              ))}
-                          </div>
-                        )}
-
-                        {steps.length === 0 && (
-                          <p className="px-4 py-2 text-xs text-slate-400 italic">No step details recorded.</p>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+            <div className="space-y-3 p-4 text-sm text-slate-600 dark:text-slate-300">
+              <p>Workflow activity is recorded in this deal's timeline. Open Workflows to inspect persisted runs and step results.</p>
+              <a className="text-blue-600 dark:text-blue-400 underline" href="/automation/workflows">Open workflow runs</a>
             </div>
           )}
-
         </div>{/* end scrollable content */}
 
         {/* Sticky footer actions */}
@@ -980,3 +872,4 @@ export function DealDetailsModal({
     </>
   );
 }
+

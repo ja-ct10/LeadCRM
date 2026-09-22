@@ -17,9 +17,8 @@ export type {
   PermissionModuleDefinition,
 } from './roles.types';
 export type {
-  WorkflowAction, Workflow, PendingAction,
-  WorkflowExecution,
-  WorkflowTriggerRecord, WorkflowExecutionRun, WorkflowExecutionStep,
+  WorkflowAction, Workflow,
+  WorkflowExecutionRun, WorkflowExecutionStep,
 } from './workflow.types';
 export type { Campaign, Template } from './campaign.types';
 export type {
@@ -30,3 +29,4 @@ export type {
 } from './shared.types';
 export type { Lead, CreateLeadRequest, UpdateLeadRequest } from './lead.types';
 export type { Customer } from './customer.types';
+

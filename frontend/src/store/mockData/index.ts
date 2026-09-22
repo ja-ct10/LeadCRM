@@ -18,7 +18,6 @@ export { MOCK_PIPELINES, MOCK_DEALS } from './deals.mock';
 
 export {
   MOCK_WORKFLOWS,
-  MOCK_WORKFLOW_EXECUTIONS,
   MOCK_TASKS,
 } from './workflows.mock';
 
@@ -32,3 +31,4 @@ export {
 } from './users.mock';
 
 export { MOCK_INVOICES } from './invoices.mock';
+

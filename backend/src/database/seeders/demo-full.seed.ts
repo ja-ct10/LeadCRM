@@ -159,13 +159,19 @@ export async function seedDemoFullData() {
   // ── Workflows ──────────────────────────────────────────────────────
   console.log('[Seed:Full] Seeding workflows...');
   await prisma.workflow.createMany({ skipDuplicates: true, data: [
-    { id: 'df-wf-1', tenantId: tId, name: 'New Lead Auto-Assign',      trigger: 'contact.created',       isActive: true,  actions: [{ type: 'assign_owner', userId: bId }], conditions: { field: 'status', operator: 'equals', value: 'HOT' } },
-    { id: 'df-wf-2', tenantId: tId, name: 'Deal Won — Create Service Order', trigger: 'deal.stage_changed', isActive: true, actions: [{ type: 'create_task', title: 'Onboarding kickoff' }], conditions: { field: 'stage.isWon', operator: 'equals', value: 'true' } },
-    { id: 'df-wf-3', tenantId: tId, name: 'Overdue Task Notification', trigger: 'task.overdue',           isActive: true,  actions: [{ type: 'send_email', templateId: 'df-tpl-2' }] },
-    { id: 'df-wf-4', tenantId: tId, name: 'Hot Lead Email Sequence',   trigger: 'contact.status_changed', isActive: false, actions: [{ type: 'send_email', templateId: 'df-tpl-2' }], conditions: { field: 'status', operator: 'equals', value: 'HOT' } },
-    { id: 'df-wf-5', tenantId: tId, name: 'Stale Deal Alert',          trigger: 'deal.rotting',           isActive: true,  actions: [{ type: 'create_task', title: 'Follow up on stale deal' }] },
-  ]});
-  console.log('[Seed:Full] 5 workflows seeded.');
+    { id: 'df-wf-1', tenantId: tId, name: 'New Lead Auto-Assign', trigger: 'lead.created', isActive: false,
+      actions: [{ type: 'assign_owner', config: { userId: bId } }] },
+    { id: 'df-wf-2', tenantId: tId, name: 'Deal Won — Onboarding Task', trigger: 'deal.closed_won', isActive: false,
+      actions: [{ type: 'create_task', config: { title: 'Onboarding kickoff', assignedUserId: aId } }] },
+    { id: 'df-wf-3', tenantId: tId, name: 'New Client Profile Follow-up', trigger: 'contact.created', isActive: false,
+      actions: [{ type: 'create_task', config: { title: 'Welcome the client', assignedUserId: aId } }] },
+    { id: 'df-wf-4', tenantId: tId, name: 'Hot Client Profile Alert', trigger: 'contact.status_changed', isActive: false,
+      actions: [{ type: 'create_notification', config: { title: 'Contact is now hot', userId: bId } }],
+      conditions: { operator: 'AND', conditions: [{ field: 'contact.status', operator: 'equals', value: 'HOT' }] } },
+    { id: 'df-wf-5', tenantId: tId, name: 'High-value Deal Follow-up', trigger: 'deal.created', isActive: false,
+      actions: [{ type: 'create_task', config: { title: 'Review high-value deal', assignedUserId: aId } }],
+      conditions: { operator: 'AND', conditions: [{ field: 'deal.value', operator: 'greater_than', value: 100000 }] } },
+  ]});  console.log('[Seed:Full] 5 workflows seeded.');
 
   // ── Invoices ───────────────────────────────────────────────────────
   console.log('[Seed:Full] Seeding invoices...');

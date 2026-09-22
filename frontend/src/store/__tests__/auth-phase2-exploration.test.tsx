@@ -3,6 +3,7 @@ import { render, act, waitFor } from '@testing-library/react';
 import React from 'react';
 import * as fs from 'fs';
 import * as path from 'path';
+import ts from 'typescript';
 
 /**
  * Bug Condition Exploration Tests — Phase 2 (RC-05 seed check + RC-10 login page check)
@@ -79,26 +80,28 @@ describe('Feature: auth-login-blank-screen-fix, RC-05 — Seed files include ema
     }
   });
 
-  it('seeder.seed.ts includes emailVerified in every user upsert create block', () => {
-    // EXPECTED (post-fix): same requirement for seeder.seed.ts
-    // EXPECTED: PASSES — seeder.seed.ts already has emailVerified: new Date() in its upsert
+  it('seeder.seed.ts verifies the initial account without overwriting existing identities', () => {
     const source = readSeedFile('seeder.seed.ts');
-    const upsertBlocks = extractUserUpsertBlocks(source);
-
-    expect(upsertBlocks.length).toBeGreaterThan(0);
-
-    for (const block of upsertBlocks) {
-      const createMatch = /create:\s*\{([\s\S]*?)(?:,\s*update:|}\s*\))/g.exec(block);
-      if (createMatch) {
-        const createBlock = createMatch[1];
-        expect(
-          createBlock,
-          `Expected emailVerified field in seeder.seed.ts user upsert create block:\n${createBlock}`,
-        ).toMatch(/emailVerified/);
+    const file = ts.createSourceFile('seeder.seed.ts', source, ts.ScriptTarget.Latest, true);
+    const creates: ts.ObjectLiteralExpression[] = [];
+    function visit(node: ts.Node) {
+      if (ts.isCallExpression(node) && node.expression.getText(file) === 'tx.user.create') {
+        const options = node.arguments[0];
+        if (options && ts.isObjectLiteralExpression(options)) {
+          const data = options.properties.find(property => ts.isPropertyAssignment(property) && property.name.getText(file) === 'data');
+          if (data && ts.isPropertyAssignment(data) && ts.isObjectLiteralExpression(data.initializer)) creates.push(data.initializer);
+        }
       }
+      ts.forEachChild(node, visit);
     }
+    visit(file);
+    expect(creates).toHaveLength(1);
+    for (const create of creates) {
+      const verified = create.properties.find(property => ts.isPropertyAssignment(property) && property.name.getText(file) === 'emailVerified');
+      expect(verified && ts.isPropertyAssignment(verified) ? verified.initializer.getText(file) : '').toBe('new Date()');
+    }
+    expect(source).not.toMatch(/(?:prisma|tx)\.user\.(?:upsert|update)\(/);
   });
-
   it('demo.seed.ts includes emailVerified in every user upsert update block', () => {
     // EXPECTED (post-fix): the update block also sets emailVerified so existing seeded
     // databases are patched on re-seed without requiring a full re-seed from scratch.

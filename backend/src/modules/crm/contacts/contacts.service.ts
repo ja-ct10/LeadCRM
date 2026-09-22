@@ -4,7 +4,7 @@ import { writeAuditLog } from '../../../core/audit/audit.service';
 import { NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 import { CreateContactDto, UpdateContactDto, ConvertContactDto } from './contacts.dto';
 import { paginate } from '../../../shared/helpers/pagination';
-import { fireContactCreated, fireContactStatusChanged, fireLeadCreated, fireLeadStatusChanged } from '../../automation/triggers/triggers.service';
+import { fireLeadCreated, fireLeadStatusChanged } from '../../automation/triggers/triggers.service';
 import { createNotification } from '../../notifications/notifications.service';
 import prisma from '../../../config/database.config';
 
@@ -30,16 +30,10 @@ export async function createContact(tenantId: string, userId: string, dto: Creat
     after:      { firstName: dto.firstName, lastName: dto.lastName },
   });
 
-  // Fire workflow triggers (both lead.created and contact.created — non-blocking)
-  // contact.created: retained for backward compatibility with existing workflows
-  // lead.created:    new — allows workflows that specifically target Lead entities
-  fireContactCreated({
+  // This service owns Lead rows; Contact events come from contacts-v2.
+  await fireLeadCreated({
     tenantId,
-    contact: contact as never,
-  }).catch(() => {});
-
-  fireLeadCreated({
-    tenantId,
+    actorId: userId,
     lead: {
       id:             contact.id,
       status:         String((contact as Record<string, unknown>).status ?? ''),
@@ -48,7 +42,7 @@ export async function createContact(tenantId: string, userId: string, dto: Creat
       assignedUserId: (contact as Record<string, unknown>).assignedUserId as string | null ?? null,
       companyName:    (contact as Record<string, unknown>).companyName as string | null ?? null,
     },
-  }).catch(() => {});
+  });
 
   // Notify the assigned user when a lead is directly assigned to them on creation.
   // Only fires when the creator is NOT the assignee (no self-notification).
@@ -89,14 +83,9 @@ export async function updateContact(
   // contact.status_changed: retained for backward compatibility
   // lead.status_changed:    new — targets Lead entity workflows specifically
   if (dto.status && dto.status !== before.status) {
-    fireContactStatusChanged({
+    await fireLeadStatusChanged({
       tenantId,
-      contact: contact as never,
-      prevStatus: before.status,
-    }).catch(() => {});
-
-    fireLeadStatusChanged({
-      tenantId,
+      actorId: userId,
       lead: {
         id:             id,
         status:         dto.status,
@@ -104,7 +93,7 @@ export async function updateContact(
         assignedUserId: (contact as Record<string, unknown>).assignedUserId as string | null ?? null,
       },
       prevStatus: before.status,
-    }).catch(() => {});
+    });
   }
 
   // Notify the newly assigned user when a lead is reassigned to someone else.

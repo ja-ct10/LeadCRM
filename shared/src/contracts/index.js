@@ -21,3 +21,4 @@ __exportStar(require("./campaign.contract"), exports);
 __exportStar(require("./api.contracts"), exports);
 __exportStar(require("./workflow.contracts"), exports);
 __exportStar(require("./preferences.contracts"), exports);
+__exportStar(require("./workflow-catalog"), exports);

@@ -65,7 +65,7 @@ export async function createDeal(tenantId: string, userId: string, dto: CreateDe
   });
 
   // Fire workflow trigger (non-blocking — never fails the request)
-  fireDealCreated({ tenantId, deal }).catch(() => {});
+  await fireDealCreated({ tenantId, actorId: userId, deal });
 
   // Notify the assigned user that a deal has been assigned to them.
   // Only fires when the creator is NOT the assignee (no self-notification).
@@ -137,7 +137,7 @@ export async function updateDeal(id: string, tenantId: string, userId: string, d
   return deal;
 }
 
-export async function moveDealStage(id: string, tenantId: string, userId: string, dto: MoveDealStageDto) {
+export async function validateDealStageMove(id: string, tenantId: string, dto: MoveDealStageDto) {
   // SEC-1 fix: Resolve stage within the tenant boundary via pipeline
   const newStage = await prisma.stage.findFirst({
     where: { id: dto.stageId, tenantId },
@@ -167,6 +167,11 @@ export async function moveDealStage(id: string, tenantId: string, userId: string
     }
   }
 
+  return newStage;
+}
+
+export async function moveDealStage(id: string, tenantId: string, userId: string, dto: MoveDealStageDto) {
+  const newStage = await validateDealStageMove(id, tenantId, dto);
   let result;
   try {
     result = await repo.moveDealStage(id, tenantId, dto.stageId, userId, dto.note, dto.handoff, dto.lostReason);
@@ -182,15 +187,16 @@ export async function moveDealStage(id: string, tenantId: string, userId: string
   });
 
   // Fire workflow trigger (non-blocking)
-  fireDealStageChanged({
+  await fireDealStageChanged({
     tenantId,
+    actorId: userId,
     deal: result.deal,
     newStageId:   newStage.id,
     newStageName: newStage.name,
     isWon:        newStage.isWon,
     isLost:       newStage.isLost,
     prevStageId:  result.stageHistory.previousStageId ?? undefined,
-  }).catch(() => {});
+  });
 
   // Notify the deal owner when a deal is closed won or closed lost.
   // Skip if no assigned user, or if the actor IS the assigned user (they already know).

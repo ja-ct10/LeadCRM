@@ -1,114 +1,54 @@
-import React from 'react';
-import { History, Clock, FileText } from 'lucide-react';
-import { Workflow, WorkflowExecution } from '@/store/types';
-import { ModalCloseButton } from '@/shared/components/ui/modal-close-button';
-import { usePagination } from '@/shared/hooks/use-pagination';
-import { Pagination } from '@/shared/components/ui/pagination';
-
-interface WorkflowExecutionLogModalProps {
-  workflowId: string;
-  workflows: Workflow[];
-  executions: WorkflowExecution[];
-  onClose: () => void;
+'use client';
+import { useEffect, useState } from 'react';
+import type { WorkflowExecutionRun, WorkflowTestResult } from '@leadcrm/shared';
+import { workflowsApi } from '@/shared/services/workflows.api';
+import { USE_MOCK_DATA } from '@/lib/config';
+import { Button } from '@/shared/components/ui/button';
+import { Input } from '@/shared/components/ui/input';
+import { WorkflowDialog } from './workflow-dialog';
+interface WorkflowRunsProps { workflowId: string; name: string; onClose: () => void; }
+export function WorkflowExecutionLogModal({ workflowId, name, onClose }: WorkflowRunsProps) {
+  const [runs, setRuns] = useState<WorkflowExecutionRun[]>([]);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true); setError('');
+    if (USE_MOCK_DATA) { setLoading(false); return; }
+    workflowsApi.getExecutions(workflowId, page).then(response => { if (!cancelled) setRuns(response.data); })
+      .catch(failure => { if (!cancelled) setError(failure instanceof Error ? failure.message : 'Unable to load runs.'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [workflowId, page]);
+  return <WorkflowDialog title={`Runs — ${name}`} onClose={onClose}>
+    {USE_MOCK_DATA ? <p>Mock mode does not execute automation. Connect the backend to view real runs.</p> : loading ? <p role="status">Loading runs…</p> : error ? <p role="alert">{error}</p> : !runs.length ? <p>No runs on this page.</p> : runs.map(run => <details key={run.id} className="rounded-lg border border-border p-3">
+      <summary className="cursor-pointer">{run.status} · {new Date(run.startedAt).toLocaleString()} · {run.entityType}</summary>
+      <p className="mt-2 text-sm text-muted-foreground">Record: {run.entityId}</p>
+      {run.errorMessage && <p role="alert">{run.errorMessage}</p>}
+      <ol className="mt-3 space-y-2">{run.steps.map(step => <li key={step.id} className="rounded border border-border p-2">{step.stepIndex + 1}. {step.actionType.replaceAll('_', ' ')} — {step.status}{step.error && <p className="text-red-600 dark:text-red-400">{step.error}</p>}{step.output && <pre className="overflow-x-auto text-xs">{JSON.stringify(step.output, null, 2)}</pre>}</li>)}</ol>
+    </details>)}
+    {!USE_MOCK_DATA && <div className="flex gap-2"><Button variant="outline" disabled={loading || page === 1} onClick={() => setPage(page - 1)}>Previous</Button><span>Page {page}</span><Button variant="outline" disabled={loading || runs.length < 25} onClick={() => setPage(page + 1)}>Next</Button></div>}
+  </WorkflowDialog>;
 }
-
-export function WorkflowExecutionLogModal({
-  workflowId,
-  workflows,
-  executions,
-  onClose,
-}: WorkflowExecutionLogModalProps) {
-  const workflowName = workflows.find(w => w.id === workflowId)?.name ?? 'Unknown Workflow';
-  const relevantExecutions = executions.filter(ex => ex.workflowId === workflowId);
-
-  const pagination = usePagination({
-    totalItems: relevantExecutions.length,
-    initialPageSize: 10,
-    pageSizeOptions: [10, 25, 50],
-  });
-  const paginatedExecutions = pagination.paginateItems(relevantExecutions);
-
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-gray-50 dark:bg-slate-950 rounded-2xl border border-gray-300 dark:border-white/[0.1] w-full max-w-2xl overflow-hidden shadow-2xl">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-white/[0.05]">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-[#0A6EFF]/10 text-[#0A6EFF] border border-[#0A6EFF]/20">
-              <History size={20} />
-            </div>
-            <div>
-              <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Execution Log</h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{workflowName}</p>
-            </div>
-          </div>
-          <ModalCloseButton onClose={onClose} ariaLabel="Close execution log modal" size={20} />
-        </div>
-
-        <div className="p-6 max-h-[60vh] overflow-y-auto space-y-4">
-          {relevantExecutions.length > 0 ? (
-            paginatedExecutions.map(ex => (
-              <div
-                key={ex.id}
-                className="bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-xl p-4 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition-colors"
-              >
-                <div className="flex justify-between items-start mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${
-                      ex.status === 'success'
-                        ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]'
-                        : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]'
-                    }`} />
-                    <span className="text-sm font-medium text-slate-900 dark:text-white">
-                      {ex.status === 'success' ? 'Executed Successfully' : 'Execution Failed'}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                    <Clock size={12} />
-                    {new Date(ex.timestamp).toLocaleString()}
-                  </div>
-                </div>
-                <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">{ex.details}</p>
-                {ex.relatedEntityId && (
-                  <div className="flex items-center gap-2 text-xs text-[#0A6EFF] bg-[#0A6EFF]/5 px-2 py-1 rounded-md border border-[#0A6EFF]/10 w-fit">
-                    <FileText size={12} />
-                    Related ID: {ex.relatedEntityId}
-                  </div>
-                )}
-              </div>
-            ))
-          ) : (
-            <div className="text-center py-12">
-              <div className="w-16 h-16 bg-white dark:bg-white/[0.02] rounded-full flex items-center justify-center mx-auto mb-4 border border-gray-200 dark:border-white/[0.05]">
-                <History size={24} className="text-slate-600" />
-              </div>
-              <p className="text-slate-500 italic">No executions recorded for this workflow yet.</p>
-            </div>
-          )}
-        </div>
-
-        {relevantExecutions.length > 0 && (
-          <div className="px-6 border-t border-gray-200 dark:border-white/[0.05]">
-            <Pagination
-              currentPage={pagination.currentPage}
-              totalPages={pagination.totalPages}
-              pageSize={pagination.pageSize}
-              totalItems={pagination.totalItems}
-              pageSizeOptions={[10, 25, 50]}
-              onPageChange={pagination.goToPage}
-              onPageSizeChange={pagination.setPageSize}
-            />
-          </div>
-        )}
-
-        <div className="p-6 border-t border-gray-200 dark:border-white/[0.05] bg-gray-50 dark:bg-slate-950 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-6 py-2 bg-gray-50 dark:bg-white/[0.05] text-slate-900 dark:text-white text-sm font-medium rounded-lg hover:bg-gray-200 dark:bg-white/10 transition-colors"
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+interface WorkflowTestProps extends WorkflowRunsProps { entity: string; }
+export function WorkflowTest({ workflowId, name, entity, onClose }: WorkflowTestProps) {
+  const [entityId, setEntityId] = useState('');
+  const [result, setResult] = useState<WorkflowTestResult | null>(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  async function test() {
+    setError(''); setResult(null); setLoading(true);
+    try { setResult((await workflowsApi.test(workflowId, entityId.trim())).data); }
+    catch (failure) { setError(failure instanceof Error ? failure.message : 'Unable to test workflow.'); }
+    finally { setLoading(false); }
+  }
+  return <WorkflowDialog title={`Test — ${name}`} onClose={onClose}>
+    <p>Validate a saved workflow against an existing {entity}. No records are changed and no messages are sent. This checks the configuration; it does not replay a historical event.</p>
+    <label className="block space-y-2">Sample {entity} record ID<Input value={entityId} onChange={event => { setEntityId(event.target.value); setResult(null); }} /></label>
+    <Button disabled={loading || !entityId.trim() || USE_MOCK_DATA} onClick={() => void test()}>{loading ? 'Validating…' : 'Run dry test'}</Button>
+    {USE_MOCK_DATA && <p>Testing requires the real backend.</p>}
+    {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
+    {result && <div role="status" className="space-y-2"><p>Trigger: {result.trigger.matched ? 'record matched' : 'not matched'}</p><p>Conditions: {result.conditions.passed}/{result.conditions.total} passed — {result.conditions.matched ? 'matches' : 'does not match'}</p>{result.actions.map((action, index) => <p key={`${action.type}-${index}`}>{index + 1}. {action.type.replaceAll('_', ' ')} — {action.valid ? 'Valid' : 'Needs attention'}: {action.message}</p>)}</div>}
+  </WorkflowDialog>;
 }

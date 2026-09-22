@@ -235,13 +235,7 @@ export async function moveDealStage(
         });
       }
 
-      if (deal.leadDeals.length > 0) {
-        // Single query instead of N findUnique+update pairs
-        await tx.lead.updateMany({
-          where: { id: { in: deal.leadDeals.map((ld) => ld.leadId) } },
-          data: { status: 'Active Customer' },
-        });
-      }
+      // Relationship Status is human-owned (REQ131). A won deal never changes it.
     }
 
     return { deal: updatedDeal, stageHistory };

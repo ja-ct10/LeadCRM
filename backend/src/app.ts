@@ -10,13 +10,9 @@ import router from './api/routes/index';
 
 const app = express();
 
-// ── Trust Render/proxy headers ────────────────────────
-// Render routes traffic through multiple proxy hops (Render LB + internal routing).
-// Setting trust proxy: 1 caused Express to read Render's LB IP as the client IP,
-// making ALL users share the same rate-limit bucket — every user on the platform
-// was rate-limited together instead of individually.
-// Setting to true makes Express correctly read the real client IP from X-Forwarded-For.
-app.set('trust proxy', true);
+// Trust only explicitly configured proxy addresses, never arbitrary forwarded IPs.
+// Hosting must supply its actual ingress CIDRs; loopback supports the local proxy.
+app.set('trust proxy', (process.env.TRUSTED_PROXIES ?? 'loopback').split(',').map(value => value.trim()).filter(Boolean));
 
 // ── Security Headers (must be first) ─────────────────
 app.use(helmet());

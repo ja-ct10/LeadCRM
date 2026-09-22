@@ -6,9 +6,8 @@ export type {
   Role, Permission, RoleDefinition, User, Tenant,
   Organization, Contact,
   DealOwnershipRecord, Stage, Pipeline, Deal,
-  WorkflowAction, Workflow, PendingAction,
-  WorkflowExecution,
-  WorkflowTriggerRecord, WorkflowExecutionRun, WorkflowExecutionStep,
+  WorkflowAction, Workflow,
+  WorkflowExecutionRun, WorkflowExecutionStep,
   Campaign, Template,
   AuditLog,
   ActivityType, Activity,
@@ -17,3 +16,4 @@ export type {
   Lead, CreateLeadRequest, UpdateLeadRequest,
   Customer,
 } from './types/index';
+

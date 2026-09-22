@@ -14,11 +14,12 @@ export interface UseCampaignsDataReturn {
   refetch: () => void;
 }
 
-export function useCampaignsData(): UseCampaignsDataReturn {
+export function useCampaignsData(options?: { disabled?: boolean; intervalMs?: number }): UseCampaignsDataReturn {
   const result = useCachedPage({
     module: 'campaigns',
     params: { limit: 200 },
-    intervalMs: 2 * 60_000,
+    intervalMs: options?.intervalMs ?? 2 * 60_000,
+    disabled: options?.disabled,
     fetchFn: async () => {
       const [campaigns, templates] = await Promise.all([
         campaignsApi.list({ limit: 200 }), templatesApi.list({ limit: 200 }),
