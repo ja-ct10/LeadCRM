@@ -12,7 +12,8 @@ export function WorkflowDialog({ title, onClose, children }: WorkflowDialogProps
     <DialogContent aria-label={title} className="max-w-3xl max-h-[90vh] overflow-y-auto" ref={focusDialog}
       onKeyDown={event => {
         if (event.key !== 'Tab') return;
-        const elements = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex="0"]'));
+        const elements = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button,input,select,textarea,summary,a[href],[tabindex="0"]'))
+          .filter(element => !element.matches(':disabled') && !element.closest('[hidden]'));
         const first = elements[0], last = elements[elements.length - 1];
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }

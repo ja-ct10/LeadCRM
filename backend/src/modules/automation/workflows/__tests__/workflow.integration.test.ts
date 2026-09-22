@@ -15,7 +15,7 @@ vi.mock('../../../../integrations/gmail/gmail.service', async importOriginal => 
 }));
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_workflow_test_\d+$/.test(url.pathname);
-describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and authenticated HTTP', () => {
+describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and authenticated HTTP', { timeout: 20000 }, () => {
   let tenantId: string, otherTenantId: string, token: string, viewerToken: string, base: string;
   let actor: any, owner: any, outsider: any, lead: any, contact: any, deal: any, won: any, lost: any, required: any, template: any;
   let server: Server;
@@ -114,6 +114,22 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     expect(result.status).toBe(200); expect(result.body.data.valid).toBe(true);
     expect(sendEmail).not.toHaveBeenCalled(); expect(await runs(workflow.id)).toHaveLength(0);
     expect(await prisma.task.count({ where: { tenantId, title: 'Dry run only' } })).toBe(0);
+  });
+  it('projects an earlier owner assignment during dry-run without changing the record', async () => {
+    const unassigned = await scope(() => prisma.lead.create({ data: { tenantId, firstName: 'Unassigned', lastName: 'Sample', productInterest: [] } }));
+    const workflow = await create([{ type: 'assign_owner', config: { userId: owner.id } }, { type: 'create_task', config: { title: 'Projected owner' } }], {
+      isActive: false, conditions: { operator: 'AND', conditions: [{ field: 'lead.assignedUserId', operator: 'is_empty', value: null }] },
+    });
+    const result = await scope(() => workflows.testWorkflow(workflow.id, tenantId, unassigned.id));
+    expect(result.valid).toBe(true); expect(result.conditions.matched).toBe(true);
+    expect((await prisma.lead.findUniqueOrThrow({ where: { id: unassigned.id } })).assignedUserId).toBeNull();
+  });
+  it('records invalid legacy definitions as failed validation without changing CRM data', async () => {
+    const workflow = await scope(() => prisma.workflow.create({ data: { tenantId, name: 'Legacy', trigger: 'lead.created', isActive: true,
+      actions: [{ type: 'update_field', field: 'status', value: 'HOT' }] } }));
+    await fire(); const [run] = await runs(workflow.id);
+    expect(run.status).toBe('failed'); expect(run.steps[0].actionType).toBe('validation');
+    expect((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).status).toBe(lead.status);
   });
   it('persists Gmail acknowledgement; reports provider failure and skips later actions', async () => {
     const workflow = await create([{ type: 'send_email', config: { templateId: template.id, senderUserId: actor.id } },

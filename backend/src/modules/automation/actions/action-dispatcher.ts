@@ -24,8 +24,8 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
     const entityId = String(context[`${entity}.id`]);
     if (action.type === 'create_task') {
       const task = await createTask(tenantId, actorId, { title: String(config.title), description: config.description ? String(config.description) : undefined,
-        priority: (config.priority ?? 'Medium') as 'Low' | 'Medium' | 'High', status: 'pending',
-        dueDate: new Date(Date.now() + Number(config.dueDaysFromNow ?? 3) * 86400000).toISOString(),
+        priority: (config.priority || 'Medium') as 'Low' | 'Medium' | 'High', status: 'pending',
+        dueDate: new Date(Date.now() + (typeof config.dueDaysFromNow === 'number' ? config.dueDaysFromNow : 3) * 86400000).toISOString(),
         assignedUserId: actionUser(config, 'assignedUserId', entity, context),
         ...(entity === 'lead' ? { leadId: entityId } : entity === 'contact' ? { customerId: entityId } : { dealId: entityId }) });
       return { success: true, output: { taskId: task.id } };

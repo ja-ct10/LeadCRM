@@ -19,6 +19,16 @@ function setup(options: { save?: (draft: WorkflowDraft) => Promise<void>; readOn
   return { save, close };
 }
 describe('guided workflow builder', () => {
+  it('opens legacy definitions safely without saving or silently retaining unsupported actions', () => {
+    const save = vi.fn();
+    const legacy = { ...initial, actions: [{ type: 'send_sms', message: 'Legacy message' }] } as unknown as WorkflowDraft;
+    render(<WorkflowBuilder initial={legacy} triggers={WORKFLOW_TRIGGERS} actions={getAvailableActions()}
+      canActivate onSave={save} onClose={vi.fn()} />);
+    expect(screen.getByRole('alert').textContent).toContain('older configuration');
+    expect(screen.queryByLabelText('Action 1 type')).toBeNull();
+    expect(screen.getByText(/"send_sms"/).textContent).toContain('Legacy message');
+    expect(save).not.toHaveBeenCalled();
+  });
   it('preserves focus during editing and submits typed numeric conditions with an explicit activation state', async () => {
     const { save, close } = setup();
     const name = screen.getByLabelText('Workflow name'); name.focus();
@@ -50,7 +60,7 @@ describe('guided workflow builder', () => {
     setup({ readOnly: true });
     expect(screen.queryByRole('button', { name: 'Save draft' })).toBeNull();
     expect((screen.getByLabelText('Workflow name').closest('fieldset') as HTMLFieldSetElement).disabled).toBe(true);
-    const exit = screen.getByRole('button', { name: 'Close', exact: true });
+    const exit = screen.getByRole('button', { name: 'Close' });
     exit.focus(); fireEvent.keyDown(exit, { key: 'Tab' });
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Close dialog' }));
   });

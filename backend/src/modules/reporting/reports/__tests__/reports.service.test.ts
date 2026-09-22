@@ -493,10 +493,10 @@ describe('getCampaignSummary', () => {
   /**
    * Property: engagement is always a number between 0 and 1 for each returned campaign.
    */
-  it('Property: engagement values are always in the range [0, 1]', async () => {
+  it('Property: finite engagement values in [0, 1] are preserved', async () => {
     await fc.assert(
       fc.asyncProperty(
-        fc.array(fc.float({ min: 0, max: 1 }), { minLength: 0, maxLength: 10 }),
+        fc.array(fc.float({ min: 0, max: 1, noNaN: true }), { minLength: 0, maxLength: 10 }),
         async (engagements) => {
           vi.clearAllMocks();
           mockCampaignFindMany.mockResolvedValue(
@@ -505,7 +505,8 @@ describe('getCampaignSummary', () => {
 
           const result = await getCampaignSummary(TENANT_ID);
 
-          result.forEach((camp) => {
+          result.forEach((camp, index) => {
+            expect(camp.engagement).toBe(engagements[index]);
             expect(camp.engagement).toBeGreaterThanOrEqual(0);
             expect(camp.engagement).toBeLessThanOrEqual(1);
           });

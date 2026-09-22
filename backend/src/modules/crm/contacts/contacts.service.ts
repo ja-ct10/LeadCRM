@@ -79,9 +79,7 @@ export async function updateContact(
     entityId:   id,
   });
 
-  // Fire status-change triggers if status changed (both lead.* and contact.* — non-blocking)
-  // contact.status_changed: retained for backward compatibility
-  // lead.status_changed:    new — targets Lead entity workflows specifically
+  // This service owns Leads; Client Profile events belong to contacts-v2.
   if (dto.status && dto.status !== before.status) {
     await fireLeadStatusChanged({
       tenantId,

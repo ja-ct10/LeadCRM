@@ -15,7 +15,13 @@ interface WorkflowBuilderProps {
   canActivate: boolean; readOnly?: boolean; onSave: (draft: WorkflowDraft) => Promise<void>; onClose: () => void;
 }
 export default function WorkflowBuilder({ initial, triggers, actions: definitions, canActivate, readOnly, onSave, onClose }: WorkflowBuilderProps) {
-  const form = useForm<WorkflowDraft>({ defaultValues: { ...initial, conditions: initial.conditions ?? { operator: 'AND', conditions: [] } } });
+  const parsedInitial = WorkflowDraftSchema.safeParse(initial);
+  const legacy = !parsedInitial.success;
+  const safeInitial: WorkflowDraft = parsedInitial.success ? parsedInitial.data : {
+    name: initial.name, description: initial.description, trigger: triggers.some(trigger => trigger.type === initial.trigger) ? initial.trigger : '',
+    isActive: false, actions: [],
+  };
+  const form = useForm<WorkflowDraft>({ defaultValues: { ...safeInitial, conditions: safeInitial.conditions ?? { operator: 'AND', conditions: [] } } });
   const actions = useFieldArray({ control: form.control, name: 'actions' });
   const rules = useFieldArray({ control: form.control, name: 'conditions.conditions' });
   const draft = form.watch();
@@ -34,6 +40,10 @@ export default function WorkflowBuilder({ initial, triggers, actions: definition
   }
   return <WorkflowDialog title={readOnly ? 'Workflow details' : 'Configure workflow'} onClose={() => { if (!saving) onClose(); }}>
     <form onSubmit={form.handleSubmit(() => save(false))} className="space-y-6">
+      {legacy && <div role="alert" className="rounded-lg border border-border p-3 space-y-2">
+        <p>This workflow uses an older configuration. Rebuild its conditions and actions below. Saving replaces that configuration; existing run history is preserved.</p>
+        <details><summary>View original configuration</summary><pre className="overflow-x-auto text-xs">{JSON.stringify({ trigger: initial.trigger, conditions: initial.conditions, actions: initial.actions }, null, 2)}</pre></details>
+      </div>}
       <fieldset disabled={readOnly || saving} className="space-y-5">
         <label className="block space-y-1"><span>Workflow name</span><Input {...form.register('name')} /></label>
         <label className="block space-y-1"><span>Description</span><Input {...form.register('description')} /></label>

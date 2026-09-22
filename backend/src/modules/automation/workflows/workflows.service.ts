@@ -38,6 +38,7 @@ export async function updateWorkflow(id: string, tenantId: string, userId: strin
   if (!updates.success) throw new ValidationError('Use the supported workflow fields.');
   const draft = parseDraft({ name: existing.name, description: existing.description, trigger: existing.trigger,
     conditions: existing.conditions, actions: existing.actions, isActive: existing.isActive, ...updates.data });
+  if (!findTrigger(draft.trigger)) throw new ValidationError('Choose a supported trigger.');
   if (draft.isActive) await validateWorkflow(draft, tenantId);
   const workflow = await repo.updateWorkflow(id, tenantId, draft);
   await writeAuditLog({ tenantId, userId, action: 'workflow.updated', entityType: 'Workflow', entityId: id });
