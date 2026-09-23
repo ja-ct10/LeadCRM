@@ -830,7 +830,7 @@ export default function SettingsPage(): React.ReactElement {
   const activeItem = activeGroup?.items.find((i) => i.id === activeTab);
 
   return (
-    <div className="flex flex-col lg:flex-row h-full -m-4 lg:-m-6 min-h-[calc(100vh-4rem)]">
+    <div className="flex flex-col lg:flex-row h-full -m-4 lg:-m-6 min-h-[calc(100dvh-4rem)] max-h-[100dvh] overflow-hidden">
       {/* Mobile Tab Selector — visible below lg breakpoint */}
       <div className="lg:hidden shrink-0 border-b border-gray-200 dark:border-[#262A33] bg-white dark:bg-[#121418] px-4 py-3">
         <label htmlFor="settings-mobile-nav" className="sr-only">Settings section</label>

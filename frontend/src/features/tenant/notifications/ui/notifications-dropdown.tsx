@@ -17,6 +17,12 @@ import { useNotifications } from '../hooks/use-notifications';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { useRouter } from 'next/navigation';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/shared/components/ui/tooltip';
 
 interface NotificationsDropdownProps {
   isOpen: boolean;
@@ -184,12 +190,12 @@ export default function NotificationsDropdown({ isOpen, onClose, triggerRef }: N
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: shouldReduce ? 1 : 0.95, y: shouldReduce ? 0 : -8 }}
             transition={{ type: 'spring', damping: 30, stiffness: 300, duration: 0.15 }}
-            className="fixed right-4 top-16 z-50 w-full max-w-md"
+            className="fixed left-2 right-2 sm:left-auto sm:right-4 top-16 z-50 sm:w-full sm:max-w-md"
             role="dialog"
             aria-modal="true"
             aria-labelledby="notifications-title"
           >
-            <div className="rounded-2xl bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] shadow-2xl backdrop-blur-xl flex flex-col max-h-[calc(100vh-5rem)] overflow-hidden">
+            <div className="rounded-2xl bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] shadow-2xl backdrop-blur-xl flex flex-col max-h-[calc(100dvh-5rem)] overflow-hidden">
               {/* Header */}
               <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-white/[0.05]">
                 <div>
@@ -203,13 +209,20 @@ export default function NotificationsDropdown({ isOpen, onClose, triggerRef }: N
                     You have {unreadCount} notification{unreadCount !== 1 ? 's' : ''} today
                   </p>
                 </div>
-                <button
-                  onClick={onClose}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                  aria-label="Close notifications"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={onClose}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                        aria-label="Close notifications"
+                      >
+                        <X className="w-4 h-4" aria-hidden="true" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Close notifications</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
 
               {/* Notifications List */}

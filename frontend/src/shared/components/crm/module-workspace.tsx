@@ -15,6 +15,12 @@ import { useViewTypePreference } from '@/shared/hooks/use-view-type-preference';
 import { VIEW_OPTIONS as VIEW_RENDERERS } from './view-registry';
 import { validateModuleConfig } from './validate-module-config';
 import { PaginationControls } from './pagination-controls';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/shared/components/ui/tooltip';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -332,9 +338,10 @@ export function ModuleWorkspace({
 
       {/* ── Toolbar ─────────────────────────────────────────────────── */}
       {/* Control order: search → filter toggle → sort dropdown → page-size selector → pagination nav (Req 8.1) */}
-      <div className="flex flex-wrap items-center gap-2 mb-3" role="toolbar" aria-label="Module controls">
-        {/* 1. Search field */}
-        <div className="relative flex-1 min-w-0 sm:flex-none">
+      {/* Mobile: search on row 1 (full width), all secondary controls on row 2 via flex-col */}
+      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 mb-3" role="toolbar" aria-label="Module controls">
+        {/* 1. Search field — full width on mobile, fixed width on sm+ */}
+        <div className="relative w-full sm:flex-none sm:w-auto">
           <input
             type="text"
             value={searchTerm}
@@ -346,190 +353,211 @@ export function ModuleWorkspace({
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#5A6B85]" aria-hidden="true" />
         </div>
 
-        {/* 2. Filter toggle */}
-        <button
-          onClick={onToggleFilters}
-          className={cn(
-            'inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-semibold rounded-lg border transition-colors',
-            showFilters
-              ? 'bg-[#2563EB] text-white border-[#2563EB]'
-              : 'bg-white dark:bg-slate-800 text-[#5A6B85] dark:text-slate-300 border-[#E4E9F0] dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700',
+        {/* Row 2 on mobile / inline on sm+: all secondary controls */}
+        {/* sm:contents dissolves this wrapper on sm+ so children participate directly in the parent flex */}
+        <div className="flex flex-wrap items-center gap-2 sm:contents">
+
+          {/* 2. Filter toggle */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={onToggleFilters}
+                  aria-label={`Filter ${title}`}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-semibold rounded-lg border transition-colors',
+                    showFilters
+                      ? 'bg-[#2563EB] text-white border-[#2563EB]'
+                      : 'bg-white dark:bg-slate-800 text-[#5A6B85] dark:text-slate-300 border-[#E4E9F0] dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700',
+                  )}
+                >
+                  <Filter size={13} aria-hidden="true" />
+                  Filter
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Filter {title}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* 3. Page-size selector */}
+          {onPageSizeChange && (
+            <PageSizeSelectorInline pageSize={pageSize} onPageSizeChange={onPageSizeChange} />
           )}
-        >
-          <Filter size={13} />
-          Filter
-        </button>
 
-        {/* 3. Page-size selector */}
-        {onPageSizeChange && (
-          <PageSizeSelectorInline pageSize={pageSize} onPageSizeChange={onPageSizeChange} />
-        )}
+          {/* 5. Pagination nav (compact toolbar variant) */}
+          {onPageChange && (paginationTotalRecords ?? totalRecords) > 0 && (
+            <PaginationNavInline
+              currentPage={currentPage}
+              totalRecords={paginationTotalRecords ?? totalRecords}
+              pageSize={pageSize}
+              onPageChange={onPageChange}
+            />
+          )}
 
-        {/* 5. Pagination nav (compact toolbar variant) */}
-        {onPageChange && (paginationTotalRecords ?? totalRecords) > 0 && (
-          <PaginationNavInline
-            currentPage={currentPage}
-            totalRecords={paginationTotalRecords ?? totalRecords}
-            pageSize={pageSize}
-            onPageChange={onPageChange}
-          />
-        )}
+          {/* Spacer */}
+          <div className="flex-1" />
 
-        {/* Spacer */}
-        <div className="flex-1" />
+          {/* View Switcher — Desktop: segmented control | Mobile: dropdown only */}
+          {/* Only show when more than 1 view is available */}
+          {effectiveAvailableViews.length > 1 && (
+          <div className={cn(
+            'inline-flex items-center bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg p-0.5',
+            effectiveAvailableViews.length > 1 ? 'hidden sm:inline-flex' : 'inline-flex',
+          )}>
+            {effectiveAvailableViews.map((viewId) => {
+              const viewOption = VIEW_ICON_MAP[viewId];
+              const Icon = viewOption.icon;
+              const isActive = effectiveViewType === viewId;
+              return (
+                <button
+                  key={viewId}
+                  onClick={() => effectiveViewChange(viewId)}
+                  title={viewOption.label}
+                  aria-label={viewOption.label}
+                  className={cn(
+                    'p-1.5 rounded-md transition-colors',
+                    isActive
+                      ? 'bg-[#2563EB] text-white shadow-sm'
+                      : 'text-[#5A6B85] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700',
+                  )}
+                >
+                  <Icon size={15} />
+                </button>
+              );
+            })}
 
-        {/* View Switcher — Desktop: segmented control | Mobile: dropdown only */}
-        {/* Only show when more than 1 view is available */}
-        {effectiveAvailableViews.length > 1 && (
-        <div className={cn(
-          'inline-flex items-center bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg p-0.5',
-          effectiveAvailableViews.length > 1 ? 'hidden sm:inline-flex' : 'inline-flex',
-        )}>
-          {effectiveAvailableViews.map((viewId) => {
-            const viewOption = VIEW_ICON_MAP[viewId];
-            const Icon = viewOption.icon;
-            const isActive = effectiveViewType === viewId;
-            return (
+            {/* View dropdown chevron (always visible) */}
+            <div className="relative">
               <button
-                key={viewId}
-                onClick={() => effectiveViewChange(viewId)}
-                title={viewOption.label}
-                aria-label={viewOption.label}
-                className={cn(
-                  'p-1.5 rounded-md transition-colors',
-                  isActive
-                    ? 'bg-[#2563EB] text-white shadow-sm'
-                    : 'text-[#5A6B85] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700',
-                )}
+                onClick={() => setViewMenuOpen(!viewMenuOpen)}
+                className="p-1.5 text-[#5A6B85] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-white rounded-md transition-colors"
+                aria-label="View options"
               >
-                <Icon size={15} />
+                <ChevronDown size={13} />
               </button>
-            );
-          })}
-
-          {/* View dropdown chevron (always visible) */}
-          <div className="relative">
-            <button
-              onClick={() => setViewMenuOpen(!viewMenuOpen)}
-              className="p-1.5 text-[#5A6B85] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-white rounded-md transition-colors"
-              aria-label="View options"
-            >
-              <ChevronDown size={13} />
-            </button>
-            <AnimatePresence>
-              {viewMenuOpen && (
-                <motion.div
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  transition={{ duration: 0.15 }}
-                  className="absolute top-full right-0 mt-1 w-44 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-xl shadow-lg z-30 py-1.5 overflow-hidden"
-                >
-                  {effectiveAvailableViews.map((viewId) => {
-                    const viewOption = VIEW_ICON_MAP[viewId];
-                    const Icon = viewOption.icon;
-                    const isActive = effectiveViewType === viewId;
-                    return (
-                      <button
-                        key={viewId}
-                        onClick={() => handleViewSelect(viewId)}
-                        className={cn(
-                          'w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium transition-colors',
-                          isActive
-                            ? 'text-[#2563EB] dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10'
-                            : 'text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700',
-                        )}
-                      >
-                        <Icon size={15} />
-                        {viewOption.label}
-                        {isActive && <span className="ml-auto text-[#2563EB]">✓</span>}
-                      </button>
-                    );
-                  })}
-                </motion.div>
-              )}
-            </AnimatePresence>
+              <AnimatePresence>
+                {viewMenuOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute top-full right-0 mt-1 w-44 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-xl shadow-lg z-30 py-1.5 overflow-hidden"
+                  >
+                    {effectiveAvailableViews.map((viewId) => {
+                      const viewOption = VIEW_ICON_MAP[viewId];
+                      const Icon = viewOption.icon;
+                      const isActive = effectiveViewType === viewId;
+                      return (
+                        <button
+                          key={viewId}
+                          onClick={() => handleViewSelect(viewId)}
+                          className={cn(
+                            'w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium transition-colors',
+                            isActive
+                              ? 'text-[#2563EB] dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10'
+                              : 'text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700',
+                          )}
+                        >
+                          <Icon size={15} />
+                          {viewOption.label}
+                          {isActive && <span className="ml-auto text-[#2563EB]">✓</span>}
+                        </button>
+                      );
+                    })}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
-        </div>
-        )}
+          )}
 
-        {/* Mobile view dropdown (visible only on small screens when >1 view) */}
-        {effectiveAvailableViews.length > 1 && (
-          <div className="relative sm:hidden">
-            <button
-              onClick={() => setViewMenuOpen(!viewMenuOpen)}
-              className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium rounded-lg border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#5A6B85] dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-              aria-label="Switch view"
-              aria-expanded={viewMenuOpen}
-              aria-haspopup="true"
-            >
-              {(() => {
-                const currentIcon = VIEW_ICON_MAP[effectiveViewType];
-                const CurrentIcon = currentIcon.icon;
-                return <CurrentIcon size={14} />;
-              })()}
-              <span>{VIEW_ICON_MAP[effectiveViewType].label}</span>
-              <ChevronDown size={12} />
-            </button>
-            <AnimatePresence>
-              {viewMenuOpen && (
-                <motion.div
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  transition={{ duration: 0.15 }}
-                  className="absolute top-full left-0 mt-1 w-44 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-xl shadow-lg z-30 py-1.5 overflow-hidden"
-                >
-                  {effectiveAvailableViews.map((viewId) => {
-                    const viewOption = VIEW_ICON_MAP[viewId];
-                    const Icon = viewOption.icon;
-                    const isActive = effectiveViewType === viewId;
-                    return (
-                      <button
-                        key={viewId}
-                        onClick={() => handleViewSelect(viewId)}
-                        className={cn(
-                          'w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium transition-colors',
-                          isActive
-                            ? 'text-[#2563EB] dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10'
-                            : 'text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700',
-                        )}
-                      >
-                        <Icon size={15} />
-                        {viewOption.label}
-                        {isActive && <Check size={13} className="ml-auto text-[#2563EB]" />}
-                      </button>
-                    );
-                  })}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        )}
+          {/* Mobile view dropdown (visible only on small screens when >1 view) */}
+          {effectiveAvailableViews.length > 1 && (
+            <div className="relative sm:hidden">
+              <button
+                onClick={() => setViewMenuOpen(!viewMenuOpen)}
+                className="inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-medium rounded-lg border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#5A6B85] dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                aria-label="Switch view"
+                aria-expanded={viewMenuOpen}
+                aria-haspopup="true"
+              >
+                {(() => {
+                  const currentIcon = VIEW_ICON_MAP[effectiveViewType];
+                  const CurrentIcon = currentIcon.icon;
+                  return <CurrentIcon size={14} />;
+                })()}
+                <span>{VIEW_ICON_MAP[effectiveViewType].label}</span>
+                <ChevronDown size={12} />
+              </button>
+              <AnimatePresence>
+                {viewMenuOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute top-full left-0 mt-1 w-44 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-xl shadow-lg z-30 py-1.5 overflow-hidden"
+                  >
+                    {effectiveAvailableViews.map((viewId) => {
+                      const viewOption = VIEW_ICON_MAP[viewId];
+                      const Icon = viewOption.icon;
+                      const isActive = effectiveViewType === viewId;
+                      return (
+                        <button
+                          key={viewId}
+                          onClick={() => handleViewSelect(viewId)}
+                          className={cn(
+                            'w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium transition-colors',
+                            isActive
+                              ? 'text-[#2563EB] dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10'
+                              : 'text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700',
+                          )}
+                        >
+                          <Icon size={15} />
+                          {viewOption.label}
+                          {isActive && <Check size={13} className="ml-auto text-[#2563EB]" />}
+                        </button>
+                      );
+                    })}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
 
-        {/* Refresh */}
-        {onRefresh && (
-          <button
-            onClick={onRefresh}
-            className="p-1.5 text-[#5A6B85] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-            aria-label="Refresh"
-          >
-            <RefreshCw size={15} />
-          </button>
-        )}
+          {/* Refresh */}
+          {onRefresh && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={onRefresh}
+                    className="p-1.5 text-[#5A6B85] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                    aria-label="Refresh"
+                  >
+                    <RefreshCw size={15} aria-hidden="true" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Refresh</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
 
-        {/* Extra toolbar (pipeline selector, etc.) */}
-        {toolbarExtra}
+          {/* Extra toolbar (pipeline selector, etc.) */}
+          {toolbarExtra}
 
-        {/* Table Settings Menu (Manage Columns, Reset Columns, View Mode) */}
-        <TableSettingsMenuInline
-          pageSize={pageSize}
-          onPageSizeChange={onPageSizeChange}
-          viewMode={viewMode}
-          onViewModeChange={onViewModeChange}
-          onManageColumns={onManageColumns}
-          onResetColumns={onResetColumns}
-        />
+          {/* Table Settings Menu (Manage Columns, Reset Columns, View Mode) */}
+          <TableSettingsMenuInline
+            pageSize={pageSize}
+            onPageSizeChange={onPageSizeChange}
+            viewMode={viewMode}
+            onViewModeChange={onViewModeChange}
+            onManageColumns={onManageColumns}
+            onResetColumns={onResetColumns}
+          />
+
+        </div>{/* end secondary controls row */}
       </div>
 
       {/* ── KPI Strip ───────────────────────────────────────────────── */}
