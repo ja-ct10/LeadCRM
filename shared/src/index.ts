@@ -10,3 +10,6 @@ export * from './contracts/auth.contract';
 export * from './contracts/environment.contract';
 export * from './constants/onboarding';
 export * from './validation/auth.schema';
+export * from './contracts/profile.contract';
+export * from './contracts/record-sort';
+export * from './contracts/lead-column-migration';

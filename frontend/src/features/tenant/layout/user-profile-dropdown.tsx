@@ -1,5 +1,6 @@
 'use client';
 
+import { UserAvatar } from '@/shared/components/user-avatar';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   User,
@@ -102,15 +103,7 @@ export function UserProfileDropdown(): React.ReactElement {
           isOpen && 'ring-2 ring-[#2563EB]/50 ring-offset-2 ring-offset-white dark:ring-offset-slate-900',
         )}
       >
-        {user?.avatarUrl ? (
-          <img
-            src={user.avatarUrl}
-            alt={fullName}
-            className="w-full h-full rounded-full object-cover"
-          />
-        ) : (
-          <span>{initials}</span>
-        )}
+        <UserAvatar user={user} />
         {/* Active presence indicator */}
         <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-900" />
       </button>
@@ -131,7 +124,7 @@ export function UserProfileDropdown(): React.ReactElement {
             <div className="px-3.5 py-3 border-b border-slate-100 dark:border-slate-700/70">
               <div className="flex items-start gap-2.5">
                 <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-2xs">
-                  {initials}
+                  <UserAvatar user={user} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-[13px] font-bold text-slate-900 dark:text-white truncate leading-snug">

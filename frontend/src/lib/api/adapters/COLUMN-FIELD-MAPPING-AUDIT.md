@@ -29,7 +29,8 @@ opportunity stats, task stats) will render "—" via the em-dash fallback, which
 | Column ID | API Response Field | Adapter Mapping | Status |
 |-----------|-------------------|-----------------|--------|
 | `firstName` | `firstName` | Direct (also builds `contactPerson`) | ✅ |
-| `emailAndPhone` | `email` + `phone` | Virtual composite — renders both fields | ✅ |
+| `email` | `email` | Direct, separate Email address column | ✅ |
+| `phone` | `phone` | Direct, separate Phone number column | ✅ |
 | `companyName` | `companyName` | Direct | ✅ |
 | `status` | `status` | `toFrontendStatus()` — UPPERCASE→TitleCase | ✅ |
 | `createdAt` | `createdAt` | Direct (ISO string) | ✅ |
@@ -39,8 +40,6 @@ opportunity stats, task stats) will render "—" via the em-dash fallback, which
 
 | Column ID | API Response Field | Notes | Status |
 |-----------|-------------------|-------|--------|
-| `email` | `email` | Direct | ✅ |
-| `phone` | `phone` | Direct | ✅ |
 | `description` | N/A | Not in Prisma `Lead` model — renders "—" | ✅ (by design) |
 | `website` | N/A | Not in Prisma `Lead` model — renders "—" | ✅ (by design) |
 | `createdBy` | N/A | Not in Prisma `Lead` model — renders "—" | ✅ (by design) |
@@ -64,7 +63,8 @@ they represent the target column set for when activity aggregations are implemen
 | Renderer | Accesses | Matches API? |
 |----------|----------|--------------|
 | `firstName` | `row.leadPerson`, `row.firstName`, `row.lastName`, `row.companyName` | ✅ |
-| `emailAndPhone` | `row.email`, `row.phone` | ✅ |
+| `email` | `row.email` | ✅ |
+| `phone` | `row.phone` | ✅ |
 | `companyName` | `row.companyName` | ✅ |
 | `status` | `row.status` | ✅ |
 | `source` | `row.leadSource` | ✅ (adapter maps `source` → `leadSource`) |

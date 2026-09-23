@@ -325,13 +325,6 @@ export function LeadsListView({
             {((lead as unknown as Record<string, unknown>).accountId as string) ?? '—'}
           </p>
         );
-      case 'emailAndPhone':
-        return (
-          <div className="min-w-0">
-            <p className="text-[12px] text-[#0F172A] dark:text-slate-200 truncate">{lead.email ?? '—'}</p>
-            {lead.phone && <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 truncate">{lead.phone}</p>}
-          </div>
-        );
       case 'description':
         return (
           <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">

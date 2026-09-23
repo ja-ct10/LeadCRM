@@ -23,14 +23,13 @@ export interface ModuleRegistry {
 
 export const LEADS_COLUMN_REGISTRY: ModuleRegistry = {
   module: 'leads',
-  sortableFields: ['firstName', 'email', 'companyName', 'status', 'source', 'createdAt', 'updatedAt'],
+  sortableFields: ['firstName', 'email', 'phone', 'companyName', 'status', 'source', 'createdAt', 'updatedAt'],
   columns: [
     // ── Leads ──────────────────────────────────────────────────
     { id: 'firstName',           label: 'Name',                          required: true,  defaultVisible: true,  defaultOrder: 0,  group: 'Leads',              priority: 'required' },
-    { id: 'emailAndPhone',       label: 'Email & Phone',                 required: false, defaultVisible: true,  defaultOrder: 1,  group: 'Leads',              priority: 'low' },
-    { id: 'email',               label: 'Email address',                 required: false, defaultVisible: false, defaultOrder: 2,  group: 'Leads',              priority: 'low' },
-    { id: 'phone',               label: 'Phone number',                  required: false, defaultVisible: false, defaultOrder: 3,  group: 'Leads',              priority: 'low' },
-    { id: 'companyName',         label: 'Contacts',                      required: false, defaultVisible: true,  defaultOrder: 4,  group: 'Leads',              priority: 'high' },
+    { id: 'email',               label: 'Email address',                 required: false, defaultVisible: true, defaultOrder: 2,  group: 'Leads',              priority: 'low' },
+    { id: 'phone',               label: 'Phone number',                  required: false, defaultVisible: true, defaultOrder: 3,  group: 'Leads',              priority: 'low' },
+    { id: 'companyName',         label: 'Company',                      required: false, defaultVisible: true,  defaultOrder: 4,  group: 'Leads',              priority: 'high' },
     { id: 'status',              label: 'Status',                        required: true,  defaultVisible: true,  defaultOrder: 5,  group: 'Leads',              priority: 'required' },
     { id: 'description',         label: 'Description',                   required: false, defaultVisible: false, defaultOrder: 6,  group: 'Leads',              priority: 'low' },
     { id: 'website',             label: 'URL',                           required: false, defaultVisible: false, defaultOrder: 7,  group: 'Leads',              priority: 'low' },
@@ -150,7 +149,7 @@ export const ACCOUNTS_COLUMN_REGISTRY: ModuleRegistry = {
 
 export const CONTACTS_COLUMN_REGISTRY: ModuleRegistry = {
   module: 'contacts',
-  sortableFields: ['firstName', 'lastName', 'email', 'companyName', 'status', 'source', 'createdAt'],
+  sortableFields: ['firstName', 'lastName', 'email', 'phone', 'companyName', 'status', 'source', 'createdAt'],
   columns: [
     { id: 'firstName',       label: 'First Name',        required: true,  defaultVisible: true,  defaultOrder: 0, group: 'Contact Info',  priority: 'required' },
     { id: 'lastName',        label: 'Last Name',         required: true,  defaultVisible: true,  defaultOrder: 1, group: 'Contact Info',  priority: 'required' },

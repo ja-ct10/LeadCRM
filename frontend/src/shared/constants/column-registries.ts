@@ -15,11 +15,10 @@ import type { ColumnDefinition } from '@leadcrm/shared';
 export const LEADS_COLUMN_REGISTRY: ColumnDefinition[] = [
   // ── Leads ──────────────────────────────────────────────────
   { id: 'firstName',           label: 'Name',                          required: true,  defaultVisible: true,  defaultOrder: 0,  group: 'Leads',              priority: 'required' },
-  { id: 'phoneAction',         label: '📞',                            required: false, defaultVisible: true,  defaultOrder: 1,  group: 'Leads',              priority: 'high' },
-  { id: 'emailAction',         label: '✉',                             required: false, defaultVisible: true,  defaultOrder: 2,  group: 'Leads',              priority: 'high' },
-  { id: 'emailAndPhone',       label: 'Email & Phone',                 required: false, defaultVisible: true,  defaultOrder: 3,  group: 'Leads',              priority: 'low' },
-  { id: 'email',               label: 'Email address',                 required: false, defaultVisible: false, defaultOrder: 4,  group: 'Leads',              priority: 'low' },
-  { id: 'phone',               label: 'Phone number',                  required: false, defaultVisible: false, defaultOrder: 5,  group: 'Leads',              priority: 'low' },
+  { id: 'phoneAction',         label: '📞',                            required: false, defaultVisible: false,  defaultOrder: 1,  group: 'Leads',              priority: 'high' },
+  { id: 'emailAction',         label: '✉',                             required: false, defaultVisible: false,  defaultOrder: 2,  group: 'Leads',              priority: 'high' },
+  { id: 'email',               label: 'Email address',                 required: false, defaultVisible: true, defaultOrder: 4,  group: 'Leads',              priority: 'low' },
+  { id: 'phone',               label: 'Phone number',                  required: false, defaultVisible: true, defaultOrder: 5,  group: 'Leads',              priority: 'low' },
   { id: 'companyName',         label: 'Company',                       required: false, defaultVisible: true,  defaultOrder: 6,  group: 'Leads',              priority: 'high' },
   { id: 'status',              label: 'Status',                        required: true,  defaultVisible: true,  defaultOrder: 7,  group: 'Leads',              priority: 'required' },
   { id: 'description',         label: 'Description',                   required: false, defaultVisible: false, defaultOrder: 8,  group: 'Leads',              priority: 'low' },

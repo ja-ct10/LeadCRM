@@ -30,7 +30,7 @@ export interface ContactV2Query {
 }
 
 export const contactsV2Api = {
-  list: (query: ContactV2Query = {}): Promise<ContactsV2Response> => {
+  list: (query: ContactV2Query = {}, signal?: AbortSignal): Promise<ContactsV2Response> => {
     const params: Record<string, unknown> = {};
     if (query.page !== undefined) params['page'] = query.page;
     if (query.limit !== undefined) params['limit'] = query.limit;
@@ -38,7 +38,7 @@ export const contactsV2Api = {
     if (query.status) params['status'] = query.status;
     if (query.assignedUserId) params['assignedUserId'] = query.assignedUserId;
     if (query.accountId) params['accountId'] = query.accountId;
-    return apiClient.get<ContactsV2Response>('/crm/contacts', { params });
+    return apiClient.get<ContactsV2Response>('/crm/contacts', { params, signal });
   },
 
   get: (id: string): Promise<ContactV2Response> =>

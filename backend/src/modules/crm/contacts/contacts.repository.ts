@@ -1,3 +1,4 @@
+import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import prisma from '../../../config/database.config';
 import { CreateContactDto, UpdateContactDto } from './contacts.dto';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
@@ -48,10 +49,12 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
     ...(filterClauses.length > 0 ? { AND: filterClauses } : {}),
   };
 
+  const ids = await sortedPageIds(query.sort, ["firstName","email","phone","companyName","status","source","createdAt","updatedAt"], skip, limit,
+    () => prisma.lead.findMany({ where, select: { id: true, firstName: true, lastName: true, email: true, phone: true, companyName: true, status: true, source: true, createdAt: true, updatedAt: true } }));
   const [data, total] = await Promise.all([
     prisma.lead.findMany({
-      where, skip, take: limit,
-      orderBy: { createdAt: 'desc' },
+      where: ids ? { ...where, id: { in: ids } } : where, skip: ids ? 0 : skip, take: limit,
+      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
       include: {
         assignedUser: { select: { id: true, firstName: true, lastName: true } },
         account:      { select: { id: true, name: true } },
@@ -62,7 +65,7 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
     prisma.lead.count({ where }),
   ]);
 
-  return { data, total, page, limit };
+  return { data: orderPage(data, ids), total, page, limit };
 }
 
 export async function findContactById(id: string, tenantId: string) {

@@ -9,6 +9,9 @@ export interface AuthUser {
   tenantId: string;
   status: string | null;
   emailVerified: string | null;
+  phone?: string | null;
+  jobTitle?: string | null;
+  department?: string | null;
   avatarUrl: string | null;
   timeZone: string | null;
   tenantName: string | null;

@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { preferencesApi } from '@/shared/services/preferences.api';
+import { normalizeLeadColumns } from '@leadcrm/shared';
 import type { ColumnConfigItem } from '@leadcrm/shared';
 
 interface UseColumnPreferencesReturn {
@@ -52,7 +53,7 @@ export function useColumnPreferences(module: string): UseColumnPreferencesReturn
       try {
         const response = await preferencesApi.getEffectiveColumns(module);
         if (!cancelled && mountedRef.current) {
-          setEffectiveColumns(response.data.columns);
+          setEffectiveColumns(module === 'leads' ? normalizeLeadColumns(response.data.columns) : response.data.columns);
           setSaveError(null);
         }
       } catch (error: unknown) {
@@ -100,7 +101,7 @@ export function useColumnPreferences(module: string): UseColumnPreferencesReturn
 
       if (mountedRef.current) {
         // Confirm with server response (server is authoritative)
-        setEffectiveColumns(response.data.columns);
+        setEffectiveColumns(module === 'leads' ? normalizeLeadColumns(response.data.columns) : response.data.columns);
         setSaveError(null);
         setRetryCount(0);
       }
@@ -142,7 +143,7 @@ export function useColumnPreferences(module: string): UseColumnPreferencesReturn
 
       if (mountedRef.current) {
         // Update with the fallback (tenant default or system default)
-        setEffectiveColumns(response.data.columns);
+        setEffectiveColumns(module === 'leads' ? normalizeLeadColumns(response.data.columns) : response.data.columns);
         setSaveError(null);
         setRetryCount(0);
       }

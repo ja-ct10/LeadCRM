@@ -31,6 +31,9 @@ export interface RegisterResponse {
  * Used by AuthContext when NEXT_PUBLIC_USE_MOCK_AUTH !== 'true'.
  */
 export const authApi = {
+  updateProfile: (profile: import('@leadcrm/shared').UpdateSelfProfile) =>
+    apiClient.patch<AuthResponse>('/auth/profile', profile),
+  uploadAvatar: (file: Blob) => apiClient.upload<AuthResponse>('/auth/profile/avatar', file),
   changeEnvironment: (environment: import('@leadcrm/shared').CrmEnvironment) =>
     apiClient.patch<import('@leadcrm/shared').EnvironmentResponse>('/auth/environment', { environment }),
   login: (payload: LoginPayload) =>

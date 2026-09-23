@@ -198,13 +198,6 @@ export function LeadsDataGrid({
       );
     },
 
-    emailAndPhone: (_value: unknown, row: Lead) => (
-      <div className="min-w-0">
-        <p className="text-[12px] text-[#3C4858] dark:text-slate-200 truncate">{row.email ?? '—'}</p>
-        {row.phone && <p className="text-[11px] text-[#8899a6] dark:text-slate-400 truncate">{row.phone}</p>}
-      </div>
-    ),
-
     email: (_value: unknown, row: Lead) => (
       <p className="text-[12px] text-[#3C4858] dark:text-slate-200 truncate">{row.email ?? '—'}</p>
     ),
@@ -316,14 +309,13 @@ export function LeadsDataGrid({
     cellRenderers,
     sortableColumns: [
       'firstName', 'email', 'phone', 'companyName', 'status',
-      'source', 'assignedUserId', 'createdAt', 'updatedAt',
+      'source', 'createdAt', 'updatedAt',
     ],
     resizableColumns: 'all',
     defaultWidths: {
       firstName:               240,
       phoneAction:             52,
       emailAction:             52,
-      emailAndPhone:           220,
       email:                   200,
       phone:                   150,
       companyName:             180,
@@ -423,6 +415,7 @@ export function LeadsDataGrid({
         selectable
         selectedIds={selectedIds}
         onSelectionChange={onSelectionChange}
+        sortingMode="external"
         sort={sort}
         onSortChange={onSortChange}
         onRowClick={onRowClick}

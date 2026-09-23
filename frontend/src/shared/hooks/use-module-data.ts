@@ -37,7 +37,11 @@ export function useModuleData({ moduleId, page, pageSize, sort, filter, search }
   });
   return {
     data: result.data?.data ?? EMPTY_DATA,
-    meta: result.data?.meta ?? null,
+    meta: result.data?.meta ? {
+      ...result.data.meta,
+      pageSize: result.data.meta.pageSize ?? (result.data.meta as unknown as { limit: number }).limit,
+      totalPages: Math.ceil(result.data.meta.total / (result.data.meta.pageSize ?? (result.data.meta as unknown as { limit: number }).limit)),
+    } : null,
     isLoading: result.isInitialLoad || result.isRefreshing,
     isInitialLoad: result.isInitialLoad,
     isRefreshing: result.isRefreshing,

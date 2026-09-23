@@ -181,7 +181,7 @@ export function AccountsDataGrid({
     cellRenderers,
     sortableColumns: [
       'name', 'industry', 'customerType', 'size',
-      'city', 'country', 'assignedUserId', 'createdAt',
+      'city', 'country', 'createdAt',
     ],
     resizableColumns: 'all',
     defaultWidths: {
@@ -229,6 +229,7 @@ export function AccountsDataGrid({
       selectable
       selectedIds={selectedIds}
       onSelectionChange={onSelectionChange}
+      sortingMode="external"
       sort={sort}
       onSortChange={onSortChange}
       onRowClick={onRowClick}

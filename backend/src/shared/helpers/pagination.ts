@@ -15,7 +15,7 @@ export interface PaginatedResult<T> {
 
 export function getPaginationParams(query: Record<string, unknown>): PaginationParams {
   const page = Math.max(1, Number(query.page) || 1);
-  const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
+  const limit = Math.min(100, Math.max(1, Number(query.pageSize ?? query.limit) || 20));
   return { page, limit };
 }
 

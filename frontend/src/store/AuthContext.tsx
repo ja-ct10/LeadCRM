@@ -89,14 +89,14 @@ interface AuthContextType {
   authError: string | null;
   retryAuthInit: () => Promise<void>;
   refreshUser: () => Promise<void>;
-  applyAuthUser: (user: AuthUser, expectedUserId?: string) => void;
+  applyAuthUser: (user: AuthUser, expectedUserId?: string, preserveEnvironment?: boolean) => void;
   login: (email: string, password?: string) => Promise<boolean>;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<boolean>;
   confirmPasswordReset: (token: string, password: string) => Promise<boolean>;
   switchRole: (role: string) => void;
-  updateProfile: (profileData: Partial<User>) => void;
+  updateProfile: (profileData: import('@leadcrm/shared').UpdateSelfProfile) => Promise<void>;
   switchDemoAccount: (email: string, password: string) => Promise<boolean>;
   permissions: ResolvedPermissions;
   isPermissionsLoaded: boolean;
@@ -122,8 +122,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const activeUserId = useRef<string | null>(null);
   activeUserId.current = user?.id ?? null;
 
-  const applyAuthUser = useCallback((apiUser: AuthUser, expectedUserId?: string) => {
+  const applyAuthUser = useCallback((apiUser: AuthUser, expectedUserId?: string, preserveEnvironment = false) => {
     if (expectedUserId && activeUserId.current !== expectedUserId) return;
+    // Profile responses cannot undo a concurrent, confirmed environment switch.
+    if (preserveEnvironment) apiUser = { ...apiUser, activeEnvironment: environmentSnapshot().environment };
     requestGeneration.current += 1;
     const environment = apiUser.role === 'System Admin' ? null : apiUser.activeEnvironment ?? 'SANDBOX';
     if (environmentSnapshot().environment !== environment) clearPageCache();
@@ -132,6 +134,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser({
       ...apiUser,
       status: apiUser.status as User['status'],
+      phone: apiUser.phone ?? undefined,
+      jobTitle: apiUser.jobTitle ?? undefined,
+      department: apiUser.department ?? undefined,
       avatarUrl: apiUser.avatarUrl ?? undefined,
       timeZone: apiUser.timeZone ?? undefined,
     });
@@ -421,18 +426,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   // ── Update profile ────────────────────────────────────────────────
-  const updateProfile = (profileData: Partial<User>): void => {
-    if (!user) return;
-    const updated = { ...user, ...profileData };
-    setUser(updated);
-    localStorage.setItem('leadcrm_user', JSON.stringify(updated));
-
-    const allUsers = JSON.parse(localStorage.getItem('leadcrm_users') || JSON.stringify(MOCK_USERS));
-    const idx = allUsers.findIndex((u: any) => u.id === user.id);
-    if (idx !== -1) {
-      allUsers[idx] = { ...allUsers[idx], ...profileData };
-      localStorage.setItem('leadcrm_users', JSON.stringify(allUsers));
-    }
+  const updateProfile = async (profileData: import('@leadcrm/shared').UpdateSelfProfile): Promise<void> => {
+    if (!user) throw new Error('Authentication required');
+    if (USE_MOCK_AUTH) throw new Error('Profile editing requires the connected backend.');
+    const expectedUserId = user.id;
+    const response = await authApi.updateProfile(profileData);
+    applyAuthUser(response.data.user, expectedUserId, true);
   };
 
   return (

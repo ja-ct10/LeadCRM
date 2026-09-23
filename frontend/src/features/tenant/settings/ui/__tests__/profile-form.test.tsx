@@ -1,0 +1,52 @@
+import React from 'react';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+const mocks = vi.hoisted(() => ({ save: vi.fn(), success: vi.fn(), error: vi.fn(), upload: vi.fn() }));
+const user = { id: 'me', firstName: 'Ada', lastName: 'Lovelace', email: 'ada@camxian.com', role: 'User' };
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user, updateProfile: mocks.save, applyAuthUser: vi.fn() }) }));
+vi.mock('sonner', () => ({ toast: { success: mocks.success, error: mocks.error } }));
+vi.mock('@/shared/services/auth.api', () => ({ authApi: { uploadAvatar: mocks.upload } }));
+import { ProfileForm } from '../profile-form';
+beforeEach(() => vi.resetAllMocks());
+afterEach(cleanup);
+
+it('starts read-only with database values and Cancel discards unsaved edits', () => {
+  render(<ProfileForm />);
+  expect((screen.getByLabelText('First Name') as HTMLInputElement).disabled).toBe(true);
+  expect((screen.getByLabelText('Department') as HTMLInputElement).value).toBe('');
+  expect(screen.queryByText('Save Changes')).toBeNull();
+  fireEvent.click(screen.getByText('Edit'));
+  expect((screen.getByLabelText('Email Address') as HTMLInputElement).disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText('First Name'), { target: { value: 'Unsaved' } });
+  fireEvent.click(screen.getByText('Cancel'));
+  expect((screen.getByLabelText('First Name') as HTMLInputElement).value).toBe('Ada');
+  expect(mocks.save).not.toHaveBeenCalled();
+});
+it('waits for server confirmation, blocks duplicate saves and remains editable on failure', async () => {
+  let reject!: (reason: Error) => void;
+  mocks.save.mockReturnValue(new Promise((_, r) => { reject = r; }));
+  render(<ProfileForm />);
+  fireEvent.click(screen.getByText('Edit'));
+  fireEvent.change(screen.getByLabelText('Department'), { target: { value: 'Engineering' } });
+  fireEvent.click(screen.getByText('Save Changes'));
+  expect(mocks.success).not.toHaveBeenCalled();
+  expect((screen.getByText('Saving…') as HTMLButtonElement).disabled).toBe(true);
+  reject(new Error('Server rejected update'));
+  await waitFor(() => expect(mocks.error).toHaveBeenCalledWith('Server rejected update'));
+  expect(screen.getByText('Save Changes')).toBeTruthy();
+  mocks.save.mockResolvedValue(undefined);
+  fireEvent.click(screen.getByText('Save Changes'));
+  await waitFor(() => expect(mocks.success).toHaveBeenCalledOnce());
+  expect(mocks.save.mock.calls[0][0]).not.toHaveProperty('email');
+  expect(mocks.save.mock.calls[0][0]).not.toHaveProperty('role');
+  expect(screen.getByText('Edit')).toBeTruthy();
+});
+it('rejects invalid file types and oversized files without uploading', async () => {
+  render(<ProfileForm />); fireEvent.click(screen.getByText('Edit'));
+  const picker = screen.getByLabelText('Choose profile picture');
+  fireEvent.change(picker, { target: { files: [new File(['html'], 'test.html', { type: 'text/html' })] } });
+  const big = new File(['x'], 'large.png', { type: 'image/png' }); Object.defineProperty(big, 'size', { value: 6 * 1024 * 1024 });
+  fireEvent.change(picker, { target: { files: [big] } });
+  expect(mocks.error).toHaveBeenCalledTimes(2);
+  expect(mocks.upload).not.toHaveBeenCalled();
+});

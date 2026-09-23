@@ -1,5 +1,6 @@
 'use client';
 
+import { ProfileForm } from './profile-form';
 import React, { useState } from "react";
 import { useAuth } from "@/store/AuthContext";
 import { useData } from "@/store/DataContext";
@@ -35,7 +36,7 @@ interface ProfileSettingsPageProps {
 export default function ProfileSettingsPage({
   navigate,
 }: ProfileSettingsPageProps) {
-  const { user, tenant, updateProfile } = useAuth();
+  const { user, tenant } = useAuth();
   const {
     isBillingModuleEnabled,
     toggleBillingModule,
@@ -87,21 +88,7 @@ export default function ProfileSettingsPage({
     window.dispatchEvent(new Event("themechange"));
   };
 
-  // Input states initialized dynamically or falling back to "Alice Johnson"
-  const [firstName, setFirstName] = useState(user?.firstName || "Alice");
-  const [lastName, setLastName] = useState(user?.lastName || "Johnson");
-  const [email, setEmail] = useState(user?.email || "alice@company.com");
-  const [phone, setPhone] = useState(user?.phone || "+63 912-345-6789");
-  const [jobTitle, setJobTitle] = useState(
-    user?.role === "Client Admin"
-      ? "System Administrator"
-      : user?.role || "System Administrator",
-  );
-  const [department, setDepartment] = useState("IT");
-
-  // Preferences states
-  const [timezone, setTimezone] = useState("UTC-5  · Eastern Time");
-  const [language, setLanguage] = useState("English (US)");
+  const email = user?.email ?? "";
 
   // Security password states
   const [currentPassword, setCurrentPassword] = useState("");
@@ -147,19 +134,6 @@ export default function ProfileSettingsPage({
     }, 1200);
   };
 
-  // Save profile modifications
-  const handleSaveChanges = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateProfile({
-      firstName,
-      lastName,
-      email,
-      phone,
-      role: user?.role || "Client Admin",
-    });
-    toast.success("Profile preferences and details updated successfully!");
-  };
-
   const handleSaveSecurity = (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword && newPassword !== confirmPassword) {
@@ -176,11 +150,6 @@ export default function ProfileSettingsPage({
     toast.success("Notification channels updated.");
   };
 
-  // Profile picture upload simulator
-  const handlePhotoUpload = () => {
-    toast.info("Photo upload is coming soon.");
-  };
-
   return (
     <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
       {/* Top Header Navigation */}
@@ -193,73 +162,6 @@ export default function ProfileSettingsPage({
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             Manage your account, security, and notifications
           </p>
-        </div>
-      </div>
-
-      {/* Modern Banner Identity Card */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/[0.06] rounded-2xl shadow-sm overflow-hidden">
-        {/* Grey Gradient Cover Banner */}
-        <div className="h-24 bg-gradient-to-r from-slate-200 via-slate-150 to-slate-100 dark:from-slate-850 dark:via-slate-805 dark:to-slate-800 relative" />
-
-        {/* User Badge Details Portion */}
-        <div className="px-6 pb-6 relative">
-          {/* Avatar row — overlaps the banner */}
-          <div className="flex items-end justify-between -mt-12">
-            <div className="relative shrink-0 select-none">
-              <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] border-4 border-white dark:border-slate-900 flex items-center justify-center text-white text-3xl font-extrabold relative overflow-hidden shadow-md">
-                {firstName.charAt(0)}
-                {lastName.charAt(0)}
-              </div>
-              <button
-                onClick={handlePhotoUpload}
-                className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center shadow-md text-slate-600 dark:text-slate-300 transition-transform hover:scale-105 active:scale-95 cursor-pointer"
-                title="Change Photo"
-              >
-                <Camera size={14} />
-              </button>
-            </div>
-
-            {/* Blue banner pill */}
-            <div className="pb-1">
-              <span className="px-3 py-1 bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 text-xs font-bold rounded-lg border border-blue-500/10 flex items-center gap-1.5 w-fit select-none">
-                <Shield size={12} />
-                <span>
-                  {user?.role === "Client Admin"
-                    ? "Administrator"
-                    : user?.role || "Administrator"}
-                </span>
-              </span>
-            </div>
-          </div>
-
-          {/* Profile labels — always below the banner */}
-          <div className="mt-3">
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">
-              {firstName} {lastName}
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
-              {user?.role === "Client Admin"
-                ? "System Administrator"
-                : user?.role || "System Administrator"}{" "}
-              · {tenant?.name || "Camxian Technologies"}
-            </p>
-          </div>
-        </div>
-
-        {/* Quick connect strips */}
-        <div className="px-6 py-4 border-t border-slate-100 dark:border-white/[0.04] bg-slate-50/50 dark:bg-white/[0.01] grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-semibold text-slate-500 dark:text-slate-400">
-          <div className="flex items-center gap-2 truncate">
-            <Mail size={14} className="text-slate-400 shrink-0" />
-            <span className="truncate">{email}</span>
-          </div>
-          <div className="flex items-center gap-2 truncate">
-            <Phone size={14} className="text-slate-400 shrink-0" />
-            <span>{phone}</span>
-          </div>
-          <div className="flex items-center gap-2 truncate">
-            <Building2 size={14} className="text-slate-400 shrink-0" />
-            <span>{department}</span>
-          </div>
         </div>
       </div>
 
@@ -325,273 +227,9 @@ export default function ProfileSettingsPage({
       {/* Tab Panes */}
       <div className="space-y-6">
         {/* Tab 1: Personal Info */}
-        {activeTab === "Personal Info" && (
-          <form onSubmit={handleSaveChanges} className="space-y-6">
-            {/* Card 1: Basic Information */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/[0.06] rounded-2xl p-6 shadow-xs space-y-4">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Basic Information
-                </h3>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                  Your name and contact details visible to teammates
-                </p>
-              </div>
+        {activeTab === "Personal Info" && <ProfileForm />}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                    First Name
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:border-blue-500 font-medium transition-colors"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                    Last Name
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:border-blue-500 font-medium transition-colors"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                  Email Address
-                </label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                    <Mail size={14} />
-                  </span>
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-xl pl-10 pr-4 py-2.5 text-xs focus:outline-none focus:border-blue-500 font-medium transition-colors"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                  Phone Number
-                </label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                    <Phone size={14} />
-                  </span>
-                  <input
-                    type="text"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-xl pl-10 pr-4 py-2.5 text-xs focus:outline-none focus:border-blue-500 font-medium transition-colors"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                    Job Title
-                  </label>
-                  <input
-                    type="text"
-                    value={jobTitle}
-                    onChange={(e) => setJobTitle(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:border-blue-500 font-medium transition-colors"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                    Department
-                  </label>
-                  <input
-                    type="text"
-                    value={department}
-                    onChange={(e) => setDepartment(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:border-blue-500 font-medium transition-colors"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Card 2: Preferences */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/[0.06] rounded-2xl p-6 shadow-xs space-y-4">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Preferences
-                </h3>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                  Timezone and display language
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                    Timezone
-                  </label>
-                  <select
-                    value={timezone}
-                    onChange={(e) => setTimezone(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:border-blue-500 font-medium transition-colors cursor-pointer"
-                  >
-                    <option value="UTC-5  · Eastern Time">
-                      UTC-5  · Eastern Time
-                    </option>
-                    <option value="UTC-8  · Pacific Time">
-                      UTC-8  · Pacific Time
-                    </option>
-                    <option value="UTC+0  · GMT / London">
-                      UTC+0  · GMT / London
-                    </option>
-                    <option value="UTC+8  · Singapore / Manila">
-                      UTC+8  · Singapore / Manila
-                    </option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                    Language
-                  </label>
-                  <select
-                    value={language}
-                    onChange={(e) => setLanguage(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:border-blue-500 font-medium transition-colors cursor-pointer"
-                  >
-                    <option value="English (US)">English (US)</option>
-                    <option value="Spanish (ES)">Spanish (ES)</option>
-                    <option value="French (FR)">French (FR)</option>
-                    <option value="Chinese (ZH)">Chinese (ZH)</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Card 3: Activity Timeline chronological */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/[0.06] rounded-2xl p-6 shadow-xs space-y-5">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Activity Timeline
-                </h3>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                  Chronological record of recent actions on this user account
-                </p>
-              </div>
-
-              <div className="relative pl-6 border-l border-slate-100 dark:border-white/[0.04] space-y-6">
-                {/* Timeline item 1 */}
-                <div className="relative">
-                  {/* Outer bullet */}
-                  <div className="absolute -left-[32px] top-1 w-4 h-4 rounded-full bg-blue-500/10 dark:bg-blue-500/20 flex items-center justify-center border border-blue-400/30">
-                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                  </div>
-                  <div>
-                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                      Session Authenticated Successfully
-                    </span>
-                    <span className="text-[10px] text-slate-400 ml-2.5 font-semibold">
-                      Today, 09:30 AM
-                    </span>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                      Logged in securely from Cloud Workspace Client (IP:
-                      192.168.1.18)
-                    </p>
-                  </div>
-                </div>
-
-                {/* Timeline item 2 */}
-                <div className="relative">
-                  <div className="absolute -left-[32px] top-1 w-4 h-4 rounded-full bg-yellow-500/10 dark:bg-yellow-500/20 flex items-center justify-center border border-yellow-400/30">
-                    <div className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
-                  </div>
-                  <div>
-                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                      Profile Updated
-                    </span>
-                    <span className="text-[10px] text-slate-400 ml-2.5 font-semibold">
-                      Yesterday, 11:20 AM
-                    </span>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                      Changed business phone number and customized timezone
-                      options
-                    </p>
-                  </div>
-                </div>
-
-                {/* Timeline item 3 */}
-                <div className="relative">
-                  <div className="absolute -left-[32px] top-1 w-4 h-4 rounded-full bg-green-500/10 dark:bg-green-500/20 flex items-center justify-center border border-green-400/30">
-                    <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                  </div>
-                  <div>
-                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                      Permissions Validation Challenge
-                    </span>
-                    <span className="text-[10px] text-slate-400 ml-2.5 font-semibold">
-                      3 days ago
-                    </span>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                      Biometric security key cleared successfully during tenant
-                      verification
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Card 4: Organization (read-only) */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/[0.06] rounded-2xl p-6 shadow-xs space-y-4">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Organization
-                </h3>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                  Read-only · contact a system administrator to change
-                </p>
-              </div>
-
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-100 dark:border-slate-800/80 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400">
-                  <Building2 size={18} />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                    {tenant?.name || "Camxian Technologies"}
-                  </p>
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-wider mt-0.5">
-                    Organization · Administrator
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Save Button Row */}
-            <div className="flex justify-end pt-2">
-              <button
-                type="submit"
-                className="flex items-center gap-2 bg-slate-950 hover:bg-slate-900 dark:bg-slate-50 dark:hover:bg-slate-100 text-white dark:text-slate-950 font-bold px-6 py-2.5 rounded-xl text-xs select-none transition-transform hover:scale-[1.02] active:scale-[0.98] shadow-sm cursor-pointer"
-              >
-                <Save size={14} />
-                <span>Save Changes</span>
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* Tab: Modules & Features */}
-        {activeTab === "Modules" && (
+      {activeTab === "Modules" && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-200">
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/[0.06] rounded-2xl p-6 shadow-xs space-y-6">
               <div>

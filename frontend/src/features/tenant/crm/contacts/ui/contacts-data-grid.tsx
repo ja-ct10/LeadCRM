@@ -178,7 +178,7 @@ export function ContactsDataGrid({
     cellRenderers,
     sortableColumns: [
       'firstName', 'lastName', 'email', 'phone', 'companyName',
-      'status', 'source', 'assignedUserId', 'createdAt',
+      'status', 'source', 'createdAt',
     ],
     resizableColumns: 'all',
     defaultWidths: {
@@ -226,6 +226,7 @@ export function ContactsDataGrid({
       selectable
       selectedIds={selectedIds}
       onSelectionChange={onSelectionChange}
+      sortingMode="external"
       sort={sort}
       onSortChange={onSortChange}
       onRowClick={onRowClick}

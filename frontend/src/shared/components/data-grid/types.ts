@@ -147,6 +147,8 @@ export interface DataGridProps<T = Record<string, unknown>> {
   // ─── Sorting ────────────────────────────────────────────────────────────
   /** Current sort state (single or multi) */
   sort?: SortState | null;
+  /** External means the owner orders the full dataset before pagination. */
+  sortingMode?: 'client' | 'external';
   /** Sort change handler */
   onSortChange?: (sort: SortState | null) => void;
 

@@ -1,5 +1,6 @@
 ﻿'use client';
 
+import { UserAvatar } from '@/shared/components/user-avatar';
 import React from 'react';
 import { Shield, LogOut, Check } from 'lucide-react';
 import { useAuth } from '@/store/AuthContext';
@@ -71,7 +72,7 @@ export default function AccountDropdown({
           title={`${user?.firstName ?? ''} ${user?.lastName ?? ''} Â· ${user?.role ?? ''}`}
           className="w-8 h-8 rounded-full bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] flex items-center justify-center text-white font-bold text-[11px] cursor-pointer hover:ring-2 hover:ring-[#3B82F6]/40 transition-all"
         >
-          {initials}
+          <UserAvatar user={user} />
         </button>
 
         {isOpen && (
@@ -109,7 +110,7 @@ export default function AccountDropdown({
         className="w-full flex items-center gap-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/[0.04] p-2 transition-all cursor-pointer border border-transparent active:scale-[0.98]"
       >
         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] flex items-center justify-center text-white font-extrabold text-[11px] shrink-0">
-          {initials}
+          <UserAvatar user={user} />
         </div>
         <div className="min-w-0 flex-1 text-left">
           <p className="text-xs font-bold text-slate-900 dark:text-white truncate leading-tight">
@@ -140,7 +141,7 @@ function DropdownContent({ user, initials, onSwitch, onLogout }: DropdownContent
       <div className="px-4 py-3 bg-slate-50/60 dark:bg-white/[0.02] border-b border-slate-100 dark:border-white/[0.05] mb-1">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] flex items-center justify-center text-white font-bold text-[11px] shrink-0">
-            {initials}
+            <UserAvatar user={user} />
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-xs font-bold text-slate-900 dark:text-white truncate">

@@ -1,3 +1,4 @@
+import { normalizeLeadColumns } from '@leadcrm/shared';
 import type { ColumnConfig, ColumnConfigItem } from '@leadcrm/shared';
 import { SaveColumnsBodySchema } from '@leadcrm/shared';
 import type { Prisma } from '@prisma/client';
@@ -91,7 +92,8 @@ export function reconcileWithRegistry(config: ColumnConfig, module: string): Col
   const requiredIds = new Set(getRequiredColumnIds(module));
 
   // 1. Strip stale columns that no longer exist in registry
-  const validColumns = config.columns.filter((col) => registryIds.has(col.id));
+  const storedColumns = module === 'leads' ? normalizeLeadColumns(config.columns) : config.columns;
+  const validColumns = storedColumns.filter((col) => registryIds.has(col.id));
 
   // 2. Find registry columns NOT in the config
   const existingIds = new Set(validColumns.map((col) => col.id));

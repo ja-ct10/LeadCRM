@@ -42,6 +42,9 @@ All paths are relative to /api/v1. See [authentication and onboarding](authentic
 | --- | --- | --- |
 | POST | /auth/login | Employee email/password login; canonical user and HttpOnly session cookie |
 | GET | /auth/me | Current database-backed account state, including mustChangePassword |
+| PATCH | /auth/profile | Update only the authenticated user's firstName, lastName, phone, jobTitle, department and timeZone; returns the canonical user |
+| POST | /auth/profile/avatar | Authenticated raw JPEG/PNG/WebP body, maximum 5 MB; stores a normalized 512×512 WebP in private Supabase Storage and returns the canonical user |
+| GET | /auth/profile/avatar/:avatarId | Authenticated retrieval of the current user's saved avatar; private, uncached response |
 | PATCH | /auth/environment | Persist the authenticated tenant user's Sandbox/Live preference; see [CRM environments](crm-environments.md) |
 | POST | /auth/logout | Revoke session and expire cookie |
 | POST | /auth/change-password | Verify currentPassword, store strong password, clear first-login flag and revoke old sessions |
@@ -52,6 +55,16 @@ All paths are relative to /api/v1. See [authentication and onboarding](authentic
 | POST | /auth/onboarding/complete | Client Admin informational acknowledgment; empty body |
 
 Public signup, Google sign-in, OTP, verification, company setup, and step-progression routes are not registered. System Admin provisioning uses /admin/tenants with no plan selection. SaaS billing, seat, document-verification, pricing, checkout, and payment-method APIs are retired. Customer invoice APIs under /billing/invoices remain tenant-scoped and permission-protected.
+
+Profile updates use a strict shared Zod whitelist and derive both user and tenant identity
+from the session. Email and privilege fields are not editable. Avatar references are only
+written by the upload service; JSON profile patches cannot supply arbitrary avatar URLs.
+Both updates are audited. Existing `GET /auth/me` restores saved profile values after reload.
+Storage requires server-only `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and
+`SUPABASE_AVATAR_BUCKET`. Use a private bucket accepting `image/webp`, with a 5 MB limit.
+The browser crops before upload; the server decodes, validates and re-encodes the image,
+generates a UUID key under the authenticated tenant/user, and saves a durable authenticated
+avatar reference in `User.avatarUrl`. Do not expose the service key as a `NEXT_PUBLIC_*` value.
 
 
 ---

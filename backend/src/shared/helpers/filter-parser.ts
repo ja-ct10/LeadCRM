@@ -32,8 +32,15 @@ interface ParsedFilter {
  */
 export function parseFilterParams(query: Record<string, unknown>): ParsedFilter[] {
   const results: ParsedFilter[] = [];
-
-  for (const [key, rawValue] of Object.entries(query)) {
+  // Express's extended parser turns filter[source] into { filter: { source } }.
+  // Also accept flat keys from API clients and the existing unit-level callers.
+  const entries = Object.entries(query);
+  if (query.filter && typeof query.filter === 'object' && !Array.isArray(query.filter)) {
+    for (const [field, value] of Object.entries(query.filter)) {
+      if (!(`filter[${field}]` in query)) entries.push([`filter[${field}]`, value]);
+    }
+  }
+  for (const [key, rawValue] of entries) {
     const match = key.match(/^filter\[(.+)\]$/);
     if (!match || !match[1]) continue;
 

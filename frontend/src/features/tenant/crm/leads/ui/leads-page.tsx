@@ -501,6 +501,8 @@ export default function LeadsPage(): React.ReactElement {
         {/* ── List / Table View (DataGrid) ─────────────────── */}
         {(activeView === 'list' || activeView === 'table') && !isColumnsLoading && !isLeadsInitialLoad && (
           <LeadsDataGrid
+            sort={sort}
+            onSortChange={setSort}
             leads={leads}
             totalRecords={serverTotal}
             effectiveColumns={effectiveColumns}

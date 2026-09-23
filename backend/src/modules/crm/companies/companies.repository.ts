@@ -1,3 +1,4 @@
+import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import prisma from '../../../config/database.config';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
 import { CreateCompanyDto, UpdateCompanyDto } from './companies.dto';
@@ -37,9 +38,11 @@ export async function findAllCompanies(tenantId: string, query: Record<string, u
     ...(filterClauses.length > 0 ? { AND: filterClauses } : {}),
   };
 
+  const ids = await sortedPageIds(query.sort, ["name","industry","customerType","size","city","country","createdAt"], skip, limit,
+    () => prisma.account.findMany({ where, select: { id: true, name: true, industry: true, customerType: true, size: true, city: true, country: true, createdAt: true } }));
   const [data, total] = await Promise.all([
     prisma.account.findMany({
-      where, skip, take: limit, orderBy: { createdAt: 'desc' },
+      where: ids ? { ...where, id: { in: ids } } : where, skip: ids ? 0 : skip, take: limit, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
       include: {
         assignedUser: { select: { id: true, firstName: true, lastName: true } },
       },
@@ -47,7 +50,7 @@ export async function findAllCompanies(tenantId: string, query: Record<string, u
     prisma.account.count({ where }),
   ]);
 
-  return { data, total, page, limit };
+  return { data: orderPage(data, ids), total, page, limit };
 }
 
 export async function findCompanyById(id: string, tenantId: string) {

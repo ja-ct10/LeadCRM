@@ -62,7 +62,7 @@ async function proxyRequest(
   let body: string | ArrayBuffer | undefined;
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     const ct = req.headers.get('content-type') ?? '';
-    if (ct.startsWith('multipart/form-data')) {
+    if (ct.startsWith('multipart/form-data') || ct.startsWith('image/')) {
       body = await req.arrayBuffer();
     } else {
       body = await req.text();
@@ -78,7 +78,7 @@ async function proxyRequest(
   try {
     const backendRes = await fetch(url, { method: req.method, headers, body, signal: controller.signal, cache: 'no-store', redirect: 'manual' });
     clearTimeout(timeoutId);
-    const data = await backendRes.text();
+    const data = await backendRes.arrayBuffer();
 
     const response = new NextResponse(data, {
       status: backendRes.status,

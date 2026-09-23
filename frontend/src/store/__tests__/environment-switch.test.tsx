@@ -4,7 +4,7 @@ import { act, cleanup, render, waitFor } from '@testing-library/react';
 const mocks = vi.hoisted(() => {
   process.env.NEXT_PUBLIC_USE_MOCK_AUTH = 'false';
   process.env.NEXT_PUBLIC_USE_MOCK_DATA = 'false';
-  return { me: vi.fn(), changeEnvironment: vi.fn(), permissions: vi.fn() };
+  return { me: vi.fn(), updateProfile: vi.fn(), changeEnvironment: vi.fn(), permissions: vi.fn() };
 });
 vi.mock('@/shared/services/auth.api', () => ({ authApi: mocks }));
 vi.mock('@/shared/services/roles.api', () => ({ rolesApi: { getUserPermissions: mocks.permissions } }));
@@ -84,4 +84,32 @@ it('keeps account status separate from the selected dataset for Client Admin', a
     expect(auth.userCan('workflows', 'canCreate')).toBe(true);
     expect(auth.tenant).not.toHaveProperty('environment');
   }
+});
+
+it('applies a confirmed profile response across auth state without storing production profile data locally', async () => {
+  await show();
+  const storage = vi.spyOn(Storage.prototype, 'setItem');
+  const updated = { ...user, firstName: 'Saved', phone: '123', jobTitle: 'Engineer', department: 'Sales', timeZone: 'Asia/Manila', avatarUrl: '/api/proxy/auth/profile/avatar/test' };
+  mocks.updateProfile.mockResolvedValue({ data: { user: updated } });
+  await act(async () => { await auth.updateProfile({ firstName: 'Saved', phone: '123', jobTitle: 'Engineer', department: 'Sales', timeZone: 'Asia/Manila' }); });
+  expect(auth.user).toMatchObject(updated);
+  expect(storage).not.toHaveBeenCalled();
+  cleanup();
+  mocks.me.mockResolvedValue({ data: { user: updated } });
+  await show();
+  expect(auth.user).toMatchObject(updated);
+  storage.mockRestore();
+});
+
+it('does not let a delayed profile response revert a confirmed environment switch', async () => {
+  await show();
+  let resolve!: (value: unknown) => void;
+  mocks.updateProfile.mockReturnValue(new Promise(r => { resolve = r; }));
+  let pending!: Promise<void>;
+  await act(async () => { pending = auth.updateProfile({ firstName: 'Saved' }); });
+  mocks.changeEnvironment.mockResolvedValue({ data: { environment: 'PRODUCTION' } });
+  await act(async () => { await auth.switchEnvironment('PRODUCTION'); });
+  await act(async () => { resolve({ data: { user: { ...user, firstName: 'Saved', activeEnvironment: 'SANDBOX' } } }); await pending; });
+  expect(auth.user).toMatchObject({ firstName: 'Saved', activeEnvironment: 'PRODUCTION' });
+  expect(environmentSnapshot().environment).toBe('PRODUCTION');
 });

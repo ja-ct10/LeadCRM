@@ -7,11 +7,13 @@
 
 'use client';
 
+import { compareSortValues } from '@leadcrm/shared';
 import { useCallback, useMemo } from 'react';
 import type { SortState, SortDirection, DataGridColumnDef } from './types';
 
 interface UseDataGridSortOptions<T> {
   /** Current sort state */
+  enabled?: boolean;
   sort: SortState | null;
   /** Sort change handler */
   onSortChange: (sort: SortState | null) => void;
@@ -32,6 +34,7 @@ interface UseDataGridSortReturn<T> {
 
 export function useDataGridSort<T>({
   sort,
+  enabled = true,
   onSortChange,
   columns,
   data,
@@ -64,7 +67,7 @@ export function useDataGridSort<T>({
   );
 
   const sortedData = useMemo(() => {
-    if (!sort) return data;
+    if (!sort || !enabled) return data;
 
     const column = columns.find((col) => col.id === sort.field);
     if (!column) return data;
@@ -80,25 +83,11 @@ export function useDataGridSort<T>({
       const aVal = column.accessor(a);
       const bVal = column.accessor(b);
 
-      if (aVal === bVal) return 0;
-      if (aVal == null) return 1;
-      if (bVal == null) return -1;
-
-      // Numeric comparison for numbers
-      if (typeof aVal === 'number' && typeof bVal === 'number') {
-        return sort.direction === 'asc' ? aVal - bVal : bVal - aVal;
-      }
-
-      // String comparison with locale-aware sorting
-      const comparison = String(aVal).localeCompare(String(bVal), undefined, {
-        numeric: true,
-        sensitivity: 'base',
-      });
-      return sort.direction === 'asc' ? comparison : -comparison;
+      return compareSortValues(aVal, bVal, sort.direction);
     });
 
     return sorted;
-  }, [data, sort, columns]);
+  }, [data, sort, columns, enabled]);
 
   return { sortedData, handleHeaderClick, getSortDirection };
 }

@@ -428,6 +428,7 @@ export function DataGrid<T = Record<string, unknown>>({
   isLoading = false,
   emptyMessage = 'No records found.',
   sort = null,
+  sortingMode = 'client',
   onSortChange,
   selectable = false,
   selectedIds: externalSelectedIds,
@@ -479,6 +480,7 @@ export function DataGrid<T = Record<string, unknown>>({
   const { sortedData, handleHeaderClick, getSortDirection } = useDataGridSort({
     sort,
     onSortChange: onSortChange ?? (() => {}),
+    enabled: sortingMode === 'client',
     columns,
     data,
   });

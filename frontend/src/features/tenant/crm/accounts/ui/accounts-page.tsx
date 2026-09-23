@@ -367,6 +367,8 @@ export default function AccountsPage(): React.ReactElement {
             )}
             {filteredAccounts.length > 0 && (
           <AccountsDataGrid
+            sort={sort}
+            onSortChange={setSort}
             accounts={filteredAccounts}
             totalRecords={serverTotal}
             effectiveColumns={effectiveColumns}

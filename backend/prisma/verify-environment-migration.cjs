@@ -5,9 +5,11 @@ const os = require('node:os');
 const path = require('node:path');
 const assert = require('node:assert/strict');
 const name = `leadcrm_environment_test_${Date.now()}`;
-const url = `postgresql://postgres@localhost:5432/${name}`;
+const port = Number(process.env.TEST_DATABASE_PORT ?? 5432);
+if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid local test port');
+const url = `postgresql://postgres@localhost:${port}/${name}`;
 const env = { ...process.env, DATABASE_URL: url, DIRECT_URL: url, JWT_SECRET: 'disposable-environment-test-secret', NODE_ENV: 'test' };
-const psql = (database, sql) => execFileSync('psql', ['-h', 'localhost', '-U', 'postgres', '-d', database, '-w', '-v', 'ON_ERROR_STOP=1'], { input: sql, encoding: 'utf8', windowsHide: true });
+const psql = (database, sql) => execFileSync('psql', ['-h', 'localhost', '-p', String(port), '-U', 'postgres', '-d', database, '-w', '-v', 'ON_ERROR_STOP=1'], { input: sql, encoding: 'utf8', windowsHide: true });
 const cli = require.resolve('prisma/build/index.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'leadcrm-environment-'));
 const before = path.join(tmp, 'before.prisma');
@@ -27,7 +29,7 @@ try {
   assert.match(psql(name, `SELECT environment FROM "Account" WHERE id='legacy-account'`), /PRODUCTION/);
   assert.match(psql(name, `SELECT "activeEnvironment" FROM "User" WHERE id='legacy-user'`), /SANDBOX/);
   execFileSync(process.execPath, [cli, 'migrate', 'diff', '--from-schema-datasource', path.join(__dirname, 'schema.prisma'), '--to-schema-datamodel', path.join(__dirname, 'schema.prisma'), '--exit-code'], { env, stdio: 'inherit', windowsHide: true });
-  execFileSync(process.execPath, [path.join(path.dirname(require.resolve('vitest/package.json')), 'vitest.mjs'), 'run', 'src/core/environment/__tests__/environment.integration.test.ts'], { cwd: path.join(__dirname, '..'), env, stdio: 'inherit', windowsHide: true });
+  execFileSync(process.execPath, [path.join(path.dirname(require.resolve('vitest/package.json')), 'vitest.mjs'), 'run', 'src/core/environment/__tests__/environment.integration.test.ts', 'src/core/auth/__tests__/profile.integration.test.ts', '--pool=threads', '--maxWorkers=1'], { cwd: path.join(__dirname, '..'), env, stdio: 'inherit', windowsHide: true });
   console.log(`PASS: migration preserves legacy records; schema matches; integration tests pass. Disposable database retained: ${name}`);
 } finally {
   fs.unlinkSync(before);

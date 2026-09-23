@@ -23,6 +23,7 @@ import { ActionableEmptyState } from '@/shared/components/actionable-empty-state
 import { PageSizeSelect } from '@/shared/components/page-size-select';
 import { useRouter } from 'next/navigation';
 import { contactsV2Api } from '@/shared/services/contacts-v2.api';
+import { compareSortValues } from '@leadcrm/shared';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
 // ── Contacts Page ─────────────────────────────────────────────────────────────
 // Shows all contacts with activity flags, customer type, account links, deals
@@ -37,9 +38,18 @@ export default function ContactsPage(): React.ReactElement {
 
   const { data: contacts = [], refetch: fetchContacts, error: contactsError } = useCachedPage({
     module: 'contacts',
-    params: { limit: 100 },
+    params: { collection: 'all' },
     intervalMs: 60_000,
-    fetchFn: async () => (await contactsV2Api.list({ limit: 100 })).data ?? [],
+    fetchFn: async (signal) => {
+      const rows: Contact[] = [];
+      let page = 1;
+      while (true) {
+        const response = await contactsV2Api.list({ limit: 100, page }, signal);
+        rows.push(...response.data);
+        if (!response.meta.hasMore || response.data.length === 0) return rows;
+        page++;
+      }
+    },
   });
 
   useEffect(() => {
@@ -182,6 +192,12 @@ export default function ContactsPage(): React.ReactElement {
     return result;
   }, [activeContacts, activeTab, user?.id, debouncedSearch, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, deals]);
 
+  const getAccountName = useCallback((contact: Contact): string => {
+    const linked = organizations.find(org => org.id === (contact.accountId ?? contact.organizationId));
+    const apiContact = contact as Contact & { account?: { name: string }; company?: string };
+    return linked?.name ?? contact.companyName ?? apiContact.account?.name ?? apiContact.company ?? '—';
+  }, [organizations]);
+
   // ── Pagination ───────────────────────────────────────────────────────
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -192,8 +208,18 @@ export default function ContactsPage(): React.ReactElement {
 
   const paginatedContacts = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
-    return filteredContacts.slice(start, start + pageSize);
-  }, [filteredContacts, currentPage, pageSize]);
+    const value = (row: Contact) => {
+      if (sort?.field === 'firstName') return row.firstName ?? row.contactPerson ?? row.leadPerson;
+      if (sort?.field === 'companyName') {
+        const company = getAccountName(row);
+        return company === '—' ? null : company;
+      }
+      if (sort?.field === 'createdAt') return row.createdAt ? new Date(row.createdAt) : null;
+      return (row as unknown as Record<string, unknown>)[sort?.field ?? ''];
+    };
+    const ordered = sort ? [...filteredContacts].sort((a, b) => compareSortValues(value(a), value(b), sort.direction)) : filteredContacts;
+    return ordered.slice(start, start + pageSize);
+  }, [filteredContacts, currentPage, pageSize, sort, getAccountName]);
 
   // ── Helpers ──────────────────────────────────────────────────────────
   const getInitials = (contact: Contact): string => {
@@ -209,14 +235,6 @@ export default function ContactsPage(): React.ReactElement {
 
   const getSubtitle = (contact: Contact): string => {
     return contact.jobTitle ?? '';
-  };
-
-  const getAccountName = (contact: Contact): string => {
-    if (contact.organizationId) {
-      const org = organizations.find((o) => o.id === contact.organizationId);
-      return org?.name ?? contact.companyName ?? '—';
-    }
-    return contact.companyName ?? '—';
   };
 
   const getCustomerType = (contact: Contact): string => {
@@ -379,6 +397,8 @@ export default function ContactsPage(): React.ReactElement {
           )}
           {filteredContacts.length > 0 && (
         <ContactsDataGrid
+            sort={sort}
+            onSortChange={setSort}
           contacts={paginatedContacts}
           totalRecords={filteredContacts.length}
           effectiveColumns={effectiveColumns}

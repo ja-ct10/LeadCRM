@@ -256,3 +256,8 @@ describe('filter-parser full round-trip', () => {
     expect(clauses[0]).toEqual({ status: { in: ['Hot'] } });
   });
 });
+
+it('accepts Express nested bracket filters without changing the field allowlist', () => {
+  const parsed = parseFilterParams({ filter: { source: 'equals:Referral', tenantId: 'equals:other' } });
+  expect(buildPrismaFilters(parsed, new Set(['source']), {})).toEqual([{ source: 'Referral' }]);
+});

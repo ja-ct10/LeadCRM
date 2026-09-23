@@ -21,6 +21,9 @@ export interface AuthUserSource {
   emailVerified?: Date | null;
   passwordHash?: string | null;
   mustChangePassword?: boolean;
+  phone?: string | null;
+  jobTitle?: string | null;
+  department?: string | null;
   avatarUrl?: string | null;
   timeZone?: string | null;
   tenant?: {
@@ -51,6 +54,9 @@ export function buildAuthUserResponse(user: AuthUserSource): AuthUser {
     tenantId: user.tenantId,
     status: user.status ?? null,
     emailVerified: user.emailVerified?.toISOString() ?? null,
+    phone: user.phone ?? null,
+    jobTitle: user.jobTitle ?? null,
+    department: user.department ?? null,
     avatarUrl: user.avatarUrl ?? null,
     timeZone: user.timeZone ?? null,
     tenantName: tenant?.name ?? null,

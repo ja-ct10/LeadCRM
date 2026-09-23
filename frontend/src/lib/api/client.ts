@@ -25,7 +25,7 @@ async function request<T>(
   const snapshot = environmentSnapshot();
   if (scoped && snapshot.switching) throw new Error('Switching environment. Please wait.');
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    'Content-Type': body instanceof Blob ? body.type : 'application/json',
   };
   if (scoped && snapshot.environment) headers['X-CRM-Environment'] = snapshot.environment;
 
@@ -48,7 +48,7 @@ async function request<T>(
     headers,
     credentials: 'include', // sends HttpOnly leadcrm_token cookie automatically
     signal,
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    ...(body !== undefined ? { body: body instanceof Blob ? body : JSON.stringify(body) } : {}),
   });
   const res = await (scoped && method !== 'GET' ? trackEnvironmentMutation(pending) : pending);
   if (scoped && snapshot.generation !== environmentSnapshot().generation) {
@@ -84,6 +84,7 @@ async function request<T>(
 }
 
 export const apiClient = {
+  upload: <T>(path: string, body: Blob) => request<T>('POST', path, body),
   get:    <T>(path: string, config?: { params?: Record<string, unknown>; signal?: AbortSignal }) => request<T>('GET', path, undefined, config?.params, config?.signal),
   post:   <T>(path: string, body: unknown)   => request<T>('POST',   path, body),
   put:    <T>(path: string, body: unknown)   => request<T>('PUT',    path, body),
