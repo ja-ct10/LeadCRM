@@ -20,8 +20,6 @@ import {
   RefreshCw,
   ChevronDown,
   Receipt,
-  Clock,
-  DollarSign,
   Link,
   Palette,
   Moon,
@@ -43,6 +41,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { ACCENT_COLORS, applyAccentColor, ACCENT_KEY } from "@/lib/accent-colors";
+import { ProfileForm } from './profile-form';
 import { FormsTab } from './forms-tab';
 import { TeamManagement } from './team-management';
 import { RolesPermissions } from './roles-permissions';
@@ -112,7 +111,7 @@ const NAV_GROUPS: NavGroup[] = [
 ];
 
 export default function SettingsPage(): React.ReactElement {
-  const { user, tenant, updateProfile, userCan } = useAuth();
+  const { user, tenant, userCan } = useAuth();
   const {
     organizations,
     contacts,
@@ -165,24 +164,12 @@ export default function SettingsPage(): React.ReactElement {
   const [orgPhone, setOrgPhone] = useState(tenant?.phone || "");
   const [orgAddress, setOrgAddress] = useState(tenant?.address || "");
   const [orgIndustry, setOrgIndustry] = useState(tenant?.industry || "");
-  const [orgTimezone, setOrgTimezone] = useState(tenant?.timezone || "UTC");
-  const [orgCurrency, setOrgCurrency] = useState(tenant?.currency || "USD");
   const [orgDomain, setOrgDomain] = useState(tenant?.domain || "");
 
   // Appearance state
   const [appTheme, setAppTheme] = useState(localStorage.getItem("app_theme") || "Light");
   const [appFontSize, setAppFontSize] = useState(localStorage.getItem("app_font_size") || "Medium");
   const [appAccentColor, setAppAccentColor] = useState(localStorage.getItem(ACCENT_KEY) || "blue");
-
-  // Account (profile) state
-  const [firstName, setFirstName] = useState(user?.firstName || "");
-  const [lastName, setLastName] = useState(user?.lastName || "");
-  const [email, setEmail] = useState(user?.email || "");
-  const [phone, setPhone] = useState(user?.phone || "");
-  const [jobTitle, setJobTitle] = useState(user?.role === "Client Admin" ? "System Administrator" : user?.role || "");
-  const [department, setDepartment] = useState("IT");
-  const [timezone, setTimezone] = useState("UTC-5  \u00B7 Eastern Time");
-  const [language, setLanguage] = useState("English (US)");
 
   // Archived filter
   const [archivedFilter, setArchivedFilter] = useState<string>("All");
@@ -236,98 +223,16 @@ export default function SettingsPage(): React.ReactElement {
     window.dispatchEvent(new CustomEvent("themechange", { detail: { theme: resolved, mode: appTheme } }));
   };
 
-  const handleSaveAccount = (e: React.FormEvent): void => {
-    e.preventDefault();
-    updateProfile({ firstName, lastName, email, phone, role: user?.role || "Client Admin" });
-    toast.success("Profile updated successfully!");
-  };
-
   const handleSaveOrganization = (): void => {
     if (tenant) {
-      updateTenant(tenant.id, { name: orgName, email: orgEmail, phone: orgPhone, address: orgAddress, industry: orgIndustry, timezone: orgTimezone, currency: orgCurrency, domain: orgDomain });
+      updateTenant(tenant.id, { name: orgName, email: orgEmail, phone: orgPhone, address: orgAddress, industry: orgIndustry, domain: orgDomain });
       toast.success("Organization settings saved successfully");
     }
   };
 
   // -- Profile Settings Tab --
   const renderProfileTab = (): React.ReactElement => (
-    <form onSubmit={handleSaveAccount} className="space-y-6 max-w-2xl">
-      {/* Profile Banner */}
-      <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl overflow-hidden">
-        <div className="h-20 bg-gradient-to-r from-[#25313D] via-[#2E3B48] to-[#384653] relative" />
-        <div className="px-5 pb-5">
-          {/* Avatar row - overlaps banner */}
-          <div className="flex items-end justify-between -mt-8">
-            <div className="relative shrink-0">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] border-4 border-white dark:border-slate-900 flex items-center justify-center text-white text-lg font-bold shadow-md">
-                {firstName.charAt(0)}{lastName.charAt(0)}
-              </div>
-              <button type="button" onClick={() => toast.info("Photo upload is coming soon.")}
-                className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center shadow text-slate-600 dark:text-slate-300 hover:scale-105 transition-transform cursor-pointer"
-                aria-label="Change profile photo">
-                <Camera size={11} />
-              </button>
-            </div>
-            <span className="px-2.5 py-1 bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-bold rounded-lg border border-blue-500/10 flex items-center gap-1.5 w-fit">
-              <Shield size={11} /> {user?.role === "Client Admin" ? "Administrator" : user?.role || "Admin"}
-            </span>
-          </div>
-          {/* Name - always below banner */}
-          <div className="mt-3">
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white">{firstName} {lastName}</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">{user?.role || "Administrator"} {"\u00B7"} {tenant?.name || "Organization"}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Personal Info */}
-      <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-4">
-        <div>
-          <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Personal Information</h3>
-          <p className="text-xs text-slate-400 mt-0.5">Your name and contact details visible to teammates</p>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="profile-first-name">First Name</label>
-            <input id="profile-first-name" type="text" required value={firstName} onChange={(e) => setFirstName(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-[#1B252F] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#3B82F6] transition-colors" />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="profile-last-name">Last Name</label>
-            <input id="profile-last-name" type="text" required value={lastName} onChange={(e) => setLastName(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-[#1B252F] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#3B82F6] transition-colors" />
-          </div>
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="profile-email">Email Address</label>
-          <div className="relative">
-            <Mail size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input id="profile-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-[#1B252F] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg pl-8 pr-3 py-2 text-xs focus:outline-none focus:border-[#3B82F6] transition-colors" />
-          </div>
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="profile-phone">Phone Number</label>
-          <div className="relative">
-            <Phone size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input id="profile-phone" type="text" value={phone} onChange={(e) => setPhone(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-[#1B252F] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg pl-8 pr-3 py-2 text-xs focus:outline-none focus:border-[#3B82F6] transition-colors" />
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="profile-job-title">Job Title</label>
-            <input id="profile-job-title" type="text" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-[#1B252F] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#3B82F6] transition-colors" />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="profile-department">Department</label>
-            <input id="profile-department" type="text" value={department} onChange={(e) => setDepartment(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-[#1B252F] border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#3B82F6] transition-colors" />
-          </div>
-        </div>
-      </div>
-
+    <div className="space-y-6 max-w-2xl"><ProfileForm />
       {/* Security */}
       <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-4">
         <div>
@@ -355,12 +260,7 @@ export default function SettingsPage(): React.ReactElement {
         </div>
       </div>
 
-      <div className="flex justify-end">
-        <button type="submit" className="flex items-center gap-2 bg-[#3B82F6] hover:bg-[#2563EB] text-white font-semibold px-5 py-2 rounded-lg text-xs transition-all shadow-sm cursor-pointer">
-          <Save size={13} /> Save Changes
-        </button>
-      </div>
-    </form>
+    </div>
   );
 
   // -- Account Details Tab (Admin only) --
@@ -396,91 +296,6 @@ export default function SettingsPage(): React.ReactElement {
       </div>
 
     </div>
-  );
-
-  // -- Account Tab --
-  const renderAccountTab = (): React.ReactElement => (
-    <form onSubmit={handleSaveAccount} className="space-y-6 max-w-2xl">
-      {/* Profile Banner */}
-      <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl overflow-hidden">
-        <div className="h-20 bg-gradient-to-r from-slate-200 via-slate-150 to-slate-100 dark:from-slate-800 dark:to-slate-850 relative" />
-        <div className="p-5 pt-0 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-          <div className="flex flex-col sm:flex-row gap-3 -mt-8 sm:items-end">
-            <div className="relative shrink-0">
-              <div className="w-16 h-16 rounded-full bg-slate-800 border-4 border-white dark:border-slate-900 flex items-center justify-center text-white text-lg font-bold shadow-md">
-                {firstName.charAt(0)}{lastName.charAt(0)}
-              </div>
-              <button type="button" onClick={() => toast.info("Photo upload is coming soon.")}
-                className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center shadow text-slate-600 dark:text-slate-300 hover:scale-105 transition-transform cursor-pointer"
-                aria-label="Change profile photo">
-                <Camera size={11} />
-              </button>
-            </div>
-            <div className="pb-1">
-              <h2 className="text-sm font-bold text-slate-900 dark:text-white">{firstName} {lastName}</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">{user?.role || "Administrator"} {"\u00B7"} {tenant?.name || "Organization"}</p>
-            </div>
-          </div>
-          <span className="pb-1 px-2.5 py-1 bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-bold rounded-lg border border-blue-500/10 flex items-center gap-1.5 w-fit">
-            <Shield size={11} /> {user?.role === "Client Admin" ? "Administrator" : user?.role || "Admin"}
-          </span>
-        </div>
-      </div>
-
-      {/* Basic Info */}
-      <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-4">
-        <div>
-          <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Basic Information</h3>
-          <p className="text-xs text-slate-400 mt-0.5">Your name and contact details visible to teammates</p>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="settings-first-name">First Name</label>
-            <input id="settings-first-name" type="text" required value={firstName} onChange={(e) => setFirstName(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#3B82F6] transition-colors" />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="settings-last-name">Last Name</label>
-            <input id="settings-last-name" type="text" required value={lastName} onChange={(e) => setLastName(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#3B82F6] transition-colors" />
-          </div>
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="settings-email">Email Address</label>
-          <div className="relative">
-            <Mail size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input id="settings-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg pl-8 pr-3 py-2 text-xs focus:outline-none focus:border-[#3B82F6] transition-colors" />
-          </div>
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="settings-phone">Phone Number</label>
-          <div className="relative">
-            <Phone size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input id="settings-phone" type="text" value={phone} onChange={(e) => setPhone(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg pl-8 pr-3 py-2 text-xs focus:outline-none focus:border-[#3B82F6] transition-colors" />
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="settings-job-title">Job Title</label>
-            <input id="settings-job-title" type="text" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#3B82F6] transition-colors" />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider" htmlFor="settings-department">Department</label>
-            <input id="settings-department" type="text" value={department} onChange={(e) => setDepartment(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-[#3B82F6] transition-colors" />
-          </div>
-        </div>
-      </div>
-
-      <div className="flex justify-end">
-        <button type="submit" className="flex items-center gap-2 bg-[#3B82F6] hover:bg-[#2563EB] text-white font-semibold px-5 py-2 rounded-lg text-xs transition-all shadow-sm cursor-pointer">
-          <Save size={13} /> Save Changes
-        </button>
-      </div>
-    </form>
   );
 
   // -- Appearance Tab --
@@ -681,38 +496,6 @@ export default function SettingsPage(): React.ReactElement {
             <Link className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
             <input id="org-domain" type="text" value={orgDomain} onChange={(e) => setOrgDomain(e.target.value)} placeholder="e.g., example.com"
               className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#3B82F6] transition-colors" />
-          </div>
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="org-timezone">Timezone</label>
-          <div className="relative">
-            <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
-            <select id="org-timezone" value={orgTimezone} onChange={(e) => setOrgTimezone(e.target.value)}
-              className="w-full pl-9 pr-8 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#3B82F6] transition-colors appearance-none">
-              <option value="UTC">UTC</option>
-              <option value="America/New_York">Eastern Time (ET)</option>
-              <option value="America/Chicago">Central Time (CT)</option>
-              <option value="America/Denver">Mountain Time (MT)</option>
-              <option value="America/Los_Angeles">Pacific Time (PT)</option>
-              <option value="Europe/London">London (GMT/BST)</option>
-              <option value="Asia/Manila">Philippine Time (PHT)</option>
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
-          </div>
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="org-currency">Currency</label>
-          <div className="relative">
-            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
-            <select id="org-currency" value={orgCurrency} onChange={(e) => setOrgCurrency(e.target.value)}
-              className="w-full pl-9 pr-8 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#3B82F6] transition-colors appearance-none">
-              <option value="USD">USD ($)</option>
-              <option value="EUR">EUR (â‚¬)</option>
-              <option value="GBP">GBP (Â£)</option>
-              <option value="PHP">PHP (â‚±)</option>
-              <option value="AUD">AUD ($)</option>
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
           </div>
         </div>
         <div className="space-y-1.5 sm:col-span-2">

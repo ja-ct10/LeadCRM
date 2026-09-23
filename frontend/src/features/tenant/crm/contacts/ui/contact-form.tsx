@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useRef } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useData } from '@/store/DataContext';
@@ -8,6 +8,8 @@ import { SlidingDrawer } from '@/shared/components/sliding-drawer';
 import { EntityCombobox } from '@/shared/components/entity-combobox';
 import { useScrollToError } from '@/shared/hooks/use-scroll-to-error';
 import { toast } from 'sonner';
+import { PhilippinePhoneInput } from '@/shared/components/philippine-phone-input';
+import { toE164, validatePhMobile, normalizePhInput } from '@/shared/utils/ph-phone';
 import {
   Mail,
   MapPin,
@@ -125,6 +127,16 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
   const formRef = useRef<HTMLFormElement>(null);
   useScrollToError({ errors, formRef, setFocus });
 
+  // Philippine phone — local 10-digit number managed outside RHF
+  const [phoneLocal, setPhoneLocal] = useState(() => normalizePhInput(initialData?.phone ?? ''));
+  const [phoneTouched, setPhoneTouched] = useState(false);
+
+  // Re-initialize phone when initialData changes (e.g. opening edit for a different contact)
+  useEffect(() => {
+    setPhoneLocal(normalizePhInput(initialData?.phone ?? ''));
+    setPhoneTouched(false);
+  }, [initialData?.id]);
+
   const selectedProducts = watch('productInterest') || [];
 
   const onSubmit = (data: CreateContactFormValues | UpdateContactFormValues): void => {
@@ -135,7 +147,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
       firstName: data.firstName || undefined,
       lastName: data.lastName || undefined,
       email: data.email || undefined,
-      phone: data.phone || undefined,
+      phone: phoneLocal ? toE164(phoneLocal) : undefined,
       companyName: data.companyName || undefined,
       status: data.status || 'Inquiry',
       leadSource: data.source || undefined,
@@ -216,12 +228,11 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
                 />
               </div>
             </FieldWrap>
-            <FieldWrap label="Phone" error={errors.phone?.message}>
-              <input
-                type="tel"
-                {...register('phone')}
-                className={`${inputCls} ${errors.phone ? inputErrorCls : ''}`}
-                placeholder="+63 912 345 6789"
+            <FieldWrap label="Phone">
+              <PhilippinePhoneInput
+                value={phoneLocal}
+                onChange={(v) => { setPhoneLocal(v); setPhoneTouched(true); }}
+                error={phoneTouched ? validatePhMobile(phoneLocal) : null}
               />
             </FieldWrap>
           </div>

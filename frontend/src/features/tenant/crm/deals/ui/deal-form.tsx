@@ -11,7 +11,7 @@ import { DealAccountField } from './deal-account-field';
 import { DealContactsField } from './deal-contacts-field';
 import { DealLeadsField } from './deal-leads-field';
 import { EntityCombobox } from '@/shared/components/entity-combobox';
-import { AlertCircle, ChevronDown, DollarSign } from 'lucide-react';
+import { AlertCircle, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Deal } from '@/store/types';
 
@@ -24,7 +24,6 @@ const CreateDealFormSchema = z.object({
   stageId: z.string().min(1, 'Stage is required'),
   title: z.string().min(1, 'Title is required').max(255, 'Max 255 characters'),
   value: z.number().positive('Must be a positive number').max(999_999_999_999, 'Value exceeds maximum').optional(),
-  currency: z.string(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH']),
   expectedCloseDate: z.string().optional(),
   description: z.string().optional(),
@@ -41,7 +40,6 @@ const CreateDealFormSchema = z.object({
 const UpdateDealFormSchema = z.object({
   title: z.string().min(1, 'Title is required').max(255, 'Max 255 characters'),
   value: z.number().positive('Must be a positive number').max(999_999_999_999, 'Value exceeds maximum').optional(),
-  currency: z.string().optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH']).optional(),
   expectedCloseDate: z.string().optional(),
   description: z.string().optional(),
@@ -125,7 +123,6 @@ export function DealForm({
         stageId: preselect?.stageId || '',
         title: '',
         value: undefined,
-        currency: 'PHP',
         priority: 'MEDIUM' as const,
         expectedCloseDate: '',
         description: '',
@@ -143,7 +140,6 @@ export function DealForm({
     return {
       title: initialData?.title || '',
       value: initialData?.value || undefined,
-      currency: initialData?.currency || 'PHP',
       priority: (normalizedPriority(initialData?.priority) || 'MEDIUM') as 'LOW' | 'MEDIUM' | 'HIGH',
       expectedCloseDate: initialData?.expectedCloseDate
         ? initialData.expectedCloseDate.split('T')[0]
@@ -210,9 +206,11 @@ export function DealForm({
   }, [errors, setFocus]);
 
   const onFormSubmit = async (data: CreateDealFormData): Promise<void> => {
-    // Clean optional empty strings before submission
-    const cleaned: DealFormData = {
+    // Clean optional empty strings before submission.
+    // currency is always PHP — not user-editable, injected here for backend compatibility.
+    const cleaned = {
       ...data,
+      currency: 'PHP',
       expectedCloseDate: data.expectedCloseDate
         ? data.expectedCloseDate.includes('T')
           ? data.expectedCloseDate
@@ -228,7 +226,7 @@ export function DealForm({
       address: data.address || undefined,
       productInterests: data.productInterests?.length ? data.productInterests : undefined,
     };
-    await onSubmit(cleaned);
+    await onSubmit(cleaned as DealFormData);
   };
 
   // ── Shared styling ────────────────────────────────────────────────────
@@ -297,10 +295,9 @@ export function DealForm({
               placeholder="Enter deal title"
             />
           </FieldWrap>
-          <div className="grid grid-cols-2 gap-4">
-            <FieldWrap label="Value" error={errors.value?.message}>
+          <FieldWrap label="Value" error={errors.value?.message}>
               <div className="relative">
-                <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-medium select-none pointer-events-none">₱</span>
                 <input
                   type="number"
                   step="0.01"
@@ -316,10 +313,6 @@ export function DealForm({
                 />
               </div>
             </FieldWrap>
-            <FieldWrap label="Currency">
-              <input {...register('currency')} className={inputCls} placeholder="PHP" />
-            </FieldWrap>
-          </div>
           <div className="grid grid-cols-2 gap-4">
             <FieldWrap label="Priority" error={errors.priority?.message}>
               <div className="relative">

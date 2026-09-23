@@ -11,16 +11,14 @@ import { useScrollToError } from '@/shared/hooks/use-scroll-to-error';
 import { useDuplicateCheck } from '@/shared/hooks/use-duplicate-check';
 import { DuplicateWarning } from '@/shared/components/crm/duplicate-warning';
 import { EntityCombobox } from '@/shared/components/entity-combobox';
+import { PhilippinePhoneInput } from '@/shared/components/philippine-phone-input';
+import { toE164, validatePhMobile, normalizePhInput } from '@/shared/utils/ph-phone';
 import {
   Mail,
   MapPin,
   AlertCircle,
   ChevronDown,
 } from 'lucide-react';
-import {
-  COUNTRY_CODES,
-  getPlaceholderForCountryCode,
-} from '@/lib/countries';
 
 // ── Zod schemas mirroring backend CreateContactSchema / UpdateContactSchema ──
 // Backend route POST /crm/leads validates against CreateContactSchema from contacts.dto.ts.
@@ -134,9 +132,9 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
   const [customProduct, setCustomProduct] = useState<string>('');
   const [isProductDropdownOpen, setIsProductDropdownOpen] = useState(false);
 
-  // Phone helpers for country code splitting
-  const [phoneCode, setPhoneCode] = useState('+63');
-  const [phoneNumber, setPhoneNumber] = useState('');
+  // Philippine phone — local 10-digit number, no country code
+  const [phoneLocal, setPhoneLocal] = useState('');
+  const [phoneTouched, setPhoneTouched] = useState(false);
 
   // Scroll to first error on submit via shared hook
   const formRef = useRef<HTMLFormElement>(null);
@@ -144,12 +142,11 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
 
   // Duplicate detection — check email/phone on change (only on create, not edit)
   const watchedEmail = watch('email');
-  const watchedPhone = watch('phone');
   const watchedFirstName = watch('firstName');
   const watchedLastName = watch('lastName');
   const { matches: duplicateMatches, isChecking: isDuplicateChecking, hasDuplicates, dismiss: dismissDuplicates } = useDuplicateCheck({
     email: watchedEmail || undefined,
-    phone: phoneNumber ? `${phoneCode} ${phoneNumber}` : undefined,
+    phone: phoneLocal ? toE164(phoneLocal) : undefined,
     firstName: watchedFirstName || undefined,
     lastName: watchedLastName || undefined,
     excludeId: initialData?.id,
@@ -160,16 +157,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
   useEffect(() => {
     if (initialData) {
       const phone = initialData.phone || '';
-      const matchedCode = COUNTRY_CODES.find((c) => phone.startsWith(c.code));
-      const code = matchedCode ? matchedCode.code : '+63';
-      let number = phone;
-      if (matchedCode) {
-        number = phone.startsWith(code + ' ')
-          ? phone.substring(code.length + 1)
-          : phone.substring(code.length);
-      }
-      setPhoneCode(code);
-      setPhoneNumber(number);
+      setPhoneLocal(normalizePhInput(phone));
 
       // Determine product interest from existing data
       const prod = initialData.productInterests?.[0] || initialData.productInterest?.[0] || '';
@@ -200,8 +188,8 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
     } else {
       setSelectedProduct('');
       setCustomProduct('');
-      setPhoneCode('+63');
-      setPhoneNumber('');
+      setPhoneLocal('');
+      setPhoneTouched(false);
       reset({
         firstName: '',
         lastName: '',
@@ -219,8 +207,8 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
   }, [initialData, reset]);
 
   const onFormSubmit = (data: LeadFormData): void => {
-    // Build phone from code + number
-    const fullPhone = phoneNumber ? `${phoneCode} ${phoneNumber}`.trim() : '';
+    // Build phone in E.164 format from local 10-digit number
+    const fullPhone = phoneLocal ? toE164(phoneLocal) : '';
 
     // Build productInterest array
     const finalProduct = selectedProduct === 'Others' ? customProduct : selectedProduct;
@@ -287,26 +275,11 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
               </div>
             </FieldWrap>
             <FieldWrap label="Phone">
-              <div className="flex bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 overflow-hidden text-sm transition-all">
-                <div className="relative border-r border-gray-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.03] flex items-center shrink-0 w-[90px]">
-                  <select
-                    value={phoneCode}
-                    onChange={(e) => setPhoneCode(e.target.value)}
-                    className="w-full h-full py-2.5 pl-2.5 pr-6 bg-transparent text-slate-900 dark:text-slate-100 border-none outline-none appearance-none cursor-pointer text-xs [&>option]:text-slate-900 [&>option]:bg-white dark:[&>option]:text-white dark:[&>option]:bg-slate-800"
-                  >
-                    <option value="" disabled>Code</option>
-                    {COUNTRY_CODES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
-                  </select>
-                  <ChevronDown size={12} className="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
-                </div>
-                <input
-                  type="tel"
-                  placeholder={getPlaceholderForCountryCode(phoneCode)}
-                  className="flex-1 px-3 py-2.5 bg-transparent border-none outline-none focus:ring-0 placeholder:text-slate-400 text-slate-900 dark:text-white min-w-0 text-sm"
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
-                />
-              </div>
+              <PhilippinePhoneInput
+                value={phoneLocal}
+                onChange={(v) => { setPhoneLocal(v); setPhoneTouched(true); }}
+                error={phoneTouched ? validatePhMobile(phoneLocal) : null}
+              />
             </FieldWrap>
           </div>
           <FieldWrap label="Company Name">

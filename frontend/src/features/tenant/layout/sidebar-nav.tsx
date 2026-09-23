@@ -1,5 +1,6 @@
 'use client';
 
+import { UserAvatar } from '@/shared/components/user-avatar';
 import React, { useMemo } from 'react';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/store/AuthContext';
@@ -31,7 +32,7 @@ export default function SidebarNav({
   onToggleCollapse,
 }: SidebarNavProps): React.ReactElement {
   const { currentPath, filteredNav } = useLayout();
-  const { user } = useAuth();
+  const { user, tenant } = useAuth();
 
   // ── Badge counts ────────────────────────────────────────────────────────
   // Real-API mode: fetch lightweight counts (page=1&pageSize=1) independently.
@@ -90,15 +91,22 @@ export default function SidebarNav({
       )}>
         <div
           className={cn('flex items-center gap-2.5', isCollapsed && 'lg:justify-center')}
-          title={isCollapsed ? 'LeadCRM' : undefined}
+          title={isCollapsed ? (tenant?.name ? `LeadCRM — ${tenant.name}` : 'LeadCRM') : undefined}
         >
           <div className="flex h-7 w-7 items-center justify-center rounded-lg overflow-hidden shrink-0">
             <img src="/leadcrm_logo.png" alt="LeadCRM" className="h-7 w-7 object-contain" />
           </div>
           {!isCollapsed && (
-            <span className="text-[14px] font-bold text-[var(--sidebar-text)] tracking-tight">
-              Lead<span className="text-[#3B82F6]">CRM</span>
-            </span>
+            <div className="flex flex-col min-w-0">
+              <span className="text-[14px] font-bold text-[var(--sidebar-text)] tracking-tight leading-tight">
+                Lead<span className="text-[#3B82F6]">CRM</span>
+              </span>
+              {tenant?.name && (
+                <span className="text-[10px] text-[var(--sidebar-text-muted)] truncate leading-tight max-w-[140px]">
+                  {tenant.name}
+                </span>
+              )}
+            </div>
           )}
         </div>
 
@@ -205,7 +213,7 @@ export default function SidebarNav({
           {!isCollapsed && (
             <div className="flex items-center gap-2 flex-1 min-w-0">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] flex items-center justify-center text-white font-bold text-[10px] shrink-0">
-                {`${user?.firstName?.charAt(0) ?? 'U'}${user?.lastName?.charAt(0) ?? ''}`.toUpperCase()}
+                <UserAvatar user={user} />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-[11.5px] font-semibold text-[var(--sidebar-text)] truncate leading-tight">

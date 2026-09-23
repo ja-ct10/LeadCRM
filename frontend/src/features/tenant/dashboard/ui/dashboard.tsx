@@ -4,7 +4,7 @@ import React, { useMemo } from 'react';
 import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
 import {
-  Users, Briefcase, TrendingUp, DollarSign, Activity,
+  Users, Briefcase, TrendingUp, Activity,
   ArrowUpRight, ArrowDownRight, Zap, RefreshCw, LayoutDashboard,
   Check, Target, Clock, Star, ChevronRight, Download,
 } from 'lucide-react';
@@ -19,6 +19,15 @@ import { toast } from 'sonner';
 import { motion } from 'motion/react';
 import { getTenantCurrency, formatCurrency } from '@/shared/utils/currency';
 import type { CurrencyConfig } from '@/shared/utils/currency';
+
+// ── Philippine Peso icon — renders ₱ glyph at the same visual weight as Lucide icons ──
+function PesoIcon({ size }: { size: number }): React.ReactElement {
+  return (
+    <span style={{ fontSize: size, lineHeight: 1, fontWeight: 700 }} aria-hidden="true">
+      ₱
+    </span>
+  );
+}
 
 export default function Dashboard() {
   const { user, tenant } = useAuth();
@@ -196,7 +205,7 @@ export default function Dashboard() {
   }).sort((a, b) => b.wonValue - a.wonValue).slice(0, 5), [users, wonDeals, activeDeals]);
 
   const statCards = isClientAdmin ? [
-    { label: 'Total Revenue', value: formatCurrency(totalRevenue, tenantCurrency),                 icon: DollarSign, color: 'blue',    trend: `${wonDeals.length} won`,                              up: wonDeals.length > 0 },
+    { label: 'Total Revenue', value: formatCurrency(totalRevenue, tenantCurrency),                 icon: PesoIcon,   color: 'blue',    trend: `${wonDeals.length} won`,                              up: wonDeals.length > 0 },
     { label: 'Forecasted',    value: formatCurrency(Math.round(forecastedRevenue), tenantCurrency), icon: TrendingUp, color: 'emerald', trend: `${activeDeals.length} active`,                        up: true },
     { label: 'Active Deals',  value: activeDeals.length,                                   icon: Briefcase,  color: 'purple',  trend: `${allActive.length} total`,                           up: true },
     { label: 'Total Leads',   value: totalLeadsCount,                                      icon: Users,      color: 'orange',  trend: 'all leads',                                           up: true },

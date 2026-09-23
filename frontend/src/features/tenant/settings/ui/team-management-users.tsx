@@ -505,19 +505,14 @@ export function UsersSubTab(): React.ReactElement {
           statuses={roleNames.map((r) => ({ id: r, label: r }))}
           selectedStatuses={roleFilter}
           setSelectedStatuses={setRoleFilter}
-          labelsTitle="Role"
-        />
-        <TrelloFilter
-          searchTerm=""
-          setSearchTerm={() => {}}
-          statuses={[
+          labels={[
             { id: 'active', label: 'Active' },
             { id: 'inactive', label: 'Inactive' },
             { id: 'pending', label: 'Pending' },
           ]}
-          selectedStatuses={statusFilter}
-          setSelectedStatuses={setStatusFilter}
           labelsTitle="Status"
+          selectedLabels={statusFilter}
+          setSelectedLabels={setStatusFilter}
         />
         <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 cursor-pointer select-none ml-auto">
           <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} className="accent-blue-500" />
