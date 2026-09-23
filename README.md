@@ -101,7 +101,7 @@ LeadCRM solves these challenges by providing a single, unified platform:
 
 - **Executive Dashboards**: Real-time KPI summary widgets, revenue trends, pipeline distribution charts, lead attribution breakdowns, and sales rep leaderboards powered by Chart.js.
 
-### 6. 💳 Billing & Subscriptions
+### 6. 💳 Customer Invoices & Payments
 
 - **Contracts & Invoices**: Invoice generation, contract tracking, payment method management, and PayMongo payment gateway integration hooks.
 

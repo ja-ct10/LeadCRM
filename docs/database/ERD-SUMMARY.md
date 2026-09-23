@@ -1,3 +1,5 @@
+> Historical database design snapshot. Ignored SaaS structures are retained only for stored history, not runtime access. See ../crm-environments.md and ../internal-crm-cleanup.md for the current model.
+
 # LeadCRM ERD — Summary & Recommendations
 
 **Last Updated:** July 22, 2026

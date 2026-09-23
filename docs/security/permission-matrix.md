@@ -11,7 +11,7 @@
 
 | Role | Scope | Description |
 |---|---|---|
-| **System Admin** | Cross-tenant (platform) | LeadCRM operator. Manages all tenants, PricingPlans, TenantDocuments, Environments. No tenantId — stored in `SystemAdmin` table, not `User`. |
+| **System Admin** | Cross-tenant (platform) | LeadCRM operator. Manages all tenants, workspace access and resource monitoring. No tenantId — stored in `SystemAdmin` table, not `User`. |
 | **Client Admin** | Tenant-wide | Highest client-level role. Full access to all modules within their tenant. Manages `RoleDefinition` + `RolePermission` rows. Full bypass. |
 | **Sales Rep** | Tenant | Manages own contacts and deals. Read-only on campaigns, workflows, reports, settings. |
 | **Viewer** | Tenant | Read-only access to all modules. Cannot create, edit, or delete. |
@@ -87,7 +87,7 @@ model RolePermission {
 | `tasks` | Task CRUD, assignment |
 | `service_orders` | ServiceOrder CRUD |
 | `reports` | Report views, export |
-| `billing` | Invoice, PaymentTransaction, Subscription, PaymentMethod |
+| `billing` | Invoice, PaymentTransaction |
 | `users` | User CRUD, invitations |
 | `settings` | Tenant settings, pipeline config |
 | `audit` | AuditLog view and export |

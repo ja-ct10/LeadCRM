@@ -291,7 +291,7 @@ localStorage MAY only be used for genuinely device-local concerns.
 - Tenant configuration
 - Saved views, Saved filters
 - Column configuration, Dashboard configuration
-- Subscription state, Billing state
+- Customer invoice and payment state
 - Business rules
 - Authentication state, Authorization state
 

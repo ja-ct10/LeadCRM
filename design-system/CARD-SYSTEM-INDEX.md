@@ -34,7 +34,6 @@ import {
   StatCard,
   InfoCard,
   FeatureCard,
-  PricingCard,
 } from "@/shared/components/ui/card";
 ```
 
@@ -81,16 +80,6 @@ import {
 
 ```tsx
 <FeatureCard icon={Users} title="Lead Management" variant="vertical" />
-```
-
-### 4. PricingCard
-
-**Best for:** Pricing tables, subscription tiers  
-**Key features:** Feature list, highlight variant, badge  
-**Docs:** [Full API](../frontend/src/shared/components/ui/CARD-COMPONENTS.md#pricing-card) | [Quick Example](CARD-SYSTEM-QUICK-REF.md#pricing-table)
-
-```tsx
-<PricingCard name="Pro" price="$79" features={[...]} highlighted />
 ```
 
 ### 5. ColoredBorderCard
@@ -158,7 +147,6 @@ Most common patterns:
 - [Dashboard Metrics](CARD-SYSTEM-QUICK-REF.md#dashboard-metrics)
 - [Feature List](CARD-SYSTEM-QUICK-REF.md#feature-list-horizontal)
 - [Feature Grid](CARD-SYSTEM-QUICK-REF.md#feature-grid-vertical)
-- [Pricing Table](CARD-SYSTEM-QUICK-REF.md#pricing-table)
 
 ### Full API Reference
 
@@ -217,19 +205,6 @@ Includes:
 ```
 
 **See also:** [Feature Grid Example](CARD-SYSTEM-QUICK-REF.md#feature-grid-vertical)
-
-### Pricing Page
-
-```tsx
-// 3-tier pricing table
-<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-  <PricingCard name="Starter" price="$29" features={[...]} />
-  <PricingCard name="Pro" price="$79" features={[...]} highlighted badgeText="Best Value" />
-  <PricingCard name="Enterprise" price="$199" features={[...]} />
-</div>
-```
-
-**See also:** [Pricing Table Example](CARD-SYSTEM-QUICK-REF.md#pricing-table)
 
 ### Feature Showcase
 
@@ -336,7 +311,6 @@ Includes:
 | Task                  | Document     | Section                                                                                           |
 | --------------------- | ------------ | ------------------------------------------------------------------------------------------------- |
 | Add dashboard metrics | Quick Ref    | [Dashboard Metrics](CARD-SYSTEM-QUICK-REF.md#dashboard-metrics)                                   |
-| Create pricing table  | Quick Ref    | [Pricing Table](CARD-SYSTEM-QUICK-REF.md#pricing-table)                                           |
 | Build feature grid    | Quick Ref    | [Feature Grid](CARD-SYSTEM-QUICK-REF.md#feature-grid-vertical)                                    |
 | Check spacing         | Visual Specs | [Spacing System](CARD-VISUAL-SPECS.md#spacing-system)                                             |
 | Verify colors         | Visual Specs | [Color Combinations](CARD-VISUAL-SPECS.md#color-combinations)                                     |
@@ -459,7 +433,6 @@ Before shipping card implementations:
 ## 🎉 What's Included
 
 ✅ **7 Card Components**  
-StatCard, InfoCard, FeatureCard, PricingCard, ColoredBorderCard, MetricCard, Base Card
 
 ✅ **Complete Documentation**  
 5 docs covering API, quick reference, visual specs, summary, and this index
@@ -487,7 +460,7 @@ Mobile-first design with breakpoints at 768px, 1024px
 ## 🚀 Next Steps
 
 1. **View the showcase:** `npm run dev` → `/card-showcase`
-2. **Pick a use case:** Dashboard? Features? Pricing?
+2. **Pick a use case:** Dashboard? Features?
 3. **Grab example code:** [Quick Reference](CARD-SYSTEM-QUICK-REF.md)
 4. **Customize:** Change colors, icons, content
 5. **Test:** Verify dark mode, responsive, accessibility

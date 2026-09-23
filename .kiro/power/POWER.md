@@ -49,7 +49,6 @@ See `.kiro/how-to-use-skills.md` for the full guide.
 | Context7 | Live documentation lookup (Next.js 15, Prisma 5, React 19) |
 | Figma | Design-to-code implementation |
 | Design System Scaffold | Component specs and theming |
-| Stripe | Payment integration patterns |
 
 ### MCP Servers
 

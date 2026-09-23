@@ -92,7 +92,6 @@ async function setupTestEnvironment(): Promise<boolean> {
         name: 'Test Tenant - Gmail Batch',
         slug: 'test-gmail-batch',
         status: 'ACTIVE',
-        plan: 'PRO',
         billingEmail: 'test@example.com'
       },
       update: {}

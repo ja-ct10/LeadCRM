@@ -26,7 +26,6 @@ import {
   StatCard,
   InfoCard,
   FeatureCard,
-  PricingCard,
   ColoredBorderCard,
   MetricCard
 } from '../../../shared/components/ui/card';
@@ -282,58 +281,6 @@ export default function CardShowcasePage() {
               title="Documents Shared"
               value="234"
               change={{ value: '15%', direction: 'up' }}
-            />
-          </div>
-        </section>
-
-        {/* Pricing Cards */}
-        <section className="mb-16">
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-6 font-display">
-            Pricing Cards
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <PricingCard
-              name="Starter"
-              price="$29"
-              period="/month"
-              features={[
-                'Up to 1,000 contacts',
-                'Basic pipeline stages',
-                'Email & SMS campaigns',
-                'Mobile app access',
-                'Standard reports'
-              ]}
-              onSelect={() => console.log('Selected Starter')}
-            />
-            <PricingCard
-              name="Professional"
-              price="$79"
-              period="/month"
-              features={[
-                'Unlimited contacts',
-                'Workflow automation',
-                'Batch messaging',
-                'Priority support',
-                'Custom dashboards',
-                'Asset tracking'
-              ]}
-              highlighted
-              badgeText="Best Value"
-              onSelect={() => console.log('Selected Professional')}
-            />
-            <PricingCard
-              name="Enterprise"
-              price="$199"
-              period="/month"
-              features={[
-                'Custom integrations',
-                'Dedicated account manager',
-                'SLA guarantee',
-                'Advanced audit trails',
-                'White-label option',
-                'Multi-branch access'
-              ]}
-              onSelect={() => console.log('Selected Enterprise')}
             />
           </div>
         </section>

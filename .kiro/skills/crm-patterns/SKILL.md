@@ -1,6 +1,6 @@
 ---
 name: crm-patterns
-description: CRM-specific patterns for LeadCRM — Six-Pillar compliance, deal stage changes, DealAction model, workflow execution (3-record rule), ContactDeal junction, dynamic audience segmentation, contact scoring, and billing source of truth. Apply when building or reviewing any CRM module.
+description: CRM-specific patterns for LeadCRM — Six-Pillar compliance, deal stage changes, DealAction model, workflow execution (3-record rule), ContactDeal junction, dynamic audience segmentation, contact scoring, and customer invoice accounting. Apply when building or reviewing any CRM module.
 ---
 
 # CRM Patterns — LeadCRM
@@ -105,19 +105,9 @@ WARM → score 50–79
 COLD → score 0–49
 ```
 
-## Subscription Is Billing Source of Truth
+## Customer Financial Records
 
-```typescript
-// WRONG — Tenant.plan is a cache, not authoritative for billing
-const canUpgrade = tenant.plan === 'FREE';
-
-// CORRECT — always query Subscription
-const subscription = await prisma.subscription.findFirst({
-  where: { tenantId, status: { in: ['ACTIVE', 'TRIAL'] } },
-  orderBy: { startDate: 'desc' },
-});
-const currentPlan = subscription?.plan.planType ?? 'FREE';
-```
+Invoices, payment transactions, and deal contracts are operational CRM records, scoped to tenant and selected environment. Payment state never grants CRM access or roles.
 
 ## CRM Checklist
 
@@ -127,6 +117,6 @@ const currentPlan = subscription?.plan.planType ?? 'FREE';
 - [ ] Manual deal ops use `DealAction` model
 - [ ] Multi-contact deals use `ContactDeal` junction — not singular `contactId`
 - [ ] Target audiences resolved dynamically — no static junction table
-- [ ] Subscription (not `Tenant.plan`) used for billing decisions
+- [ ] Customer invoice/payment records remain separate from authentication and RBAC
 - [ ] `addAuditLog()` called for all CRM mutations
 - [ ] `addActivity()` called for all observable state changes

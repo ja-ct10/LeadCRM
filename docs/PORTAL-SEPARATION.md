@@ -8,11 +8,11 @@ LeadCRM serves two completely different user types with different data access, l
 - **Who:** Any company that subscribes to LeadCRM (our clients / tenants)
 - **Roles:** Client Admin, Sales Rep, Viewer, Technician
 - **What they do:** Manage their own contacts, deals, campaigns, workflows, service orders
-- **They never see:** Other companies' data, system pricing controls, tenant management
+- **They never see:** Other companies' data, platform controls, tenant management
 
 ### Admin Portal (`frontend/src/features/system-admin/`)
 - **Who:** LeadCRM's own internal team (System Admin role only)
-- **What they do:** Approve tenant registrations, manage subscription pricing, monitor infrastructure health, view billing across all tenants
+- **What they do:** Provision employee workspaces, manage account access, and monitor infrastructure health
 - **They never see:** CRM module data (contacts, pipeline, etc.) — they have no tenant context
 
 ---
@@ -51,8 +51,8 @@ Role-based redirect:
 
 | LeadCRM | Real-world equivalent |
 |---|---|
-| `features/system-admin/` | Stripe's internal dashboard — manage all merchants |
-| `features/tenant/` | Stripe's merchant dashboard — manage your own account |
+| `features/system-admin/` | Platform operations — manage employee workspaces |
+| `features/tenant/` | Tenant CRM — manage your operational records |
 
 The two portals share zero page-level components. They may share UI primitives from `src/shared/`.
 

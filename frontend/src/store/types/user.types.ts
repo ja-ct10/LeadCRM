@@ -66,7 +66,8 @@ export interface Tenant {
   address: string;
   status: 'active' | 'pending' | 'suspended' | 'rejected';
   approvalStep: 'basic' | 'requirements' | 'completed';
-  environment: 'none' | 'sandbox' | 'production' | 'both';
+  /** Platform resource-monitoring metadata only; CRM selection is User.activeEnvironment. */
+  environment?: 'none' | 'sandbox' | 'production' | 'both';
   createdAt: string;
   timezone?: string;
   currency?: string;

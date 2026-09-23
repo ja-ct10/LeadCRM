@@ -207,9 +207,7 @@ Set `NEXT_PUBLIC_USE_MOCK_DATA=false` in `.env.local` to switch from localStorag
 Each module migrates independently — only `DataContext` internals change, all components remain untouched.
 This is the Dependency Inversion Principle applied to the data layer.
 
-**Schema version:** v2 — 30 entities, all in DB. Includes `Subscription`, `PaymentMethod`, `PricingPlan`,
-`RolePermission`, `DealAction`, `TargetAudience`, `TargetAudienceCondition`, `CampaignMetrics`,
-`SystemAdmin`, `TenantDocument`, `Environment`, `PlanFeature`.
+The Prisma schema includes active CRM models and ignored historical account/billing structures. See [CRM environments](crm-environments.md) for dataset boundaries and [internal cleanup](internal-crm-cleanup.md) for database retention. Ignored models are not runtime APIs.
 
 ---
 

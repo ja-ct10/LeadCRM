@@ -19,7 +19,6 @@ Deal: Closed Won
 Convert to Invoice (Billing Module)
 Invoice.status = Pending
 Invoice.paymentStatus = Unpaid
-Invoice optionally linked to Subscription (recurring billing)
       │
       ▼
 Invoice Sent to Customer
@@ -47,7 +46,7 @@ Invoice Sent to Customer
 | Actor | Responsibility |
 |---|---|
 | Sales Rep | Confirms Closed Won, initiates invoice conversion |
-| Client Admin | Manages billing settings, reviews invoices and subscriptions |
+| Client Admin | Manages billing settings, reviews customer invoices |
 | PayMongo | Processes payment — webhook fires on success/failure |
 | System (Workflow Engine) | Auto-creates follow-up tasks for overdue invoices |
 
@@ -64,7 +63,6 @@ Invoice Sent to Customer
 ### 2. Invoice Creation
 - Sales Rep clicks "Convert to Invoice"
 - Invoice pre-populated from deal: title, value, contact, organization
-- `Invoice.subscriptionId` linked if tenant has an active `Subscription`
 - `Invoice.status = Pending`, `Invoice.paymentStatus = Unpaid`
 - `Invoice.invoiceNumber` auto-generated: `INV-YYYY-NNN` (tenant-scoped)
 - `AuditLog({ action: 'invoice.created', category: 'billing' })` created
@@ -82,11 +80,6 @@ Invoice Sent to Customer
 - `AuditLog({ action: 'payment.received', category: 'billing', severity: 'INFO' })`
 - Optional: trigger onboarding workflow
 
-### 5. Recurring Billing (Subscription)
-- If `Invoice.subscriptionId` is set, `Subscription.nextBillingDate` is updated
-- Next invoice auto-generated on billing cycle (MONTHLY / QUARTERLY / ANNUAL)
-- `Tenant.subscriptionStatus` and `Tenant.plan` (denorm cache) updated from Subscription
-
 ### 6. Failed Payment
 - PayMongo webhook fires: `payment.failed`
 - `PaymentTransaction.status = failed`, `failureReason` stored
@@ -97,8 +90,6 @@ Invoice Sent to Customer
 ### 7. Overdue Handling
 - Scheduled job checks: `paymentStatus = Unpaid AND dueDate < now()`
 - `Invoice.paymentStatus → Overdue`
-- `Subscription.status → PAST_DUE` (if subscription-linked)
-- `Tenant.subscriptionStatus → PAST_DUE` (denorm cache updated)
 - Workflow: auto-create task "Follow up on overdue invoice — [Company Name]"
 
 ---
@@ -122,8 +113,6 @@ Integration: `backend/src/integrations/paymongo/`
 | `Deal` | `closedAt` stamped on Closed Won |
 | `Invoice` | `status`, `paymentStatus`, `paidAt` |
 | `PaymentTransaction` | Created per payment attempt |
-| `Subscription` | `nextBillingDate`, `status` on payment events |
-| `Tenant` | `subscriptionStatus` (denorm cache) on PAST_DUE / ACTIVE |
 | `Contact` | `status → CLOSED` on payment confirmed |
 | `AuditLog` | Every billing status transition (category: billing) |
 
@@ -132,5 +121,5 @@ Integration: `backend/src/integrations/paymongo/`
 ## Related Docs
 - `docs/workflows/lead-to-deal.md`
 - `docs/workflows/customer-lifecycle.md`
-- `docs/database/erd.md` — Invoice, Subscription, PaymentMethod, PaymentTransaction
+- `docs/database/erd.md` — Invoice, PaymentTransaction
 - `docs/security/audit-log-strategy.md` — billing category events

@@ -10,7 +10,6 @@ A comprehensive card component library with **7 specialized card types**:
 2. **StatCard** — Dashboard metrics with trend indicators
 3. **InfoCard** — Large informational cards with CTA links
 4. **FeatureCard** — Horizontal & vertical feature displays
-5. **PricingCard** — Pricing tiers with feature lists
 6. **ColoredBorderCard** — Cards with colored top accents
 7. **MetricCard** — Compact metrics with chart placeholders
 
@@ -125,7 +124,6 @@ import {
   StatCard,
   InfoCard,
   FeatureCard,
-  PricingCard,
   ColoredBorderCard,
   MetricCard,
 } from "@/shared/components/ui/card";
@@ -139,7 +137,6 @@ import {
 | Feature description | `InfoCard`                 | Feature overviews, help sections |
 | Benefits list       | `FeatureCard` (horizontal) | Feature lists with icons         |
 | Feature grid        | `FeatureCard` (vertical)   | 3-column benefits grid           |
-| Pricing table       | `PricingCard`              | Subscription tiers               |
 | Category display    | `ColoredBorderCard`        | Service types, modules           |
 | Quick metrics       | `MetricCard`               | Activity counters, stats         |
 
@@ -261,18 +258,6 @@ Every component includes:
   <FeatureCard variant="horizontal" ... />
 </div>
 ```
-
-### Pricing Table
-
-```tsx
-<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-  <PricingCard name="Starter" ... />
-  <PricingCard name="Pro" highlighted badgeText="Best Value" ... />
-  <PricingCard name="Enterprise" ... />
-</div>
-```
-
----
 
 ## 🔧 Customization
 
@@ -401,7 +386,6 @@ describe("StatCard", () => {
 
 1. **Dashboard Page** — Replace existing metric cards with `StatCard`
 2. **Features Page** — Use `FeatureCard` for benefits grid
-3. **Pricing Page** — Implement `PricingCard` for plans
 4. **Landing Page** — Add `InfoCard` for feature sections
 
 ### Future Enhancements

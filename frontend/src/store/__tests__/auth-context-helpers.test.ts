@@ -197,28 +197,8 @@ describe('buildTenantFromApiUser', () => {
     });
   });
 
-  describe('environment derivation', () => {
-    it('sets environment to "sandbox" when tenantStatus is SANDBOX', () => {
-      const result = buildTenantFromApiUser(makeApiUser({ tenantStatus: 'SANDBOX' }));
-      expect(result.environment).toBe('sandbox');
-    });
-
-    it('sets environment to "production" when tenantStatus is ACTIVE', () => {
-      const result = buildTenantFromApiUser(makeApiUser({ tenantStatus: 'ACTIVE' }));
-      expect(result.environment).toBe('production');
-    });
-
-    it('sets environment to "production" when tenantStatus is null', () => {
-      const result = buildTenantFromApiUser(makeApiUser({ tenantStatus: null }));
-      expect(result.environment).toBe('production');
-    });
-
-    it('sets environment to "production" for any non-SANDBOX status', () => {
-      for (const status of ['PAST_DUE', 'CANCELLED', 'EXPIRED', 'NONE', '']) {
-        const result = buildTenantFromApiUser(makeApiUser({ tenantStatus: status }));
-        expect(result.environment).toBe('production');
-      }
-    });
+  it.each(['SANDBOX', 'ACTIVE', 'SUSPENDED', null])('does not derive a dataset from account status %s', tenantStatus => {
+    expect(buildTenantFromApiUser(makeApiUser({ tenantStatus }))).not.toHaveProperty('environment');
   });
 
   describe('currency field (Wave 2)', () => {
@@ -246,15 +226,15 @@ describe('buildTenantFromApiUser', () => {
   });
 
   /**
-   * Property: environment is always exactly "sandbox" or "production".
+   * Property: account metadata never supplies a CRM dataset selector.
    */
-  it('Property: environment is always "sandbox" or "production"', () => {
+  it('Property: account metadata never supplies a CRM dataset selector', () => {
     fc.assert(
       fc.property(
         fc.option(fc.string(), { nil: null }),
         (tenantStatus) => {
           const result = buildTenantFromApiUser(makeApiUser({ tenantStatus }));
-          expect(['sandbox', 'production']).toContain(result.environment);
+          expect(result).not.toHaveProperty('environment');
         },
       ),
       { numRuns: 100 },

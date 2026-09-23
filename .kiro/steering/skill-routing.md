@@ -19,7 +19,7 @@ inclusion: manual
 | Express routes, controllers, services | `backend-patterns` |
 | Prisma schema, migrations, queries | `prisma-patterns` |
 | REST API design, endpoints, pagination | `api-design` |
-| Multi-tenancy, plan limits, feature flags | `saas-scalability` |
+| Multi-tenancy, CRM environments, data lifecycle | `saas-scalability` |
 | Auth, RBAC, sessions, tenant isolation | `security-review` |
 | CRM logic, deals, pipelines, workflows | `crm-patterns` |
 | Testing, TDD, coverage | `tdd-workflow` |

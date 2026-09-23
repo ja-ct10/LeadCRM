@@ -267,70 +267,6 @@ border-t-4 with color:
 
 ---
 
-## PricingCard Specifications
-
-### Layout
-
-```
-┌─────────────────────────────────────┐
-│         ┌──────────────┐            │  ← Badge (optional)
-│         │ BEST VALUE   │            │
-│         └──────────────┘            │
-│                                     │
-│         Professional                │  ← 20px, bold
-│                                     │
-│         $79  /month                 │  ← 36px bold + 14px
-│                                     │
-│  ✓  Unlimited contacts              │  ← 14px with checkmark
-│  ✓  Workflow automation             │
-│  ✓  Batch messaging                 │
-│  ✓  Priority support                │
-│  ✓  Custom dashboards               │
-│  ✓  Asset tracking                  │
-│                                     │
-│  ┌───────────────────────────────┐  │
-│  │      Get started              │  │  ← CTA button
-│  └───────────────────────────────┘  │
-└─────────────────────────────────────┘
-     32px padding all sides
-```
-
-### Badge (when highlighted)
-
-```
-Position: Absolute, -12px from top
-Background: Linear gradient blue-600 to blue-500
-Text: White, 10px, bold, uppercase, tracking-wide
-Padding: 4px 16px
-Border Radius: 9999px (full rounded)
-```
-
-### Checkmark Icon
-
-```
-Size: 20px × 20px
-Color: #10b981 (emerald-500)
-Stroke Width: 2px
-Position: Inline with text, aligned to top
-```
-
-### Button Variants
-
-```
-Highlighted Plan:
-  Background: #2563eb (blue-600)
-  Hover: #1d4ed8 (blue-700)
-  Text: White
-  Shadow: 0 10px 15px -3px rgb(37 99 235 / 0.3)
-
-Standard Plan:
-  Background: #f1f5f9 light, rgba(255, 255, 255, 0.05) dark
-  Hover: #e2e8f0 light, rgba(255, 255, 255, 0.08) dark
-  Text: #0f172a light, #f8fafc dark
-```
-
----
-
 ## MetricCard Specifications
 
 ### Layout
@@ -421,13 +357,11 @@ Mobile (< 768px):
 Tablet (768px - 1024px):
   - 2 column grid for StatCards
   - 2 column grid for FeatureCards
-  - 1-2 columns for PricingCards
   - Standard padding (24px)
 
 Desktop (> 1024px):
   - 4 column grid for StatCards
   - 3 column grid for FeatureCards
-  - 3 column grid for PricingCards
   - Full padding (24px-32px)
 ```
 

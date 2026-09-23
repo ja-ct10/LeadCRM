@@ -2,7 +2,7 @@
 
 ## Identity
 
-Multi-tenant CRM + Workflow Automation SaaS platform targeting IT, Security, and Telecom service providers. Features: lead/account/deal management, pipeline visualization, campaign marketing, workflow automation (Trigger → Condition → Action), billing with Stripe, and a system-admin portal.
+Multi-tenant CRM + Workflow Automation SaaS platform targeting IT, Security, and Telecom service providers. Features: lead/account/deal management, pipeline visualization, campaign marketing, workflow automation (Trigger → Condition → Action), customer invoices and payment transactions, and a system-admin portal.
 
 ## Tech Stack (verified from package.json)
 
@@ -25,7 +25,6 @@ Multi-tenant CRM + Workflow Automation SaaS platform targeting IT, Security, and
 | Auth (Custom) | Custom JWT | — | HttpOnly cookie `leadcrm_token` for credentials login |
 | Backend | Express.js | 4.x | |
 | ORM | Prisma | 5.x | PostgreSQL 16 |
-| Payments | Stripe | 17.x | Checkout, subscriptions, webhooks |
 | Email | Nodemailer + Resend | 7.x / 6.x | Campaign sending + transactional |
 | Security | Helmet, express-rate-limit, cors, cookie-parser | various | |
 | Hashing | bcryptjs | 2.x | Password hashing |
@@ -77,7 +76,7 @@ features/tenant/
   marketing/      → campaigns, templates, target audiences, forms
   automation/     → workflows, triggers, actions
   operations/     → tasks, service-orders, assets, inventory
-  billing/        → invoices, subscriptions, payment methods
+  billing/        → customer invoices and payment transactions
   administration/ → users, roles, permissions, audit
   reporting/      → pipeline summary, velocity, analytics
   settings/       → tenant config
@@ -100,7 +99,6 @@ backend/src/modules/
   notifications/  → push/in-app notifications
   operations/     → service-orders, tasks
   reporting/      → reports
-  stripe/         → checkout, customers, products, refunds, subscriptions, webhooks
 ```
 
 ## API Route Naming (actual backend)

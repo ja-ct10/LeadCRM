@@ -5,6 +5,7 @@ import { environmentContext } from '../environment-context';
 import { issueAuthSession } from '../../auth/auth-session';
 import { readAuthUser } from '../../auth/auth-user';
 import app from '../../../app';
+import { hash } from 'bcryptjs';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_environment_test_\d+$/.test(url.pathname);
@@ -25,7 +26,8 @@ describe.skipIf(!disposable)('environment isolation on PostgreSQL and authentica
     return { status: response.status, body: await response.json() };
   }
   beforeAll(async () => {
-    const tenant = await prisma.tenant.create({ data: { name: 'Environment fixture', slug: `environment-${Date.now()}`, status: 'ACTIVE', onboardingStep: 3, onboardingCompletedAt: new Date() } });
+    // Legacy account status must never choose the dataset or require a paid account.
+    const tenant = await prisma.tenant.create({ data: { name: 'Environment fixture', slug: `environment-${Date.now()}`, status: 'SANDBOX', onboardingStep: 3, onboardingCompletedAt: new Date() } });
     tenantId = tenant.id;
     otherTenantId = (await prisma.tenant.create({ data: { name: 'Other', slug: `other-env-${Date.now()}` } })).id;
     const createUser = async (role: string) => prisma.user.create({ data: { tenantId, role, email: `${role.replace(/ /g, '-')}@camxian.com`, firstName: role, lastName: 'Test', mustChangePassword: false, emailVerified: new Date() } });
@@ -142,5 +144,47 @@ describe.skipIf(!disposable)('environment isolation on PostgreSQL and authentica
     await scope('SANDBOX', async () => {
       expect(await prisma.leadImportResult.count({ where: { importId: batch.id } })).toBe(0);
     });
+  });
+  it('allows Client Admin CRUD in both datasets with a legacy Sandbox account and no plan', async () => {
+    const records: Record<string, string> = {};
+    for (const environment of ['SANDBOX', 'PRODUCTION'] as const) {
+      expect((await call(admin, '/auth/environment', 'PATCH', { environment })).status).toBe(200);
+      const refreshed = await call(admin, '/auth/me');
+      expect(refreshed.body.data.user.activeEnvironment).toBe(environment);
+      expect(refreshed.body.data.user.tenantStatus).toBe('SANDBOX');
+      for (const path of ['/crm/leads', '/crm/contacts', '/crm/accounts', '/crm/deals', '/automation/workflows', '/operations/tasks', '/marketing/campaigns', '/billing/invoices']) {
+        const result = await call(admin, path);
+        expect(result.status, `${path}: ${JSON.stringify(result.body)}`).toBe(200);
+      }
+      const created = await call(admin, '/crm/leads', 'POST', { firstName: 'Independent', lastName: environment });
+      expect(created.status, JSON.stringify(created.body)).toBe(201);
+      records[environment] = created.body.data.id;
+      expect((await call(admin, `/crm/leads/${records[environment]}`, 'PUT', { firstName: 'Updated' })).status).toBe(200);
+    }
+    expect((await call(admin, `/crm/leads/${records.SANDBOX}`)).status).toBe(404);
+    await call(admin, '/auth/environment', 'PATCH', { environment: 'SANDBOX' });
+    expect((await call(admin, `/crm/leads/${records.PRODUCTION}`)).status).toBe(404);
+    expect((await call(admin, `/crm/leads/${records.SANDBOX}`)).body.data.firstName).toBe('Updated');
+    expect((await call(admin, `/crm/leads/${records.SANDBOX}/archive`, 'PATCH')).status).toBe(200);
+    expect((await prisma.lead.findUniqueOrThrow({ where: { id: records.PRODUCTION } })).status).not.toBe('Archived');
+  });
+  it('preserves the selected environment through password login, logout and login again', async () => {
+    const password = 'Disposable-Environment-Only-42!';
+    await prisma.user.update({ where: { id: admin.id }, data: { passwordHash: await hash(password, 4) } });
+    const login = async () => {
+      const response = await fetch(base + '/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: admin.email, password }) });
+      expect(response.status).toBe(200);
+      const cookie = response.headers.get('set-cookie')!;
+      tokens.set(admin.id, decodeURIComponent(cookie.match(/leadcrm_token=([^;]+)/)![1]));
+      return (await response.json()).data.user;
+    };
+    expect((await login()).activeEnvironment).toBe('SANDBOX');
+    await call(admin, '/auth/environment', 'PATCH', { environment: 'PRODUCTION' });
+    expect((await call(admin, '/auth/logout', 'POST')).status).toBe(200);
+    expect((await call(admin, '/auth/me')).status).toBe(401);
+    expect((await login()).activeEnvironment).toBe('PRODUCTION');
+    expect((await call(admin, '/auth/me')).body.data.user.activeEnvironment).toBe('PRODUCTION');
+    await call(admin, '/auth/environment', 'PATCH', { environment: 'SANDBOX' });
   });
 });

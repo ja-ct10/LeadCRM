@@ -14,7 +14,6 @@ import {
   StatCard,
   InfoCard,
   FeatureCard,
-  PricingCard,
   ColoredBorderCard,
   MetricCard,
 } from "@/shared/components/ui/card";
@@ -29,7 +28,6 @@ import {
 | `StatCard`          | Dashboard metrics    | Compact    | Trend indicators    |
 | `InfoCard`          | Feature descriptions | Large      | CTA link            |
 | `FeatureCard`       | Benefits/features    | Flex       | Horizontal/vertical |
-| `PricingCard`       | Pricing tiers        | Structured | Feature list        |
 | `ColoredBorderCard` | Category display     | Grid       | Top accent          |
 | `MetricCard`        | Quick stats          | Compact    | Chart placeholder   |
 
@@ -117,51 +115,6 @@ import {
     title="Conversions"
     description="Track every lead through the pipeline."
     variant="vertical"
-  />
-</div>
-```
-
-### Pricing Table
-
-```tsx
-<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-  <PricingCard
-    name="Starter"
-    price="$29"
-    period="/month"
-    features={[
-      "Up to 1,000 contacts",
-      "Basic pipeline stages",
-      "Email campaigns",
-      "Mobile access",
-    ]}
-    onSelect={() => handleSelect("starter")}
-  />
-  <PricingCard
-    name="Professional"
-    price="$79"
-    period="/month"
-    features={[
-      "Unlimited contacts",
-      "Workflow automation",
-      "Priority support",
-      "Custom dashboards",
-    ]}
-    highlighted
-    badgeText="Best Value"
-    onSelect={() => handleSelect("pro")}
-  />
-  <PricingCard
-    name="Enterprise"
-    price="$199"
-    period="/month"
-    features={[
-      "Custom integrations",
-      "Dedicated manager",
-      "SLA guarantee",
-      "White-label option",
-    ]}
-    onSelect={() => handleSelect("enterprise")}
   />
 </div>
 ```

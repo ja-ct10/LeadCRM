@@ -44,7 +44,6 @@ The loading architecture was redesigned from a global startup-load model (13+ AP
 | Campaigns + Templates | `useCampaignsData` | — (full list, ≤200) | — | 2min + focus |
 | Invoices (contract list) | `useInvoicesData` | — (full list, ≤100) | — | 5min + focus |
 | Activities | `activities-page.tsx` (own fetch) | ✅ | ✅ type, dateRange, userId | — |
-| Billing subscription | `useBillingData` | — | — | — |
 
 ---
 

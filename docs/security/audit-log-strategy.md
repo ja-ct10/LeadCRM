@@ -38,7 +38,7 @@ model AuditLog {
 |---|---|
 | `auth` | Login, logout, failed login, MFA, password change, token revocation |
 | `crm` | Contact, Deal, Organization, Task mutations |
-| `billing` | Invoice, PaymentTransaction, Subscription, PaymentMethod changes |
+| `billing` | Invoice, PaymentTransaction changes |
 | `workflow` | Workflow CRUD, execution runs, trigger events |
 | `admin` | User, Role, RolePermission, TenantInvitation changes |
 | `system` | Tenant provisioning, plan changes, SystemAdmin actions |
@@ -91,8 +91,6 @@ model AuditLog {
 | `invoice.updated` | INFO |
 | `payment.received` | INFO |
 | `payment.failed` | WARNING |
-| `subscription.created` | INFO |
-| `subscription.cancelled` | WARNING |
 | `payment_method.added` | INFO |
 
 ### Workflow Events (category: workflow)

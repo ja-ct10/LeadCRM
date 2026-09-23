@@ -103,7 +103,7 @@ Each DealAction also creates an `Activity` entry for the deal timeline.
 - Deal moved to `Closed Won` stage → `Deal.closedAt` stamped automatically
 - `Contact.status` → `CLOSED`
 - Sales Rep clicks "Convert to Invoice" → navigates to Billing module
-- `Invoice` created — optionally linked to active `Subscription`
+- `Invoice` created
 
 ### 7. Deal Lost
 - Deal moved to `Closed Lost` stage → `Deal.closedAt` stamped

@@ -1,3 +1,5 @@
+> Historical project/design record, not current implementation guidance. Retired SaaS access and billing descriptions below must not be implemented. Current authority: `docs/authentication.md`, `docs/crm-environments.md`, and `docs/internal-crm-cleanup.md`.
+
 > Historical implementation record. The final role model is documented in [authentication](../authentication.md) and [role migration](../plans/final-role-model.md).
 
 # LeadCRM authentication and onboarding implementation plan

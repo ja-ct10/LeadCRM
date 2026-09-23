@@ -187,7 +187,7 @@ Never use localStorage as the source of truth for:
 - Business rules
 - Saved views, Saved filters
 - Column configuration, Dashboard configuration
-- Subscription state, Billing state, Membership state
+- Customer invoice and payment state
 - Tenant settings
 - User settings that must follow the user across devices
 - Authentication tokens, Session tokens, Refresh tokens

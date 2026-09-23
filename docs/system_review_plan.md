@@ -1,3 +1,5 @@
+> Historical project/design record, not current implementation guidance. Retired SaaS access and billing descriptions below must not be implemented. Current authority: `docs/authentication.md`, `docs/crm-environments.md`, and `docs/internal-crm-cleanup.md`.
+
 # LEADCRM SYSTEM-WIDE MODULE REVIEW & OPTIMIZATION REPORT
 *Prepared for Camxian Enterprise SaaS CRM Execution*
 *Prepared by LeadCRM Joint Steering and Architecture Committee*

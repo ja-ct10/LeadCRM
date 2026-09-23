@@ -1,38 +1,16 @@
 ---
 name: saas-scalability
-description: SaaS architecture standards for LeadCRM — multi-tenancy enforcement, subscription plan gating, feature flags, domain module boundaries, domain events, data lifecycle (soft delete), DataContext migration readiness, audit logging, and the SaaS validation gate. Apply to every data operation, module boundary, or architectural decision.
+description: SaaS architecture standards for LeadCRM — multi-tenancy enforcement, CRM environment isolation, domain module boundaries, domain events, data lifecycle (soft delete), DataContext migration readiness, audit logging, and the SaaS validation gate. Apply to every data operation, module boundary, or architectural decision.
 ---
 
 # SaaS Architecture — LeadCRM
 
-> Core tenantId rules, module boundaries, and DataContext migration contract are in `.kiro/steering/architecture.md` (always loaded). This skill adds plan gating, data lifecycle, domain events, and cache isolation — content not covered by always-loaded steering.
+> Core tenantId rules, module boundaries, and DataContext migration contract are in `.kiro/steering/architecture.md` (always loaded). This skill adds environment isolation, data lifecycle, domain events, and cache isolation — content not covered by always-loaded steering.
 
-## Subscription Plan Gating
+## CRM Access and Environments
 
-```typescript
-type PlanTier = 'free' | 'pro' | 'enterprise';
-
-const isFeatureEnabled = (feature: string): boolean => {
-  const plan = tenant?.plan ?? 'free';
-  const features: Record<PlanTier, string[]> = {
-    free:       ['contacts', 'pipeline', 'basic-reports'],
-    pro:        ['contacts', 'pipeline', 'reports', 'campaigns', 'workflows', 'service-orders'],
-    enterprise: ['*'],
-  };
-  return features[plan]?.includes('*') || features[plan]?.includes(feature) || false;
-};
-```
-
-Enforcement: API/service layer = **authoritative**. UI layer = secondary (UX only, not security).
-
-## Plan Limits
-
-```
-contacts:  free 250  | pro 5000  | enterprise unlimited
-users:     free 3    | pro 15    | enterprise unlimited
-workflows: free 3    | pro 25    | enterprise unlimited
-storageGB: free 1    | pro 10    | enterprise unlimited
-```
+Authentication → tenant/workspace readiness → RBAC → User.activeEnvironment → CRM data.
+Sandbox and Live are separate datasets available without purchasing access. Never use Tenant.status as a dataset selector. Preserve tenant and environment scope on queries, mutations, and cache keys.
 
 ## Data Lifecycle (Archive-First)
 
@@ -66,7 +44,7 @@ Key events: `contact.created` · `deal.won` · `deal.lost` · `campaign.sent` ·
 await cache.set('contacts', data);
 
 // CORRECT — always namespace by tenantId
-await cache.set(`tenant:${tenantId}:contacts`, data);
+await cache.set(`tenant:${tenantId}:${activeEnvironment}:contacts`, data);
 ```
 
 ## SaaS Validation Gate
@@ -74,7 +52,7 @@ await cache.set(`tenant:${tenantId}:contacts`, data);
 - [ ] `tenantId` on all records and queries
 - [ ] RBAC enforced — no action without permission check
 - [ ] `addAuditLog()` on all mutations
-- [ ] Plan gating enforced for feature access
+- [ ] User.activeEnvironment scopes CRM data independently of account status
 - [ ] Pagination on all list endpoints
 - [ ] DataContext function signature survives API migration
 - [ ] No cross-tenant access possible through this code path

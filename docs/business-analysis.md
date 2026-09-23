@@ -1,3 +1,5 @@
+> Historical capstone requirements analysis. This is not current implementation guidance. Use docs/authentication.md and docs/crm-environments.md for the active access model; retired SaaS proposals below must not be implemented.
+
 # LeadCRM: Business Analysis & Architectural Blueprint
 *Prepared by Senior SaaS CRM Product Architect & Lead Engineer*
 

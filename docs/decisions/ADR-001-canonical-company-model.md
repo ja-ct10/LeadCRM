@@ -74,7 +74,7 @@ Different seeders populate different tables with the same data — the clearest 
 1. **Different concepts?** No — the same concept (company/account), duplicated.
 2. **Which becomes canonical?** `Account`.
 3. **Which is more deeply integrated?** `Account`, by a wide margin (CRUD module, routes, leads/deals/activities/tasks/invoices/merge/reporting).
-4. **Auth/tenant/billing vs CRM data?** Neither is part of the auth/tenant/subscription boundary. Both are pure CRM business data. Billing uses `Tenant.stripeCustomerId`, unrelated to either.
+4. **Auth/tenant/billing vs CRM data?** Neither is part of the auth/tenant boundary. Both are pure CRM business data. Customer invoice records reference CRM entities independently of account access.
 5. **What must be migrated?** Only `Contact.organizationId` → `Contact.accountId` (repoint contacts from Organization to Account). Everything else already uses Account.
 6. **API/frontend dependencies?** `Account`: `/crm/accounts`, `/crm/companies`, companies module, deals, leads. `Organization`: contacts-v2 module (`Contact.organizationId`), relationships view, `ConvertLeadSchema` (`organizationId`/`organizationName`), several seeders.
 7. **Legacy aliases to preserve temporarily?** Keep the `Deal.organization` / `Activity.organization` relation names (already point to Account — no change). Keep the `/crm/companies` route alias. Temporarily accept `organizationId` as a deprecated **input** alias resolving to `accountId`.

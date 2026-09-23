@@ -44,7 +44,7 @@ Maps the complete journey of a customer from first contact through long-term acc
                                                        │
                                                        ▼
 6. BILLING
-   Invoice created (optionally linked to Subscription)
+   Invoice created
    PaymentMethod selected (saved or ad-hoc PayMongo link)
    PaymentTransaction created
    Invoice: Pending → Paid (PayMongo webhook)
@@ -105,7 +105,7 @@ Maps the complete journey of a customer from first contact through long-term acc
 | Proposal | Pipeline, Stage, Deal, ContactDeal, DealStageHistory, DealAction |
 | Negotiation | Deal, DealAction, Task, Activity, DealStageHistory |
 | Conversion | Deal (Closed Won), DealAction, AuditLog |
-| Billing | Invoice, Subscription, PaymentTransaction, PaymentMethod |
+| Billing | Invoice, PaymentTransaction |
 | Delivery | Pipeline (Implementation), Task, ServiceOrder, Asset |
 | Post-Sales | Pipeline (After-Sales), Activity |
 | Retention | Contact, Campaign, TargetAudience, TargetAudienceCondition |
@@ -136,7 +136,7 @@ Maps the complete journey of a customer from first contact through long-term acc
 | Proposal | `Deal`, `ContactDeal`, `DealStageHistory`, `DealAction`, `AuditLog (crm)` |
 | Negotiation | `Task`, `DealAction`, `Activity`, `DealStageHistory` |
 | Conversion | `Deal.closedAt`, `AuditLog (crm)`, `Notification` |
-| Billing | `Invoice`, `PaymentTransaction`, `Subscription`, `AuditLog (billing)` |
+| Billing | `Invoice`, `PaymentTransaction`, `AuditLog (billing)` |
 | Delivery | `Deal` (Implementation pipeline), `Task`, `ServiceOrder` |
 | Post-Sales | `Deal` (After-Sales pipeline), `Activity` |
 

@@ -68,13 +68,3 @@ export const resendVerificationRateLimiter = rateLimit({
   },
   message: { success: false, error: 'Please wait before requesting another verification email.' },
 });
-
-// Billing mutation rate limit — 10 requests per minute per IP
-// Prevents rapid-fire upgrade/downgrade/seat operations
-export const billingMutationRateLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: isDev ? 10000 : 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, error: 'Too many billing requests — please wait a moment and try again.' },
-});

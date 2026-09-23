@@ -1,5 +1,17 @@
 # Internal CRM deployment update
 
+Deploy the backend and frontend from the same reviewed revision. A successful Vercel frontend deployment does not deploy Render. The Vercel server-only `API_URL` must target that backend's `/api/v1`; keep production mock flags disabled. Use the root workspace lockfile, `render.yaml` build/start commands, and confirm required migrations are applied before accepting traffic. Do not reset or drop historical data.
+
+Before accepting a release, run this read-only check with the intended full Git SHA:
+
+```powershell
+node scripts/verify-deployment.cjs https://lead-crm-frontend-pi.vercel.app <expected-full-git-sha>
+```
+
+The check reads `/api/proxy/health`, so it verifies the backend actually selected by Vercel. A 404 HTML response from `PATCH /api/proxy/auth/environment` with a matched proxy route indicates a missing upstream route; check backend revision and `API_URL` before changing authentication or dataset logic. Current backend unauthenticated environment requests are rejected by authentication, not by a missing route.
+
+Service worker updates bypass the browser HTTP cache and are checked on load and when returning to a visible tab. Version changes purge older LeadCRM asset caches and offer a refresh after saving work. API/RSC responses are never cached by the worker. An already-open application remains its loaded version until refreshed.
+
 Apply `20260919000000_internal_accounts` before deploying the new backend. Public signup, Google account authentication, OTP, subscriptions, pricing, and SaaS billing are retired. Gmail integration credentials remain separate. Follow [current authentication deployment requirements](../authentication.md#deployment). The older rollout notes below are historical.
 
 # Running LeadCRM locally and on Vercel / Render
@@ -84,7 +96,7 @@ Configure these secrets and settings in Render, not in committed files:
   The existing production server requires a valid Brevo configuration.
 - SYSTEM_ADMIN_EMAIL and a strong SYSTEM_ADMIN_PASSWORD for the existing
   startup seeder. Do not use default/demo credentials.
-- Existing Stripe/Gmail/integration settings used by enabled features.
+- Gmail and operational payment settings used by enabled features.
 
 Render provides PORT; the backend reads it. Do not enable DEV_OTP_BYPASS or
 DEMO_MODE in production. The existing server bootstrap handles its account seed;

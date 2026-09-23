@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => {
 vi.mock('@/shared/services/auth.api', () => ({ authApi: mocks }));
 vi.mock('@/shared/services/roles.api', () => ({ rolesApi: { getUserPermissions: mocks.permissions } }));
 vi.mock('@/store/mockData', () => ({ MOCK_USERS: [], MOCK_TENANTS: [] }));
-import { AuthProvider, useAuth } from '../AuthContext';
+import { AuthProvider, useAuth, buildTenantFromApiUser } from '../AuthContext';
 import { clearPageCache, getPageCache, setPageCache, createPageCacheGuard } from '@/shared/cache/page-cache';
 import { environmentSnapshot, endEnvironmentSwitch, setTransportEnvironment } from '@/lib/api/environment-transport';
 let auth: ReturnType<typeof useAuth>;
@@ -71,4 +71,17 @@ it('excludes System Admin from switching', async () => {
   await act(async () => { await auth.switchEnvironment('PRODUCTION'); });
   expect(auth.tenant).toBeNull();
   expect(mocks.changeEnvironment).not.toHaveBeenCalled();
+});
+it('keeps account status separate from the selected dataset for Client Admin', async () => {
+  const admin = { ...user, role: 'Client Admin', tenantStatus: 'SANDBOX' };
+  mocks.me.mockResolvedValue({ data: { user: admin } });
+  mocks.changeEnvironment.mockImplementation(environment => Promise.resolve({ data: { environment } }));
+  await show();
+  expect(buildTenantFromApiUser(admin)).not.toHaveProperty('environment');
+  for (const environment of ['PRODUCTION', 'SANDBOX'] as const) {
+    await act(async () => { await auth.switchEnvironment(environment); });
+    expect(auth.user?.activeEnvironment).toBe(environment);
+    expect(auth.userCan('workflows', 'canCreate')).toBe(true);
+    expect(auth.tenant).not.toHaveProperty('environment');
+  }
 });

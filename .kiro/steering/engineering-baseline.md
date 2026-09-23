@@ -32,7 +32,6 @@ Multi-tenant CRM + Workflow Automation SaaS. Turborepo monorepo with three works
 | Database | PostgreSQL | 16 |
 | Auth (OAuth) | next-auth | v4.24 |
 | Auth (Custom) | JWT in HttpOnly cookie | — |
-| Payments | Stripe | 17.x |
 | Email | Nodemailer + Resend | 7.x / 6.x |
 | Monorepo | Turborepo + npm workspaces | 2.5+ |
 | Package Manager | npm | 11.13 |

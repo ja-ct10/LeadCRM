@@ -164,14 +164,14 @@ Workflow Engine → Contacts Service → Contacts Repository → DB
 
 ## Database (Prisma Schema)
 
-40+ models. Key entities: Tenant, User, RoleDefinition, RolePermission, UserRole, Session, OAuthAccount, Account (Organization), Lead, Customer, Deal, Pipeline, Stage, LeadDeal, CustomerDeal, DealStageHistory, DealAction, Task, Activity, Campaign, Template, TargetAudience, Workflow, WorkflowTriggerRecord, WorkflowExecutionRun, WorkflowExecutionStep, Invoice, Subscription, PaymentMethod, ServiceOrder, Asset, InventoryItem, Notification, AuditLog, PricingPlan, SystemAdmin, EmailDeliveryLog.
+40+ models. Key entities: Tenant, User, RoleDefinition, RolePermission, UserRole, Session, OAuthAccount, Account (Organization), Lead, Customer, Deal, Pipeline, Stage, LeadDeal, CustomerDeal, DealStageHistory, DealAction, Task, Activity, Campaign, Template, TargetAudience, Workflow, WorkflowTriggerRecord, WorkflowExecutionRun, WorkflowExecutionStep, Invoice, PaymentTransaction, ServiceOrder, Asset, InventoryItem, Notification, AuditLog, SystemAdmin, EmailDeliveryLog.
 
 ### Key Schema Facts
 - `Lead` and `Customer` are separate models (not unified "Contact")
 - `Account` = Organization/Company
 - `LeadDeal` / `CustomerDeal` = junction tables for deal associations
 - `Stage` has NO `tenantId` column — scoped only through Pipeline join (known gap)
-- `Subscription` = billing source of truth; `Tenant.plan` is denormalized cache
+- `User.activeEnvironment` selects Sandbox/Live data; `Tenant.status` only describes account state. CRM access uses authentication, workspace readiness, and RBAC.
 - `TargetAudience` has NO junction table — contacts resolved dynamically via conditions
 - `DealStageHistory.timeInPrevStage` computed on insert
 

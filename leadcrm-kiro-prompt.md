@@ -1,3 +1,5 @@
+> Historical project/design record, not current implementation guidance. Retired SaaS access and billing descriptions below must not be implemented. Current authority: `docs/authentication.md`, `docs/crm-environments.md`, and `docs/internal-crm-cleanup.md`.
+
 # LeadCRM — Repository Cleanup & Frontend Modernization
 ## Kiro Implementation Prompt v2.0
 

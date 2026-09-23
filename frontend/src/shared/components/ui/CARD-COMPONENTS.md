@@ -8,7 +8,6 @@ Complete card component library following LeadCRM design system specifications. 
 2. [Stat Card](#stat-card)
 3. [Info Card](#info-card)
 4. [Feature Card](#feature-card)
-5. [Pricing Card](#pricing-card)
 6. [Colored Border Card](#colored-border-card)
 7. [Metric Card](#metric-card)
 8. [Design Tokens](#design-tokens)
@@ -229,63 +228,6 @@ iconBgColor = "bg-pink-50 dark:bg-pink-950/20";
 
 ---
 
-## Pricing Card
-
-Pricing plan display with features list and CTA button.
-
-### Props
-
-```typescript
-interface PricingCardProps {
-  name: string; // Plan name
-  price: string; // Price value
-  period: string; // "/month", "/year", etc.
-  features: string[]; // Feature list
-  highlighted?: boolean; // Makes card stand out
-  badgeText?: string; // Top badge (e.g., "Best Value")
-  onSelect?: () => void; // Selection handler
-}
-```
-
-### Example
-
-```tsx
-<PricingCard
-  name="Professional"
-  price="$79"
-  period="/month"
-  features={[
-    "Unlimited contacts",
-    "Workflow automation",
-    "Batch messaging",
-    "Priority support",
-    "Custom dashboards",
-    "Asset tracking",
-  ]}
-  highlighted
-  badgeText="Best Value"
-  onSelect={() => handleSelectPlan("professional")}
-/>
-```
-
-### Design Features
-
-- Checkmark icons for features
-- Highlighted variant with blue accent
-- Top badge for callouts
-- Consistent CTA button
-- Center-aligned layout
-
-### Use Cases
-
-- Pricing pages
-- Plan comparison
-- Subscription tiers
-- Package offerings
-- Upgrade prompts
-
----
-
 ## Colored Border Card
 
 Feature cards with colored top border accent. Inspired by the grid card design samples.
@@ -411,7 +353,6 @@ All cards follow these design standards:
 
 ```tsx
 p - 6; // Standard card padding
-p - 8; // Large card padding (InfoCard, PricingCard)
 gap - 4; // Standard content gaps
 gap - 6; // Large section gaps
 ```
@@ -494,16 +435,6 @@ text-xs                                    // Small labels
 </div>
 ```
 
-### Pricing Table
-
-```tsx
-<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-  <PricingCard name="Starter" price="$29" period="/month" features={[...]} />
-  <PricingCard name="Pro" price="$79" period="/month" features={[...]} highlighted badgeText="Best Value" />
-  <PricingCard name="Enterprise" price="$199" period="/month" features={[...]} />
-</div>
-```
-
 ### Mixed Layout
 
 ```tsx
@@ -571,7 +502,7 @@ focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
 ### Screen Reader Support
 
 ```tsx
-aria-label="Start free trial"              // Buttons
+aria-label="Open workspace"              // Buttons
 role="button"                               // Clickable cards
 tabIndex={0}                                // Keyboard navigation
 ```
@@ -663,7 +594,6 @@ test("shows trend indicator", () => {
 | Feature list item    | `<FeatureCard variant="horizontal" />` |
 | Benefit grid card    | `<FeatureCard variant="vertical" />`   |
 | Info box             | `<InfoCard />`                         |
-| Pricing tier         | `<PricingCard />`                      |
 
 ---
 

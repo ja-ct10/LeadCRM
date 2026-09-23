@@ -72,7 +72,7 @@ Every create/edit/delete UI element must be guarded. No guard = no render.
 - All user input validated server-side via Zod schema — always
 - URL parameters and query strings validated via DTO
 - File uploads validated: type, size, content
-- Webhook payloads verified via Stripe signature
+- Enabled payment webhooks verify their provider signature before processing customer transactions
 
 ## Secret Management
 
