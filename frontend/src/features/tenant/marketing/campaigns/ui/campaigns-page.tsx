@@ -519,24 +519,6 @@ export default function CampaignsPage() {
           </span>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          {canCreateCampaign && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={() => setShowBuilder(true)}
-                    aria-label="Create Campaign"
-                    className="h-9 w-9 flex items-center justify-center bg-blue-600 text-white rounded-md hover:bg-blue-700 active:scale-95 transition-all shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 cursor-pointer"
-                  >
-                    <Plus size={15} aria-hidden="true" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>Create Campaign</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-        </div>
       </div>
 
       {/* 2. Overview Operational KPI Strip */}
@@ -635,27 +617,13 @@ export default function CampaignsPage() {
         {/* Contextual [+] button — changes with active tab, mobile-primary action */}
         {canCreateCampaign && (
           <TooltipProvider>
-            {activeTab === 'all' && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={() => setShowBuilder(true)}
-                    aria-label="Create Campaign"
-                    className="h-8 w-8 flex items-center justify-center bg-blue-600 text-white rounded-md hover:bg-blue-700 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 cursor-pointer"
-                  >
-                    <Plus size={14} aria-hidden="true" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>Create Campaign</TooltipContent>
-              </Tooltip>
-            )}
             {activeTab === 'email' && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
                     onClick={() => { setNewTemplateType('Email'); setIsTemplateModalOpen(true); }}
                     aria-label="New Email Template"
-                    className="h-8 w-8 flex items-center justify-center bg-blue-600 text-white rounded-md hover:bg-blue-700 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 cursor-pointer"
+                    className="h-8 w-8 flex items-center justify-center bg-blue-600 text-white rounded-md hover:bg-blue-700 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 cursor-pointer md:hidden"
                   >
                     <Plus size={14} aria-hidden="true" />
                   </button>
@@ -669,7 +637,7 @@ export default function CampaignsPage() {
                   <button
                     onClick={() => { setNewTemplateType('SMS'); setIsTemplateModalOpen(true); }}
                     aria-label="New SMS Template"
-                    className="h-8 w-8 flex items-center justify-center bg-blue-600 text-white rounded-md hover:bg-blue-700 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 cursor-pointer"
+                    className="h-8 w-8 flex items-center justify-center bg-blue-600 text-white rounded-md hover:bg-blue-700 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 cursor-pointer md:hidden"
                   >
                     <Plus size={14} aria-hidden="true" />
                   </button>
@@ -893,7 +861,7 @@ export default function CampaignsPage() {
           <div className="flex justify-end mb-4">
             <button 
               onClick={() => { setNewTemplateType('Email'); setIsTemplateModalOpen(true); }}
-              className="hidden sm:flex items-center gap-2 bg-gray-50 dark:bg-white/5 border border-gray-300 dark:border-white/10 text-slate-900 dark:text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+              className="hidden md:flex items-center gap-2 bg-gray-50 dark:bg-white/5 border border-gray-300 dark:border-white/10 text-slate-900 dark:text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
             >
               <Plus size={16} aria-hidden="true" /> New Email Template
             </button>
@@ -949,7 +917,7 @@ export default function CampaignsPage() {
           <div className="flex justify-end mb-4">
             <button 
               onClick={() => { setNewTemplateType('SMS'); setIsTemplateModalOpen(true); }}
-              className="hidden sm:flex items-center gap-2 bg-gray-50 dark:bg-white/5 border border-gray-300 dark:border-white/10 text-slate-900 dark:text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+              className="hidden md:flex items-center gap-2 bg-gray-50 dark:bg-white/5 border border-gray-300 dark:border-white/10 text-slate-900 dark:text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
             >
               <Plus size={16} aria-hidden="true" /> New SMS Template
             </button>
