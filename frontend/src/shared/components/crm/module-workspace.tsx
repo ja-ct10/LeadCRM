@@ -5,7 +5,7 @@ import {
   List, LayoutGrid, Table2, Columns3, Grid3X3,
   TrendingUp, Filter, RefreshCw, Search,
   Settings2, ChevronDown, ChevronLeft, ChevronRight, X, Upload,
-  ListOrdered, Eye, Check, FileUp, UserPlus,
+  ListOrdered, Eye, Check, FileUp, UserPlus, Plus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -282,8 +282,8 @@ export function ModuleWorkspace({
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* ── Header ──────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-        <div>
+      <div className="flex flex-row items-center justify-between gap-3 mb-4">
+        <div className="min-w-0 flex-1">
           <h1 className="text-[28px] font-extrabold text-[#0F172A] dark:text-white tracking-tight leading-tight">
             {title}
           </h1>
@@ -293,7 +293,7 @@ export function ModuleWorkspace({
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {canCreate && (
             <CreateActionDropdown
               primaryActionLabel={primaryActionLabel}
@@ -334,14 +334,14 @@ export function ModuleWorkspace({
       {/* Control order: search → filter toggle → sort dropdown → page-size selector → pagination nav (Req 8.1) */}
       <div className="flex flex-wrap items-center gap-2 mb-3" role="toolbar" aria-label="Module controls">
         {/* 1. Search field */}
-        <div className="relative">
+        <div className="relative flex-1 min-w-0 sm:flex-none">
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => onSearch?.(e.target.value)}
             placeholder={searchPlaceholder}
             aria-label={searchPlaceholder}
-            className="h-8 w-48 lg:w-56 pl-8 pr-3 text-[12px] rounded-lg border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0F172A] dark:text-slate-200 placeholder:text-[#5A6B85] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] transition-all"
+            className="h-8 w-full sm:w-48 lg:w-56 pl-8 pr-3 text-[12px] rounded-lg border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0F172A] dark:text-slate-200 placeholder:text-[#5A6B85] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] transition-all"
           />
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#5A6B85]" aria-hidden="true" />
         </div>
@@ -1131,23 +1131,46 @@ function CreateActionDropdown({ primaryActionLabel, onPrimaryAction, onImport }:
   // If no import action, just render the primary button directly (no dropdown)
   if (!onImport) {
     return (
-      <button
-        onClick={onPrimaryAction}
-        className="inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-semibold text-white bg-[#2563EB] hover:bg-[#1D4ED8] rounded-lg transition-colors shadow-sm"
-      >
-        <span className="text-base leading-none">+</span>
-        {primaryActionLabel}
-      </button>
+      <>
+        {/* Mobile: compact icon-only button (hidden at sm+) */}
+        <button
+          onClick={onPrimaryAction}
+          aria-label={primaryActionLabel}
+          className="sm:hidden inline-flex items-center justify-center h-9 w-9 shrink-0 text-white bg-[#2563EB] hover:bg-[#1D4ED8] rounded-lg transition-colors shadow-sm"
+        >
+          <Plus size={16} />
+        </button>
+        {/* Desktop: full labeled button (hidden below sm) */}
+        <button
+          onClick={onPrimaryAction}
+          className="hidden sm:inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-semibold text-white bg-[#2563EB] hover:bg-[#1D4ED8] rounded-lg transition-colors shadow-sm"
+        >
+          <span className="text-base leading-none">+</span>
+          {primaryActionLabel}
+        </button>
+      </>
     );
   }
 
   return (
     <div ref={dropdownRef} className="relative">
+      {/* Mobile: compact icon-only [+] button (hidden at sm+) */}
       <button
         onClick={() => setIsOpen(!isOpen)}
         aria-expanded={isOpen}
         aria-haspopup="true"
-        className="inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-semibold text-white bg-[#2563EB] hover:bg-[#1D4ED8] rounded-lg transition-colors shadow-sm"
+        aria-label={primaryActionLabel}
+        className="sm:hidden inline-flex items-center justify-center h-9 w-9 shrink-0 text-white bg-[#2563EB] hover:bg-[#1D4ED8] rounded-lg transition-colors shadow-sm"
+      >
+        <Plus size={16} />
+      </button>
+
+      {/* Desktop: full labeled dropdown button (hidden below sm) */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        aria-expanded={isOpen}
+        aria-haspopup="true"
+        className="hidden sm:inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-semibold text-white bg-[#2563EB] hover:bg-[#1D4ED8] rounded-lg transition-colors shadow-sm"
       >
         <span className="text-base leading-none">+</span>
         {primaryActionLabel}

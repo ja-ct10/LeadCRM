@@ -84,9 +84,9 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
   const subPageName = isImportPage ? 'Import' : null;
 
   return (
-    <header className="h-[52px] bg-[var(--surface)] border-b border-[var(--border)] flex items-center justify-between px-4 lg:px-5 shrink-0 sticky top-0 z-40 transition-colors duration-200">
+    <header className="h-[52px] bg-[var(--surface)] border-b border-[var(--border)] flex items-center justify-between px-2 sm:px-4 lg:px-5 shrink-0 sticky top-0 z-40 transition-colors duration-200">
       {/* Left: Mobile hamburger + Mobile search + Breadcrumb */}
-      <div className="flex items-center gap-1 flex-1 min-w-0">
+      <div className="flex items-center gap-0.5 sm:gap-1 flex-1 min-w-0">
         <button
           className="lg:hidden text-[var(--text-tertiary)] hover:text-[var(--text-primary)] p-1.5 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-colors"
           onClick={onOpenSidebar}
@@ -140,13 +140,13 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
       </div>
 
       {/* Right: Actions */}
-      <div className="flex items-center gap-1.5 flex-none md:flex-1 justify-end">
+      <div className="flex items-center gap-0.5 sm:gap-1.5 flex-none md:flex-1 justify-end">
         {user?.role !== 'System Admin' && <EnvironmentSwitcher />}
         {/* Inbox (Gmail) */}
         <button
           onClick={onOpenInbox}
           className={cn(
-            'relative w-8 h-8 min-w-[44px] min-h-[44px] rounded-lg flex items-center justify-center transition-colors',
+            'relative w-8 h-8 sm:min-w-[44px] sm:min-h-[44px] rounded-lg flex items-center justify-center transition-colors',
             currentPath === 'inbox'
               ? 'bg-[#3B82F6]/10 text-[#3B82F6]'
               : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)]',
@@ -167,7 +167,7 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
           ref={notificationButtonRef}
           onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
           className={cn(
-            'relative w-8 h-8 min-w-[44px] min-h-[44px] rounded-lg flex items-center justify-center transition-colors',
+            'relative w-8 h-8 sm:min-w-[44px] sm:min-h-[44px] rounded-lg flex items-center justify-center transition-colors',
             isNotificationsOpen
               ? 'bg-[#3B82F6]/10 text-[#3B82F6]'
               : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)]',

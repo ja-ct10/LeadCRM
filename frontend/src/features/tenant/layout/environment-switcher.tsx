@@ -42,7 +42,7 @@ export function EnvironmentSwitcher() {
   return <>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button ref={trigger} onFocus={event => { trigger.current = event.currentTarget; }} variant="outline" size="sm" disabled={isSwitchingEnvironment} aria-label={`Environment: ${active === 'PRODUCTION' ? 'Live' : 'Sandbox'}`}>
+        <Button ref={trigger} onFocus={event => { trigger.current = event.currentTarget; }} variant="outline" size="sm" disabled={isSwitchingEnvironment} aria-label={`Environment: ${active === 'PRODUCTION' ? 'Live' : 'Sandbox'}`} className="px-2 sm:px-3 gap-1 sm:gap-1.5 text-xs">
           {isSwitchingEnvironment ? <Loader2 size={14} className="animate-spin" /> : <span className={`h-2 w-2 rounded-full ${active === 'PRODUCTION' ? 'bg-emerald-500' : 'bg-amber-500'}`} />}
           {isSwitchingEnvironment ? 'Switching...' : active === 'PRODUCTION' ? 'Live' : 'Sandbox'}
           <ChevronDown size={14} />
