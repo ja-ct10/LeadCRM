@@ -6,7 +6,7 @@ import prisma from '../../../config/database.config';
 import { paginate } from '../../../shared/helpers/pagination';
 
 /**
- * Process a contact import: validate each row, create valid contacts in the Customer table, record results.
+ * Process a contact import: validate each row, create valid contacts in the Contact table, record results.
  */
 export async function processImport(tenantId: string, userId: string, dto: CreateContactImportDto) {
   const importRecord = await repo.createImport(tenantId, userId, { fileName: dto.fileName, totalRecords: dto.rows.length });

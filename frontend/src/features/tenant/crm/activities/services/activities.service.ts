@@ -16,6 +16,7 @@ export interface ActivityRecord {
   description?: string;
   metadata?:   Record<string, unknown>;
   leadId?:     string | null;
+  contactId?:  string | null;
   dealId?:     string | null;
   accountId?:  string | null;
   taskId?:     string | null;
@@ -36,6 +37,7 @@ export interface ActivityQueryParams {
   limit?:       number;
   /** Filter to activities linked to a specific lead */
   leadId?:      string;
+  contactId?:   string;
   /** Filter to activities linked to a specific deal */
   dealId?:      string;
   /** Filter to activities linked to a specific account */
@@ -60,6 +62,7 @@ export const activitiesService = {
     if (params?.page)        query.set('page',        String(params.page));
     if (params?.limit)       query.set('limit',       String(params.limit));
     if (params?.leadId)      query.set('leadId',      params.leadId);
+    if (params?.contactId)   query.set('contactId',   params.contactId);
     if (params?.dealId)      query.set('dealId',      params.dealId);
     if (params?.accountId)   query.set('accountId',   params.accountId);
     if (params?.taskId)      query.set('taskId',      params.taskId);

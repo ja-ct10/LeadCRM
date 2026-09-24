@@ -103,14 +103,14 @@ export async function getContactRelationships(id: string, tenantId: string, limi
     }),
     // Recent activities
     prisma.activity.findMany({
-      where: { customerId: id, tenantId },
+      where: { contactId: id, tenantId },
       take: limit,
       orderBy: { createdAt: 'desc' },
       select: { id: true, type: true, title: true, createdAt: true },
     }),
     // Tasks
     prisma.task.findMany({
-      where: { customerId: id, tenantId, isArchived: false },
+      where: { contactId: id, tenantId, isArchived: false },
       take: limit,
       orderBy: { createdAt: 'desc' },
       select: { id: true, title: true, status: true, priority: true, dueDate: true },

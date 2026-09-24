@@ -236,7 +236,7 @@ describe('Feature: deal-linkage-unified-crud, Property 6: contactIds extraction 
   /**
    * **Validates: Requirements 3.3, 9.6**
    *
-   * For any backend deal response with a contactDeals or customerDeals array of N entries
+   * For any backend deal response with a contactDeals array of N entries
    * (each containing contact.id or customer.id), toFrontendDeal SHALL produce an output
    * where contactIds contains exactly those N IDs.
    */
@@ -278,38 +278,9 @@ describe('Feature: deal-linkage-unified-crud, Property 6: contactIds extraction 
     );
   });
 
-  it('should extract contactIds from customerDeals junction as fallback', () => {
-    fc.assert(
-      fc.property(
-        fc.array(
-          fc.record({
-            customer: fc.record({
-              id: fc.uuid(),
-              firstName: fc.string({ minLength: 1, maxLength: 20 }),
-              lastName: fc.string({ minLength: 1, maxLength: 20 }),
-              email: fc.emailAddress(),
-            }),
-          }),
-          { minLength: 1, maxLength: 5 }
-        ),
-        (customerDeals) => {
-          const backendDeal = {
-            id: 'deal-1',
-            tenantId: 'tenant-1',
-            pipelineId: 'pipeline-1',
-            stageId: 'stage-1',
-            title: 'Test Deal',
-            customerDeals, // No contactDeals — should fall back to customerDeals
-          };
-
-          const result = toFrontendDeal(backendDeal);
-          const expectedIds = customerDeals.map((cd) => cd.customer.id);
-
-          expect(result.contactIds).toEqual(expectedIds);
-        }
-      ),
-      { numRuns: 100 }
-    );
+  it('extracts contact IDs from ContactDeal foreign keys without expanded contacts', () => {
+    const result = toFrontendDeal({ id: 'deal-1', title: 'Test Deal', contactDeals: [{ contactId: 'contact-1' }] });
+    expect(result.contactIds).toEqual(['contact-1']);
   });
 });
 

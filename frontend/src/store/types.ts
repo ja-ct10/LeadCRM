@@ -14,6 +14,5 @@ export type {
   Task, TaskStatus, TaskAssignmentRecord,
   Invoice,
   Lead, CreateLeadRequest, UpdateLeadRequest,
-  Customer,
 } from './types/index';
 

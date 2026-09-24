@@ -161,13 +161,13 @@ export function toFrontendDeal(backendDeal: any): any {
     }
   }
 
-  // Derive contact person and contact IDs — handle both contactDeals and customerDeals naming
+  // Derive contact person and contact IDs — use the ContactDeal junction
   let contactPerson = '';
   let contactIds: string[] = [];
 
   if (backendDeal.contactDeals && Array.isArray(backendDeal.contactDeals)) {
     contactIds = backendDeal.contactDeals
-      .map((cd: any) => cd?.contact?.id || cd?.customerId)
+      .map((cd: any) => cd?.contact?.id || cd?.contactId)
       .filter(Boolean);
 
     const firstContact = backendDeal.contactDeals[0]?.contact;
@@ -175,17 +175,6 @@ export function toFrontendDeal(backendDeal: any): any {
       contactPerson = [firstContact.firstName, firstContact.lastName]
         .filter(Boolean)
         .join(' ') || firstContact.email || '';
-    }
-  } else if (backendDeal.customerDeals && Array.isArray(backendDeal.customerDeals)) {
-    contactIds = backendDeal.customerDeals
-      .map((cd: any) => cd?.customer?.id || cd?.customerId)
-      .filter(Boolean);
-
-    const firstCustomer = backendDeal.customerDeals[0]?.customer;
-    if (firstCustomer) {
-      contactPerson = [firstCustomer.firstName, firstCustomer.lastName]
-        .filter(Boolean)
-        .join(' ') || firstCustomer.email || '';
     }
   }
 

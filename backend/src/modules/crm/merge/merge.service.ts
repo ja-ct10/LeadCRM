@@ -213,7 +213,7 @@ async function executeContactMerge(
         tenantId, createdById: userId,
         type: 'merge',
         title: `Merged with contact "${secondary.firstName} ${secondary.lastName}"`,
-        customerId: primaryId,
+        contactId: primaryId,
       } as never,
     });
 

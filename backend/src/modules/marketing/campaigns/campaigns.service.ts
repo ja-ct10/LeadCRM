@@ -77,8 +77,8 @@ async function prepareCampaign(id: string, tenantId: string) {
     const campaign = await tx.campaign.findFirstOrThrow({ where: { id, ...scope } });
     if (campaign.type !== 'EMAIL') throw new AppError('Send Now currently supports EMAIL campaigns only.', 400);
     CampaignSendSchema.parse({ name: campaign.name, type: campaign.type, subject: campaign.subject || '', body: campaign.body || '', targetAudienceId: campaign.targetAudienceId, audienceSource: campaign.audienceSource });
-    const definition = await audienceDefinition(tenantId, campaign.targetAudienceId, campaign.audienceSource);
-    const resolved = await resolveAudience(tenantId, definition);
+    const definition = await audienceDefinition(tenantId, campaign.targetAudienceId, campaign.audienceSource, tx);
+    const resolved = await resolveAudience(tenantId, definition, tx);
     const eligible = resolved.records.filter(r => !r.reason);
     if (!eligible.length) throw new AppError('No eligible recipients. Check audience exclusions and the Sandbox email allowlist.', 400);
     const limit = Number(process.env.BREVO_DAILY_EMAIL_LIMIT || 300);
@@ -90,10 +90,10 @@ async function prepareCampaign(id: string, tenantId: string) {
     const sender = { sender_name: process.env.BREVO_FROM_NAME || 'LeadCRM', sender_email: process.env.BREVO_FROM_EMAIL! };
     const sends = eligible.map(r => ({ ...r, id: randomUUID(), logId: randomUUID(), ...renderCampaignMessage(campaign.subject!, campaign.body!, { ...r.personalization, ...sender }) }));
     await tx.campaignContact.createMany({ data: [
-      ...sends.map(r => ({ id: r.id, ...scope, campaignId: id, leadId: r.leadId, customerId: r.customerId, email: r.email, personalization: r.personalization, status: 'pending' })),
-      ...resolved.records.filter(r => r.reason).map(r => ({ ...scope, campaignId: id, leadId: r.leadId, customerId: r.customerId, email: r.email, status: 'excluded', failureReason: r.reason })),
+      ...sends.map(r => ({ id: r.id, ...scope, campaignId: id, leadId: r.leadId, contactId: r.contactId, email: r.email, personalization: r.personalization, status: 'pending' })),
+      ...resolved.records.filter(r => r.reason).map(r => ({ ...scope, campaignId: id, leadId: r.leadId, contactId: r.contactId, email: r.email, status: 'excluded', failureReason: r.reason })),
     ] });
-    await tx.emailDeliveryLog.createMany({ data: sends.map(r => ({ id: r.logId, ...scope, campaignId: id, leadId: r.leadId, customerId: r.customerId, fromEmail: sender.sender_email, toEmail: r.email!, subject: r.subject, status: 'pending' })) });
+    await tx.emailDeliveryLog.createMany({ data: sends.map(r => ({ id: r.logId, ...scope, campaignId: id, leadId: r.leadId, contactId: r.contactId, fromEmail: sender.sender_email, toEmail: r.email!, subject: r.subject, status: 'pending' })) });
     await tx.campaign.update({ where: { id, ...scope }, data: { recipientCount: eligible.length } });
     return sends;
   }, { timeout: 30000 });

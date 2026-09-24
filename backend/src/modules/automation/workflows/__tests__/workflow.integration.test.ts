@@ -52,7 +52,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
       required = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Qualified', order: 3, requiredFields: ['expectedCloseDate'] } });
       lead = await prisma.lead.create({ data: { tenantId, firstName: 'Ada', lastName: 'Lead', email: 'recipient@example.test', assignedUserId: actor.id, productInterest: [] } });
       contact = await prisma.contact.create({ data: { tenantId, firstName: 'Grace', lastName: 'Client', assignedUserId: actor.id, activeProducts: [], productInterests: [] } });
-      deal = await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: stage.id, leadId: lead.id, customerId: contact.id,
+      deal = await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: stage.id, leadId: lead.id, contactId: contact.id,
         title: 'Acceptance deal', value: 50000, assignedUserId: actor.id, tags: [], productInterests: [] } });
       template = await prisma.template.create({ data: { tenantId, name: 'Welcome', type: 'Email', subject: 'Hello {{first_name}}', content: '<p>Welcome {{first_name}}</p>' } });
     });
@@ -88,7 +88,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     expect((await runs(workflow.id))[0].status).toBe('completed');
     const updated = await prisma.contact.findUniqueOrThrow({ where: { id: contact.id } });
     expect(updated.status).toBe(contact.status); expect(updated.notes).toBe('Client follow-up'); expect(updated.assignedUserId).toBe(owner.id);
-    const task = await prisma.task.findFirstOrThrow({ where: { customerId: contact.id } });
+    const task = await prisma.task.findFirstOrThrow({ where: { contactId: contact.id } });
     expect(task.leadId).toBeNull();
     expect(task.priority).toBe('Medium');
     expect(task.dueDate!.getTime() - task.createdAt.getTime()).toBeGreaterThan(2 * 86400000);

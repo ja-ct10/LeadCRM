@@ -9,7 +9,6 @@ export const CreateActivitySchema = z.object({
   metadata:       z.any().optional(),
   contactId:      id().optional(),
   leadId:         id().optional(),
-  customerId:     id().optional(),
   dealId:         id().optional(),
   accountId:      id().optional(),
   taskId:         id().optional(),

@@ -11,7 +11,7 @@ export const CreateTaskSchema = z.object({
   reminderAt:     z.string().datetime().optional(),
   dealId:         id().optional(),
   leadId:         id().optional(),
-  customerId:     id().optional(),
+  contactId:     id().optional(),
   assignedUserId: id(),
 });
 

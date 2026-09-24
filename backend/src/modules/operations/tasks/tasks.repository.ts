@@ -14,6 +14,7 @@ export async function findAllTasks(tenantId: string, query: Record<string, unkno
     ...(query.assignedUserId ? { assignedUserId: String(query.assignedUserId) } : {}),
     ...(query.dealId         ? { dealId:         String(query.dealId) }         : {}),
     ...(query.leadId         ? { leadId:         String(query.leadId) }         : {}),
+    ...(query.contactId      ? { contactId:      String(query.contactId) }      : {}),
     ...(query.overdue === 'true'
       ? { dueDate: { lt: new Date() }, status: { notIn: ['completed', 'cancelled'] } }
       : {}),

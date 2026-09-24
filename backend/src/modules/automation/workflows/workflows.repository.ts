@@ -67,5 +67,5 @@ export function findActor(id: string, tenantId: string) {
 export function recordRunActivity(tenantId: string, actorId: string, entity: WorkflowEntity, entityId: string, workflowId: string, runId: string, name: string, status: string) {
   return prisma.activity.create({ data: { tenantId, createdById: actorId, type: 'workflow', title: `Workflow: ${name}`,
     description: `Run ${status}.`, metadata: { workflowId, runId, status },
-    ...(entity === 'lead' ? { leadId: entityId } : entity === 'contact' ? { customerId: entityId } : { dealId: entityId }) } });
+    ...(entity === 'lead' ? { leadId: entityId } : entity === 'contact' ? { contactId: entityId } : { dealId: entityId }) } });
 }

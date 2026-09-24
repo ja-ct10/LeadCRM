@@ -371,13 +371,13 @@ model User {
   createdLeads       Lead[]             @relation("CreatedLeads")
   updatedLeads       Lead[]             @relation("UpdatedLeads")
   convertedLeads     Lead[]             @relation("ConvertedLeads")
-  assignedCustomers  Contact[]          @relation("AssignedCustomers")
+  assignedContacts  Contact[]          @relation("AssignedContacts")
   ownedContacts      Contact[]          @relation("OwnedContacts")
 
   assignedDeals        Deal[]             @relation("AssignedDeals")
   ownedDeals           Deal[]             @relation("OwnedDeals")
   leadDealsAdded       LeadDeal[]
-  customerDealsAdded   ContactDeal[]
+  contactDealsAdded   ContactDeal[]
   dealStageHistories   DealStageHistory[]
   dealActionsPerformed DealAction[]
   assignedTasks        Task[]             @relation("AssignedTasks")
@@ -801,7 +801,7 @@ model Contact {
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id])
   account      Account?      @relation(fields: [accountId], references: [id])
-  assignedUser User?         @relation("AssignedCustomers", fields: [assignedUserId], references: [id])
+  assignedUser User?         @relation("AssignedContacts", fields: [assignedUserId], references: [id])
   owner        User?         @relation("OwnedContacts", fields: [ownerId], references: [id])
 
   convertedFromLeads Lead[]             @relation("ConvertedFromLead")
@@ -885,7 +885,7 @@ model Deal {
   pipelineId        String
   stageId           String
   leadId            String?
-  customerId        String? // legacy singular FK G�� use ContactDeal for new multi-contact deals
+  contactId        String? // legacy singular FK G�� use ContactDeal for new multi-contact deals
   accountId         String?
   assignedUserId    String?
   ownerId           String? // original deal owner (immutable)
@@ -914,7 +914,7 @@ model Deal {
   pipeline       Pipeline           @relation(fields: [pipelineId], references: [id])
   stage          Stage              @relation(fields: [stageId], references: [id])
   lead           Lead?              @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  contact        Contact?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  contact        Contact?           @relation(fields: [contactId], references: [id], onDelete: SetNull)
   organization   Account?           @relation(fields: [accountId], references: [id])
   assignedUser   User?              @relation("AssignedDeals", fields: [assignedUserId], references: [id])
   owner          User?              @relation("OwnedDeals", fields: [ownerId], references: [id])
@@ -1042,7 +1042,7 @@ model Task {
   tenantId       String
   dealId         String?
   leadId         String?
-  customerId     String?
+  contactId     String?
   accountId      String?
   assignedUserId String
   assignedById   String?
@@ -1061,7 +1061,7 @@ model Task {
   tenant       Tenant     @relation(fields: [tenantId], references: [id])
   deal         Deal?      @relation(fields: [dealId], references: [id], onDelete: SetNull)
   lead         Lead?      @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  contact      Contact?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  contact      Contact?   @relation(fields: [contactId], references: [id], onDelete: SetNull)
   assignedUser User       @relation("AssignedTasks", fields: [assignedUserId], references: [id])
   assignedBy   User?      @relation("TaskAssignedBy", fields: [assignedById], references: [id])
   completedBy  User?      @relation("TaskCompletedBy", fields: [completedById], references: [id])
@@ -1087,7 +1087,7 @@ model Activity {
   metadata    Json?
   // Exactly one of these is non-null
   leadId      String?
-  customerId  String?
+  contactId  String?
   dealId      String?
   accountId   String?
   taskId      String?
@@ -1097,14 +1097,14 @@ model Activity {
   tenant       Tenant   @relation(fields: [tenantId], references: [id])
   createdBy    User     @relation(fields: [createdById], references: [id])
   lead         Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  contact      Contact? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  contact      Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
   deal         Deal?    @relation(fields: [dealId], references: [id], onDelete: Cascade)
   organization Account? @relation(fields: [accountId], references: [id], onDelete: Cascade)
   task         Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
   invoice      Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, leadId, createdAt])
-  @@index([tenantId, customerId, createdAt])
+  @@index([tenantId, contactId, createdAt])
   @@index([tenantId, dealId, createdAt])
   @@index([tenantId, createdAt])
   @@index([tenantId, environment])
@@ -1294,7 +1294,7 @@ model CampaignContact {
   tenantId     String
   campaignId   String
   leadId       String?
-  customerId   String?
+  contactId   String?
   status       String    @default("pending") // pending|sent|delivered|opened|clicked|bounced|unsubscribed
   sentAt       DateTime?
   deliveredAt  DateTime?
@@ -1306,10 +1306,10 @@ model CampaignContact {
   tenant   Tenant   @relation(fields: [tenantId], references: [id])
   campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   lead     Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  contact  Contact? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  contact  Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
 
   @@unique([campaignId, leadId])
-  @@unique([campaignId, customerId])
+  @@unique([campaignId, contactId])
   @@index([campaignId, tenantId, status])
   @@index([tenantId, environment])
 }
@@ -1436,7 +1436,7 @@ model Invoice {
   subscriptionId  String? @ignore // link to Subscription for recurring billing invoices
   dealId          String?
   leadId          String?
-  customerId      String?
+  contactId      String?
   accountId       String?
   invoiceNumber   String // INV-2024-001 (tenant-scoped auto-generated)
   plan            String?
@@ -1461,7 +1461,7 @@ model Invoice {
   subscription Subscription?        @relation(fields: [subscriptionId], references: [id], onDelete: SetNull) @ignore
   deal         Deal?                @relation(fields: [dealId], references: [id], onDelete: SetNull)
   lead         Lead?                @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  contact      Contact?             @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  contact      Contact?             @relation(fields: [contactId], references: [id], onDelete: SetNull)
   transactions PaymentTransaction[]
   activities   Activity[]
 
@@ -1553,7 +1553,7 @@ model EmailDeliveryLog {
   tenantId       String
   campaignId     String?
   leadId         String?
-  customerId     String?
+  contactId     String?
   fromEmail      String
   toEmail        String
   subject        String
@@ -1570,11 +1570,11 @@ model EmailDeliveryLog {
   tenant     Tenant       @relation(fields: [tenantId], references: [id])
   campaign   Campaign?    @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   lead       Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  contact    Contact?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  contact    Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
   EmailEvent EmailEvent[]
 
   @@index([tenantId, leadId])
-  @@index([tenantId, customerId])
+  @@index([tenantId, contactId])
   @@index([tenantId, campaignId])
   @@index([gmailMessageId])
   @@index([tenantId, environment])
@@ -1676,7 +1676,7 @@ model SMSQueue {
   tenantId     String
   campaignId   String?
   leadId       String?
-  customerId   String?
+  contactId   String?
   toNumber     String
   message      String
   status       String    @default("pending") // pending|processing|sent|delivered|failed
@@ -1690,7 +1690,7 @@ model SMSQueue {
   tenant   Tenant    @relation(fields: [tenantId], references: [id])
   campaign Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   lead     Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  contact  Contact?  @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  contact  Contact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, status])
   @@index([tenantId, scheduledFor])

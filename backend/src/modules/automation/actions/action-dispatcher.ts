@@ -27,7 +27,7 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
         priority: (config.priority || 'Medium') as 'Low' | 'Medium' | 'High', status: 'pending',
         dueDate: new Date(Date.now() + (typeof config.dueDaysFromNow === 'number' ? config.dueDaysFromNow : 3) * 86400000).toISOString(),
         assignedUserId: actionUser(config, 'assignedUserId', entity, context),
-        ...(entity === 'lead' ? { leadId: entityId } : entity === 'contact' ? { customerId: entityId } : { dealId: entityId }) });
+        ...(entity === 'lead' ? { leadId: entityId } : entity === 'contact' ? { contactId: entityId } : { dealId: entityId }) });
       return { success: true, output: { taskId: task.id } };
     }
     if (action.type === 'create_notification') {
@@ -50,7 +50,7 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
       await updateClientProfile(entityId, tenantId, update, actorId);
     }
     await createActivity(tenantId, actorId, { type: 'workflow', title: action.type === 'assign_owner' ? 'Workflow assigned record owner' : 'Workflow updated record notes',
-      ...(entity === 'lead' ? { leadId: entityId } : entity === 'contact' ? { customerId: entityId } : { dealId: entityId }) });
+      ...(entity === 'lead' ? { leadId: entityId } : entity === 'contact' ? { contactId: entityId } : { dealId: entityId }) });
     return { success: true, output: { entityId, updatedFields: Object.keys(update) } };
   } catch (error) { return { success: false, error: safeWorkflowError(error) }; }
 }
@@ -68,7 +68,7 @@ async function deliverEmail(action: WorkflowAction, context: Record<string, unkn
   const recipient = String(context[`${entity}.email`]);
   const subject = render(template.subject!, context, entity);
   const log = await repo.createDelivery({ tenantId, fromEmail: sender.email, toEmail: recipient, subject,
-    ...(entity === 'lead' ? { leadId: String(context['lead.id']) } : { customerId: String(context['contact.id']) }) });
+    ...(entity === 'lead' ? { leadId: String(context['lead.id']) } : { contactId: String(context['contact.id']) }) });
   let sent: Awaited<ReturnType<typeof sendEmail>>;
   try {
     sent = await sendEmail(tenantId, senderId, recipient, subject, render(template.content, context, entity));

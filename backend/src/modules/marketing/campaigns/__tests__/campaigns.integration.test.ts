@@ -1,6 +1,15 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
+// A send must resolve its audience on the transaction's existing connection.
+vi.hoisted(() => {
+  const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
+  if (['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_campaign_test_\d+$/.test(url.pathname)) {
+    url.searchParams.set('connection_limit', '1');
+    url.searchParams.set('pool_timeout', '2');
+    process.env.DATABASE_URL = url.toString();
+  }
+});
 vi.mock('../../../../shared/services/email.service', async importOriginal => ({ ...await importOriginal<object>(), sendMail: vi.fn() }));
 import { sendMail } from '../../../../shared/services/email.service';
 import prisma from '../../../../config/database.config';
@@ -62,6 +71,9 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
       expect(vi.mocked(sendMail).mock.calls.map(([m]) => m.subject).sort()).toEqual(['Hello Juan', 'Hello Maria']);
       expect(await prisma.campaignContact.count({ where: { campaignId: campaign.id, status: 'sent', messageId: { not: null } } })).toBe(2);
       expect(await prisma.emailDeliveryLog.count({ where: { campaignId: campaign.id, brevoMessageId: { not: null } } })).toBe(2);
+      const recipients = await prisma.campaignContact.findMany({ where: { campaignId: campaign.id } });
+      expect(recipients.find(r => r.email === 'juan.customer@example.com')).toMatchObject({ leadId: expect.any(String), contactId: null });
+      expect(recipients.find(r => r.email === 'maria.customer@example.com')).toMatchObject({ leadId: null, contactId: expect.any(String) });
     });
     const reloaded = await request(`/marketing/campaigns/${campaign.id}`);
     expect(reloaded.status).toBe(200); expect(reloaded.body.data.status).toBe('SENT'); expect(reloaded.body.data.deliveredCount).toBe(0);

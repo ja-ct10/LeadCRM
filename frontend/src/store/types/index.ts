@@ -28,5 +28,4 @@ export type {
   Invoice,
 } from './shared.types';
 export type { Lead, CreateLeadRequest, UpdateLeadRequest } from './lead.types';
-export type { Customer } from './customer.types';
 

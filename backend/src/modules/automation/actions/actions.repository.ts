@@ -11,7 +11,7 @@ export function findStage(id: string, tenantId: string) {
 export function findSender(id: string, tenantId: string) {
   return prisma.emailAccount.findFirst({ where: { userId: id, tenantId, isActive: true, provider: 'gmail' }, select: { email: true } });
 }
-export function createDelivery(data: { tenantId: string; fromEmail: string; toEmail: string; subject: string; leadId?: string; customerId?: string }) {
+export function createDelivery(data: { tenantId: string; fromEmail: string; toEmail: string; subject: string; leadId?: string; contactId?: string }) {
   return prisma.emailDeliveryLog.create({ data: { ...data, status: 'pending' } });
 }
 export function finishDelivery(id: string, tenantId: string, data: { status: string; gmailMessageId?: string; gmailThreadId?: string; sentAt?: Date; errorMessage?: string }) {

@@ -22,8 +22,7 @@ export function useRecordActivities(module: ActivityModule, id: string | undefin
     params: { recordModule: module, id },
     disabled: USE_MOCK_DATA || !enabled || !id || !canViewActivities || providedActivities !== undefined,
     fetchFn: async signal => {
-      // The activity list does not support customerId. The existing contact
-      // relationships endpoint safely scopes its recent history to this contact.
+      // The relationships endpoint scopes recent history to this contact.
       if (module === 'contacts') {
         const response = await apiClient.get<{ data: { activities: TimelineActivity[] } }>(`/crm/contacts/${encodeURIComponent(id!)}/relationships?limit=50`, { signal });
         return response.data.activities;

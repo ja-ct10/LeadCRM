@@ -21,11 +21,11 @@ export async function countLeadRelationships(id: string, tenantId: string): Prom
  */
 export async function countContactRelationships(id: string, tenantId: string): Promise<RelationshipCounts> {
   const [activities, tasks, deals, campaigns, invoices] = await Promise.all([
-    prisma.activity.count({ where: { customerId: id, tenantId } }),
-    prisma.task.count({ where: { customerId: id, tenantId } }),
+    prisma.activity.count({ where: { contactId: id, tenantId } }),
+    prisma.task.count({ where: { contactId: id, tenantId } }),
     prisma.contactDeal.count({ where: { contactId: id, tenantId } }),
-    prisma.campaignContact.count({ where: { customerId: id, tenantId } }),
-    prisma.invoice.count({ where: { customerId: id, tenantId } }),
+    prisma.campaignContact.count({ where: { contactId: id, tenantId } }),
+    prisma.invoice.count({ where: { contactId: id, tenantId } }),
   ]);
   return { activities, tasks, deals, campaigns, invoices };
 }
@@ -136,14 +136,14 @@ export async function reassignContactRelationships(
 ): Promise<RelationshipCounts> {
   // Activities
   const activities = await tx.activity.updateMany({
-    where: { customerId: secondaryId, tenantId },
-    data: { customerId: primaryId },
+    where: { contactId: secondaryId, tenantId },
+    data: { contactId: primaryId },
   });
 
   // Tasks
   const tasks = await tx.task.updateMany({
-    where: { customerId: secondaryId, tenantId },
-    data: { customerId: primaryId },
+    where: { contactId: secondaryId, tenantId },
+    data: { contactId: primaryId },
   });
 
   // ContactDeal junctions — handle uniqueness conflicts
@@ -171,28 +171,28 @@ export async function reassignContactRelationships(
     }
   }
 
-  // Direct Deal.customerId references
+  // Direct Deal.contactId references
   await tx.deal.updateMany({
-    where: { customerId: secondaryId, tenantId },
-    data: { customerId: primaryId },
+    where: { contactId: secondaryId, tenantId },
+    data: { contactId: primaryId },
   });
 
   // CampaignContacts
   const campaigns = await tx.campaignContact.updateMany({
-    where: { customerId: secondaryId, tenantId },
-    data: { customerId: primaryId },
+    where: { contactId: secondaryId, tenantId },
+    data: { contactId: primaryId },
   });
 
   // EmailDeliveryLogs
   await tx.emailDeliveryLog.updateMany({
-    where: { customerId: secondaryId, tenantId },
-    data: { customerId: primaryId },
+    where: { contactId: secondaryId, tenantId },
+    data: { contactId: primaryId },
   });
 
   // Invoices
   const invoices = await tx.invoice.updateMany({
-    where: { customerId: secondaryId, tenantId },
-    data: { customerId: primaryId },
+    where: { contactId: secondaryId, tenantId },
+    data: { contactId: primaryId },
   });
 
   return {
