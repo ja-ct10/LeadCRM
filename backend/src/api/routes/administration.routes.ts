@@ -1,3 +1,5 @@
+import { CreateUsersSchema, UpdateUsersSchema } from '../../modules/administration/users/users.dto';
+import { passwordResetRateLimiter } from '../middleware/rate-limit.middleware';
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { tenantMiddleware, workspaceReadyMiddleware } from '../middleware/tenant.middleware';
@@ -31,13 +33,15 @@ router.patch('/organization-settings', authorize('settings.edit'), validate(Upda
 // -- Users ---------------------------------------------
 router.get(   '/users',                  authorize('users.view'),   userController.getAll);
 router.get(   '/users/:id',              authorize('users.view'),   userController.getById);
-router.post(  '/users',                  authorize('users.manage'), userController.create);
-router.put(   '/users/:id',              authorize('users.manage'), userController.update);
+router.post(  '/users',                  authorize('users.manage'), validate(CreateUsersSchema), userController.create);
+router.put(   '/users/:id',              authorize('users.manage'), validate(UpdateUsersSchema), userController.update);
 router.delete('/users/:id',              authorize('users.manage'), userController.deleteRecord);
 router.patch( '/users/:id/archive',      authorize('users.manage'), userController.archive);
 router.patch( '/users/:id/restore',      authorize('users.manage'), userController.restore);
 router.post(  '/users/bulk-update',      authorize('users.manage'), userController.bulkUpdate);
 router.post(  '/users/bulk-delete',      authorize('users.manage'), userController.bulkDelete);
+
+router.post('/users/:id/password-reset', authorize('users.manage'), passwordResetRateLimiter, userController.sendPasswordReset);
 
 // -- Roles (RoleDefinition) ----------------------------
 router.get(   '/roles',                authorize('roles.manage'), roleController.getRoles);

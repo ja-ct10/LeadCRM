@@ -1,0 +1,31 @@
+import React from 'react';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+const mocks = vi.hoisted(() => ({ list: vi.fn() }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'admin', tenantId: 't' }, userCan: () => true }) }));
+vi.mock('@/store/DataContext', () => ({ useData: () => ({ roles: [{ id: 'r', name: 'Sales', isArchived: false, isSystemRole: false }], refreshRoles: vi.fn() }) }));
+vi.mock('@/features/tenant/administration/users/services/users.service', () => ({ usersService: { getAll: mocks.list } }));
+vi.mock('@/shared/services/invitations.api', () => ({ invitationsApi: { list: async () => ({ data: [] }) } }));
+import { UsersSubTab } from '../team-management-users';
+beforeEach(() => vi.resetAllMocks());
+afterEach(cleanup);
+it('keeps the toolbar/header, shows a spinner until API rows arrive and opens readonly details', async () => {
+  let resolve!: (value: unknown) => void;
+  mocks.list.mockReturnValueOnce(new Promise(done => { resolve = done; }));
+  render(<UsersSubTab />);
+  expect(screen.getByPlaceholderText('Search users...')).toBeTruthy();
+  expect(screen.getByText('Loading users...').querySelector('.animate-spin')).toBeTruthy();
+  expect(screen.queryByText('No users found')).toBeNull();
+  resolve({ data: [{ id: 'u', tenantId: 't', firstName: 'Juan', lastName: 'Dela Cruz', email: 'juan@camxian.com', role: 'Sales', status: 'active' }], meta: { hasMore: false } });
+  fireEvent.click(await screen.findByRole('button', { name: 'View Juan Dela Cruz' }));
+  expect(await screen.findByText('User Details')).toBeTruthy();
+  expect(screen.queryByText('Save Changes')).toBeNull();
+  expect(screen.getByText('Edit User')).toBeTruthy();
+});
+it('shows retry on fetch failure and a genuine empty state after retry', async () => {
+  mocks.list.mockRejectedValueOnce(new Error('Network unavailable')).mockResolvedValueOnce({ data: [], meta: { hasMore: false } });
+  render(<UsersSubTab />);
+  await screen.findByText('Network unavailable');
+  fireEvent.click(screen.getByText('Retry'));
+  expect(await screen.findByText('No users found')).toBeTruthy();
+});

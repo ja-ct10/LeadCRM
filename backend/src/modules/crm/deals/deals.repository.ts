@@ -81,29 +81,29 @@ export async function findDealById(id: string, tenantId: string) {
   });
 }
 
-export async function createDeal(tenantId: string, ownerId: string, dto: CreateDealDto) {
+export async function createDeal(tenantId: string, ownerId: string, dto: CreateDealDto, db: Prisma.TransactionClient = prisma) {
   const { leadIds, contactIds, ...dealData } = dto as CreateDealDto & { leadIds?: string[]; contactIds?: string[] };
 
-  const deal = await prisma.deal.create({
+  const deal = await db.deal.create({
     data: { ...dealData, tenantId, ownerId } as never,
   });
 
   if (leadIds && leadIds.length > 0) {
-    await prisma.leadDeal.createMany({
+    await db.leadDeal.createMany({
       data: leadIds.map((leadId) => ({ leadId, dealId: deal.id, tenantId, addedById: ownerId })),
       skipDuplicates: true,
     });
   }
 
   if (contactIds && contactIds.length > 0) {
-    await prisma.contactDeal.createMany({
+    await db.contactDeal.createMany({
       data: contactIds.map((contactId) => ({ contactId, dealId: deal.id, tenantId, addedById: ownerId })),
       skipDuplicates: true,
     });
   }
 
   // Re-fetch with includes so the response contains junction data for the frontend adapter
-  const fullDeal = await prisma.deal.findFirst({
+  const fullDeal = await db.deal.findFirst({
     where: { id: deal.id, tenantId },
     include: {
       stage:        { select: { id: true, name: true, isWon: true, isLost: true, color: true } },

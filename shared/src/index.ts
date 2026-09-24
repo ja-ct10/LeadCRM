@@ -13,3 +13,6 @@ export * from './validation/auth.schema';
 export * from './contracts/profile.contract';
 export * from './contracts/record-sort';
 export * from './contracts/lead-column-migration';
+
+export * from './validation/administration-user.schema';
+export * from './validation/deal-import.schema';

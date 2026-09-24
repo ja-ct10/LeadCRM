@@ -13,6 +13,8 @@ export const PATHNAME_TO_PATH: Record<string, string> = {
   '/crm/contacts/import':          'contacts',
   '/crm/accounts':                 'accounts',
   '/crm/accounts/import':          'accounts',
+  '/crm/deals/import':             'deals',
+  '/crm/deals/imports':            'deals',
   '/crm/deals':                    'deals',
   '/crm/pipeline':                 'pipeline',
   '/automation/workflows':         'workflows',

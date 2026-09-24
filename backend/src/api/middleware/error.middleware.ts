@@ -38,6 +38,7 @@ export function errorMiddleware(
     res.status(400).json({
       success: false,
       error: err.errors[0]?.message ?? 'Validation failed',
+      fieldErrors: err.flatten().fieldErrors,
     });
     return;
   }

@@ -70,7 +70,7 @@ export function SlidingDrawer({
             className={`fixed inset-y-0 right-0 h-full ${width} bg-white dark:bg-slate-900 shadow-[0_0_50px_0_rgba(0,0,0,0.15)] dark:shadow-[0_0_50px_0_rgba(0,0,0,0.3)] z-[110] flex flex-col border-l border-slate-200 dark:border-white/10`}
           >
             {/* Drawer Header */}
-            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.01]">
+            <div className="shrink-0 flex items-center justify-between px-4 sm:px-6 py-5 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.01]">
               <div>
                 {title ? (
                   <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">

@@ -1,3 +1,4 @@
+import { ImportDealRowSchema } from '@leadcrm/shared';
 import type { ImportModuleConfig, ValidatedRow } from '../types/import.types';
 
 /**
@@ -40,6 +41,11 @@ export function validateRow(
   rowData: Record<string, string>,
   rowNumber: number,
 ): ValidatedRow {
+  if (config.moduleKey === 'deals') {
+    const parsed = ImportDealRowSchema.safeParse(rowData);
+    return { rowNumber, data: parsed.success ? parsed.data : rowData, isValid: parsed.success,
+      errors: parsed.success ? [] : parsed.error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`) };
+  }
   const errors: string[] = [];
   const allFields = [...config.requiredFields, ...config.optionalFields];
 

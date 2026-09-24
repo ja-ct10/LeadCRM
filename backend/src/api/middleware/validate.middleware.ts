@@ -9,6 +9,7 @@ export function validate(schema: ZodSchema) {
       res.status(400).json({
         success: false,
         error: result.error.errors[0]?.message ?? 'Validation failed',
+        fieldErrors: result.error.flatten().fieldErrors,
       });
       return;
     }

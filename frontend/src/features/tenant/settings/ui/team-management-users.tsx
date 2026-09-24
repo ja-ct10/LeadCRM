@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Search, Plus, X, Edit2, Trash2, Mail, Phone,
-  Building2, Calendar, ShieldAlert, CheckCircle2,
-  RefreshCcw, UserCheck, UserMinus, Download,
-  Shield, Clock, Users, ChevronDown,
+  Search, Plus, X, Trash2, Mail,
+  ShieldAlert, CheckCircle2,
+  Download,
+  Clock, Users,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -16,6 +16,9 @@ import { Pagination } from '@/shared/components/ui/pagination';
 import { invitationsApi } from '@/shared/services/invitations.api';
 import { auditApi } from '@/shared/services/audit.api';
 import { TrelloFilter } from '@/shared/components/trello-filter';
+import { usersService } from '@/features/tenant/administration/users/services/users.service';
+import { UserPanel } from './user-panel';
+import { DataLoadingSpinner, DataErrorState } from '@/shared/components/crm/data-view-states';
 import { cn } from '@/lib/utils';
 import { USE_MOCK_DATA } from '@/lib/config';
 import type { User } from '@/store/types';
@@ -207,108 +210,6 @@ function TimelineDrawer({ selectedUser, onClose }: TimelineDrawerProps): React.R
   );
 }
 
-// ── Add / Edit user modal ────────────────────────────────────────────────────
-
-interface UserFormModalProps {
-  mode: 'add' | 'edit';
-  user?: User | null;
-  roleNames: string[];
-  onSave: (data: Partial<User>) => void;
-  onClose: () => void;
-}
-
-function UserFormModal({ mode, user, roleNames, onSave, onClose }: UserFormModalProps): React.ReactElement {
-  const [firstName, setFirstName] = useState(user?.firstName ?? '');
-  const [lastName, setLastName] = useState(user?.lastName ?? '');
-  const [email, setEmail] = useState(user?.email ?? '');
-  const [phone, setPhone] = useState(user?.phone ?? '');
-  const [role, setRole] = useState(user?.role ?? '');
-  const [jobTitle, setJobTitle] = useState(user?.jobTitle ?? '');
-  const [department, setDepartment] = useState(user?.department ?? '');
-  const [status, setStatus] = useState(user?.status ?? 'active');
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email.trim()) { toast.error('Email is required'); return; }
-    if (mode === 'add' && !roleNames.includes(role)) { toast.error('Select a custom role first'); return; }
-    onSave({ firstName, lastName, ...(mode === 'add' ? { email } : {}), phone, ...(role !== user?.role ? { role } : {}), jobTitle, department, status });
-  };
-
-  return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-      onClick={onClose}>
-      <motion.div initial={{ opacity: 0, scale: 0.95, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
-        transition={{ type: 'spring', damping: 28, stiffness: 260 }}
-        className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.08] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-white/[0.07]">
-          <h3 className="text-sm font-bold text-slate-900 dark:text-white">{mode === 'add' ? 'New User' : `Edit ${user?.firstName} ${user?.lastName}`}</h3>
-          <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg cursor-pointer"><X size={16} /></button>
-        </div>
-        <form onSubmit={handleSubmit}>
-          <div className="px-6 py-5 grid grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">First Name</label>
-              <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg text-xs focus:outline-none focus:border-blue-500" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Last Name</label>
-              <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg text-xs focus:outline-none focus:border-blue-500" />
-            </div>
-            <div className="col-span-2">
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Email <span className="text-rose-500">*</span></label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={mode === 'edit'}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg text-xs focus:outline-none focus:border-blue-500 disabled:opacity-60" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Phone</label>
-              <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg text-xs focus:outline-none focus:border-blue-500" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Role</label>
-              <select value={role} onChange={(e) => setRole(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg text-xs focus:outline-none focus:border-blue-500">
-                <option value="">Select a custom role</option>
-                {roleNames.map((r) => <option key={r} value={r}>{r}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Job Title</label>
-              <input type="text" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg text-xs focus:outline-none focus:border-blue-500" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Department</label>
-              <input type="text" value={department} onChange={(e) => setDepartment(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg text-xs focus:outline-none focus:border-blue-500" />
-            </div>
-            {mode === 'edit' && (
-              <div className="col-span-2">
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Status</label>
-                <select value={status} onChange={(e) => setStatus(e.target.value as 'active' | 'inactive' | 'pending')}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg text-xs focus:outline-none focus:border-blue-500">
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </div>
-            )}
-          </div>
-          <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-200 dark:border-white/[0.07]">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer">Cancel</button>
-            <button type="submit" className="px-5 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg shadow-md shadow-blue-500/20 cursor-pointer">
-              {mode === 'add' ? 'Create User' : 'Save Changes'}
-            </button>
-          </div>
-        </form>
-      </motion.div>
-    </motion.div>
-  );
-}
-
 // ── Invite modal ─────────────────────────────────────────────────────────────
 
 interface InviteModalProps {
@@ -380,10 +281,38 @@ function InviteModal({ roles, onClose, onInvited }: InviteModalProps): React.Rea
 
 // ── Main UsersSubTab ──────────────────────────────────────────────────────────
 
-export function UsersSubTab(): React.ReactElement {
+export function UsersSubTab({ onUsersLoaded }: { onUsersLoaded?: (users: User[]) => void }): React.ReactElement {
   const { user: currentUser, userCan } = useAuth();
-  const { users: allUsers, roles, addUser, updateUser, deleteUser } = useData();
+  const { roles, rolesLoading, rolesError, refreshRoles } = useData();
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
   const tenantId = currentUser?.tenantId ?? '';
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true); setLoadError(null); setAllUsers([]);
+    const load = async () => {
+      try {
+        const result: User[] = [];
+        let page = 1;
+        while (!cancelled) {
+          const response = await usersService.getAll({ page, limit: 100 });
+          result.push(...(response.data ?? []));
+          if (!response.meta?.hasMore) break;
+          page++;
+        }
+        if (!cancelled) {
+          setAllUsers(result);
+          onUsersLoaded?.(result);
+        }
+      } catch (error) { if (!cancelled) setLoadError(error instanceof Error ? error.message : 'Unable to load users.'); }
+      finally { if (!cancelled) setLoading(false); }
+    };
+    if (tenantId) void load();
+    return () => { cancelled = true; };
+  }, [tenantId, reload, onUsersLoaded]);
 
   const tenantUsers = useMemo(
     () => allUsers.filter((u) => u.tenantId === tenantId),
@@ -400,6 +329,7 @@ export function UsersSubTab(): React.ReactElement {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  useEffect(() => { setEditingUser(null); setIsAddOpen(false); }, [tenantId]);
   const [timelineUser, setTimelineUser] = useState<User | null>(null);
   const [confirmArchive, setConfirmArchive] = useState<User | null>(null);
 
@@ -453,33 +383,30 @@ export function UsersSubTab(): React.ReactElement {
   });
   const paginated = paginateItems(filtered);
 
-  const handleAddUser = (data: Partial<User>) => {
-    addUser(data);
-    toast.success(`User ${data.firstName ?? ''} ${data.lastName ?? ''} created`);
-    setIsAddOpen(false);
+  const handleSavedUser = (saved: User) => {
+    setAllUsers(previous => previous.some(user => user.id === saved.id) ? previous.map(user => user.id === saved.id ? saved : user) : [saved, ...previous]);
+    setReload(value => value + 1);
   };
-
-  const handleEditUser = (data: Partial<User>) => {
-    if (!editingUser) return;
-    updateUser(editingUser.id, data);
-    toast.success('User updated');
-    setEditingUser(null);
-  };
-
-  const handleArchive = () => {
-    if (!confirmArchive) return;
-    deleteUser(confirmArchive.id);
-    toast.success(`${confirmArchive.firstName} ${confirmArchive.lastName} archived`);
-    setConfirmArchive(null);
+  const [archiving, setArchiving] = useState(false);
+  const handleArchive = async () => {
+    if (!confirmArchive || archiving) return;
+    setArchiving(true);
+    try {
+      await usersService.archive(confirmArchive.id);
+      setConfirmArchive(null); setReload(value => value + 1);
+      toast.success('User archived');
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to archive user.'); }
+    finally { setArchiving(false); }
   };
 
   const handleExportCSV = () => {
     if (filtered.length === 0) { toast.error('No users to export'); return; }
     const headers = ['Name', 'Email', 'Role', 'Status', 'Phone', 'Department'];
+    const csvCell = (value: string) => `"${(/^[=+@-]/.test(value) ? "'" + value : value).replace(/"/g, '""')}"`;
     const rows = filtered.map((u) => [
-      `"${u.firstName} ${u.lastName}"`, u.email, u.role, u.status ?? '',
+      `${u.firstName} ${u.lastName}`, u.email, u.role, u.status ?? '',
       u.phone ?? '', u.department ?? '',
-    ]);
+    ].map(csvCell));
     const csv = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
     const link = document.createElement('a');
     link.setAttribute('href', encodeURI(csv));
@@ -491,10 +418,11 @@ export function UsersSubTab(): React.ReactElement {
   const canManageUsers = userCan('users', 'canEdit');
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 max-w-full space-y-4">
+      {rolesError && <div role="alert" className="text-sm text-red-500">{rolesError} <button onClick={() => void refreshRoles()} className="underline">Retry roles</button></div>}
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[180px] max-w-xs">
+        <div className="relative w-full sm:flex-1 min-w-0 sm:max-w-xs">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input type="text" placeholder="Search users..." value={search} onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-white/[0.08] text-slate-900 dark:text-white rounded-lg text-xs focus:outline-none focus:border-blue-500 transition-colors placeholder-slate-400" />
@@ -514,7 +442,7 @@ export function UsersSubTab(): React.ReactElement {
           selectedLabels={statusFilter}
           setSelectedLabels={setStatusFilter}
         />
-        <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 cursor-pointer select-none ml-auto">
+        <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 cursor-pointer select-none sm:ml-auto">
           <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} className="accent-blue-500" />
           Show archived
         </label>
@@ -526,7 +454,7 @@ export function UsersSubTab(): React.ReactElement {
             <button onClick={() => setIsInviteOpen(true)} className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 dark:border-white/[0.08] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-xs font-semibold cursor-pointer transition-colors">
               <Mail size={13} /> Invite
             </button>
-            <button onClick={() => setIsAddOpen(true)} className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold cursor-pointer transition-colors shadow-sm">
+            <button disabled={rolesLoading || !!rolesError} onClick={() => setIsAddOpen(true)} className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold cursor-pointer transition-colors shadow-sm">
               <Plus size={13} /> New User
             </button>
           </>
@@ -536,19 +464,20 @@ export function UsersSubTab(): React.ReactElement {
       {/* Users table */}
       <div className="bg-white dark:bg-slate-900/60 border border-gray-200 dark:border-white/[0.07] rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
-          <div className="grid grid-cols-[minmax(160px,2fr)_minmax(120px,1.5fr)_minmax(180px,2fr)_80px_120px_40px] gap-3 px-4 py-2.5 border-b border-gray-100 dark:border-white/[0.05] min-w-[680px]">
+          <div className="grid grid-cols-[minmax(160px,2fr)_minmax(120px,1.5fr)_minmax(180px,2fr)_80px_120px_64px] gap-3 px-4 py-2.5 border-b border-gray-100 dark:border-white/[0.05] min-w-[816px]">
             {['User', 'Role', 'Contact', 'Status', 'Department', ''].map((h, i) => (
               <div key={i} className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{h}</div>
             ))}
           </div>
-          {paginated.length === 0 ? (
-            <div className="py-16 text-center min-w-[680px]">
+          {loading ? <DataLoadingSpinner label="Loading users..." /> : loadError ? <DataErrorState message={loadError} onRetry={() => setReload(value => value + 1)} /> : paginated.length === 0 ? (
+            <div className="py-16 text-center">
               <Users size={32} className="text-slate-300 dark:text-slate-700 mx-auto mb-3" />
               <p className="text-xs text-slate-400">No users found</p>
             </div>
           ) : paginated.map((u) => (
-            <div key={u.id}
-              className={cn('grid grid-cols-[minmax(160px,2fr)_minmax(120px,1.5fr)_minmax(180px,2fr)_80px_120px_40px] gap-3 px-4 py-3 items-center border-b border-gray-100 dark:border-white/[0.04] last:border-0 hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors group min-w-[680px]',
+            <div key={u.id} tabIndex={0} role="button" aria-label={`View ${u.firstName} ${u.lastName}`}
+              onClick={() => setEditingUser(u)} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); setEditingUser(u); } }}
+              className={cn('grid grid-cols-[minmax(160px,2fr)_minmax(120px,1.5fr)_minmax(180px,2fr)_80px_120px_64px] gap-3 px-4 py-3 items-center border-b border-gray-100 dark:border-white/[0.04] last:border-0 hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors group min-w-[816px]',
                 u.isArchived && 'opacity-50')}>
               {/* User */}
               <div className="flex items-center gap-2.5 min-w-0">
@@ -575,15 +504,10 @@ export function UsersSubTab(): React.ReactElement {
               {/* Department */}
               <span className="text-xs text-slate-500 dark:text-slate-400 truncate">{u.department || '—'}</span>
               {/* Actions */}
-              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div onClick={event => event.stopPropagation()} className="flex items-center gap-0.5 opacity-100">
                 <button onClick={() => setTimelineUser(u)} title="View Activity" className="p-1.5 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded cursor-pointer transition-colors"><Clock size={12} /></button>
-                {canManageUsers && (
-                  <>
-                    <button onClick={() => setEditingUser(u)} title="Edit" className="p-1.5 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded cursor-pointer transition-colors"><Edit2 size={12} /></button>
-                    {!u.isArchived && (
+                {canManageUsers && !u.isArchived && (
                       <button onClick={() => setConfirmArchive(u)} title="Archive" className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded cursor-pointer transition-colors"><Trash2 size={12} /></button>
-                    )}
-                  </>
                 )}
               </div>
             </div>
@@ -632,10 +556,10 @@ export function UsersSubTab(): React.ReactElement {
       {/* Modals */}
       <AnimatePresence>
         {isAddOpen && (
-          <UserFormModal mode="add" roleNames={roleNames} onSave={handleAddUser} onClose={() => setIsAddOpen(false)} />
+          <UserPanel roles={roleObjs} canEdit={canManageUsers} onSaved={handleSavedUser} onClose={() => setIsAddOpen(false)} />
         )}
         {editingUser && (
-          <UserFormModal mode="edit" user={editingUser} roleNames={roleNames} onSave={handleEditUser} onClose={() => setEditingUser(null)} />
+          <UserPanel key={editingUser.id} user={editingUser} roles={roleObjs} canEdit={canManageUsers} onSaved={handleSavedUser} onClose={() => setEditingUser(null)} />
         )}
         {isInviteOpen && (
           <InviteModal roles={roleObjs} onClose={() => setIsInviteOpen(false)} onInvited={loadInvitations} />
@@ -659,7 +583,7 @@ export function UsersSubTab(): React.ReactElement {
               </div>
               <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-200 dark:border-white/[0.07]">
                 <button onClick={() => setConfirmArchive(null)} className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 cursor-pointer">Cancel</button>
-                <button onClick={handleArchive} className="px-5 py-2 text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white rounded-lg cursor-pointer">Archive</button>
+                <button disabled={archiving} onClick={handleArchive} className="px-5 py-2 text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white rounded-lg cursor-pointer">Archive</button>
               </div>
             </motion.div>
           </motion.div>

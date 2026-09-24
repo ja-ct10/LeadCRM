@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { apiClient } from '@/lib/api/client';
 import { getImportConfig } from '../configs';
-import type { ImportModuleConfig, ImportSummary, PaginatedResponse } from '../types/import.types';
+import type { ImportSummary, PaginatedResponse } from '../types/import.types';
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -153,20 +153,20 @@ export default function ImportDetailsPage({ moduleKey, importId }: ImportDetails
 
   // ── Back route (to the import page, not module list) ───────────────────
 
-  const backToImport = `${config.backRoute}/import`;
+  const backToImport = `/crm/${config.moduleKey}/import`;
 
   // ── Loading State ──────────────────────────────────────────────────────
 
   if (isLoading) {
     return (
-      <div className="flex flex-col h-full min-h-0">
-        <div className="flex-1 overflow-y-auto">
-          <div className="px-5 sm:px-8 py-6 space-y-5">
+      <div className="flex flex-col h-full min-h-0 min-w-0 max-w-full">
+        <div className="flex-1 min-w-0 overflow-y-auto">
+          <div className="px-0 sm:px-4 py-3 sm:py-6 space-y-5">
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl p-6">
               <div className="w-32 h-4 bg-slate-100 dark:bg-slate-800 rounded animate-pulse mb-3" />
               <div className="w-48 h-6 bg-slate-100 dark:bg-slate-800 rounded animate-pulse" />
             </div>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className="h-20 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl animate-pulse" />
               ))}
@@ -209,32 +209,32 @@ export default function ImportDetailsPage({ moduleKey, importId }: ImportDetails
     : '—';
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div className="flex flex-col h-full min-h-0 min-w-0 max-w-full">
       {/* Content */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="px-5 sm:px-8 py-6 space-y-5">
+      <div className="flex-1 min-w-0 overflow-y-auto">
+        <div className="px-0 sm:px-4 py-3 sm:py-6 space-y-5">
           {/* Header Card */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl px-6 py-5">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl min-w-0 px-3 sm:px-6 py-5">
             <button
               onClick={() => router.push(backToImport)}
               className="inline-flex items-center gap-1 text-[13px] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors mb-3 cursor-pointer"
             >
               <ArrowLeft size={14} /> Back to Import
             </button>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-[22px] font-bold text-slate-900 dark:text-white">Import Details</h1>
               <span className={cn('px-2.5 py-0.5 rounded-full text-[10.5px] font-semibold', statusBadge.className)}>
                 {statusBadge.label}
               </span>
             </div>
-            <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1">{importData.fileName}</p>
+            <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1" style={{ overflowWrap: 'anywhere' }}>{importData.fileName}</p>
           </div>
 
           {/* Summary Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 min-[375px]:grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl p-4">
               <div className="flex items-center gap-2 mb-2"><FileText size={15} className="text-slate-400" /><span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">File Name</span></div>
-              <p className="text-[13px] font-semibold text-slate-900 dark:text-white truncate" title={importData.fileName}>{importData.fileName}</p>
+              <p className="text-[13px] font-semibold text-slate-900 dark:text-white break-words" title={importData.fileName} style={{ overflowWrap: 'anywhere' }}>{importData.fileName}</p>
             </div>
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl p-4">
               <div className="flex items-center gap-2 mb-2"><Calendar size={15} className="text-slate-400" /><span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Date</span></div>
@@ -242,7 +242,7 @@ export default function ImportDetailsPage({ moduleKey, importId }: ImportDetails
             </div>
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl p-4">
               <div className="flex items-center gap-2 mb-2"><User size={15} className="text-slate-400" /><span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Imported By</span></div>
-              <p className="text-[13px] font-semibold text-slate-900 dark:text-white">{userName}</p>
+              <p className="text-[13px] font-semibold text-slate-900 dark:text-white break-words">{userName}</p>
             </div>
             <div className="bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-700/50 rounded-2xl p-4">
               <div className="flex items-center gap-2 mb-2"><CheckCircle2 size={15} className="text-emerald-500" /><span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Records</span></div>
@@ -252,8 +252,8 @@ export default function ImportDetailsPage({ moduleKey, importId }: ImportDetails
           </div>
 
           {/* Results Card */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl px-6 py-5 space-y-4">
-            <div className="flex items-center justify-between">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl min-w-0 px-3 sm:px-6 py-5 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <h3 className="text-[15px] font-bold text-slate-900 dark:text-white">Import Results</h3>
               <div className="flex items-center gap-0.5 border border-slate-200 dark:border-slate-700 rounded-lg p-[2px]">
                 {(['all', 'imported', 'failed'] as const).map((filter) => {
@@ -286,7 +286,7 @@ export default function ImportDetailsPage({ moduleKey, importId }: ImportDetails
                 <p className="text-sm text-slate-500 dark:text-slate-400">No results found for this filter.</p>
               </div>
             ) : (
-              <div className="overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-lg">
+              <div className="max-w-full overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-lg">
                 <table className="w-full text-[11px]">
                   <thead className="bg-slate-50 dark:bg-slate-800/60">
                     <tr>
@@ -332,11 +332,11 @@ export default function ImportDetailsPage({ moduleKey, importId }: ImportDetails
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between pt-2">
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
                 <span className="text-[11px] text-slate-500 dark:text-slate-400">
                   {totalResults} total results
                 </span>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
                     Page {page} of {totalPages}
                   </span>

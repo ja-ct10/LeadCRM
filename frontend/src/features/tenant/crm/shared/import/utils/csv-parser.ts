@@ -1,75 +1,36 @@
 import type { ParsedCsv } from '../types/import.types';
 
-/**
- * Parse a CSV string into headers and rows.
- * Handles:
- * - Quoted fields (RFC 4180)
- * - Escaped quotes ("" inside quoted fields)
- * - CRLF and LF line endings
- * - Empty rows (filtered out)
- * - Trimmed cell values
- */
+/** One pass preserves quoted commas, escaped quotes, and embedded newlines. */
 export function parseCsv(text: string): ParsedCsv {
-  const lines: string[] = [];
-  let current = '';
-  let inQuotes = false;
-
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    if (char === '"') {
-      if (inQuotes && text[i + 1] === '"') {
-        current += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if ((char === '\n' || char === '\r') && !inQuotes) {
-      if (char === '\r' && text[i + 1] === '\n') i++;
-      if (current.length > 0 || lines.length > 0) {
-        lines.push(current);
-        current = '';
-      }
-    } else {
-      current += char;
-    }
-  }
-  if (current.length > 0) lines.push(current);
-
-  if (lines.length === 0) return { headers: [], rows: [] };
-
-  const headers = parseRow(lines[0]);
-  const rows = lines
-    .slice(1)
-    .map(parseRow)
-    .filter((r) => r.some((cell) => cell.length > 0));
-
-  return { headers, rows };
-}
-
-/**
- * Parse a single CSV line into an array of cell values.
- */
-function parseRow(line: string): string[] {
-  const cells: string[] = [];
+  const records: string[][] = [];
+  let row: string[] = [];
   let cell = '';
   let quoted = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      if (quoted && line[i + 1] === '"') {
-        cell += '"';
-        i++;
-      } else {
-        quoted = !quoted;
-      }
-    } else if (ch === ',' && !quoted) {
-      cells.push(cell.trim());
-      cell = '';
-    } else {
-      cell += ch;
+  let closed = false;
+  const finishCell = () => { row.push(cell.trim()); cell = ''; closed = false; };
+  const finishRow = () => { finishCell(); if (row.some(value => value.length)) records.push(row); row = []; };
+  text = text.replace(/^\uFEFF/, '');
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (quoted) {
+      if (char === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+      else if (char === '"') { quoted = false; closed = true; }
+      else cell += char;
+    } else if (char === ',') finishCell();
+    else if (char === '\n' || char === '\r') {
+      if (char === '\r' && text[i + 1] === '\n') i++;
+      finishRow();
+    } else if (char === '"' && !cell && !closed) quoted = true;
+    else {
+      if (char === '"' || (closed && char.trim())) throw new Error('Malformed CSV: unexpected text outside a quoted field.');
+      if (!closed) cell += char;
     }
   }
-  cells.push(cell.trim());
-  return cells;
+  if (quoted) throw new Error('Malformed CSV: a quoted field is not closed.');
+  if (cell || row.length || closed) finishRow();
+  if (!records.length) return { headers: [], rows: [] };
+  const [headers, ...rows] = records;
+  if (headers.some(header => !header) || new Set(headers).size !== headers.length) throw new Error('CSV headers must be nonempty and unique.');
+  if (rows.some(record => record.length !== headers.length)) throw new Error('Malformed CSV: every row must have the same number of columns as the header.');
+  return { headers, rows };
 }

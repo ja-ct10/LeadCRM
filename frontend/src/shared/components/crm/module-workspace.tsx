@@ -1130,7 +1130,7 @@ interface CreateActionDropdownProps {
   onImport?: () => void;
 }
 
-function CreateActionDropdown({ primaryActionLabel, onPrimaryAction, onImport }: CreateActionDropdownProps): React.ReactElement {
+export function CreateActionDropdown({ primaryActionLabel, onPrimaryAction, onImport }: CreateActionDropdownProps): React.ReactElement {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 

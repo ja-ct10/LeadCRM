@@ -1,3 +1,4 @@
+import { dealImportConfig } from './deal-import.config';
 import type { ImportModuleConfig } from '../types/import.types';
 import { leadImportConfig } from './lead-import.config';
 import { accountImportConfig } from './account-import.config';
@@ -8,6 +9,7 @@ import { contactImportConfig } from './contact-import.config';
  * Add new modules here as they become import-capable.
  */
 const IMPORT_CONFIGS: Record<string, ImportModuleConfig> = {
+  deals: dealImportConfig,
   leads: leadImportConfig,
   accounts: accountImportConfig,
   contacts: contactImportConfig,

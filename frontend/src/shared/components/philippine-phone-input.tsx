@@ -1,10 +1,14 @@
 'use client';
 
-import React, { useRef } from 'react';
+import React, { useRef, useId } from 'react';
 import { cn } from '@/lib/utils';
 import { normalizePhInput } from '@/shared/utils/ph-phone';
 
 interface PhilippinePhoneInputProps {
+  id?: string;
+  required?: boolean;
+  disabled?: boolean;
+  onBlur?: () => void;
   value: string;
   onChange: (localNumber: string) => void;
   error?: string | null;
@@ -12,11 +16,14 @@ interface PhilippinePhoneInputProps {
 }
 
 export function PhilippinePhoneInput({
+  id, required, disabled, onBlur,
   value,
   onChange,
   error,
   className,
 }: PhilippinePhoneInputProps): React.ReactElement {
+  const generatedId = useId();
+  const inputId = id ?? generatedId;
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
@@ -32,7 +39,7 @@ export function PhilippinePhoneInput({
     }
 
     // Block additional digits once 10 digits reached
-    if (isDigit && value.length >= 10) {
+    if (isDigit && value.length >= 10 && e.currentTarget.selectionStart === e.currentTarget.selectionEnd) {
       e.preventDefault();
     }
   };
@@ -70,6 +77,12 @@ export function PhilippinePhoneInput({
         {/* Local number input */}
         <input
           ref={inputRef}
+          id={inputId}
+          required={required}
+          disabled={disabled}
+          onBlur={onBlur}
+          aria-invalid={!!error}
+          aria-describedby={error ? `${inputId}-error` : undefined}
           type="tel"
           inputMode="numeric"
           value={value}
@@ -83,7 +96,7 @@ export function PhilippinePhoneInput({
       </div>
 
       {error && (
-        <p className="text-xs text-red-500 mt-1">{error}</p>
+        <p id={`${inputId}-error`} role="alert" className="text-xs text-red-500 mt-1">{error}</p>
       )}
     </div>
   );

@@ -65,3 +65,14 @@ it('ignores stale fetches after a tenant change and resets editing', async () =>
   resolve({ data: saved });
   await waitFor(() => expect(name().value).toBe('Other'));
 });
+
+it('shows a structural skeleton without editable controls until the real response arrives', async () => {
+  let resolve!: (value: { data: typeof saved }) => void;
+  mocks.get.mockReturnValueOnce(new Promise(done => { resolve = done; }));
+  render(<OrganizationSettingsForm />);
+  expect(screen.getByRole('status').getAttribute('aria-label')).toBe('Loading organization settings');
+  expect(screen.queryByRole('textbox')).toBeNull();
+  expect(document.querySelectorAll('.animate-pulse').length).toBeGreaterThan(6);
+  resolve({ data: saved }); await screen.findByDisplayValue('Original');
+  expect(screen.queryByRole('status')).toBeNull();
+});

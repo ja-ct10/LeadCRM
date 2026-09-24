@@ -1,3 +1,5 @@
+import * as dealImportController from '../../modules/crm/deal-imports/deal-imports.controller';
+import { CreateDealImportSchema } from '@leadcrm/shared';
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { tenantMiddleware, workspaceReadyMiddleware } from '../middleware/tenant.middleware';
@@ -99,6 +101,10 @@ router.get(   '/deals/forecast',     authorize('deals.view'),   dealController.g
 router.post(  '/deals/bulk/archive',  authorize('deals.delete'), bulkDealsController.bulkArchive);
 router.post(  '/deals/bulk/reassign', authorize('deals.edit'),   bulkDealsController.bulkReassign);
 router.post(  '/deals/bulk/stage',    authorize('deals.edit'),   bulkDealsController.bulkStageChange);
+router.get('/deals/imports', authorize('deals.view'), dealImportController.listImports);
+router.get('/deals/imports/:importId', authorize('deals.view'), dealImportController.getImport);
+router.get('/deals/imports/:importId/results', authorize('deals.view'), dealImportController.getImportResults);
+router.post('/deals/imports', authorize('deals.create'), validate(CreateDealImportSchema), dealImportController.createImport);
 router.get(   '/deals/:id',          authorize('deals.view'),   dealController.getDealById);
 router.post(  '/deals',              authorize('deals.create'), validate(CreateDealSchema),    dealController.createDeal);
 router.put(   '/deals/:id',          authorize('deals.edit'),   validate(UpdateDealSchema),    dealController.updateDeal);

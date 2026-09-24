@@ -112,6 +112,28 @@ and import country behavior is unchanged.
 | `GET` | `/crm/pipelines` | List pipelines |
 | `GET` | `/crm/pipelines/:id/stages` | List stages for a pipeline |
 
+### Deal imports
+
+Paths below are relative to `/api/v1`. CSV parsing, column mapping, and preliminary
+validation run in the browser at `/crm/deals/import`; execution revalidates every
+row on the server. There is no separate upload or preview endpoint.
+
+| Method | Path | Description | Permission |
+|---|---|---|---|
+| `POST` | `/crm/deals/imports` | Execute import; return HTTP 201 with saved summary | `deals.create` |
+| `GET` | `/crm/deals/imports` | Paginated import history | `deals.view` |
+| `GET` | `/crm/deals/imports/:importId` | Saved import summary | `deals.view` |
+| `GET` | `/crm/deals/imports/:importId/results` | Paginated results; optional `status=imported\|failed` | `deals.view` |
+
+Execution accepts `{ fileName, rows }`, with 1–5000 rows, each containing a unique
+`rowNumber` and string fields. Required fields: `title`, `pipeline`, `stage`.
+Optional fields: `value`, `priority`, `expectedCloseDate`, `account`, `contact`,
+`assignedUser`, `description`. Pipelines/stages/accounts resolve by exact name or
+ID; contacts/assignees resolve by email or ID. Ambiguous matches fail the row.
+Relationships must belong to the authenticated tenant and applicable CRM environment.
+Valid rows write `Deal` and optional `ContactDeal`; all rows receive a saved
+`DealImportResult` under `DealImport`. See [verification report](settings-team-deal-import-verification.md).
+
 ---
 
 ## Marketing Endpoints (`/api/v1/marketing/`) — Stub
@@ -175,16 +197,28 @@ metadata and does not change authentication or verified team domains.
 | Method | Path | Description | RolePermission flag |
 |---|---|---|---|
 | `GET` | `/administration/users` | List users | `users.canView` |
-| `POST` | `/administration/users` | Create user + send invitation | `users.canCreate` |
+| `GET` | `/administration/users/:id` | Read a tenant user | `users.canView` |
+| `POST` | `/administration/users` | Create user + send password setup email | `users.canEdit` (`users.manage`) |
 | `PUT` | `/administration/users/:id` | Update user profile / role | `users.canEdit` |
-| `DELETE` | `/administration/users/:id` | Deactivate user | `users.canDelete` |
-| `PATCH` | `/administration/users/:id/status` | Activate / deactivate | `users.canEdit` |
-| `POST` | `/administration/users/invite` | Send TenantInvitation | `users.canCreate` |
+| `DELETE` | `/administration/users/:id` | Delete user | `users.canEdit` (`users.manage`) |
+| `PATCH` | `/administration/users/:id/archive` | Deactivate user and revoke sessions | `users.canEdit` (`users.manage`) |
+| `PATCH` | `/administration/users/:id/restore` | Activate user | `users.canEdit` (`users.manage`) |
+| `POST` | `/administration/users/:id/password-reset` | Send recovery email to the selected database user; HTTP 202 | `users.canEdit` (`users.manage`) |
+| `POST` | `/invitations` | Send TenantInvitation | `users.canEdit` (`users.manage`) |
+
+There is no registered `/administration/users/:id/status` or
+`/administration/users/invite` route. Status can also be changed through the
+existing PUT endpoint using `ACTIVE` or `INACTIVE`. Create requires first name,
+last name, email, PH mobile phone and an active tenant custom role's exact name.
+Phone is stored as `+639xxxxxxxxx`; email is trimmed and lowercased. The existing
+employee-domain policy still applies. Credentials and avatar URLs are not accepted.
+Recovery reuses `PasswordResetToken` and the existing recovery service; tokens are
+bound to the selected user ID. No reset token is returned to the administrator.
 
 ### Roles & Permissions
 | Method | Path | Description | RolePermission flag |
 |---|---|---|---|
-| `GET` | `/administration/roles` | List RoleDefinitions | `users.canView` |
+| `GET` | `/administration/roles` | List RoleDefinitions | `roles.canEdit` (`roles.manage`) |
 | `POST` | `/administration/roles` | Create RoleDefinition | `users.canCreate` |
 | `PUT` | `/administration/roles/:id` | Update role name/description | `users.canEdit` |
 | `DELETE` | `/administration/roles/:id` | Archive role | `users.canDelete` |

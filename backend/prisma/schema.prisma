@@ -257,6 +257,7 @@ model Tenant {
   userPreferences    UserPreference[]
   tenantPreferences  TenantPreference[]
   leadImports        LeadImport[]
+  dealImports        DealImport[]
   accountImports     AccountImport[]
   contactImports     ContactImport[]
   tenantGroups       TenantGroup[]
@@ -384,6 +385,7 @@ model User {
   oauthAccounts        OAuthAccount[]
   userPreferences      UserPreference[]
   leadImports          LeadImport[]
+  dealImports          DealImport[]
   accountImports       AccountImport[]
   contactImports       ContactImport[]
   emailVerificationTokens EmailVerificationToken[]
@@ -1581,6 +1583,7 @@ model VerificationToken {
 // PASSWORD RESET TOKEN
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model PasswordResetToken {
+  userId    String?
   id        String   @id @default(uuid())
   email     String
   token     String   @unique
@@ -1937,4 +1940,37 @@ model StripeWebhookEvent {
   @@index([status])
   @@index([createdAt])
   @@ignore
+}
+
+model DealImport {
+  id                String @id @default(uuid())
+  tenantId          String
+  environment       CrmEnvironment @default(PRODUCTION)
+  fileName          String
+  totalRecords      Int @default(0)
+  successfulRecords Int @default(0)
+  failedRecords     Int @default(0)
+  status            String @default("pending")
+  createdById       String
+  createdAt         DateTime @default(now())
+  completedAt       DateTime?
+  tenant            Tenant @relation(fields: [tenantId], references: [id])
+  createdBy         User @relation(fields: [createdById], references: [id])
+  results           DealImportResult[]
+  @@index([tenantId, environment])
+  @@index([tenantId, createdAt])
+}
+
+model DealImportResult {
+  id        String @id @default(uuid())
+  importId  String
+  rowNumber Int
+  status    String
+  dealId    String?
+  remarks   String?
+  data      Json
+  createdAt DateTime @default(now())
+  import    DealImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+  @@unique([importId, rowNumber])
+  @@index([importId, status])
 }

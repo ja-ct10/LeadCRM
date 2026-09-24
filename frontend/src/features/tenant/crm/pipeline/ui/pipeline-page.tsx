@@ -1,5 +1,7 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
+import { CreateActionDropdown } from '@/shared/components/crm/module-workspace';
 import { uuid } from '@/lib/utils';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useData } from '@/store/DataContext';
@@ -12,7 +14,7 @@ import { apiClient } from '@/lib/api/client';
 import { USE_MOCK_DATA } from '@/lib/config';
 import { ModuleErrorBoundary } from '@/shared/components/error-boundary';
 import {
-  Plus, X, Settings, ChevronRight, ChevronDown,
+  Plus, X, Settings, ChevronRight,
   LayoutGrid, Table, List, SlidersHorizontal, RotateCcw, Search,
   Shield, Layers, Rocket, Trash2, CheckCircle2, Archive, AlertCircle,
   ArrowRight,
@@ -44,6 +46,7 @@ const TABLE_COLUMNS = [
 // ── Main Page Component ───────────────────────────────────────────────────────
 
 export default function PipelinePage({ navigate }: { navigate: (path: string) => void }): React.ReactElement {
+  const router = useRouter();
   const {
     pipelines,
     deals,
@@ -503,16 +506,10 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
             </button>
           )}
 
-          <button className="inline-flex items-center gap-1.5 h-9 px-3.5 text-[13px] font-medium text-[#0F172A] dark:text-slate-200 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">Import</button>
-
-          {canCreateDeal && activePipeline && (
-            <button
-              onClick={() => { setDealFormPreselect({ pipelineId: activePipelineId, stageId: activePipeline?.stages?.[0]?.id || '' }); setIsDealFormOpen(true); }}
-              className="inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-semibold text-white bg-[#2563EB] hover:bg-[#1D4ED8] rounded-lg transition-colors shadow-sm"
-            >
-              <Plus size={14} /> New Deal
-              <ChevronDown size={13} className="ml-0.5 opacity-60" />
-            </button>
+          {canCreateDeal && (
+            <CreateActionDropdown primaryActionLabel="New Deal"
+              onPrimaryAction={() => { setDealFormPreselect({ pipelineId: activePipelineId, stageId: activePipeline?.stages?.[0]?.id || '' }); setIsDealFormOpen(true); }}
+              onImport={() => router.push('/crm/deals/import')} />
           )}
         </div>
       </div>

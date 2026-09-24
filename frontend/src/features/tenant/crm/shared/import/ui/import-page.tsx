@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
+import { useData } from '@/store/DataContext';
 import { apiClient } from '@/lib/api/client';
 import { getImportConfig } from '../configs';
 import { parseCsv, autoMapColumns, createEmptyMappings, validateRow } from '../utils';
@@ -52,6 +53,7 @@ type PageView = 'wizard' | 'history';
 export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactElement {
   const config = useMemo(() => getImportConfig(moduleKey), [moduleKey]);
   const router = useRouter();
+  const { refreshDeals, refreshContacts, refreshOrganizations } = useData();
   const canCreate = useHasPermission(config.permission as PermissionKey);
   const [activeView, setActiveView] = useState<PageView>('wizard');
 
@@ -143,7 +145,10 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
       reader.onload = (e) => {
         const text = e.target?.result as string;
         if (!text || text.trim().length === 0) { toast.error('The uploaded CSV file does not contain any data.'); return; }
-        const { headers, rows } = parseCsv(text);
+        let parsed;
+        try { parsed = parseCsv(text); } catch (error) { toast.error(error instanceof Error ? error.message : 'Malformed CSV.'); return; }
+        const { headers, rows } = parsed;
+        if (rows.length > 5000) { toast.error('Maximum 5000 rows per import.'); return; }
         if (headers.length === 0) { toast.error("We couldn't read this CSV file. Please check its formatting."); return; }
         if (rows.length === 0) { toast.error('The uploaded CSV file does not contain any data rows.'); return; }
         setFile(selectedFile);
@@ -209,13 +214,16 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
       const rows = csvRows.map((row, index) => ({ rowNumber: index + 2, ...mapRow(row) }));
       const response = await apiClient.post<{ success: boolean; data: ImportSummary }>(config.importApiPath, { fileName: file.name, rows });
       setImportResult(response.data);
+      if (moduleKey === 'deals') await refreshDeals();
+      else if (moduleKey === 'accounts') await refreshOrganizations();
+      else await refreshContacts();
       toast.success(`Import completed — ${response.data.successfulRecords} records imported.`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Import failed';
       toast.error(message);
       setIsImporting(false);
     }
-  }, [file, allRequiredMapped, isImporting, csvRows, mapRow, config.importApiPath]);
+  }, [file, allRequiredMapped, isImporting, csvRows, mapRow, config.importApiPath, moduleKey, refreshDeals, refreshContacts, refreshOrganizations]);
 
   const firstUnmappedRequired = useMemo(
     () => config.requiredFields.find((f) => mappings[f.key]?.csvColumnIndex === null),
@@ -244,14 +252,14 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
   // ── Render ─────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div className="flex flex-col h-full min-h-0 min-w-0 max-w-full">
       {/* ── Full-page scrollable container ─────────────────────────── */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="px-5 sm:px-8 py-6 space-y-5">
+      <div className="flex-1 min-w-0 overflow-y-auto">
+        <div className="px-0 sm:px-4 py-3 sm:py-6 space-y-5">
 
           {/* ── Header Card ───────────────────────────────────────── */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl px-6 py-5">
-            <div className="flex items-start justify-between">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl min-w-0 px-3 sm:px-6 py-5">
+            <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
               <div>
                 <button onClick={() => router.push(config.backRoute)} className="inline-flex items-center gap-1 text-[13px] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors mb-3 cursor-pointer">
                   <ArrowLeft size={14} /> Back to {config.moduleLabel}
@@ -262,12 +270,12 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
                 </p>
               </div>
               {/* View Toggle */}
-              <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden shrink-0">
-                <button onClick={() => setActiveView('wizard')} className={cn('inline-flex items-center gap-1.5 px-3.5 py-2 text-[12.5px] font-medium transition-colors cursor-pointer', activeView === 'wizard' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800')} aria-pressed={activeView === 'wizard'}>
+              <div className="flex max-w-full items-center border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+                <button onClick={() => setActiveView('wizard')} className={cn('inline-flex items-center gap-1.5 px-2 sm:px-3.5 py-2 text-[12.5px] font-medium transition-colors cursor-pointer', activeView === 'wizard' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800')} aria-pressed={activeView === 'wizard'}>
                   <Upload size={13} /> New import
                 </button>
                 <div className="w-px h-5 bg-slate-200 dark:bg-slate-700" />
-                <button onClick={() => setActiveView('history')} className={cn('inline-flex items-center gap-1.5 px-3.5 py-2 text-[12.5px] font-medium transition-colors cursor-pointer', activeView === 'history' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800')} aria-pressed={activeView === 'history'}>
+                <button onClick={() => setActiveView('history')} className={cn('inline-flex items-center gap-1.5 px-2 sm:px-3.5 py-2 text-[12.5px] font-medium transition-colors cursor-pointer', activeView === 'history' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800')} aria-pressed={activeView === 'history'}>
                   <Clock size={13} /> History
                 </button>
               </div>
@@ -281,18 +289,19 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
           ) : (
             <>
               {/* ── Step Indicator Card ─────────────────────────────── */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl px-6 py-4">
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl min-w-0 px-3 sm:px-6 py-4">
                 <StepIndicator currentStep={step} hasErrors={step === 3 && errorCount > 0} fileName={file?.name} mappedCount={mappedRequiredCount} totalRequired={config.requiredFields.length} />
               </div>
 
               {/* ── Step Content Card ──────────────────────────────── */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl px-6 py-6">
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl min-w-0 px-3 sm:px-6 py-6">
+                {moduleKey === 'deals' && <p className="mb-4 text-sm text-slate-500">Use pipeline and stage names or IDs. Accounts accept names or IDs; contacts and assigned users accept email addresses or IDs. Dates use YYYY-MM-DD. Relationships must already exist in this workspace.</p>}
                 {step === 1 && <Step1Upload config={config} file={file} recordCount={csvRows.length} isDragging={isDragging} fileInputRef={fileInputRef} onFileChange={handleFileChange} onDrop={handleDrop} onDragEnter={() => setIsDragging(true)} onDragLeave={() => setIsDragging(false)} onReplaceFile={() => fileInputRef.current?.click()} onDownloadTemplate={handleDownloadTemplate} />}
                 {step === 2 && <Step2MapColumns config={config} csvHeaders={csvHeaders} mappings={mappings} unmappedColumns={unmappedColumns} allRequiredMapped={allRequiredMapped} previewRows={previewRows} firstUnmappedRequired={firstUnmappedRequired} onMappingChange={handleMappingChange} mappedRequiredCount={mappedRequiredCount} totalRecords={csvRows.length} />}
                 {step === 3 && <Step3Review config={config} validatedRows={validatedRows} validCount={validCount} errorCount={errorCount} totalCount={csvRows.length} />}
 
                 {/* ── Footer (inside content card) ──────────────────── */}
-                <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
                   {step === 1 ? (
                     <button onClick={() => router.push(config.backRoute)} className="inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer">Cancel</button>
                   ) : (
@@ -305,7 +314,7 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
                       Continue <ArrowRight size={14} />
                     </button>
                   ) : (
-                    <button onClick={handleImport} disabled={isImporting} className={cn('inline-flex items-center gap-2 h-10 px-6 text-[13px] font-semibold rounded-lg transition-colors', !isImporting ? 'text-white bg-blue-600 hover:bg-blue-700 cursor-pointer' : 'text-white bg-blue-400 cursor-not-allowed')}>
+                    <button onClick={handleImport} disabled={isImporting || validCount === 0} className={cn('inline-flex items-center gap-2 h-10 px-6 text-[13px] font-semibold rounded-lg transition-colors', !isImporting ? 'text-white bg-blue-600 hover:bg-blue-700 cursor-pointer' : 'text-white bg-blue-400 cursor-not-allowed')}>
                       {isImporting ? <><Loader2 size={14} className="animate-spin" /> Importing...</> : <><Sparkles size={14} /> Import {validCount} {config.moduleLabel.toLowerCase()}</>}
                     </button>
                   )}
@@ -333,7 +342,7 @@ function StepIndicator({ currentStep, hasErrors, fileName, mappedCount, totalReq
   ];
 
   return (
-    <div className="flex items-center" role="navigation" aria-label="Import steps">
+    <div className="flex min-w-0 items-center justify-between gap-1" role="navigation" aria-label="Import steps">
       {steps.map((s, i) => {
         const isCompleted = currentStep > s.num;
         const isActive = currentStep === s.num;
@@ -342,17 +351,17 @@ function StepIndicator({ currentStep, hasErrors, fileName, mappedCount, totalReq
 
         return (
           <React.Fragment key={s.num}>
-            <div className="flex items-center gap-2.5">
-              <div className={cn('w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all', isCompleted && 'bg-emerald-500 text-white', isActive && !showError && 'bg-blue-600 text-white', isActive && showError && 'bg-amber-500 text-white', !isCompleted && !isActive && 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500')} aria-current={isActive ? 'step' : undefined}>
+            <div className="flex min-w-0 items-center gap-2.5">
+              <div className={cn('w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all', isCompleted && 'bg-emerald-500 text-white', isActive && !showError && 'bg-blue-600 text-white', isActive && showError && 'bg-amber-500 text-white', !isCompleted && !isActive && 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500')} aria-current={isActive ? 'step' : undefined} aria-label={s.label}>
                 {isCompleted ? <CheckCircle2 size={18} /> : <Icon size={17} />}
               </div>
-              <div className="hidden sm:block">
+              <div className="hidden sm:block min-w-0 max-w-40 break-words">
                 <p className={cn('text-[13px] font-semibold leading-tight', isActive ? 'text-slate-900 dark:text-white' : isCompleted ? 'text-slate-700 dark:text-slate-300' : 'text-slate-400 dark:text-slate-500')}>{s.label}</p>
                 <p className={cn('text-[11px] mt-0.5', isActive || isCompleted ? 'text-slate-500 dark:text-slate-400' : 'text-slate-400 dark:text-slate-500')}>{isCompleted && s.num === 1 && fileName ? fileName : s.sub}</p>
               </div>
             </div>
             {i < steps.length - 1 && (
-              <div className={cn('flex-1 h-[2px] mx-4 rounded-full', isCompleted ? 'bg-emerald-400' : 'bg-slate-200 dark:bg-slate-700')} />
+              <div className={cn('flex-1 min-w-0 h-[2px] mx-1 sm:mx-3 rounded-full', isCompleted ? 'bg-emerald-400' : 'bg-slate-200 dark:bg-slate-700')} />
             )}
           </React.Fragment>
         );
@@ -385,7 +394,7 @@ function Step1Upload({ config, file, recordCount, isDragging, fileInputRef, onFi
             <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-500/10 flex items-center justify-center mb-3">
               <CheckCircle2 size={24} className="text-emerald-600 dark:text-emerald-400" />
             </div>
-            <p className="text-[14px] font-semibold text-slate-900 dark:text-white">{file.name}</p>
+            <p className="text-[14px] font-semibold text-slate-900 dark:text-white break-all">{file.name}</p>
             <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1">{recordCount.toLocaleString()} records detected</p>
             <button onClick={(e) => { e.stopPropagation(); onReplaceFile(); }} className="mt-3 text-[12px] font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 cursor-pointer">Replace file</button>
           </div>
@@ -403,7 +412,7 @@ function Step1Upload({ config, file, recordCount, isDragging, fileInputRef, onFi
       </div>
 
       {/* Template helper */}
-      <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/50 rounded-xl px-5 py-3.5">
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/50 rounded-xl px-5 py-3.5">
         <div>
           <p className="text-[13px] font-semibold text-slate-900 dark:text-white">Don&apos;t have a CSV template?</p>
           <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">Download our template to see every field LeadCRM expects.</p>
@@ -424,9 +433,9 @@ function Step2MapColumns({ config, csvHeaders, mappings, unmappedColumns, allReq
   const mappedFields = allFields.filter((f) => mappings[f.key]?.csvColumnIndex !== null);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 min-w-0">
       {/* Header with badge */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
         <div>
           <h3 className="text-[16px] font-bold text-slate-900 dark:text-white">Map your columns</h3>
           <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1">Match each LeadCRM field to the corresponding column in your CSV file.</p>
@@ -479,11 +488,11 @@ function Step2MapColumns({ config, csvHeaders, mappings, unmappedColumns, allReq
       {/* Live Data Preview */}
       {previewRows.length > 0 && mappedFields.length > 0 && (
         <div className="space-y-2.5 pt-2">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Uploaded Data Preview</p>
             <p className="text-[11.5px] text-blue-500 dark:text-blue-400">Showing first {previewRows.length} of {totalRecords} records</p>
           </div>
-          <div className="overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-lg">
+          <div className="max-w-full overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-lg">
             <table className="w-full text-[12px]">
               <thead><tr className="border-b border-slate-200 dark:border-slate-700">
                 {mappedFields.map((f) => (<th key={f.key} className="px-3 py-2.5 text-left font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">{f.label}</th>))}
@@ -507,13 +516,13 @@ function FieldMappingRow({ field, mapping, csvHeaders, onMappingChange }: { fiel
   const isMapped = mapping?.csvColumnIndex !== null;
 
   return (
-    <div className={cn('flex items-center rounded-lg border transition-all', isMapped ? 'bg-emerald-50/50 dark:bg-emerald-500/[0.03] border-emerald-200 dark:border-emerald-700/50' : 'bg-white dark:bg-slate-800/30 border-slate-200 dark:border-slate-700/60')}>
+    <div className={cn('flex flex-wrap sm:flex-nowrap items-center rounded-lg border transition-all', isMapped ? 'bg-emerald-50/50 dark:bg-emerald-500/[0.03] border-emerald-200 dark:border-emerald-700/50' : 'bg-white dark:bg-slate-800/30 border-slate-200 dark:border-slate-700/60')}>
       {/* Label area */}
-      <div className={cn('shrink-0 w-40 sm:w-48 px-4 py-3 border-r', isMapped ? 'border-emerald-200 dark:border-emerald-700/50 bg-emerald-50/80 dark:bg-emerald-500/[0.05]' : 'border-slate-200 dark:border-slate-700/60')}>
+      <div className={cn('shrink-0 w-full sm:w-48 px-3 py-3 border-b sm:border-b-0 sm:border-r', isMapped ? 'border-emerald-200 dark:border-emerald-700/50 bg-emerald-50/80 dark:bg-emerald-500/[0.05]' : 'border-slate-200 dark:border-slate-700/60')}>
         <span className="text-[13px] font-medium text-slate-900 dark:text-slate-200">{field.label}{field.required && <span className="text-red-500 ml-0.5">*</span>}</span>
       </div>
       {/* Select area */}
-      <div className="flex-1 px-3 py-2">
+      <div className="flex-1 min-w-0 px-3 py-2">
         <select value={mapping?.csvColumnIndex !== null ? String(mapping.csvColumnIndex) : ''} onChange={(e) => onMappingChange(field.key, e.target.value)} className="w-full h-8 px-2 text-[13px] bg-transparent border-0 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-0 cursor-pointer appearance-none" aria-label={`Map CSV column for ${field.label}`}>
           <option value="">{field.required ? '— Select CSV column —' : '— Don\u2019t import —'}</option>
           {csvHeaders.map((h, i) => (<option key={i} value={i}>{h}</option>))}
@@ -546,7 +555,7 @@ function Step3Review({ config, validatedRows, validCount, errorCount, totalCount
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="border border-slate-200 dark:border-slate-700 rounded-xl p-4">
           <p className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">Total Records</p>
           <p className="text-[28px] font-bold text-slate-900 dark:text-white leading-none tabular-nums">{totalCount}</p>
@@ -562,7 +571,7 @@ function Step3Review({ config, validatedRows, validCount, errorCount, totalCount
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex items-center gap-1">
+      <div className="flex flex-wrap items-center gap-1">
         {(['all', 'valid', 'errors'] as const).map((tab) => (
           <button key={tab} onClick={() => setFilter(tab)} className={cn('px-3 py-1.5 text-[12px] font-medium rounded-md border transition-colors cursor-pointer', filter === tab ? 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300')}>
             {tab === 'all' ? `All (${totalCount})` : tab === 'valid' ? `Valid (${validCount})` : `Errors (${errorCount})`}
@@ -571,7 +580,7 @@ function Step3Review({ config, validatedRows, validCount, errorCount, totalCount
       </div>
 
       {/* Review Table */}
-      <div className="overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-lg">
+      <div className="max-w-full overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-lg">
         <table className="w-full text-[12px]">
           <thead><tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40">
             <th className="px-3 py-2.5 text-left font-semibold text-slate-600 dark:text-slate-400 w-12">Row</th>
@@ -604,7 +613,7 @@ function Step3Review({ config, validatedRows, validCount, errorCount, totalCount
 
 function ImportResultView({ config, result, onViewDetails, onStartNew }: { config: ImportModuleConfig; result: ImportSummary; onViewDetails: () => void; onStartNew: () => void }): React.ReactElement {
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl px-6 py-6 space-y-5">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl min-w-0 px-3 sm:px-6 py-6 space-y-5">
       <div className="flex items-center gap-4">
         <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-500/10 flex items-center justify-center">
           <CheckCircle2 size={28} className="text-emerald-600 dark:text-emerald-400" />
@@ -614,12 +623,12 @@ function ImportResultView({ config, result, onViewDetails, onStartNew }: { confi
           <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5">{result.successfulRecords} {config.moduleLabel.toLowerCase()} imported successfully.</p>
         </div>
       </div>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="border border-slate-200 dark:border-slate-700 rounded-lg p-3"><p className="text-[10px] font-bold uppercase text-slate-400 mb-1">Total</p><p className="text-[16px] font-bold text-slate-900 dark:text-white">{result.totalRecords}</p></div>
         <div className="border border-emerald-200 dark:border-emerald-700/50 bg-emerald-50/50 dark:bg-emerald-500/5 rounded-lg p-3"><p className="text-[10px] font-bold uppercase text-emerald-600 dark:text-emerald-400 mb-1">Imported</p><p className="text-[16px] font-bold text-emerald-600 dark:text-emerald-400">{result.successfulRecords}</p></div>
         {result.failedRecords > 0 && <div className="border border-red-200 dark:border-red-700/50 bg-red-50/50 dark:bg-red-500/5 rounded-lg p-3"><p className="text-[10px] font-bold uppercase text-red-600 dark:text-red-400 mb-1">Failed</p><p className="text-[16px] font-bold text-red-600 dark:text-red-400">{result.failedRecords}</p></div>}
       </div>
-      <div className="flex items-center gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+      <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
         <button onClick={onViewDetails} className="inline-flex items-center gap-2 h-9 px-5 text-[13px] font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors cursor-pointer">View Details <ArrowRight size={14} /></button>
         <button onClick={onStartNew} className="text-[13px] font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer">Start new import</button>
       </div>

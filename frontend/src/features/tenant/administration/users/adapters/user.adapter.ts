@@ -15,17 +15,17 @@ export interface UserDTO {
   lastLoginAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  invitationSent?: boolean;
 }
 
 export interface CreateUserDTO {
   firstName: string;
   lastName: string;
   email: string;
-  role?: string;
-  phone?: string;
+  role: string;
+  phone: string;
   jobTitle?: string;
   department?: string;
-  avatarUrl?: string;
 }
 
 export interface UpdateUserDTO {
@@ -36,12 +36,12 @@ export interface UpdateUserDTO {
   phone?: string;
   jobTitle?: string;
   department?: string;
-  avatarUrl?: string;
 }
 
 export const userAdapter = {
   toModel: (dto: UserDTO): User => ({
     id: dto.id,
+    isArchived: dto.status === 'INACTIVE',
     firstName: dto.firstName,
     lastName: dto.lastName,
     email: dto.email,
@@ -61,21 +61,19 @@ export const userAdapter = {
     firstName: user.firstName || '',
     lastName: user.lastName || '',
     email: user.email || '',
-    role: user.role,
-    phone: user.phone,
+    role: user.role || '',
+    phone: user.phone || '',
     jobTitle: user.jobTitle,
     department: user.department,
-    avatarUrl: user.avatarUrl,
   }),
   
   toUpdateDTO: (user: Partial<User>): UpdateUserDTO => ({
     firstName: user.firstName,
     lastName: user.lastName,
     role: user.role,
-    status: user.status,
+    status: user.status?.toUpperCase(),
     phone: user.phone,
     jobTitle: user.jobTitle,
     department: user.department,
-    avatarUrl: user.avatarUrl,
   }),
 };

@@ -69,11 +69,12 @@ async function request<T>(
           : (typeof errorData.message === 'string' && errorData.message)
             ? errorData.message
             : res.statusText || 'API request failed';
-    const error = new Error(errorMessage) as Error & { code?: string; status?: number };
+    const error = new Error(errorMessage) as Error & { code?: string; status?: number; fieldErrors?: Record<string, string[]> };
     if (typeof rawError === 'object' && rawError !== null && typeof (rawError as Record<string, unknown>).code === 'string') {
       error.code = (rawError as Record<string, unknown>).code as string;
     }
     error.status = res.status;
+    error.fieldErrors = errorData.fieldErrors;
     throw error;
   }
 

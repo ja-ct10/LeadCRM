@@ -83,7 +83,7 @@ export function ImportHistoryList({ moduleKey }: ImportHistoryListProps): React.
   // ── Loading ────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl px-6 py-6 space-y-4">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl min-w-0 px-3 sm:px-6 py-6 space-y-4">
         <div className="h-6 w-40 bg-slate-100 dark:bg-slate-800 rounded animate-pulse" />
         <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="h-14 bg-slate-50 dark:bg-slate-800/60 rounded-lg animate-pulse" />))}</div>
       </div>
@@ -93,7 +93,7 @@ export function ImportHistoryList({ moduleKey }: ImportHistoryListProps): React.
   // ── Error ──────────────────────────────────────────────────────────────
   if (error) {
     return (
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl px-6 py-12 text-center">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl min-w-0 px-3 sm:px-6 py-12 text-center">
         <div className="w-12 h-12 rounded-full bg-red-50 dark:bg-red-500/10 flex items-center justify-center mx-auto mb-3"><AlertCircle size={20} className="text-red-500" /></div>
         <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Failed to load import history</p>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{error}</p>
@@ -105,7 +105,7 @@ export function ImportHistoryList({ moduleKey }: ImportHistoryListProps): React.
   // ── Empty ──────────────────────────────────────────────────────────────
   if (imports.length === 0) {
     return (
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl px-6 py-6">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl min-w-0 px-3 sm:px-6 py-6">
         <div className="mb-6">
           <h3 className="text-[16px] font-bold text-slate-900 dark:text-white">Import history</h3>
           <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1">Every {config.moduleSingular.toLowerCase()} import from this workspace and how it turned out.</p>
@@ -128,9 +128,9 @@ export function ImportHistoryList({ moduleKey }: ImportHistoryListProps): React.
 
   // ── List ───────────────────────────────────────────────────────────────
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl px-6 py-6 space-y-4">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl min-w-0 px-3 sm:px-6 py-6 space-y-4">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
         <div>
           <h3 className="text-[16px] font-bold text-slate-900 dark:text-white">Import history</h3>
           <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5">Every {config.moduleSingular.toLowerCase()} import from this workspace and how it turned out.</p>
@@ -153,7 +153,7 @@ export function ImportHistoryList({ moduleKey }: ImportHistoryListProps): React.
           <p className="text-[13px] text-slate-500 dark:text-slate-400">No {statusFilter === 'completed_with_errors' ? 'partial' : statusFilter} imports found.</p>
         </div>
       ) : (
-      <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+      <div className="border border-slate-200 dark:border-slate-700 rounded-lg max-w-full overflow-x-auto">
         <table className="w-full text-[12px]" aria-label="Import history">
           <thead><tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40">
             <th scope="col" className="px-4 py-2.5 text-left font-semibold text-slate-600 dark:text-slate-400">Date</th>
@@ -185,7 +185,7 @@ export function ImportHistoryList({ moduleKey }: ImportHistoryListProps): React.
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between pt-1">
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
           <span className="text-[11px] text-slate-500 dark:text-slate-400">{totalRecords} total imports</span>
           <div className="flex items-center gap-2">
             <span className="text-[11px] text-slate-500 tabular-nums">Page {page} of {totalPages}</span>

@@ -62,3 +62,10 @@ export async function bulkDelete(req: Request, res: Response, next: NextFunction
     res.json({ success: true });
   } catch (err) { next(err); }
 }
+
+export async function sendPasswordReset(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    await service.sendPasswordReset(String(req.params.id), req.user!.tenantId, req.user!.userId);
+    res.status(202).json({ success: true, message: 'Password reset email sent.' });
+  } catch (err) { next(err); }
+}

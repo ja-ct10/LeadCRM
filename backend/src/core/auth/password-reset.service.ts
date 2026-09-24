@@ -11,29 +11,32 @@ const RESET_TTL_MS = parseInt(process.env.PASSWORD_RESET_TTL_MINUTES ?? '60', 10
  * Step 1 — Request a password reset.
  * Generates a secure token, stores it in PasswordResetToken, and emails the link.
  * Always returns success to avoid leaking whether an email exists.
- * In development, if SMTP is not configured, logs the reset URL to the console.
  */
-export async function requestPasswordReset(dto: ForgotPasswordDto): Promise<void> {
-  const user = await prisma.user.findFirst({ where: { email: dto.email } });
+export async function requestPasswordReset(dto: ForgotPasswordDto, target?: { userId: string; tenantId: string }): Promise<void> {
+  const candidates = await prisma.user.findMany({ where: { email: dto.email, ...(target ? { id: target.userId, tenantId: target.tenantId } : {}) }, take: 2 });
+  const user = candidates.length === 1 ? candidates[0] : null;
 
   // Silently return if user not found — do not reveal email existence
-  if (!user) return;
+  if (!user) {
+    if (target) throw new AppError('User not found.', 404);
+    return;
+  }
 
-  // Invalidate any previous tokens for this email
-  await prisma.passwordResetToken.deleteMany({ where: { email: dto.email } });
+  // Invalidate only this account's previous tokens.
+  await prisma.passwordResetToken.deleteMany({ where: { userId: user.id } });
 
   const rawToken = crypto.randomBytes(32).toString('hex');
   const expires  = new Date(Date.now() + RESET_TTL_MS);
 
   await prisma.passwordResetToken.create({
-    data: { email: dto.email, token: rawToken, expires },
+    data: { email: user.email, userId: user.id, token: rawToken, expires },
   });
 
   const appUrl   = process.env.APP_URL ?? 'http://localhost:3000';
   const resetUrl = `${appUrl}/reset-password?token=${rawToken}`;
 
   await sendMail({
-    to:      dto.email,
+    to:      user.email,
     subject: 'Reset your LeadCRM password',
     html:    buildPasswordResetEmail(resetUrl),
   });
@@ -57,7 +60,8 @@ export async function resetPasswordWithToken(dto: ResetPasswordDto): Promise<voi
     throw new AppError('Password reset link has expired. Please request a new one.', 400);
   }
 
-  const user = await prisma.user.findFirst({ where: { email: record.email } });
+  const candidates = await prisma.user.findMany({ where: record.userId ? { id: record.userId, email: record.email } : { email: record.email }, take: 2 });
+  const user = candidates.length === 1 ? candidates[0] : null;
   if (!user) throw new AppError('User not found.', 404);
 
   if (user.passwordHash && await comparePassword(dto.password, user.passwordHash)) {

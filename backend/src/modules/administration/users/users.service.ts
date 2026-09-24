@@ -1,3 +1,4 @@
+import { requestPasswordReset } from '../../../core/auth/password-reset.service';
 import { replaceUserRole } from '../roles/roles.repository';
 import { CreateUsersSchema, UpdateUsersSchema } from './users.dto';
 import { requireEmployeeAccount } from '../../../core/auth/account-access';
@@ -51,9 +52,11 @@ export async function getById(id: string, tenantId: string) {
 }
 
 export async function create(tenantId: string, actorId: string, dto: {
-  firstName: string; lastName: string; email: string; password?: string; role: string; phone?: string; jobTitle?: string; department?: string; avatarUrl?: string;
+  firstName: string; lastName: string; email: string; role: string; phone: string; jobTitle?: string; department?: string;
 }) {
   dto = CreateUsersSchema.parse(dto);
+  const role = await prisma.roleDefinition.findFirst({ where: { tenantId, name: dto.role, isArchived: false, isSystemRole: false } });
+  if (!role) throw new ValidationError('Select an active custom role.');
   if (isSystemAdminRole(dto.role)) {
     throw new ForbiddenError('Cannot assign System Admin role via tenant user management');
   }
@@ -61,8 +64,8 @@ export async function create(tenantId: string, actorId: string, dto: {
   const existing = await prisma.user.findFirst({ where: { email: dto.email, tenantId } });
   if (existing) throw new ConflictError('A user with this email already exists in this tenant');
 
-  // Use a secure random password if none is provided, requiring the user to reset it later
-  const secureRandomPassword = dto.password || randomBytes(32).toString('hex');
+  // New users set their own password through the existing recovery email.
+  const secureRandomPassword = randomBytes(32).toString('hex');
   const passwordHash = await hashPassword(secureRandomPassword);
   const user = await prisma.$transaction(async tx => {
     const created = await tx.user.create({
@@ -71,7 +74,6 @@ export async function create(tenantId: string, actorId: string, dto: {
         email: dto.email.trim().toLowerCase(), passwordHash,
         mustChangePassword: true, role: dto.role,
         phone: dto.phone, jobTitle: dto.jobTitle, department: dto.department,
-        avatarUrl: dto.avatarUrl,
       },
       select: SAFE_USER_SELECT,
     });
@@ -79,11 +81,14 @@ export async function create(tenantId: string, actorId: string, dto: {
     return created;
   });
   await writeAuditLog({ tenantId, userId: actorId, action: 'user.created', entityType: 'User', entityId: user.id, after: { email: dto.email, role: user.role } });
-  return user;
+  let invitationSent = true;
+  try { await requestPasswordReset({ email: user.email }, { userId: user.id, tenantId }); }
+  catch { invitationSent = false; }
+  return { ...user, invitationSent };
 }
 
 export async function update(id: string, tenantId: string, actorId: string, dto: {
-  firstName?: string; lastName?: string; role?: string; status?: string; phone?: string; jobTitle?: string; department?: string; avatarUrl?: string;
+  firstName?: string; lastName?: string; role?: string; status?: string; phone?: string; jobTitle?: string; department?: string;
 }) {
   dto = UpdateUsersSchema.parse(dto);
   if (isSystemAdminRole(dto.role)) {
@@ -101,6 +106,7 @@ export async function update(id: string, tenantId: string, actorId: string, dto:
     throw new ForbiddenError('Cannot modify System Admin users');
   }
 
+  if (id === actorId && dto.status === 'INACTIVE') throw new ForbiddenError('Cannot deactivate your own account');
   const updateData: any = { ...dto };
   if (dto.status) updateData.status = dto.status as any; // Cast as enum
 
@@ -108,6 +114,7 @@ export async function update(id: string, tenantId: string, actorId: string, dto:
     if (dto.role) await replaceUserRole(tx, id, tenantId, dto.role);
     return tx.user.update({ where: { id }, data: updateData, select: SAFE_USER_SELECT });
   });
+  if (dto.status === 'INACTIVE') await revokeAllUserSessions(id);
   await writeAuditLog({ tenantId, userId: actorId, action: 'user.updated', entityType: 'User', entityId: id, after: dto as Record<string, unknown> });
   return user;
 }
@@ -170,4 +177,12 @@ export async function bulkDelete(ids: string[], tenantId: string, actorId: strin
     },
   });
   await writeAuditLog({ tenantId, userId: actorId, action: 'user.bulk_deleted', entityType: 'User', after: { ids }, severity: 'CRITICAL' });
+}
+
+export async function sendPasswordReset(id: string, tenantId: string, actorId: string) {
+  const user = await getById(id, tenantId);
+  if (user.status !== 'ACTIVE' || isSystemAdminRole(user.role)) throw new ForbiddenError('Password recovery is unavailable for this user.');
+  try { await requestPasswordReset({ email: user.email }, { userId: user.id, tenantId }); }
+  catch { throw new ValidationError('Unable to send recovery email. Please try again.'); }
+  await writeAuditLog({ tenantId, userId: actorId, action: 'user.password_reset_requested_by_admin', entityType: 'User', entityId: id });
 }

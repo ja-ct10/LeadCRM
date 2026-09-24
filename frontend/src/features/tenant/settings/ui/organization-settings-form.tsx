@@ -68,7 +68,13 @@ export function OrganizationSettingsForm() {
   };
 
   if (error) return <div role="alert" className="space-y-3 text-sm"><p>{error}</p><button type="button" onClick={() => setReload(value => value + 1)} className="border rounded-lg px-3 py-2">Retry</button></div>;
-  if (!draft) return <p role="status" className="text-sm text-slate-500">Loading organization settings…</p>;
+  if (!draft) return <div role="status" aria-label="Loading organization settings" className="max-w-2xl space-y-6">
+    <div className="flex items-center justify-between"><h2 className="text-xl font-bold text-slate-900 dark:text-white">General</h2><div className="h-9 w-16 rounded-lg bg-slate-200 dark:bg-slate-700 animate-pulse motion-reduce:animate-none" /></div>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" aria-hidden="true">{fields.map(([key]) => <div key={key} className={`space-y-1.5 ${key === 'address' ? 'sm:col-span-2' : ''}`}>
+      <div className="h-4 w-28 rounded bg-slate-200 dark:bg-slate-700 animate-pulse motion-reduce:animate-none" />
+      <div className={`${key === 'address' ? 'h-16' : 'h-10'} rounded-lg bg-slate-100 dark:bg-slate-800 animate-pulse motion-reduce:animate-none`} />
+    </div>)}</div>
+  </div>;
 
   return <form onSubmit={save} noValidate className="max-w-2xl space-y-6">
     <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-bold text-slate-900 dark:text-white">General</h2>
