@@ -4,6 +4,7 @@
  */
 
 export const PATHNAME_TO_PATH: Record<string, string> = {
+  '/help':                         'help',
   '/onboarding':                   'onboarding',
   '/dashboard':                    'dashboard',
   '/crm/leads':                    'leads',
@@ -35,6 +36,7 @@ export const PATHNAME_TO_PATH: Record<string, string> = {
 
 // Reverse map — canonical pathname for each path (first match wins)
 export const PATH_TO_PATHNAME: Record<string, string> = {
+  'help':                '/help',
   'onboarding':          '/onboarding',
   'dashboard':           '/dashboard',
   'contacts':            '/crm/contacts',

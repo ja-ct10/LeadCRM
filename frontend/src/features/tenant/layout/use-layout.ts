@@ -40,7 +40,7 @@ export function useLayout() {
   const { user } = useAuth();
   const userPermissions = usePermissions();
 
-  const currentPath = PATHNAME_TO_PATH[pathname] ?? 'dashboard';
+  const currentPath = pathname.startsWith('/help/') ? 'help' : PATHNAME_TO_PATH[pathname] ?? 'dashboard';
 
   const navigate = (path: string) => {
     const target = PATH_TO_PATHNAME[path];

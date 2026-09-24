@@ -10,12 +10,12 @@ import {
   Palette,
   HelpCircle,
   LogOut,
-  ExternalLink,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '@/store/AuthContext';
 import { useLayout } from '@/features/tenant/layout/use-layout';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -190,21 +190,17 @@ export function UserProfileDropdown(): React.ReactElement {
 
             {/* Section 3: Support & Resources */}
             <div className="py-1 border-b border-slate-100 dark:border-slate-700/70">
-              <a
-                href="#help"
+              <Link
+                href="/help"
                 role="menuitem"
-                onClick={(e) => {
-                  e.preventDefault();
-                  toast.info('Help Center documentation is opening in a new tab.');
-                }}
+                onClick={() => setIsOpen(false)}
                 className="w-full flex items-center justify-between px-3.5 py-2 text-[12.5px] font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer group"
               >
                 <span className="flex items-center gap-2.5">
                   <HelpCircle size={14} className="text-slate-400 dark:text-slate-500 group-hover:text-[#2563EB] transition-colors" />
                   Help Center
                 </span>
-                <ExternalLink size={12} className="text-slate-400 opacity-60" />
-              </a>
+              </Link>
             </div>
 
             {/* Section 4: Log out */}

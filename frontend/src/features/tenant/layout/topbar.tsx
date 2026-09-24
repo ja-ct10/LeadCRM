@@ -71,7 +71,8 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
   const currentModule = currentPath === 'settings'
     ? settingsBreadcrumb.tab
     : NAV_ITEMS.find(item => item.path === currentPath)?.name ||
-        (currentPath === 'notifications' ? 'Notifications' :
+        (currentPath === 'help' ? 'Help Center' :
+         currentPath === 'notifications' ? 'Notifications' :
          currentPath === 'inbox' ? 'Messages' : 'Dashboard');
 
   // Get parent group for breadcrumb
