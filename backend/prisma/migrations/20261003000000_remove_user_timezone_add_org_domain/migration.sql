@@ -1,0 +1,2 @@
+ALTER TABLE "User" DROP COLUMN "timeZone";
+ALTER TABLE "Tenant" ADD COLUMN "domain" TEXT;

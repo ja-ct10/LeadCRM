@@ -26,15 +26,6 @@ exports.CompanySetupSchema = zod_1.z.object({
     industry: zod_1.z.string().trim().min(1, 'Industry is required').max(100),
     companySize: zod_1.z.string().trim().min(1, 'Company size is required').max(20),
     website: WebsiteSchema.or(zod_1.z.literal('')).optional(),
-    timezone: zod_1.z.string().max(100).refine(value => {
-        try {
-            new Intl.DateTimeFormat('en', { timeZone: value });
-            return true;
-        }
-        catch {
-            return false;
-        }
-    }, 'Choose a valid time zone').optional(),
 });
 exports.OnboardingProgressSchema = zod_1.z.object({
     expectedStep: zod_1.z.number().int().min(0).max(2),

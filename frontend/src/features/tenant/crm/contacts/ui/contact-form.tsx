@@ -124,6 +124,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
   });
 
   // Scroll to first error on submit
+  const fieldId = React.useId();
   const formRef = useRef<HTMLFormElement>(null);
   useScrollToError({ errors, formRef, setFocus });
 
@@ -199,16 +200,22 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
 
           {/* First & Last Name (required) */}
           <div className="grid grid-cols-2 gap-4">
-            <FieldWrap label="First Name *" error={errors.firstName?.message}>
+            <FieldWrap label="First Name *" htmlFor={`${fieldId}-firstName`} error={errors.firstName?.message}>
               <input
                 {...register('firstName')}
+                id={`${fieldId}-firstName`}
+                aria-invalid={!!errors.firstName}
+                aria-describedby={errors.firstName ? `${fieldId}-firstName-error` : undefined}
                 className={`${inputCls} ${errors.firstName ? inputErrorCls : ''}`}
                 placeholder="Enter first name"
               />
             </FieldWrap>
-            <FieldWrap label="Last Name *" error={errors.lastName?.message}>
+            <FieldWrap label="Last Name *" htmlFor={`${fieldId}-lastName`} error={errors.lastName?.message}>
               <input
                 {...register('lastName')}
+                id={`${fieldId}-lastName`}
+                aria-invalid={!!errors.lastName}
+                aria-describedby={errors.lastName ? `${fieldId}-lastName-error` : undefined}
                 className={`${inputCls} ${errors.lastName ? inputErrorCls : ''}`}
                 placeholder="Enter last name"
               />
@@ -217,12 +224,15 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
 
           {/* Email & Phone */}
           <div className="grid grid-cols-2 gap-4">
-            <FieldWrap label="Email" error={errors.email?.message}>
+            <FieldWrap label="Email" htmlFor={`${fieldId}-email`} error={errors.email?.message}>
               <div className="relative">
                 <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                 <input
                   type="email"
                   {...register('email')}
+                  id={`${fieldId}-email`}
+                  aria-invalid={!!errors.email}
+                  aria-describedby={errors.email ? `${fieldId}-email-error` : undefined}
                   className={`${inputCls} pl-9 ${errors.email ? inputErrorCls : ''}`}
                   placeholder="email@example.com"
                 />
@@ -238,9 +248,12 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
           </div>
 
           {/* Company Name */}
-          <FieldWrap label="Company Name" error={errors.companyName?.message}>
+          <FieldWrap label="Company Name" htmlFor={`${fieldId}-companyName`} error={errors.companyName?.message}>
             <input
               {...register('companyName')}
+              id={`${fieldId}-companyName`}
+              aria-invalid={!!errors.companyName}
+              aria-describedby={errors.companyName ? `${fieldId}-companyName-error` : undefined}
               className={`${inputCls} ${errors.companyName ? inputErrorCls : ''}`}
               placeholder="Company or organization name"
             />
@@ -253,10 +266,13 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
 
           <div className="grid grid-cols-2 gap-4">
             {/* Status */}
-            <FieldWrap label="Status" error={errors.status?.message}>
+            <FieldWrap label="Status" htmlFor={`${fieldId}-status`} error={errors.status?.message}>
               <div className="relative">
                 <select
                   {...register('status')}
+                  id={`${fieldId}-status`}
+                  aria-invalid={!!errors.status}
+                  aria-describedby={errors.status ? `${fieldId}-status-error` : undefined}
                   className={`${selectCls} ${errors.status ? inputErrorCls : ''}`}
                 >
                   {STATUS_OPTIONS.map((opt) => (
@@ -270,10 +286,13 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
             </FieldWrap>
 
             {/* Source */}
-            <FieldWrap label="Source" error={errors.source?.message}>
+            <FieldWrap label="Source" htmlFor={`${fieldId}-source`} error={errors.source?.message}>
               <div className="relative">
                 <select
                   {...register('source')}
+                  id={`${fieldId}-source`}
+                  aria-invalid={!!errors.source}
+                  aria-describedby={errors.source ? `${fieldId}-source-error` : undefined}
                   className={`${selectCls} ${errors.source ? inputErrorCls : ''}`}
                 >
                   <option value="">Select source...</option>
@@ -294,7 +313,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
           <SectionHeader num={3} title="Relationships" />
 
           {/* Account (organization) selector */}
-          <FieldWrap label="Account" error={errors.accountId?.message}>
+          <FieldWrap label="Account">
             <Controller
               name="accountId"
               control={control}
@@ -311,10 +330,13 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
           </FieldWrap>
 
           {/* Assigned User */}
-          <FieldWrap label="Assigned Agent" error={errors.assignedUserId?.message}>
+          <FieldWrap label="Assigned Agent" htmlFor={`${fieldId}-assignedUserId`} error={errors.assignedUserId?.message}>
             <div className="relative">
               <select
                 {...register('assignedUserId')}
+                id={`${fieldId}-assignedUserId`}
+                aria-invalid={!!errors.assignedUserId}
+                aria-describedby={errors.assignedUserId ? `${fieldId}-assignedUserId-error` : undefined}
                 className={`${selectCls} ${errors.assignedUserId ? inputErrorCls : ''}`}
               >
                 <option value="">Unassigned</option>
@@ -382,11 +404,14 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
           </FieldWrap>
 
           {/* Address */}
-          <FieldWrap label="Address" error={errors.address?.message}>
+          <FieldWrap label="Address" htmlFor={`${fieldId}-address`} error={errors.address?.message}>
             <div className="relative">
               <MapPin className="absolute left-3.5 top-3 text-slate-400" size={14} />
               <textarea
                 {...register('address')}
+                id={`${fieldId}-address`}
+                aria-invalid={!!errors.address}
+                aria-describedby={errors.address ? `${fieldId}-address-error` : undefined}
                 rows={3}
                 className={`w-full pl-9 pr-4 bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all resize-none ${errors.address ? inputErrorCls : ''}`}
                 placeholder="123 Main St, City, State, Zip Code"
@@ -446,16 +471,15 @@ function SectionHeader({ num, title }: { num: number; title: string }): React.Re
   );
 }
 
-function FieldWrap({ label, error, children }: { label: string; error?: string; children: React.ReactNode }): React.ReactElement {
+function FieldWrap({ label, error, htmlFor, children }: { label: string; error?: string; htmlFor?: string; children: React.ReactNode }): React.ReactElement {
   return (
     <div className="space-y-1.5">
-      <label className="flex items-center justify-between text-xs font-semibold text-slate-600 dark:text-slate-400">
+      <label htmlFor={htmlFor} className="block text-xs font-semibold text-slate-600 dark:text-slate-400">
         <span>{label}</span>
-        {error && <span className="text-red-500 font-normal text-[10px]">{error}</span>}
       </label>
       {children}
       {error && (
-        <p className="text-[11px] text-red-500 flex items-center gap-1">
+        <p id={htmlFor ? `${htmlFor}-error` : undefined} role="alert" className="text-[11px] text-red-500 flex items-center gap-1">
           <AlertCircle size={11} /> {error}
         </p>
       )}

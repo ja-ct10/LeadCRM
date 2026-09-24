@@ -17,3 +17,4 @@ Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./contact.schema"), exports);
 __exportStar(require("./user.schema"), exports);
 __exportStar(require("./preferences.validation"), exports);
+__exportStar(require("./account.schema"), exports);

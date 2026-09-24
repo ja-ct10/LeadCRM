@@ -10,17 +10,12 @@ import {
   Search,
   Users,
   Lock,
-  Globe,
-  Mail,
-  Phone,
-  MapPin,
   Save,
   Layout,
   X,
   RefreshCw,
   ChevronDown,
   Receipt,
-  Link,
   Palette,
   Moon,
   Sun,
@@ -41,6 +36,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { ACCENT_COLORS, applyAccentColor, ACCENT_KEY } from "@/lib/accent-colors";
+import { OrganizationSettingsForm } from './organization-settings-form';
 import { ProfileForm } from './profile-form';
 import { FormsTab } from './forms-tab';
 import { TeamManagement } from './team-management';
@@ -123,13 +119,9 @@ export default function SettingsPage(): React.ReactElement {
     users,
     roles,
     restoreRecord,
-    updateTenant,
   } = useData();
 
-  const userRoleDef = roles.find((r) => r.name === user?.role);
-  const userPerms = userRoleDef?.permissions || [];
   const isClientAdmin = user?.role === "Client Admin";
-  const canEditSettings = isClientAdmin || userPerms.includes("p28");
 
   // RBAC-filtered nav groups — hide Audit Trail from non-admin roles
   const canViewAudit = isClientAdmin || user?.role === "Administrator" || user?.role === "Admin" || userCan('audit', 'canView');
@@ -157,14 +149,6 @@ export default function SettingsPage(): React.ReactElement {
       }));
     }
   }, [activeTab]);
-
-  // Organization state
-  const [orgName, setOrgName] = useState(tenant?.name || "");
-  const [orgEmail, setOrgEmail] = useState(tenant?.email || "");
-  const [orgPhone, setOrgPhone] = useState(tenant?.phone || "");
-  const [orgAddress, setOrgAddress] = useState(tenant?.address || "");
-  const [orgIndustry, setOrgIndustry] = useState(tenant?.industry || "");
-  const [orgDomain, setOrgDomain] = useState(tenant?.domain || "");
 
   // Appearance state
   const [appTheme, setAppTheme] = useState(localStorage.getItem("app_theme") || "Light");
@@ -221,13 +205,6 @@ export default function SettingsPage(): React.ReactElement {
 
     const resolved = appTheme === "Dark" ? "dark" : appTheme === "Classic" ? "classic" : appTheme === "System" ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : "light";
     window.dispatchEvent(new CustomEvent("themechange", { detail: { theme: resolved, mode: appTheme } }));
-  };
-
-  const handleSaveOrganization = (): void => {
-    if (tenant) {
-      updateTenant(tenant.id, { name: orgName, email: orgEmail, phone: orgPhone, address: orgAddress, industry: orgIndustry, domain: orgDomain });
-      toast.success("Organization settings saved successfully");
-    }
   };
 
   // -- Profile Settings Tab --
@@ -455,70 +432,9 @@ export default function SettingsPage(): React.ReactElement {
     </div>
   );
 
-  const renderOrgGeneralTab = (): React.ReactElement => (
-    <div className="max-w-2xl space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="org-name">Organization Name</label>
-          <div className="relative">
-            <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
-            <input id="org-name" type="text" value={orgName} onChange={(e) => setOrgName(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#3B82F6] transition-colors" />
-          </div>
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="org-industry">Industry</label>
-          <div className="relative">
-            <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
-            <input id="org-industry" type="text" value={orgIndustry} onChange={(e) => setOrgIndustry(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#3B82F6] transition-colors" />
-          </div>
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="org-email">Email</label>
-          <div className="relative">
-            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
-            <input id="org-email" type="email" value={orgEmail} onChange={(e) => setOrgEmail(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#3B82F6] transition-colors" />
-          </div>
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="org-phone">Phone</label>
-          <div className="relative">
-            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
-            <input id="org-phone" type="text" value={orgPhone} onChange={(e) => setOrgPhone(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#3B82F6] transition-colors" />
-          </div>
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="org-domain">Domain</label>
-          <div className="relative">
-            <Link className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
-            <input id="org-domain" type="text" value={orgDomain} onChange={(e) => setOrgDomain(e.target.value)} placeholder="e.g., example.com"
-              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#3B82F6] transition-colors" />
-          </div>
-        </div>
-        <div className="space-y-1.5 sm:col-span-2">
-          <label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="org-address">Office Address</label>
-          <div className="relative">
-            <MapPin className="absolute left-3 top-3 w-3.5 h-3.5 text-slate-500" />
-            <textarea id="org-address" value={orgAddress} onChange={(e) => setOrgAddress(e.target.value)} rows={2}
-              className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-xs text-slate-900 dark:text-white focus:outline-none focus:border-[#3B82F6] transition-colors resize-none" />
-          </div>
-        </div>
-      </div>
-      {canEditSettings && (
-        <div className="flex justify-end">
-          <button onClick={handleSaveOrganization}
-            className="flex items-center gap-2 px-5 py-2 bg-[#3B82F6] hover:bg-[#2563EB] text-white rounded-lg text-xs font-semibold transition-all shadow-sm cursor-pointer">
-            <Save className="w-3.5 h-3.5" /> Save Changes
-          </button>
-        </div>
-      )}
-    </div>
-  );
+  const renderOrgGeneralTab = (): React.ReactElement => <OrganizationSettingsForm key={tenant?.id} />;
 
-  // â”€â”€ Users (Team Management) Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Users (Team Management) Tab
   const renderUsersTab = (): React.ReactElement => <TeamManagement />;
 
   // â”€â”€ Archived Data Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -613,7 +529,7 @@ export default function SettingsPage(): React.ReactElement {
   const activeItem = activeGroup?.items.find((i) => i.id === activeTab);
 
   return (
-    <div className="flex flex-col lg:flex-row h-full -m-4 lg:-m-6 min-h-[calc(100dvh-4rem)] max-h-[100dvh] overflow-hidden">
+    <div className="flex flex-col lg:flex-row h-full min-w-0 -m-3 sm:-m-4 lg:-m-6 min-h-[calc(100dvh-4rem)] max-h-[100dvh] overflow-hidden">
       {/* Mobile Tab Selector — visible below lg breakpoint */}
       <div className="lg:hidden shrink-0 border-b border-gray-200 dark:border-[#262A33] bg-white dark:bg-[#121418] px-4 py-3">
         <label htmlFor="settings-mobile-nav" className="sr-only">Settings section</label>
@@ -707,7 +623,7 @@ export default function SettingsPage(): React.ReactElement {
           (activeTab === 'forms' && isFormBuilderActive);
 
         return (
-          <div className={`flex-1 overflow-y-auto custom-scrollbar ${isFullPane ? '' : 'px-4 sm:px-6 py-5'}`}>
+          <div className={`flex-1 min-w-0 overflow-y-auto custom-scrollbar ${isFullPane ? '' : 'px-4 sm:px-6 py-5'}`}>
             {!isFullPane && !hasOwnHeader && (
               <div className="mb-5">
                 <h1 className="text-xl font-bold text-slate-900 dark:text-white">{activeItem?.label ?? 'Settings'}</h1>

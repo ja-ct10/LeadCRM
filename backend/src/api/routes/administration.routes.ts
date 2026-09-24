@@ -3,6 +3,8 @@ import { authMiddleware } from '../middleware/auth.middleware';
 import { tenantMiddleware, workspaceReadyMiddleware } from '../middleware/tenant.middleware';
 import { authorize } from '../middleware/rbac.middleware';
 import { validate } from '../middleware/validate.middleware';
+import { UpdateOrganizationSettingsSchema } from '@leadcrm/shared';
+import * as organizationSettings from '../../modules/administration/organization-settings/organization-settings.controller';
 import * as userController       from '../../modules/administration/users/users.controller';
 import * as roleController       from '../../modules/administration/roles/roles.controller';
 import { CreateRoleSchema, UpdateRoleSchema, AssignRoleSchema } from '../../modules/administration/roles/roles.dto';
@@ -22,6 +24,9 @@ router.get('/users/:id/permissions', (req, res, next) => {
   return workspaceReadyMiddleware(req, res, next);
 }, roleController.getUserPermissions);
 router.use(workspaceReadyMiddleware);
+
+router.get('/organization-settings', authorize('settings.view'), organizationSettings.get);
+router.patch('/organization-settings', authorize('settings.edit'), validate(UpdateOrganizationSettingsSchema), organizationSettings.update);
 
 // -- Users ---------------------------------------------
 router.get(   '/users',                  authorize('users.view'),   userController.getAll);

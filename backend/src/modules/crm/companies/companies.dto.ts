@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { OptionalTaxIdSchema } from '@leadcrm/shared';
 
 const id = () => z.string().min(1);
 
@@ -7,7 +8,7 @@ export const CreateCompanySchema = z.object({
   industry:       z.string().optional(),
   size:           z.enum(['1-10', '11-50', '51-200', '200+']).optional(),
   website:        z.string().url().optional().or(z.literal('')),
-  taxId:          z.string().optional(),
+  taxId:          OptionalTaxIdSchema,
   tags:           z.array(z.string()).default([]),
   address:        z.string().optional(),
   city:           z.string().optional(),

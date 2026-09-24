@@ -7,11 +7,6 @@ export const UpdateSelfProfileSchema = z.object({
   phone: optionalText(50),
   jobTitle: optionalText(150),
   department: optionalText(150),
-  timeZone: optionalText(100).refine(value => {
-    if (!value) return true;
-    try { new Intl.DateTimeFormat('en', { timeZone: value }); return true; }
-    catch { return false; }
-  }, 'Choose a valid time zone, such as Asia/Manila'),
 }).strict().refine(value => Object.keys(value).length > 0, 'No profile changes supplied');
 
 export type UpdateSelfProfile = z.infer<typeof UpdateSelfProfileSchema>;

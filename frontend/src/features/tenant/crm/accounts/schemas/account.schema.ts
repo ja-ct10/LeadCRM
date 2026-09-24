@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { OptionalTaxIdSchema } from '@leadcrm/shared';
 
 // ── Zod schemas mirroring backend CreateCompanySchema / UpdateCompanySchema ──
 // Backend route POST /crm/accounts validates against CreateCompanySchema from companies.dto.ts.
@@ -17,7 +18,7 @@ export const CreateAccountSchema = z.object({
   industry: z.string().optional(),
   size: z.enum(COMPANY_SIZE_OPTIONS).optional().or(z.literal('')),
   website: z.string().url('Must be a valid URL').optional().or(z.literal('')),
-  taxId: z.string().optional(),
+  taxId: OptionalTaxIdSchema,
   tags: z.array(z.string()).default([]),
   address: z.string().optional(),
   city: z.string().optional(),

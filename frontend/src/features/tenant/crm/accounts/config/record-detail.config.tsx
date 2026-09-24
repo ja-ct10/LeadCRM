@@ -45,7 +45,7 @@ export const accountDetailConfig: RecordDetailConfig = {
         { key: 'address', label: 'Address', value: record.address, type: 'text', editable: true, icon: MapPin, onSave: (v) => onSave('address', v) },
         { key: 'city', label: 'City', value: record.city, type: 'text', editable: true, onSave: (v) => onSave('city', v) },
         { key: 'province', label: 'Province', value: record.province, type: 'text', editable: true, onSave: (v) => onSave('province', v) },
-        { key: 'country', label: 'Country', value: record.country, type: 'text', editable: true, onSave: (v) => onSave('country', v) },
+        { key: 'country', label: 'Country', value: record.country, type: 'text', editable: false },
       ],
     },
     {

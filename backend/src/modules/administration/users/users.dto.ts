@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { CreateUserSchema, StrongPasswordSchema } from '@leadcrm/shared';
 const profileFields = {
   phone: z.string().max(50).optional(), jobTitle: z.string().max(100).optional(),
-  department: z.string().max(100).optional(), avatarUrl: z.string().optional(), timeZone: z.string().max(100).optional(),
+  department: z.string().max(100).optional(), avatarUrl: z.string().optional(),
 };
 export const CreateUsersSchema = CreateUserSchema.extend({
   ...profileFields, password: StrongPasswordSchema.optional(), role: z.string().trim().min(1),

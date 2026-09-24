@@ -82,6 +82,7 @@ export function DealEditForm({ deal, onSave, onCancel }: DealEditFormProps): Rea
   const { users } = useData();
   const canEdit = useHasPermission('deals.edit');
 
+  const fieldId = React.useId();
   const formRef = useRef<HTMLFormElement>(null);
 
   // Map deal priority to DTO enum format (deal uses 'Low'/'Medium'/'High', DTO uses 'LOW'/'MEDIUM'/'HIGH')
@@ -168,9 +169,12 @@ export function DealEditForm({ deal, onSave, onCancel }: DealEditFormProps): Rea
         <div className="space-y-4">
           <SectionHeader num={1} title="Deal Information" />
 
-          <FieldWrap label="Deal Title *" error={errors.title?.message}>
+          <FieldWrap label="Deal Title *" htmlFor={`${fieldId}-title`} error={errors.title?.message}>
             <input
               {...register('title')}
+              id={`${fieldId}-title`}
+              aria-invalid={!!errors.title}
+              aria-describedby={errors.title ? `${fieldId}-title-error` : undefined}
               className={cn(inputCls, errors.title && errorInputCls)}
               placeholder="Enter deal title"
               aria-required="true"
@@ -178,7 +182,7 @@ export function DealEditForm({ deal, onSave, onCancel }: DealEditFormProps): Rea
           </FieldWrap>
 
           <div className="grid grid-cols-2 gap-4">
-            <FieldWrap label="Value" error={errors.value?.message}>
+            <FieldWrap label="Value" htmlFor={`${fieldId}-value`} error={errors.value?.message}>
               <div className="relative">
                 <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                 <input
@@ -187,16 +191,22 @@ export function DealEditForm({ deal, onSave, onCancel }: DealEditFormProps): Rea
                   min="0"
                   max="999999999.99"
                   {...register('value', { valueAsNumber: true })}
+                  id={`${fieldId}-value`}
+                  aria-invalid={!!errors.value}
+                  aria-describedby={errors.value ? `${fieldId}-value-error` : undefined}
                   className={cn(inputCls, 'pl-9', errors.value && errorInputCls)}
                   placeholder="0.00"
                 />
               </div>
             </FieldWrap>
 
-            <FieldWrap label="Priority" error={errors.priority?.message}>
+            <FieldWrap label="Priority" htmlFor={`${fieldId}-priority`} error={errors.priority?.message}>
               <div className="relative">
                 <select
                   {...register('priority')}
+                  id={`${fieldId}-priority`}
+                  aria-invalid={!!errors.priority}
+                  aria-describedby={errors.priority ? `${fieldId}-priority-error` : undefined}
                   className={cn(selectCls, errors.priority && errorInputCls)}
                 >
                   {PRIORITY_OPTIONS.map((opt) => (
@@ -209,29 +219,38 @@ export function DealEditForm({ deal, onSave, onCancel }: DealEditFormProps): Rea
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <FieldWrap label="Expected Close Date" error={errors.expectedCloseDate?.message}>
+            <FieldWrap label="Expected Close Date" htmlFor={`${fieldId}-expectedCloseDate`} error={errors.expectedCloseDate?.message}>
               <div className="relative">
                 <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                 <input
                   type="date"
                   {...register('expectedCloseDate')}
+                  id={`${fieldId}-expectedCloseDate`}
+                  aria-invalid={!!errors.expectedCloseDate}
+                  aria-describedby={errors.expectedCloseDate ? `${fieldId}-expectedCloseDate-error` : undefined}
                   className={cn(inputCls, 'pl-9', errors.expectedCloseDate && errorInputCls)}
                 />
               </div>
             </FieldWrap>
 
-            <FieldWrap label="Lead Source" error={errors.leadSource?.message}>
+            <FieldWrap label="Lead Source" htmlFor={`${fieldId}-leadSource`} error={errors.leadSource?.message}>
               <input
                 {...register('leadSource')}
+                id={`${fieldId}-leadSource`}
+                aria-invalid={!!errors.leadSource}
+                aria-describedby={errors.leadSource ? `${fieldId}-leadSource-error` : undefined}
                 className={cn(inputCls, errors.leadSource && errorInputCls)}
                 placeholder="e.g. Referral, Website"
               />
             </FieldWrap>
           </div>
 
-          <FieldWrap label="Description" error={errors.description?.message}>
+          <FieldWrap label="Description" htmlFor={`${fieldId}-description`} error={errors.description?.message}>
             <textarea
               {...register('description')}
+              id={`${fieldId}-description`}
+              aria-invalid={!!errors.description}
+              aria-describedby={errors.description ? `${fieldId}-description-error` : undefined}
               rows={3}
               className={cn(inputCls, 'resize-none', errors.description && errorInputCls)}
               placeholder="Deal description (optional)"
@@ -274,10 +293,13 @@ export function DealEditForm({ deal, onSave, onCancel }: DealEditFormProps): Rea
             )}
           />
 
-          <FieldWrap label="Assigned User" error={errors.assignedUserId?.message}>
+          <FieldWrap label="Assigned User" htmlFor={`${fieldId}-assignedUserId`} error={errors.assignedUserId?.message}>
             <div className="relative">
               <select
                 {...register('assignedUserId')}
+                id={`${fieldId}-assignedUserId`}
+                aria-invalid={!!errors.assignedUserId}
+                aria-describedby={errors.assignedUserId ? `${fieldId}-assignedUserId-error` : undefined}
                 className={cn(selectCls, errors.assignedUserId && errorInputCls)}
               >
                 <option value="">Unassigned</option>
@@ -297,9 +319,12 @@ export function DealEditForm({ deal, onSave, onCancel }: DealEditFormProps): Rea
           <SectionHeader num={3} title="Additional Details" />
 
           <div className="grid grid-cols-2 gap-4">
-            <FieldWrap label="Industry" error={errors.industry?.message}>
+            <FieldWrap label="Industry" htmlFor={`${fieldId}-industry`} error={errors.industry?.message}>
               <input
                 {...register('industry')}
+                id={`${fieldId}-industry`}
+                aria-invalid={!!errors.industry}
+                aria-describedby={errors.industry ? `${fieldId}-industry-error` : undefined}
                 className={cn(inputCls, errors.industry && errorInputCls)}
                 placeholder="e.g. Technology, Healthcare"
               />
@@ -319,11 +344,14 @@ export function DealEditForm({ deal, onSave, onCancel }: DealEditFormProps): Rea
             </FieldWrap>
           </div>
 
-          <FieldWrap label="Address" error={errors.address?.message}>
+          <FieldWrap label="Address" htmlFor={`${fieldId}-address`} error={errors.address?.message}>
             <div className="relative">
               <MapPin className="absolute left-3.5 top-3 text-slate-400" size={14} />
               <textarea
                 {...register('address')}
+                id={`${fieldId}-address`}
+                aria-invalid={!!errors.address}
+                aria-describedby={errors.address ? `${fieldId}-address-error` : undefined}
                 rows={2}
                 className={cn(inputCls, 'pl-9 resize-none', errors.address && errorInputCls)}
                 placeholder="123 Main St, City, State, Zip"
@@ -389,16 +417,15 @@ function SectionHeader({ num, title }: { num: number; title: string }): React.Re
   );
 }
 
-function FieldWrap({ label, error, children }: { label: string; error?: string; children: React.ReactNode }): React.ReactElement {
+function FieldWrap({ label, error, htmlFor, children }: { label: string; error?: string; htmlFor?: string; children: React.ReactNode }): React.ReactElement {
   return (
     <div className="space-y-1.5">
-      <label className="flex items-center justify-between text-xs font-semibold text-slate-600 dark:text-slate-400">
+      <label htmlFor={htmlFor} className="block text-xs font-semibold text-slate-600 dark:text-slate-400">
         <span>{label}</span>
-        {error && <span className="text-red-500 font-normal text-[10px]">{error}</span>}
       </label>
       {children}
       {error && (
-        <p className="text-[11px] text-red-500 flex items-center gap-1" role="alert">
+        <p id={htmlFor ? `${htmlFor}-error` : undefined} className="text-[11px] text-red-500 flex items-center gap-1" role="alert">
           <AlertCircle size={11} /> {error}
         </p>
       )}

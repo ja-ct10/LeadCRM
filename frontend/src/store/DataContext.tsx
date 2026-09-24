@@ -179,7 +179,6 @@ interface DataContextType {
   approveTenant: (id: string) => void;
   rejectTenant: (id: string) => void;
   suspendTenant: (id: string) => void;
-  updateTenant: (id: string, updates: Partial<Tenant>) => void;
   addAuditLog: (action: string, details: string) => void;
   isBillingModuleEnabled: boolean;
   toggleBillingModule: () => void;
@@ -2307,25 +2306,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     loadData();
   };
 
-  const updateTenant = (id: string, updates: Partial<Tenant>) => {
-    const allTenants = JSON.parse(
-      localStorage.getItem("leadcrm_tenants") || "[]",
-    );
-    const tenant = allTenants.find((t: Tenant) => t.id === id);
-    if (tenant && updates.adminNotes) {
-      addAuditLog(
-        "Update Tenant Notes",
-        `Updated internal admin notes for ${tenant.name}.`,
-      );
-    }
-
-    const newTenants = allTenants.map((t: Tenant) =>
-      t.id === id ? { ...t, ...updates } : t,
-    );
-    localStorage.setItem("leadcrm_tenants", JSON.stringify(newTenants));
-    loadData();
-  };
-
   const resetDemoData = () => {
     localStorage.setItem("leadcrm_leads", JSON.stringify(MOCK_LEADS));
     localStorage.setItem("leadcrm_deals", JSON.stringify(MOCK_DEALS));
@@ -2427,7 +2407,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     approveTenant,
     rejectTenant,
     suspendTenant,
-    updateTenant,
     addAuditLog,
     addTask,
     updateTask,

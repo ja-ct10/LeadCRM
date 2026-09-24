@@ -13,7 +13,7 @@ import { Role } from '../../../shared/constants/roles';
 const SAFE_USER_SELECT = {
   id: true, tenantId: true, firstName: true, lastName: true,
   email: true, role: true, status: true, createdAt: true, updatedAt: true,
-  phone: true, jobTitle: true, department: true, avatarUrl: true, timeZone: true, lastLoginAt: true,
+  phone: true, jobTitle: true, department: true, avatarUrl: true, lastLoginAt: true,
   // passwordHash is NEVER selected
 };
 
@@ -51,7 +51,7 @@ export async function getById(id: string, tenantId: string) {
 }
 
 export async function create(tenantId: string, actorId: string, dto: {
-  firstName: string; lastName: string; email: string; password?: string; role: string; phone?: string; jobTitle?: string; department?: string; avatarUrl?: string; timeZone?: string;
+  firstName: string; lastName: string; email: string; password?: string; role: string; phone?: string; jobTitle?: string; department?: string; avatarUrl?: string;
 }) {
   dto = CreateUsersSchema.parse(dto);
   if (isSystemAdminRole(dto.role)) {
@@ -71,7 +71,7 @@ export async function create(tenantId: string, actorId: string, dto: {
         email: dto.email.trim().toLowerCase(), passwordHash,
         mustChangePassword: true, role: dto.role,
         phone: dto.phone, jobTitle: dto.jobTitle, department: dto.department,
-        avatarUrl: dto.avatarUrl, timeZone: dto.timeZone,
+        avatarUrl: dto.avatarUrl,
       },
       select: SAFE_USER_SELECT,
     });
@@ -83,7 +83,7 @@ export async function create(tenantId: string, actorId: string, dto: {
 }
 
 export async function update(id: string, tenantId: string, actorId: string, dto: {
-  firstName?: string; lastName?: string; role?: string; status?: string; phone?: string; jobTitle?: string; department?: string; avatarUrl?: string; timeZone?: string;
+  firstName?: string; lastName?: string; role?: string; status?: string; phone?: string; jobTitle?: string; department?: string; avatarUrl?: string;
 }) {
   dto = UpdateUsersSchema.parse(dto);
   if (isSystemAdminRole(dto.role)) {

@@ -184,6 +184,7 @@ model PlanFeature {
 model Tenant {
   id                 String             @id @default(uuid())
   name               String
+  domain             String?
   slug               String             @unique
   industry           String?
   companySize        String? // "1-10" | "11-50" | "51-200" | "200+"
@@ -347,7 +348,6 @@ model User {
   jobTitle      String?
   department    String?
   avatarUrl     String?
-  timeZone      String?
   lastLoginAt   DateTime?
   // Primary role identity for routing; custom permissions come from UserRole.
   // Assign explicitly and keep both representations in the same transaction.

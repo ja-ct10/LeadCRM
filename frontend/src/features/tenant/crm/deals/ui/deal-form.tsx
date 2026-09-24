@@ -171,6 +171,7 @@ export function DealForm({
     mode: 'onChange',
   });
 
+  const fieldId = React.useId();
   const formRef = useRef<HTMLFormElement>(null);
   const selectedPipelineId = watch('pipelineId');
 
@@ -252,10 +253,13 @@ export function DealForm({
           <div className="space-y-4">
             <SectionHeader num={1} title="Pipeline & Stage" />
             <div className="grid grid-cols-2 gap-4">
-              <FieldWrap label="Pipeline *" error={errors.pipelineId?.message}>
+              <FieldWrap label="Pipeline *" htmlFor={`${fieldId}-pipelineId`} error={errors.pipelineId?.message}>
                 <div className="relative">
                   <select
                     {...register('pipelineId')}
+                    id={`${fieldId}-pipelineId`}
+                    aria-invalid={!!errors.pipelineId}
+                    aria-describedby={errors.pipelineId ? `${fieldId}-pipelineId-error` : undefined}
                     className={cn(selectCls, errors.pipelineId && errorInputCls)}
                   >
                     <option value="">Select pipeline...</option>
@@ -266,10 +270,13 @@ export function DealForm({
                   <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
                 </div>
               </FieldWrap>
-              <FieldWrap label="Stage *" error={errors.stageId?.message}>
+              <FieldWrap label="Stage *" htmlFor={`${fieldId}-stageId`} error={errors.stageId?.message}>
                 <div className="relative">
                   <select
                     {...register('stageId')}
+                    id={`${fieldId}-stageId`}
+                    aria-invalid={!!errors.stageId}
+                    aria-describedby={errors.stageId ? `${fieldId}-stageId-error` : undefined}
                     className={cn(selectCls, errors.stageId && errorInputCls)}
                     disabled={!selectedPipelineId}
                   >
@@ -288,14 +295,17 @@ export function DealForm({
         {/* Section 2: Deal Information */}
         <div className="space-y-4">
           <SectionHeader num={isCreateMode ? 2 : 1} title="Deal Information" />
-          <FieldWrap label="Title *" error={errors.title?.message}>
+          <FieldWrap label="Title *" htmlFor={`${fieldId}-title`} error={errors.title?.message}>
             <input
               {...register('title')}
+              id={`${fieldId}-title`}
+              aria-invalid={!!errors.title}
+              aria-describedby={errors.title ? `${fieldId}-title-error` : undefined}
               className={cn(inputCls, errors.title && errorInputCls)}
               placeholder="Enter deal title"
             />
           </FieldWrap>
-          <FieldWrap label="Value" error={errors.value?.message}>
+          <FieldWrap label="Value" htmlFor={`${fieldId}-value`} error={errors.value?.message}>
               <div className="relative">
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-medium select-none pointer-events-none">₱</span>
                 <input
@@ -303,6 +313,9 @@ export function DealForm({
                   step="0.01"
                   min="0"
                   {...register('value', { valueAsNumber: true })}
+                  id={`${fieldId}-value`}
+                  aria-invalid={!!errors.value}
+                  aria-describedby={errors.value ? `${fieldId}-value-error` : undefined}
                   className={cn(inputCls, 'pl-9', errors.value && errorInputCls)}
                   placeholder="0.00"
                   onKeyDown={(e) => {
@@ -314,9 +327,12 @@ export function DealForm({
               </div>
             </FieldWrap>
           <div className="grid grid-cols-2 gap-4">
-            <FieldWrap label="Priority" error={errors.priority?.message}>
+            <FieldWrap label="Priority" htmlFor={`${fieldId}-priority`} error={errors.priority?.message}>
               <div className="relative">
-                <select {...register('priority')} className={selectCls}>
+                <select {...register('priority')}
+                id={`${fieldId}-priority`}
+                aria-invalid={!!errors.priority}
+                aria-describedby={errors.priority ? `${fieldId}-priority-error` : undefined} className={selectCls}>
                   {PRIORITY_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
@@ -324,13 +340,19 @@ export function DealForm({
                 <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
               </div>
             </FieldWrap>
-            <FieldWrap label="Expected Close Date">
-              <input type="date" {...register('expectedCloseDate')} className={inputCls} />
+            <FieldWrap htmlFor={`${fieldId}-expectedCloseDate`} error={errors.expectedCloseDate?.message} label="Expected Close Date">
+              <input type="date" {...register('expectedCloseDate')}
+                id={`${fieldId}-expectedCloseDate`}
+                aria-invalid={!!errors.expectedCloseDate}
+                aria-describedby={errors.expectedCloseDate ? `${fieldId}-expectedCloseDate-error` : undefined} className={inputCls} />
             </FieldWrap>
           </div>
-          <FieldWrap label="Description">
+          <FieldWrap htmlFor={`${fieldId}-description`} error={errors.description?.message} label="Description">
             <textarea
               {...register('description')}
+              id={`${fieldId}-description`}
+              aria-invalid={!!errors.description}
+              aria-describedby={errors.description ? `${fieldId}-description-error` : undefined}
               rows={3}
               className={cn(inputCls, 'resize-none')}
               placeholder="Add deal description..."
@@ -395,9 +417,12 @@ export function DealForm({
         <div className="space-y-4">
           <SectionHeader num={isCreateMode ? 4 : 3} title="Additional Details" />
           <div className="grid grid-cols-2 gap-4">
-            <FieldWrap label="Lead Source">
+            <FieldWrap htmlFor={`${fieldId}-leadSource`} error={errors.leadSource?.message} label="Lead Source">
               <div className="relative">
-                <select {...register('leadSource')} className={selectCls}>
+                <select {...register('leadSource')}
+                id={`${fieldId}-leadSource`}
+                aria-invalid={!!errors.leadSource}
+                aria-describedby={errors.leadSource ? `${fieldId}-leadSource-error` : undefined} className={selectCls}>
                   <option value="">Select source...</option>
                   {SOURCE_OPTIONS.map((opt) => (
                     <option key={opt} value={opt}>{opt}</option>
@@ -406,13 +431,19 @@ export function DealForm({
                 <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
               </div>
             </FieldWrap>
-            <FieldWrap label="Industry">
-              <input {...register('industry')} className={inputCls} placeholder="e.g. Technology, Healthcare" />
+            <FieldWrap htmlFor={`${fieldId}-industry`} error={errors.industry?.message} label="Industry">
+              <input {...register('industry')}
+                id={`${fieldId}-industry`}
+                aria-invalid={!!errors.industry}
+                aria-describedby={errors.industry ? `${fieldId}-industry-error` : undefined} className={inputCls} placeholder="e.g. Technology, Healthcare" />
             </FieldWrap>
           </div>
-          <FieldWrap label="Address">
+          <FieldWrap htmlFor={`${fieldId}-address`} error={errors.address?.message} label="Address">
             <textarea
               {...register('address')}
+              id={`${fieldId}-address`}
+              aria-invalid={!!errors.address}
+              aria-describedby={errors.address ? `${fieldId}-address-error` : undefined}
               rows={2}
               className={cn(inputCls, 'resize-none')}
               placeholder="Enter address..."
@@ -532,16 +563,15 @@ function SectionHeader({ num, title }: { num: number; title: string }): React.Re
   );
 }
 
-function FieldWrap({ label, error, children }: { label: string; error?: string; children: React.ReactNode }): React.ReactElement {
+function FieldWrap({ label, error, htmlFor, children }: { label: string; error?: string; htmlFor?: string; children: React.ReactNode }): React.ReactElement {
   return (
     <div className="space-y-1.5">
-      <label className="flex items-center justify-between text-xs font-semibold text-slate-600 dark:text-slate-400">
+      <label htmlFor={htmlFor} className="block text-xs font-semibold text-slate-600 dark:text-slate-400">
         <span>{label}</span>
-        {error && <span className="text-red-500 font-normal text-[10px]">{error}</span>}
       </label>
       {children}
       {error && (
-        <p className="text-[11px] text-red-500 flex items-center gap-1">
+        <p id={htmlFor ? `${htmlFor}-error` : undefined} role="alert" className="text-[11px] text-red-500 flex items-center gap-1">
           <AlertCircle size={11} /> {error}
         </p>
       )}

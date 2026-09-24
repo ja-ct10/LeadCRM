@@ -12,7 +12,6 @@ export interface UserDTO {
   jobTitle?: string | null;
   department?: string | null;
   avatarUrl?: string | null;
-  timeZone?: string | null;
   lastLoginAt?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -27,7 +26,6 @@ export interface CreateUserDTO {
   jobTitle?: string;
   department?: string;
   avatarUrl?: string;
-  timeZone?: string;
 }
 
 export interface UpdateUserDTO {
@@ -39,7 +37,6 @@ export interface UpdateUserDTO {
   jobTitle?: string;
   department?: string;
   avatarUrl?: string;
-  timeZone?: string;
 }
 
 export const userAdapter = {
@@ -55,7 +52,6 @@ export const userAdapter = {
     jobTitle: dto.jobTitle || undefined,
     department: dto.department || undefined,
     avatarUrl: dto.avatarUrl || undefined,
-    timeZone: dto.timeZone || undefined,
     lastLoginAt: dto.lastLoginAt || undefined,
   }),
   
@@ -70,7 +66,6 @@ export const userAdapter = {
     jobTitle: user.jobTitle,
     department: user.department,
     avatarUrl: user.avatarUrl,
-    timeZone: user.timeZone,
   }),
   
   toUpdateDTO: (user: Partial<User>): UpdateUserDTO => ({
@@ -82,6 +77,5 @@ export const userAdapter = {
     jobTitle: user.jobTitle,
     department: user.department,
     avatarUrl: user.avatarUrl,
-    timeZone: user.timeZone,
   }),
 };

@@ -42,7 +42,7 @@ All paths are relative to /api/v1. See [authentication and onboarding](authentic
 | --- | --- | --- |
 | POST | /auth/login | Employee email/password login; canonical user and HttpOnly session cookie |
 | GET | /auth/me | Current database-backed account state, including mustChangePassword |
-| PATCH | /auth/profile | Update only the authenticated user's firstName, lastName, phone, jobTitle, department and timeZone; returns the canonical user |
+| PATCH | /auth/profile | Update only the authenticated user's firstName, lastName, phone, jobTitle, department; returns the canonical user |
 | POST | /auth/profile/avatar | Authenticated raw JPEG/PNG/WebP body, maximum 5 MB; stores a normalized 512×512 WebP in private Supabase Storage and returns the canonical user |
 | GET | /auth/profile/avatar/:avatarId | Authenticated retrieval of the current user's saved avatar; private, uncached response |
 | PATCH | /auth/environment | Persist the authenticated tenant user's Sandbox/Live preference; see [CRM environments](crm-environments.md) |
@@ -88,6 +88,15 @@ All require an authenticated session and completed workspace onboarding.
 - `?status=HOT` — filter by status (HOT, WARM, COLD, CANCELLED, CLOSED)
 - `?search=john` — search by name, email, or company
 - `?archived=true` — show archived contacts
+
+### Accounts
+
+`POST /crm/accounts` and `PUT /crm/accounts/:id` validate optional `taxId` with the
+shared account schema. Omitted or empty strings are accepted; supplied values must
+contain exactly nine ASCII digits. Numbers, letters, whitespace, separators, and
+other lengths are rejected. An empty string clears an existing Tax ID.
+The account create/edit UI always submits `country: "Philippines"`; unrelated API
+and import country behavior is unchanged.
 
 ### Deals / Pipeline (Stub)
 
@@ -146,7 +155,21 @@ All require an authenticated session and completed workspace onboarding.
 
 ---
 
-## Administration Endpoints (`/api/v1/administration/`) — Stub
+## Administration Endpoints (`/api/v1/administration/`)
+
+### Organization Settings
+
+| Method | Path | Description | Permission |
+|---|---|---|---|
+| `GET` | `/administration/organization-settings` | Read the authenticated tenant's saved organization settings | `settings.view` |
+| `PATCH` | `/administration/organization-settings` | Persist organization settings and audit the change | `settings.edit` |
+
+Both endpoints require an authenticated, ready tenant workspace. PATCH accepts
+only `name`, `industry`, `email`, `phone`, `domain`, and `address`. Name cannot be
+blank; nonempty email must be valid. Cleared optional fields become `null`. The
+response contains `id` and all six canonical saved values. Tenant identity comes
+from the session, never the request body. `domain` is descriptive organization
+metadata and does not change authentication or verified team domains.
 
 ### Users
 | Method | Path | Description | RolePermission flag |

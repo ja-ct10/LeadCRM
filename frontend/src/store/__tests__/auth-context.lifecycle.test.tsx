@@ -18,7 +18,7 @@ const user = {
   email: 'alice@example.com', status: 'ACTIVE', emailVerified: '2026-01-01',
   onboardingStep: 0, onboardingCompletedAt: null, isTenantOwner: true,
   tenantName: 'Workspace', tenantStatus: 'SANDBOX',
-  avatarUrl: null, timeZone: null,
+  avatarUrl: null,
 };
 function Probe() { auth = useAuth(); return null; }
 const show = () => render(<AuthProvider><Probe /></AuthProvider>);

@@ -13,7 +13,6 @@ export interface AuthUser {
   jobTitle?: string | null;
   department?: string | null;
   avatarUrl: string | null;
-  timeZone: string | null;
   tenantName: string | null;
   tenantStatus: string | null;
   industry: string | null;

@@ -25,6 +25,7 @@
  * and re-run the inventory (inventory-account-organization.ts) against production first.
  */
 import { PrismaClient } from '@prisma/client';
+import { OptionalTaxIdSchema } from '@leadcrm/shared';
 
 const prisma = new PrismaClient({ log: ['error'] });
 
@@ -59,6 +60,7 @@ function accountDataFromOrganization(org: {
   activeProducts: string[]; customerSince: Date | null; customerType: string;
   internalNotes: string | null; notes: string | null; productInterests: string[];
 }) {
+  if (org.taxId != null) OptionalTaxIdSchema.parse(org.taxId);
   return {
     tenantId:         org.tenantId,
     assignedUserId:   org.assignedUserId,

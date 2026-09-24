@@ -30,12 +30,6 @@ export const CompanySetupSchema = z.object({
   industry: z.string().trim().min(1, 'Industry is required').max(100),
   companySize: z.string().trim().min(1, 'Company size is required').max(20),
   website: WebsiteSchema.or(z.literal('')).optional(),
-  timezone: z.string().max(100).refine(value => {
-    try {
-      new Intl.DateTimeFormat('en', { timeZone: value });
-      return true;
-    } catch { return false; }
-  }, 'Choose a valid time zone').optional(),
 });
 
 export const OnboardingProgressSchema = z.object({

@@ -32,7 +32,6 @@ export interface User {
   jobTitle?: string;
   department?: string;
   avatarUrl?: string;
-  timeZone?: string;
   org?: string; // keeping org for legacy compatibility temporarily if used elsewhere
   team?: string; // keeping team for legacy compatibility temporarily
   role: Role;

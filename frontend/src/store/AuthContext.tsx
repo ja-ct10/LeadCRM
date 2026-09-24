@@ -89,6 +89,7 @@ interface AuthContextType {
   authError: string | null;
   retryAuthInit: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  applyOrganizationSettings: (settings: import('@leadcrm/shared').OrganizationSettings) => void;
   applyAuthUser: (user: AuthUser, expectedUserId?: string, preserveEnvironment?: boolean) => void;
   login: (email: string, password?: string) => Promise<boolean>;
   loginWithGoogle: () => Promise<void>;
@@ -122,6 +123,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const activeUserId = useRef<string | null>(null);
   activeUserId.current = user?.id ?? null;
 
+  const applyOrganizationSettings = useCallback((settings: import('@leadcrm/shared').OrganizationSettings) => {
+    setTenant(current => current?.id === settings.id ? {
+      ...current, name: settings.name, industry: settings.industry ?? '', email: settings.email ?? '',
+      phone: settings.phone ?? '', domain: settings.domain ?? '', address: settings.address ?? '',
+    } : current);
+    setUser(current => current?.tenantId === settings.id ? { ...current, tenantName: settings.name, industry: settings.industry } : current);
+  }, []);
+
   const applyAuthUser = useCallback((apiUser: AuthUser, expectedUserId?: string, preserveEnvironment = false) => {
     if (expectedUserId && activeUserId.current !== expectedUserId) return;
     // Profile responses cannot undo a concurrent, confirmed environment switch.
@@ -138,7 +147,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       jobTitle: apiUser.jobTitle ?? undefined,
       department: apiUser.department ?? undefined,
       avatarUrl: apiUser.avatarUrl ?? undefined,
-      timeZone: apiUser.timeZone ?? undefined,
     });
     setTenant(apiUser.role === 'System Admin' ? null : buildTenantFromApiUser({ ...apiUser }));
     setAuthError(null);
@@ -436,7 +444,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      user, tenant, isLoading, authError, retryAuthInit, refreshUser, applyAuthUser,
+      user, tenant, isLoading, authError, retryAuthInit, refreshUser, applyAuthUser, applyOrganizationSettings,
       switchEnvironment, isSwitchingEnvironment,
       login, loginWithGoogle, logout, requestPasswordReset, confirmPasswordReset,
       switchRole, updateProfile, switchDemoAccount, permissions, isPermissionsLoaded,

@@ -9,7 +9,7 @@ export const user = {
   id: 'user-1', tenantId: tenant.id, email: 'alice@gmail.com', firstName: 'Alice',
   lastName: 'Owner', role: 'Sales', status: 'ACTIVE', emailVerified: new Date('2026-01-01'),
   mustChangePassword: false,
-  passwordHash: 'hash', avatarUrl: null, timeZone: null, tenant,
+  passwordHash: 'hash', avatarUrl: null, tenant,
 };
 const model = () => ({
   findFirst: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), findUniqueOrThrow: vi.fn(),

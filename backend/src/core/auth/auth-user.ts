@@ -25,7 +25,6 @@ export interface AuthUserSource {
   jobTitle?: string | null;
   department?: string | null;
   avatarUrl?: string | null;
-  timeZone?: string | null;
   tenant?: {
     name?: string | null;
     status?: string | null;
@@ -58,7 +57,6 @@ export function buildAuthUserResponse(user: AuthUserSource): AuthUser {
     jobTitle: user.jobTitle ?? null,
     department: user.department ?? null,
     avatarUrl: user.avatarUrl ?? null,
-    timeZone: user.timeZone ?? null,
     tenantName: tenant?.name ?? null,
     tenantStatus: tenant?.status ?? null,
     industry: tenant?.industry ?? null,

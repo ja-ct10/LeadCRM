@@ -11,7 +11,7 @@ import { AvatarCropDialog } from './avatar-crop-dialog';
 
 const fields = [
   ['firstName', 'First Name', 100], ['lastName', 'Last Name', 100], ['phone', 'Phone Number', 50],
-  ['jobTitle', 'Job Title', 150], ['department', 'Department', 150], ['timeZone', 'Time Zone', 100],
+  ['jobTitle', 'Job Title', 150], ['department', 'Department', 150],
 ] as const;
 type Draft = Record<typeof fields[number][0], string>;
 
@@ -81,10 +81,10 @@ export function ProfileForm() {
         {fields.map(([key, label, maxLength]) => <div key={key}>
           <label htmlFor={`profile-${key}`} className="block text-xs font-semibold text-slate-500 mb-1">{label}</label>
           <input id={`profile-${key}`} value={draft[key]} disabled={!editing || saving} required={key === 'firstName' || key === 'lastName'} maxLength={maxLength}
-            placeholder={key === 'timeZone' ? 'e.g. Asia/Manila' : 'Not set'} onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))}
+            placeholder="Not set" onChange={event => setDraft(current => ({ ...current, [key]: event.target.value }))}
             className="w-full min-w-0 bg-slate-50 dark:bg-[#1B252F] border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm disabled:cursor-default" />
         </div>)}
-        <div className="sm:col-span-2"><label htmlFor="profile-email" className="block text-xs font-semibold text-slate-500 mb-1">Email Address</label>
+        <div><label htmlFor="profile-email" className="block text-xs font-semibold text-slate-500 mb-1">Email Address</label>
           <input id="profile-email" value={user?.email ?? ''} disabled className="w-full bg-slate-50 dark:bg-[#1B252F] border rounded-lg px-3 py-2 text-sm" />
         </div>
       </div>

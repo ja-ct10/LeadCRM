@@ -1,7 +1,7 @@
 import * as repo from './companies.repository';
 import { writeAuditLog, buildChangeset } from '../../../core/audit/audit.service';
 import { NotFoundError } from '../../../shared/errors/http-error';
-import { CreateCompanyDto, UpdateCompanyDto } from './companies.dto';
+import { CreateCompanyDto, UpdateCompanyDto, CreateCompanySchema, UpdateCompanySchema } from './companies.dto';
 import { paginate } from '../../../shared/helpers/pagination';
 
 export async function getCompanies(tenantId: string, query: Record<string, unknown>) {
@@ -16,6 +16,7 @@ export async function getCompanyById(id: string, tenantId: string) {
 }
 
 export async function createCompany(tenantId: string, userId: string, dto: CreateCompanyDto) {
+  dto = CreateCompanySchema.parse(dto);
   const company = await repo.createCompany(tenantId, dto);
   await writeAuditLog({
     tenantId, userId,
@@ -28,6 +29,7 @@ export async function createCompany(tenantId: string, userId: string, dto: Creat
 export async function updateCompany(
   id: string, tenantId: string, userId: string, dto: UpdateCompanyDto,
 ) {
+  dto = UpdateCompanySchema.parse(dto);
   const before = await repo.findCompanyById(id, tenantId);
   if (!before) throw new NotFoundError('Company');
 

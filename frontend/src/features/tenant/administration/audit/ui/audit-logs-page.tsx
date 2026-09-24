@@ -320,7 +320,7 @@ export default function AuditLogsPage(): React.ReactElement {
   // ─────────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
         <div className="flex items-baseline gap-2.5 flex-wrap">
@@ -377,7 +377,7 @@ export default function AuditLogsPage(): React.ReactElement {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-4 text-xs font-medium text-slate-500 dark:text-slate-400 select-none">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs font-medium text-slate-500 dark:text-slate-400 select-none">
             {[
               { label: 'Total Logs',   color: '#3b82f6' },
               { label: 'Auth & Access', color: '#8b5cf6' },
@@ -391,7 +391,7 @@ export default function AuditLogsPage(): React.ReactElement {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="grid min-w-0 grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Area chart */}
           <div className="lg:col-span-8 space-y-2">
             <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-500 uppercase tracking-wider">Volume Trend Over Time</div>
@@ -501,9 +501,9 @@ export default function AuditLogsPage(): React.ReactElement {
       </div>
 
       {/* ── Main Grid ────────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid min-w-0 grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Logs table area */}
-        <div className="lg:col-span-8 space-y-4">
+        <div className="lg:col-span-8 min-w-0 space-y-4">
           {/* Controls */}
           <div className="flex flex-col md:flex-row gap-3 items-start md:items-center justify-between">
             {/* Search */}
@@ -513,12 +513,13 @@ export default function AuditLogsPage(): React.ReactElement {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                aria-label="Search audit logs"
                 placeholder="Search actions, emails, entity types…"
                 className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/25 placeholder:text-slate-400 dark:placeholder:text-slate-500 text-slate-800 dark:text-white"
               />
             </div>
             {/* Filters */}
-            <div className="flex w-full md:w-auto gap-2 flex-wrap">
+            <div className="flex flex-col sm:flex-row w-full md:w-auto min-w-0 gap-2 flex-wrap">
               {(
                 [
                   {
@@ -548,9 +549,10 @@ export default function AuditLogsPage(): React.ReactElement {
               ).map((filter, idx) => (
                 <select
                   key={idx}
+                  aria-label={['Category', 'Severity', 'Date range'][idx]}
                   value={filter.value}
                   onChange={(e) => filter.onChange(e.target.value)}
-                  className="flex-1 md:flex-none bg-white dark:bg-[#0c101d] border border-gray-200 dark:border-white/[0.08] rounded-xl py-2 px-3 text-xs font-semibold focus:outline-none text-slate-700 dark:text-slate-300 cursor-pointer"
+                  className="w-full sm:w-auto min-w-0 flex-1 md:flex-none bg-white dark:bg-[#0c101d] border border-gray-200 dark:border-white/[0.08] rounded-xl py-2 px-3 text-xs font-semibold focus:outline-none text-slate-700 dark:text-slate-300 cursor-pointer"
                 >
                   {filter.options.map((opt) => (
                     <option key={opt} value={opt}>{filter.labels[opt] ?? opt}</option>
@@ -563,7 +565,7 @@ export default function AuditLogsPage(): React.ReactElement {
           {/* Table */}
           <div className="bg-white dark:bg-white/[0.02] rounded-2xl border border-gray-200 dark:border-white/[0.05] overflow-hidden shadow-sm">
             {fetchError ? (
-              <div className="p-12 text-center space-y-3">
+              <div className="p-4 sm:p-12 text-center space-y-3">
                 <AlertCircle className="mx-auto text-red-400" size={32} />
                 <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Failed to load audit logs</p>
                 <p className="text-xs text-slate-400">{fetchError}</p>
@@ -576,8 +578,27 @@ export default function AuditLogsPage(): React.ReactElement {
                 </button>
               </div>
             ) : (
-              <div className="overflow-x-hidden">
-                <table className="w-full text-left font-mono border-collapse table-fixed">
+              <>
+              <div className="md:hidden divide-y divide-gray-100 dark:divide-white/[0.05]" aria-label="Audit records">
+                {isLoading ? <div role="status" className="p-4 space-y-4" aria-label="Loading audit logs">{Array.from({ length: 3 }, (_, index) => <div key={index} className="h-40 rounded-xl bg-slate-100 dark:bg-white/[0.05] animate-pulse" />)}</div>
+                  : logs.length === 0 ? <p className="p-4 text-sm text-slate-500">No audit logs found. Try adjusting your filters or date range.</p>
+                  : logs.map(log => <button key={log.id} type="button" aria-pressed={selectedLogId === log.id}
+                    onClick={() => setSelectedLogId(selectedLogId === log.id ? null : log.id)}
+                    className={`block w-full min-w-0 p-4 text-left space-y-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 ${selectedLogId === log.id ? 'bg-blue-500/5' : 'hover:bg-slate-50 dark:hover:bg-white/[0.03]'}`}>
+                    <span className="flex flex-wrap gap-2 min-w-0">
+                      <span className={`max-w-full whitespace-normal [overflow-wrap:anywhere] text-xs font-semibold uppercase px-2 py-1 rounded ${getActionColor(log.action)}`}>{log.action}</span>
+                      {log.severity && log.severity !== 'INFO' && <span className={`text-xs px-2 py-1 rounded ${getSeverityColor(log.severity)}`}>{log.severity}</span>}
+                    </span>
+                    <span className="grid gap-3 text-sm text-slate-700 dark:text-slate-300">
+                      <span><span className="block text-xs text-slate-500 dark:text-slate-400">Operator</span><span className="block [overflow-wrap:anywhere]">{log.user?.email || '—'}</span></span>
+                      <span><span className="block text-xs text-slate-500 dark:text-slate-400">IP Address</span><span className="block [overflow-wrap:anywhere]">{log.ipAddress || '—'}</span></span>
+                      <span><span className="block text-xs text-slate-500 dark:text-slate-400">Entity / Details</span><span className="block [overflow-wrap:anywhere]">{log.entityType || '—'}</span>{log.entityId && <span className="block [overflow-wrap:anywhere] text-xs text-cyan-700 dark:text-cyan-400" title={log.entityId}>{log.entityId}</span>}</span>
+                      <span><span className="block text-xs text-slate-500 dark:text-slate-400">Timestamp</span><time dateTime={log.createdAt} className="block [overflow-wrap:anywhere]">{new Date(log.createdAt).toLocaleDateString()} {new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></span>
+                    </span>
+                  </button>)}
+              </div>
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full min-w-[760px] text-left font-mono border-collapse">
                   <thead>
                     <tr className="border-b border-gray-200 dark:border-white/[0.05] bg-gray-50/50 dark:bg-white/[0.01] text-[9px] sm:text-[10px] uppercase text-slate-500 tracking-wider">
                       <th className="p-4 py-3 font-semibold">Action</th>
@@ -593,7 +614,7 @@ export default function AuditLogsPage(): React.ReactElement {
                       : logs.length === 0
                         ? (
                           <tr>
-                            <td colSpan={5} className="p-12 text-center">
+                            <td colSpan={5} className="p-4 sm:p-12 text-center">
                               <AlertCircle className="mx-auto text-slate-300 dark:text-slate-600 mb-3" size={32} />
                               <p className="text-sm font-medium text-slate-500 dark:text-slate-400">No audit logs found</p>
                               <p className="text-xs text-slate-400 mt-1">Try adjusting your filters or date range.</p>
@@ -653,6 +674,7 @@ export default function AuditLogsPage(): React.ReactElement {
                   </tbody>
                 </table>
               </div>
+              </>
             )}
           </div>
 
@@ -673,8 +695,8 @@ export default function AuditLogsPage(): React.ReactElement {
         </div>
 
         {/* ── Inspector Panel ────────────────────────────────────────────────── */}
-        <div className="lg:col-span-4 h-full">
-          <div className="bg-white dark:bg-white/[0.02] p-5 rounded-2xl border border-gray-200 dark:border-white/[0.05] shadow-sm sticky top-24 space-y-4 font-mono">
+        <div className="lg:col-span-4 min-w-0 h-full">
+          <div className="bg-white dark:bg-white/[0.02] p-4 sm:p-5 min-w-0 [overflow-wrap:anywhere] rounded-2xl border border-gray-200 dark:border-white/[0.05] shadow-sm sticky top-24 space-y-4 font-mono">
             <div className="flex items-center gap-2 pb-2 border-b border-gray-100 dark:border-white/[0.03]">
               <FileText className="text-blue-500" size={16} />
               <h3 className="font-semibold text-sm text-slate-900 dark:text-white">Audit Log Inspector</h3>
@@ -722,7 +744,7 @@ export default function AuditLogsPage(): React.ReactElement {
                 {selectedLog.changeset && typeof selectedLog.changeset === 'object' && (
                   <div className="space-y-2 pt-2 border-t border-gray-100 dark:border-white/[0.03]">
                     <p className="font-semibold text-slate-500 uppercase tracking-widest text-[9px]">Changeset</p>
-                    <div className="overflow-hidden border border-slate-200 dark:border-white/[0.05] rounded-lg">
+                    <div className="overflow-x-auto border border-slate-200 dark:border-white/[0.05] rounded-lg">
                       <table className="w-full text-[10px] font-mono text-left border-collapse">
                         <thead className="bg-slate-50 dark:bg-[#0e1626] text-slate-400">
                           <tr className="border-b border-slate-200 dark:border-white/[0.05]">

@@ -45,9 +45,9 @@ describe.skipIf(!disposable)('profile and sorting persistence through authentica
     await prisma.$disconnect();
   });
   it('persists safe fields across fresh auth reads and sessions, rejecting privileged changes', async () => {
-    expect((await request('/auth/profile', 'PATCH', { firstName: 'Ada', phone: '123', jobTitle: 'Engineer', department: 'Research', timeZone: 'Asia/Manila' })).status).toBe(200);
+    expect((await request('/auth/profile', 'PATCH', { firstName: 'Ada', phone: '123', jobTitle: 'Engineer', department: 'Research' })).status).toBe(200);
     const dbUser = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
-    expect(dbUser).toMatchObject({ firstName: 'Ada', phone: '123', jobTitle: 'Engineer', department: 'Research', timeZone: 'Asia/Manila' });
+    expect(dbUser).toMatchObject({ firstName: 'Ada', phone: '123', jobTitle: 'Engineer', department: 'Research' });
     token = (await issueAuthSession(dbUser)).token;
     const restored = (await request('/auth/me')).body.data.user;
     expect(restored).toMatchObject({ firstName: 'Ada', department: 'Research' }); expect(restored).not.toHaveProperty('passwordHash');

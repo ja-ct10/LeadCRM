@@ -12,6 +12,7 @@ afterEach(cleanup);
 
 it('starts read-only with database values and Cancel discards unsaved edits', () => {
   render(<ProfileForm />);
+  expect(screen.queryByLabelText('Time Zone')).toBeNull();
   expect((screen.getByLabelText('First Name') as HTMLInputElement).disabled).toBe(true);
   expect((screen.getByLabelText('Department') as HTMLInputElement).value).toBe('');
   expect(screen.queryByText('Save Changes')).toBeNull();
@@ -39,6 +40,7 @@ it('waits for server confirmation, blocks duplicate saves and remains editable o
   await waitFor(() => expect(mocks.success).toHaveBeenCalledOnce());
   expect(mocks.save.mock.calls[0][0]).not.toHaveProperty('email');
   expect(mocks.save.mock.calls[0][0]).not.toHaveProperty('role');
+  expect(mocks.save.mock.calls[0][0]).not.toHaveProperty('timeZone');
   expect(screen.getByText('Edit')).toBeTruthy();
 });
 it('rejects invalid file types and oversized files without uploading', async () => {

@@ -16,9 +16,9 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 it('updates only the authenticated tenant user, audits and returns canonical profile fields', async () => {
-  const result = await updateSelfProfile(user.id, user.tenantId, { firstName: ' Ada ', phone: '123', jobTitle: 'Engineer', department: 'Sales', timeZone: 'Asia/Manila' });
-  expect(db.user.update).toHaveBeenCalledWith({ where: { id: user.id, tenantId: user.tenantId }, data: { firstName: 'Ada', phone: '123', jobTitle: 'Engineer', department: 'Sales', timeZone: 'Asia/Manila' } });
-  expect(result).toMatchObject({ firstName: 'Ada', phone: '123', department: 'Sales', timeZone: 'Asia/Manila' });
+  const result = await updateSelfProfile(user.id, user.tenantId, { firstName: ' Ada ', phone: '123', jobTitle: 'Engineer', department: 'Sales' });
+  expect(db.user.update).toHaveBeenCalledWith({ where: { id: user.id, tenantId: user.tenantId }, data: { firstName: 'Ada', phone: '123', jobTitle: 'Engineer', department: 'Sales' } });
+  expect(result).toMatchObject({ firstName: 'Ada', phone: '123', department: 'Sales' });
   expect(result).not.toHaveProperty('passwordHash');
   expect(db.auditLog.create).toHaveBeenCalledOnce();
 });
@@ -26,10 +26,10 @@ it.each(['role', 'tenantId', 'userId', 'status', 'permissions', 'activeEnvironme
   await expect(updateSelfProfile(user.id, user.tenantId, { [field]: 'forged' } as any)).rejects.toThrow();
   expect(db.user.update).not.toHaveBeenCalled();
 });
-it('rejects missing tenant ownership and invalid time zones', async () => {
+it('rejects missing tenant ownership and obsolete profile timezone fields', async () => {
   db.user.findFirst.mockResolvedValue(null);
   await expect(updateSelfProfile(user.id, 'wrong-tenant', { firstName: 'Ada' })).rejects.toThrow('Authentication required');
-  await expect(updateSelfProfile(user.id, user.tenantId, { timeZone: 'UTC-5 · Eastern Time' })).rejects.toThrow();
+  await expect(updateSelfProfile(user.id, user.tenantId, { firstName: 'Ada', ...{ timeZone: 'Asia/Manila' } })).rejects.toThrow();
 });
 it('uploads only decoded, optimized images and persists a durable private reference', async () => {
   const fetchMock = vi.fn().mockResolvedValue(new Response('{}'));

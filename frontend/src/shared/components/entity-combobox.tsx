@@ -131,6 +131,7 @@ function useDebounce(value: string, delay: number): string {
 // ─── Component ─────────────────────────────────────────────────────────────
 
 export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
+  const errorId = React.useId();
   const {
     entityType,
     placeholder,
@@ -357,6 +358,8 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
           aria-haspopup="listbox"
           aria-label={displayPlaceholder}
           aria-disabled={disabled}
+          aria-invalid={!!error}
+          aria-describedby={error ? errorId : undefined}
           onClick={() => !disabled && setIsOpen(true)}
           onKeyDown={handleKeyDown}
           className={cn(
@@ -391,6 +394,8 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
             type="text"
             role="searchbox"
             aria-label={`Search ${entityType}`}
+            aria-invalid={!!error}
+            aria-describedby={error ? errorId : undefined}
             className="w-full pl-9 pr-10 bg-white dark:bg-slate-900 border-2 border-[var(--primary)] rounded-lg py-2 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none shadow-sm transition-all"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -486,7 +491,7 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
 
       {/* Field-level error */}
       {error && (
-        <p className="mt-1 text-xs text-rose-500 dark:text-rose-400">{error}</p>
+        <p id={errorId} role="alert" className="mt-1 text-xs text-rose-500 dark:text-rose-400">{error}</p>
       )}
     </div>
   );

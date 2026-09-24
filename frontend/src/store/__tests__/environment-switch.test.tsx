@@ -14,7 +14,7 @@ import { clearPageCache, getPageCache, setPageCache, createPageCacheGuard } from
 import { environmentSnapshot, endEnvironmentSwitch, setTransportEnvironment } from '@/lib/api/environment-transport';
 let auth: ReturnType<typeof useAuth>;
 function Probe() { auth = useAuth(); return <span>{auth.user?.activeEnvironment}</span>; }
-const user = { id: 'alice', tenantId: 'tenant', role: 'Sales Agent', email: 'alice@camxian.com', firstName: 'Alice', lastName: 'Test', status: 'ACTIVE', activeEnvironment: 'SANDBOX', avatarUrl: null, timeZone: null };
+const user = { id: 'alice', tenantId: 'tenant', role: 'Sales Agent', email: 'alice@camxian.com', firstName: 'Alice', lastName: 'Test', status: 'ACTIVE', activeEnvironment: 'SANDBOX', avatarUrl: null };
 beforeEach(() => {
   vi.resetAllMocks(); clearPageCache(); setTransportEnvironment(null); endEnvironmentSwitch();
   mocks.me.mockResolvedValue({ data: { user } });
@@ -89,9 +89,9 @@ it('keeps account status separate from the selected dataset for Client Admin', a
 it('applies a confirmed profile response across auth state without storing production profile data locally', async () => {
   await show();
   const storage = vi.spyOn(Storage.prototype, 'setItem');
-  const updated = { ...user, firstName: 'Saved', phone: '123', jobTitle: 'Engineer', department: 'Sales', timeZone: 'Asia/Manila', avatarUrl: '/api/proxy/auth/profile/avatar/test' };
+  const updated = { ...user, firstName: 'Saved', phone: '123', jobTitle: 'Engineer', department: 'Sales', avatarUrl: '/api/proxy/auth/profile/avatar/test' };
   mocks.updateProfile.mockResolvedValue({ data: { user: updated } });
-  await act(async () => { await auth.updateProfile({ firstName: 'Saved', phone: '123', jobTitle: 'Engineer', department: 'Sales', timeZone: 'Asia/Manila' }); });
+  await act(async () => { await auth.updateProfile({ firstName: 'Saved', phone: '123', jobTitle: 'Engineer', department: 'Sales' }); });
   expect(auth.user).toMatchObject(updated);
   expect(storage).not.toHaveBeenCalled();
   cleanup();
