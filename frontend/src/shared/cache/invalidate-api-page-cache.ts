@@ -10,7 +10,12 @@ export function invalidateApiPageCache(path: string): void {
   }
   const modules = new Set<string>();
   if (area === 'crm') {
-    ['counts-leads', 'counts-accounts', 'counts-deals'].forEach((module) => modules.add(module));
+    if (resource === 'leads' || resource === 'contacts') modules.add(`counts-${resource}`);
+    if (resource === 'accounts' || resource === 'organizations') modules.add('counts-accounts');
+    if (resource === 'deals' || resource === 'pipelines') modules.add('counts-deals');
+    if (resource === 'leads' && path.split('?')[0].endsWith('/convert')) {
+      ['counts-leads', 'counts-contacts', 'counts-accounts', 'counts-deals'].forEach(module => modules.add(module));
+    }
     modules.add('activities');
     modules.add('reports');
     if (resource === 'leads' || resource === 'contacts') {

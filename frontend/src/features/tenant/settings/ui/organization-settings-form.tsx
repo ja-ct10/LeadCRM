@@ -71,7 +71,8 @@ export function OrganizationSettingsForm() {
   if (!draft) return <p role="status" className="text-sm text-slate-500">Loading organization settings…</p>;
 
   return <form onSubmit={save} noValidate className="max-w-2xl space-y-6">
-    {canEdit && !editing && <div className="flex justify-end"><button type="button" onClick={() => { setDraft(saved); setEditing(true); }} className="flex items-center gap-1 border rounded-lg px-3 py-2 text-sm"><Pencil size={13} />Edit</button></div>}
+    <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-bold text-slate-900 dark:text-white">General</h2>
+    {canEdit && !editing && <div><button type="button" onClick={() => { setDraft(saved); setEditing(true); }} className="flex items-center gap-1 border rounded-lg px-3 py-2 text-sm"><Pencil size={13} />Edit</button></div>}</div>
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       {fields.map(([key, label, Icon]) => {
         const props = {

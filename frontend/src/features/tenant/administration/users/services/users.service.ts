@@ -2,8 +2,8 @@
 
 import { apiClient } from '@/lib/api/client';
 import type { ApiResponse, PaginatedResponse } from '@leadcrm/shared';
-import type { User, RoleDefinition } from '@/store/types';
-import { userAdapter, UserDTO, CreateUserDTO, UpdateUserDTO } from '../adapters/user.adapter';
+import type { User } from '@/store/types';
+import { userAdapter, UserDTO } from '../adapters/user.adapter';
 
 export const usersService = {
   getAll: async (params?: Record<string, unknown>): Promise<PaginatedResponse<User>> => {
@@ -56,17 +56,4 @@ export const usersService = {
   
   bulkDelete: (ids: string[]): Promise<void> => 
     apiClient.post<void>('/administration/users/bulk-delete', { ids }),
-
-  // Roles can be split to a roles service later, leaving them here for now
-  getRoles: (): Promise<PaginatedResponse<RoleDefinition>> =>
-    apiClient.get<PaginatedResponse<RoleDefinition>>('/administration/roles'),
-
-  createRole: (data: Partial<RoleDefinition>): Promise<ApiResponse<RoleDefinition>> =>
-    apiClient.post<ApiResponse<RoleDefinition>>('/administration/roles', data),
-
-  updateRole: (id: string, data: Partial<RoleDefinition>): Promise<ApiResponse<RoleDefinition>> =>
-    apiClient.put<ApiResponse<RoleDefinition>>(`/administration/roles/${id}`, data),
-
-  deleteRole: (id: string): Promise<void> =>
-    apiClient.patch<void>(`/administration/roles/${id}/archive`),
 };

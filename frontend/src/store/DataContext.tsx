@@ -39,8 +39,6 @@ import {
   MOCK_USERS,
   MOCK_TENANTS,
   MOCK_TEMPLATES,
-  MOCK_ROLES,
-  MOCK_PERMISSIONS,
   MOCK_TASKS,
   MOCK_INVOICES,
 } from "./mockData/index";
@@ -49,6 +47,8 @@ import { uuid } from "@/lib/utils";
 // ── Real-API integration ─────────────────────────────────────────────────────
 import { toast } from 'sonner';
 import { usersService } from "@/features/tenant/administration/users/services/users.service";
+import { rolesApi } from '@/shared/services/roles.api';
+import { rolesService, toSettingsRole, toSettingsPermissions, toPermissionRows } from '@/features/tenant/administration/roles/services/roles.service';
 import { USE_MOCK_DATA } from "@/lib/config";
 import { invalidatePageCache } from "@/shared/cache/page-cache";
 import { leadsService as contactsService } from "@/features/tenant/crm/leads/services/leads.service";
@@ -95,6 +95,9 @@ interface DataContextType {
   templates: Template[];
   roles: RoleDefinition[];
   permissions: Permission[];
+  rolesLoading: boolean;
+  rolesError: string;
+  refreshRoles: () => Promise<void>;
   users: User[];
   tenants: Tenant[];
   tasks: Task[];
@@ -156,9 +159,9 @@ interface DataContextType {
   reorderDeals: (reorderedDeals: Deal[]) => void;
   addRole: (
     role: Omit<RoleDefinition, "id" | "tenantId" | "updatedAt">,
-  ) => void;
-  updateRole: (id: string, updates: Partial<RoleDefinition>) => void;
-  deleteRole: (id: string) => void;
+  ) => Promise<void>;
+  updateRole: (id: string, updates: Partial<RoleDefinition>) => Promise<void>;
+  deleteRole: (id: string) => Promise<void>;
   addUser: (userData: any) => void;
   updateUser: (id: string, updates: Partial<any>) => void;
   deleteUser: (id: string) => void;
@@ -289,7 +292,7 @@ const LEADS_SYSTEM_DEFAULT: ColumnConfigItem[] = [
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const { user, tenant } = useAuth();
+  const { user, tenant, userCan } = useAuth();
   const workspaceReady = Boolean(user && (user.role === "System Admin" ||
     (user.status?.toUpperCase() === "ACTIVE" && !user.mustChangePassword &&
       (user.role !== "Client Admin" || isOnboardingComplete(user)))));
@@ -322,6 +325,31 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [roles, setRoles] = useState<RoleDefinition[]>([]);
   const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(true);
+  const [rolesError, setRolesError] = useState('');
+  const roleIdentity = `${user?.id ?? ''}:${tenant?.id ?? ''}:${workspaceReady}`;
+  const roleIdentityRef = useRef(roleIdentity);
+  roleIdentityRef.current = roleIdentity;
+  const refreshRoles = useCallback(async () => {
+    const identity = roleIdentityRef.current;
+    if (!workspaceReady || !tenant?.id) { setRolesLoading(false); return; }
+    setRolesLoading(true); setRolesError('');
+    try {
+      const [rows, registry] = await Promise.all([rolesService.getAll(), rolesApi.getPermissionModules()]);
+      if (identity !== roleIdentityRef.current) return;
+      setRoles(rows.map(toSettingsRole)); setPermissions(toSettingsPermissions(registry.data));
+    } catch (error) {
+      if (identity === roleIdentityRef.current) setRolesError(error instanceof Error ? error.message : 'Unable to load roles.');
+    } finally {
+      if (identity === roleIdentityRef.current) setRolesLoading(false);
+    }
+  }, [workspaceReady, tenant?.id, user?.id]);
+  useLayoutEffect(() => {
+    setRoles([]); setPermissions([]);
+    // Discard obsolete browser-only security data; the API is authoritative in every mode.
+    localStorage.removeItem('leadcrm_roles'); localStorage.removeItem('leadcrm_permissions');
+    void refreshRoles();
+  }, [refreshRoles]);
   const [users, setUsers] = useState<User[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -365,9 +393,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
       try {
         // Batch 1 — core CRM data (roles excluded — admin-only, 403 for custom roles)
-        // usersService.getRoles() requires roles.manage which custom roles does not have.
-        // Moving it to a separate non-blocking call prevents a 403 from killing
-        // the entire Batch 1 load (deals, pipelines, users).
+        // Roles load independently through the canonical roles service.
         //
         // ── Migration status (route-scoped data-fetching plan) ──────────────
         //
@@ -422,21 +448,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
 
       if (!isCurrent()) return;
-      // Batch 1b — admin-only data (roles). Silently ignored for non-admin roles
-      // such as custom roles which lack roles.manage permission.
-      try {
-        if (loadShared) {
-        const rolesRes = await usersService.getRoles();
-        if (!isCurrent()) return;
-        const apiRoles = rolesRes?.data ?? [];
-        setRoles((apiRoles as any[]).filter((r: any) => !r.isArchived));
-        loadedSharedIdentity.current = sharedIdentity;
-        }
-      } catch {
-        if (!isCurrent()) return;
-        // 403 for custom roles is expected — leave roles as empty array
-        if (loadShared) { setRoles([]); loadedSharedIdentity.current = sharedIdentity; }
-      }
+      if (loadShared) loadedSharedIdentity.current = sharedIdentity;
 
       if (!isCurrent()) return;
       // Batch 2 — deferred after initial paint so Batch 1 data renders first
@@ -568,8 +580,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const w = safeParse("leadcrm_workflows_v2", MOCK_WORKFLOWS);
     const c = safeParse("leadcrm_campaigns", MOCK_CAMPAIGNS);
     const tpl = safeParse("leadcrm_templates", MOCK_TEMPLATES);
-    const r = safeParse("leadcrm_roles", MOCK_ROLES).filter((role: RoleDefinition) => role.name.trim().toLowerCase() !== 'guest');
-    const perm = safeParse("leadcrm_permissions", MOCK_PERMISSIONS);
     const u = safeParse("leadcrm_users", MOCK_USERS);
     const t = safeParse("leadcrm_tenants", MOCK_TENANTS).map((tenant: Tenant) => {
       if (tenant.environment !== "none" && !tenant.healthMetrics) {
@@ -619,8 +629,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setWorkflows(w);
       setCampaigns(c);
       setTemplates(tpl);
-      setRoles(r);
-      setPermissions(perm);
       setUsers(u);
       setTenants(t);
       setTasks(tsk);
@@ -633,39 +641,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setAuditLogs(
         logs.filter((log: any) => !log.tenantId || log.tenantId === tenant.id),
       );
-      const userRoleDef =
-        r.find(
-          (role: any) =>
-            role.name === user?.role && role.tenantId === tenant.id,
-        ) || r.find((role: any) => role.name === user?.role);
-      const userPerms = userRoleDef?.permissions || [];
-
-      const canViewAllLeads = userPerms.includes("p2");
-      const canViewOwnLeads = userPerms.includes("p2_own");
-      const canViewAllDeals = userPerms.includes("p7");
-      const canViewOwnDeals = userPerms.includes("p7_own");
+      const canViewAllLeads = userCan('contacts', 'canView');
+      const canViewAllDeals = userCan('deals', 'canView');
 
       let filteredLeads = l.filter((x: any) => x.tenantId === tenant.id);
-      if (!canViewAllLeads && canViewOwnLeads) {
-        filteredLeads = filteredLeads.filter(
-          (x: any) => x.assignedUserId === user?.id,
-        );
-      } else if (
+      if (
         !canViewAllLeads &&
-        !canViewOwnLeads &&
         user?.role?.toLowerCase() !== "client admin"
       ) {
         filteredLeads = [];
       }
 
       let filteredDeals = d.filter((x: any) => x.tenantId === tenant.id);
-      if (!canViewAllDeals && canViewOwnDeals) {
-        filteredDeals = filteredDeals.filter(
-          (x: any) => x.assignedUserId === user?.id,
-        );
-      } else if (
+      if (
         !canViewAllDeals &&
-        !canViewOwnDeals &&
         user?.role?.toLowerCase() !== "client admin"
       ) {
         filteredDeals = [];
@@ -677,8 +666,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setWorkflows(w.filter((x: any) => x.tenantId === tenant.id));
       setCampaigns(c.filter((x: any) => x.tenantId === tenant.id));
       setTemplates(tpl.filter((x: any) => x.tenantId === tenant.id));
-      setRoles(r.filter((x: any) => x.tenantId === tenant.id));
-      setPermissions(perm);
       setUsers(u.filter((x: any) => x.tenantId === tenant.id));
       setTenants(t.filter((x: any) => x.id === tenant.id));
       setTasks(tsk.filter((x: any) => x.tenantId === tenant.id));
@@ -697,7 +684,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setWorkflows([]); setCampaigns([]); setTemplates([]); setTasks([]);
       setWorkflowsError(''); setWorkflowsLoading(workspaceReady);
       if (loadedSharedIdentity.current !== sharedIdentity) {
-        setRoles([]); setPermissions([]); setUsers([]); setTenants([]);
+        setUsers([]); setTenants([]);
       }
         
       setActivities([]); setInvoices([]);  setAuditLogs([]);
@@ -1694,100 +1681,29 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (original) addAuditLog("Template Archived", `Archived template '${original.name}'.`);
   };
 
-  const addRole = async (roleData: any) => {
-    if (!tenant) return;
-    const newRole: RoleDefinition = {
-      ...roleData,
-      id: uuid(),
-      tenantId: tenant.id,
-      updatedAt: new Date().toLocaleString(),
-    };
-
-    setRoles((prev) => [...prev, newRole]);
-
-    if (!USE_MOCK_DATA) {
-      try {
-        const res = await usersService.createRole(newRole);
-        if (res.data) {
-          setRoles((prev) => prev.map((r) => (r.id === newRole.id ? res.data! : r)));
-          addAuditLog("Role Created", `Created custom user access level group description: '${newRole.name}'.`);
-        }
-      } catch (err: unknown) {
-        toast.error("Failed to create role: " + (err instanceof Error ? err.message : "Unknown error"));
-        setRoles((prev) => prev.filter((r) => r.id !== newRole.id));
-      }
-      return;
-    }
-
-    const newRoles = [...roles, newRole];
-    saveAndSet("leadcrm_roles", newRoles, setRoles);
-    addAuditLog(
-      "Role Created",
-      `Created custom user access level group description: '${newRole.name}'.`,
-    );
+  const addRole: DataContextType['addRole'] = async (data) => {
+    if (!tenant) throw new Error('Select a workspace before creating a role.');
+    const identity = roleIdentityRef.current;
+    const saved = toSettingsRole(await rolesService.create({
+      name: data.name.trim(), description: data.description?.trim(),
+      permissions: toPermissionRows(data.permissions, permissions),
+    }));
+    if (identity === roleIdentityRef.current) setRoles(prev => [...prev, saved]);
   };
 
-  const updateRole = async (id: string, updates: Partial<RoleDefinition>) => {
-    const original = roles.find((r) => r.id === id);
-    if (!original) return;
-
-    setRoles((prev) =>
-      prev.map((r) =>
-        r.id === id ? { ...r, ...updates, updatedAt: new Date().toLocaleString() } : r
-      )
-    );
-
-    if (!USE_MOCK_DATA) {
-      try {
-        const res = await usersService.updateRole(id, updates);
-        if (res.data) {
-          setRoles((prev) => prev.map((r) => (r.id === id ? res.data! : r)));
-          addAuditLog("Role Updated", `Updated permissions or configuration for access level role: '${original.name}'.`);
-        }
-      } catch (err: unknown) {
-        toast.error("Failed to update role: " + (err instanceof Error ? err.message : "Unknown error"));
-        setRoles((prev) => prev.map((r) => (r.id === id ? original : r)));
-      }
-      return;
-    }
-
-    const newRoles = roles.map((r) =>
-      r.id === id
-        ? { ...r, ...updates, updatedAt: new Date().toLocaleString() }
-        : r,
-    );
-    saveAndSet("leadcrm_roles", newRoles, setRoles);
-    addAuditLog(
-      "Role Updated",
-      `Updated permissions or configuration for access level role: '${original.name}'.`,
-    );
+  const updateRole: DataContextType['updateRole'] = async (id, data) => {
+    const identity = roleIdentityRef.current;
+    const saved = toSettingsRole(await rolesService.update(id, {
+      name: data.name?.trim(), description: data.description?.trim(),
+      ...(data.permissions ? { permissions: toPermissionRows(data.permissions, permissions) } : {}),
+    }));
+    if (identity === roleIdentityRef.current) setRoles(prev => prev.map(role => role.id === id ? saved : role));
   };
 
   const deleteRole = async (id: string) => {
-    const original = roles.find((r) => r.id === id);
-    if (!original) return;
-
-    setRoles((prev) => prev.map((r) => (r.id === id ? { ...r, isArchived: true } : r)));
-
-    if (!USE_MOCK_DATA) {
-      try {
-        await usersService.deleteRole(id);
-        addAuditLog("Role Archived", `Archived custom user access level group: '${original.name}'.`);
-      } catch (err: unknown) {
-        toast.error("Failed to archive role: " + (err instanceof Error ? err.message : "Unknown error"));
-        setRoles((prev) => prev.map((r) => (r.id === id ? original : r)));
-      }
-      return;
-    }
-
-    const newRoles = roles.map((r) =>
-      r.id === id ? { ...r, isArchived: true } : r,
-    );
-    saveAndSet("leadcrm_roles", newRoles, setRoles);
-    addAuditLog(
-      "Role Archived",
-      `Archived custom user access level group: '${original.name}'.`,
-    );
+    const identity = roleIdentityRef.current;
+    await rolesService.archive(id);
+    if (identity === roleIdentityRef.current) setRoles(prev => prev.filter(role => role.id !== id));
   };
 
   const addUser = async (userData: any) => {
@@ -2040,15 +1956,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         );
         break;
       case "Role":
-        saveAndSet(
-          "leadcrm_roles",
-          roles.map((r) => (r.id === id ? { ...r, isArchived: false } : r)),
-          setRoles,
-        );
-        addAuditLog(
-          "Role Restored",
-          `Restored custom access role (ID: ${id}).`,
-        );
+        toast.error('Archived roles cannot be restored. Create a new role through Roles & Permissions.');
         break;
       case "User":
         const allUsers = JSON.parse(
@@ -2313,11 +2221,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("leadcrm_workflows_v2", JSON.stringify(MOCK_WORKFLOWS));
     localStorage.setItem("leadcrm_campaigns", JSON.stringify(MOCK_CAMPAIGNS));
     localStorage.setItem("leadcrm_templates", JSON.stringify(MOCK_TEMPLATES));
-    localStorage.setItem("leadcrm_roles", JSON.stringify(MOCK_ROLES));
-    localStorage.setItem(
-      "leadcrm_permissions",
-      JSON.stringify(MOCK_PERMISSIONS),
-    );
     localStorage.setItem("leadcrm_users", JSON.stringify(MOCK_USERS));
     localStorage.setItem("leadcrm_tenants", JSON.stringify(MOCK_TENANTS));
     localStorage.setItem("leadcrm_tasks", JSON.stringify(MOCK_TASKS));
@@ -2373,7 +2276,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     campaigns,
     templates,
     roles,
-    permissions,
+    permissions, rolesLoading, rolesError, refreshRoles,
     users,
     tenants,
     tasks,
@@ -2435,7 +2338,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [
     organizations, contacts, deals, pipelines, workflows, workflowsLoading, workflowsError, refreshWorkflows, campaigns,
-    templates, roles, permissions, users, tenants, tasks,
+    templates, roles, permissions, rolesLoading, rolesError, refreshRoles, users, tenants, tasks,
     activities, invoices, auditLogs,
     isBillingModuleEnabled,
     columnPreferences, columnPreferencesLoading,

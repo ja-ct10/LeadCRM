@@ -42,19 +42,21 @@ export default function SidebarNav({
   const { contacts: mockContacts, deals: mockDeals, organizations: mockOrgs } = useData();
 
   const { counts: apiCounts } = useModuleCounts(
-    USE_MOCK_DATA ? [] : ['leads', 'accounts', 'deals'],
+    USE_MOCK_DATA ? [] : ['leads', 'contacts', 'accounts', 'deals'],
   );
 
   const recordCounts = useMemo(() => {
     if (USE_MOCK_DATA) {
       return {
         leads:    mockContacts.filter((c) => !c.isArchived).length,
+        contacts: 0, // The Contacts page has no mock Contact dataset; mockContacts contains Leads.
         accounts: mockOrgs.filter((o) => !o.isArchived).length,
         pipeline: mockDeals.filter((d) => !d.isArchived).length,
       };
     }
     return {
       leads:    apiCounts['leads']    ?? 0,
+      contacts: apiCounts['contacts'] ?? 0,
       accounts: apiCounts['accounts'] ?? 0,
       pipeline: apiCounts['deals']    ?? 0,
     };
@@ -63,7 +65,7 @@ export default function SidebarNav({
   const getBadgeCount = (path: string): number | undefined => {
     const map: Record<string, number | undefined> = {
       leads:    recordCounts.leads    || undefined, // hide 0 — badge renders nothing
-      contacts: recordCounts.leads    || undefined,
+      contacts: recordCounts.contacts    || undefined,
       accounts: recordCounts.accounts || undefined,
       pipeline: recordCounts.pipeline || undefined,
     };

@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useId, useMemo, useCallback, useEffect, useRef } from 'react';
 import { ArrowLeft, Plus, Copy, Trash2, Users, Shield, Info, X, MoreHorizontal, Edit2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
 import { toast } from 'sonner';
 import type { RoleDefinition, Permission } from '@/store/types';
+import { Button } from '@/shared/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
 
@@ -16,7 +17,7 @@ interface PermGroup {
   id: string;
   label: string;
   description: string;
-  permIds: string[];
+  modules: string[];
 }
 
 const PERM_GROUPS: PermGroup[] = [
@@ -24,43 +25,43 @@ const PERM_GROUPS: PermGroup[] = [
     id: 'org',
     label: 'Organization',
     description: 'Manage users, settings, roles, and organization configuration',
-    permIds: ['p22', 'p23', 'p24', 'p25', 'p26', 'p27', 'p28', 'p29', 'p30'],
+    modules: ['users', 'settings', 'roles', 'audit', 'billing'],
   },
   {
     id: 'contacts',
     label: 'Contacts & Accounts',
-    description: 'View, create, edit, delete, and export contacts and accounts',
-    permIds: ['p2', 'p2_own', 'p3', 'p4', 'p4_own', 'p5', 'p5_own', 'p6'],
+    description: 'View, create, edit, and archive contacts and accounts',
+    modules: ['contacts', 'accounts'],
   },
   {
     id: 'deals',
     label: 'Deals & Pipeline',
     description: 'Manage deals, pipelines, and sales operations',
-    permIds: ['p7', 'p7_own', 'p8', 'p9', 'p9_own', 'p10', 'p10_own', 'p11'],
+    modules: ['deals'],
   },
   {
     id: 'workflows',
     label: 'Workflows & Automation',
     description: 'Create and manage automation workflows',
-    permIds: ['p12', 'p13', 'p14', 'p15', 'p16'],
+    modules: ['workflows', 'tasks'],
   },
   {
     id: 'campaigns',
     label: 'Marketing & Campaigns',
     description: 'Create and send marketing campaigns',
-    permIds: ['p17', 'p18', 'p19', 'p20', 'p21'],
+    modules: ['campaigns'],
   },
   {
     id: 'reports',
     label: 'Reports & Analytics',
-    description: 'View and export analytics reports',
-    permIds: ['p31', 'p32', 'p33'],
+    description: 'View analytics reports',
+    modules: ['reports'],
   },
   {
     id: 'dashboard',
     label: 'Dashboard',
-    description: 'Access and customize the main dashboard',
-    permIds: ['p1', 'p34'],
+    description: 'Access the main dashboard',
+    modules: ['dashboard'],
   },
 ];
 
@@ -71,9 +72,12 @@ interface ToggleProps {
   onChange: (v: boolean) => void;
   disabled?: boolean;
   size?: 'sm' | 'md';
+  label: string;
+  partial?: boolean;
 }
 
-function Toggle({ checked, onChange, disabled = false, size = 'sm' }: ToggleProps): React.ReactElement {
+function Toggle({ checked, onChange, disabled = false, size = 'sm', label, partial = false }: ToggleProps): React.ReactElement {
+  const partialId = useId();
   const w = size === 'md' ? 44 : 36;
   const h = size === 'md' ? 24 : 20;
   const thumb = size === 'md' ? 18 : 14;
@@ -83,16 +87,19 @@ function Toggle({ checked, onChange, disabled = false, size = 'sm' }: ToggleProp
     <button
       type="button"
       role="switch"
+      aria-label={label}
       aria-checked={checked}
+      aria-describedby={partial ? partialId : undefined}
       disabled={disabled}
       onClick={() => !disabled && onChange(!checked)}
       style={{ width: w, height: h, padding: '2px' }}
       className={cn(
-        'rounded-full flex items-center transition-colors duration-200 shrink-0',
-        checked ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600',
+        'rounded-full flex items-center transition-colors duration-200 shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2',
+        checked ? 'bg-[var(--primary)]' : 'bg-slate-300 dark:bg-slate-600',
         disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer',
       )}
     >
+      {partial && <span id={partialId} className="sr-only">Partially enabled</span>}
       <div
         style={{ width: thumb, height: thumb, transform: checked ? `translateX(${travel}px)` : 'translateX(0)' }}
         className="bg-white rounded-full shadow-sm transition-transform duration-200"
@@ -117,7 +124,7 @@ function PermRow({ perm, checked, onChange, disabled }: PermRowProps): React.Rea
         <p className="text-sm font-medium text-slate-900 dark:text-white leading-tight">{perm.name}</p>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">{perm.description}</p>
       </div>
-      <Toggle checked={checked} onChange={(v) => onChange(perm.id, v)} disabled={disabled} />
+      <Toggle label={perm.name} checked={checked} onChange={(v) => onChange(perm.id, v)} disabled={disabled} />
     </div>
   );
 }
@@ -135,28 +142,30 @@ interface PermSectionProps {
 
 function PermSection({ group, allPerms, activePermIds, onToggle, onGroupToggle, disabled }: PermSectionProps): React.ReactElement {
   const groupPerms = useMemo(
-    () => allPerms.filter((p) => group.permIds.includes(p.id)),
-    [allPerms, group.permIds],
+    () => allPerms.filter((p) => group.modules.includes(p.category)),
+    [allPerms, group.modules],
   );
 
   const enabledCount = groupPerms.filter((p) => activePermIds.includes(p.id)).length;
-  const allEnabled = enabledCount === groupPerms.length;
+  const allEnabled = groupPerms.length > 0 && enabledCount === groupPerms.length;
   const someEnabled = enabledCount > 0 && !allEnabled;
 
   return (
     <div className="bg-white dark:bg-[#16191E] border border-gray-200 dark:border-[#262A33] rounded-xl overflow-hidden shadow-sm transition-all hover:shadow-md">
       {/* Section header */}
-      <div className="flex items-center justify-between px-5 py-4 bg-slate-50/50 dark:bg-white/[0.02] border-b border-gray-100 dark:border-white/[0.05]">
-        <div className="flex items-center gap-4 min-w-0">
+      <div className="flex items-center justify-between gap-3 px-3 sm:px-5 py-4 bg-slate-50/50 dark:bg-white/[0.02] border-b border-gray-100 dark:border-white/[0.05]">
+        <div className="flex items-center gap-3 min-w-0">
           <Toggle
+            label={group.label}
+            partial={someEnabled}
             checked={allEnabled || someEnabled}
-            onChange={(v) => onGroupToggle(group.permIds, v)}
-            disabled={disabled}
+            onChange={(v) => onGroupToggle(groupPerms.map(permission => permission.id), v)}
+            disabled={disabled || groupPerms.length === 0}
             size="md"
           />
-          <div>
+          <div className="min-w-0 break-words">
             <p className="text-sm font-semibold text-slate-900 dark:text-white">{group.label}</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 hidden sm:block">{group.description}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{group.description}</p>
           </div>
         </div>
         <span className={cn(
@@ -182,15 +191,19 @@ interface RoleEditorProps {
   role: RoleDefinition | null; // null = new role
   allPerms: Permission[];
   allUsers: ReturnType<typeof useData>['users'];
-  onSave: (name: string, description: string, permIds: string[]) => void;
+  onSave: (name: string, description: string, permIds: string[]) => Promise<void>;
   onCancel: () => void;
-  onCopy?: () => void;
 }
 
-function RoleEditor({ role, allPerms, allUsers, onSave, onCancel, onCopy }: RoleEditorProps): React.ReactElement {
+function RoleEditor({ role, allPerms, allUsers, onSave, onCancel }: RoleEditorProps): React.ReactElement {
   const [name, setName] = useState(role?.name ?? '');
   const [description, setDescription] = useState(role?.description ?? '');
   const [activePermIds, setActivePermIds] = useState<string[]>(role?.permissions ?? []);
+
+  const [nameError, setNameError] = useState('');
+  const [saveError, setSaveError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const submitting = useRef(false);
 
   const isAdmin = role?.name === 'Administrator' || role?.name === 'Client Admin';
   const isSystemRole = role?.isSystemRole ?? false;
@@ -207,67 +220,65 @@ function RoleEditor({ role, allPerms, allUsers, onSave, onCancel, onCopy }: Role
     });
   }, []);
 
-  const handleSave = () => {
-    if (!name.trim()) { toast.error('Role name is required'); return; }
-    onSave(name.trim(), description.trim(), activePermIds);
+  const handleSave = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (submitting.current) return;
+    if (!name.trim()) { setNameError('Role name is required.'); return; }
+    setNameError(''); setSaveError(''); setSaving(true); submitting.current = true;
+    try { await onSave(name.trim(), description.trim(), activePermIds); }
+    catch (error) { setSaveError(error instanceof Error ? error.message : 'Unable to save role. Please try again.'); }
+    finally { setSaving(false); submitting.current = false; }
   };
 
   const totalEnabled = activePermIds.length;
   const totalPerms = allPerms.length;
 
   return (
-    <motion.div 
+    <motion.form onSubmit={handleSave} noValidate
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
-      className="flex flex-col h-full max-w-4xl mx-auto"
+      className="flex flex-col min-w-0 w-full max-w-4xl mx-auto p-3 sm:p-6"
     >
-      {/* Header bar */}
-      <div className="flex items-center justify-between pb-6 shrink-0 border-b border-gray-200 dark:border-white/[0.08] mb-6">
-        <div className="flex items-center gap-4 min-w-0">
-          <button onClick={onCancel} className="p-2 -ml-2 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors">
-            <ArrowLeft size={18} />
-          </button>
-          <div>
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-              {role ? 'Edit Role' : 'Create Custom Role'}
-            </h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              {role ? 'Modify permissions and settings for this role.' : 'Define a new set of permissions for your team.'}
-            </p>
+      <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-4 pb-6 border-b border-gray-200 dark:border-white/[0.08] mb-6">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="ghost" size="icon" aria-label="Back to roles" disabled={saving} onClick={onCancel} className="shrink-0"><ArrowLeft size={18} /></Button>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">{role ? 'Edit Role' : 'Create Custom Role'}</h2>
           </div>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+            {role ? 'Modify permissions and settings for this role.' : 'Define a new set of permissions for your team.'}
+          </p>
         </div>
-        <div className="flex items-center gap-3 shrink-0">
-          <button onClick={onCancel} className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
-            Cancel
-          </button>
-          <button onClick={handleSave} className="px-5 py-2 text-sm font-semibold bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-100 rounded-lg shadow-sm transition-all hover:shadow-md">
-            {role ? 'Save Changes' : 'Create Role'}
-          </button>
+        <div className="flex items-center justify-end gap-2 order-last sm:order-none">
+          <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>Cancel</Button>
+          <Button type="submit" disabled={saving}>{saving ? 'Saving…' : role ? 'Save Changes' : 'Create Role'}</Button>
         </div>
       </div>
+      {saveError && <p role="alert" className="mb-4 text-sm text-red-600 dark:text-red-400">{saveError}</p>}
 
       {/* Role Details */}
       <div className="pb-6 shrink-0 space-y-4">
         <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Role Name</label>
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Regional Manager" autoFocus
-              disabled={isSystemRole}
+          <div className="flex-1 min-w-0">
+            <label htmlFor="role-name" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Role Name *</label>
+            <input id="role-name" required aria-invalid={!!nameError} aria-describedby={nameError ? "role-name-error" : undefined} maxLength={50} type="text" value={name} onChange={(e) => { setName(e.target.value); if (e.target.value.trim()) setNameError(''); }} placeholder="e.g. Regional Manager" autoFocus
+              disabled={isSystemRole || saving}
               className={cn(
                 "w-full px-4 py-2.5 bg-white dark:bg-[#16191E] border border-gray-200 dark:border-[#262A33] text-slate-900 dark:text-white rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm",
                 isSystemRole && "bg-slate-50 dark:bg-slate-800/50 text-slate-500 cursor-not-allowed"
               )} />
+            {nameError && <p id="role-name-error" role="alert" className="mt-1 text-sm text-red-600 dark:text-red-400">{nameError}</p>}
           </div>
-          <div className="flex-1">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Description <span className="font-normal text-slate-400">— Optional</span></label>
-            <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description of this role"
+          <div className="flex-1 min-w-0">
+            <label htmlFor="role-description" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Description <span className="font-normal text-slate-400">— Optional</span></label>
+            <input id="role-description" maxLength={200} disabled={saving} type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description of this role"
               className="w-full px-4 py-2.5 bg-white dark:bg-[#16191E] border border-gray-200 dark:border-[#262A33] text-slate-900 dark:text-white rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm" />
           </div>
         </div>
         
         {role && (
-          <div className="flex items-center gap-4 pt-2">
+          <div className="flex flex-wrap items-center gap-4 pt-2">
             <div className="flex items-center gap-2">
               <span className={cn(
                 "px-2.5 py-1 text-xs font-semibold rounded-md uppercase tracking-wider",
@@ -302,7 +313,7 @@ function RoleEditor({ role, allPerms, allUsers, onSave, onCancel, onCopy }: Role
       )}
 
       {/* Permission sections — scrollable */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 pr-1 pb-10">
+      <div className="space-y-4 pb-6">
         {PERM_GROUPS.map((group) => (
           <PermSection
             key={group.id}
@@ -311,11 +322,11 @@ function RoleEditor({ role, allPerms, allUsers, onSave, onCancel, onCopy }: Role
             activePermIds={activePermIds}
             onToggle={handleToggle}
             onGroupToggle={handleGroupToggle}
-            disabled={isAdmin}
+            disabled={isSystemRole || saving}
           />
         ))}
       </div>
-    </motion.div>
+    </motion.form>
   );
 }
 
@@ -393,8 +404,8 @@ interface RolesPermissionsProps {
 }
 
 export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps): React.ReactElement {
-  const { user } = useAuth();
-  const { roles, permissions, users, addRole, updateRole, deleteRole } = useData();
+  const { tenant, userCan } = useAuth();
+  const { roles, permissions, rolesLoading, rolesError, refreshRoles, users, addRole, updateRole, deleteRole } = useData();
 
   // view state
   const [view, setView] = useState<'list' | 'edit' | 'new'>('list');
@@ -404,10 +415,7 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
   // dropdown state
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
 
-  const userRoleDef = roles.find((r) => r.name === user?.role);
-  const userPerms = userRoleDef?.permissions ?? [];
-  const isClientAdmin = user?.role === 'Client Admin';
-  const canManage = isClientAdmin || userPerms.includes('p26');
+  const canManage = userCan('roles', 'canEdit');
 
   const visibleRoles = useMemo(
     () => roles.filter((r) => !r.isArchived),
@@ -435,36 +443,35 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
     notify(false);
   };
 
-  const handleSave = (name: string, description: string, permIds: string[]) => {
+  const handleSave = async (name: string, description: string, permIds: string[]) => {
     if (view === 'new') {
-      addRole({ name, description, permissions: permIds, isSystemRole: false, userCount: 0 });
+      await addRole({ name, description, permissions: permIds, isSystemRole: false, userCount: 0 });
       toast.success(`Role "${name}" created`);
     } else if (selectedRole) {
-      updateRole(selectedRole.id, { name, description, permissions: permIds });
+      await updateRole(selectedRole.id, { name, description, permissions: permIds });
       toast.success('Role updated');
     }
     goList();
   };
 
-  const handleCopy = (role: RoleDefinition) => {
-    addRole({
-      name: `${role.name} (Copy)`,
-      description: role.description,
-      permissions: role.permissions ? [...role.permissions] : [],
-      isSystemRole: false,
-      userCount: 0,
-    });
-    toast.success(`"${role.name}" duplicated`);
-    setOpenDropdownId(null);
+  const handleCopy = async (role: RoleDefinition) => {
+    try {
+      await addRole({ name: `${role.name} (Copy)`, description: role.description, permissions: [...role.permissions], isSystemRole: false, userCount: 0 });
+      toast.success(`"${role.name}" duplicated`); setOpenDropdownId(null);
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to duplicate role.'); }
   };
 
-  const handleDeleteConfirm = (id: string) => {
-    const role = roles.find((r) => r.id === id);
-    deleteRole(id);
-    toast.success(`Role "${role?.name}" deleted`);
-    setDeleteConfirmId(null);
-    if (view === 'edit' && selectedRole?.id === id) goList();
+  const handleDeleteConfirm = async (id: string) => {
+    try {
+      await deleteRole(id); toast.success('Role deleted'); setDeleteConfirmId(null);
+      if (view === 'edit' && selectedRole?.id === id) goList();
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to delete role.'); }
   };
+
+  useEffect(() => { setView('list'); setSelectedRole(null); onViewActiveChange?.(false); }, [tenant?.id]);
+
+  if (rolesLoading) return <p role="status" className="p-4 text-sm">Loading roles and permissions…</p>;
+  if (rolesError) return <div role="alert" className="p-4 space-y-3"><p>{rolesError}</p><Button variant="outline" onClick={() => void refreshRoles()}>Retry</Button></div>;
 
   // ── Editor views ─────────────────────────────────────────────────────────────
 
@@ -478,7 +485,6 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
           allUsers={users}
           onSave={handleSave}
           onCancel={goList}
-          onCopy={() => { handleCopy(freshRole); goList(); }}
         />
       </AnimatePresence>
     );
@@ -509,9 +515,7 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Manage team access and control what users can see and do.</p>
         </div>
         {canManage && (
-          <button onClick={openNew} className="flex items-center justify-center gap-2 px-5 py-2.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-sm font-semibold rounded-xl shadow-sm transition-all hover:shadow-md hover:bg-slate-800 dark:hover:bg-slate-100 shrink-0">
-            <Plus size={16} /> Create Custom Role
-          </button>
+          <Button onClick={openNew} className="shrink-0"><Plus size={16} /> Create Custom Role</Button>
         )}
       </div>
 

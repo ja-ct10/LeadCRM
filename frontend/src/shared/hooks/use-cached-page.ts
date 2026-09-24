@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/store/AuthContext';
 import { USE_MOCK_DATA } from '@/lib/config';
-import { buildCacheKey, createPageCacheGuard, getPageCache, setPageCache, invalidatePageCache } from '@/shared/cache/page-cache';
+import { subscribePageCacheInvalidation, buildCacheKey, createPageCacheGuard, getPageCache, setPageCache, invalidatePageCache } from '@/shared/cache/page-cache';
 
 interface CachedPageOptions<T> {
   module: string;
@@ -11,10 +11,11 @@ interface CachedPageOptions<T> {
   fetchFn: (signal: AbortSignal) => Promise<T>;
   intervalMs?: number;
   disabled?: boolean;
+  revalidateOnInvalidation?: boolean;
 }
 
 /** Cache successful results together with their exact request key; always revalidate on mount. */
-export function useCachedPage<T>({ module, params, fetchFn, intervalMs, disabled = USE_MOCK_DATA }: CachedPageOptions<T>) {
+export function useCachedPage<T>({ module, params, fetchFn, intervalMs, revalidateOnInvalidation = false, disabled = USE_MOCK_DATA }: CachedPageOptions<T>) {
   const { tenant, user } = useAuth();
   const tenantId = tenant?.id ?? '';
   // Responses (especially notifications) can depend on the user and their role.
@@ -48,7 +49,7 @@ export function useCachedPage<T>({ module, params, fetchFn, intervalMs, disabled
     } catch (error) {
       if (!current()) return;
       const status = (error as { status?: number })?.status;
-      if (status === 401 || status === 403) invalidatePageCache(module, tenantId);
+      if (status === 401 || status === 403) invalidatePageCache(module, tenantId, false);
       setState((prev) => ({
         ...prev,
         // Do not keep showing previously authorized data after access is revoked.
@@ -82,6 +83,13 @@ export function useCachedPage<T>({ module, params, fetchFn, intervalMs, disabled
       window.removeEventListener('focus', refresh);
     };
   }, [enabled, intervalMs, refetch]);
+
+  useEffect(() => {
+    if (!enabled || !revalidateOnInvalidation) return;
+    return subscribePageCacheInvalidation((changedModule, changedTenant) => {
+      if (changedModule === module && (!changedTenant || changedTenant === tenantId)) void refetch();
+    });
+  }, [enabled, revalidateOnInvalidation, module, tenantId, refetch]);
 
   const data = enabled ? (state.key === key ? state.data : cached?.data) : undefined;
   const fetching = enabled && (state.key === key ? state.fetching : true);

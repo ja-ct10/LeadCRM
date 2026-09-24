@@ -1,24 +1,38 @@
-﻿import { z } from 'zod';
+import { z } from 'zod';
+import { PERMISSION_MODULES } from '@leadcrm/shared';
 
 const permissionRowSchema = z.object({
-  module:    z.string().min(1),
+  module:    z.string().refine(value => PERMISSION_MODULES.some(module => module.key === value), 'Invalid permission module'),
   canView:   z.boolean(),
   canCreate: z.boolean(),
   canEdit:   z.boolean(),
   canDelete: z.boolean(),
+}).strict().superRefine((row, ctx) => {
+  const module = PERMISSION_MODULES.find(module => module.key === row.module);
+  for (const action of ['canView', 'canCreate', 'canEdit', 'canDelete'] as const) {
+    if (row[action] && module && !module.actions.includes(action)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [action], message: 'Invalid permission action for this module' });
+    }
+  }
 });
+
+const permissionsSchema = z.array(permissionRowSchema).refine(
+  rows => new Set(rows.map(row => row.module)).size === rows.length,
+  'Duplicate permission modules are not allowed',
+);
+const roleNameSchema = z.string().trim().min(1, 'Role name is required.').min(2, 'Name must be at least 2 characters').max(50, 'Name must be at most 50 characters');
 
 export const CreateRoleSchema = z.object({
-  name:        z.string().min(2, 'Name must be at least 2 characters').max(50, 'Name must be at most 50 characters'),
+  name:        roleNameSchema,
   description: z.string().max(200, 'Description must be at most 200 characters').optional(),
-  permissions: z.array(permissionRowSchema).default([]),
-});
+  permissions: permissionsSchema.default([]),
+}).strict();
 
 export const UpdateRoleSchema = z.object({
-  name:        z.string().min(2).max(50).optional(),
+  name:        roleNameSchema.optional(),
   description: z.string().max(200).optional(),
-  permissions: z.array(permissionRowSchema).optional(),
-}).refine(
+  permissions: permissionsSchema.optional(),
+}).strict().refine(
   (data) => Object.values(data).some((v) => v !== undefined),
   { message: 'At least one field must be provided' },
 );

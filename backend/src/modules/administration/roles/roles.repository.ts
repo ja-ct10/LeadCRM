@@ -12,7 +12,7 @@ export async function findAllRoles(tenantId: string) {
     include: {
       _count: { select: { userRoles: true } },
       permissions: {
-        select: { id: true, module: true, canView: true, canCreate: true, canEdit: true, canDelete: true },
+        select: { id: true, roleId: true, module: true, canView: true, canCreate: true, canEdit: true, canDelete: true },
       },
     },
   });
@@ -25,7 +25,7 @@ export async function findRoleById(id: string, tenantId: string) {
     include: {
       _count: { select: { userRoles: true } },
       permissions: {
-        select: { id: true, module: true, canView: true, canCreate: true, canEdit: true, canDelete: true },
+        select: { id: true, roleId: true, module: true, canView: true, canCreate: true, canEdit: true, canDelete: true },
       },
       userRoles: {
         where: { tenantId },
@@ -42,7 +42,7 @@ export async function findRoleById(id: string, tenantId: string) {
 
 export async function findRoleByName(name: string, tenantId: string) {
   return prisma.roleDefinition.findFirst({
-    where: { tenantId, name: { equals: name, mode: 'insensitive' }, isArchived: false },
+    where: { tenantId, name: { equals: name, mode: 'insensitive' } },
   });
 }
 
@@ -68,10 +68,12 @@ export async function createRole(
           canEdit:   p.canEdit,
           canDelete: p.canDelete,
         })),
-        skipDuplicates: true,
       });
     }
-    return role;
+    return tx.roleDefinition.findUniqueOrThrow({
+      where: { id: role.id },
+      include: { permissions: { select: { id: true, roleId: true, module: true, canView: true, canCreate: true, canEdit: true, canDelete: true } }, _count: { select: { userRoles: true } } },
+    });
   });
 }
 

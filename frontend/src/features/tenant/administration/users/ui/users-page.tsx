@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
@@ -612,8 +612,9 @@ export default function UsersPage() {
                               warning: 'Any users assigned this role will lose its permissions.',
                               confirmLabel: 'Delete Role',
                               onConfirm: () => {
-                                deleteRole(role.id);
-                                toast.success(`Role "${role.name}" has been deleted.`);
+                                void deleteRole(role.id)
+                                  .then(() => toast.success(`Role "${role.name}" has been deleted.`))
+                                  .catch(error => toast.error(error instanceof Error ? error.message : "Unable to delete role."));
                               },
                             });
                           }}
@@ -1259,27 +1260,29 @@ export default function UsersPage() {
       new Set(permissions.map((p) => p.category)),
     );
 
-    const handleSave = () => {
-      if (editingRole) {
-        updateRole(editingRole.id, {
-          name: roleForm.name,
-          description: roleForm.description,
-          permissions: roleForm.permissions,
-        });
-        toast.success(`Role updated: ${roleForm.name}`);
-      } else {
-        addRole({
-          name: roleForm.name,
-          description: roleForm.description,
-          isSystemRole: false,
-          userCount: 0,
-          permissions: roleForm.permissions,
-        });
-        toast.success(
-          `New role created: ${roleForm.name}`,
-        );
-      }
-      setIsRoleModalOpen(false);
+    const handleSave = async () => {
+      try {
+        if (editingRole) {
+          await updateRole(editingRole.id, {
+            name: roleForm.name,
+            description: roleForm.description,
+            permissions: roleForm.permissions,
+          });
+          toast.success(`Role updated: ${roleForm.name}`);
+        } else {
+          await addRole({
+            name: roleForm.name,
+            description: roleForm.description,
+            isSystemRole: false,
+            userCount: 0,
+            permissions: roleForm.permissions,
+          });
+          toast.success(
+            `New role created: ${roleForm.name}`,
+          );
+        }
+        setIsRoleModalOpen(false);
+      } catch (error) { toast.error(error instanceof Error ? error.message : "Unable to save role."); }
     };
 
     const togglePermission = (id: string) => {

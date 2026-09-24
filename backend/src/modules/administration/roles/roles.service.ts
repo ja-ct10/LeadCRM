@@ -1,9 +1,10 @@
-﻿import * as repo from './roles.repository';
+import * as repo from './roles.repository';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { NotFoundError, ForbiddenError, ConflictError } from '../../../shared/errors/http-error';
 import { isSuperRole as checkIsSuperRole } from '../../../shared/utils/is-super-role';
 import type { CreateRoleDto, UpdateRoleDto } from './roles.dto';
 import prisma from '../../../config/database.config';
+import { Prisma } from '@prisma/client';
 
 // Reserved names that cannot be used for custom roles (case-insensitive).
 // Includes legacy role names to prevent re-creation of removed system roles.
@@ -32,14 +33,22 @@ export async function getRoleById(id: string, tenantId: string) {
 export async function createRole(tenantId: string, userId: string, dto: CreateRoleDto) {
   // Reserved name check
   if (isReservedName(dto.name)) {
-    throw new ConflictError('A role with this name already exists');
+    throw new ConflictError('A role with this name already exists.');
   }
 
   // Uniqueness check within tenant
   const existing = await repo.findRoleByName(dto.name, tenantId);
-  if (existing) throw new ConflictError('A role with this name already exists');
+  if (existing) throw new ConflictError('A role with this name already exists.');
 
-  const role = await repo.createRole(tenantId, { name: dto.name, description: dto.description }, dto.permissions ?? []);
+  let role;
+  try {
+    role = await repo.createRole(tenantId, { name: dto.name, description: dto.description }, dto.permissions ?? []);
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      throw new ConflictError('A role with this name already exists.');
+    }
+    throw error;
+  }
 
   await writeAuditLog({
     tenantId, userId,
@@ -59,7 +68,7 @@ export async function updateRole(id: string, tenantId: string, userId: string, d
   if (dto.name) {
     if (isReservedName(dto.name)) throw new ConflictError('This role name is reserved');
     const existing = await repo.findRoleByName(dto.name, tenantId);
-    if (existing && existing.id !== id) throw new ConflictError('A role with this name already exists');
+    if (existing && existing.id !== id) throw new ConflictError('A role with this name already exists.');
   }
 
   const metaFields: { name?: string; description?: string } = {};
@@ -67,11 +76,9 @@ export async function updateRole(id: string, tenantId: string, userId: string, d
   if (dto.description !== undefined) metaFields.description = dto.description;
 
   // Update meta fields if any
-  let updated = role;
   if (Object.keys(metaFields).length > 0) {
     const result = await repo.updateRoleMeta(id, tenantId, metaFields);
     if (!result) throw new NotFoundError('Role');
-    updated = result as typeof role;
   }
 
   // Replace permission rows if provided
@@ -85,7 +92,7 @@ export async function updateRole(id: string, tenantId: string, userId: string, d
     after: dto as Record<string, unknown>,
   });
 
-  return updated;
+  return getRoleById(id, tenantId);
 }
 
 export async function archiveRole(id: string, tenantId: string, userId: string) {

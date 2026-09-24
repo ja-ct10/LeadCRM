@@ -73,6 +73,11 @@ const DEFAULT_CONFIG: ModuleCacheConfig = { ttlMs: 5 * 60_000, staleMs: 60_000 }
 const pageCache = new Map<string, CacheEntry>();
 const MAX_ENTRIES = 100;
 let generation = 0;
+const invalidationListeners = new Set<(module: string, tenantId?: string) => void>();
+export function subscribePageCacheInvalidation(listener: (module: string, tenantId?: string) => void): () => void {
+  invalidationListeners.add(listener);
+  return () => { invalidationListeners.delete(listener); };
+}
 const moduleVersions = new Map<string, number>();
 
 /** Reject responses started before logout or a mutation invalidated this module. */
@@ -170,12 +175,13 @@ export function setPageCache<T>(
  * Evict all cache entries for a specific module + tenant.
  * Call after mutations that affect a module's list view.
  */
-export function invalidatePageCache(module: string, tenantId?: string): void {
+export function invalidatePageCache(module: string, tenantId?: string, notify = true): void {
   if (tenantId === '') return;
   moduleVersions.set(module, (moduleVersions.get(module) ?? 0) + 1);
   for (const [key, entry] of pageCache) {
     if (entry.module === module && (tenantId === undefined || entry.tenantId === tenantId)) pageCache.delete(key);
   }
+  if (notify) invalidationListeners.forEach(listener => listener(module, tenantId));
 }
 
 /**

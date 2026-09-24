@@ -37,3 +37,33 @@ export const rolesService = {
     await rolesApi.unassign(userId, roleId);
   },
 };
+
+/** Adapt the canonical module flags to the Settings display model, never database IDs. */
+export function toSettingsRole(role: RoleListItem): import('@/store/types').RoleDefinition {
+  return {
+    ...role,
+    description: role.description ?? '',
+    permissions: role.permissions.flatMap(row =>
+      (['canView', 'canCreate', 'canEdit', 'canDelete'] as const)
+        .filter(action => row[action]).map(action => `${row.module}.${action}`)),
+  };
+}
+
+export function toSettingsPermissions(modules: import('@/store/types/roles.types').PermissionModuleDefinition[]): import('@/store/types').Permission[] {
+  const labels = { canView: 'View', canCreate: 'Create', canEdit: 'Edit', canDelete: 'Archive / delete' };
+  return modules.flatMap(module => module.actions.map(action => ({
+    id: `${module.key}.${action}`, category: module.key,
+    name: `${labels[action]} ${module.label}`, description: '',
+  })));
+}
+
+export function toPermissionRows(ids: string[], permissions: import('@/store/types').Permission[]): CreateRolePayload['permissions'] {
+  if (ids.some(id => !permissions.some(permission => permission.id === id))) {
+    throw new Error('Selected permissions are no longer available. Reload the role editor.');
+  }
+  return [...new Set(ids.map(id => id.split('.')[0]))].map(module => ({
+    module,
+    canView: ids.includes(`${module}.canView`), canCreate: ids.includes(`${module}.canCreate`),
+    canEdit: ids.includes(`${module}.canEdit`), canDelete: ids.includes(`${module}.canDelete`),
+  }));
+}

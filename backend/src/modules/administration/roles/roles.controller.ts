@@ -1,23 +1,23 @@
-﻿import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import * as service from './roles.service';
 import type { CreateRoleDto, UpdateRoleDto, AssignRoleDto } from './roles.dto';
 
 export async function getRoles(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    res.json({ success: true, data: await service.getRoles(req.user!.tenantId) });
+    res.json({ success: true, data: (await service.getRoles(req.user!.tenantId)).map(presentRole) });
   } catch (err) { next(err); }
 }
 
 export async function getRoleById(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    res.json({ success: true, data: await service.getRoleById(String(req.params.id), req.user!.tenantId) });
+    res.json({ success: true, data: presentRole(await service.getRoleById(String(req.params.id), req.user!.tenantId)) });
   } catch (err) { next(err); }
 }
 
 export async function createRole(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const role = await service.createRole(req.user!.tenantId, req.user!.userId, req.body as CreateRoleDto);
-    res.status(201).json({ success: true, data: role });
+    res.status(201).json({ success: true, data: presentRole(role) });
   } catch (err) { next(err); }
 }
 
@@ -25,7 +25,7 @@ export async function updateRole(req: Request, res: Response, next: NextFunction
   try {
     res.json({
       success: true,
-      data: await service.updateRole(String(req.params.id), req.user!.tenantId, req.user!.userId, req.body as UpdateRoleDto),
+      data: presentRole(await service.updateRole(String(req.params.id), req.user!.tenantId, req.user!.userId, req.body as UpdateRoleDto)),
     });
   } catch (err) { next(err); }
 }
@@ -68,4 +68,9 @@ export async function getUserPermissions(req: Request, res: Response, next: Next
     const permissions = await service.getUserPermissions(targetUserId, tenantId);
     res.json({ success: true, data: permissions });
   } catch (err) { next(err); }
+}
+
+function presentRole<T extends { _count: { userRoles: number }; userRoles?: Array<{ user: unknown }> }>(role: T) {
+  const { _count, userRoles, ...data } = role;
+  return { ...data, userCount: _count.userRoles, ...(userRoles ? { assignedUsers: userRoles.map(row => row.user) } : {}) };
 }
