@@ -1,6 +1,8 @@
 # LeadCRM — API Reference
 
 ## Status
+For the implemented Campaigns, Templates, Target Audiences, and Brevo webhook endpoints, see [Campaign email delivery](campaign-email-delivery.md).
+
 Backend is scaffolded. Contacts endpoints are wired. All other modules have stub controllers returning empty arrays, ready for implementation.
 
 **Schema v2** — 30 entities in Prisma DB. Run `npx prisma migrate dev` in `backend/` to apply all migrations.

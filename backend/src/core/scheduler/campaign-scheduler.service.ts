@@ -142,6 +142,13 @@ async function processDueCampaigns(): Promise<void> {
  * Process a single scheduled campaign
  */
 async function processSingleCampaign(campaign: ScheduledCampaign & { targetAudience?: any }): Promise<void> {
+  // Email campaigns require the validated, explicit Send Now flow. Legacy scheduled
+  // email jobs must never bypass recipient exclusions or the CRM Sandbox safeguard.
+  if (campaign.type === 'EMAIL' || campaign.type === 'MULTI_CHANNEL') {
+    await prisma.campaign.update({ where: { id: campaign.id }, data: { status: 'PAUSED' } });
+    return;
+  }
+
   console.log(`[scheduler] Processing campaign: ${campaign.name} (${campaign.type})`);
 
   // Update campaign status to ACTIVE

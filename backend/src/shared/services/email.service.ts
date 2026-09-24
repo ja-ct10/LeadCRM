@@ -16,15 +16,7 @@ export interface SendMailOptions {
   to: string;
   subject: string;
   html: string;
-}
-
-/** Masks an email address for safe logging. */
-function maskEmail(email: string): string {
-  const parts = email.split('@');
-  const local  = parts[0] ?? '';
-  const domain = parts[1] ?? '***.***';
-  if (!local) return '***@***.***';
-  return `${local.slice(0, 2)}***@${domain}`;
+  requireDelivery?: boolean;
 }
 
 /** Returns sandbox allowlist from BREVO_SANDBOX_EMAILS, or null when unset. */
@@ -45,75 +37,45 @@ function isBrevoConfigured(): boolean {
  * Sends a transactional email via Brevo HTTP API (HTTPS :443).
  * Works on Render Free tier — no SMTP ports required.
  */
-export async function sendMail(options: SendMailOptions): Promise<void> {
-  // ── Sandbox allowlist guard (dev/staging only — NEVER active in production) ──
+export interface SendMailResult { messageId: string | null; submitted: boolean }
+
+export function assertBrevoConfigured(): void {
+  if (!isBrevoConfigured() || !process.env.BREVO_FROM_EMAIL) {
+    throw new AppError('Email service is not configured. Configure the backend Brevo sender and API key.', 503);
+  }
+}
+
+export async function sendMail(options: SendMailOptions): Promise<SendMailResult> {
+  if (/[\r\n]/.test(options.subject)) throw new AppError('Invalid email subject.', 400);
   if (process.env.NODE_ENV !== 'production') {
     const allowlist = getSandboxAllowlist();
-    if (allowlist !== null && !allowlist.has(options.to.toLowerCase())) {
-      // eslint-disable-next-line no-console
-      console.log(
-        `[EmailService] [SANDBOX] Blocked -> recipient=${maskEmail(options.to)} | subject="${options.subject}" | reason=not in BREVO_SANDBOX_EMAILS`,
-      );
-      return;
+    if (allowlist !== null && !allowlist.has(options.to.trim().toLowerCase())) {
+      return { messageId: null, submitted: false };
     }
   }
-
-  // ── 1. Brevo HTTP API ───────────────────────────────────────────────────────
-  if (isBrevoConfigured()) {
-    try {
-      const fromEmail = process.env.BREVO_FROM_EMAIL || 'reymarkjpanes@gmail.com';
-      const fromName  = process.env.BREVO_FROM_NAME  || 'LeadCRM';
-      const response = await fetch('https://api.brevo.com/v3/smtp/email', {
-        method: 'POST',
-        headers: {
-          'accept':       'application/json',
-          'api-key':      process.env.BREVO_API_KEY!,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          sender:      { name: fromName, email: fromEmail },
-          to:          [{ email: options.to }],
-          subject:     options.subject,
-          htmlContent: options.html,
-        }),
-      });
-      if (!response.ok) {
-        const errorBody = await response.text();
-        throw new Error(`Brevo API ${response.status}: ${errorBody}`);
-      }
-      const result = await response.json() as { messageId?: string };
-      const messageId = result.messageId ?? 'unknown';
-      // eslint-disable-next-line no-console
-      console.info(
-        `[EmailService] Sent via Brevo | recipient=${maskEmail(options.to)} | messageId=${messageId} | subject="${options.subject}"`,
-      );
-      return;
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      // eslint-disable-next-line no-console
-      console.error(
-        `[EmailService] Brevo send failed | recipient=${maskEmail(options.to)} | subject="${options.subject}" | error=${message}`,
-      );
-      if (process.env.NODE_ENV === 'production') {
-        throw new AppError('Email delivery failed. Please try again later.', 502);
-      }
-    }
+  if (!isBrevoConfigured() && process.env.NODE_ENV !== 'production' && !options.requireDelivery) {
+    console.info('[EmailService] Development fallback: email not submitted.');
+    return { messageId: null, submitted: false };
   }
-
-  // ── 2. Development fallback ─────────────────────────────────────────────────
-  if (process.env.NODE_ENV !== 'production') {
-    // eslint-disable-next-line no-console
-    console.log(
-        `\n[EmailService] [DEV FALLBACK] Email not sent (Brevo not configured)\n  To:      ${options.to}\n  Subject: ${options.subject}\n`,
-    );
-    return;
+  assertBrevoConfigured();
+  try {
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      signal: AbortSignal.timeout(15000),
+      headers: { accept: 'application/json', 'api-key': process.env.BREVO_API_KEY!, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        sender: { name: process.env.BREVO_FROM_NAME || 'LeadCRM', email: process.env.BREVO_FROM_EMAIL },
+        to: [{ email: options.to }], subject: options.subject, htmlContent: options.html,
+      }),
+    });
+    if (!response.ok) throw new AppError('Email provider rejected the request. Check the sender configuration and provider quota.', 502);
+    const result = await response.json() as { messageId?: string };
+    return { messageId: typeof result.messageId === 'string' ? result.messageId : null, submitted: true };
+  } catch {
+    // Never log provider bodies, authorization headers, recipient content or secrets.
+    console.error('[EmailService] Brevo request failed.');
+    throw new AppError('Email delivery could not be confirmed. Check the provider before retrying.', 502);
   }
-
-  // ── 3. Production — no transport configured ─────────────────────────────────
-  throw new AppError(
-    'Email service is not configured. Set BREVO_API_KEY in your Render environment variables.',
-    503,
-  );
 }
 // ─── Shared email layout helpers ──────────────────────────────────────────────
 

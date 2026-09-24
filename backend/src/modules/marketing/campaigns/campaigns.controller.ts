@@ -14,8 +14,12 @@ export async function updateCampaign(req: Request, res: Response, next: NextFunc
   try { res.json({ success: true, data: await service.updateCampaign(String(req.params.id), req.user!.tenantId, req.user!.userId, req.body) }); } catch (e) { next(e); }
 }
 export async function sendCampaign(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try { res.json({ success: true, data: await service.sendCampaign(String(req.params.id), req.user!.tenantId, req.user!.userId) }); } catch (e) { next(e); }
+  try { res.status(202).json({ success: true, data: await service.queueCampaign(String(req.params.id), req.user!.tenantId, req.user!.userId) }); } catch (e) { next(e); }
 }
 export async function archiveCampaign(req: Request, res: Response, next: NextFunction): Promise<void> {
   try { await service.archiveCampaign(String(req.params.id), req.user!.tenantId, req.user!.userId); res.json({ success: true }); } catch (e) { next(e); }
+}
+
+export async function getCampaignMetrics(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try { res.json({ success: true, data: await service.getCampaignMetrics(req.user!.tenantId) }); } catch (e) { next(e); }
 }

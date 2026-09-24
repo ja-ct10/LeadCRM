@@ -91,6 +91,10 @@ enum CampaignType {
 }
 
 enum CampaignStatus {
+  SENDING
+  SENT
+  PARTIALLY_SENT
+  FAILED
   DRAFT
   ACTIVE
   PAUSED
@@ -1137,6 +1141,7 @@ model Notification {
 // mentor: "no need for audience_contacts, just filtration logic, query from contacts"
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model TargetAudience {
+  source String @default("CONTACTS")
   environment CrmEnvironment @default(PRODUCTION)
   id          String   @id @default(uuid())
   tenantId    String
@@ -1179,6 +1184,10 @@ model TargetAudienceCondition {
 // CAMPAIGN & TEMPLATE
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Campaign {
+  audienceSource String?
+  createdById String?
+  recipientCount Int @default(0)
+  failedCount Int @default(0)
   environment CrmEnvironment @default(PRODUCTION)
   id               String         @id @default(uuid())
   tenantId         String
@@ -1276,6 +1285,10 @@ model CampaignMetrics {
 // CAMPAIGN-CONTACT JUNCTION (per-contact delivery tracking)
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model CampaignContact {
+  email String?
+  personalization Json?
+  messageId String? @unique
+  failureReason String?
   environment CrmEnvironment @default(PRODUCTION)
   id           String    @id @default(uuid())
   tenantId     String
@@ -1292,8 +1305,8 @@ model CampaignContact {
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id])
   campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  lead     Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  contact  Contact? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  lead     Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  contact  Contact? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
   @@unique([campaignId, leadId])
   @@unique([campaignId, customerId])
@@ -1534,6 +1547,7 @@ model AuditLog {
 // EMAIL DELIVERY LOG
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model EmailDeliveryLog {
+  brevoMessageId String? @unique
   environment CrmEnvironment @default(PRODUCTION)
   id             String    @id @default(uuid())
   tenantId       String
@@ -1687,6 +1701,7 @@ model SMSQueue {
 // EMAIL EVENT (Tracking opens, clicks, etc.)
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model EmailEvent {
+  providerEventKey String? @unique
   environment CrmEnvironment @default(PRODUCTION)
   id            String   @id @default(uuid())
   tenantId      String
@@ -1973,4 +1988,10 @@ model DealImportResult {
   import    DealImport @relation(fields: [importId], references: [id], onDelete: Cascade)
   @@unique([importId, rowNumber])
   @@index([importId, status])
+}
+
+// Account-wide campaign reservations, independent of CRM tenant/environment.
+model CampaignEmailQuota {
+  day String @id
+  reserved Int @default(0)
 }

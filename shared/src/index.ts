@@ -16,3 +16,5 @@ export * from './contracts/lead-column-migration';
 
 export * from './validation/administration-user.schema';
 export * from './validation/deal-import.schema';
+
+export * from './contracts/campaign-email';

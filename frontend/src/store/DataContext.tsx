@@ -578,8 +578,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     const p = safeParse("leadcrm_pipelines", MOCK_PIPELINES);
     const w = safeParse("leadcrm_workflows_v2", MOCK_WORKFLOWS);
-    const c = safeParse("leadcrm_campaigns", MOCK_CAMPAIGNS);
-    const tpl = safeParse("leadcrm_templates", MOCK_TEMPLATES);
+    const c: Campaign[] = []; // Campaign business data is fetched through backend APIs.
+    const tpl: Template[] = [];
     const u = safeParse("leadcrm_users", MOCK_USERS);
     const t = safeParse("leadcrm_tenants", MOCK_TENANTS).map((tenant: Tenant) => {
       if (tenant.environment !== "none" && !tenant.healthMetrics) {
@@ -1574,111 +1574,36 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (USE_MOCK_DATA) saveAndSet('leadcrm_workflows_v2', updated, setWorkflows);
     else setWorkflows(updated);
   };
-  const addCampaign = async (campaignData: any) => {
-    if (!tenant) return;
-    if (!USE_MOCK_DATA) {
-      try {
-        const res = await campaignsApi.create(campaignData);
-        const created = res?.data ?? res;
-        setCampaigns((prev) => [created as Campaign, ...prev]);
-        invalidatePageCache('campaigns', tenant?.id || user?.tenantId || '');
-        addAuditLog("Campaign Created", `Created campaign '${(created as any).name || 'new'}'.`);
-      } catch (err: unknown) {
-        toast.error(err instanceof Error ? err.message : "Failed to create campaign");
-      }
-      return;
-    }
-    const newCampaign: Campaign = {
-      ...campaignData, id: uuid(), tenantId: tenant.id,
-      createdAt: new Date().toLocaleDateString(), sentCount: 0, openedCount: 0, clickedCount: 0, engagement: 0,
-    };
-    saveAndSet("leadcrm_campaigns", [...campaigns, newCampaign], setCampaigns);
-    addAuditLog("Campaign Created", `Created campaign '${newCampaign.name}'.`);
+  const addCampaign: DataContextType['addCampaign'] = async (data) => {
+    if (!tenant) throw new Error('Select a workspace first.');
+    const created = (await campaignsApi.create({ name: data.name, type: data.type === 'Email' ? 'EMAIL' : data.type === 'Sms' ? 'SMS' : 'MULTI_CHANNEL', subject: data.subject, body: data.body, audienceSource: data.audienceSource, targetAudienceId: data.targetAudienceId })).data;
+    setCampaigns(prev => [created, ...prev]);
+    invalidatePageCache('campaigns', tenant.id);
   };
-
   const updateCampaign = async (id: string, updates: Partial<Campaign>) => {
-    if (!USE_MOCK_DATA) {
-      try {
-        const res = await campaignsApi.update(id, updates);
-        const updated = res?.data ?? res;
-        setCampaigns((prev) => prev.map((c) => (c.id === id ? (updated as Campaign) : c)));
-        invalidatePageCache('campaigns', tenant?.id || user?.tenantId || '');
-        addAuditLog("Campaign Updated", `Updated campaign '${(updated as any).name || id}'.`);
-      } catch (err: unknown) {
-        toast.error(err instanceof Error ? err.message : "Failed to update campaign");
-      }
-      return;
-    }
-    const original = campaigns.find((c) => c.id === id);
-    saveAndSet("leadcrm_campaigns", campaigns.map((c) => c.id === id ? { ...c, ...updates } : c), setCampaigns);
-    if (original) addAuditLog("Campaign Updated", `Updated campaign '${original.name}'.`);
+    const updated = (await campaignsApi.update(id, updates)).data;
+    setCampaigns(prev => prev.map(c => c.id === id ? updated : c));
+    invalidatePageCache('campaigns', tenant?.id || '');
   };
-
   const deleteCampaign = async (id: string) => {
-    if (!USE_MOCK_DATA) {
-      try {
-        await campaignsApi.archive(id);
-        setCampaigns((prev) => prev.filter((c) => c.id !== id));
-        invalidatePageCache('campaigns', tenant?.id || user?.tenantId || '');
-        addAuditLog("Campaign Archived", `Archived campaign id '${id}'.`);
-      } catch (err: unknown) {
-        toast.error(err instanceof Error ? err.message : "Failed to archive campaign");
-      }
-      return;
-    }
-    const original = campaigns.find((c) => c.id === id);
-    saveAndSet("leadcrm_campaigns", campaigns.map((c) => c.id === id ? { ...c, isArchived: true } : c), setCampaigns);
-    if (original) addAuditLog("Campaign Archived", `Archived campaign '${original.name}'.`);
+    await campaignsApi.archive(id);
+    setCampaigns(prev => prev.filter(c => c.id !== id));
+    invalidatePageCache('campaigns', tenant?.id || '');
   };
-
-  const addTemplate = async (templateData: any) => {
-    if (!tenant) return;
-    if (!USE_MOCK_DATA) {
-      try {
-        const res = await templatesApi.create(templateData);
-        const created = res?.data ?? res;
-        setTemplates((prev) => [created as Template, ...prev]);
-        invalidatePageCache('campaigns', tenant?.id || user?.tenantId || '');
-        addAuditLog("Template Created", `Created template '${(created as any).name || 'new'}'.`);
-      } catch (err: unknown) {
-        toast.error(err instanceof Error ? err.message : "Failed to create template");
-      }
-      return;
-    }
-    const newTemplate: Template = { ...templateData, id: uuid(), tenantId: tenant.id, createdAt: new Date().toLocaleDateString() };
-    saveAndSet("leadcrm_templates", [...templates, newTemplate], setTemplates);
+  const addTemplate: DataContextType['addTemplate'] = async (data) => {
+    const created = (await templatesApi.create(data)).data;
+    setTemplates(prev => [created, ...prev]);
+    invalidatePageCache('campaigns', tenant?.id || '');
   };
-
   const updateTemplate = async (id: string, updates: Partial<Template>) => {
-    if (!USE_MOCK_DATA) {
-      try {
-        const res = await templatesApi.update(id, updates);
-        const updated = res?.data ?? res;
-        setTemplates((prev) => prev.map((t) => (t.id === id ? (updated as Template) : t)));
-        invalidatePageCache('campaigns', tenant?.id || user?.tenantId || '');
-      } catch (err: unknown) {
-        toast.error(err instanceof Error ? err.message : "Failed to update template");
-      }
-      return;
-    }
-    saveAndSet("leadcrm_templates", templates.map((t) => t.id === id ? { ...t, ...updates } : t), setTemplates);
+    const updated = (await templatesApi.update(id, updates)).data;
+    setTemplates(prev => prev.map(t => t.id === id ? updated : t));
+    invalidatePageCache('campaigns', tenant?.id || '');
   };
-
   const deleteTemplate = async (id: string) => {
-    if (!USE_MOCK_DATA) {
-      try {
-        await templatesApi.archive(id);
-        setTemplates((prev) => prev.filter((t) => t.id !== id));
-        invalidatePageCache('campaigns', tenant?.id || user?.tenantId || '');
-        addAuditLog("Template Archived", `Archived template id '${id}'.`);
-      } catch (err: unknown) {
-        toast.error(err instanceof Error ? err.message : "Failed to archive template");
-      }
-      return;
-    }
-    const original = templates.find((t) => t.id === id);
-    saveAndSet("leadcrm_templates", templates.map((t) => t.id === id ? { ...t, isArchived: true } : t), setTemplates);
-    if (original) addAuditLog("Template Archived", `Archived template '${original.name}'.`);
+    await templatesApi.archive(id);
+    setTemplates(prev => prev.filter(t => t.id !== id));
+    invalidatePageCache('campaigns', tenant?.id || '');
   };
 
   const addRole: DataContextType['addRole'] = async (data) => {
@@ -1934,26 +1859,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         );
         break;
       case "Campaign":
-        saveAndSet(
-          "leadcrm_campaigns",
-          campaigns.map((c) => (c.id === id ? { ...c, isArchived: false } : c)),
-          setCampaigns,
-        );
-        addAuditLog(
-          "Campaign Restored",
-          `Restored marketing campaign (ID: ${id}).`,
-        );
-        break;
       case "Template":
-        saveAndSet(
-          "leadcrm_templates",
-          templates.map((t) => (t.id === id ? { ...t, isArchived: false } : t)),
-          setTemplates,
-        );
-        addAuditLog(
-          "Template Restored",
-          `Restored communication template (ID: ${id}).`,
-        );
+        toast.error('Campaign and template restoration is not available. Create a new draft through Campaigns.');
         break;
       case "Role":
         toast.error('Archived roles cannot be restored. Create a new role through Roles & Permissions.');
@@ -2219,8 +2126,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("leadcrm_deals", JSON.stringify(MOCK_DEALS));
     localStorage.setItem("leadcrm_pipelines", JSON.stringify(MOCK_PIPELINES));
     localStorage.setItem("leadcrm_workflows_v2", JSON.stringify(MOCK_WORKFLOWS));
-    localStorage.setItem("leadcrm_campaigns", JSON.stringify(MOCK_CAMPAIGNS));
-    localStorage.setItem("leadcrm_templates", JSON.stringify(MOCK_TEMPLATES));
     localStorage.setItem("leadcrm_users", JSON.stringify(MOCK_USERS));
     localStorage.setItem("leadcrm_tenants", JSON.stringify(MOCK_TENANTS));
     localStorage.setItem("leadcrm_tasks", JSON.stringify(MOCK_TASKS));

@@ -15,7 +15,7 @@ export default defineConfig({
       '@/shared': path.resolve(__dirname, './src/shared'),
       '@/store': path.resolve(__dirname, './src/store'),
       '@/lib': path.resolve(__dirname, './src/lib'),
-      '@leadcrm/shared': path.resolve(__dirname, '../shared/src'),
+      '@leadcrm/shared': path.resolve(__dirname, '../shared/src/index.ts'),
       '@': path.resolve(__dirname, '.'),
     },
   },

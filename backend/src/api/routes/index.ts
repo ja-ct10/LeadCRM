@@ -1,3 +1,4 @@
+import { brevoWebhookRouter } from '../../modules/marketing/campaigns/brevo-webhook';
 import { Router } from 'express';
 import authRoutes from './auth.routes';
 import crmRoutes from './crm.routes';
@@ -28,6 +29,7 @@ router.get('/health', (_req, res) => {
   });
 });
 
+router.use('/webhooks/brevo', brevoWebhookRouter);
 router.use('/auth', authRoutes);
 router.use('/crm', crmRoutes);
 router.use('/marketing', marketingRoutes);

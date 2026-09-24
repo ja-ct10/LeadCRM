@@ -9,7 +9,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@leadcrm/shared': path.resolve(__dirname, '../shared/src'),
+      '@leadcrm/shared': path.resolve(__dirname, '../shared/src/index.ts'),
     },
   },
 });

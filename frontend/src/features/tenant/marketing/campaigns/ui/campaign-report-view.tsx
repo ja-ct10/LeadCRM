@@ -27,6 +27,10 @@ interface LiveMetrics {
   openedCount: number;
   clickedCount: number;
   engagement: number;
+  deliveredCount?: number;
+  bouncedCount?: number;
+  recipientCount?: number;
+  failedCount?: number;
 }
 
 // ··· Helpers ·································································
@@ -35,11 +39,11 @@ function deriveMetrics(liveMetrics: LiveMetrics) {
   const sent      = liveMetrics.sentCount ?? 0;
   const opened    = liveMetrics.openedCount ?? 0;
   const clicked   = liveMetrics.clickedCount ?? 0;
-  const delivered = sent; // sentCount IS delivered — confirmed by Gmail API on send
-  const deliveredPct = sent > 0 ? 100 : 0;
+  const delivered = liveMetrics.deliveredCount ?? 0;
+  const deliveredPct = sent > 0 ? Math.round(delivered / sent * 100) : 0;
   const openedPct    = sent > 0 ? Math.round((opened / sent) * 100) : 0;
   const clickedPct   = sent > 0 ? Math.round((clicked / sent) * 100) : 0;
-  const bounce       = 0; // no real bounce count available
+  const bounce = liveMetrics.bouncedCount ?? 0;
   return { sent, delivered, deliveredPct, opened, openedPct, clicked, clickedPct, bounce };
 }
 
@@ -93,6 +97,8 @@ export function CampaignReportView({
     openedCount:  campaign.openedCount ?? 0,
     clickedCount: campaign.clickedCount ?? 0,
     engagement:   campaign.engagement,
+    deliveredCount: campaign.deliveredCount, bouncedCount: campaign.bouncedCount,
+    recipientCount: campaign.recipientCount, failedCount: campaign.failedCount,
   });
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError]   = useState(false);
@@ -112,6 +118,8 @@ export function CampaignReportView({
             openedCount:  c.openedCount ?? 0,
             clickedCount: c.clickedCount ?? 0,
             engagement:   c.engagement,
+            deliveredCount: c.deliveredCount, bouncedCount: c.bouncedCount,
+            recipientCount: c.recipientCount, failedCount: c.failedCount,
           });
         }
       } catch {
@@ -133,11 +141,11 @@ export function CampaignReportView({
     : [];
 
   const metricPanelText: Record<MetricTab, string> = {
-    sent:      `The campaign was broadcast to ${m.sent.toLocaleString()} contacts in the target segment.`,
+    sent:      `Emails were submitted to the provider for ${m.sent.toLocaleString()} contacts in the target segment.`,
     delivered: `${m.delivered.toLocaleString()} emails were confirmed delivered (${m.deliveredPct}% delivery rate).`,
     opened:    `${m.opened.toLocaleString()} contacts opened the campaign (${m.openedPct}% open rate).`,
     clicked:   `${m.clicked.toLocaleString()} contacts clicked a link in the campaign (${m.clickedPct}% click rate).`,
-    bounced:   `Bounce data is not yet available for this campaign.`,
+    bounced:   `${m.bounce.toLocaleString()} recipients bounced or were blocked by the provider.`,
   };
 
   const metricPanelTitle: Record<MetricTab, string> = {
@@ -199,6 +207,8 @@ export function CampaignReportView({
                   openedCount:  r.data.openedCount ?? 0,
                   clickedCount: r.data.clickedCount ?? 0,
                   engagement:   r.data.engagement,
+                  deliveredCount: r.data.deliveredCount, bouncedCount: r.data.bouncedCount,
+                  recipientCount: r.data.recipientCount, failedCount: r.data.failedCount,
                 }))
                 .catch(() => setHasError(true))
                 .finally(() => setIsLoading(false));
@@ -222,7 +232,7 @@ export function CampaignReportView({
           <h2 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
             {campaign.name} Report
           </h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Detailed performance metrics</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">{liveMetrics.recipientCount ?? 0} eligible recipients · {m.sent} submitted · {liveMetrics.failedCount ?? 0} submission failures</p>
         </div>
       </div>
 
@@ -233,10 +243,10 @@ export function CampaignReportView({
           {/* Sent */}
           <button type="button" onClick={() => onMetricTabChange('sent')}
             className={`text-left rounded-xl p-5 border transition-all ${getMetricTabActiveClass('sent', activeMetricTab)}`}>
-            <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Total Sent</h3>
+            <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Total Submitted</h3>
             <div className="text-2xl font-black text-slate-900 dark:text-white">{m.sent.toLocaleString()}</div>
             <div className="text-xs text-slate-400 dark:text-slate-500 mt-1.5 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 bg-slate-400 rounded-full" /> 100% Sent
+              <span className="w-1.5 h-1.5 bg-slate-400 rounded-full" /> Accepted by provider
             </div>
           </button>
 
@@ -276,7 +286,7 @@ export function CampaignReportView({
           <button type="button" onClick={() => onMetricTabChange('bounced')}
             className={`text-left rounded-xl p-5 border transition-all ${getMetricTabActiveClass('bounced', activeMetricTab)}`}>
             <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Bounce Rate</h3>
-            <div className="text-2xl font-black text-slate-500 dark:text-slate-400">—</div>
+            <div className="text-2xl font-black text-slate-500 dark:text-slate-400">{m.sent ? Math.round(m.bounce / m.sent * 100) : 0}%</div>
             <div className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 flex items-center gap-1">
               <span className="w-1.5 h-1.5 bg-red-500 rounded-full" /> {m.bounce.toLocaleString()} bounced
             </div>
