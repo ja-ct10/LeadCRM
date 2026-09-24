@@ -227,7 +227,7 @@ function AddFieldDialog({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
           <div>
-            <label className="block text-xs font-semibold text-foreground mb-1.5">Field Name *</label>
+            <label className="block text-xs font-semibold text-foreground mb-1.5">Field Name <span className="text-red-500">*</span></label>
             <Input required placeholder="e.g. Budget Authority, Referral Code" value={name} onChange={(e) => setName(e.target.value)} className="h-9" />
           </div>
           <div className="grid grid-cols-2 gap-3">

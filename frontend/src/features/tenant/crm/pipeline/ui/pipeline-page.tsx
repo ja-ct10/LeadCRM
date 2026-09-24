@@ -867,7 +867,7 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
                 <p className="text-sm text-slate-500 dark:text-slate-400">Please provide a reason why this deal was lost.</p>
               </div>
               <div className="p-6">
-                <label className="block text-sm text-slate-500 dark:text-slate-400 mb-2">Loss Reason *</label>
+                <label className="block text-sm text-slate-500 dark:text-slate-400 mb-2">Loss Reason <span className="text-red-500">*</span></label>
                 <textarea required value={lostReason} onChange={e => setLostReason(e.target.value)} className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-xl px-4 py-3 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500/50 transition-all resize-none h-32" placeholder="e.g. Competitor offered lower price, Budget constraints, etc." />
               </div>
               <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-white/[0.05] bg-white/[0.01]">

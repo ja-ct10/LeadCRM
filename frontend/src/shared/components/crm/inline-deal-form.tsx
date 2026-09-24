@@ -139,7 +139,7 @@ export function InlineDealForm({
     <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-3" noValidate>
       {/* Title */}
       <div>
-        <label className={labelCls}>Title *</label>
+        <label className={labelCls}>Title <span className="text-red-500">*</span></label>
         <input
           {...register('title')}
           className={cn(inputCls, errors.title && errorCls)}
@@ -172,7 +172,7 @@ export function InlineDealForm({
       {/* Pipeline & Stage */}
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className={labelCls}>Pipeline *</label>
+          <label className={labelCls}>Pipeline <span className="text-red-500">*</span></label>
           <div className="relative">
             <select
               {...register('pipelineId')}
@@ -190,7 +190,7 @@ export function InlineDealForm({
           )}
         </div>
         <div>
-          <label className={labelCls}>Stage *</label>
+          <label className={labelCls}>Stage <span className="text-red-500">*</span></label>
           <div className="relative">
             <select
               {...register('stageId')}

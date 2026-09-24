@@ -282,7 +282,7 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
           {form.dealMode === 'create' && (
             <div className="space-y-3">
               <div>
-                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Deal Title *</label>
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Deal Title <span className="text-red-500">*</span></label>
                 <input
                   value={form.dealTitle}
                   onChange={(e) => setForm((f) => ({ ...f, dealTitle: e.target.value }))}

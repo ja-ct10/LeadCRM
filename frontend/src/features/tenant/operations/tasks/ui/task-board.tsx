@@ -700,7 +700,7 @@ export default function TaskBoard(): React.ReactElement {
                 <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
                   {/* Title */}
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Task Title *</label>
+                    <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Task Title <span className="text-red-500">*</span></label>
                     <input type="text" required value={formTitle} onChange={(e) => setFormTitle(e.target.value)}
                       placeholder="e.g. Schedule post-audit consultation"
                       className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all font-semibold placeholder:font-normal placeholder:text-slate-400" />
@@ -750,7 +750,7 @@ export default function TaskBoard(): React.ReactElement {
                   {/* Due Date + Status */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Due Date *</label>
+                      <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Due Date <span className="text-red-500">*</span></label>
                       <input type="date" required value={formDueDate} onChange={(e) => setFormDueDate(e.target.value)}
                         className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all font-mono" />
                     </div>

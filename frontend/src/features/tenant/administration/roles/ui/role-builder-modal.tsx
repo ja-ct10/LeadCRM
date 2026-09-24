@@ -144,7 +144,7 @@ export function RoleBuilderModal({ isOpen, onClose, onSaved, editRole }: RoleBui
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
           {/* Name */}
           <div>
-            <label className="block text-[12px] font-medium text-slate-700 dark:text-slate-300 mb-1.5">Role name *</label>
+            <label className="block text-[12px] font-medium text-slate-700 dark:text-slate-300 mb-1.5">Role name <span className="text-red-500">*</span></label>
             <input
               type="text"
               value={name}

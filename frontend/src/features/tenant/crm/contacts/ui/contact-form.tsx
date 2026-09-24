@@ -472,10 +472,13 @@ function SectionHeader({ num, title }: { num: number; title: string }): React.Re
 }
 
 function FieldWrap({ label, error, htmlFor, children }: { label: string; error?: string; htmlFor?: string; children: React.ReactNode }): React.ReactElement {
+  const isRequired = label.endsWith(' *');
+  const displayText = isRequired ? label.slice(0, -2) : label;
+
   return (
     <div className="space-y-1.5">
       <label htmlFor={htmlFor} className="block text-xs font-semibold text-slate-600 dark:text-slate-400">
-        <span>{label}</span>
+        <span>{displayText}{isRequired && <span className="text-red-500"> *</span>}</span>
       </label>
       {children}
       {error && (
