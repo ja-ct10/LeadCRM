@@ -159,7 +159,7 @@ export async function getUserPermissions(
   const target = await prisma.user.findFirst({ where: { id: userId, tenantId }, select: { role: true } });
   if (!target) throw new NotFoundError('User');
   if (checkIsSuperRole(target.role)) {
-    const modules = ['dashboard','contacts','accounts','deals','tasks','campaigns','workflows','settings','users','roles','reports','billing','audit'];
+    const modules = ['dashboard','contacts','accounts','deals','tasks','campaigns','workflows','settings','users','roles','reports','audit'];
     return Object.fromEntries(modules.map(m => [m, FULL_ACCESS]));
   }
 

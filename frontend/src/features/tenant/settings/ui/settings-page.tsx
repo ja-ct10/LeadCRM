@@ -9,7 +9,6 @@ import {
   Building2,
   Search,
   Users,
-  Lock,
   Save,
   Layout,
   X,
@@ -37,6 +36,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { ACCENT_COLORS, applyAccentColor, ACCENT_KEY } from "@/lib/accent-colors";
 import { OrganizationSettingsForm } from './organization-settings-form';
+import { SecuritySettings } from './security-settings';
 import { ProfileForm } from './profile-form';
 import { FormsTab } from './forms-tab';
 import { TeamManagement } from './team-management';
@@ -210,33 +210,7 @@ export default function SettingsPage(): React.ReactElement {
   // -- Profile Settings Tab --
   const renderProfileTab = (): React.ReactElement => (
     <div className="space-y-6 max-w-2xl"><ProfileForm />
-      {/* Security */}
-      <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-4">
-        <div>
-          <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-            <Lock size={14} className="text-[#3B82F6]" /> Security
-          </h3>
-          <p className="text-xs text-slate-400 mt-0.5">Manage your password and two-factor authentication</p>
-        </div>
-        <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-[#1B252F] rounded-xl border border-slate-100 dark:border-slate-700/60">
-          <div>
-            <p className="text-xs font-semibold text-slate-900 dark:text-white">Password</p>
-            <p className="text-[10px] text-slate-400">Last changed: Never</p>
-          </div>
-          <button type="button" onClick={() => toast.success("Password updated successfully.")}
-            className="px-3 py-1.5 bg-white dark:bg-[#2E3B48] border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold hover:bg-slate-50 dark:hover:bg-[#384653] transition-colors cursor-pointer">
-            Change Password
-          </button>
-        </div>
-        <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-[#1B252F] rounded-xl border border-slate-100 dark:border-slate-700/60">
-          <div>
-            <p className="text-xs font-semibold text-slate-900 dark:text-white">Two-Factor Authentication</p>
-            <p className="text-[10px] text-slate-400">Adds an extra layer of security</p>
-          </div>
-          <span className="px-2 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] font-bold rounded-full border border-amber-500/20">Not enabled</span>
-        </div>
-      </div>
-
+      <SecuritySettings />
     </div>
   );
 

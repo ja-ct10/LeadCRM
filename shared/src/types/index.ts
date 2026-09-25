@@ -3,7 +3,6 @@ export * from './company.types';
 export * from './deal.types';
 export * from './user.types';
 export * from './campaign.types';
-export * from './billing.types';
 export * from './tenant.types';
 export * from './api.types';
 export * from './preferences';

@@ -70,7 +70,6 @@ export const CompanyProfileTabs = ({
     pipelines = [], 
     updateDeal, 
     deleteDeal, 
-    isBillingModuleEnabled = false,
     activities,
     addActivity,
     updateOrganization

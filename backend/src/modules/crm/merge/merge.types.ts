@@ -34,7 +34,6 @@ export interface RelationshipCounts {
   leads?: number;      // for account merge
   contacts?: number;   // for account merge
   campaigns?: number;
-  invoices?: number;
 }
 
 export interface MergePreviewResult {

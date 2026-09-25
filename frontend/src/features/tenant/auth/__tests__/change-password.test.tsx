@@ -1,28 +1,28 @@
 import React from 'react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-const { changePassword, login } = vi.hoisted(() => ({ changePassword: vi.fn(), login: vi.fn() }));
+const { changePassword, applyAuthUser } = vi.hoisted(() => ({ changePassword: vi.fn(), applyAuthUser: vi.fn() }));
 vi.mock('@/shared/services/auth.api', () => ({ authApi: { changePassword } }));
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { email: 'employee@camxian.com' }, login, logout: vi.fn() }) }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'employee', email: 'employee@camxian.com' }, applyAuthUser, logout: vi.fn() }) }));
 import ChangePasswordPage from '../ui/change-password-page';
 beforeEach(() => { cleanup(); vi.resetAllMocks(); });
 function fill(confirm = 'Personal2!') {
-  fireEvent.change(screen.getByLabelText('Current password'), { target: { value: 'Temporary1!' } });
-  fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'Personal2!' } });
-  fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: confirm } });
-  fireEvent.click(screen.getByRole('button', { name: 'Change password and continue' }));
+  fireEvent.change(screen.getByLabelText('Current Password *'), { target: { value: 'Temporary1!' } });
+  fireEvent.change(screen.getByLabelText('New Password *'), { target: { value: 'Personal2!' } });
+  fireEvent.change(screen.getByLabelText('Confirm New Password *'), { target: { value: confirm } });
+  fireEvent.click(screen.getByRole('button', { name: 'Change Password' }));
 }
-it('changes credentials on the server then signs in with a fresh session', async () => {
-  changePassword.mockResolvedValue({ success: true }); login.mockResolvedValue(true);
+it('changes credentials then applies the canonical response using the preserved session', async () => {
+  changePassword.mockResolvedValue({ success: true, data: { user: { id: 'employee', mustChangePassword: false } } });
   render(<ChangePasswordPage />); fill();
-  await waitFor(() => expect(login).toHaveBeenCalledWith('employee@camxian.com', 'Personal2!'));
+  await waitFor(() => expect(applyAuthUser).toHaveBeenCalledWith({ id: 'employee', mustChangePassword: false }, 'employee'));
   expect(changePassword).toHaveBeenCalledWith('Temporary1!', 'Personal2!');
 });
 it('does not update authentication after the server rejects the current password', async () => {
   changePassword.mockRejectedValue(new Error('Current password is incorrect.'));
   render(<ChangePasswordPage />); fill();
   expect((await screen.findByRole('alert')).textContent).toContain('Current password is incorrect');
-  expect(login).not.toHaveBeenCalled();
+  expect(applyAuthUser).not.toHaveBeenCalled();
 });
 it('checks confirmation before sending credentials', async () => {
   render(<ChangePasswordPage />); fill('Different3!');

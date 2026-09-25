@@ -2,6 +2,8 @@ import { signToken } from './jwt.service';
 import { createSession } from './session.service';
 import { readAuthUser } from './auth-user';
 import { requireEmployeeAccount } from './account-access';
+import prisma from '../../config/database.config';
+import type { Prisma } from '@prisma/client';
 
 export const AUTH_COOKIE_NAME = 'leadcrm_token';
 export const AUTH_COOKIE_OPTIONS = {
@@ -20,6 +22,7 @@ export interface SessionContext {
 export async function createAuthSessionToken(
   user: { id: string; tenantId: string; role: string; email: string },
   ctx: SessionContext = {},
+  db: Prisma.TransactionClient = prisma,
 ) {
   requireEmployeeAccount(user);
   const token = signToken({
@@ -34,7 +37,7 @@ export async function createAuthSessionToken(
     token,
     ...ctx,
     expiresInMs: AUTH_COOKIE_OPTIONS.maxAge,
-  });
+  }, db);
   return token;
 }
 

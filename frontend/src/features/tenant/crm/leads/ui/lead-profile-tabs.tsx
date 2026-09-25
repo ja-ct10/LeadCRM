@@ -67,7 +67,7 @@ export const ClientProfileTabs = ({
       setActiveTab(initialTab);
     }
   }, [initialTab]);
-  const { pipelines = [], updateDeal, deleteDeal, isBillingModuleEnabled = false } = useData();
+  const { pipelines = [], updateDeal, deleteDeal } = useData();
   const [selectedDealModal, setSelectedDealModal] = useState<Deal | null>(null);
 
   // Interactive local states for persistence

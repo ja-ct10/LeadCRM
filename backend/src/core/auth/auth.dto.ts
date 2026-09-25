@@ -2,8 +2,8 @@ import { StrongPasswordSchema } from '@leadcrm/shared';
 import { z } from 'zod';
 
 export const LoginSchema = z.object({
-  email: z.string().email('Valid email required'),
-  password: z.string().min(1, 'Password is required'),
+  email: z.string().trim().toLowerCase().max(254).email('Valid email required'),
+  password: z.string().min(1, 'Password is required').max(72),
 });
 
 export const RefreshSchema = z.object({

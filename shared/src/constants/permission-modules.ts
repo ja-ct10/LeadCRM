@@ -17,6 +17,5 @@ export const PERMISSION_MODULES: PermissionModuleDefinition[] = [
   { key: 'users',         label: 'Users',               actions: ['canView', 'canCreate', 'canEdit', 'canDelete'] },
   { key: 'roles',         label: 'Roles & Permissions', actions: ['canView', 'canCreate', 'canEdit', 'canDelete'] },
   { key: 'reports',       label: 'Reports',             actions: ['canView'] },
-  { key: 'billing',       label: 'Billing',             actions: ['canView', 'canCreate', 'canEdit', 'canDelete'] },
   { key: 'audit',         label: 'Audit Log',           actions: ['canView'] },
 ];

@@ -50,6 +50,8 @@
     "google-auth-library": "^9.15.1",
     "helmet": "8.2.0",
     "jsonwebtoken": "^9.0.2",
+    "otpauth": "^9.5.2",
+    "qrcode": "^1.5.4",
     "resend": "^6.18.1",
     "sanitize-html": "^2.17.7",
     "sharp": "^0.35.4",
@@ -57,7 +59,10 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@electric-sql/pglite-socket": "^0.2.11",
     "@faker-js/faker": "^10.6.0",
+    "@types/qrcode": "^1.5.6",
     "@types/sanitize-html": "^2.16.1",
     "fast-check": "^4.9.0",
     "prisma": "^5.22.0",

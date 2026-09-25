@@ -61,7 +61,6 @@ export default function PipelinePage({ navigate }: { navigate: (path: string) =>
     tasks,
     addTask,
     updateTask,
-    isBillingModuleEnabled,
   } = useData();
   const { user, tenant } = useAuth();
   const tenantCurrency = useMemo(() => getTenantCurrency(tenant), [tenant]);

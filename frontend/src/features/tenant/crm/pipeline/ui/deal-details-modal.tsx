@@ -47,7 +47,6 @@ export interface DealDetailsModalProps {
   canEdit: boolean;
   canDelete: boolean;
   isAutomatedOnly: boolean;
-  isBillingModuleEnabled: boolean;
   isTransitioning?: boolean;
   onClose: () => void;
   onUpdateDeal: (id: string, updates: Partial<Deal>) => void;
@@ -116,7 +115,6 @@ export function DealDetailsModal({
   canEdit,
   canDelete,
   isAutomatedOnly,
-  isBillingModuleEnabled,
   isTransitioning = false,
   onClose,
   onUpdateDeal,

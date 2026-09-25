@@ -173,17 +173,6 @@ export async function seedDemoFullData() {
       conditions: { operator: 'AND', conditions: [{ field: 'deal.value', operator: 'greater_than', value: 100000 }] } },
   ]});  console.log('[Seed:Full] 5 workflows seeded.');
 
-  // ── Invoices ───────────────────────────────────────────────────────
-  console.log('[Seed:Full] Seeding invoices...');
-  await prisma.invoice.createMany({ skipDuplicates: true, data: [
-    { id: 'df-inv-bill-1', tenantId: tId, dealId: deals[4].id, contactId: contacts[7].id, accountId: orgs[5].id, invoiceNumber: 'INV-2024-001', amount: 820000, taxAmount: 98400, discountAmount: 0,     totalAmount: 918400, currency: 'PHP', frequency: 'One-time', status: 'Sent',    paymentStatus: 'Paid',   startDate: new Date('2024-06-01'), dueDate: new Date('2024-06-30'), paidAt: new Date('2024-06-25') },
-    { id: 'df-inv-bill-2', tenantId: tId, dealId: deals[0].id, contactId: contacts[0].id, accountId: orgs[0].id, invoiceNumber: 'INV-2024-002', amount: 380000, taxAmount: 45600, discountAmount: 19000, totalAmount: 406600, currency: 'PHP', frequency: 'Annual',   status: 'Sent',    paymentStatus: 'Unpaid', startDate: new Date(Date.now()),               dueDate: new Date(Date.now() + 30 * 86400000) },
-    { id: 'df-inv-bill-3', tenantId: tId, dealId: deals[2].id, contactId: contacts[2].id, accountId: orgs[2].id, invoiceNumber: 'INV-2024-003', amount: 650000, taxAmount: 78000, discountAmount: 0,     totalAmount: 728000, currency: 'PHP', frequency: 'One-time', status: 'Pending', paymentStatus: 'Unpaid', startDate: new Date(Date.now()),               dueDate: new Date(Date.now() + 15 * 86400000) },
-    { id: 'df-inv-bill-4', tenantId: tId,                       contactId: contacts[7].id, accountId: orgs[5].id, invoiceNumber: 'INV-2024-004', amount: 12000,  taxAmount: 1440,  discountAmount: 0,     totalAmount: 13440,  currency: 'PHP', frequency: 'Monthly',  status: 'Sent',    paymentStatus: 'Paid',   startDate: new Date('2024-05-01'), dueDate: new Date('2024-05-15'), paidAt: new Date('2024-05-12') },
-    { id: 'df-inv-bill-5', tenantId: tId,                       contactId: contacts[0].id, accountId: orgs[0].id, invoiceNumber: 'INV-2024-005', amount: 12000,  taxAmount: 1440,  discountAmount: 0,     totalAmount: 13440,  currency: 'PHP', frequency: 'Monthly',  status: 'Sent',    paymentStatus: 'Unpaid', startDate: new Date(Date.now()),               dueDate: new Date(Date.now() + 10 * 86400000) },
-  ]});
-  console.log('[Seed:Full] 5 invoices seeded.');
-
   // ── Notifications ──────────────────────────────────────────────────
   console.log('[Seed:Full] Seeding notifications...');
   await prisma.notification.createMany({ skipDuplicates: true, data: [
@@ -205,10 +194,9 @@ export async function seedDemoFullData() {
     { id: 'df-audit-4', tenantId: tId, userId: aId, action: 'deal.stage_changed',  entityType: 'Deal',     entityId: deals[2].id,    category: 'crm',     changeset: { before: { stage: 'Qualified' }, after: { stage: 'Negotiation' } } },
     { id: 'df-audit-5', tenantId: tId, userId: aId, action: 'user.login',          entityType: 'User',     entityId: aId,            category: 'auth',    metadata: { message: 'User admin@democorp.com logged in' } },
     { id: 'df-audit-6', tenantId: tId, userId: bId, action: 'campaign.sent',       entityType: 'Campaign', entityId: 'df-camp-1',    category: 'crm',     metadata: { message: 'Campaign Q3 IT Solutions Outreach sent to 142 contacts' } },
-    { id: 'df-audit-7', tenantId: tId, userId: aId, action: 'invoice.created',     entityType: 'Invoice',  entityId: 'df-inv-bill-1', category: 'billing', metadata: { message: 'Invoice INV-2024-001 created for ₱918,400' } },
     { id: 'df-audit-8', tenantId: tId, userId: bId, action: 'contact.updated',     entityType: 'Contact',  entityId: contacts[2].id, category: 'crm',     changeset: { before: { status: 'WARM' }, after: { status: 'HOT' } } },
   ]});
-  console.log('[Seed:Full] 8 audit logs seeded.');
+  console.log('[Seed:Full] 7 audit logs seeded.');
 
   console.log('[Seed:Full] ✅ All demo data seeded successfully!');
   console.log('[Seed:Full] Summary: 6 orgs · 10 contacts · 1 pipeline · 8 deals · 10 tasks · 10 activities · 6 templates · 3 audiences · 5 campaigns · 5 workflows · 5 invoices · 6 notifications · 8 audit logs');

@@ -11,7 +11,7 @@ it('atomically stores the new hash, clears the requirement, revokes sessions and
   vi.mocked(comparePassword).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
   await changePassword(actor, input);
   expect(db.user.findFirst).toHaveBeenCalledWith({ where: { id: actor.userId, tenantId: actor.tenantId } });
-  expect(db.user.update).toHaveBeenCalledWith({ where: { id: user.id }, data: { passwordHash: 'new-hash', mustChangePassword: false } });
+  expect(db.user.update).toHaveBeenCalledWith({ where: { id: user.id }, data: { passwordHash: 'new-hash', mustChangePassword: false, passwordChangedAt: expect.any(Date) } });
   expect(db.session.deleteMany).toHaveBeenCalledWith({ where: { userId: user.id } });
   expect(db.passwordResetToken.deleteMany).toHaveBeenCalled();
   expect(db.auditLog.create).toHaveBeenCalled();

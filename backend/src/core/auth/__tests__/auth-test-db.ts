@@ -16,6 +16,7 @@ const model = () => ({
   create: vi.fn(), update: vi.fn(), updateMany: vi.fn(), deleteMany: vi.fn(), upsert: vi.fn(),
 });
 export const db = {
+  mfaChallenge: model(), mfaRecoveryCode: model(),
   user: model(), tenant: model(), roleDefinition: model(), rolePermission: model(),
   userRole: model(), pipeline: model(), account: { ...model(), count: vi.fn() },
   oAuthAccount: model(), tenantInvitation: model(), registrationOtpToken: model(),

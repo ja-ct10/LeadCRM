@@ -42,21 +42,27 @@ All paths are relative to /api/v1. See [authentication and onboarding](authentic
 
 | Method | Path | Responsibility |
 | --- | --- | --- |
-| POST | /auth/login | Employee email/password login; canonical user and HttpOnly session cookie |
+| POST | /auth/login | Password verification; an MFA challenge cookie for enrolled users, otherwise a normal session |
 | GET | /auth/me | Current database-backed account state, including mustChangePassword |
 | PATCH | /auth/profile | Update only the authenticated user's firstName, lastName, phone, jobTitle, department; returns the canonical user |
 | POST | /auth/profile/avatar | Authenticated raw JPEG/PNG/WebP body, maximum 5 MB; stores a normalized 512×512 WebP in private Supabase Storage and returns the canonical user |
 | GET | /auth/profile/avatar/:avatarId | Authenticated retrieval of the current user's saved avatar; private, uncached response |
 | PATCH | /auth/environment | Persist the authenticated tenant user's Sandbox/Live preference; see [CRM environments](crm-environments.md) |
 | POST | /auth/logout | Revoke session and expire cookie |
-| POST | /auth/change-password | Verify currentPassword, store strong password, clear first-login flag and revoke old sessions |
+| POST | /auth/change-password | Verify currentPassword, store strong password, clear first-login flag and revoke other sessions |
+| GET | /auth/mfa/status | Saved MFA state, remaining recovery codes, password-change timestamp |
+| POST | /auth/mfa/setup | Password reauthentication; encrypted pending setup and QR code |
+| POST | /auth/mfa/enable | Verify TOTP, enable MFA, return recovery codes once |
+| POST | /auth/mfa/verify | Consume login challenge and TOTP/recovery proof, then issue session |
+| POST | /auth/mfa/disable | Password plus TOTP/recovery proof; remove credentials |
+| POST | /auth/mfa/recovery-codes/regenerate | Password plus TOTP/recovery proof; replace all recovery codes |
 | POST | /auth/forgot-password | Request password recovery |
 | POST | /auth/reset-password | Complete password recovery and revoke sessions |
 | POST | /auth/invitations/accept | Accept an administrator-issued employee invitation |
 | GET | /auth/onboarding/status | Canonical account state |
 | POST | /auth/onboarding/complete | Client Admin informational acknowledgment; empty body |
 
-Public signup, Google sign-in, OTP, verification, company setup, and step-progression routes are not registered. System Admin provisioning uses /admin/tenants with no plan selection. SaaS billing, seat, document-verification, pricing, checkout, and payment-method APIs are retired. Customer invoice APIs under /billing/invoices remain tenant-scoped and permission-protected.
+Public signup, Google sign-in, OTP, verification, company setup, and step-progression routes are not registered. System Admin provisioning uses /admin/tenants with no plan selection. SaaS billing, seat, document-verification, pricing, checkout, and payment-method APIs are retired. Customer invoice/payment APIs and Team Management domain APIs are also removed. See [security API and migration report](security-cleanup-mfa.md).
 
 Profile updates use a strict shared Zod whitelist and derive both user and tenant identity
 from the session. Email and privilege fields are not editable. Avatar references are only
@@ -205,7 +211,7 @@ only `name`, `industry`, `email`, `phone`, `domain`, and `address`. Name cannot 
 blank; nonempty email must be valid. Cleared optional fields become `null`. The
 response contains `id` and all six canonical saved values. Tenant identity comes
 from the session, never the request body. `domain` is descriptive organization
-metadata and does not change authentication or verified team domains.
+metadata and does not change the fixed employee-email policy.
 
 ### Users
 | Method | Path | Description | RolePermission flag |
@@ -266,19 +272,6 @@ bound to the selected user ID. No reset token is returned to the administrator.
 
 ---
 
-## Billing Endpoints (`/api/v1/billing/`) — Stub
-
-### Invoices
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/billing/invoices` | List invoices (paginated) |
-| `GET` | `/billing/invoices/:id` | Invoice details + transactions |
-| `POST` | `/billing/invoices` | Create invoice |
-| `PUT` | `/billing/invoices/:id` | Update invoice |
-| `POST` | `/billing/invoices/:id/send` | Send invoice to customer |
-
----
-
 ## Reporting Endpoints (`/api/v1/reporting/`) — Stub
 
 | Method | Path | Description |
@@ -309,10 +302,9 @@ Pricing, subscription activation, business verification, and Stripe webhooks are
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/webhooks/paymongo` | PayMongo payment events |
 | `POST` | `/api/webhooks/gmail` | Gmail push notifications |
 
-PayMongo webhooks are signature-verified via `PAYMONGO_WEBHOOK_SECRET`.
+
 
 ---
 
@@ -341,4 +333,4 @@ router.delete('/contacts/:id', rbac('contacts', 'canDelete'), controller.remove)
 ```
 
 Permission modules: `contacts` · `deals` · `organizations` · `campaigns` · `workflows` ·
-`tasks` · `service_orders` · `reports` · `billing` · `users` · `settings` · `audit`
+`tasks` · `service_orders` · `reports` · `users` · `settings` · `audit`

@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import authRoutes from '../auth.routes';
 import adminRoutes from '../admin.routes';
-import billingRoutes from '../billing.routes';
+import administrationRoutes from '../administration.routes';
 import { UpdateUsersSchema } from '../../../modules/administration/users/users.dto';
 function paths(router: typeof authRoutes): string[] {
   return router.stack.filter(layer => layer.route).map(layer => layer.route.path);
@@ -18,10 +18,8 @@ it('does not register System Admin billing, plan, or production activation APIs'
   expect(paths(adminRoutes).filter(path => /billing|plans|activate-subscription|stripe/.test(path))).toEqual([]);
   expect(paths(adminRoutes)).toContain('/tenants');
 });
-it('retains customer invoices but removes self-service SaaS APIs', () => {
-  const enabled = paths(billingRoutes);
-  expect(enabled).toContain('/invoices');
-  expect(enabled.filter(path => /subscription|verification|plans|seats|portal-session/.test(path))).toEqual([]);
+it('does not register billing or team domain APIs', () => {
+  expect(paths(administrationRoutes).some(path => /domains|domain-settings/.test(path))).toBe(false);
 });
 it.each(['mustChangePassword', 'passwordHash', 'tenantId', 'email'])('rejects injected security field %s through user management', field => {
   expect(UpdateUsersSchema.safeParse({ [field]: field === 'mustChangePassword' ? false : 'injected' }).success).toBe(false);

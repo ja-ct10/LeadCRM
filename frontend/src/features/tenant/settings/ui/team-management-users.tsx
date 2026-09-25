@@ -1,4 +1,5 @@
 'use client';
+import { EmployeeEmailSchema } from '@leadcrm/shared';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
@@ -225,6 +226,7 @@ function InviteModal({ roles, onClose, onInvited }: InviteModalProps): React.Rea
 
   const handleSend = async () => {
     const emailList = emails.split(',').map((e) => e.trim()).filter(Boolean);
+    if (emailList.some(email => !EmployeeEmailSchema.safeParse(email).success)) { toast.error('Use valid @camxian.com employee email addresses.'); return; }
     if (emailList.length === 0) { toast.error('Enter at least one email address'); return; }
     if (!roleId) { toast.error('Select a role'); return; }
     setIsLoading(true);

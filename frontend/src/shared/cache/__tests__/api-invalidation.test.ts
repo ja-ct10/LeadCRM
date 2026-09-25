@@ -5,7 +5,7 @@ import { clearPageCache, getPageCache, setPageCache } from '../page-cache';
 beforeEach(() => {
   clearPageCache();
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true }) }));
-  for (const module of ['leads', 'contacts', 'accounts', 'campaigns', 'invoices', 'reports', 'activities', 'notifications']) {
+  for (const module of ['leads', 'contacts', 'accounts', 'campaigns', 'reports', 'activities', 'notifications']) {
     setPageCache(module, 'tenant-a', {}, ['before-write']);
   }
 });
@@ -15,7 +15,6 @@ it.each([
   ['/crm/contacts/123/archive', ['contacts', 'leads', 'accounts', 'reports', 'activities']],
   ['/crm/leads/123/convert', ['contacts', 'leads', 'accounts']],
   ['/marketing/templates/123', ['campaigns']],
-  ['/billing/invoices/123/pay', ['invoices']],
   ['/notifications/123/read', ['notifications']],
 ])('invalidates caches after a successful mutation to %s', async (path, modules) => {
   await apiClient.patch(path);

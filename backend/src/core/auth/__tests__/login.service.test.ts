@@ -55,7 +55,7 @@ it.each([
 });
 it('keeps the backend token in its HttpOnly cookie, outside the browser JSON response', async () => {
   const req = { body: { email: user.email, password: 'secret' }, headers: {}, ip: '127.0.0.1' };
-  const res = { cookie: vi.fn(), json: vi.fn() };
+  const res = { setHeader: vi.fn(), cookie: vi.fn(), json: vi.fn() };
   await login(req as never, res as never, vi.fn());
   expect(res.cookie).toHaveBeenCalledWith('leadcrm_token', expect.any(String),
     expect.objectContaining({ httpOnly: true, sameSite: 'lax', path: '/' }));

@@ -20,7 +20,6 @@ export interface ActivityRecord {
   dealId?:     string | null;
   accountId?:  string | null;
   taskId?:     string | null;
-  invoiceId?:  string | null;
   createdAt:   string;
   createdBy: {
     id:        string;

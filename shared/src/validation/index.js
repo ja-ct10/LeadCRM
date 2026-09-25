@@ -18,3 +18,4 @@ __exportStar(require("./contact.schema"), exports);
 __exportStar(require("./user.schema"), exports);
 __exportStar(require("./preferences.validation"), exports);
 __exportStar(require("./account.schema"), exports);
+__exportStar(require("./security.schema"), exports);

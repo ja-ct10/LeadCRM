@@ -54,12 +54,11 @@ frontend/
     │   │   ├── automation/← workflows/, triggers/, actions/
     │   │   ├── operations/← service-orders/, tasks/, assets/, inventory/
     │   │   ├── reporting/
-    │   │   ├── billing/
     │   │   ├── administration/ ← users/, audit/
     │   │   ├── dashboard/
     │   │   ├── settings/
     │   │   └── layout/    ← CrmLayout, sidebar-nav, topbar, account-dropdown
-    │   └── system-admin/  ← Admin portal — dashboard/, tenants/, billing/, monitoring/, layout/
+    │   └── system-admin/  ← Admin portal — dashboard/, tenants/, monitoring/, layout/
     ├── shared/            ← Reusable UI: ui/, charts/, components/, hooks/, providers/
     ├── store/             ← DataContext, AuthContext, types/, types.ts (shim), mockData/
     ├── lib/               ← utils.ts, constants.ts, countries.ts
@@ -106,9 +105,8 @@ backend/
     │   ├── automation/    ← workflows, triggers, actions
     │   ├── operations/    ← service-orders, tasks
     │   ├── administration/ ← users, roles, role-permissions, audit
-    │   ├── billing/        ← customer invoices and payments
     │   └── reporting/     ← reports
-    ├── integrations/      ← gmail/, paymongo/
+    ├── integrations/      ← gmail/
     ├── core/              ← auth/, permissions/, audit/, tenant/
     ├── api/               ← middleware/, routes/
     ├── config/            ← app, database, mail configs
@@ -142,7 +140,7 @@ Every module follows strict layering — no layer may reach past its boundary:
 
 ```
 shared/src/
-├── types/        ← contact, company, deal, user, campaign, billing, tenant, api
+├── types/        ← contact, company, deal, user, campaign, tenant, api
 ├── constants/    ← roles.ts, permissions.ts (RBAC — defined once, used by both sides)
 ├── contracts/    ← API shape contracts (what the API accepts and returns)
 └── validation/   ← Zod schemas (same schema used by frontend forms AND backend middleware)
@@ -207,7 +205,7 @@ Set `NEXT_PUBLIC_USE_MOCK_DATA=false` in `.env.local` to switch from localStorag
 Each module migrates independently — only `DataContext` internals change, all components remain untouched.
 This is the Dependency Inversion Principle applied to the data layer.
 
-The Prisma schema includes active CRM models and ignored historical account/billing structures. See [CRM environments](crm-environments.md) for dataset boundaries and [internal cleanup](internal-crm-cleanup.md) for database retention. Ignored models are not runtime APIs.
+The Prisma schema includes active CRM and account-security models. Retired billing and configurable team-domain structures are removed by forward migrations. See [security cleanup](security-cleanup-mfa.md) and [CRM environments](crm-environments.md).
 
 ---
 

@@ -25,33 +25,6 @@ enum TenantStatus {
   DELETED
 }
 
-enum SubscriptionStatus {
-  NONE       // pre-subscription / unsubscribed state (new registrations start here)
-  TRIAL
-  ACTIVE
-  PAST_DUE
-  CANCELLED
-  EXPIRED
-}
-
-enum PlanType {
-  STARTER    // previously FREE — renamed; Starter is the entry-level paid plan (₱1,350/mo)
-  PRO
-  ENTERPRISE
-}
-
-enum BillingCycle {
-  MONTHLY
-  QUARTERLY
-  ANNUAL
-}
-
-enum WebhookEventStatus {
-  RECEIVED
-  PROCESSED
-  FAILED
-}
-
 enum UserStatus {
   ACTIVE
   INACTIVE
@@ -125,65 +98,12 @@ model SystemAdmin {
   lastName     String
   passwordHash String
   isActive               Boolean  @default(true)
-  // -- Payment methods (per-plan config, stored as JSON) ------------
-  paymentMethods         Json     @default("[]") @ignore
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
-// PRICING PLAN (global G�� not tenant-scoped)
-// Managed by SystemAdmin, consumed by Subscription
-// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
-// Retired storage only; excluded from Prisma Client. See docs/internal-crm-cleanup.md.
-model PricingPlan {
-  id                     String   @id @default(uuid())
-  name                   String   @unique // "Free" | "Pro" | "Enterprise"
-  planType               PlanType
-  monthlyPrice           Float    @default(0)
-  quarterlyPrice         Float    @default(0)
-  annualPrice            Float    @default(0)
-  maxUsers               Int?
-  maxContacts            Int?
-  maxDeals               Int?
-  storageLimit           Int? // MB
-  isActive               Boolean  @default(true)
-  // -- Payment methods (per-plan config, stored as JSON) ------------
-  paymentMethods         Json     @default("[]")
-  // -- Stripe --------------------------------------------------------
-  stripeProductId        String?  @unique // prod_xxx � one Product per plan
-  stripeMonthlyPriceId   String?  @unique // price_xxx for monthly billing
-  stripeQuarterlyPriceId String?  @unique // price_xxx for quarterly billing
-  stripeAnnualPriceId    String?  @unique // price_xxx for annual billing
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
-
-  features      PlanFeature[]
-  subscriptions Subscription[]
-  @@ignore
-}
-
-// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
-// PLAN FEATURE
-// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
-// Retired storage only; excluded from Prisma Client. See docs/internal-crm-cleanup.md.
-model PlanFeature {
-  id          String  @id @default(uuid())
-  planId      String
-  name        String // e.g. "Workflow Automation", "Gmail Integration"
-  description String?
-  isEnabled   Boolean @default(true) // false = feature shown as disabled/struck-through on pricing card
-
-  plan PricingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
-
-  @@index([planId])
-  @@ignore
-}
-
-// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // TENANT
-// plan/subscriptionStatus are denormalized caches for fast plan-gating.
-// Subscription is the authoritative billing source.
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Tenant {
   id                 String             @id @default(uuid())
@@ -198,13 +118,6 @@ model Tenant {
   phone              String?
   address            String?
   status             TenantStatus       @default(SANDBOX)
-  subscriptionStatus SubscriptionStatus @default(NONE) @ignore
-  plan               PlanType? @ignore // denorm cache � source of truth = Subscription; null when no active subscription
-  trialEndsAt        DateTime? @ignore
-  subscriptionEndsAt DateTime? @ignore
-  maxUsers           Int? @ignore
-  maxContacts        Int? @ignore
-  maxDeals           Int? @ignore
   approvedById       String? @ignore // SystemAdmin id who approved
   approvedAt         DateTime? @ignore
   // -- Business Verification ─────────────────────────────────────────────────
@@ -214,8 +127,6 @@ model Tenant {
   // -- Onboarding ----------------------------------------------------
   onboardingStep        Int       @default(0) // 0=introduction, 1=workflow, 2=company, 3=completed
   onboardingCompletedAt DateTime?
-  // -- Stripe --------------------------------------------------------
-  stripeCustomerId   String?            @unique @ignore // cus_xxx � one customer per tenant
   ownerUserId        String?            // ID of the founding/registering user — set once at registration, immutable
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
@@ -225,8 +136,6 @@ model Tenant {
   roleDefinitions    RoleDefinition[]
   sessions           Session[]
   invitations        TenantInvitation[]
-  subscriptions      Subscription[] @ignore
-  paymentMethods     PaymentMethod[] @ignore
   organizations      Account[]
   leads              Lead[]
   contacts           Contact[]
@@ -248,8 +157,6 @@ model Tenant {
   wfTriggerRecords   WorkflowTriggerRecord[]
   wfExecutionRuns    WorkflowExecutionRun[]
   wfExecutionSteps   WorkflowExecutionStep[]
-  invoices           Invoice[]
-  paymentTxns        PaymentTransaction[]
   notifications      Notification[]
   auditLogs          AuditLog[]
   emailDeliveryLogs  EmailDeliveryLog[]
@@ -266,70 +173,7 @@ model Tenant {
   contactImports     ContactImport[]
   tenantGroups       TenantGroup[]
   tenantGroupMembers TenantGroupMember[]
-  tenantDomains      TenantDomain[]
-  tenantDomainSettings TenantDomainSettings?
   marketingForms     MarketingForm[]
-}
-
-// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
-// SUBSCRIPTION (billing source of truth)
-// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
-// Retired storage only; excluded from Prisma Client. See docs/internal-crm-cleanup.md.
-model Subscription {
-  id                      String             @id @default(uuid())
-  tenantId                String
-  planId                  String
-  billingCycle            BillingCycle
-  status                  SubscriptionStatus @default(TRIAL)
-  amount                  Float
-  startDate               DateTime
-  endDate                 DateTime?
-  nextBillingDate         DateTime?
-  cancelledAt             DateTime?
-  // -- Pending Downgrade ─────────────────────────────────────────────
-  pendingPlanId           String?            // Plan ID to switch to at period end
-  pendingBillingCycle     String?            // Target billing cycle for downgrade
-  pendingDowngradeAt      DateTime?          // When the downgrade takes effect
-  // -- Seats ─────────────────────────────────────────────────────────
-  additionalSeats              Int       @default(0) // Extra seats beyond plan base
-  stripeAdditionalSeatItemId   String?   // si_xxx — Stripe subscription item for seats
-  // -- Stripe --------------------------------------------------------
-  stripeSubscriptionId    String?            @unique // sub_xxx
-  stripeCheckoutSessionId String? // cs_xxx � transient, kept for audit trail
-  createdAt               DateTime           @default(now())
-  updatedAt               DateTime           @updatedAt
-
-  tenant   Tenant      @relation(fields: [tenantId], references: [id])
-  plan     PricingPlan @relation(fields: [planId], references: [id])
-  invoices Invoice[]
-
-  @@index([tenantId, status])
-  @@index([stripeSubscriptionId])
-  @@ignore
-}
-
-// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
-// PAYMENT METHOD (saved methods per tenant)
-// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
-// Retired storage only; excluded from Prisma Client. See docs/internal-crm-cleanup.md.
-model PaymentMethod {
-  id            String   @id @default(uuid())
-  tenantId      String
-  methodName    String // "GCash" | "Maya" | "Credit Card" | "Bank Transfer"
-  accountName   String?
-  accountNumber String? // masked G�� e.g. "****1234"
-  isDefault     Boolean  @default(false)
-  isActive               Boolean  @default(true)
-  // -- Payment methods (per-plan config, stored as JSON) ------------
-  paymentMethods         Json     @default("[]")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  tenant       Tenant               @relation(fields: [tenantId], references: [id])
-  transactions PaymentTransaction[]
-
-  @@index([tenantId, isActive])
-  @@ignore
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -348,6 +192,15 @@ model User {
   firstName     String
   lastName      String
   mustChangePassword Boolean @default(true)
+  passwordChangedAt DateTime?
+  mfaEnabled Boolean @default(false)
+  mfaSecretEncrypted String?
+  mfaEnabledAt DateTime?
+  mfaPendingSecretEncrypted String?
+  mfaPendingExpiresAt DateTime?
+  mfaLastCounter Int?
+  mfaChallenges MfaChallenge[]
+  mfaRecoveryCodes MfaRecoveryCode[]
   passwordHash  String? // nullable � OAuth-only users have no password
   phone         String?
   jobTitle      String?
@@ -426,7 +279,7 @@ model RoleDefinition {
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // ROLE PERMISSION (per-module CRUD flags)
 // One row per module per role.
-// module examples: contacts | deals | campaigns | workflows | billing | reports | users | settings
+// module examples: contacts | deals | campaigns | workflows | reports | users | settings
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model RolePermission {
   id        String  @id @default(uuid())
@@ -566,37 +419,6 @@ model TenantGroupMember {
   @@index([tenantId])
   @@index([groupId])
   @@index([userId])
-}
-
-// TENANT DOMAIN
-// ─────────────────────────────────────────────────────────────
-model TenantDomain {
-  id         String    @id @default(uuid())
-  tenantId   String
-  domain     String
-  isVerified Boolean   @default(false)
-  verifiedAt DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-
-  @@unique([tenantId, domain])
-  @@index([tenantId])
-}
-
-// TENANT DOMAIN SETTINGS
-// ─────────────────────────────────────────────────────────────
-model TenantDomainSettings {
-  id                     String   @id @default(uuid())
-  tenantId               String   @unique
-  restrictToEmailDomains Boolean  @default(false)
-  joinPolicy             String   @default("after_approval") // "instantly" | "after_approval"
-    defaultRole            String
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id])
 }
 
 // TENANT DOCUMENT (onboarding files, contracts, etc.)
@@ -740,7 +562,6 @@ model Lead {
   campaignContacts  CampaignContact[]
   emailDeliveryLogs EmailDeliveryLog[]
   SMSQueue          SMSQueue[]
-  invoices          Invoice[]
 
   @@index([tenantId, status])
   @@index([tenantId, assignedUserId])
@@ -812,7 +633,6 @@ model Contact {
   campaignContacts   CampaignContact[]
   emailDeliveryLogs  EmailDeliveryLog[]
   SMSQueue           SMSQueue[]
-  invoices           Invoice[]
 
   @@index([tenantId, status])
   @@index([tenantId, assignedUserId])
@@ -924,7 +744,6 @@ model Deal {
   actions        DealAction[]
   tasks          Task[]
   activities     Activity[]
-  invoices       Invoice[]
 
   @@index([tenantId, stageId])
   @@index([tenantId, pipelineId])
@@ -1091,7 +910,6 @@ model Activity {
   dealId      String?
   accountId   String?
   taskId      String?
-  invoiceId   String?
   createdAt   DateTime @default(now())
 
   tenant       Tenant   @relation(fields: [tenantId], references: [id])
@@ -1101,7 +919,6 @@ model Activity {
   deal         Deal?    @relation(fields: [dealId], references: [id], onDelete: Cascade)
   organization Account? @relation(fields: [accountId], references: [id], onDelete: Cascade)
   task         Task?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  invoice      Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, leadId, createdAt])
   @@index([tenantId, contactId, createdAt])
@@ -1148,8 +965,6 @@ model TargetAudience {
   name        String
   description String?
   isActive               Boolean  @default(true)
-  // -- Payment methods (per-plan config, stored as JSON) ------------
-  paymentMethods         Json     @default("[]") @ignore
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -1429,96 +1244,11 @@ model WorkflowExecutionStep {
   @@index([tenantId, environment])
 }
 
-// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
-// INVOICE & PAYMENT TRANSACTION
-// Invoice now links to Subscription for billing-driven invoices
-// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
-model Invoice {
-  environment CrmEnvironment @default(PRODUCTION)
-  id              String    @id @default(uuid())
-  tenantId        String
-  subscriptionId  String? @ignore // link to Subscription for recurring billing invoices
-  dealId          String?
-  leadId          String?
-  contactId      String?
-  accountId       String?
-  invoiceNumber   String // INV-2024-001 (tenant-scoped auto-generated)
-  plan            String?
-  amount          Float
-  taxAmount       Float     @default(0)
-  discountAmount  Float     @default(0)
-  totalAmount     Float
-  currency        String    @default("PHP")
-  frequency       String // Monthly|Quarterly|Annual|One-time
-  status          String    @default("Pending")
-  paymentStatus   String    @default("Unpaid")
-  startDate       DateTime
-  dueDate         DateTime?
-  nextBillingDate DateTime?
-  paidAt          DateTime?
-  notes           String?
-  isArchived      Boolean   @default(false)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  tenant       Tenant               @relation(fields: [tenantId], references: [id])
-  subscription Subscription?        @relation(fields: [subscriptionId], references: [id], onDelete: SetNull) @ignore
-  deal         Deal?                @relation(fields: [dealId], references: [id], onDelete: SetNull)
-  lead         Lead?                @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  contact      Contact?             @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  transactions PaymentTransaction[]
-  activities   Activity[]
-
-  @@index([tenantId, status, paymentStatus])
-  @@index([tenantId, dueDate])
-  @@index([tenantId, invoiceNumber])
-  @@index([tenantId, environment])
-}
-
-model PaymentTransaction {
-  environment CrmEnvironment @default(PRODUCTION)
-  id                      String    @id @default(uuid())
-  tenantId                String
-  invoiceId               String
-  paymentMethodId         String? @ignore // FK to PaymentMethod (saved method) G�� nullable for ad-hoc
-  amount                  Float
-  currency                String    @default("PHP")
-  status                  String // pending|paid|failed|refunded|partially_refunded
-  transactionRef          String? // internal or external reference number
-  paymongoPaymentId       String?   @unique
-  paymongoPaymentUrl      String?
-  paymentMethod           String? // card|gcash|maya|bank_transfer|stripe (denorm for quick display)
-  paidAt                  DateTime?
-  failureReason           String?
-  metadata                Json?
-  // -- Stripe --------------------------------------------------------
-  stripePaymentIntentId   String?   @unique @ignore // pi_xxx
-  stripeCheckoutSessionId String? @ignore // cs_xxx � checkout origin
-  stripeInvoiceId         String? @ignore // in_xxx � for subscription invoices
-  stripeEventId           String? @ignore // evt_xxx � webhook event that created this record (idempotency)
-  refundedAmount          Float? // partial refund tracking
-  refundedAt              DateTime?
-  stripeRefundId          String?   @unique @ignore // re_xxx
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @default(now()) @updatedAt
-
-  tenant      Tenant         @relation(fields: [tenantId], references: [id])
-  invoice     Invoice        @relation(fields: [invoiceId], references: [id])
-  savedMethod PaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull) @ignore
-
-  @@index([tenantId, status])
-  @@index([invoiceId])
-  @@index([paymongoPaymentId])
-  @@index([stripePaymentIntentId])
-  @@index([stripeEventId])
-  @@index([tenantId, environment])
-}
-
 // -----------------------------------------------------
 // AUDIT LOG
 // Mentor: "Audit Log is needed, logs of all actions with categorization"
 // severity: INFO | WARNING | CRITICAL
-// category: auth | crm | billing | workflow | admin | system
+// category: auth | crm | workflow | admin | system
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model AuditLog {
   environment CrmEnvironment?
@@ -1528,7 +1258,7 @@ model AuditLog {
   action     String // e.g. "contact.created" | "deal.stage_changed" | "user.login"
   entityType String // e.g. "Contact" | "Deal" | "User"
   entityId   String?
-  category   String   @default("crm") // auth|crm|billing|workflow|admin|system
+  category   String   @default("crm") // auth|crm|workflow|admin|system
   changeset  Json? // { before: { status: "WARM" }, after: { status: "HOT" } }
   metadata   Json?
   ipAddress  String?
@@ -1659,8 +1389,6 @@ model EmailAccount {
   tokenExpiresAt DateTime?
   scopes         String[] // granted OAuth scopes
   isActive               Boolean  @default(true)
-  // -- Payment methods (per-plan config, stored as JSON) ------------
-  paymentMethods         Json     @default("[]") @ignore
   lastSyncAt     DateTime?
   syncCursor     String? // Gmail history ID for incremental sync
   connectedAt    DateTime  @default(now())
@@ -1737,8 +1465,6 @@ model AutomationRule {
   conditions  Json?
   actions     Json // what to do (e.g., schedule campaign)
   isActive               Boolean  @default(true)
-  // -- Payment methods (per-plan config, stored as JSON) ------------
-  paymentMethods         Json     @default("[]") @ignore
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -1938,29 +1664,6 @@ model ContactImportResult {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────────────
-// STRIPE WEBHOOK EVENT LOG
-// Stores every inbound Stripe webhook for idempotency, debugging, and replay.
-// No tenantId — webhook events are platform-level (cross-tenant).
-// ─────────────────────────────────────────────────────────────────────────────
-// Retired storage only; excluded from Prisma Client. See docs/internal-crm-cleanup.md.
-model StripeWebhookEvent {
-  id            String             @id @default(uuid())
-  stripeEventId String             @unique // evt_xxx — Stripe's unique event ID
-  type          String             // e.g. "checkout.session.completed"
-  payload       Json               // Full event object from Stripe
-  status        WebhookEventStatus @default(RECEIVED)
-  error         String?            // Error message if processing failed
-  attempts      Int                @default(0)
-  processedAt   DateTime?
-  createdAt     DateTime           @default(now())
-
-  @@index([type])
-  @@index([status])
-  @@index([createdAt])
-  @@ignore
-}
-
 model DealImport {
   id                String @id @default(uuid())
   tenantId          String
@@ -1998,4 +1701,22 @@ model DealImportResult {
 model CampaignEmailQuota {
   day String @id
   reserved Int @default(0)
+}
+
+model MfaChallenge {
+  id String @id @default(uuid())
+  userId String
+  tokenHash String @unique
+  expiresAt DateTime
+  attempts Int @default(0)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+}
+
+model MfaRecoveryCode {
+  id String @id @default(uuid())
+  userId String
+  codeHash String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, codeHash])
 }

@@ -3,6 +3,7 @@
 import { apiClient } from '@/lib/api/client';
 import type { AuthResponse, RegisterInput } from '@leadcrm/shared';
 export type { AuthResponse } from '@leadcrm/shared';
+export class MfaRequiredError extends Error { constructor() { super('Two-factor authentication required.'); } }
 
 export interface LoginPayload {
   email: string;
@@ -37,10 +38,17 @@ export const authApi = {
   changeEnvironment: (environment: import('@leadcrm/shared').CrmEnvironment) =>
     apiClient.patch<import('@leadcrm/shared').EnvironmentResponse>('/auth/environment', { environment }),
   login: (payload: LoginPayload) =>
-    apiClient.post<AuthResponse>('/auth/login', payload),
+    apiClient.post<import('@leadcrm/shared').LoginResponse>('/auth/login', payload),
 
   changePassword: (currentPassword: string, password: string) =>
-    apiClient.post<{ success: boolean }>('/auth/change-password', { currentPassword, password }),
+    apiClient.post<AuthResponse>('/auth/change-password', { currentPassword, password }),
+
+  mfaStatus: () => apiClient.get<{ data: import('@leadcrm/shared').MfaStatus }>('/auth/mfa/status'),
+  setupMfa: (currentPassword: string) => apiClient.post<{ data: import('@leadcrm/shared').MfaSetup }>('/auth/mfa/setup', { currentPassword }),
+  enableMfa: (code: string) => apiClient.post<{ data: { recoveryCodes: string[] } }>('/auth/mfa/enable', { code }),
+  verifyMfa: (code: string) => apiClient.post<AuthResponse>('/auth/mfa/verify', { code }),
+  disableMfa: (currentPassword: string, code: string) => apiClient.post<{ success: boolean }>('/auth/mfa/disable', { currentPassword, code }),
+  regenerateMfaRecoveryCodes: (currentPassword: string, code: string) => apiClient.post<{ data: { recoveryCodes: string[] } }>('/auth/mfa/recovery-codes/regenerate', { currentPassword, code }),
 
   logout: () =>
     apiClient.post<{ success: boolean }>('/auth/logout', {}),

@@ -6,28 +6,26 @@ import type { RelationshipCounts } from './merge.types';
  * Count relationships for a Lead record.
  */
 export async function countLeadRelationships(id: string, tenantId: string): Promise<RelationshipCounts> {
-  const [activities, tasks, deals, campaigns, invoices] = await Promise.all([
+  const [activities, tasks, deals, campaigns] = await Promise.all([
     prisma.activity.count({ where: { leadId: id, tenantId } }),
     prisma.task.count({ where: { leadId: id, tenantId } }),
     prisma.leadDeal.count({ where: { leadId: id, tenantId } }),
     prisma.campaignContact.count({ where: { leadId: id, tenantId } }),
-    prisma.invoice.count({ where: { leadId: id, tenantId } }),
   ]);
-  return { activities, tasks, deals, campaigns, invoices };
+  return { activities, tasks, deals, campaigns };
 }
 
 /**
  * Count relationships for a Contact record.
  */
 export async function countContactRelationships(id: string, tenantId: string): Promise<RelationshipCounts> {
-  const [activities, tasks, deals, campaigns, invoices] = await Promise.all([
+  const [activities, tasks, deals, campaigns] = await Promise.all([
     prisma.activity.count({ where: { contactId: id, tenantId } }),
     prisma.task.count({ where: { contactId: id, tenantId } }),
     prisma.contactDeal.count({ where: { contactId: id, tenantId } }),
     prisma.campaignContact.count({ where: { contactId: id, tenantId } }),
-    prisma.invoice.count({ where: { contactId: id, tenantId } }),
   ]);
-  return { activities, tasks, deals, campaigns, invoices };
+  return { activities, tasks, deals, campaigns };
 }
 
 /**
@@ -110,18 +108,12 @@ export async function reassignLeadRelationships(
     data: { leadId: primaryId },
   });
 
-  // Invoices
-  const invoices = await tx.invoice.updateMany({
-    where: { leadId: secondaryId, tenantId },
-    data: { leadId: primaryId },
-  });
 
   return {
     activities: activities.count,
     tasks: tasks.count,
     deals: dealsReassigned,
     campaigns: campaigns.count,
-    invoices: invoices.count,
   };
 }
 
@@ -189,18 +181,12 @@ export async function reassignContactRelationships(
     data: { contactId: primaryId },
   });
 
-  // Invoices
-  const invoices = await tx.invoice.updateMany({
-    where: { contactId: secondaryId, tenantId },
-    data: { contactId: primaryId },
-  });
 
   return {
     activities: activities.count,
     tasks: tasks.count,
     deals: dealsReassigned,
     campaigns: campaigns.count,
-    invoices: invoices.count,
   };
 }
 

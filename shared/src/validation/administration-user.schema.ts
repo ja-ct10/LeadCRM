@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { EmployeeEmailSchema } from './security.schema';
 
 // Check before trimming so surrounding control characters are not silently accepted.
 export const cleanText = (max: number) => z.string()
@@ -16,7 +17,7 @@ export const AdministrationPhoneSchema = cleanText(32).superRefine((value, ctx) 
 export const CreateAdministrationUserSchema = z.object({
   firstName: cleanText(100).pipe(z.string().min(1, 'First name is required.')),
   lastName: cleanText(100).pipe(z.string().min(1, 'Last name is required.')),
-  email: cleanText(254).pipe(z.string().min(1, 'Email is required.').email('Enter a valid email address.')).transform(value => value.toLowerCase()),
+  email: EmployeeEmailSchema,
   phone: AdministrationPhoneSchema,
   // The existing user service accepts the canonical RoleDefinition.name.
   role: cleanText(100).pipe(z.string().min(1, 'Role is required.')),

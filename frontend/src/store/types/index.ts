@@ -25,7 +25,6 @@ export type {
   AuditLog,
   ActivityType, Activity,
   Task, TaskStatus, TaskAssignmentRecord,
-  Invoice,
 } from './shared.types';
 export type { Lead, CreateLeadRequest, UpdateLeadRequest } from './lead.types';
 

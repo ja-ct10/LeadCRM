@@ -12,8 +12,17 @@ import { LoginSchema, ForgotPasswordSchema, ResetPasswordSchema } from '../../co
 import * as authController from '../../core/auth/auth.controller';
 import { ChangePasswordSchema } from '../../core/auth/change-password.service';
 import { changePasswordController } from '../../core/auth/change-password.controller';
+import { MfaEnableSchema, MfaManageSchema, MfaSetupSchema, MfaVerifySchema } from '@leadcrm/shared';
+import * as mfa from '../../core/auth/mfa.controller';
+import { mfaRateLimiter } from '../middleware/rate-limit.middleware';
 
 const router = Router();
+router.get('/mfa/status', authMiddleware, mfa.status);
+router.post('/mfa/setup', authRateLimiter, authMiddleware, mfaRateLimiter, validate(MfaSetupSchema), mfa.setup);
+router.post('/mfa/enable', authRateLimiter, authMiddleware, mfaRateLimiter, validate(MfaEnableSchema), mfa.enable);
+router.post('/mfa/verify', authRateLimiter, validate(MfaVerifySchema), mfa.verify);
+router.post('/mfa/disable', authRateLimiter, authMiddleware, mfaRateLimiter, validate(MfaManageSchema), mfa.disable);
+router.post('/mfa/recovery-codes/regenerate', authRateLimiter, authMiddleware, mfaRateLimiter, validate(MfaManageSchema), mfa.regenerate);
 const parseAvatar = raw({ type: ['image/jpeg', 'image/png', 'image/webp'], limit: AVATAR_MAX_BYTES });
 router.patch('/profile', authMiddleware, tenantMiddleware, validate(UpdateSelfProfileSchema), patchProfile);
 router.post('/profile/avatar', authMiddleware, tenantMiddleware, (req, res, next) => {

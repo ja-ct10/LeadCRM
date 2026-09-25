@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Calendar, CheckCircle2, DollarSign, FileText, Briefcase, UserCheck, MessageSquare, AlertCircle, Clock, ShieldCheck } from 'lucide-react';
-import { Lead, Deal, Task, Invoice } from '@/store/types';
+import { Lead, Deal, Task } from '@/store/types';
 import { usePagination } from '@/shared/hooks/use-pagination';
 import { Pagination } from '@/shared/components/ui/pagination';
 
@@ -15,7 +15,7 @@ export interface TimelineEvent {
   timestamp: string;
   actorName: string;
   entityId?: string;
-  entityType?: 'lead' | 'organization' | 'deal' | 'task' | 'invoice';
+  entityType?: 'lead' | 'organization' | 'deal' | 'task';
   amount?: number;
 }
 
@@ -23,7 +23,6 @@ interface CustomerJourneyTimelineProps {
   lead: Lead;
   deals: Deal[];
   tasks: Task[];
-  invoices?: Invoice[];
   onSelectDeal?: (deal: Deal) => void;
 }
 
@@ -31,10 +30,9 @@ export const CustomerJourneyTimeline: React.FC<CustomerJourneyTimelineProps> = (
   lead,
   deals = [],
   tasks = [],
-  invoices = [],
   onSelectDeal,
 }) => {
-  // Aggregate dynamic timeline events from deals, tasks, invoices, and activities
+  // Aggregate dynamic timeline events from deals, tasks, and activities
   const events: TimelineEvent[] = [];
 
   // 1. Initial Lead Creation Event

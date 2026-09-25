@@ -150,7 +150,7 @@ export function UserProfileDropdown(): React.ReactElement {
               </div>
             </div>
 
-            {/* Section 2: Account, Appearance & Billing */}
+            {/* Section 2: Account and Appearance */}
             <div className="py-1 border-b border-slate-100 dark:border-slate-700/70">
               <button
                 role="menuitem"

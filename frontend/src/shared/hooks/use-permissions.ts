@@ -41,8 +41,6 @@ export const PERMISSION_BRIDGE: Record<PermissionKey, string[]> = {
   'users.manage':        ['p23', 'p24', 'p25', 'p26'],
   'reports.view':        ['p31'],
   'reports.export':      ['p33'],
-  'billing.view':        ['p29'],
-  'billing.manage':      ['p29'],
   'settings.view':       ['p27'],
   'settings.edit':       ['p27'],  // no distinct legacy p-ID — mirrors settings.view
   'roles.manage':        ['p26'],

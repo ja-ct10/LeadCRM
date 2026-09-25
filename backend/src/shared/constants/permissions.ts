@@ -43,9 +43,6 @@ export const Permission = {
   REPORTS_VIEW: 'reports.view',
   REPORTS_EXPORT: 'reports.export',
 
-  // Billing
-  BILLING_VIEW: 'billing.view',
-  BILLING_MANAGE: 'billing.manage',
 
   // Settings / Roles
   SETTINGS_VIEW: 'settings.view',

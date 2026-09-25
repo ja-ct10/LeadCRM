@@ -1,4 +1,5 @@
 import { AppError } from '../../shared/errors/app-error';
+import { EmployeeEmailSchema } from '@leadcrm/shared';
 
 /** Applied at sign-in and on every session read, including existing sessions. */
 export function requireEmployeeAccount(user: { role: string; email: string }) {
@@ -7,7 +8,7 @@ export function requireEmployeeAccount(user: { role: string; email: string }) {
     throw new AppError('This account role has been retired. Contact your administrator.', 403, 'ROLE_RETIRED');
   }
   if (user.role === 'System Admin') return;
-  if (!/^[^@\s]+@camxian\.com$/i.test(user.email.trim())) {
+  if (!EmployeeEmailSchema.safeParse(user.email).success) {
     throw new AppError('Use your Camxian employee account to access LeadCRM.', 403, 'EMPLOYEE_ACCOUNT_REQUIRED');
   }
 }

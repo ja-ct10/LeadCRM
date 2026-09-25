@@ -32,6 +32,12 @@ async function proxyRequest(
   params: { path: string[] },
 ): Promise<NextResponse> {
   const path = '/' + params.path.join('/');
+  if (!['GET', 'HEAD'].includes(req.method)) {
+    const origin = req.headers.get('origin');
+    if (req.headers.get('sec-fetch-site') === 'cross-site' || (origin && origin !== req.nextUrl.origin)) {
+      return NextResponse.json({ success: false, error: 'Forbidden origin.' }, { status: 403 });
+    }
+  }
   const url = BACKEND_URL + path + req.nextUrl.search;
 
   const token = req.cookies.get('leadcrm_token')?.value;
@@ -50,6 +56,8 @@ async function proxyRequest(
   if (token) {
     headers['Cookie'] = `leadcrm_token=${token}`;
   }
+  const challenge = req.cookies.get('leadcrm_mfa_challenge')?.value;
+  if (challenge && /^[a-f0-9]{64}$/.test(challenge)) headers['Cookie'] = [headers['Cookie'], `leadcrm_mfa_challenge=${challenge}`].filter(Boolean).join('; ');
 
   // Forward the real client IP so the backend rate limiter sees the actual
   // user address rather than the Vercel edge node IP.

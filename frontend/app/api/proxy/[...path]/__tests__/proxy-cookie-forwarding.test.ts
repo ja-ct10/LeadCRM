@@ -5,6 +5,23 @@ import { POST, PATCH, GET } from '../route';
 import { rewriteSetCookie } from '@/lib/auth/cookies';
 
 afterEach(() => vi.unstubAllGlobals());
+it('forwards the short-lived MFA cookie in both directions without exposing it in JSON', async () => {
+  const token = 'ab'.repeat(32);
+  const fetchMock = vi.fn().mockResolvedValue(new Response('{"success":true}', { headers: { 'Content-Type': 'application/json', 'Set-Cookie': `leadcrm_mfa_challenge=${token}; HttpOnly; Max-Age=300; SameSite=Lax` } }));
+  vi.stubGlobal('fetch', fetchMock);
+  const req = new NextRequest('https://app.example.com/api/proxy/auth/mfa/verify', { method: 'POST', headers: { Cookie: `leadcrm_mfa_challenge=${token}` }, body: '{"code":"123456"}' });
+  const result = await POST(req, { params: Promise.resolve({ path: ['auth', 'mfa', 'verify'] }) });
+  expect(fetchMock.mock.calls[0][1].headers.Cookie).toBe(`leadcrm_mfa_challenge=${token}`);
+  expect(result.headers.get('set-cookie')).toContain('Max-Age=300');
+  expect(result.headers.get('set-cookie')).toContain('HttpOnly');
+  expect(await result.text()).not.toContain(token);
+});
+it('rejects cross-origin security mutations before forwarding', async () => {
+  const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock);
+  const req = new NextRequest('https://app.example.com/api/proxy/auth/change-password', { method: 'POST', headers: { origin: 'https://attacker.example', 'sec-fetch-site': 'cross-site' }, body: '{}' });
+  expect((await POST(req, { params: Promise.resolve({ path: ['auth', 'change-password'] }) })).status).toBe(403);
+  expect(fetchMock).not.toHaveBeenCalled();
+});
 it('preserves a deletion cookie instead of giving it another seven days', () => {
   const cookie = rewriteSetCookie('leadcrm_token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly');
   expect(cookie).toContain('Expires=Thu, 01 Jan 1970 00:00:00 GMT');

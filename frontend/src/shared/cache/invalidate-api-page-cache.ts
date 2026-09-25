@@ -26,11 +26,7 @@ export function invalidateApiPageCache(path: string): void {
     if (resource === 'deals' || resource === 'pipelines') modules.add('pipeline');
   }
   if (area === 'marketing') modules.add('campaigns');
-  if (area === 'billing') {
-    modules.add('invoices');
-    modules.add('activities');
-    modules.add('reports');
-  }
+
   if (area === 'notifications') modules.add('notifications');
   if (area === 'operations') {
     modules.add('activities');

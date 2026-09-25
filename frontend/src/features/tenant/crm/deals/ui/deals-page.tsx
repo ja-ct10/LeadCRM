@@ -29,7 +29,7 @@ import { ActionableEmptyState } from '@/shared/components/actionable-empty-state
 export default function DealsPage() {
   const { user, tenant } = useAuth();
   const tenantCurrency = useMemo(() => getTenantCurrency(tenant), [tenant]);
-  const { tasks, users, organizations, updateDeal, moveDealStage, deleteDeal, addDeal, addTask, updateTask, isBillingModuleEnabled } = useData();
+  const { tasks, users, organizations, updateDeal, moveDealStage, deleteDeal, addDeal, addTask, updateTask } = useData();
   const canCreate = useHasPermission('deals.create');
   const canEdit   = useHasPermission('deals.edit');
   const canDelete = useHasPermission('deals.delete');

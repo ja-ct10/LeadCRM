@@ -4,6 +4,7 @@ import { comparePassword, hashPassword } from '../../shared/helpers/crypto';
 import { AppError } from '../../shared/errors/app-error';
 import { sendMail, buildPasswordResetEmail } from '../../shared/services/email.service';
 import type { ForgotPasswordDto, ResetPasswordDto } from './auth.dto';
+import { StrongPasswordSchema } from '@leadcrm/shared';
 
 const RESET_TTL_MS = parseInt(process.env.PASSWORD_RESET_TTL_MINUTES ?? '60', 10) * 60 * 1000;
 
@@ -47,6 +48,7 @@ export async function requestPasswordReset(dto: ForgotPasswordDto, target?: { us
  * Deletes the used token on success.
  */
 export async function resetPasswordWithToken(dto: ResetPasswordDto): Promise<void> {
+  StrongPasswordSchema.parse(dto.password);
   const record = await prisma.passwordResetToken.findUnique({
     where: { token: dto.token },
   });
@@ -72,10 +74,11 @@ export async function resetPasswordWithToken(dto: ResetPasswordDto): Promise<voi
   await prisma.$transaction([
     prisma.user.update({
       where: { id: user.id },
-      data:  { passwordHash, mustChangePassword: false },
+      data:  { passwordHash, mustChangePassword: false, passwordChangedAt: new Date() },
     }),
     // Invalidate all sessions so the old password can't be reused
     prisma.session.deleteMany({ where: { userId: user.id } }),
+    prisma.mfaChallenge.deleteMany({ where: { userId: user.id } }),
     // Clean up the used token
     prisma.passwordResetToken.delete({ where: { token: dto.token } }),
   ]);

@@ -4,6 +4,8 @@ import { comparePassword } from '../../shared/helpers/crypto';
 import { AppError } from '../../shared/errors/app-error';
 import { createAuthSessionToken, type SessionContext } from './auth-session';
 import { authTenantSelect, buildAuthUserResponse } from './auth-user';
+import { createMfaChallenge } from './mfa.service';
+import { authTransaction } from './auth-transaction';
 export { buildAuthUserResponse } from './auth-user';
 export type { AuthUserSource, AuthUserResponse } from './auth-user';
 export { acceptInvitation } from './registration.service';
@@ -51,13 +53,16 @@ export async function loginUser(dto: LoginDto, ctx: LoginContext = {}) {
     throw new AppError('Account is inactive. Contact your administrator.', 403);
   }
 
-  const token = await createAuthSessionToken(user, ctx);
-
-  return {
-    token,
-    // Align the login response contract with GET /auth/me by returning the
-    // same canonical, flattened shape via the shared helper.
-    user: buildAuthUserResponse(user),
-  };
+  const verified = user;
+  // Re-read under the same transaction that creates the challenge/session so concurrent
+  // password changes, deactivation, or MFA enrollment cannot leave a bypass session.
+  return authTransaction(async tx => {
+    const current = await tx.user.findFirst({ where: { id: verified.id, tenantId: verified.tenantId }, include: { tenant: { select: authTenantSelect } } });
+    if (!current || current.passwordHash !== verified.passwordHash || current.status !== 'ACTIVE') throw new AppError('Invalid email or password', 401);
+    requireEmployeeAccount(current);
+    if (current.role !== 'System Admin' && ['SUSPENDED', 'REJECTED'].includes(current.tenant?.status ?? '')) throw new AppError('Workspace access is suspended.', 403);
+    if (current.mfaEnabled) return { mfaRequired: true as const, challengeToken: await createMfaChallenge(current.id, tx) };
+    return { token: await createAuthSessionToken(current, ctx, tx), user: buildAuthUserResponse(current) };
+  });
 }
 

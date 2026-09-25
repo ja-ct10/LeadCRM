@@ -12,7 +12,6 @@ export const CreateActivitySchema = z.object({
   dealId:         id().optional(),
   accountId:      id().optional(),
   taskId:         id().optional(),
-  invoiceId:      id().optional(),
 });
 
 export const UpdateActivitySchema = CreateActivitySchema.partial();

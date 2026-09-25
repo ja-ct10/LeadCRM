@@ -14,8 +14,6 @@ import * as permController       from '../../modules/administration/permissions/
 import * as auditController      from '../../modules/administration/audit/audit.controller';
 import * as groupController      from '../../modules/administration/groups/groups.controller';
 import { CreateGroupSchema, UpdateGroupSchema, GroupMemberSchema } from '../../modules/administration/groups/groups.dto';
-import * as domainController     from '../../modules/administration/domains/domains.controller';
-import { CreateDomainSchema, UpdateDomainSettingsSchema } from '../../modules/administration/domains/domains.dto';
 
 const router = Router();
 
@@ -66,12 +64,5 @@ router.delete('/groups/:id',                 authorize('users.manage'), groupCon
 router.post(  '/groups/:id/members',         authorize('users.manage'), validate(GroupMemberSchema), groupController.addMember);
 router.delete('/groups/:id/members/:userId', authorize('users.manage'), groupController.removeMember);
 
-// -- Domains ---------------------------------------------
-router.get(   '/domains',               authorize('users.manage'), domainController.getAll);
-router.post(  '/domains',               authorize('users.manage'), validate(CreateDomainSchema), domainController.create);
-router.delete('/domains/:id',           authorize('users.manage'), domainController.remove);
-router.post(  '/domains/:id/verify',    authorize('users.manage'), domainController.verify);
-router.get(   '/domain-settings',       authorize('users.manage'), domainController.getSettings);
-router.put(   '/domain-settings',       authorize('users.manage'), validate(UpdateDomainSettingsSchema), domainController.updateSettings);
 
 export default router;

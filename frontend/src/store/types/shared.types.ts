@@ -16,7 +16,7 @@ export interface Activity {
   id: string;
   tenantId: string;
   type: ActivityType;
-  relatedToType: 'contact' | 'company' | 'deal' | 'task' | 'invoice';
+  relatedToType: 'contact' | 'company' | 'deal' | 'task';
   relatedToId: string;
   title: string;
   description?: string;
@@ -67,23 +67,4 @@ export interface Task {
   assignmentHistory?: TaskAssignmentRecord[];
   createdAt: string;
   priority?: 'Low' | 'Medium' | 'High';
-}
-
-// ─── Invoice ──────────────────────────────────────────────────────────────────
-
-export interface Invoice {
-  id: string;
-  tenantId: string;
-  dealId?: string;
-  contactId?: string;
-  companyName: string;
-  plan: string;
-  amount: number;
-  frequency: 'Monthly' | 'Quarterly' | 'Annual' | 'One-time';
-  status: 'Active' | 'Pending Renewal' | 'Expired' | 'Cancelled';
-  startDate: string;
-  nextBillingDate: string;
-  paymentStatus: 'Paid' | 'Unpaid' | 'Overdue';
-  createdAt: string;
-  isArchived?: boolean;
 }

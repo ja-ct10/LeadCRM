@@ -162,7 +162,6 @@ frontend/
 │   │       ├── workflows.mock.ts
 │   │       ├── users.mock.ts
 │   │       ├── service-orders.mock.ts
-│   │       ├── invoices.mock.ts
 │   │       └── index.ts
 │   │
 │   ├── lib/                      ← Utilities
@@ -219,15 +218,11 @@ backend/
 │   │   │   ├── roles/
 │   │   │   ├── permissions/
 │   │   │   └── audit/
-│   │   ├── billing/
-│   │   │   ├── invoices/
-│   │   │   └── payments/
 │   │   └── reporting/
 │   │       └── reports/
 │   │
 │   ├── integrations/
 │   │   ├── gmail/                ← gmail.service.ts, gmail.oauth.ts, gmail.types.ts
-│   │   └── paymongo/             ← paymongo.service.ts, paymongo.webhooks.ts, paymongo.types.ts
 │   │
 │   ├── core/
 │   │   ├── auth/                 ← auth.service.ts, jwt.service.ts
@@ -237,7 +232,7 @@ backend/
 │   │
 │   ├── api/
 │   │   ├── middleware/           ← auth, rbac, tenant, validate, error, logger, rate-limit
-│   │   └── routes/               ← crm, marketing, automation, operations, administration, billing, reporting
+│   │   └── routes/               ← crm, marketing, automation, operations, administration, reporting
 │   │
 │   ├── database/
 │   │   └── seeders/              ← roles.seed.ts, permissions.seed.ts, admin.seed.ts
@@ -269,7 +264,6 @@ shared/
     │   ├── deal.types.ts         ← Deal, Pipeline, Stage, DealPriority
     │   ├── user.types.ts         ← User, UserStatus
     │   ├── campaign.types.ts     ← Campaign, CampaignType, CampaignStatus
-    │   ├── billing.types.ts      ← Invoice, BillingCycle, PaymentStatus
     │   ├── tenant.types.ts       ← Tenant, TenantStatus
     │   ├── api.types.ts          ← ApiResponse, PaginatedResponse, PaginationMeta
     │   └── index.ts              ← Re-exports all types
@@ -351,7 +345,6 @@ infrastructure/
 | **workflows/** | |
 | [workflows/customer-lifecycle.md](./workflows/customer-lifecycle.md) | Full customer journey from lead to retention |
 | [workflows/lead-to-deal.md](./workflows/lead-to-deal.md) | Lead capture → deal creation step-by-step |
-| [workflows/deal-to-payment.md](./workflows/deal-to-payment.md) | Closed Won → invoice → PayMongo payment |
 | [workflows/pipeline-stage-flow.md](./workflows/pipeline-stage-flow.md) | 4 pipelines, stage rules, velocity, aging indicators |
 | [workflows/task-assignment.md](./workflows/task-assignment.md) | Task lifecycle, assignment audit trail, overdue detection |
 | **security/** | |

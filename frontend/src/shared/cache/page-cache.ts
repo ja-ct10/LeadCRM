@@ -55,7 +55,6 @@ const MODULE_CONFIG: Readonly<Record<string, ModuleCacheConfig>> = {
   accounts:      { ttlMs: 5 * 60_000, staleMs:      60_000 },
   contacts:      { ttlMs: 5 * 60_000, staleMs:      60_000 },
   campaigns:     { ttlMs: 5 * 60_000, staleMs: 2 * 60_000 },
-  invoices:      { ttlMs: 5 * 60_000, staleMs: 5 * 60_000 },
   // Class B
   reports:       { ttlMs: 2 * 60_000, staleMs: 2 * 60_000 },
   pipeline:      { ttlMs: 2 * 60_000, staleMs:      60_000 },

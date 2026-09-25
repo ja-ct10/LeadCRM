@@ -1,6 +1,6 @@
 import { requireEmployeeAccount } from './account-access';
 import { createHash } from 'crypto';
-import type { RegisterInput } from '@leadcrm/shared';
+import { StrongPasswordSchema, type RegisterInput } from '@leadcrm/shared';
 import type { Prisma } from '@prisma/client';
 import { hashPassword } from '../../shared/helpers/crypto';
 import { AppError } from '../../shared/errors/app-error';
@@ -9,6 +9,7 @@ import { authTransaction } from './auth-transaction';
 
 /** Only administrator-issued, single-use invitations can create an account. */
 export async function acceptInvitation(dto: RegisterInput) {
+  StrongPasswordSchema.parse(dto.password);
   const email = dto.email.trim().toLowerCase();
   if (!dto.invitationToken) throw new AppError('Accounts are provisioned by your administrator.', 403);
   requireEmployeeAccount({ email, role: '' });
@@ -57,6 +58,7 @@ async function joinInvitation(
       status: 'ACTIVE',
       emailVerified: new Date(),
       mustChangePassword: false,
+      passwordChangedAt: new Date(),
     },
   });
   await tx.userRole.create({

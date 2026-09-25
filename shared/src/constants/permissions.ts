@@ -28,8 +28,6 @@ export const Permission = {
   USERS_MANAGE: 'users.manage',
   REPORTS_VIEW: 'reports.view',
   REPORTS_EXPORT: 'reports.export',
-  BILLING_VIEW: 'billing.view',
-  BILLING_MANAGE: 'billing.manage',
   SETTINGS_VIEW: 'settings.view',
   SETTINGS_EDIT: 'settings.edit',
   ROLES_MANAGE: 'roles.manage',

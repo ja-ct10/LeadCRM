@@ -28,7 +28,6 @@ import {
   Task,
   AuditLog,
   Activity,
-  Invoice,
 } from "./types";
 import {
   MOCK_LEADS,
@@ -39,7 +38,6 @@ import {
   MOCK_TENANTS,
   MOCK_TEMPLATES,
   MOCK_TASKS,
-  MOCK_INVOICES,
 } from "./mockData/index";
 import { uuid } from "@/lib/utils";
 
@@ -58,7 +56,6 @@ import { tasksApi } from "@/shared/services/tasks.api";
 import { workflowsApi } from "@/shared/services/workflows.api";
 import { campaignsApi } from "@/shared/services/campaigns.api";
 import { templatesApi } from "@/shared/services/templates.api";
-import { invoicesApi } from "@/shared/services/invoices.api";
 import { preferencesApi } from "@/shared/services/preferences.api";
 import type { ColumnConfigItem } from '@leadcrm/shared';
 import {
@@ -102,10 +99,6 @@ interface DataContextType {
   tasks: Task[];
   activities: Activity[];
   addActivity: (activity: Omit<Activity, 'id' | 'tenantId'>) => void;
-  invoices: Invoice[];
-  addInvoice: (invoice: Omit<Invoice, 'id' | 'tenantId' | 'createdAt'>) => void;
-  updateInvoice: (id: string, updates: Partial<Invoice>) => void;
-  removeInvoice: (id: string) => void;
   auditLogs: AuditLog[];
   addContact: (
     contact: Omit<Contact, "id" | "tenantId" | "createdAt" | "score">,
@@ -182,8 +175,6 @@ interface DataContextType {
   rejectTenant: (id: string) => void;
   suspendTenant: (id: string) => void;
   addAuditLog: (action: string, details: string) => void;
-  isBillingModuleEnabled: boolean;
-  toggleBillingModule: () => void;
 
   // Column Preferences
   columnPreferences: Record<string, ColumnConfigItem[]>;
@@ -352,10 +343,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
-  const [isBillingModuleEnabled, setIsBillingModuleEnabled] =
-    useState<boolean>(false);
 
   // ── Column Preferences State ───────────────────────────────────────────────
   const [columnPreferences, setColumnPreferences] = useState<Record<string, ColumnConfigItem[]>>({});
@@ -450,8 +438,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
       if (!isCurrent()) return;
       // Batch 2 — deferred after initial paint so Batch 1 data renders first
-      // Module flags are synchronous — load them now
-      setIsBillingModuleEnabled(safeParse("leadcrm_billing_enabled", true));
 
       // Defer network-heavy secondary modules to the next event-loop tick.
       // Batch 2 COMPLETED migrations (removed from startup):
@@ -610,11 +596,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!localStorage.getItem("leadcrm_audit_logs")) {
       localStorage.setItem("leadcrm_audit_logs", JSON.stringify([]));
     }
-    const billingEnabled = safeParse("leadcrm_billing_enabled", false);
     const activityData = safeParse("leadcrm_activities", [] as Activity[]);
-    const invoiceData = safeParse("leadcrm_invoices", MOCK_INVOICES);
 
-    setIsBillingModuleEnabled(billingEnabled);
 
     // Column preferences: use system default in mock mode
     setColumnPreferences(prev => ({ ...prev, leads: LEADS_SYSTEM_DEFAULT }));
@@ -632,7 +615,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setActivities(activityData);
       
       
-      setInvoices(invoiceData);
     } else if (tenant) {
       setAuditLogs(
         logs.filter((log: any) => !log.tenantId || log.tenantId === tenant.id),
@@ -669,7 +651,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setActivities(activityData.filter((x: any) => x.tenantId === tenant.id));
       
       
-      setInvoices(invoiceData.filter((x: any) => x.tenantId === tenant.id && !x.isArchived));
     }
   };
 
@@ -682,7 +663,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setUsers([]); setTenants([]);
       }
         
-      setActivities([]); setInvoices([]);  setAuditLogs([]);
+      setActivities([]);   setAuditLogs([]);
     }
     setVisibleIdentity(dataIdentity);
     // Only load data when we have a confirmed authenticated user
@@ -1953,75 +1934,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setActivities(updated.filter((a: Activity) => a.tenantId === currentTenantId));
   };
 
-  const addInvoice = async (invoiceData: Omit<Invoice, 'id' | 'tenantId' | 'createdAt'>) => {
-    if (!tenant) return;
-    if (!USE_MOCK_DATA) {
-      try {
-        const dto: Record<string, unknown> = { ...invoiceData };
-        // Ensure datetime fields are ISO format
-        (['startDate', 'dueDate', 'nextBillingDate'] as const).forEach((field) => {
-          const val = dto[field] as string | undefined;
-          if (val && !val.includes('T')) dto[field] = `${val}T00:00:00.000Z`;
-        });
-        const res = await invoicesApi.create(dto as any);
-        const created = res?.data ?? res;
-        setInvoices((prev) => [created as Invoice, ...prev]);
-        invalidatePageCache('invoices', tenant?.id || user?.tenantId || '');
-        addAuditLog('Invoice Created', `Created invoice for '${(created as any).companyName || 'client'}'.`);
-      } catch (err: unknown) {
-        toast.error(err instanceof Error ? err.message : "Failed to create invoice");
-      }
-      return;
-    }
-    const newInvoice: Invoice = { ...invoiceData, id: uuid(), tenantId: tenant.id, createdAt: new Date().toISOString() };
-    const all = JSON.parse(localStorage.getItem('leadcrm_invoices') || JSON.stringify(MOCK_INVOICES));
-    const updated = [...all, newInvoice];
-    localStorage.setItem('leadcrm_invoices', JSON.stringify(updated));
-    setInvoices(updated.filter((x: Invoice) => x.tenantId === tenant.id && !x.isArchived));
-    addAuditLog('Invoice Created', `Created invoice for '${newInvoice.companyName}'.`);
-  };
-
-  const updateInvoice = async (id: string, updates: Partial<Invoice>) => {
-    if (!USE_MOCK_DATA) {
-      try {
-        const dto: Record<string, unknown> = { ...updates };
-        (['startDate', 'dueDate', 'nextBillingDate'] as const).forEach((field) => {
-          const val = dto[field] as string | undefined;
-          if (val && !val.includes('T')) dto[field] = `${val}T00:00:00.000Z`;
-        });
-        const res = await invoicesApi.update(id, dto as any);
-        const updated = res?.data ?? res;
-        setInvoices((prev) => prev.map((inv) => (inv.id === id ? (updated as Invoice) : inv)));
-        invalidatePageCache('invoices', tenant?.id || user?.tenantId || '');
-      } catch (err: unknown) {
-        toast.error(err instanceof Error ? err.message : "Failed to update invoice");
-      }
-      return;
-    }
-    const all = JSON.parse(localStorage.getItem('leadcrm_invoices') || JSON.stringify(MOCK_INVOICES));
-    const updated = all.map((inv: Invoice) => inv.id === id ? { ...inv, ...updates } : inv);
-    localStorage.setItem('leadcrm_invoices', JSON.stringify(updated));
-    if (tenant) setInvoices(updated.filter((x: Invoice) => x.tenantId === tenant.id && !x.isArchived));
-  };
-
-  const removeInvoice = async (id: string) => {
-    if (!USE_MOCK_DATA) {
-      try {
-        await invoicesApi.archive(id);
-        setInvoices((prev) => prev.filter((inv) => inv.id !== id));
-        invalidatePageCache('invoices', tenant?.id || user?.tenantId || '');
-        addAuditLog('Invoice Archived', `Archived invoice id '${id}'.`);
-      } catch (err: unknown) {
-        toast.error(err instanceof Error ? err.message : "Failed to archive invoice");
-      }
-      return;
-    }
-    const all = JSON.parse(localStorage.getItem('leadcrm_invoices') || JSON.stringify(MOCK_INVOICES));
-    const updated = all.map((inv: Invoice) => inv.id === id ? { ...inv, isArchived: true } : inv);
-    localStorage.setItem('leadcrm_invoices', JSON.stringify(updated));
-    if (tenant) setInvoices(updated.filter((x: Invoice) => x.tenantId === tenant.id && !x.isArchived));
-  };
-
   const approveTenant = (id: string) => {
     const allTenants = JSON.parse(
       localStorage.getItem("leadcrm_tenants") || "[]",
@@ -2105,15 +2017,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("leadcrm_users", JSON.stringify(MOCK_USERS));
     localStorage.setItem("leadcrm_tenants", JSON.stringify(MOCK_TENANTS));
     localStorage.setItem("leadcrm_tasks", JSON.stringify(MOCK_TASKS));
-    localStorage.setItem("leadcrm_billing_enabled", "false");
     loadData();
   };
 
-  const toggleBillingModule = () => {
-    const newState = !isBillingModuleEnabled;
-    localStorage.setItem("leadcrm_billing_enabled", JSON.stringify(newState));
-    setIsBillingModuleEnabled(newState);
-  };
+
 
   // ── Column Preferences: Save & Reset ───────────────────────────────────────
   const saveColumnPreference = useCallback(async (module: string, columns: ColumnConfigItem[]): Promise<void> => {
@@ -2163,10 +2070,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     tasks,
     activities,
     addActivity,
-    invoices,
-    addInvoice,
-    updateInvoice,
-    removeInvoice,
     auditLogs,
     addOrganization,
     updateOrganization,
@@ -2206,8 +2109,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     addTemplate,
     updateTemplate,
     deleteTemplate,
-    isBillingModuleEnabled,
-    toggleBillingModule,
     addUser,
     updateUser,
     deleteUser,
@@ -2220,13 +2121,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }), [
     organizations, contacts, deals, pipelines, workflows, workflowsLoading, workflowsError, refreshWorkflows, campaigns,
     templates, roles, permissions, rolesLoading, rolesError, refreshRoles, users, tenants, tasks,
-    activities, invoices, auditLogs,
-    isBillingModuleEnabled,
+    activities, auditLogs,
     columnPreferences, columnPreferencesLoading,
   ]);
 
   return (
-    <DataContext.Provider value={visibleIdentity === dataIdentity ? contextValue : { ...contextValue, organizations: [], contacts: [], deals: [], pipelines: [], workflows: [], campaigns: [], templates: [], tasks: [], activities: [], invoices: [], auditLogs: [] }}>
+    <DataContext.Provider value={visibleIdentity === dataIdentity ? contextValue : { ...contextValue, organizations: [], contacts: [], deals: [], pipelines: [], workflows: [], campaigns: [], templates: [], tasks: [], activities: [], auditLogs: [] }}>
       {children}
     </DataContext.Provider>
   );

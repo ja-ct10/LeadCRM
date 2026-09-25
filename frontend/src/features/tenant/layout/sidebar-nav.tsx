@@ -138,9 +138,9 @@ export default function SidebarNav({
             }
           });
 
-          const groupOrder = ['CRM', 'Operations', 'Marketing', 'Automation', 'Billing', 'Settings'];
+          const groupOrder = ['CRM', 'Operations', 'Marketing', 'Automation', 'Settings'];
 
-          // Merge Operations/Marketing/Automation/Billing/Settings into "WORKSPACE"
+          // Merge Operations/Marketing/Automation/Settings into "WORKSPACE"
           const mergedGroups: { label: string; items: typeof filteredNav }[] = [];
           const workspaceItems: typeof filteredNav = [];
           const systemItems: typeof filteredNav = [];
@@ -149,7 +149,7 @@ export default function SidebarNav({
             if (!groups[g]) return;
             if (g === 'CRM') {
               mergedGroups.push({ label: 'CRM', items: groups[g] });
-            } else if (['Operations', 'Marketing', 'Automation', 'Billing', 'Settings'].includes(g)) {
+            } else if (['Operations', 'Marketing', 'Automation', 'Settings'].includes(g)) {
               workspaceItems.push(...groups[g]);
             } else {
               systemItems.push(...groups[g]);

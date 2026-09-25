@@ -25,7 +25,7 @@ const PERM_GROUPS: PermGroup[] = [
     id: 'org',
     label: 'Organization',
     description: 'Manage users, settings, roles, and organization configuration',
-    modules: ['users', 'settings', 'roles', 'audit', 'billing'],
+    modules: ['users', 'settings', 'roles', 'audit'],
   },
   {
     id: 'contacts',

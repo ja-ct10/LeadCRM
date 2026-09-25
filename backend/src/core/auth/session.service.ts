@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import { AppError } from '../../shared/errors/app-error';
 
 import prisma from '../../config/database.config';
+import type { Prisma } from '@prisma/client';
 
 /**
  * Hash a JWT token for safe storage.
@@ -21,11 +22,11 @@ export async function createSession(params: {
   userAgent?: string;
   ipAddress?: string;
   expiresInMs: number;
-}): Promise<void> {
+}, db: Prisma.TransactionClient = prisma): Promise<void> {
   const tokenHash = hashToken(params.token);
   const expiresAt = new Date(Date.now() + params.expiresInMs);
 
-  await prisma.session.create({
+  await db.session.create({
     data: {
       userId:    params.userId,
       tenantId:  params.tenantId,

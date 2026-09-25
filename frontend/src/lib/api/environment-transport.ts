@@ -5,7 +5,7 @@ let environment: CrmEnvironment | null = null;
 let generation = 0;
 let switching = false;
 const mutations = new Set<Promise<unknown>>();
-export const isEnvironmentPath = (path: string) => /^\/(crm|marketing|operations|automation|billing|reporting|notifications|integrations)(\/|$)/.test(path) || path.startsWith('/administration/audit');
+export const isEnvironmentPath = (path: string) => /^\/(crm|marketing|operations|automation|reporting|notifications|integrations)(\/|$)/.test(path) || path.startsWith('/administration/audit');
 export function setTransportEnvironment(value: CrmEnvironment | null) {
   if (environment !== value) generation++;
   environment = value;

@@ -13,7 +13,6 @@ export * from './tasks.api';
 export * from './campaigns.api';
 export * from './templates.api';
 export * from './workflows.api';
-export * from './invoices.api';
 export * from './users.api';
 export * from './audit.api';
 export * from './reporting.api';

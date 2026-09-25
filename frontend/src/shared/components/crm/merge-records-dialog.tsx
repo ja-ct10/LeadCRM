@@ -32,7 +32,6 @@ interface RelationshipCounts {
   leads?: number;
   contacts?: number;
   campaigns?: number;
-  invoices?: number;
 }
 
 interface MergePreviewData {

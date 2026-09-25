@@ -1,3 +1,5 @@
+> Historical document. Billing, invoices, payments, and configurable team domains are now removed. See [current security and cleanup report](../security-cleanup-mfa.md).
+
 # Workflow: Deal → Payment
 
 > Last updated: June 27, 2026

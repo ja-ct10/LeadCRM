@@ -1,3 +1,5 @@
+> Historical document. Billing, invoices, payments, and configurable team domains are now removed. See [current security and cleanup report](security-cleanup-mfa.md).
+
 # Internal CRM cleanup
 
 LeadCRM authorizes employee accounts through authentication, tenant access, Sandbox/Live environment scope, and existing RBAC permissions. There is no subscription entitlement or record quota. System Admin retains its separate portal and cannot use the tenant environment switcher.

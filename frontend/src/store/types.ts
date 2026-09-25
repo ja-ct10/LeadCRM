@@ -12,7 +12,6 @@ export type {
   AuditLog,
   ActivityType, Activity,
   Task, TaskStatus, TaskAssignmentRecord,
-  Invoice,
   Lead, CreateLeadRequest, UpdateLeadRequest,
 } from './types/index';
 

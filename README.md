@@ -18,7 +18,7 @@ LeadCRM is the internally managed CRM for Camxian Technologies. Start at `/login
 
 ## 📌 Executive Summary
 
-**LeadCRM** is an end-to-end multi-tenant Customer Relationship Management (CRM) and automated operational platform. Unlike traditional simple contact logs, LeadCRM unites sales pipeline management, automated trigger-condition-action workflow execution, multi-channel marketing campaigns, service order technician dispatch, asset tracking, and multi-tenant billing into a single, cohesive software system.
+**LeadCRM** is an end-to-end multi-tenant Customer Relationship Management (CRM) and automated operational platform. Unlike traditional simple contact logs, LeadCRM unites sales pipeline management, automated trigger-condition-action workflow execution, multi-channel marketing campaigns, service order technician dispatch, asset tracking into a single, cohesive software system.
 
 Built upon a modern **Turborepo monorepo** architecture powered by Next.js 15 (App Router), Express.js, TypeScript, PostgreSQL, and Prisma ORM, LeadCRM provides dual-portal security isolation: a dedicated **Tenant CRM Portal** for organization teams and a **System Admin Console** for platform operators.
 
@@ -38,7 +38,7 @@ To become the benchmark open-architecture CRM and workflow automation platform f
 
 #### General Objective
 
-Design, develop, and deploy a secure, high-performance multi-tenant CRM and workflow automation platform capable of managing complex enterprise customer lifecycles from lead capture to invoice settlement.
+Design, develop, and deploy a secure, high-performance multi-tenant CRM and workflow automation platform capable of managing complex enterprise customer lifecycles from lead capture to closed deals.
 
 #### Specific Objectives
 
@@ -46,7 +46,7 @@ Design, develop, and deploy a secure, high-performance multi-tenant CRM and work
 2. **Event-Driven Workflow Automation**: Engineer a visual Trigger → Condition → Action workflow builder capable of automated deal assignments, task dispatch, email notifications, and SLA escalations.
 3. **Dual-Portal Isolation**: Enforce physical and logical architectural separation between client tenant operations and platform operator administration.
 4. **Granular Role-Based Access Control (RBAC)**: Enforce module-level permission guards (`canView`, `canCreate`, `canEdit`, `canDelete`) across custom roles and multi-tenant scopes.
-5. **Operational Synergy**: Integrate sales pipeline data directly with technician service orders, asset tracking, inventory allocation, and billing invoices.
+5. **Operational Synergy**: Integrate sales pipeline data directly with technician service orders, asset tracking, inventory allocation.
 
 ---
 
@@ -65,7 +65,7 @@ Small-to-medium IT solutions providers, security agencies, and telecom firms fre
 
 LeadCRM solves these challenges by providing a single, unified platform:
 
-- **Unified Operational Hub**: Consolidates CRM, marketing automation, service order management, asset tracking, and billing in one platform.
+- **Unified Operational Hub**: Consolidates CRM, marketing automation, service order management, asset tracking in one platform.
 - **Rule-Based Automation Engine**: Automates lead scoring, deal assignment, follow-ups, and service order creation via visual workflow rules.
 - **Multi-Tenant Data Isolation**: Ensures database-level `tenantId` query scoping and strict JWT authorization across every request.
 - **Standardized Navigation & UI**: Delivers a polished, accessible user experience with dark/light mode glassmorphism, responsive navigation primitives (`BackButton`, `ModalCloseButton`, `PageHeader`), and real-time interactive dashboards.
@@ -101,11 +101,7 @@ LeadCRM solves these challenges by providing a single, unified platform:
 
 - **Executive Dashboards**: Real-time KPI summary widgets, revenue trends, pipeline distribution charts, lead attribution breakdowns, and sales rep leaderboards powered by Chart.js.
 
-### 6. 💳 Customer Invoices & Payments
-
-- **Contracts & Invoices**: Invoice generation, contract tracking, payment method management, and PayMongo payment gateway integration hooks.
-
-### 7. 🛡️ System Administration (`(system-admin)`)
+### 6. 🛡️ System Administration (`(system-admin)`)
 
 - **System Admin Console**: Operator-level multi-tenant management (`/admin/dashboard`, `/admin/clients`, `/admin/audit`).
 - **Tenant Management**: Provisioning employee Client Admin accounts and managing tenant access.
@@ -143,7 +139,7 @@ LeadCRM enforces strict visual standards and reusable navigation primitives acro
 | **Backend API**        | Node.js / Express.js         | `v4.x`         | Modular REST API server handling 85+ route endpoints             |
 | **ORM & Database**     | Prisma ORM / PostgreSQL      | `v5.x` / `16+` | Type-safe query engine and relational database                   |
 | **Authentication**     | JWT + HttpOnly Cookies       | Standard       | Secure stateless sessions with automatic cookie storage          |
-| **Integrations**       | PayMongo / Gmail API         | —              | Payment processing and email integration                         |
+| **Integrations**       | Gmail API         | —              | Email integration                         |
 
 ---
 
@@ -211,7 +207,7 @@ leadcrm/                                 ← Monorepo Root (Turborepo)
 │   └── src/
 │       ├── features/                    ← Domain Feature Modules
 │       │   ├── tenant/                  ← CRM Portal features (contacts, deals, pipeline, workflows)
-│       │   └── system-admin/            ← System Admin features (tenants, billing, monitoring)
+│       │   └── system-admin/            ← System Admin features (tenants, monitoring)
 │       ├── shared/                      ← Shared UI Library
 │       │   ├── components/
 │       │   │   ├── ui/                  ← BackButton, ModalCloseButton, PageHeader, ShadCN
@@ -223,7 +219,7 @@ leadcrm/                                 ← Monorepo Root (Turborepo)
 ├── backend/                             ← Express.js REST API Server (@leadcrm/backend)
 │   ├── prisma/                          ← Prisma schema.prisma (30 models), migrations & seeds
 │   └── src/
-│       ├── modules/                     ← crm/, automation/, marketing/, operations/, billing/
+│       ├── modules/                     ← crm/, automation/, marketing/, operations/
 │       ├── core/                        ← auth/, audit/, permissions/, tenant/
 │       └── api/                         ← Middleware, express routes, controllers
 │
@@ -387,7 +383,6 @@ LeadCRM implements module-level permission guards (`module.action`) evaluated ag
 | **Workflows & Automation**  | Create / Edit / Trigger       |      ✅      |      ❌      | 👁️ View Only |         ❌         |   ✅ Cross-Tenant   |
 | **Marketing Campaigns**     | Build / Dispatch / View       |      ✅      | 👁️ View Only | 👁️ View Only |         ❌         |   ✅ Cross-Tenant   |
 | **Service Orders & Assets** | Create / Dispatch / Complete  |      ✅      |      ❌      | 👁️ View Only | ✅ Full Operations |   ✅ Cross-Tenant   |
-| **Invoices & Billing**      | Manage / Process Payments     |      ✅      |      ❌      |      ❌      |         ❌         | ✅ Platform Billing |
 | **User Administration**     | Invite Users / Assign Roles   |      ✅      |      ❌      |      ❌      |         ❌         | ✅ Platform Tenants |
 
 ---

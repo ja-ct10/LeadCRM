@@ -16,7 +16,6 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
 Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./contact.contract"), exports);
 __exportStar(require("./user.contract"), exports);
-__exportStar(require("./billing.contract"), exports);
 __exportStar(require("./campaign.contract"), exports);
 __exportStar(require("./api.contracts"), exports);
 __exportStar(require("./workflow.contracts"), exports);

@@ -1,14 +1,15 @@
 import { z } from 'zod';
+import { EmployeeEmailSchema } from './security.schema';
 
-export const StrongPasswordSchema = z.string().min(8).max(72).regex(
-  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z0-9\s])/,
+export const StrongPasswordSchema = z.string().min(8, 'Use at least 8 characters.').max(72, 'Use no more than 72 characters.').refine(value => new TextEncoder().encode(value).length <= 72, 'Password must be no more than 72 bytes.').refine(value =>
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z0-9\s])/.test(value),
   'Use uppercase and lowercase letters, a number, and a special character',
 );
 
 export const RegisterSchema = z.object({
   firstName: z.string().trim().min(2, 'First name is required').max(100),
   lastName: z.string().trim().min(2, 'Last name is required').max(100),
-  email: z.string().trim().toLowerCase().email('Valid email required'),
+  email: EmployeeEmailSchema,
   password: StrongPasswordSchema,
   acceptTerms: z.boolean().optional(),
   invitationToken: z.string().min(1).optional(),

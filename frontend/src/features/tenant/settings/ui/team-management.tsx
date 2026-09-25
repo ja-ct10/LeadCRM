@@ -7,16 +7,15 @@ import { useData } from '@/store/DataContext';
 import { cn } from '@/lib/utils';
 import { UsersSubTab } from './team-management-users';
 import { GroupsSubTab } from './team-management-groups';
-import { DomainsSubTab } from './team-management-domains';
 import type { User } from '@/store/types';
 
-type TeamTab = 'Users' | 'Groups' | 'Domains';
+type TeamTab = 'Users' | 'Groups';
 
 // ── TeamManagement ─────────────────────────────────────────────────────────
 
 export function TeamManagement(): React.ReactElement {
   const { user: currentUser } = useAuth();
-  const { users, roles } = useData();
+  const { users } = useData();
   const tenantId = currentUser?.tenantId ?? '';
 
   const [activeTab, setActiveTab] = useState<TeamTab>('Users');
@@ -28,19 +27,17 @@ export function TeamManagement(): React.ReactElement {
     () => (loadedUsers ?? users).filter((u) => !u.isArchived && u.tenantId === tenantId),
     [loadedUsers, users, tenantId],
   );
-  const roleNames = useMemo(() => roles.filter((r) => !r.isArchived).map((r) => r.name), [roles]);
 
   const tabCounts: Record<TeamTab, number | null> = {
     Users: loadedUsers === null ? null : tenantUsers.length,
     Groups: null,  // loaded inside GroupsSubTab
-    Domains: null, // loaded inside DomainsSubTab
   };
 
   return (
     <div className="min-w-0 max-w-4xl space-y-4">
       {/* Tab strip */}
       <div className="flex gap-0 border-b border-gray-200 dark:border-white/[0.07]">
-        {(['Users', 'Groups', 'Domains'] as TeamTab[]).map((tab) => {
+        {(['Users', 'Groups'] as TeamTab[]).map((tab) => {
           const count = tabCounts[tab];
           return (
             <button
@@ -79,11 +76,7 @@ export function TeamManagement(): React.ReactElement {
             <GroupsSubTab tenantUsers={tenantUsers} />
           </motion.div>
         )}
-        {activeTab === 'Domains' && (
-          <motion.div key="domains" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-            <DomainsSubTab roleNames={roleNames} />
-          </motion.div>
-        )}
+
       </AnimatePresence>
     </div>
   );

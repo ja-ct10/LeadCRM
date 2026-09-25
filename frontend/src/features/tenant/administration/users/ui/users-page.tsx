@@ -70,11 +70,10 @@ const ROLES_GUIDE = [
   {
     role: "Administrator",
     description:
-      "Full uninhibited access to all configurations, user management, billing, and database exports.",
+      "Full uninhibited access to all configurations, user management, and database exports.",
     level: "Full Access",
     badgeColor: "bg-rose-500/10 text-rose-500 border-rose-500/20",
     capabilities: [
-      "Manage Billing",
       "Delete Users",
       "Configure Workflows",
       "Database Exports",
@@ -845,7 +844,7 @@ export default function UsersPage() {
       4: {
         name: "Tier 4: Enterprise Administration",
         level: 4,
-        desc: "Unrestricted complete system controls, security administration, database structures, billing, and integrations overrides.",
+        desc: "Unrestricted complete system controls, security administration, database structures, and integrations overrides.",
         icon: Shield,
         textColor: "text-purple-600 dark:text-purple-400",
         bgColor: "bg-purple-500/10 dark:bg-purple-500/5",

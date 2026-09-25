@@ -52,7 +52,7 @@ const ACTIVITY_COLORS: Record<ActivityType, string> = {
 // ─── Props ───────────────────────────────────────────────────────────────────
 
 interface ActivityTimelineProps {
-  entityType: 'contact' | 'company' | 'deal' | 'task' | 'invoice';
+  entityType: 'contact' | 'company' | 'deal' | 'task';
   entityId: string;
   maxItems?: number;
 }

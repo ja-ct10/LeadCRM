@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UpdateAdministrationUserSchema = exports.CreateAdministrationUserSchema = exports.AdministrationPhoneSchema = exports.cleanText = void 0;
 const zod_1 = require("zod");
+const security_schema_1 = require("./security.schema");
 // Check before trimming so surrounding control characters are not silently accepted.
 const cleanText = (max) => zod_1.z.string()
     .refine(value => !/[\u0000-\u001f\u007f-\u009f]/.test(value), 'Control characters are not allowed.')
@@ -18,7 +19,7 @@ exports.AdministrationPhoneSchema = (0, exports.cleanText)(32).superRefine((valu
 exports.CreateAdministrationUserSchema = zod_1.z.object({
     firstName: (0, exports.cleanText)(100).pipe(zod_1.z.string().min(1, 'First name is required.')),
     lastName: (0, exports.cleanText)(100).pipe(zod_1.z.string().min(1, 'Last name is required.')),
-    email: (0, exports.cleanText)(254).pipe(zod_1.z.string().min(1, 'Email is required.').email('Enter a valid email address.')).transform(value => value.toLowerCase()),
+    email: security_schema_1.EmployeeEmailSchema,
     phone: exports.AdministrationPhoneSchema,
     // The existing user service accepts the canonical RoleDefinition.name.
     role: (0, exports.cleanText)(100).pipe(zod_1.z.string().min(1, 'Role is required.')),

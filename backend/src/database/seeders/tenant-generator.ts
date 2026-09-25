@@ -62,7 +62,7 @@ export async function generateTenants(count: number = 10) {
     ];
 
     const roleEntities: Record<string, { id: string }> = {};
-    const modules = ['contacts', 'deals', 'organizations', 'campaigns', 'tasks', 'invoices', 'users', 'reports'];
+    const modules = ['contacts', 'deals', 'organizations', 'campaigns', 'tasks', 'users', 'reports'];
 
     for (const rd of rolesData) {
       const roleDef = await prisma.roleDefinition.upsert({
@@ -308,27 +308,6 @@ export async function generateTenants(count: number = 10) {
         });
       }
 
-      // Invoices for Won deals
-      if (stage.isWon) {
-        await prisma.invoice.create({
-          data: {
-            tenantId:      tenant.id,
-            dealId:        deal.id,
-            leadId:        lead.id,
-            accountId:     account?.id ?? null,
-            invoiceNumber: `INV-${faker.number.int({ min: 1000, max: 9999 })}`,
-            amount:        deal.value ?? 0,
-            totalAmount:   deal.value ?? 0,
-            currency:      'USD',
-            frequency:     'One-time',
-            status:        'Sent',
-            paymentStatus: faker.helpers.arrayElement(['Paid', 'Unpaid']),
-            startDate:     deal.createdAt,
-            dueDate:       randomDateFuture(10),
-            createdAt:     deal.createdAt,
-          },
-        });
-      }
     }
 
     // 8. Campaigns
