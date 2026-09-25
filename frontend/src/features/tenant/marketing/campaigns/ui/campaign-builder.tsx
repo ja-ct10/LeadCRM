@@ -98,18 +98,20 @@ export function CampaignBuilder({
         for (let attempt = 0; result.status === 'SENDING' && attempt < 150; attempt++) {
           await new Promise(resolve => setTimeout(resolve, 2000));
           const current = (await campaignsApi.get(res.data.id)).data;
-          result = { campaignId: current.id, eligibleRecipients: current.recipientCount || 0, submittedRecipients: current.sentCount, failedRecipients: current.failedCount || 0, status: current.status.toUpperCase() };
+          result = current.sendResult;
         }
         if (result.status === 'SENDING') {
           toast.warning('Campaign is still processing. Check its status before taking further action.');
           onBack(); return;
         }
         if (result.status === 'PAUSED') {
-          toast.error('Campaign sending was interrupted. Review recipient results before sending another campaign.');
+          toast.warning(`${result.submittedRecipients} of ${result.eligibleRecipients} emails were submitted successfully. Some results are unconfirmed; review them before sending another campaign.`);
           onBack(); return;
         }
         const message = `${result.submittedRecipients} of ${result.eligibleRecipients} emails were submitted successfully.`;
-        if (result.failedRecipients) toast.warning(message); else toast.success(message);
+        if (result.status === 'FAILED') toast.error(`Campaign sending failed. ${result.submittedRecipients} of ${result.eligibleRecipients} emails were submitted.`);
+        else if (result.failedRecipients) toast.warning(`${message} ${result.failedRecipients} failed.`);
+        else toast.success(message);
       } else toast.success('Campaign draft saved.');
       onBack();
     } catch (e) {

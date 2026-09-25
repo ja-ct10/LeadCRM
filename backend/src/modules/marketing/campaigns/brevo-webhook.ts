@@ -35,20 +35,21 @@ export async function processBrevoEvent(input: unknown) {
       if (!inserted.count) return;
       const at = event.ts_event && event.ts_event <= Date.now() / 1000 + 300 ? new Date(event.ts_event * 1000) : new Date();
       const blocked = ['hard_bounce', 'blocked', 'spam', 'invalid_email'].includes(type);
+      const bounced = blocked || type === 'soft_bounce';
       const current = await tx.emailDeliveryLog.findFirstOrThrow({ where: { id: log.id, ...scope } });
-      const rank: Record<string, number> = { pending: 0, sent: 1, request: 1, deferred: 1, soft_bounce: 1, delivered: 2, opened: 3, click: 4, clicked: 4, error: 5, invalid_email: 6, hard_bounce: 6, blocked: 6, spam: 6, unsubscribed: 7 };
+      const rank: Record<string, number> = { pending: 0, sent: 1, request: 1, deferred: 1, soft_bounce: 1.5, delivered: 2, opened: 3, click: 4, clicked: 4, error: 5, invalid_email: 6, hard_bounce: 6, blocked: 6, spam: 6, unsubscribed: 7 };
       const eventStatus = type === 'unsubscribe' ? 'unsubscribed' : type === 'click' ? 'clicked' : type;
       const status = (rank[eventStatus] ?? 0) > (rank[current.status] ?? 0) ? eventStatus : current.status;
       await tx.campaignContact.updateMany({ where: { ...scope, campaignId: log.campaignId!, messageId: log.brevoMessageId }, data: { status,
         ...(type === 'delivered' ? { deliveredAt: at } : {}),
         ...(type === 'opened' ? { openedAt: at } : {}),
         ...(type === 'click' ? { clickedAt: at } : {}),
-        ...(blocked ? { bouncedAt: at, failureReason: type.toUpperCase() } : {}),
+        ...(bounced ? { bouncedAt: at, ...(blocked ? { failureReason: type.toUpperCase() } : {}) } : {}),
         ...(type === 'unsubscribe' ? { unsubscribed: true } : {}),
       } });
       await tx.emailDeliveryLog.update({ where: { id: log.id, ...scope }, data: { status,
         ...(type === 'opened' ? { openedAt: at } : {}), ...(type === 'click' ? { clickedAt: at } : {}),
-        ...(blocked ? { bouncedAt: at } : {}),
+        ...(bounced ? { bouncedAt: at } : {}),
       } });
       const where = { ...scope, campaignId: log.campaignId! };
       const [sentCount, deliveredCount, openedCount, clickedCount, bouncedCount] = await Promise.all([
@@ -59,7 +60,12 @@ export async function processBrevoEvent(input: unknown) {
         tx.campaignContact.count({ where: { ...where, bouncedAt: { not: null } } }),
       ]);
       await tx.campaign.update({ where: { id: log.campaignId!, ...scope }, data: { openedCount, clickedCount } });
-      await tx.campaignMetrics.create({ data: { ...where, sentCount, deliveredCount, openedCount, clickedCount, bouncedCount, openRate: sentCount ? openedCount / sentCount * 100 : 0, clickRate: sentCount ? clickedCount / sentCount * 100 : 0 } });
+      await tx.campaignMetrics.create({ data: { ...where, sentCount, deliveredCount, openedCount, clickedCount, bouncedCount,
+        openRate: sentCount ? openedCount / sentCount * 100 : 0,
+        clickRate: sentCount ? clickedCount / sentCount * 100 : 0,
+        deliveryRate: sentCount ? deliveredCount / sentCount * 100 : 0,
+        bounceRate: sentCount ? bouncedCount / sentCount * 100 : 0,
+      } });
     });
   });
 }

@@ -39,6 +39,12 @@ function isBrevoConfigured(): boolean {
  */
 export interface SendMailResult { messageId: string | null; submitted: boolean }
 
+export class EmailSubmissionError extends AppError {
+  constructor(public readonly outcome: 'rejected' | 'unconfirmed', public readonly httpStatus?: number) {
+    super(outcome === 'rejected' ? 'Email provider rejected the request.' : 'Email submission could not be confirmed. Check the provider before retrying.', 502);
+  }
+}
+
 export function assertBrevoConfigured(): void {
   if (!isBrevoConfigured() || !process.env.BREVO_FROM_EMAIL) {
     throw new AppError('Email service is not configured. Configure the backend Brevo sender and API key.', 503);
@@ -58,8 +64,9 @@ export async function sendMail(options: SendMailOptions): Promise<SendMailResult
     return { messageId: null, submitted: false };
   }
   assertBrevoConfigured();
+  let response: Response;
   try {
-    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    response = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
       signal: AbortSignal.timeout(15000),
       headers: { accept: 'application/json', 'api-key': process.env.BREVO_API_KEY!, 'content-type': 'application/json' },
@@ -68,14 +75,20 @@ export async function sendMail(options: SendMailOptions): Promise<SendMailResult
         to: [{ email: options.to }], subject: options.subject, htmlContent: options.html,
       }),
     });
-    if (!response.ok) throw new AppError('Email provider rejected the request. Check the sender configuration and provider quota.', 502);
-    const result = await response.json() as { messageId?: string };
-    return { messageId: typeof result.messageId === 'string' ? result.messageId : null, submitted: true };
-  } catch {
-    // Never log provider bodies, authorization headers, recipient content or secrets.
-    console.error('[EmailService] Brevo request failed.');
-    throw new AppError('Email delivery could not be confirmed. Check the provider before retrying.', 502);
+  } catch (error) {
+    console.error('[EmailService]', { event: 'brevo_submission_unconfirmed', category: error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name) ? 'timeout' : 'network' });
+    throw new EmailSubmissionError('unconfirmed');
   }
+  if (!response.ok) {
+    console.error('[EmailService]', { event: 'brevo_submission_rejected', httpStatus: response.status, category: `${Math.floor(response.status / 100)}xx` });
+    throw new EmailSubmissionError('rejected', response.status);
+  }
+  // HTTP acceptance is authoritative. An unreadable response body must never
+  // turn an accepted request into a failure or trigger a resend.
+  const result: unknown = await response.json().catch(() => null);
+  const messageId = result && typeof result === 'object' && 'messageId' in result && typeof result.messageId === 'string' && result.messageId.trim() ? result.messageId : null;
+  console.info('[EmailService]', { event: 'brevo_submission_accepted', httpStatus: response.status, messageId, trackingAvailable: messageId !== null });
+  return { messageId, submitted: true };
 }
 // ─── Shared email layout helpers ──────────────────────────────────────────────
 

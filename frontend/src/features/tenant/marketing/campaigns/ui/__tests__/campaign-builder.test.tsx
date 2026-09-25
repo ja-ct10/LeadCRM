@@ -48,18 +48,31 @@ describe('campaign composer', () => {
     await waitFor(() => expect(campaignsApi.send).toHaveBeenCalledTimes(1));
     expect((screen.getByRole('button', { name: 'Sending...' }) as HTMLButtonElement).disabled).toBe(true);
     await act(async () => finish({ success: true, data: { campaignId: 'saved-id', eligibleRecipients: 2, submittedRecipients: 1, failedRecipients: 1, status: 'PARTIALLY_SENT' } }));
-    expect(toast.warning).toHaveBeenCalledWith('1 of 2 emails were submitted successfully.');
+    expect(toast.warning).toHaveBeenCalledWith('1 of 2 emails were submitted successfully. 1 failed.');
     expect(campaignsApi.create).toHaveBeenCalledTimes(1);
   });
   it('polls an accepted background send before reporting submitted results', async () => {
     vi.mocked(campaignsApi.send).mockResolvedValueOnce({ success: true, data: { campaignId: 'saved-id', eligibleRecipients: 2, submittedRecipients: 0, failedRecipients: 0, status: 'SENDING' } });
-    vi.mocked(campaignsApi.get).mockResolvedValueOnce({ success: true, data: { id: 'saved-id', recipientCount: 2, sentCount: 2, failedCount: 0, status: 'Sent' } as never });
+    vi.mocked(campaignsApi.get).mockResolvedValueOnce({ success: true, data: { id: 'saved-id', recipientCount: 99, sentCount: 0, failedCount: 0, status: 'Sent', sendResult: { campaignId: 'saved-id', eligibleRecipients: 2, submittedRecipients: 2, failedRecipients: 0, status: 'SENT' } } as never });
     const back = vi.fn(); render(<CampaignBuilder onBack={back} />); fill();
     fireEvent.click(screen.getByRole('button', { name: 'Send Now' }));
     await waitFor(() => expect(campaignsApi.send).toHaveBeenCalledTimes(1));
     expect(toast.success).not.toHaveBeenCalled(); expect(back).not.toHaveBeenCalled();
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('2 of 2 emails were submitted successfully.'), { timeout: 4000 });
     expect(campaignsApi.get).toHaveBeenCalledWith('saved-id'); expect(back).toHaveBeenCalledTimes(1);
+  });
+  it.each([
+    { submitted: 4, failed: 0, status: 'SENT', level: 'success', message: '4 of 4 emails were submitted successfully.' },
+    { submitted: 3, failed: 1, status: 'PARTIALLY_SENT', level: 'warning', message: '3 of 4 emails were submitted successfully. 1 failed.' },
+    { submitted: 0, failed: 4, status: 'FAILED', level: 'error', message: 'Campaign sending failed. 0 of 4 emails were submitted.' },
+  ] as const)('reports the authoritative $status result and refreshes once', async ({ submitted, failed, status, level, message }) => {
+    vi.mocked(campaignsApi.send).mockResolvedValueOnce({ success: true, data: { campaignId: 'saved-id', eligibleRecipients: 4, submittedRecipients: submitted, failedRecipients: failed, status } });
+    const back = vi.fn(); render(<CampaignBuilder onBack={back} />); fill();
+    fireEvent.click(screen.getByRole('button', { name: 'Send Now' }));
+    await waitFor(() => expect(toast[level]).toHaveBeenCalledWith(message));
+    expect(back).toHaveBeenCalledTimes(1);
+    expect(campaignsApi.send).toHaveBeenCalledTimes(1);
+    expect(campaignsApi.get).not.toHaveBeenCalled();
   });
   it('reopens an existing draft and updates the same database record', async () => {
     render(<CampaignBuilder onBack={vi.fn()} initialCampaign={{ id: 'saved-id', name: 'Existing', type: 'Email', status: 'Draft', subject: 'Saved subject', body: 'Saved body', targetAudienceId: audience.id } as never} />);

@@ -6,7 +6,7 @@ import prisma from '../../../config/database.config';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { AppError } from '../../../shared/errors/app-error';
 import { getPaginationParams, paginate } from '../../../shared/helpers/pagination';
-import { sendMail, assertBrevoConfigured } from '../../../shared/services/email.service';
+import { sendMail, assertBrevoConfigured, EmailSubmissionError } from '../../../shared/services/email.service';
 import { audienceDefinition, campaignScope, resolveAudience } from './audiences.service';
 import { sanitizeCampaignHtml, renderCampaignMessage } from './campaign-content';
 
@@ -30,7 +30,10 @@ export async function getCampaignById(id: string, tenantId: string) {
     prisma.campaignContact.count({ where: { ...where, deliveredAt: { not: null } } }),
     prisma.campaignContact.count({ where: { ...where, bouncedAt: { not: null } } }),
   ]);
-  return { ...c, deliveredCount, bouncedCount };
+  return { ...c, deliveredCount, bouncedCount, sendResult: campaignSendResult(c) };
+}
+function campaignSendResult(campaign: { id: string; recipientCount: number; sentCount: number; failedCount: number; status: string }): CampaignSendResult {
+  return { campaignId: campaign.id, eligibleRecipients: campaign.recipientCount, submittedRecipients: campaign.sentCount, failedRecipients: campaign.failedCount, status: campaign.status };
 }
 async function validateReferences(tenantId: string, dto: ReturnType<typeof CampaignDraftSchema.parse>) {
   if (dto.targetAudienceId) await audienceDefinition(tenantId, dto.targetAudienceId);
@@ -103,49 +106,57 @@ async function prepareCampaign(id: string, tenantId: string) {
 async function deliverPrepared(id: string, tenantId: string, userId: string, prepared: Awaited<ReturnType<typeof prepareCampaign>>): Promise<CampaignSendResult> {
   const scope = campaignScope(tenantId);
   // No external HTTP inside a transaction. Keep at most five provider requests active.
-  let submittedRecipients = 0;
-  let failedRecipients = 0;
+  console.info('[Campaigns]', { event: 'submission_started', campaignId: id, tenantId, recipientCount: prepared.length });
   for (let offset = 0; offset < prepared.length; offset += 5) {
     const results = await Promise.allSettled(prepared.slice(offset, offset + 5).map(async recipient => {
       let result;
       try {
         result = await sendMail({ to: recipient.email!, subject: recipient.subject, html: recipient.html, requireDelivery: true });
-      } catch {
-        // A timeout is ambiguous: retain the snapshot and do not automatically resend.
-        failedRecipients++;
+      } catch (error) {
+        const rejected = error instanceof EmailSubmissionError && error.outcome === 'rejected';
+        const reason = rejected ? `BREVO_HTTP_${error.httpStatus}` : 'PROVIDER_SUBMISSION_UNCONFIRMED';
+        console.warn('[Campaigns]', { event: 'recipient_submission', campaignId: id, tenantId, recipientId: recipient.id, outcome: rejected ? 'rejected' : 'unconfirmed', httpStatus: error instanceof EmailSubmissionError ? error.httpStatus : undefined });
+        // Unconfirmed requests may have been accepted: preserve them for review.
         await prisma.$transaction([
-          prisma.campaignContact.update({ where: { id: recipient.id, ...scope }, data: { status: 'failed', failureReason: 'PROVIDER_SUBMISSION_UNCONFIRMED' } }),
-          prisma.emailDeliveryLog.update({ where: { id: recipient.logId, ...scope }, data: { status: 'failed', errorMessage: 'Provider submission could not be confirmed.' } }),
-          prisma.campaign.update({ where: { id, ...scope }, data: { failedCount: { increment: 1 } } }),
+          prisma.campaignContact.update({ where: { id: recipient.id, ...scope }, data: { status: rejected ? 'failed' : 'pending', failureReason: reason } }),
+          prisma.emailDeliveryLog.update({ where: { id: recipient.logId, ...scope }, data: { status: rejected ? 'failed' : 'pending', errorMessage: reason } }),
         ]);
         return;
       }
       const submitted = result.submitted;
-      if (submitted) submittedRecipients++; else failedRecipients++;
+      console.info('[Campaigns]', { event: 'recipient_submission', campaignId: id, tenantId, recipientId: recipient.id, outcome: submitted ? 'accepted' : 'not_submitted', messageId: result.messageId });
       await prisma.$transaction([
+        // Acquire the campaign lock first, matching webhook lock order.
+        prisma.campaign.update({ where: { id, ...scope }, data: submitted ? { sentCount: { increment: 1 } } : { failedCount: { increment: 1 } } }),
         prisma.campaignContact.update({ where: { id: recipient.id, ...scope }, data: { status: submitted ? 'sent' : 'failed', messageId: result.messageId, sentAt: submitted ? new Date() : null, failureReason: submitted ? null : 'TRANSPORT_NOT_SUBMITTED' } }),
         prisma.emailDeliveryLog.update({ where: { id: recipient.logId, ...scope }, data: { status: submitted ? 'sent' : 'failed', brevoMessageId: result.messageId, sentAt: submitted ? new Date() : null } }),
-        prisma.campaign.update({ where: { id, ...scope }, data: submitted ? { sentCount: { increment: 1 } } : { failedCount: { increment: 1 } } }),
       ]);
     }));
     if (results.some(result => result.status === 'rejected')) throw new AppError('Campaign delivery requires review because a result could not be saved.', 503);
   }
-  const status = !submittedRecipients ? 'FAILED' : failedRecipients ? 'PARTIALLY_SENT' : 'SENT';
-  await prisma.$transaction(async tx => {
+  const result = await prisma.$transaction(async tx => {
     // Hold the same campaign lock as webhooks while taking the final snapshot.
-    const campaign = await tx.campaign.update({ where: { id, ...scope }, data: { status, sentCount: submittedRecipients, failedCount: failedRecipients, sentAt: submittedRecipients ? new Date() : null } });
+    await tx.campaign.update({ where: { id, ...scope }, data: { engagement: { increment: 0 } } });
     const where = { ...scope, campaignId: id };
-    const [deliveredCount, bouncedCount] = await Promise.all([
+    const [submittedRecipients, failedRecipients, deliveredCount, bouncedCount] = await Promise.all([
+      tx.campaignContact.count({ where: { ...where, sentAt: { not: null } } }),
+      tx.campaignContact.count({ where: { ...where, status: 'failed', sentAt: null } }),
       tx.campaignContact.count({ where: { ...where, deliveredAt: { not: null } } }),
       tx.campaignContact.count({ where: { ...where, bouncedAt: { not: null } } }),
     ]);
+    const status = submittedRecipients + failedRecipients < prepared.length ? 'PAUSED' : !submittedRecipients ? 'FAILED' : failedRecipients ? 'PARTIALLY_SENT' : 'SENT';
+    const campaign = await tx.campaign.update({ where: { id, ...scope }, data: { status, sentCount: submittedRecipients, failedCount: failedRecipients, sentAt: submittedRecipients ? new Date() : null } });
     await tx.campaignMetrics.create({ data: { ...where, sentCount: submittedRecipients, deliveredCount, bouncedCount,
       openedCount: campaign.openedCount, clickedCount: campaign.clickedCount,
       openRate: submittedRecipients ? campaign.openedCount / submittedRecipients * 100 : 0,
-      clickRate: submittedRecipients ? campaign.clickedCount / submittedRecipients * 100 : 0 } });
+      clickRate: submittedRecipients ? campaign.clickedCount / submittedRecipients * 100 : 0,
+      deliveryRate: submittedRecipients ? deliveredCount / submittedRecipients * 100 : 0,
+      bounceRate: submittedRecipients ? bouncedCount / submittedRecipients * 100 : 0 } });
+    return campaignSendResult(campaign);
   });
-  await writeAuditLog({ tenantId, userId, action: 'campaign.submitted', entityType: 'Campaign', entityId: id, after: { submittedRecipients, failedRecipients, status } });
-  return { campaignId: id, eligibleRecipients: prepared.length, submittedRecipients, failedRecipients, status };
+  console.info('[Campaigns]', { event: 'submission_completed', tenantId, ...result });
+  await writeAuditLog({ tenantId, userId, action: 'campaign.submitted', entityType: 'Campaign', entityId: id, after: { ...result } });
+  return result;
 }
 // Service-level completion is useful to workers/tests; HTTP uses queueCampaign below.
 export async function sendCampaign(id: string, tenantId: string, userId: string): Promise<CampaignSendResult> {

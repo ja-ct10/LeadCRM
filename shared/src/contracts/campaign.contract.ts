@@ -1,4 +1,5 @@
 import { Campaign, CampaignType, CampaignStatus, CreateCampaignInput } from '../types/campaign.types';
+import type { CampaignSendResult } from './campaign-email';
 export type { Campaign, CampaignType, CampaignStatus, CreateCampaignInput };
 
 export interface UpdateCampaignInput extends Partial<CreateCampaignInput> {
@@ -13,4 +14,8 @@ export interface CampaignListResponse {
 export interface CampaignResponse {
   success: boolean;
   data: Campaign;
+}
+
+export interface CampaignDetailResponse extends CampaignResponse {
+  data: Campaign & { sendResult: CampaignSendResult };
 }

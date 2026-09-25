@@ -8,10 +8,22 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock); fetchMock.mockReset();
   vi.stubEnv('NODE_ENV', 'production'); vi.stubEnv('BREVO_API_KEY', 'xkeysib-test-secret-123456789');
   vi.stubEnv('BREVO_FROM_EMAIL', 'sender@example.com'); vi.stubEnv('BREVO_FROM_NAME', 'Test Sender');
-  fetchMock.mockResolvedValue({ ok: true, json: async () => ({ messageId: '<message-1>' }) });
+  fetchMock.mockImplementation(async () => new Response(JSON.stringify({ messageId: '<message-1>' }), { status: 201 }));
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 describe('existing Brevo transport', () => {
+  it.each(['', 'invalid JSON', 'null', '{}'])('retains HTTP 201 acceptance with an unusable tracking response (%s)', async body => {
+    fetchMock.mockResolvedValueOnce(new Response(body, { status: 201 }));
+    await expect(sendMail({ to: 'customer@example.com', subject: 'Hi', html: 'Hi' })).resolves.toEqual({ submitted: true, messageId: null });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+  it('distinguishes an HTTP rejection from a network result that needs review', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('{}', { status: 401 }));
+    await expect(sendMail({ to: 'customer@example.com', subject: 'Hi', html: 'Hi' })).rejects.toMatchObject({ outcome: 'rejected', httpStatus: 401 });
+    fetchMock.mockRejectedValueOnce(new TypeError('network failure'));
+    await expect(sendMail({ to: 'customer@example.com', subject: 'Hi', html: 'Hi' })).rejects.toMatchObject({ outcome: 'unconfirmed' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
   it('posts the configured sender, recipient, subject and sanitized body and returns messageId', async () => {
     const html = sanitizeCampaignHtml('<p onclick="bad()">Hello</p><script>bad()</script>');
     await expect(sendMail({ to: 'customer@example.com', subject: 'Hello', html })).resolves.toEqual({ messageId: '<message-1>', submitted: true });

@@ -1,11 +1,12 @@
 'use client';
 
 import { apiClient } from '@/lib/api/client';
-import type { Campaign as ApiCampaign, CreateCampaignInput, CampaignSendResult } from '@leadcrm/shared';
+import type { Campaign as ApiCampaign, CampaignDetailResponse as ApiCampaignDetailResponse, CreateCampaignInput, CampaignSendResult } from '@leadcrm/shared';
 import type { Campaign } from '@/store/types';
 
 export interface CampaignsResponse { success: boolean; data: Campaign[]; meta: { total: number; page: number; limit: number; hasMore: boolean }; }
 export interface CampaignResponse  { success: boolean; data: Campaign; }
+export interface CampaignDetailResponse { success: boolean; data: Campaign & Pick<ApiCampaignDetailResponse['data'], 'sendResult'>; }
 
 function buildQuery(params: Record<string, unknown>): string {
   const q = new URLSearchParams();
@@ -25,9 +26,9 @@ export const campaignsApi = {
     const res = await apiClient.get<{ success: boolean; data: ApiCampaign[]; meta: CampaignsResponse['meta'] }>(`/marketing/campaigns${buildQuery(query)}`);
     return { ...res, data: res.data.map(normalize) };
   },
-  get: async (id: string): Promise<CampaignResponse> => {
-    const res = await apiClient.get<{ success: boolean; data: ApiCampaign }>(`/marketing/campaigns/${id}`);
-    return { ...res, data: normalize(res.data) };
+  get: async (id: string): Promise<CampaignDetailResponse> => {
+    const res = await apiClient.get<ApiCampaignDetailResponse>(`/marketing/campaigns/${id}`);
+    return { ...res, data: { ...normalize(res.data), sendResult: res.data.sendResult } };
   },
   create: async (data: Partial<Campaign> | Partial<CreateCampaignInput>): Promise<CampaignResponse> => {
     const res = await apiClient.post<{ success: boolean; data: ApiCampaign }>('/marketing/campaigns', data);
