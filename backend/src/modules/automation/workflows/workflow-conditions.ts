@@ -8,7 +8,9 @@ export function evaluateRule(rule: WorkflowConditionRule, context: Record<string
   if (rule.operator === 'is_not_empty') return !empty;
   if (actual === undefined) return false;
   switch (rule.operator) {
-    case 'equals': return actual === rule.value;
+    case 'equals': return rule.field.endsWith('Date') && typeof actual === 'string' && typeof rule.value === 'string' ? actual.slice(0, 10) === rule.value : actual === rule.value;
+    case 'before': return typeof actual === 'string' && typeof rule.value === 'string' && actual.slice(0, 10) < rule.value;
+    case 'after': return typeof actual === 'string' && typeof rule.value === 'string' && actual.slice(0, 10) > rule.value;
     case 'not_equals': return actual !== rule.value;
     case 'contains': return typeof actual === 'string' && actual.toLowerCase().includes(String(rule.value).toLowerCase());
     case 'not_contains': return typeof actual === 'string' && !actual.toLowerCase().includes(String(rule.value).toLowerCase());
@@ -19,7 +21,7 @@ export function evaluateRule(rule: WorkflowConditionRule, context: Record<string
       if (rule.operator === 'greater_than') return actual > rule.value;
       if (rule.operator === 'less_than') return actual < rule.value;
       if (rule.operator === 'greater_than_or_equal') return actual >= rule.value;
-      return actual <= rule.value;
+      return rule.operator === 'less_than_or_equal' && actual <= rule.value;
     }
   }
 }

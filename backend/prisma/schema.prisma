@@ -1344,6 +1344,8 @@ model Template {
 // conditions and actions stored as typed JSON (never eval()'d)
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Workflow {
+  status      String   @default("DRAFT")
+  activatedById String?
   environment CrmEnvironment @default(PRODUCTION)
   id          String   @id @default(uuid())
   tenantId    String
@@ -1365,6 +1367,7 @@ model Workflow {
 }
 
 model WorkflowTriggerRecord {
+  eventId     String?
   environment CrmEnvironment @default(PRODUCTION)
   id          String   @id @default(uuid())
   tenantId    String
@@ -1379,6 +1382,7 @@ model WorkflowTriggerRecord {
   workflow Workflow               @relation(fields: [workflowId], references: [id])
   runs     WorkflowExecutionRun[]
 
+  @@unique([tenantId, environment, workflowId, eventId], map: "workflow_event_once")
   @@index([tenantId, workflowId])
   @@index([tenantId, triggeredAt])
   @@index([tenantId, environment])

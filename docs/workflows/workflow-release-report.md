@@ -1,5 +1,7 @@
 # Workflow implementation and release report
 
+Superseded for current behavior by the [2026-09-25 production report](workflow-production-report.md), including dedicated builder pages, campaign actions, reference validation, database metrics, deduplication and deployment instructions. This document retains the earlier audit history.
+
 Date: 2026-09-23. Release state: local validation in progress; production deployment has not been performed. The [implementation plan](workflow-implementation-plan.md) records release gates and rollback. The [audit](workflow-automation-audit.md) records the initial findings and selected architecture.
 
 ## Findings resolved

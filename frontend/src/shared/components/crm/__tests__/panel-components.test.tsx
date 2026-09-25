@@ -161,8 +161,8 @@ describe('InlineDealForm', () => {
       <InlineDealForm onSubmit={mockOnSubmit} />
     );
 
-    expect(screen.getByText('Pipeline *')).toBeDefined();
-    expect(screen.getByText('Stage *')).toBeDefined();
+    expect(screen.getByText((_, element) => element?.tagName === 'LABEL' && element.textContent === 'Pipeline *')).toBeDefined();
+    expect(screen.getByText((_, element) => element?.tagName === 'LABEL' && element.textContent === 'Stage *')).toBeDefined();
     expect(screen.getByText('Select pipeline')).toBeDefined();
   });
 
@@ -171,7 +171,7 @@ describe('InlineDealForm', () => {
       <InlineDealForm onSubmit={mockOnSubmit} />
     );
 
-    expect(screen.getByText('Title *')).toBeDefined();
+    expect(screen.getByText((_, element) => element?.tagName === 'LABEL' && element.textContent === 'Title *')).toBeDefined();
     expect(screen.getByPlaceholderText('Deal title')).toBeDefined();
   });
 

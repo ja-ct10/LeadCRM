@@ -1,5 +1,18 @@
 ﻿import { Request, Response, NextFunction } from 'express';
 import * as service from './workflows.service';
+export async function getOptions(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try { res.json({ success: true, data: await service.getOptions(req.user!.tenantId, req.user!.userId) }); }
+  catch (err) { next(err); }
+}
+
+export async function validateDraft(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try { res.json({ success: true, data: await service.validateDraft(req.user!.tenantId, req.user!.userId, req.body) }); }
+  catch (err) { next(err); }
+}
+export async function getExecution(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try { res.json({ success: true, data: await service.getExecution(String(req.params.executionId), String(req.params.id), req.user!.tenantId) }); }
+  catch (err) { next(err); }
+}
 
 export async function getWorkflows(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -28,7 +41,7 @@ export async function updateWorkflow(req: Request, res: Response, next: NextFunc
 
 export async function toggleWorkflow(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    res.json({ success: true, data: await service.toggleWorkflow(String(req.params.id), req.user!.tenantId, req.user!.userId) });
+    res.json({ success: true, data: await service.toggleWorkflow(String(req.params.id), req.user!.tenantId, req.user!.userId, req.body.isActive) });
   } catch (err) { next(err); }
 }
 

@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const WorkflowConditionOperatorSchema = z.enum([
   'equals', 'not_equals', 'greater_than', 'less_than', 'greater_than_or_equal',
-  'less_than_or_equal', 'contains', 'not_contains', 'starts_with', 'ends_with', 'is_empty', 'is_not_empty',
+  'less_than_or_equal', 'contains', 'not_contains', 'starts_with', 'ends_with', 'is_empty', 'is_not_empty', 'before', 'after',
 ]);
 export type WorkflowConditionOperator = z.infer<typeof WorkflowConditionOperatorSchema>;
 export const WorkflowConditionRuleSchema = z.object({
@@ -16,28 +16,44 @@ export const WorkflowConditionSchema = z.object({
 export type WorkflowCondition = z.infer<typeof WorkflowConditionSchema>;
 export type WorkflowConditionGroup = WorkflowCondition;
 export const WorkflowActionSchema = z.object({
-  type: z.enum(['create_task', 'send_email', 'assign_owner', 'update_field', 'create_notification', 'move_deal_stage']),
+  type: z.enum(['create_task', 'send_email', 'assign_owner', 'update_field', 'create_notification', 'move_deal_stage', 'send_campaign']),
   config: z.record(z.unknown()),
 }).strict();
 export type WorkflowAction = z.infer<typeof WorkflowActionSchema>;
 export type WorkflowActionType = WorkflowAction['type'];
 export type WorkflowEntity = 'lead' | 'contact' | 'deal';
 export const WorkflowDraftSchema = z.object({
-  name: z.string().trim().min(1, 'Enter a workflow name.').max(255),
-  description: z.string().max(2000).nullable().optional(),
+  name: z.string().regex(/^[^\x00-\x1f\x7f]*$/, 'Control characters are not allowed.').trim().min(1, 'Workflow name is required.').max(255),
+  description: z.string().max(2000).transform(value => value.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '').trim()).nullable().optional(),
   trigger: z.string().min(1, 'Choose a trigger.'),
   conditions: WorkflowConditionSchema.nullable().optional(),
   actions: z.array(WorkflowActionSchema).max(20),
   isActive: z.boolean().default(false),
 }).strict();
 export type WorkflowDraft = z.infer<typeof WorkflowDraftSchema>;
+export interface WorkflowOptions {
+  users: Array<{id:string;name:string}>;
+  pipelines: Array<{id:string;name:string;stages:Array<{id:string;name:string}>}>;
+  templates: Array<{id:string;name:string}>;
+  campaigns: Array<{id:string;name:string}>;
+}
 export interface Workflow extends WorkflowDraft {
   id: string; tenantId: string; environment?: 'SANDBOX' | 'PRODUCTION';
   isArchived: boolean; createdAt: string; updatedAt: string; lastRunAt?: string | null;
+  status?: 'DRAFT' | 'ACTIVE' | 'PAUSED'; totalRuns?: number; successfulRuns?: number; failedRuns?: number;
 }
 export interface WorkflowTriggerDefinition {
   type: string; label: string; entity: WorkflowEntity;
-  fields: Array<{ field: string; label: string; type: 'string' | 'number' | 'boolean' }>;
+  fields: WorkflowField[];
+}
+export interface WorkflowField {
+  field: string; label: string; type: 'string' | 'number' | 'boolean' | 'enum' | 'date' | 'user' | 'pipeline' | 'stage'; options?: string[];
+}
+export function workflowOperators(type: WorkflowField['type']): WorkflowConditionOperator[] {
+  if (type === 'number') return ['equals', 'not_equals', 'greater_than', 'less_than', 'greater_than_or_equal', 'less_than_or_equal'];
+  if (type === 'date') return ['equals', 'before', 'after'];
+  if (type !== 'string') return ['equals', 'not_equals'];
+  return ['equals', 'not_equals', 'contains', 'not_contains', 'starts_with', 'ends_with', 'is_empty', 'is_not_empty'];
 }
 export interface WorkflowActionDefinition {
   type: WorkflowActionType; label: string; description: string; entities: WorkflowEntity[];
@@ -47,14 +63,14 @@ export type TriggerDefinition = WorkflowTriggerDefinition;
 export type ActionDefinition = WorkflowActionDefinition;
 export interface WorkflowExecutionStep {
   id: string; tenantId: string; executionId: string; stepIndex: number; actionType: string;
-  status: 'success' | 'failed' | 'skipped'; output?: Record<string, unknown> | null;
+  status: 'running' | 'success' | 'failed' | 'skipped'; output?: Record<string, unknown> | null;
   error?: string | null; executedAt: string;
 }
 export interface WorkflowExecutionRun {
   id: string; tenantId: string; workflowId: string; triggerId: string; entityType: string; entityId: string;
   status: 'running' | 'completed' | 'failed' | 'skipped'; startedAt: string; completedAt?: string | null;
   errorMessage?: string | null; steps: WorkflowExecutionStep[];
-  trigger: { triggerType: string; entityType: string; triggeredAt: string };
+  trigger: { triggerType: string; entityType: string; triggeredAt: string; payload?: { recordName?: string } | null };
 }
 export interface WorkflowTestResult {
   trigger: { matched: boolean; type: string };

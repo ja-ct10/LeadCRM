@@ -1,5 +1,4 @@
-import type { Workflow, Task } from '../types';
-export const MOCK_WORKFLOWS: Workflow[] = [];
+import type { Task } from '../types';
 
 export const MOCK_TASKS: Task[] = [
   {

@@ -1,4 +1,5 @@
 import { beforeAll, beforeEach, afterAll, describe, expect, it, vi } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 import type { WorkflowDraft, WorkflowAction } from '@leadcrm/shared';
 import prisma from '../../../../config/database.config';
@@ -8,6 +9,13 @@ import { fireWorkflowTrigger } from '../workflow.engine';
 import * as workflows from '../workflows.service';
 import { sendEmail } from '../../../../integrations/gmail/gmail.service';
 import app from '../../../../app';
+import { sendMail } from '../../../../shared/services/email.service';
+import { createCampaign } from '../../../marketing/campaigns/campaigns.service';
+
+vi.mock('../../../../shared/services/email.service', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../../shared/services/email.service')>(),
+  assertBrevoConfigured: vi.fn(), sendMail: vi.fn(),
+}));
 
 vi.mock('../../../../integrations/gmail/gmail.service', async importOriginal => ({
   ...await importOriginal<typeof import('../../../../integrations/gmail/gmail.service')>(),
@@ -24,7 +32,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     name: 'Acceptance workflow', trigger: 'lead.created', isActive: true, actions, ...extras,
   }));
   const fire = (entity = 'lead', record = lead, trigger = `${entity}.created`) => scope(() => fireWorkflowTrigger({ tenantId, actorId: actor.id,
-    entityType: entity, entityId: record.id, triggerType: trigger, context: {} }));
+    eventId: randomUUID(), entityType: entity, entityId: record.id, triggerType: trigger, context: {} }));
   const runs = (workflowId: string) => scope(() => workflows.getWorkflowExecutions(workflowId, tenantId));
   async function call(path: string, method = 'GET', body?: unknown, auth = token) {
     const response = await fetch(`${base}${path}`, { method, headers: { 'Content-Type': 'application/json', Cookie: `leadcrm_token=${auth}` },
@@ -63,6 +71,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
   beforeEach(async () => {
     await prisma.workflow.updateMany({ where: { tenantId }, data: { isActive: false } });
     vi.mocked(sendEmail).mockReset().mockResolvedValue({ messageId: `provider-message-${tenantId}`, threadId: `provider-thread-${tenantId}` });
+    vi.mocked(sendMail).mockReset().mockImplementation(async () => ({ messageId: randomUUID(), submitted: true }));
   });
   afterAll(async () => { if (server) await new Promise<void>(resolve => server.close(() => resolve())); await prisma.$disconnect(); });
 
@@ -122,7 +131,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
   it('projects an earlier owner assignment during dry-run without changing the record', async () => {
     const unassigned = await scope(() => prisma.lead.create({ data: { tenantId, firstName: 'Unassigned', lastName: 'Sample', productInterest: [] } }));
     const workflow = await create([{ type: 'assign_owner', config: { userId: owner.id } }, { type: 'create_task', config: { title: 'Projected owner' } }], {
-      isActive: false, conditions: { operator: 'AND', conditions: [{ field: 'lead.assignedUserId', operator: 'is_empty', value: null }] },
+      isActive: false, conditions: { operator: 'AND', conditions: [{ field: 'lead.source', operator: 'is_empty', value: null }] },
     });
     const result = await scope(() => workflows.testWorkflow(workflow.id, tenantId, unassigned.id));
     expect(result.valid).toBe(true); expect(result.conditions.matched).toBe(true);
@@ -190,4 +199,66 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     expect((await call(`/automation/workflows/${sandbox.id}/test`, 'POST', { entityId: lead.id })).status).toBe(404);
     await expect(fireWorkflowTrigger({ tenantId, actorId: actor.id, entityType: 'lead', entityId: lead.id, triggerType: 'lead.created', context: {} })).rejects.toThrow(/environment/);
   });
+  it('persists draft, update, activation, pause and archive through registered API routes', async () => {
+    const created = await call('/automation/workflows', 'POST', { name: 'Persistent draft', trigger: 'lead.created', actions: [] });
+    expect(created.status).toBe(201); const id = created.body.data.id;
+    expect((await call(`/automation/workflows/${id}`)).body.data.status).toBe('DRAFT');
+    expect((await call(`/automation/workflows/${id}`, 'PUT', { name: 'Saved edit', actions: [{ type: 'create_task', config: { title: 'Follow up', assignedUserId: owner.id } }] })).status).toBe(200);
+    for (let index = 0; index < 2; index++) expect((await call(`/automation/workflows/${id}/toggle`, 'PATCH', { isActive: true })).body.data.isActive).toBe(true);
+    const secondSession = (await issueAuthSession(actor)).token;
+    expect((await call(`/automation/workflows/${id}`, 'GET', undefined, secondSession)).body.data.name).toBe('Saved edit');
+    expect((await call(`/automation/workflows/${id}/toggle`, 'PATCH', { isActive: false })).body.data.status).toBe('PAUSED');
+    expect((await call(`/automation/workflows/${id}/archive`, 'PATCH')).status).toBe(200);
+    expect((await call(`/automation/workflows/${id}`)).body.data.isArchived).toBe(true);
+  });
+  it('claims concurrent duplicate events once and returns persisted metrics and execution detail', async () => {
+    const workflow = await create([{ type: 'create_task', config: { title: 'Exactly one follow-up', assignedUserId: owner.id } }]);
+    const event = { tenantId, actorId: actor.id, entityType: 'lead', entityId: lead.id, triggerType: 'lead.created', eventId: randomUUID(), context: {} };
+    await Promise.all(Array.from({length: 5}, () => scope(() => fireWorkflowTrigger(event))));
+    const history = await runs(workflow.id); expect(history).toHaveLength(1);
+    expect(await prisma.task.count({ where: { tenantId, title: 'Exactly one follow-up' } })).toBe(1);
+    const listed = (await call('/automation/workflows')).body.data.find((row: any) => row.id === workflow.id);
+    expect(listed.totalRuns).toBe(1); expect(listed.successfulRuns).toBe(1); expect(listed.failedRuns).toBe(0);
+    expect((await call(`/automation/workflows/${workflow.id}/executions/${history[0].id}`)).body.data.steps[0].status).toBe('success');
+  });
+  it('rejects foreign references, unexpected settings and protected fields even in drafts', async () => {
+    for (const action of [
+      { type: 'assign_owner', config: { userId: outsider.id } },
+      { type: 'update_field', config: { field: 'tenantId', value: otherTenantId } },
+      { type: 'create_task', config: { title: 'Task', surprise: 'untrusted' } },
+      { type: 'send_email', config: { templateId: randomUUID() } },
+    ]) expect((await call('/automation/workflows', 'POST', { name: 'Unsafe draft', trigger: 'lead.created', actions: [action] })).status).toBeGreaterThanOrEqual(400);
+    expect((await call('/automation/workflows', 'POST', { name: 'Unsafe condition', trigger: 'lead.created', actions: [], conditions: { operator: 'AND', conditions: [{ field: 'password', operator: 'equals', value: 'secret' }] } })).status).toBe(400);
+    expect((await call('/automation/workflows', 'POST', { name: 'Foreign condition', trigger: 'lead.created', actions: [], conditions: { operator: 'AND', conditions: [{ field: 'lead.assignedUserId', operator: 'equals', value: outsider.id }] } })).status).toBe(400);
+  });
+  it('rejects header injection and removes unsafe HTML before the existing email transport', async () => {
+    const config = { senderUserId: actor.id, subject: 'Hello\r\nBcc: attacker@example.test', body: '<p>Welcome</p>' };
+    await expect(create([{ type: 'send_email', config }])).rejects.toThrow(/subject/i);
+    vi.mocked(sendEmail).mockResolvedValueOnce({ messageId: randomUUID(), threadId: randomUUID() });
+    const workflow = await create([{ type: 'send_email', config: { ...config, subject: 'Welcome', body: '<p onclick="evil()">Safe</p><script>evil()</script><iframe src="https://example.test"></iframe><a href="javascript:evil()">Link</a>' } }]);
+    await fire(); expect((await runs(workflow.id))[0].status).toBe('completed');
+    expect(vi.mocked(sendEmail).mock.calls[0][4]).toBe('<p>Safe</p><a>Link</a>');
+  });
+  it('rechecks the activating user permissions before any side effect', async () => {
+    const workflow = await create([{ type: 'create_task', config: { title: 'Revoked author task', assignedUserId: owner.id } }]);
+    await prisma.user.update({ where: { id: actor.id }, data: { role: 'Workflow Viewer' } });
+    try { await fire(); expect((await runs(workflow.id))[0].status).toBe('failed');
+      expect(await prisma.task.count({ where: { tenantId, title: 'Revoked author task' } })).toBe(0);
+    } finally { await prisma.user.update({ where: { id: actor.id }, data: { role: 'Client Admin' } }); }
+  });
+  it('sends an existing campaign through campaign audience and delivery services only once', async () => {
+    const previousSender = process.env.BREVO_FROM_EMAIL; process.env.BREVO_FROM_EMAIL = 'workflow-tests@example.test';
+    try {
+      const campaign = await scope(() => createCampaign(tenantId, actor.id, { name: 'Workflow campaign', type: 'EMAIL', subject: 'Hello {{first_name}}', body: '<p>Welcome</p>', audienceSource: 'LEADS' }));
+      const workflow = await create([{ type: 'send_campaign', config: { campaignId: campaign.id } }]);
+      await fire(); expect((await runs(workflow.id))[0].status).toBe('completed');
+      expect(sendMail).toHaveBeenCalled(); expect(sendEmail).not.toHaveBeenCalled();
+      const count = vi.mocked(sendMail).mock.calls.length;
+      await fire(); expect((await runs(workflow.id))[0].status).toBe('failed');
+      expect(sendMail).toHaveBeenCalledTimes(count);
+      expect((await prisma.campaign.findUniqueOrThrow({ where: { id: campaign.id } })).status).toBe('SENT');
+      expect((await call(`/automation/workflows/${workflow.id}/toggle`, 'PATCH', { isActive: false })).body.data.status).toBe('PAUSED');
+    } finally { if (previousSender === undefined) delete process.env.BREVO_FROM_EMAIL; else process.env.BREVO_FROM_EMAIL = previousSender; }
+  });
+
 });

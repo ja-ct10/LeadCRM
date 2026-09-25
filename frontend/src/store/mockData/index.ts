@@ -7,7 +7,7 @@
  * Domain files:
  *   contacts.mock.ts      — MOCK_LEADS (contacts / leads)
  *   deals.mock.ts         — MOCK_PIPELINES, MOCK_DEALS
- *   workflows.mock.ts     — MOCK_WORKFLOWS, MOCK_WORKFLOW_EXECUTIONS, MOCK_TASKS
+ *   workflows.mock.ts     — MOCK_TASKS
  *   campaigns.mock.ts     — MOCK_CAMPAIGNS, MOCK_TEMPLATES
  *   users.mock.ts         — MOCK_TENANTS, MOCK_USERS, MOCK_PERMISSIONS, MOCK_ROLES
  */
@@ -17,7 +17,6 @@ export { MOCK_LEADS } from './contacts.mock';
 export { MOCK_PIPELINES, MOCK_DEALS } from './deals.mock';
 
 export {
-  MOCK_WORKFLOWS,
   MOCK_TASKS,
 } from './workflows.mock';
 

@@ -1,4 +1,4 @@
-import type { WorkflowAction } from '@leadcrm/shared';
+import { EmailSubjectSchema, type WorkflowAction } from '@leadcrm/shared';
 import { environmentContext } from '../../../core/environment/environment-context';
 import { AppError } from '../../../shared/errors/app-error';
 import { ValidationError } from '../../../shared/errors/http-error';
@@ -12,6 +12,9 @@ import { moveDealStage, updateDeal } from '../../crm/deals/deals.service';
 import { updateContact as updateLead } from '../../crm/contacts/contacts.service';
 import { updateContact as updateClientProfile } from '../../crm/contacts-v2/contacts-v2.service';
 
+import { sendCampaign } from '../../marketing/campaigns/campaigns.service';
+import { sanitizeCampaignHtml } from '../../marketing/campaigns/campaign-content';
+
 type ActionResult = { success: boolean; output?: Record<string, unknown>; error?: string };
 export function safeWorkflowError(error: unknown): string {
   return error instanceof AppError ? error.message : 'The action could not complete. Check the record and integration, then try again.';
@@ -23,7 +26,7 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
     const config = action.config;
     const entityId = String(context[`${entity}.id`]);
     if (action.type === 'create_task') {
-      const task = await createTask(tenantId, actorId, { title: String(config.title), description: config.description ? String(config.description) : undefined,
+      const task = await createTask(tenantId, actorId, { title: render(String(config.title).trim(), context, entity, false), description: config.description ? render(String(config.description).trim(), context, entity, false) : undefined,
         priority: (config.priority || 'Medium') as 'Low' | 'Medium' | 'High', status: 'pending',
         dueDate: new Date(Date.now() + (typeof config.dueDaysFromNow === 'number' ? config.dueDaysFromNow : 3) * 86400000).toISOString(),
         assignedUserId: actionUser(config, 'assignedUserId', entity, context),
@@ -32,8 +35,13 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
     }
     if (action.type === 'create_notification') {
       await createNotification({ tenantId, userId: actionUser(config, 'userId', entity, context), type: 'workflow_triggered',
-        title: String(config.title), body: config.body ? String(config.body) : undefined, entityType: entity, entityId });
+        title: render(String(config.title).trim(), context, entity, false), body: config.body ? render(String(config.body).trim(), context, entity, false) : undefined, entityType: entity, entityId });
       return { success: true, output: { notified: true } };
+    }
+    if (action.type === 'send_campaign') {
+      const result = await sendCampaign(String(config.campaignId), tenantId, actorId);
+      return { success: result.status === 'SENT', output: { ...result },
+        ...(result.status !== 'SENT' ? { error: 'Campaign submission was incomplete. Review campaign delivery history before taking further action.' } : {}) };
     }
     if (action.type === 'send_email') return { success: true, output: await deliverEmail(action, context, tenantId) };
     if (action.type === 'move_deal_stage') {
@@ -54,24 +62,24 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
     return { success: true, output: { entityId, updatedFields: Object.keys(update) } };
   } catch (error) { return { success: false, error: safeWorkflowError(error) }; }
 }
-function render(content: string, context: Record<string, unknown>, entity: string): string {
+function render(content: string, context: Record<string, unknown>, entity: string, html = true): string {
   const values: Record<string, unknown> = { first_name: context[`${entity}.firstName`], last_name: context[`${entity}.lastName`],
     email: context[`${entity}.email`], company: context[`${entity}.company`] ?? context[`${entity}.companyName`] };
-  return content.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_, key: string) => String(values[key] ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]!)));
+  return content.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_, key: string) => (html ? String(values[key] ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]!)) : String(values[key] ?? '').replace(/[\x00-\x1f\x7f]/g, ' ')));
 }
 async function deliverEmail(action: WorkflowAction, context: Record<string, unknown>, tenantId: string): Promise<Record<string, unknown>> {
   if (environmentContext.getStore()?.environment !== 'PRODUCTION') throw new ValidationError('External workflow email is disabled in Sandbox. Use Test workflow to validate safely.');
   const entity = actionEntity(context);
   const senderId = String(action.config.senderUserId);
-  const [template, sender] = await Promise.all([repo.findTemplate(String(action.config.templateId), tenantId), repo.findSender(senderId, tenantId)]);
-  if (!template || !sender) throw new ValidationError('Reconnect the sender and choose an available email template.');
+  const [template, sender] = await Promise.all([action.config.templateId ? repo.findTemplate(String(action.config.templateId), tenantId) : Promise.resolve(null), repo.findSender(senderId, tenantId)]);
+  if ((action.config.templateId && !template) || !sender) throw new ValidationError('Reconnect the sender and choose an available email template.');
   const recipient = String(context[`${entity}.email`]);
-  const subject = render(template.subject!, context, entity);
+  const subject = EmailSubjectSchema.parse(render(String(action.config.subject || template?.subject || ''), context, entity, false));
   const log = await repo.createDelivery({ tenantId, fromEmail: sender.email, toEmail: recipient, subject,
     ...(entity === 'lead' ? { leadId: String(context['lead.id']) } : { contactId: String(context['contact.id']) }) });
   let sent: Awaited<ReturnType<typeof sendEmail>>;
   try {
-    sent = await sendEmail(tenantId, senderId, recipient, subject, render(template.content, context, entity));
+    sent = await sendEmail(tenantId, senderId, recipient, subject, sanitizeCampaignHtml(render(String(action.config.body || template?.content || ''), context, entity)));
   } catch {
     await repo.finishDelivery(log.id, tenantId, { status: 'failed', errorMessage: 'Gmail delivery failed. Check the sender connection.' });
     throw new ValidationError('Gmail delivery failed. Check the sender connection.');

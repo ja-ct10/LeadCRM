@@ -1,12 +1,18 @@
 import type { WorkflowEntity, WorkflowTriggerDefinition } from './workflow.contracts';
 
 function fields(entity: WorkflowEntity): WorkflowTriggerDefinition['fields'] {
-  const definitions: Array<[string, string, 'string' | 'number' | 'boolean']> = entity === 'deal'
-    ? [['title', 'Deal title', 'string'], ['value', 'Deal value', 'number'], ['stageId', 'Stage', 'string'],
-       ['pipelineId', 'Pipeline', 'string'], ['priority', 'Priority', 'string']]
-    : [['status', 'Relationship status (read only)', 'string'], ['source', 'Source', 'string'],
-       ['email', 'Email', 'string'], ['firstName', 'First name', 'string']];
-  return [...definitions, ['assignedUserId', 'Assigned user', 'string'] as const].map(([field, label, type]) => ({ field: `${entity}.${field}`, label, type }));
+  const definitions: WorkflowTriggerDefinition['fields'] = entity === 'deal'
+    ? [{ field: 'title', label: 'Deal title', type: 'string' }, { field: 'value', label: 'Deal value', type: 'number' },
+       { field: 'stageId', label: 'Stage', type: 'stage' }, { field: 'pipelineId', label: 'Pipeline', type: 'pipeline' },
+       { field: 'priority', label: 'Priority', type: 'enum', options: ['LOW', 'MEDIUM', 'HIGH'] },
+       { field: 'expectedCloseDate', label: 'Expected close date', type: 'date' }]
+    : [{ field: 'status', label: entity === 'lead' ? 'Lead status' : 'Relationship status', type: 'enum',
+         options: entity === 'lead' ? ['Inquiry', 'Hot', 'Warm', 'Cold', 'Closed', 'Cancelled', 'Qualified', 'Converted', 'Archived', 'HOT', 'WARM', 'COLD'] : ['HOT', 'WARM', 'COLD', 'CANCELLED', 'CLOSED'] },
+       { field: 'source', label: 'Source', type: 'string' }, { field: 'email', label: 'Email', type: 'string' },
+       { field: 'firstName', label: 'First name', type: 'string' },
+       { field: entity === 'lead' ? 'companyName' : 'company', label: 'Company', type: 'string' }];
+  definitions.push({ field: 'assignedUserId', label: 'Assigned agent', type: 'user' });
+  return definitions.map(field => ({ ...field, field: `${entity}.${field.field}` }));
 }
 
 /** Every entry has a domain emitter; no timers or engagement events are advertised. */
@@ -24,6 +30,7 @@ export function findTrigger(type: string): WorkflowTriggerDefinition | undefined
 import type { ActionDefinition } from './workflow.contracts';
 export function getAvailableActions(): ActionDefinition[] {
   return [
+    { type: 'send_campaign', label: 'Send campaign', description: 'Send an existing draft email campaign once through its saved audience and delivery service.', entities: ['lead', 'contact', 'deal'], configSchema: { campaignId: { type: 'campaign', label: 'Email campaign', required: true } } },
     { type: 'create_task', label: 'Create task', description: 'Create a linked follow-up task immediately.', entities: ['lead', 'contact', 'deal'], configSchema: {
       title: { type: 'string', label: 'Task title', required: true }, description: { type: 'string', label: 'Description', required: false },
       assignedUserId: { type: 'user', label: 'Assign to (defaults to record owner)', required: false },
@@ -31,7 +38,8 @@ export function getAvailableActions(): ActionDefinition[] {
       priority: { type: 'select', label: 'Priority', required: false, options: ['Low', 'Medium', 'High'] },
     } },
     { type: 'send_email', label: 'Send email', description: 'Send a template through a connected Gmail account. External sending is blocked in Sandbox.', entities: ['lead', 'contact'], configSchema: {
-      templateId: { type: 'template', label: 'Email template', required: true }, senderUserId: { type: 'user', label: 'Connected Gmail sender', required: true },
+      templateId: { type: 'template', label: 'Email template (optional with subject and message)', required: false },
+      subject: { type: 'string', label: 'Subject (overrides template)', required: false }, body: { type: 'string', label: 'Message (overrides template)', required: false }, senderUserId: { type: 'user', label: 'Connected Gmail sender', required: true },
     } },
     { type: 'create_notification', label: 'Send notification', description: 'Notify a workspace user.', entities: ['lead', 'contact', 'deal'], configSchema: {
       title: { type: 'string', label: 'Title', required: true }, body: { type: 'string', label: 'Message', required: false },

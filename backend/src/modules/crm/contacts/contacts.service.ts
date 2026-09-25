@@ -86,6 +86,7 @@ export async function updateContact(
       actorId: userId,
       lead: {
         id:             id,
+        updatedAt:      (contact as Record<string, unknown>).updatedAt as Date,
         status:         dto.status,
         score:          Number((contact as Record<string, unknown>).score ?? 0),
         assignedUserId: (contact as Record<string, unknown>).assignedUserId as string | null ?? null,

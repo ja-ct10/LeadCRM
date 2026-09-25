@@ -1,9 +1,11 @@
 import { z } from 'zod';
-import type { WorkflowAction, WorkflowEntity } from '@leadcrm/shared';
+import { EmailSubjectSchema, CampaignSendSchema, type WorkflowAction, type WorkflowEntity } from '@leadcrm/shared';
+import { audienceDefinition } from '../../marketing/campaigns/audiences.service';
 import { ValidationError, NotFoundError } from '../../../shared/errors/http-error';
 import { getAvailableActions } from './actions.service';
 import * as repo from './actions.repository';
 import { validateDealStageMove } from '../../crm/deals/deals.service';
+import { sanitizeCampaignHtml } from '../../marketing/campaigns/campaign-content';
 
 export function actionEntity(context: Record<string, unknown>): WorkflowEntity {
   const matches = (['lead', 'contact', 'deal'] as const).filter(entity => typeof context[`${entity}.id`] === 'string');
@@ -13,7 +15,7 @@ export function actionEntity(context: Record<string, unknown>): WorkflowEntity {
 export function actionUser(config: Record<string, unknown>, key: string, entity: WorkflowEntity, context?: Record<string, unknown>): string {
   return String(config[key] || context?.[`${entity}.assignedUserId`] || '');
 }
-export async function validateAction(action: WorkflowAction, entity: WorkflowEntity, tenantId: string, context?: Record<string, unknown>): Promise<void> {
+export async function validateAction(action: WorkflowAction, entity: WorkflowEntity, tenantId: string, context?: Record<string, unknown>, incomplete = false): Promise<void> {
   const definition = getAvailableActions().find(entry => entry.type === action.type);
   if (!definition || !definition.entities.includes(entity)) throw new ValidationError(`Action ${action.type} is not supported for ${entity}.`);
   for (const key of Object.keys(action.config)) {
@@ -21,17 +23,27 @@ export async function validateAction(action: WorkflowAction, entity: WorkflowEnt
   }
   for (const [key, field] of Object.entries(definition.configSchema)) {
     const value = action.config[key];
-    if (field.required && (typeof value !== 'string' || !value.trim())) throw new ValidationError(`${field.label} is required.`);
+    if (!incomplete && field.required && (typeof value !== 'string' || !value.trim())) throw new ValidationError(`${field.label} is required.`);
     if (value === undefined || value === '') continue;
     if (field.type === 'number') {
       if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 365) throw new ValidationError(`${field.label} must be a whole number from 0 to 365.`);
     } else if (typeof value !== 'string' || value.length > 10000) throw new ValidationError(`${field.label} must be text.`);
+    if (typeof value === 'string' && /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value)) throw new ValidationError(`${field.label} contains control characters.`);
+    if (key === 'title' && (String(value).length > 255 || /[\r\n\t]/.test(String(value)))) throw new ValidationError('Title must be at most 255 characters without control characters.');
+    if (['user', 'stage', 'template', 'campaign'].includes(field.type) && !z.string().uuid().safeParse(value).success) throw new ValidationError(`Choose a valid ${field.label}.`);
+    if (key === 'subject' && !EmailSubjectSchema.safeParse(value).success) throw new ValidationError('Email subject must not contain line breaks or control characters.');
+    if (['title', 'description', 'body'].includes(key)) validateVariables(String(value));
     if (field.options && !field.options.includes(String(value))) throw new ValidationError(`Choose a supported ${field.label.toLowerCase()}.`);
     if (field.type === 'user' && !await repo.findUser(String(value), tenantId)) throw new NotFoundError('Active workspace user');
+    if (field.type === 'stage' && !await repo.findStage(String(value), tenantId)) throw new NotFoundError('Stage');
+    if (field.type === 'template' && !await repo.findTemplate(String(value), tenantId)) throw new NotFoundError('Email template');
+    if (field.type === 'campaign' && !await repo.findCampaign(String(value), tenantId)) throw new NotFoundError('Campaign');
   }
-  if (action.type === 'update_field' && action.config.field !== (entity === 'contact' ? 'notes' : 'description')) {
+  if (action.type === 'update_field' && (!incomplete || action.config.field) && action.config.field !== (entity === 'contact' ? 'notes' : 'description')) {
     throw new ValidationError('Relationship Status and other protected fields cannot be automated. Choose notes for Client Profiles or description for Leads/Deals.');
   }
+  if (incomplete && Object.entries(definition.configSchema).some(([key, field]) => field.required && !action.config[key])) return;
+  if (incomplete && action.type === 'send_email' && !action.config.templateId && (!action.config.subject || !action.config.body)) return;
   if (context && ['create_task', 'create_notification'].includes(action.type)) {
     const key = action.type === 'create_task' ? 'assignedUserId' : 'userId';
     const userId = actionUser(action.config, key, entity, context);
@@ -47,15 +59,23 @@ export async function validateAction(action: WorkflowAction, entity: WorkflowEnt
     }
   }
   if (action.type === 'send_email') await validateEmail(action, entity, tenantId, context);
+  if (action.type === 'send_campaign') {
+    const campaign = await repo.findCampaign(String(action.config.campaignId), tenantId);
+    if (!campaign) throw new NotFoundError('Campaign');
+    if (campaign.status !== 'DRAFT' || campaign.type !== 'EMAIL') throw new ValidationError('Choose an unsent draft email campaign.');
+    if (!CampaignSendSchema.safeParse({ name: campaign.name, type: campaign.type, subject: campaign.subject ?? '', body: campaign.body ?? '', targetAudienceId: campaign.targetAudienceId, audienceSource: campaign.audienceSource }).success) throw new ValidationError('Complete the campaign subject, message and audience first.');
+    await audienceDefinition(tenantId, campaign.targetAudienceId, campaign.audienceSource);
+    if (campaign.emailTemplateId && !await repo.findTemplate(campaign.emailTemplateId, tenantId)) throw new NotFoundError('Campaign template');
+  }
 }
 export async function validateEmail(action: WorkflowAction, entity: WorkflowEntity, tenantId: string, context?: Record<string, unknown>): Promise<void> {
-  const template = await repo.findTemplate(String(action.config.templateId), tenantId);
-  if (!template) throw new NotFoundError('Email template');
-  if (!template.subject?.trim() || !template.content.trim()) throw new ValidationError('Choose an email template with a subject and content.');
-  // Unknown placeholders must not reach a customer; supported fields are escaped when rendered.
-  for (const match of `${template.subject} ${template.content}`.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)) {
-    if (!['first_name', 'last_name', 'email', 'company'].includes(match[1])) throw new ValidationError(`Unsupported template field: ${match[1]}.`);
-  }
+  const template = action.config.templateId ? await repo.findTemplate(String(action.config.templateId), tenantId) : null;
+  if (action.config.templateId && !template) throw new NotFoundError('Email template');
+  const subject = String(action.config.subject || template?.subject || '');
+  const content = String(action.config.body || template?.content || '');
+  if (!subject.trim() || !sanitizeCampaignHtml(content).trim()) throw new ValidationError('Choose a complete template or enter an email subject and message.');
+  if (!EmailSubjectSchema.safeParse(subject).success) throw new ValidationError('Email subject must be at most 200 characters without line breaks or control characters.');
+  validateVariables(`${subject} ${content}`);
   if (!await repo.findSender(String(action.config.senderUserId), tenantId)) throw new ValidationError('Connect the selected sender to Gmail before activating.');
   if (context) {
     if (!z.string().email().safeParse(context[`${entity}.email`]).success) throw new ValidationError('No valid email address found for the triggering record.');
@@ -63,3 +83,9 @@ export async function validateEmail(action: WorkflowAction, entity: WorkflowEnti
   }
 }
 
+
+function validateVariables(value: string) {
+  for (const match of value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)) {
+    if (!['first_name', 'last_name', 'email', 'company'].includes(match[1])) throw new ValidationError('Use only the supported message variables.');
+  }
+}

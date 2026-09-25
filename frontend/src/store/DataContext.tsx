@@ -34,7 +34,6 @@ import {
   MOCK_LEADS,
   MOCK_DEALS,
   MOCK_PIPELINES,
-  MOCK_WORKFLOWS,
   MOCK_CAMPAIGNS,
   MOCK_USERS,
   MOCK_TENANTS,
@@ -309,7 +308,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [workflowsLoading, setWorkflowsLoading] = useState(!USE_MOCK_DATA);
   const [workflowsError, setWorkflowsError] = useState('');
   const refreshWorkflows = useCallback(async () => {
-    if (USE_MOCK_DATA) return;
     const identity = dataIdentityRef.current;
     setWorkflowsLoading(true); setWorkflowsError('');
     try {
@@ -577,7 +575,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     });
 
     const p = safeParse("leadcrm_pipelines", MOCK_PIPELINES);
-    const w = safeParse("leadcrm_workflows_v2", MOCK_WORKFLOWS);
     const c: Campaign[] = []; // Campaign business data is fetched through backend APIs.
     const tpl: Template[] = [];
     const u = safeParse("leadcrm_users", MOCK_USERS);
@@ -626,7 +623,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setContacts(l);
       setDeals(d);
       setPipelines(p);
-      setWorkflows(w);
       setCampaigns(c);
       setTemplates(tpl);
       setUsers(u);
@@ -663,7 +659,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setContacts(filteredLeads);
       setDeals(filteredDeals);
       setPipelines(p.filter((x: any) => x.tenantId === tenant.id));
-      setWorkflows(w.filter((x: any) => x.tenantId === tenant.id));
       setCampaigns(c.filter((x: any) => x.tenantId === tenant.id));
       setTemplates(tpl.filter((x: any) => x.tenantId === tenant.id));
       setUsers(u.filter((x: any) => x.tenantId === tenant.id));
@@ -1542,37 +1537,26 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const addWorkflow = async (workflowData: WorkflowDraft) => {
     if (!tenant) throw new Error('Sign in to a workspace first.');
-    const draft = WorkflowDraftSchema.parse(workflowData);
-    if (!USE_MOCK_DATA) {
-      const response = await workflowsApi.create(draft);
-      setWorkflows(previous => [response.data, ...previous]);
-      return;
-    }
-    const now = new Date().toISOString();
-    const workflow: Workflow = { ...draft, id: uuid(), tenantId: tenant.id, isArchived: false, createdAt: now, updatedAt: now };
-    saveAndSet('leadcrm_workflows_v2', [...workflows, workflow], setWorkflows);
+    const identity = dataIdentityRef.current;
+    const response = await workflowsApi.create(WorkflowDraftSchema.parse(workflowData));
+    if (identity === dataIdentityRef.current) setWorkflows(previous => [response.data, ...previous]);
   };
   const updateWorkflow = async (id: string, updates: Partial<WorkflowDraft>) => {
-    if (!USE_MOCK_DATA) {
-      const response = await workflowsApi.update(id, updates);
-      setWorkflows(previous => previous.map(workflow => workflow.id === id ? response.data : workflow));
-      return;
-    }
-    saveAndSet('leadcrm_workflows_v2', workflows.map(workflow => workflow.id === id ? { ...workflow, ...updates } : workflow), setWorkflows);
+    const identity = dataIdentityRef.current;
+    const response = await workflowsApi.update(id, updates);
+    if (identity === dataIdentityRef.current) setWorkflows(previous => previous.map(workflow => workflow.id === id ? { ...workflow, ...response.data } : workflow));
   };
   const toggleWorkflow = async (id: string) => {
-    if (!USE_MOCK_DATA) {
-      const response = await workflowsApi.toggle(id);
-      setWorkflows(previous => previous.map(workflow => workflow.id === id ? response.data : workflow));
-      return;
-    }
-    saveAndSet('leadcrm_workflows_v2', workflows.map(workflow => workflow.id === id ? { ...workflow, isActive: !workflow.isActive } : workflow), setWorkflows);
+    const identity = dataIdentityRef.current;
+    const current = workflows.find(workflow => workflow.id === id);
+    if (!current) throw new Error('Reload the workflow and try again.');
+    const response = await workflowsApi.toggle(id, !current.isActive);
+    if (identity === dataIdentityRef.current) setWorkflows(previous => previous.map(workflow => workflow.id === id ? { ...workflow, ...response.data } : workflow));
   };
   const deleteWorkflow = async (id: string) => {
-    if (!USE_MOCK_DATA) await workflowsApi.archive(id);
-    const updated = workflows.map(workflow => workflow.id === id ? { ...workflow, isArchived: true, isActive: false } : workflow);
-    if (USE_MOCK_DATA) saveAndSet('leadcrm_workflows_v2', updated, setWorkflows);
-    else setWorkflows(updated);
+    const identity = dataIdentityRef.current;
+    await workflowsApi.archive(id);
+    if (identity === dataIdentityRef.current) setWorkflows(previous => previous.filter(workflow => workflow.id !== id));
   };
   const addCampaign: DataContextType['addCampaign'] = async (data) => {
     if (!tenant) throw new Error('Select a workspace first.');
@@ -1848,16 +1832,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         );
         break;
       case "Workflow":
-        saveAndSet(
-          "leadcrm_workflows_v2",
-          workflows.map((w) => (w.id === id ? { ...w, isArchived: false } : w)),
-          setWorkflows,
-        );
-        addAuditLog(
-          "Workflow Restored",
-          `Restored workflow automation rule (ID: ${id}).`,
-        );
-        break;
+        throw new Error('Archived workflows preserve history and cannot be restored here.');
+
       case "Campaign":
       case "Template":
         toast.error('Campaign and template restoration is not available. Create a new draft through Campaigns.');
@@ -2125,7 +2101,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("leadcrm_leads", JSON.stringify(MOCK_LEADS));
     localStorage.setItem("leadcrm_deals", JSON.stringify(MOCK_DEALS));
     localStorage.setItem("leadcrm_pipelines", JSON.stringify(MOCK_PIPELINES));
-    localStorage.setItem("leadcrm_workflows_v2", JSON.stringify(MOCK_WORKFLOWS));
+
     localStorage.setItem("leadcrm_users", JSON.stringify(MOCK_USERS));
     localStorage.setItem("leadcrm_tenants", JSON.stringify(MOCK_TENANTS));
     localStorage.setItem("leadcrm_tasks", JSON.stringify(MOCK_TASKS));

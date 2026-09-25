@@ -22,7 +22,6 @@ export {
 } from './mockData/deals.mock';
 
 export {
-  MOCK_WORKFLOWS,
   MOCK_TASKS,
 } from './mockData/workflows.mock';
 

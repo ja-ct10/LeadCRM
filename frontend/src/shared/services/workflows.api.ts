@@ -1,11 +1,12 @@
 'use client';
 import { apiClient } from '@/lib/api/client';
-import type { Workflow, WorkflowDraft, WorkflowExecutionRun, WorkflowTestResult, ActionDefinition, TriggerDefinition } from '@leadcrm/shared';
+import type { Workflow, WorkflowDraft, WorkflowExecutionRun, WorkflowTestResult, ActionDefinition, TriggerDefinition, WorkflowOptions } from '@leadcrm/shared';
 export type { ActionDefinition, TriggerDefinition } from '@leadcrm/shared';
 export interface WorkflowsResponse { success: boolean; data: Workflow[]; meta: { total: number; page: number; limit: number; hasMore: boolean }; }
 export interface WorkflowResponse { success: boolean; data: Workflow; }
 export interface WorkflowExecutionsResponse { success: boolean; data: WorkflowExecutionRun[]; }
 export const workflowsApi = {
+  options: () => apiClient.get<{success:boolean;data:WorkflowOptions}>('/automation/workflow-options'),
   listAll: async (): Promise<Workflow[]> => {
     const rows: Workflow[] = [];
     for (let page = 1; ; page++) {
@@ -17,8 +18,10 @@ export const workflowsApi = {
   list: (query: Record<string, unknown> = {}) => apiClient.get<WorkflowsResponse>(`/automation/workflows?${new URLSearchParams(Object.entries(query).map(([key,value]) => [key,String(value)]))}`),
   get: (id: string) => apiClient.get<WorkflowResponse>(`/automation/workflows/${id}`),
   create: (draft: WorkflowDraft) => apiClient.post<WorkflowResponse>('/automation/workflows', draft),
+  validate: (draft: WorkflowDraft) => apiClient.post<{success:boolean;data:{valid:boolean;message:string}}>('/automation/workflows/validate', draft),
+  getExecution: (id: string, executionId: string) => apiClient.get<{success:boolean;data:WorkflowExecutionRun}>(`/automation/workflows/${id}/executions/${executionId}`),
   update: (id: string, draft: Partial<WorkflowDraft>) => apiClient.put<WorkflowResponse>(`/automation/workflows/${id}`, draft),
-  toggle: (id: string) => apiClient.patch<WorkflowResponse>(`/automation/workflows/${id}/toggle`),
+  toggle: (id: string, isActive: boolean) => apiClient.patch<WorkflowResponse>(`/automation/workflows/${id}/toggle`, { isActive }),
   archive: (id: string) => apiClient.patch<{success:boolean}>(`/automation/workflows/${id}/archive`),
   getExecutions: (id: string, page = 1) => apiClient.get<WorkflowExecutionsResponse>(`/automation/workflows/${id}/executions?page=${page}`),
   test: (id: string, entityId: string) => apiClient.post<{ success:boolean; data:WorkflowTestResult }>(`/automation/workflows/${id}/test`, { entityId }),

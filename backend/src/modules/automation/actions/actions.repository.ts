@@ -1,6 +1,12 @@
 import prisma from '../../../config/database.config';
 export function findUser(id: string, tenantId: string) {
-  return prisma.user.findFirst({ where: { id, tenantId, status: 'ACTIVE' }, select: { id: true } });
+  return prisma.user.findFirst({ where: { id, tenantId, status: 'ACTIVE' }, select: { id: true, role: true } });
+}
+export function findPipeline(id: string, tenantId: string) {
+  return prisma.pipeline.findFirst({ where: { id, tenantId, isArchived: false } });
+}
+export function findCampaign(id: string, tenantId: string) {
+  return prisma.campaign.findFirst({ where: { id, tenantId, isArchived: false } });
 }
 export function findTemplate(id: string, tenantId: string) {
   return prisma.template.findFirst({ where: { id, tenantId, isArchived: false, type: 'Email' } });

@@ -1,8 +1,10 @@
-import type { WorkflowDraft } from '@leadcrm/shared';
+import { workflowOperators, type WorkflowDraft } from '@leadcrm/shared';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { AppError } from '../../../shared/errors/app-error';
 import { findTrigger } from '../triggers/trigger-catalog';
 import { validateAction } from '../actions/action-validation';
+import * as refs from '../actions/actions.repository';
+import { z } from 'zod';
 
 export function validateWorkflowConditions(draft: WorkflowDraft): void {
   const trigger = findTrigger(draft.trigger);
@@ -11,17 +13,31 @@ export function validateWorkflowConditions(draft: WorkflowDraft): void {
   for (const rule of draft.conditions?.conditions ?? []) {
     const field = trigger.fields.find(entry => entry.field === rule.field);
     if (!field) throw new ValidationError(`Choose a condition field available for ${trigger.label}.`);
+    if (!workflowOperators(field.type).includes(rule.operator)) throw new ValidationError(`Choose a supported operator for ${field.label}.`);
     if (['is_empty', 'is_not_empty'].includes(rule.operator)) continue;
-    if (typeof rule.value !== field.type) throw new ValidationError(`${field.label} requires a ${field.type} value.`);
-    if (['greater_than', 'less_than', 'greater_than_or_equal', 'less_than_or_equal'].includes(rule.operator) && field.type !== 'number') {
-      throw new ValidationError(`Use a numeric field for ${rule.operator.replace(/_/g, ' ')}.`);
-    }
-    if (['contains', 'not_contains', 'starts_with', 'ends_with'].includes(rule.operator) && field.type !== 'string') throw new ValidationError('Text operators require a text field.');
+    const valueType = field.type === 'number' || field.type === 'boolean' ? field.type : 'string';
+    if (typeof rule.value !== valueType) throw new ValidationError(`${field.label} requires a ${valueType} value.`);
+    if (typeof rule.value === 'string' && (rule.value.length > 1000 || /[\x00-\x1f\x7f]/.test(rule.value))) throw new ValidationError('Condition value contains unsupported characters or is too long.');
+    if (field.options && !field.options.includes(String(rule.value))) throw new ValidationError(`Choose a supported ${field.label}.`);
+    if (['user', 'stage', 'pipeline'].includes(field.type) && !z.string().uuid().safeParse(rule.value).success) throw new ValidationError(`Choose a valid ${field.label}.`);
+    if (field.type === 'date' && (typeof rule.value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(rule.value) || Number.isNaN(Date.parse(rule.value)) || new Date(rule.value).toISOString().slice(0, 10) !== rule.value)) throw new ValidationError('Choose a valid date.');
+  }
+}
+
+export async function validateConditionReferences(draft: WorkflowDraft, tenantId: string): Promise<void> {
+  validateWorkflowConditions(draft);
+  const trigger = findTrigger(draft.trigger)!;
+  for (const rule of draft.conditions?.conditions ?? []) {
+    if (['is_empty', 'is_not_empty'].includes(rule.operator)) continue;
+    const field = trigger.fields.find(field => field.field === rule.field)!;
+    if (field.type === 'user' && !await refs.findUser(String(rule.value), tenantId)) throw new ValidationError('Condition agent is unavailable.');
+    if (field.type === 'stage' && !await refs.findStage(String(rule.value), tenantId)) throw new ValidationError('Condition stage is unavailable.');
+    if (field.type === 'pipeline' && !await refs.findPipeline(String(rule.value), tenantId)) throw new ValidationError('Condition pipeline is unavailable.');
   }
 }
 
 export async function validateWorkflow(draft: WorkflowDraft, tenantId: string): Promise<void> {
-  validateWorkflowConditions(draft);
+  await validateConditionReferences(draft, tenantId);
   const trigger = findTrigger(draft.trigger)!;
   if (!draft.actions.length) throw new ValidationError('Add at least one action before activating.');
   for (const [index, action] of draft.actions.entries()) {

@@ -156,15 +156,27 @@ Valid rows write `Deal` and optional `ContactDeal`; all rows receive a saved
 
 ---
 
-## Automation Endpoints (`/api/v1/automation/`) — Stub
+## Automation Endpoints (`/api/v1/automation/`)
+
+See the [workflow production report](workflows/workflow-production-report.md#c-api-endpoints) for the exact controller, service, permission and database mapping. All paths below use the `/api/v1` public prefix; browser clients use the existing API proxy.
 
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/automation/workflows` | List workflows |
+| `GET` | `/automation/workflows/:id` | Get saved definition |
 | `POST` | `/automation/workflows` | Create workflow |
+| `POST` | `/automation/workflows/validate` | Validate without side effects |
 | `PUT` | `/automation/workflows/:id` | Update workflow |
-| `PATCH` | `/automation/workflows/:id/toggle` | Enable/pause workflow |
-| `DELETE` | `/automation/workflows/:id` | Delete workflow |
+| `PATCH` | `/automation/workflows/:id/toggle` | Set active state with `{isActive: boolean}` |
+| `PATCH` | `/automation/workflows/:id/archive` | Archive and preserve history |
+| `GET` | `/automation/workflows/:id/executions` | Paginated execution history |
+| `GET` | `/automation/workflows/:id/executions/:executionId` | Execution detail |
+| `POST` | `/automation/workflows/:id/test` | Read-only sample validation |
+| `GET` | `/automation/workflow-options` | Scoped users, pipelines, stages, templates and campaigns |
+| `GET` | `/automation/triggers` | Supported event and condition metadata |
+| `GET` | `/automation/actions` | Supported action metadata |
+
+Duplicate uses `POST /automation/workflows` with an inactive copy. Removal uses archive; there is no workflow DELETE endpoint.
 
 ---
 

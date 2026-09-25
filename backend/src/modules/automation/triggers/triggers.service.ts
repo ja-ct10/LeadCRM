@@ -1,10 +1,12 @@
 import { fireWorkflowTrigger } from '../workflows/workflow.engine';
-interface RecordEvent { tenantId: string; actorId?: string; }
-interface ContactEvent extends RecordEvent { contact: { id: string; status: string; score?: number; assignedUserId?: string | null; source?: string | null }; }
-interface LeadEvent extends RecordEvent { lead: { id: string; status: string; score?: number | null; source?: string | null; assignedUserId?: string | null; companyName?: string | null }; }
+interface RecordEvent { tenantId: string; actorId?: string; eventId?: string; }
+interface ContactEvent extends RecordEvent { contact: { id: string; updatedAt?: Date; status: string; score?: number; assignedUserId?: string | null; source?: string | null }; }
+interface LeadEvent extends RecordEvent { lead: { id: string; updatedAt?: Date; status: string; score?: number | null; source?: string | null; assignedUserId?: string | null; companyName?: string | null }; }
 interface DealEvent extends RecordEvent { deal: { id: string; title: string; value?: number | null; assignedUserId?: string | null }; }
 async function fire(params: RecordEvent, type: string, entity: string, id: string): Promise<void> {
-  try { await fireWorkflowTrigger({ triggerType: type, entityType: entity, entityId: id, tenantId: params.tenantId, actorId: params.actorId, context: {} }); }
+  const record = 'lead' in params ? (params as LeadEvent).lead : 'contact' in params ? (params as ContactEvent).contact : undefined;
+  const eventId = params.eventId ? `${type}:${params.eventId}` : (type.endsWith('.created') ? `${type}:${id}` : record?.updatedAt ? `${type}:${id}:${record.updatedAt.toISOString()}` : undefined);
+  try { await fireWorkflowTrigger({ eventId, triggerType: type, entityType: entity, entityId: id, tenantId: params.tenantId, actorId: params.actorId, context: {} }); }
   catch { console.error('[Workflow] Event processing failed', { trigger: type, entityId: id }); }
 }
 export function fireLeadCreated(params: LeadEvent): Promise<void> { return fire(params, 'lead.created', 'lead', params.lead.id); }

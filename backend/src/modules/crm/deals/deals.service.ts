@@ -189,6 +189,7 @@ export async function moveDealStage(id: string, tenantId: string, userId: string
   // Fire workflow trigger (non-blocking)
   await fireDealStageChanged({
     tenantId,
+    eventId: result.stageHistory.id,
     actorId: userId,
     deal: result.deal,
     newStageId:   newStage.id,
