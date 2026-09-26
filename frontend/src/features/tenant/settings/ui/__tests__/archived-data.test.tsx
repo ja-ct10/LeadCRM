@@ -67,3 +67,14 @@ it('disables restore for a viewer without edit permission', async () => {
   await screen.findByText('Saved Lead');
   for (const button of screen.getAllByRole('button', { name: 'Restore' })) expect((button as HTMLButtonElement).disabled).toBe(true);
 });
+
+it('renders five initial skeleton rows and keeps category tabs on a scrolling single row', async () => {
+  render(<ArchivedData />);
+  const loading = screen.getByRole('status', { name: 'Loading archived records' });
+  expect(loading.querySelectorAll('.animate-pulse')).toHaveLength(5);
+  const template = screen.getByRole('button', { name: 'Template' });
+  expect(template.parentElement?.className).toContain('flex-nowrap');
+  expect(template.parentElement?.className).toContain('overflow-x-auto');
+  expect(template.className).toContain('shrink-0');
+  await screen.findByText('Saved Lead'); expect(screen.queryByRole('status')).toBeNull();
+});

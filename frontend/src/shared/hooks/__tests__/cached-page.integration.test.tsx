@@ -153,3 +153,11 @@ describe('real cached request lifecycle', () => {
     expect(hook.result.current.counts).toEqual({ leads: 0, accounts: 7 });
   });
 });
+
+it.each(['leads', 'accounts', 'deals'])('loads a selected %s by ID independently of stale text filters and pagination', async moduleId => {
+  mocks.get.mockResolvedValue({ data: { id: 'selected', firstName: 'Johnny', isArchived: false } });
+  const hook = renderHook(() => useModuleData({ moduleId, page: 8, pageSize: 25, search: 'wrong name', filter: [{ field: 'status', operator: 'equals', value: 'COLD' }], recordId: 'selected' }));
+  await waitFor(() => expect(hook.result.current.data[0]?.id).toBe('selected'));
+  expect(mocks.get).toHaveBeenCalledWith(`/crm/${moduleId}/selected`, { signal: expect.any(AbortSignal) });
+  expect(hook.result.current.meta).toMatchObject({ page: 1, total: 1 });
+});

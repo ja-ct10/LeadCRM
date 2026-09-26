@@ -39,12 +39,15 @@ export default function ContactsPage(): React.ReactElement {
   const canDelete = useHasPermission('contacts.delete');
   const { getParam, getArrayParam, updateParams } = useFilterUrlSync('contacts');
 
+  const highlightId = getParam('highlight') || undefined;
+
   const { data: contacts = [], refetch: fetchContacts, error: contactsError } = useCachedPage({
     module: 'contacts',
     revalidateOnInvalidation: true,
-    params: { collection: 'all' },
+    params: { collection: 'all', recordId: highlightId },
     intervalMs: 60_000,
     fetchFn: async (signal) => {
+      if (highlightId) return [(await contactsV2Api.get(highlightId, signal)).data];
       const rows: Contact[] = [];
       let page = 1;
       while (true) {
@@ -95,7 +98,6 @@ export default function ContactsPage(): React.ReactElement {
   const [activeTab, setActiveTab] = useState(() => getParam('tab') || 'all');
   const [showFilters, setShowFilters] = useState(false);
   const [searchTerm, setSearchTerm] = useState(() => getParam('search'));
-  const highlightId = getParam('highlight') ?? undefined;
   const [filterSearchTerm, setFilterSearchTerm] = useState('');
   const [contactSelectedIds, setContactSelectedIds] = useState<Set<string>>(new Set());
 
@@ -107,8 +109,18 @@ export default function ContactsPage(): React.ReactElement {
 
   const debouncedSearch = useDebounce(searchTerm, 300);
 
+  useEffect(() => {
+    if (!highlightId) return;
+    setSearchTerm(''); setActiveTab('all'); setActiveView('table'); setCurrentPage(1);
+    setSelectedSystemFilters([]);
+    setSelectedCustomerTypes([]);
+    setSelectedOwners([]);
+    setSelectedRelated([]);
+  }, [highlightId]);
+
   // Sync to URL
   useEffect(() => {
+    if (highlightId) return;
     updateParams({
       tab: activeTab !== 'all' ? activeTab : null,
       search: debouncedSearch || null,
@@ -118,7 +130,7 @@ export default function ContactsPage(): React.ReactElement {
       owners: selectedOwners,
       related: selectedRelated,
     });
-  }, [activeTab, debouncedSearch, activeView, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, updateParams]);
+  }, [activeTab, debouncedSearch, activeView, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, highlightId, updateParams]);
 
   // ── Persist filter selections (fire-and-forget) ────────────────────────
   useEffect(() => {
@@ -150,6 +162,7 @@ export default function ContactsPage(): React.ReactElement {
   );
 
   const filteredContacts = useMemo(() => {
+    if (highlightId) return activeContacts.filter(contact => contact.id === highlightId);
     let result = activeContacts;
 
     // Tab filter
@@ -194,7 +207,7 @@ export default function ContactsPage(): React.ReactElement {
     }
 
     return result;
-  }, [activeContacts, activeTab, user?.id, debouncedSearch, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, deals]);
+  }, [activeContacts, activeTab, user?.id, debouncedSearch, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, deals, highlightId]);
 
   const getAccountName = useCallback((contact: Contact): string => {
     const linked = organizations.find(org => org.id === (contact.accountId ?? contact.organizationId));
@@ -211,7 +224,7 @@ export default function ContactsPage(): React.ReactElement {
   }, [debouncedSearch, activeTab, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, pageSize, sort]);
 
   const paginatedContacts = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
+    const start = highlightId ? 0 : (currentPage - 1) * pageSize;
     const value = (row: Contact) => {
       if (sort?.field === 'firstName') return row.firstName ?? row.contactPerson ?? row.leadPerson;
       if (sort?.field === 'companyName') {
@@ -223,7 +236,7 @@ export default function ContactsPage(): React.ReactElement {
     };
     const ordered = sort ? [...filteredContacts].sort((a, b) => compareSortValues(value(a), value(b), sort.direction)) : filteredContacts;
     return ordered.slice(start, start + pageSize);
-  }, [filteredContacts, currentPage, pageSize, sort, getAccountName]);
+  }, [filteredContacts, currentPage, pageSize, sort, getAccountName, highlightId]);
 
   // ── Helpers ──────────────────────────────────────────────────────────
   const getInitials = (contact: Contact): string => {
@@ -400,6 +413,10 @@ export default function ContactsPage(): React.ReactElement {
       onRefresh={() => toast.success('Refreshed')}
       onManageColumns={() => setIsManageColumnsOpen(true)}
     >
+        {highlightId && <div className="mb-3 flex items-center justify-between gap-3 text-sm text-slate-500">
+          <span>Showing selected search result</span>
+          <button className="text-blue-600 underline" onClick={() => updateParams({ highlight: null, search: null })}>Show all records</button>
+        </div>}
       {/* ── List / Table View — DataGrid ─────────────────── */}
       {(activeView === 'list' || activeView === 'table') && (
         <>

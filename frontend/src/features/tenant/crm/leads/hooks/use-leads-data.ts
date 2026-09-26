@@ -15,6 +15,7 @@ export interface UseLeadsDataParams {
   sort?: SortPreference | null;
   filter?: FilterCondition[];
   search?: string;
+  recordId?: string;
 }
 
 export interface UseLeadsDataMeta {

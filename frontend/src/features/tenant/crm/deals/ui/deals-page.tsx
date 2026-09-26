@@ -1,6 +1,10 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { useFilterUrlSync } from '@/shared/hooks/use-filter-url-sync';
+import { useModuleData } from '@/shared/hooks/use-module-data';
+import { toFrontendDeal } from '@/lib/api/adapters/deal.adapter';
+import { DataErrorState, DataLoadingSkeleton } from '@/shared/components/crm/data-view-states';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
@@ -28,6 +32,9 @@ import { ActionableEmptyState } from '@/shared/components/actionable-empty-state
 
 export default function DealsPage() {
   const { user, tenant } = useAuth();
+  const { getParam, updateParams } = useFilterUrlSync('deals');
+  const highlightId = getParam('highlight') || undefined;
+  const focused = useModuleData({ moduleId: 'deals', page: 1, pageSize: 25, recordId: highlightId, disabled: !highlightId });
   const tenantCurrency = useMemo(() => getTenantCurrency(tenant), [tenant]);
   const { tasks, users, organizations, updateDeal, moveDealStage, deleteDeal, addDeal, addTask, updateTask } = useData();
   const canCreate = useHasPermission('deals.create');
@@ -103,8 +110,11 @@ export default function DealsPage() {
   // ── View state ────────────────────────────────────────────────────────
   const [activeView, setActiveView] = useState<ViewType>('table');
 
+  useEffect(() => { if (highlightId) { setSearchTerm(''); setActiveView('table'); } }, [highlightId]);
+
   // ── Apply debounced search on top of hook-filtered deals ──────────────
   const searchFilteredDeals = useMemo(() => {
+    if (highlightId) return focused.data.map(toFrontendDeal) as Deal[];
     if (!debouncedSearch) return deals;
     const term = debouncedSearch.toLowerCase();
     return deals.filter(
@@ -113,7 +123,7 @@ export default function DealsPage() {
         (d.companyName ?? '').toLowerCase().includes(term) ||
         (d.contactPerson ?? '').toLowerCase().includes(term),
     );
-  }, [deals, debouncedSearch]);
+  }, [deals, debouncedSearch, highlightId, focused.data]);
 
   const {
     currentPage,
@@ -127,10 +137,10 @@ export default function DealsPage() {
     totalItems: searchFilteredDeals.length,
     initialPageSize: 25,
     pageSizeOptions: [10, 20, 25, 30, 40, 50],
-    resetDeps: [filters, debouncedSearch, sort],
+    resetDeps: [filters, debouncedSearch, sort, highlightId],
   });
 
-  const paginatedDeals = useMemo(() => paginateItems(searchFilteredDeals), [paginateItems, searchFilteredDeals]);
+  const paginatedDeals = useMemo(() => highlightId ? searchFilteredDeals : paginateItems(searchFilteredDeals), [paginateItems, searchFilteredDeals, highlightId]);
 
   // ── Lookup helpers ──────────────────────────────────────────────────────
   const getAssignedUserName = (userId?: string): string => {
@@ -185,13 +195,19 @@ export default function DealsPage() {
           { label: 'WEIGHTED FORECAST', value: formatCurrency(forecastTotal, tenantCurrency) },
         ]}
       >
+        {highlightId && <div className="mb-3 flex items-center justify-between gap-3 text-sm text-slate-500">
+          <span>Showing selected search result</span>
+          <button className="text-blue-600 underline" onClick={() => updateParams({ highlight: null })}>Show all records</button>
+        </div>}
+        {highlightId && focused.isInitialLoad && <DataLoadingSkeleton />}
+        {highlightId && focused.error && <DataErrorState message={focused.error} onRetry={focused.refetch} />}
         {/* ── Filters (shared across all views) ──────────────────────── */}
         <DealFilters filters={filters} onChange={setFilters} pipelines={pipelines} />
 
         {/* ── Table View (DataGrid) ──────────────────────────────────── */}
         {activeView === 'table' && (
           <div className="space-y-4">
-            {searchFilteredDeals.length === 0 && (
+            {searchFilteredDeals.length === 0 && !(highlightId && (focused.isInitialLoad || focused.error)) && (
               <ActionableEmptyState
                 icon={Briefcase}
                 title={debouncedSearch ? 'No deals match your search' : 'No deals yet'}
@@ -208,6 +224,7 @@ export default function DealsPage() {
             <ModuleErrorBoundary fallbackLabel="Deals Table">
             <DealsDataGrid
               deals={paginatedDeals}
+              highlightRowId={highlightId}
               totalRecords={totalItems}
               effectiveColumns={effectiveColumns}
               onRowClick={setSelectedDeal}

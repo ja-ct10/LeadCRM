@@ -3,7 +3,7 @@
 import React, { useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { CreateAdministrationUserSchema, UpdateAdministrationUserSchema } from '@leadcrm/shared';
+import { CreateAdministrationUserSchema, UpdateAdministrationUserSchema, EMPLOYEE_EMAIL_DOMAIN } from '@leadcrm/shared';
 import { SlidingDrawer } from '@/shared/components/sliding-drawer';
 import { PhilippinePhoneInput } from '@/shared/components/philippine-phone-input';
 import { normalizePhInput } from '@/shared/utils/ph-phone';
@@ -12,6 +12,7 @@ import type { User } from '@/store/types';
 
 type Draft = { firstName: string; lastName: string; email: string; phone: string; role: string; jobTitle: string; department: string; status: string };
 const makeDraft = (user?: User): Draft => ({ firstName: user?.firstName ?? '', lastName: user?.lastName ?? '', email: user?.email ?? '', phone: normalizePhInput(user?.phone ?? ''), role: user?.role ?? '', jobTitle: user?.jobTitle ?? '', department: user?.department ?? '', status: user?.status ?? 'active' });
+const placeholders: Partial<Record<keyof Draft, string>> = { firstName: 'e.g. Juan', lastName: 'e.g. Dela Cruz', email: 'e.g. juan.delacruz', jobTitle: 'e.g. Sales Representative', department: 'e.g. Sales' };
 const labels = { firstName: 'First Name', lastName: 'Last Name', email: 'Email', phone: 'Phone', role: 'Role', jobTitle: 'Job Title', department: 'Department', status: 'Status' };
 
 export function UserPanel({ user, roles, canEdit, onSaved, onClose }: {
@@ -29,7 +30,7 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose }: {
   const creating = !saved;
 
   const parse = (value: Draft) => creating
-    ? CreateAdministrationUserSchema.safeParse({ firstName: value.firstName, lastName: value.lastName, email: value.email, phone: value.phone, role: value.role, jobTitle: value.jobTitle, department: value.department })
+    ? CreateAdministrationUserSchema.safeParse({ firstName: value.firstName, lastName: value.lastName, email: `${value.email.trim()}@${EMPLOYEE_EMAIL_DOMAIN}`, phone: value.phone, role: value.role, jobTitle: value.jobTitle, department: value.department })
     : UpdateAdministrationUserSchema.safeParse({ firstName: value.firstName, lastName: value.lastName,
       ...(value.phone !== normalizePhInput(saved?.phone ?? '') ? { phone: value.phone } : {}),
       ...(value.role !== saved?.role ? { role: value.role } : {}),
@@ -43,6 +44,7 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose }: {
       const field = issue.path[0] as keyof Draft;
       if (!next[field]) next[field] = issue.message;
     }
+    if (creating && (!/^[a-zA-Z0-9._+\-]+$/.test(value.email.trim()) || /[\u0000-\u001f\u007f-\u009f]/.test(value.email))) next.email = 'Enter an email username using letters, numbers, dots, underscores, hyphens or plus signs.';
     if ((creating || value.role !== saved?.role) && value.role && !roles.some(role => role.name === value.role)) next.role = 'Select an active custom role.';
     return next;
   };
@@ -92,7 +94,7 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose }: {
   const input = (key: keyof Draft, required = false) => {
     const id = `user-${key}`;
     const error = errors[key];
-    const props = { id, value: draft[key], disabled: busy || (key === 'email' && !creating), required,
+    const props = { id, placeholder: placeholders[key], value: draft[key], disabled: busy || (key === 'email' && !creating), required,
       'aria-invalid': !!error, 'aria-describedby': error ? `${id}-error` : undefined,
       onBlur: () => { setTouched(prev => ({ ...prev, [key]: true })); setErrors(prev => ({ ...prev, [key]: validation(draft)[key] })); },
       className: `w-full min-w-0 rounded-xl border px-3 py-2.5 text-sm bg-white dark:bg-slate-800 ${error ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'}`,
@@ -103,7 +105,13 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose }: {
         : key === 'role' || key === 'status' ? <select {...props} disabled={busy || (key === 'role' && !!saved && !roles.some(role => role.name === saved.role))} onChange={event => change(key, event.target.value, true)}>
           {key === 'role' ? <><option value="">Select role</option>{saved && !roles.some(role => role.name === saved.role) && <option value={saved.role}>{saved.role}</option>}{roles.map(role => <option key={role.id} value={role.name}>{role.name}</option>)}</>
             : <><option value="active">Active</option><option value="inactive">Inactive</option>{draft.status === 'pending' && <option value="pending">Pending</option>}</>}
-        </select> : <input {...props} type={key === 'email' ? 'email' : 'text'} maxLength={key === 'email' ? 254 : 100} onChange={event => change(key, event.target.value)} />}
+        </select> : key === 'email' && creating ? <div className={`flex min-w-0 overflow-hidden rounded-xl border bg-white dark:bg-slate-800 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 ${error ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'}`}>
+          <input {...props} type="text" autoCapitalize="none" autoCorrect="off" maxLength={64}
+            className="w-full min-w-0 flex-1 bg-transparent px-3 py-2.5 text-sm outline-none"
+            onChange={event => { if (!event.target.value.includes('@')) change(key, event.target.value); else setErrors(prev => ({ ...prev, email: 'Enter only the username, without @ or a domain.' })); }}
+            onPaste={event => { if (event.clipboardData.getData('text').includes('@')) { event.preventDefault(); setErrors(prev => ({ ...prev, email: 'Enter only the username, without @ or a domain.' })); } }} />
+          <span className="shrink-0 border-l border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-2 py-2.5 text-xs sm:text-sm text-slate-500">@{EMPLOYEE_EMAIL_DOMAIN}</span>
+        </div> : <input {...props} type={key === 'email' ? 'email' : 'text'} maxLength={key === 'email' ? 254 : 100} onChange={event => change(key, event.target.value)} />}
       {key !== 'phone' && error && <p id={`${id}-error`} className="text-xs text-red-500" role="alert">{error}</p>}
     </div>;
   };

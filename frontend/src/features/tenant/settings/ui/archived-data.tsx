@@ -87,23 +87,32 @@ export function ArchivedData(): React.ReactElement {
   const filteredArchived = archivedFilter === "All" ? allArchived : allArchived.filter((x) => x.type === archivedFilter);
 
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="min-w-0 w-full space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Archived Data Recovery</h3>
           <p className="text-xs text-slate-400 mt-0.5">Restore records previously archived instead of deleted.</p>
         </div>
       </div>
-      <div className="flex gap-1.5 flex-wrap">
+      <div className="flex w-full items-center gap-1.5 flex-nowrap overflow-x-auto pb-1">
         {["All", "Lead", "Contact", "Account", "Deal", "Pipeline", "User", "Role", "Workflow", "Campaign", "Template"].map((type) => (
           <button key={type} onClick={() => setArchivedFilter(type)}
-            className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${archivedFilter === type ? "bg-[#3B82F6] text-white" : "bg-slate-100 dark:bg-[#1B252F] text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"}`}>
+            className={`shrink-0 whitespace-nowrap px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${archivedFilter === type ? "bg-[#3B82F6] text-white" : "bg-slate-100 dark:bg-[#1B252F] text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"}`}>
             {type}
           </button>
         ))}
       </div>
       <div className="space-y-2">
-        {isInitialLoad && <p role="status" className="text-sm text-slate-500">Loading archived records…</p>}
+        {isInitialLoad && <div role="status" aria-label="Loading archived records" className="space-y-2">
+          {Array.from({ length: 5 }, (_, index) => <div key={index} aria-hidden="true" className="flex items-center gap-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3 animate-pulse motion-reduce:animate-none">
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="h-2.5 w-12 rounded bg-slate-200 dark:bg-slate-700" />
+              <div className="h-3 w-2/5 rounded bg-slate-200 dark:bg-slate-700" />
+              <div className="h-2.5 w-3/5 rounded bg-slate-100 dark:bg-slate-800" />
+            </div>
+            <div className="h-7 w-20 shrink-0 rounded-lg bg-slate-100 dark:bg-slate-800" />
+          </div>)}
+        </div>}
         {error && <div role="alert" className="text-sm text-red-600">{error} <button onClick={() => void refetch()}>Retry</button></div>}
         {!isInitialLoad && !error && filteredArchived.length === 0 ? (
           <div className="text-center py-10 bg-slate-50 dark:bg-[#25313D] rounded-xl border border-dashed border-slate-200 dark:border-slate-700/60">

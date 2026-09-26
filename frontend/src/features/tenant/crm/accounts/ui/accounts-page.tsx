@@ -85,8 +85,19 @@ export default function AccountsPage(): React.ReactElement {
 
   const debouncedSearch = useDebounce(searchTerm, 300);
 
+  useEffect(() => {
+    if (!highlightId) return;
+    setSearchTerm(''); setActiveTab('all'); setActiveView('table'); setCurrentPage(1);
+    setSelectedSystemFilters([]);
+    setSelectedIndustries([]);
+    setSelectedTypes([]);
+    setSelectedOwners([]);
+    setSelectedRelated([]);
+  }, [highlightId]);
+
   // ── Sync to URL ────────────────────────────────────────────────────────
   useEffect(() => {
+    if (highlightId) return;
     updateParams({
       tab: activeTab !== 'all' ? activeTab : null,
       search: debouncedSearch || null,
@@ -97,7 +108,7 @@ export default function AccountsPage(): React.ReactElement {
       owners: selectedOwners,
       related: selectedRelated,
     });
-  }, [activeTab, debouncedSearch, activeView, selectedSystemFilters, selectedIndustries, selectedTypes, selectedOwners, selectedRelated, updateParams]);
+  }, [activeTab, debouncedSearch, activeView, selectedSystemFilters, selectedIndustries, selectedTypes, selectedOwners, selectedRelated, highlightId, updateParams]);
 
   // ── Persist filter selections (fire-and-forget) ────────────────────────
   useEffect(() => {
@@ -157,7 +168,8 @@ export default function AccountsPage(): React.ReactElement {
     handleOpenEdit,
     handleCloseForm,
   } = useAccounts({
-    page: currentPage,
+    page: highlightId ? 1 : currentPage,
+    recordId: highlightId,
     pageSize,
     sort: sort ?? null,
     search: debouncedSearch || undefined,
@@ -174,9 +186,9 @@ export default function AccountsPage(): React.ReactElement {
 
   // Client-side secondary filter — only has_deals (no server equivalent)
   const filteredAccounts = useMemo(() => {
-    if (!selectedRelated.includes('has_deals')) return accounts;
+    if (highlightId || !selectedRelated.includes('has_deals')) return accounts;
     return accounts.filter((a) => deals.some((d) => d.organizationId === a.id && !d.isArchived));
-  }, [accounts, selectedRelated, deals]);
+  }, [accounts, selectedRelated, deals, highlightId]);
 
   // ── Helpers ──────────────────────────────────────────────────────────
   const getInitials = (name: string): string => {
@@ -365,6 +377,10 @@ export default function AccountsPage(): React.ReactElement {
         onRefresh={() => toast.success('Refreshed')}
         onManageColumns={() => setIsManageColumnsOpen(true)}
       >
+        {highlightId && <div className="mb-3 flex items-center justify-between gap-3 text-sm text-slate-500">
+          <span>Showing selected search result</span>
+          <button className="text-blue-600 underline" onClick={() => updateParams({ highlight: null, search: null })}>Show all records</button>
+        </div>}
         {/* List View — DataGrid */}
         {(activeView === 'list' || activeView === 'table') && (
           <>

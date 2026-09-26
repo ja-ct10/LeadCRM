@@ -29,3 +29,31 @@ it('shows retry on fetch failure and a genuine empty state after retry', async (
   fireEvent.click(screen.getByText('Retry'));
   expect(await screen.findByText('No users found')).toBeTruthy();
 });
+
+it('uses an inline filter rail with persisted departments and roles and combines filters', async () => {
+  mocks.list.mockResolvedValue({ data: [
+    { id: 'a', tenantId: 't', firstName: 'Ana', lastName: 'Sales', role: 'Sales', status: 'active', department: 'Field', email: 'a@camxian.com' },
+    { id: 'b', tenantId: 't', firstName: 'Ben', lastName: 'Sales', role: 'Sales', status: 'inactive', isArchived: true, department: 'Field', email: 'b@camxian.com' },
+    { id: 'c', tenantId: 't', firstName: 'Cal', lastName: 'Sales', role: 'Sales', status: 'active', department: 'Office', email: 'c@camxian.com' },
+    { id: 'd', tenantId: 't', firstName: 'Deleted', lastName: 'User', role: 'Sales', isArchived: true, department: 'Archived department', email: 'd@camxian.com' },
+  ], meta: { hasMore: false } });
+  render(<UsersSubTab />); await screen.findByRole('button', { name: 'View Ana Sales' });
+  for (const label of ['Show archived', 'Export', 'Invite']) expect(screen.queryByText(label)).toBeNull();
+  expect(screen.queryByRole('complementary')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Filter' }));
+  const panel = screen.getByRole('complementary', { name: 'User filters' });
+  expect(panel.parentElement?.className).toContain('lg:flex-row');
+  expect(panel.className).not.toMatch(/absolute|fixed/);
+  expect(screen.queryByLabelText('Filter by Pending')).toBeNull();
+  expect(screen.getByLabelText('Filter by Archived department')).toBeTruthy();
+  fireEvent.click(screen.getByLabelText('Filter by Active'));
+  expect(screen.queryByRole('button', { name: 'View Ben Sales' })).toBeNull();
+  fireEvent.click(screen.getByLabelText('Filter by Field'));
+  fireEvent.click(screen.getByLabelText('Filter by Sales'));
+  expect(screen.getByRole('button', { name: 'View Ana Sales' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'View Cal Sales' })).toBeNull();
+  fireEvent.click(screen.getByLabelText('Filter by Inactive'));
+  expect(screen.getByRole('button', { name: 'View Ben Sales' })).toBeTruthy();
+  fireEvent.click(screen.getByLabelText('Close filters'));
+  expect(screen.queryByRole('complementary')).toBeNull();
+});

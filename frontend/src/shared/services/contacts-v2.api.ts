@@ -43,8 +43,8 @@ export const contactsV2Api = {
     return apiClient.get<ContactsV2Response>('/crm/contacts', { params, signal });
   },
 
-  get: (id: string): Promise<ContactV2Response> =>
-    apiClient.get<ContactV2Response>(`/crm/contacts/${id}`),
+  get: (id: string, signal?: AbortSignal): Promise<ContactV2Response> =>
+    apiClient.get<ContactV2Response>(`/crm/contacts/${encodeURIComponent(id)}`, { signal }),
 
   create: (data: Partial<Contact>): Promise<ContactV2Response> =>
     apiClient.post<ContactV2Response>('/crm/contacts', data),

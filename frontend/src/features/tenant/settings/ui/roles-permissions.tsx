@@ -205,8 +205,9 @@ function RoleEditor({ role, allPerms, allUsers, onSave, onCancel }: RoleEditorPr
   const [saving, setSaving] = useState(false);
   const submitting = useRef(false);
 
-  const isAdmin = role?.name === 'Administrator' || role?.name === 'Client Admin';
+  const isAdmin = !!role?.isSystemRole && ['Administrator', 'Client Admin', 'System Admin'].includes(role.name);
   const isSystemRole = role?.isSystemRole ?? false;
+  const effectivePermIds = isAdmin ? allPerms.map(permission => permission.id) : activePermIds;
   const userCount = allUsers.filter((u) => !u.isArchived && u.role === role?.name).length;
 
   const handleToggle = useCallback((id: string, v: boolean) => {
@@ -222,7 +223,7 @@ function RoleEditor({ role, allPerms, allUsers, onSave, onCancel }: RoleEditorPr
 
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (submitting.current) return;
+    if (submitting.current || isSystemRole) return;
     if (!name.trim()) { setNameError('Role name is required.'); return; }
     setNameError(''); setSaveError(''); setSaving(true); submitting.current = true;
     try { await onSave(name.trim(), description.trim(), activePermIds); }
@@ -230,7 +231,7 @@ function RoleEditor({ role, allPerms, allUsers, onSave, onCancel }: RoleEditorPr
     finally { setSaving(false); submitting.current = false; }
   };
 
-  const totalEnabled = activePermIds.length;
+  const totalEnabled = effectivePermIds.length;
   const totalPerms = allPerms.length;
 
   return (
@@ -252,7 +253,7 @@ function RoleEditor({ role, allPerms, allUsers, onSave, onCancel }: RoleEditorPr
         </div>
         <div className="flex items-center justify-end gap-2 order-last sm:order-none">
           <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>Cancel</Button>
-          <Button type="submit" disabled={saving}>{saving ? 'Saving…' : role ? 'Save Changes' : 'Create Role'}</Button>
+          <Button type="submit" disabled={isSystemRole || saving}>{saving ? 'Saving…' : role ? 'Save Changes' : 'Create Role'}</Button>
         </div>
       </div>
       {saveError && <p role="alert" className="mb-4 text-sm text-red-600 dark:text-red-400">{saveError}</p>}
@@ -272,7 +273,7 @@ function RoleEditor({ role, allPerms, allUsers, onSave, onCancel }: RoleEditorPr
           </div>
           <div className="flex-1 min-w-0">
             <label htmlFor="role-description" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Description <span className="font-normal text-slate-400">— Optional</span></label>
-            <input id="role-description" maxLength={200} disabled={saving} type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description of this role"
+            <input id="role-description" maxLength={200} disabled={isSystemRole || saving} type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description of this role"
               className="w-full px-4 py-2.5 bg-white dark:bg-[#16191E] border border-gray-200 dark:border-[#262A33] text-slate-900 dark:text-white rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm" />
           </div>
         </div>
@@ -319,7 +320,7 @@ function RoleEditor({ role, allPerms, allUsers, onSave, onCancel }: RoleEditorPr
             key={group.id}
             group={group}
             allPerms={allPerms}
-            activePermIds={activePermIds}
+            activePermIds={effectivePermIds}
             onToggle={handleToggle}
             onGroupToggle={handleGroupToggle}
             disabled={isSystemRole || saving}
@@ -535,7 +536,7 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {visibleRoles.map((role, index) => {
             const roleUserCount = users.filter((u) => !u.isArchived && u.role === role.name).length;
-            const enabledCount = role.permissions?.length ?? 0;
+            const enabledCount = role.isSystemRole && ['Administrator', 'Client Admin', 'System Admin'].includes(role.name) ? permissions.length : role.permissions?.length ?? 0;
             const isDropdownOpen = openDropdownId === role.id;
             
             return (

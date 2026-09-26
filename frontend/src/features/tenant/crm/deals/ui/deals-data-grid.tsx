@@ -31,6 +31,7 @@ import { formatCurrency, type CurrencyConfig } from '@/shared/utils/currency';
 interface DealsDataGridProps {
   /** Paginated deals for the current view */
   deals: Deal[];
+  highlightRowId?: string;
   /** Total record count */
   totalRecords: number;
   /** Column preferences from useColumnPreferences */
@@ -75,6 +76,7 @@ interface DealsDataGridProps {
 
 export function DealsDataGrid({
   deals,
+  highlightRowId,
   totalRecords,
   effectiveColumns,
   sort = null,
@@ -221,6 +223,7 @@ export function DealsDataGrid({
     <DataGrid<Deal>
       columns={gridColumns}
       data={deals}
+      highlightRowId={highlightRowId}
       getRowId={getRowId}
       height={600}
       selectable

@@ -2,7 +2,7 @@
 
 import { apiClient } from '@/lib/api/client';
 import { useCachedPage } from './use-cached-page';
-import type { FilterCondition, ModulePaginatedResponse } from '@leadcrm/shared';
+import type { ApiResponse, FilterCondition, ModulePaginatedResponse } from '@leadcrm/shared';
 
 interface UseModuleDataParams {
   moduleId: string;
@@ -11,12 +11,14 @@ interface UseModuleDataParams {
   sort?: { field: string; direction: 'asc' | 'desc' } | null;
   filter?: FilterCondition[];
   search?: string;
+  recordId?: string;
+  disabled?: boolean;
 }
 
 const EMPTY_DATA: Record<string, unknown>[] = [];
 
 /** Cache the response and its pagination metadata under the exact API query. */
-export function useModuleData({ moduleId, page, pageSize, sort, filter, search }: UseModuleDataParams) {
+export function useModuleData({ moduleId, page, pageSize, sort, filter, search, recordId, disabled }: UseModuleDataParams) {
   const params: Record<string, unknown> = { page: String(page), pageSize: String(pageSize) };
   if (sort) params.sort = `${sort.field}:${sort.direction}`;
   if (search?.trim()) params.search = search.trim();
@@ -27,14 +29,25 @@ export function useModuleData({ moduleId, page, pageSize, sort, filter, search }
         ? condition.operator
         : `${condition.operator}:${String(condition.value)}`;
   }
-  const result = useCachedPage({
+  const queryParams = recordId ? { recordId } : params;
+  const result = useCachedPage<ModulePaginatedResponse<Record<string, unknown>>>({
     module: moduleId,
-    params,
+    disabled,
+    params: queryParams,
     revalidateOnInvalidation: ['leads', 'contacts', 'accounts'].includes(moduleId),
     intervalMs: 60_000,
-    fetchFn: (signal) => apiClient.get<ModulePaginatedResponse<Record<string, unknown>>>(
-      `/crm/${moduleId}`, { params, signal },
-    ),
+    fetchFn: async (signal) => {
+      if (recordId) {
+        // Resolve the selected record independently of list filters and pagination.
+        const response = await apiClient.get<ApiResponse<Record<string, unknown>>>(
+          `/crm/${moduleId}/${encodeURIComponent(recordId)}`, { signal },
+        );
+        const row = response.data;
+        const data = row && !row.isArchived && !row.deletedAt ? [row] : [];
+        return { success: true, data, meta: { page: 1, pageSize, total: data.length, totalPages: data.length } };
+      }
+      return apiClient.get<ModulePaginatedResponse<Record<string, unknown>>>(`/crm/${moduleId}`, { params, signal });
+    },
   });
   return {
     data: result.data?.data ?? EMPTY_DATA,

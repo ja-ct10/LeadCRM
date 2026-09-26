@@ -34,7 +34,7 @@ export function TeamManagement(): React.ReactElement {
   };
 
   return (
-    <div className="min-w-0 max-w-4xl space-y-4">
+    <div className="min-w-0 w-full space-y-4">
       {/* Tab strip */}
       <div className="flex gap-0 border-b border-gray-200 dark:border-white/[0.07]">
         {(['Users', 'Groups'] as TeamTab[]).map((tab) => {

@@ -87,3 +87,25 @@ it('keeps tenant-wide permissions when environment switches while CRM startup is
   expect(screen.getByText('8/8')).toBeTruthy();
   expect(screen.queryByText('0/0')).toBeNull();
 });
+
+it('displays effective Client Admin permissions as enabled and readonly without saving', async () => {
+  savedRoles.push({ id: 'admin-role', name: 'Client Admin', tenantId: 'tenant-a', isSystemRole: true, isArchived: false, permissions: [] });
+  mount(); const title = await screen.findByText('Client Admin');
+  const card = title.closest<HTMLElement>('.group')!;
+  fireEvent.click(within(card).getByRole('button'));
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Permissions' }));
+  await screen.findByText('Edit Role');
+  const switches = screen.getAllByRole('switch');
+  expect(switches.length).toBeGreaterThan(7);
+  for (const toggle of switches) {
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    expect((toggle as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+  }
+  const count = switches.length - 7;
+  expect(screen.getByText(`${count} of ${count}`)).toBeTruthy();
+  expect((screen.getByRole('button', { name: 'Save Changes' }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.submit(screen.getByLabelText('Role Name *').closest('form')!);
+  expect(fetcher.mock.calls.filter(([, options]) => ['PUT', 'POST'].includes(options?.method ?? ''))).toHaveLength(0);
+});

@@ -43,7 +43,7 @@ it('renders red required markers and one accessible error below each invalid con
 
 it('awaits creation, normalizes the API payload, blocks duplicates and preserves failed inputs', async () => {
   const { onClose, onSaved } = renderPanel();
-  change('First Name', ' Juan '); change('Last Name', ' Dela Cruz '); change('Email', 'JUAN@camxian.com'); change('Phone', '9171234567'); change('Role', 'Sales');
+  change('First Name', ' Juan '); change('Last Name', ' Dela Cruz '); change('Email', ' JUAN '); change('Phone', '9171234567'); change('Role', 'Sales');
   let reject!: (error: Error) => void;
   mocks.create.mockReturnValueOnce(new Promise((_, fail) => { reject = fail; }));
   const form = screen.getByLabelText('First Name', { exact: false }).closest('form')!;
@@ -54,7 +54,7 @@ it('awaits creation, normalizes the API payload, blocks duplicates and preserves
   reject(Object.assign(new Error('Email already exists'), { status: 409 }));
   await screen.findByText('Email already exists');
   expect((screen.getByLabelText('First Name', { exact: false }) as HTMLInputElement).value).toBe(' Juan ');
-  change('Email', 'juan2@camxian.com');
+  change('Email', 'juan2');
   mocks.create.mockResolvedValueOnce({ data: user }); fireEvent.submit(form);
   await waitFor(() => expect(onSaved).toHaveBeenCalledWith(user));
   expect(onClose).toHaveBeenCalledTimes(1);
@@ -76,4 +76,20 @@ it('opens readonly, cancels to persisted values and keeps edit mode on failed sa
   expect(mocks.update.mock.lastCall?.[1]).not.toHaveProperty('email');
   mocks.reset.mockResolvedValue({ success: true }); fireEvent.click(screen.getByText('Send Password Reset'));
   await waitFor(() => expect(mocks.reset).toHaveBeenCalledWith(user.id));
+});
+
+it('shows placeholders and a locked domain and rejects invalid usernames', () => {
+  renderPanel();
+  for (const placeholder of ['e.g. Juan', 'e.g. Dela Cruz', 'e.g. juan.delacruz', '9xxxxxxxxx', 'e.g. Sales Representative', 'e.g. Sales']) expect(screen.getByPlaceholderText(placeholder)).toBeTruthy();
+  const suffix = screen.getByText('@camxian.com');
+  expect(suffix.tagName).toBe('SPAN');
+  const email = screen.getByLabelText('Email', { exact: false }) as HTMLInputElement;
+  change('Email', 'someone@gmail.com'); expect(email.value).toBe('');
+  for (const invalid of ['bad user', 'bad!user', 'bad..user', 'bad\u0001user']) {
+    change('Email', invalid); fireEvent.blur(email);
+    expect(email.getAttribute('aria-invalid')).toBe('true');
+  }
+  change('Email', ' Juan.Dela_Cruz+sales-2 '); fireEvent.blur(email);
+  expect(email.getAttribute('aria-invalid')).toBe('false');
+  expect(mocks.create).not.toHaveBeenCalled();
 });

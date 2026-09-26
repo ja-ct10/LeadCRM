@@ -121,6 +121,16 @@ export default function LeadsPage(): React.ReactElement {
 
   const debouncedSearch = useDebounce(searchTerm, 300);
 
+  useEffect(() => {
+    if (!highlightId) return;
+    setSearchTerm(''); setActiveTab('all'); setActiveView('table'); setCurrentPage(1);
+    setSelectedSystemFilters([]);
+    setSelectedStatuses([]);
+    setSelectedSources([]);
+    setSelectedOwners([]);
+    setSelectedRelated([]);
+  }, [highlightId]);
+
   // ── Server-side data (replaces DataContext contacts array) ────────────
   // useLeadsData owns the fetch, implements stale-while-revalidate, and
   // drives background refresh every 60s + on window focus.
@@ -167,7 +177,8 @@ export default function LeadsPage(): React.ReactElement {
     error: leadsError,
     refetch: refetchLeads,
   } = useLeadsData({
-    page: currentPage,
+    page: highlightId ? 1 : currentPage,
+    recordId: highlightId,
     pageSize,
     sort: sort ?? null,
     search: debouncedSearch || undefined,
@@ -180,6 +191,7 @@ export default function LeadsPage(): React.ReactElement {
 
   // Sync to URL
   useEffect(() => {
+    if (highlightId) return;
     updateParams({
       tab: activeTab !== 'all' ? activeTab : null,
       search: debouncedSearch || null,
@@ -190,7 +202,7 @@ export default function LeadsPage(): React.ReactElement {
       owners: selectedOwners,
       related: selectedRelated,
     });
-  }, [activeTab, debouncedSearch, activeView, selectedSystemFilters, selectedStatuses, selectedSources, selectedOwners, selectedRelated, updateParams]);
+  }, [activeTab, debouncedSearch, activeView, selectedSystemFilters, selectedStatuses, selectedSources, selectedOwners, selectedRelated, highlightId, updateParams]);
 
   // -- Persist filter selections (fire-and-forget) ------------------------
   useEffect(() => {
@@ -222,11 +234,12 @@ export default function LeadsPage(): React.ReactElement {
   // remain client-side: no direct DB field equivalent, applied to current page.
   const activeLeads = useMemo(
     () => leads.filter((l) => {
+      if (highlightId) return !l.isArchived;
       if (selectedRelated.includes('has_email') && !l.email) return false;
       if (selectedRelated.includes('has_phone') && !l.phone) return false;
       return true;
     }),
-    [leads, selectedRelated],
+    [leads, selectedRelated, highlightId],
   );
 
 
@@ -484,6 +497,10 @@ export default function LeadsPage(): React.ReactElement {
             : undefined
         }
       >
+        {highlightId && <div className="mb-3 flex items-center justify-between gap-3 text-sm text-slate-500">
+          <span>Showing selected search result</span>
+          <button className="text-blue-600 underline" onClick={() => updateParams({ highlight: null, search: null })}>Show all records</button>
+        </div>}
         {/* ── List View ─────────────────────────────────────────── */}
         {/* Initial load: show skeleton when no data has arrived yet */}
         {(activeView === 'list' || activeView === 'table') && isLeadsInitialLoad && (

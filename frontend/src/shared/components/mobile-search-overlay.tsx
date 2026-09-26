@@ -68,7 +68,7 @@ export function MobileSearchOverlay({ isOpen, onClose }: MobileSearchOverlayProp
             </div>
 
             {/* GlobalOmnibox with autoFocus so the input is focused when the overlay opens */}
-            <GlobalOmnibox autoFocus={isOpen} />
+            <GlobalOmnibox autoFocus={isOpen} onResultSelect={onClose} />
           </motion.div>
         </>
       )}

@@ -1052,7 +1052,7 @@ interface FilterGroupSectionProps {
   onToggle?: (groupId: string, itemId: string) => void;
 }
 
-function FilterGroupSection({ group, filterSearchTerm = '', onToggle }: FilterGroupSectionProps): React.ReactElement | null {
+export function FilterGroupSection({ group, filterSearchTerm = '', onToggle }: FilterGroupSectionProps): React.ReactElement | null {
   const [isExpanded, setIsExpanded] = useState(group.isExpanded ?? true);
 
   const visibleItems = React.useMemo(() => {

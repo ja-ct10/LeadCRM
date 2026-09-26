@@ -1,11 +1,9 @@
 'use client';
-import { EmployeeEmailSchema } from '@leadcrm/shared';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Search, Plus, X, Trash2, Mail,
+  Search, Plus, X, Trash2, Filter,
   ShieldAlert, CheckCircle2,
-  Download,
   Clock, Users,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -16,7 +14,7 @@ import { usePagination } from '@/shared/hooks/use-pagination';
 import { Pagination } from '@/shared/components/ui/pagination';
 import { invitationsApi } from '@/shared/services/invitations.api';
 import { auditApi } from '@/shared/services/audit.api';
-import { TrelloFilter } from '@/shared/components/trello-filter';
+import { FilterGroupSection } from '@/shared/components/crm/module-workspace';
 import { usersService } from '@/features/tenant/administration/users/services/users.service';
 import { UserPanel } from './user-panel';
 import { DataLoadingSpinner, DataErrorState } from '@/shared/components/crm/data-view-states';
@@ -211,76 +209,6 @@ function TimelineDrawer({ selectedUser, onClose }: TimelineDrawerProps): React.R
   );
 }
 
-// ── Invite modal ─────────────────────────────────────────────────────────────
-
-interface InviteModalProps {
-  roles: Array<{ id: string; name: string }>;
-  onClose: () => void;
-  onInvited: () => void;
-}
-
-function InviteModal({ roles, onClose, onInvited }: InviteModalProps): React.ReactElement {
-  const [emails, setEmails] = useState('');
-  const [roleId, setRoleId] = useState(roles[0]?.id ?? '');
-  const [isLoading, setIsLoading] = useState(false);
-
-  const handleSend = async () => {
-    const emailList = emails.split(',').map((e) => e.trim()).filter(Boolean);
-    if (emailList.some(email => !EmployeeEmailSchema.safeParse(email).success)) { toast.error('Use valid @camxian.com employee email addresses.'); return; }
-    if (emailList.length === 0) { toast.error('Enter at least one email address'); return; }
-    if (!roleId) { toast.error('Select a role'); return; }
-    setIsLoading(true);
-    try {
-      const res = await invitationsApi.create(emailList, roleId);
-      const { sent, skipped } = res.data;
-      if (sent.length > 0) toast.success(`Invitation sent to ${sent.join(', ')}`);
-      if (skipped.length > 0) toast.info(`Skipped: ${skipped.map((s: { email: string; reason: string }) => `${s.email} (${s.reason})`).join(', ')}`);
-      onInvited();
-      onClose();
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Failed to send invitation');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-      onClick={onClose}>
-      <motion.div initial={{ opacity: 0, scale: 0.95, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
-        transition={{ type: 'spring', damping: 28, stiffness: 260 }}
-        className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.08] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-white/[0.07]">
-          <h3 className="text-sm font-bold text-slate-900 dark:text-white">Invite Team Members</h3>
-          <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg cursor-pointer"><X size={16} /></button>
-        </div>
-        <div className="px-6 py-5 space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Email addresses <span className="text-slate-400 font-normal">(comma-separated)</span></label>
-            <textarea value={emails} onChange={(e) => setEmails(e.target.value)} rows={3} placeholder="alice@company.com, bob@company.com"
-              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg text-xs focus:outline-none focus:border-blue-500 resize-none" />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Role</label>
-            <select value={roleId} onChange={(e) => setRoleId(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg text-xs focus:outline-none focus:border-blue-500">
-              {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-            </select>
-          </div>
-        </div>
-        <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-200 dark:border-white/[0.07]">
-          <button onClick={onClose} className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer">Cancel</button>
-          <button onClick={handleSend} disabled={isLoading} className="flex items-center gap-1.5 px-5 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white rounded-lg shadow-md shadow-blue-500/20 cursor-pointer">
-            {isLoading ? 'Sending...' : 'Send Invites'}
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
-
 // ── Main UsersSubTab ──────────────────────────────────────────────────────────
 
 export function UsersSubTab({ onUsersLoaded }: { onUsersLoaded?: (users: User[]) => void }): React.ReactElement {
@@ -320,16 +248,17 @@ export function UsersSubTab({ onUsersLoaded }: { onUsersLoaded?: (users: User[])
     () => allUsers.filter((u) => u.tenantId === tenantId),
     [allUsers, tenantId],
   );
-  const roleNames = useMemo(() => roles.filter((r) => !r.isArchived && !r.isSystemRole).map((r) => r.name), [roles]);
+  const roleNames = useMemo(() => roles.filter((r) => !r.isArchived).map((r) => r.name), [roles]);
   const roleObjs = useMemo(() => roles.filter((r) => !r.isArchived && !r.isSystemRole).map((r) => ({ id: r.id, name: r.name })), [roles]);
 
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
-  const [showArchived, setShowArchived] = useState(false);
+  const [departmentFilter, setDepartmentFilter] = useState<string[]>([]);
+  const [showFilters, setShowFilters] = useState(false);
+  const departments = useMemo(() => [...new Set(tenantUsers.map(u => u.department).filter((value): value is string => !!value?.trim()))].sort(), [tenantUsers]);
 
   const [isAddOpen, setIsAddOpen] = useState(false);
-  const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   useEffect(() => { setEditingUser(null); setIsAddOpen(false); }, [tenantId]);
   const [timelineUser, setTimelineUser] = useState<User | null>(null);
@@ -369,19 +298,21 @@ export function UsersSubTab({ onUsersLoaded }: { onUsersLoaded?: (users: User[])
 
   const filtered = useMemo(() => {
     return tenantUsers.filter((u) => {
-      if (!showArchived && u.isArchived) return false;
+      // The user API represents archived users with INACTIVE status. Include
+      // those rows only when the administrator explicitly filters for Inactive.
+      if (u.isArchived && !statusFilter.includes('inactive')) return false;
       const matchSearch = !search || `${u.firstName} ${u.lastName} ${u.email}`.toLowerCase().includes(search.toLowerCase());
       const matchRole = roleFilter.length === 0 || roleFilter.includes(u.role);
       const matchStatus = statusFilter.length === 0 || statusFilter.some((s) => s.toLowerCase() === (u.status ?? '').toLowerCase());
-      return matchSearch && matchRole && matchStatus;
+      return matchSearch && matchRole && matchStatus && (departmentFilter.length === 0 || departmentFilter.includes(u.department ?? ''));
     });
-  }, [tenantUsers, search, roleFilter, statusFilter, showArchived]);
+  }, [tenantUsers, search, roleFilter, statusFilter, departmentFilter]);
 
   const { currentPage, totalPages, pageSize, totalItems, paginateItems, goToPage, setPageSize } = usePagination({
     totalItems: filtered.length,
     initialPageSize: 25,
     pageSizeOptions: [10, 25, 50],
-    resetDeps: [search, roleFilter, statusFilter, showArchived],
+    resetDeps: [search, roleFilter, statusFilter, departmentFilter],
   });
   const paginated = paginateItems(filtered);
 
@@ -401,22 +332,6 @@ export function UsersSubTab({ onUsersLoaded }: { onUsersLoaded?: (users: User[])
     finally { setArchiving(false); }
   };
 
-  const handleExportCSV = () => {
-    if (filtered.length === 0) { toast.error('No users to export'); return; }
-    const headers = ['Name', 'Email', 'Role', 'Status', 'Phone', 'Department'];
-    const csvCell = (value: string) => `"${(/^[=+@-]/.test(value) ? "'" + value : value).replace(/"/g, '""')}"`;
-    const rows = filtered.map((u) => [
-      `${u.firstName} ${u.lastName}`, u.email, u.role, u.status ?? '',
-      u.phone ?? '', u.department ?? '',
-    ].map(csvCell));
-    const csv = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    const link = document.createElement('a');
-    link.setAttribute('href', encodeURI(csv));
-    link.setAttribute('download', `team_members_${Date.now()}.csv`);
-    document.body.appendChild(link); link.click(); document.body.removeChild(link);
-    toast.success('Users exported');
-  };
-
   const canManageUsers = userCan('users', 'canEdit');
 
   return (
@@ -429,46 +344,34 @@ export function UsersSubTab({ onUsersLoaded }: { onUsersLoaded?: (users: User[])
           <input type="text" placeholder="Search users..." value={search} onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-white/[0.08] text-slate-900 dark:text-white rounded-lg text-xs focus:outline-none focus:border-blue-500 transition-colors placeholder-slate-400" />
         </div>
-        <TrelloFilter
-          searchTerm=""
-          setSearchTerm={() => {}}
-          statuses={roleNames.map((r) => ({ id: r, label: r }))}
-          selectedStatuses={roleFilter}
-          setSelectedStatuses={setRoleFilter}
-          labels={[
-            { id: 'active', label: 'Active' },
-            { id: 'inactive', label: 'Inactive' },
-            { id: 'pending', label: 'Pending' },
-          ]}
-          labelsTitle="Status"
-          selectedLabels={statusFilter}
-          setSelectedLabels={setStatusFilter}
-        />
-        <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 cursor-pointer select-none sm:ml-auto">
-          <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} className="accent-blue-500" />
-          Show archived
-        </label>
-        <button onClick={handleExportCSV} className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 dark:border-white/[0.08] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-xs font-semibold cursor-pointer transition-colors">
-          <Download size={13} /> Export
+        <button aria-expanded={showFilters} aria-controls="user-filters" onClick={() => setShowFilters(value => !value)} className={cn('flex items-center gap-2 px-3 py-2 border rounded-lg text-xs font-semibold', showFilters ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300')}>
+          <Filter size={14} /> Filter
         </button>
-        {canManageUsers && (
-          <>
-            <button onClick={() => setIsInviteOpen(true)} className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 dark:border-white/[0.08] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-xs font-semibold cursor-pointer transition-colors">
-              <Mail size={13} /> Invite
-            </button>
-            <button disabled={rolesLoading || !!rolesError} onClick={() => setIsAddOpen(true)} className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold cursor-pointer transition-colors shadow-sm">
-              <Plus size={13} /> New User
-            </button>
-          </>
-        )}
+        {canManageUsers && <button disabled={rolesLoading || !!rolesError} onClick={() => setIsAddOpen(true)} className="sm:ml-auto flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold disabled:opacity-50">
+          <Plus size={13} /> New User
+        </button>}
       </div>
 
+      <div className="flex min-w-0 flex-col lg:flex-row gap-3 items-stretch">
+        {showFilters && <aside id="user-filters" aria-label="User filters" className="w-full lg:w-[280px] shrink-0 self-start rounded-xl border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-[#E4E9F0] dark:border-slate-700">
+            <span className="text-[13px] font-semibold text-slate-900 dark:text-white">Filter by</span>
+            <button aria-label="Close filters" onClick={() => setShowFilters(false)} className="p-1 text-slate-500"><X size={14} /></button>
+          </div>
+          <div className="p-3">
+            <FilterGroupSection group={{ id: 'status', label: 'Status', items: ['active', 'inactive'].map(id => ({ id, label: id === 'active' ? 'Active' : 'Inactive', isChecked: statusFilter.includes(id) })) }} onToggle={(_, id) => setStatusFilter(previous => previous.includes(id) ? previous.filter(value => value !== id) : [...previous, id])} />
+            <FilterGroupSection group={{ id: 'department', label: 'Department', items: departments.map(id => ({ id, label: id, isChecked: departmentFilter.includes(id) })) }} onToggle={(_, id) => setDepartmentFilter(previous => previous.includes(id) ? previous.filter(value => value !== id) : [...previous, id])} />
+            <FilterGroupSection group={{ id: 'role', label: 'Role', items: roleNames.map(id => ({ id, label: id, isChecked: roleFilter.includes(id) })) }} onToggle={(_, id) => setRoleFilter(previous => previous.includes(id) ? previous.filter(value => value !== id) : [...previous, id])} />
+          </div>
+          <div className="border-t border-[#E4E9F0] dark:border-slate-700 px-4 py-2.5 text-xs text-slate-500">{filtered.length} users in this module</div>
+        </aside>}
+        <div className="min-w-0 flex-1 space-y-4">
       {/* Users table */}
       <div className="bg-white dark:bg-slate-900/60 border border-gray-200 dark:border-white/[0.07] rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <div className="grid grid-cols-[minmax(160px,2fr)_minmax(120px,1.5fr)_minmax(180px,2fr)_80px_120px_64px] gap-3 px-4 py-2.5 border-b border-gray-100 dark:border-white/[0.05] min-w-[816px]">
-            {['User', 'Role', 'Contact', 'Status', 'Department', ''].map((h, i) => (
-              <div key={i} className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{h}</div>
+            {['User', 'Role', 'Contact', 'Status', 'Department', 'Actions'].map((h, i) => (
+              <div key={i} className="text-xs font-medium text-slate-500 dark:text-slate-400">{h}</div>
             ))}
           </div>
           {loading ? <DataLoadingSpinner label="Loading users..." /> : loadError ? <DataErrorState message={loadError} onRetry={() => setReload(value => value + 1)} /> : paginated.length === 0 ? (
@@ -479,7 +382,7 @@ export function UsersSubTab({ onUsersLoaded }: { onUsersLoaded?: (users: User[])
           ) : paginated.map((u) => (
             <div key={u.id} tabIndex={0} role="button" aria-label={`View ${u.firstName} ${u.lastName}`}
               onClick={() => setEditingUser(u)} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); setEditingUser(u); } }}
-              className={cn('grid grid-cols-[minmax(160px,2fr)_minmax(120px,1.5fr)_minmax(180px,2fr)_80px_120px_64px] gap-3 px-4 py-3 items-center border-b border-gray-100 dark:border-white/[0.04] last:border-0 hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors group min-w-[816px]',
+              className={cn('grid grid-cols-[minmax(160px,2fr)_minmax(120px,1.5fr)_minmax(180px,2fr)_80px_120px_64px] gap-3 px-4 py-3 min-h-[56px] items-center border-b border-gray-100 dark:border-white/[0.04] last:border-0 hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors group min-w-[816px]',
                 u.isArchived && 'opacity-50')}>
               {/* User */}
               <div className="flex items-center gap-2.5 min-w-0">
@@ -530,6 +433,9 @@ export function UsersSubTab({ onUsersLoaded }: { onUsersLoaded?: (users: User[])
         />
       )}
 
+        </div>
+      </div>
+
       {/* Pending Invitations */}
       {!USE_MOCK_DATA && pendingInvitations.length > 0 && (
         <div className="bg-white dark:bg-slate-900/60 border border-gray-200 dark:border-white/[0.07] rounded-xl overflow-hidden">
@@ -562,9 +468,6 @@ export function UsersSubTab({ onUsersLoaded }: { onUsersLoaded?: (users: User[])
         )}
         {editingUser && (
           <UserPanel key={editingUser.id} user={editingUser} roles={roleObjs} canEdit={canManageUsers} onSaved={handleSavedUser} onClose={() => setEditingUser(null)} />
-        )}
-        {isInviteOpen && (
-          <InviteModal roles={roleObjs} onClose={() => setIsInviteOpen(false)} onInvited={loadInvitations} />
         )}
         {confirmArchive && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}

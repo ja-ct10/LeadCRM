@@ -28,6 +28,7 @@ export interface UseAccountsParams {
   pageSize?: number;
   sort?: SortPreference | null;
   search?: string;
+  recordId?: string;
   filter?: FilterCondition[];
 }
 
@@ -49,6 +50,7 @@ export function useAccounts(params?: UseAccountsParams) {
     pageSize: params?.pageSize ?? 100,
     sort: params?.sort ?? null,
     search: params?.search,
+    recordId: params?.recordId,
     filter: params?.filter,
   });
   const serverAccounts = useMemo(
