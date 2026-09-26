@@ -56,12 +56,12 @@ interface AccountsDataGridProps {
   getOwnerName: (userId?: string) => string;
   /** RBAC: can user edit */
   canEdit?: boolean;
-  /** RBAC: can user delete */
-  canDelete?: boolean;
+  /** RBAC: can user archive */
+  canArchive?: boolean;
   /** Open edit form for an account */
   onEdit?: (account: Account) => void;
-  /** Delete an account */
-  onDelete?: (account: Account) => void;
+  /** Archive an account */
+  onArchive?: (account: Account) => void;
   /** Open manage columns drawer */
   onManageColumns?: () => void;
   /** Hide a specific column */
@@ -87,9 +87,9 @@ export function AccountsDataGrid({
   onSelectionChange,
   getOwnerName,
   canEdit = false,
-  canDelete = false,
+  canArchive = false,
   onEdit,
-  onDelete,
+  onArchive,
   onManageColumns,
   onHideColumn,
   viewMode = 'clip',
@@ -209,14 +209,14 @@ export function AccountsDataGrid({
       onView: () => onRowClick(account),
       onEdit: onEdit ? () => onEdit(account) : undefined,
       onSendEmail: account.email ? () => window.open(`mailto:${account.email}`, '_self') : undefined,
-      onDelete: onDelete ? () => onDelete(account) : undefined,
+      onArchive: onArchive ? () => onArchive(account) : undefined,
       onCopyUrl: () => {
         navigator.clipboard.writeText(`${window.location.origin}/crm/accounts/${account.id}`);
       },
       canEdit,
-      canDelete,
+      canArchive,
     });
-  }, [onRowClick, onEdit, onDelete, canEdit, canDelete]);
+  }, [onRowClick, onEdit, onArchive, canEdit, canArchive]);
 
   // ─── Render ────────────────────────────────────────────────────────────
 

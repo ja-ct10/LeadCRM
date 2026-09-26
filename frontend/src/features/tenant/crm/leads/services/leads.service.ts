@@ -22,7 +22,7 @@ export interface LeadQueryParams {
  * and ensure the backend is running with `npm run dev` in /backend.
  */
 export const leadsService = {
-  getAll: (params?: LeadQueryParams): Promise<PaginatedResponse<Lead>> => {
+  getAll: (params?: LeadQueryParams, signal?: AbortSignal): Promise<PaginatedResponse<Lead>> => {
     const query = new URLSearchParams();
     if (params?.page)     query.set('page',     String(params.page));
     if (params?.limit)    query.set('limit',    String(params.limit));
@@ -31,7 +31,7 @@ export const leadsService = {
     if (params?.archived) query.set('archived', 'true');
     const qs = query.toString();
     // canonical path: /crm/leads
-    return apiClient.get<PaginatedResponse<Lead>>(`/crm/leads${qs ? `?${qs}` : ''}`);
+    return apiClient.get<PaginatedResponse<Lead>>(`/crm/leads${qs ? `?${qs}` : ''}`, { signal });
   },
 
   getById: (id: string): Promise<ApiResponse<Lead>> =>
@@ -45,4 +45,6 @@ export const leadsService = {
 
   archive: (id: string): Promise<void> =>
     apiClient.patch<void>(`/crm/leads/${id}/archive`),
+  restore: (id: string): Promise<void> =>
+    apiClient.patch<void>(`/crm/leads/${id}/restore`),
 };

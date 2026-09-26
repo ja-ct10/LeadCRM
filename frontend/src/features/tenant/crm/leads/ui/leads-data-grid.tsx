@@ -89,12 +89,12 @@ interface LeadsDataGridProps {
   getOwnerInitials: (userId?: string) => string;
   /** RBAC: can user edit */
   canEdit?: boolean;
-  /** RBAC: can user delete */
-  canDelete?: boolean;
+  /** RBAC: can user archive */
+  canArchive?: boolean;
   /** Open edit form for a lead */
   onEdit?: (lead: Lead) => void;
-  /** Delete a lead */
-  onDelete?: (lead: Lead) => void;
+  /** Archive a lead */
+  onArchive?: (lead: Lead) => void;
   /** Convert a lead */
   onConvert?: (lead: Lead) => void;
   /** Merge a lead with another */
@@ -127,9 +127,9 @@ export function LeadsDataGrid({
   getOwnerName,
   getOwnerInitials,
   canEdit = false,
-  canDelete = false,
+  canArchive = false,
   onEdit,
-  onDelete,
+  onArchive,
   onConvert,
   onMerge,
   onManageColumns,
@@ -366,15 +366,13 @@ export function LeadsDataGrid({
       onView: () => onRowClick(lead),
       onEdit: onEdit ? () => onEdit(lead) : undefined,
       onSendEmail: lead.email ? () => window.open(`mailto:${lead.email}`, '_self') : undefined,
-      onCreateTask: () => { /* future: open task form */ },
-      onAddTags: () => { /* future: open tags dialog */ },
-      onConvert: onConvert ? () => onConvert(lead) : undefined,
-      onDelete: onDelete ? () => onDelete(lead) : undefined,
+      onConvert: canEdit && onConvert ? () => onConvert(lead) : undefined,
+      onArchive: onArchive ? () => onArchive(lead) : undefined,
       onCopyUrl: () => {
         navigator.clipboard.writeText(`${window.location.origin}/crm/leads/${lead.id}`);
       },
       canEdit,
-      canDelete,
+      canArchive,
     });
 
     // Add Merge action (if user can edit)
@@ -390,7 +388,7 @@ export function LeadsDataGrid({
     }
 
     return actions;
-  }, [onRowClick, onEdit, onDelete, onConvert, onMerge, canEdit, canDelete]);
+  }, [onRowClick, onEdit, onArchive, onConvert, onMerge, canEdit, canArchive]);
 
   // ─── Render ────────────────────────────────────────────────────────────
 

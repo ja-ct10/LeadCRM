@@ -43,6 +43,9 @@ export interface Contact {
   createdById?: string;
   updatedById?: string;
   lastStatusChangedAt?: string;
+  isArchived?: boolean;
+  deletedAt?: string | null;
+  deletedBy?: string | null;
 
   // Conversion tracking (set when lead is converted to a contact)
   contactId?: string;

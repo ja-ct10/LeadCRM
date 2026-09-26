@@ -32,6 +32,15 @@ beforeEach(() => {
 afterEach(() => { cleanup(); clearPageCache(); });
 
 describe('real cached request lifecycle', () => {
+  it.each(['leads', 'contacts', 'accounts'])('refreshes an open %s table when a panel mutation invalidates it', async moduleId => {
+    mocks.get.mockResolvedValueOnce(response(1));
+    const hook = renderHook(() => useModuleData({ moduleId, page: 1, pageSize: 25 }));
+    await waitFor(() => expect(hook.result.current.data).toEqual(response(1).data));
+    mocks.get.mockResolvedValueOnce({ data: [], meta: { total: 0, page: 1, limit: 25 } });
+    act(() => invalidatePageCache(moduleId, 'tenant-a'));
+    await waitFor(() => expect(hook.result.current.meta?.total).toBe(0));
+    expect(hook.result.current.data).toEqual([]);
+  });
   it('aborts old queries and cannot cache a late page under the new page key', async () => {
     const first = deferred<ReturnType<typeof response>>();
     const second = deferred<ReturnType<typeof response>>();

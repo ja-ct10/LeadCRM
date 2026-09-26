@@ -1,5 +1,8 @@
 ﻿'use client';
 
+import { useConfirmDialog } from '@/shared/hooks/use-confirm-dialog';
+import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
+import { leadsService } from '../services/leads.service';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
@@ -39,12 +42,12 @@ export default function LeadsPage(): React.ReactElement {
   const {
     addContact: addLead,
     updateContact: updateLead,
-    deleteContact: deleteLead,
     refreshContacts,
     users,
     organizations,
   } = useData();
   const { user } = useAuth();
+  const { dialogProps, confirm, close } = useConfirmDialog();
   const canCreate = useHasPermission('contacts.create');
   const canEdit = useHasPermission('contacts.edit');
   const canDelete = useHasPermission('contacts.delete');
@@ -406,8 +409,25 @@ export default function LeadsPage(): React.ReactElement {
   }, [selectedIds.size, leads]);
 
   // ── Render ───────────────────────────────────────────────────────────
+  const confirmArchive = (ids: string[], name: string) => confirm({
+    title: 'Archive Lead' + (ids.length > 1 ? 's?' : '?'),
+    description: `${name} will be removed from active Leads and moved to Archived Data. You can restore this record later.`,
+    confirmLabel: 'Archive',
+    onConfirm: async () => {
+      try {
+        await Promise.all(ids.map((id) => leadsService.archive(id)));
+        setSelectedIds(new Set()); refetchLeads();
+        close();
+        toast.success('Lead archived');
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to archive lead');
+      }
+    },
+  });
+
   return (
     <>
+      <ConfirmActionDialog {...dialogProps} />
       <ModuleWorkspace
         moduleId="leads"
         title="Leads"
@@ -454,19 +474,9 @@ export default function LeadsPage(): React.ReactElement {
                   canDelete && (
                     <button
                       className="text-[12px] text-white/80 hover:text-white transition-colors"
-                      onClick={async () => {
-                        const ids = [...selectedIds];
-                        try {
-                          await Promise.all(ids.map((id) => deleteLead(id)));
-                          setSelectedIds(new Set());
-                          toast.success(`${ids.length} lead${ids.length > 1 ? 's' : ''} deleted`);
-                          refetchLeads();
-                        } catch (err: unknown) {
-                          toast.error(err instanceof Error ? err.message : 'Failed to delete leads');
-                        }
-                      }}
+                      onClick={() => confirmArchive([...selectedIds], `${selectedIds.size} leads`)}
                     >
-                      Delete
+                      Archive
                     </button>
                   )
                 ),
@@ -512,17 +522,9 @@ export default function LeadsPage(): React.ReactElement {
             getOwnerName={getOwnerName}
             getOwnerInitials={getOwnerInitials}
             canEdit={canEdit}
-            canDelete={canDelete}
+            canArchive={canDelete}
             onEdit={(lead) => { setEditingLead(lead); setIsFormOpen(true); }}
-            onDelete={(lead) => {
-              if (!deleteLead) return;
-              deleteLead(lead.id).then(() => {
-                toast.success(`Lead deleted successfully`);
-                refetchLeads();
-              }).catch((err: unknown) => {
-                toast.error(err instanceof Error ? err.message : 'Failed to delete lead');
-              });
-            }}
+            onArchive={(lead) => confirmArchive([lead.id], lead.leadPerson ?? lead.contactPerson ?? `${lead.firstName ?? ''} ${lead.lastName ?? ''}`)}
             onConvert={(lead) => setConvertingLead(lead)}
             onMerge={(lead) => setMergingLead(lead)}
             onHideColumn={async (columnId) => {

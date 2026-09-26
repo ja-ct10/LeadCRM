@@ -1,5 +1,6 @@
 'use client';
 
+import { contactsV2Api } from '@/shared/services/contacts-v2.api';
 import React, { useState, useMemo, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Layers, Users, Clock, Paperclip } from 'lucide-react';
@@ -26,7 +27,7 @@ export default function ContactDetailPage(): React.ReactElement {
     id: recordId,
   });
 
-  const { updateContact, deleteContact } = useData();
+  const { updateContact } = useData();
 
   // ── Archive confirmation state ───────────────────────────────────────────
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -46,13 +47,13 @@ export default function ContactDetailPage(): React.ReactElement {
           case 'edit':
             toast.info('Edit form coming soon — use the side panel for now');
             break;
-          case 'delete':
+          case 'archive':
             if (recordId) setConfirmOpen(true);
             break;
         }
       },
     }));
-  }, [recordId, deleteContact, router]);
+  }, [recordId, router]);
 
   // ── Derived display data ────────────────────────────────────────────────
   const title = record
@@ -164,15 +165,19 @@ export default function ContactDetailPage(): React.ReactElement {
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         title="Archive Contact"
-        description="This contact will be moved to the archive and hidden from active views."
-        warning="You can restore it later from archived records."
+        description={`${title} will be removed from active Contacts and moved to Archived Data.`}
+        warning="You can restore this record later from Settings → Archived Data."
         confirmLabel="Archive"
-        variant="destructive"
+        variant="default"
         onConfirm={async () => {
           if (!recordId) return;
-          await deleteContact(recordId);
-          toast.success('Contact archived');
-          router.push('/crm/contacts');
+          try {
+            await contactsV2Api.archive(recordId);
+            toast.success('Contact archived');
+            router.push('/crm/contacts');
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Failed to archive contact');
+          }
         }}
       />
     </>

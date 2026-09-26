@@ -1,5 +1,7 @@
 'use client';
 
+import { accountsService } from '@/features/tenant/crm/accounts/services/accounts.service';
+import { contactsV2Api } from '@/shared/services/contacts-v2.api';
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import {
@@ -15,6 +17,7 @@ import {
   Pencil,
   FileText,
   Trash2,
+  Archive,
   Plus,
   Paperclip,
   UserPlus,
@@ -665,9 +668,9 @@ export interface LeadPanelProps {
 }
 
 export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) {
+  const canArchive = useHasPermission('contacts.delete');
   const {
     updateContact: updateLead,
-    deleteContact: deleteLead,
     tasks,
     deals,
     organizations,
@@ -686,7 +689,7 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
   const [showDealForm, setShowDealForm] = useState(false);
   const [expandedDealId, setExpandedDealId] = useState<string | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
-  const { dialogProps: confirmDialogProps, confirm: showConfirm } = useConfirmDialog();
+  const { dialogProps: confirmDialogProps, confirm: showConfirm, close: closeConfirm } = useConfirmDialog();
 
   const [customFields, setCustomFields] = useState<CustomFieldItem[]>([
     { id: 'cf-1', name: 'Product Interest Keywords', type: 'text', value: 'Security, Cabling, CCTV' },
@@ -725,21 +728,25 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
       permission: 'contacts.create',
     },
     {
-      label: 'Delete',
-      icon: <Trash2 className="size-4" />,
+      label: 'Archive',
+      icon: <Archive className="size-4" />,
       onClick: () => showConfirm({
-        title: `Delete Lead?`,
-        description: `This will archive "${leadName}" and all associated data.`,
-        warning: 'This action cannot be easily reversed.',
-        variant: 'destructive',
-        confirmLabel: 'Delete Lead',
+        title: `Archive Lead?`,
+        description: `${leadName} will be removed from active Leads and moved to Archived Data.`,
+        warning: 'You can restore this record later from Settings → Archived Data.',
+        variant: 'default',
+        confirmLabel: 'Archive Lead',
         onConfirm: async () => {
-          await deleteLead(lead.id);
-          onOpenChange(false);
-          toast.success('Lead deleted');
+          try {
+            await leadsService.archive(lead.id);
+            closeConfirm();
+            onOpenChange(false);
+            toast.success('Lead archived');
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Failed to archive lead');
+          }
         },
       }),
-      destructive: true,
       permission: 'contacts.delete',
     },
   ];
@@ -1087,23 +1094,27 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
           onSelect: () => toast.info('Convert to Contact functionality coming soon'),
         },
         {
-          label: 'Delete Lead',
-          icon: Trash2,
-          destructive: true,
+          label: 'Archive Lead',
+          icon: Archive,
           onSelect: () => showConfirm({
-            title: 'Delete Lead',
-            description: `Delete ${leadName}?`,
-            warning: 'All associated activities and tasks will also be affected.',
-            confirmLabel: 'Delete Lead',
-            variant: 'destructive',
+            title: 'Archive Lead',
+            description: `${leadName} will be removed from active Leads and moved to Archived Data.`,
+            warning: 'You can restore this record later from Settings → Archived Data.',
+            confirmLabel: 'Archive Lead',
+            variant: 'default',
             onConfirm: async () => {
-              await deleteLead(lead.id);
-              onOpenChange(false);
-              toast.success('Lead deleted');
+              try {
+                await leadsService.archive(lead.id);
+                closeConfirm();
+                onOpenChange(false);
+                toast.success('Lead archived');
+              } catch (error) {
+                toast.error(error instanceof Error ? error.message : 'Failed to archive lead');
+              }
             },
           }),
         },
-      ]}
+      ].filter(item => !item.label.startsWith('Archive') || canArchive)}
     />
     </>
   );
@@ -1121,14 +1132,15 @@ export interface ContactPanelProps {
 }
 
 export function ContactPanel({ open, onOpenChange, contact, onEdit }: ContactPanelProps) {
-  const { updateContact, deleteContact, tasks, deals, organizations, addTask } = useData();
+  const canArchive = useHasPermission('contacts.delete');
+  const { updateContact, tasks, deals, organizations, addTask } = useData();
 
   // Local UI states
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [customFields, setCustomFields] = useState<CustomFieldItem[]>([]);
   const [files, setFiles] = useState<FileRecord[]>([]);
   const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
-  const { dialogProps: confirmDialogProps, confirm: showConfirm } = useConfirmDialog();
+  const { dialogProps: confirmDialogProps, confirm: showConfirm, close: closeConfirm } = useConfirmDialog();
 
   // Tenant-aware currency for deal values shown in this panel
   const { tenant } = useAuth();
@@ -1149,21 +1161,25 @@ export function ContactPanel({ open, onOpenChange, contact, onEdit }: ContactPan
   const overflowItems: OverflowMenuItem[] = [
     { label: 'Edit', icon: <Pencil className="size-4" />, onClick: () => onEdit?.(contact) },
     {
-      label: 'Delete',
-      icon: <Trash2 className="size-4" />,
+      label: 'Archive',
+      icon: <Archive className="size-4" />,
       onClick: () => showConfirm({
-        title: 'Delete Contact',
-        description: `Delete ${contactName}?`,
-        warning: 'This cannot be undone.',
-        confirmLabel: 'Delete Contact',
-        variant: 'destructive',
+        title: 'Archive Contact',
+        description: `${contactName} will be removed from active Contacts and moved to Archived Data.`,
+        warning: 'You can restore this record later from Settings → Archived Data.',
+        confirmLabel: 'Archive Contact',
+        variant: 'default',
         onConfirm: async () => {
-          await deleteContact(contact.id);
-          onOpenChange(false);
-          toast.success('Contact deleted');
+          try {
+            await contactsV2Api.archive(contact.id);
+            closeConfirm();
+            onOpenChange(false);
+            toast.success('Contact archived');
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Failed to archive contact');
+          }
         },
       }),
-      destructive: true,
       permission: 'contacts.delete',
     },
   ];
@@ -1428,23 +1444,27 @@ export function ContactPanel({ open, onOpenChange, contact, onEdit }: ContactPan
           onSelect: () => onEdit?.(contact),
         },
         {
-          label: 'Delete Contact',
-          icon: Trash2,
-          destructive: true,
+          label: 'Archive Contact',
+          icon: Archive,
           onSelect: () => showConfirm({
-            title: 'Delete Contact',
-            description: `Delete ${contactName}?`,
-            warning: 'This cannot be undone.',
-            confirmLabel: 'Delete Contact',
-            variant: 'destructive',
+            title: 'Archive Contact',
+            description: `${contactName} will be removed from active Contacts and moved to Archived Data.`,
+            warning: 'You can restore this record later from Settings → Archived Data.',
+            confirmLabel: 'Archive Contact',
+            variant: 'default',
             onConfirm: async () => {
-              await deleteContact(contact.id);
-              onOpenChange(false);
-              toast.success('Contact deleted');
+              try {
+                await contactsV2Api.archive(contact.id);
+                closeConfirm();
+                onOpenChange(false);
+                toast.success('Contact archived');
+              } catch (error) {
+                toast.error(error instanceof Error ? error.message : 'Failed to archive contact');
+              }
             },
           }),
         },
-      ]}
+      ].filter(item => !item.label.startsWith('Archive') || canArchive)}
     />
 
     {/* DealPanel overlay — opens when a deal is clicked */}
@@ -1471,7 +1491,8 @@ export interface AccountPanelProps {
 }
 
 export function AccountPanel({ open, onOpenChange, account, onEdit }: AccountPanelProps) {
-  const { contacts: contextContacts, deals, updateOrganization, deleteOrganization } = useData();
+  const canArchive = useHasPermission('accounts.delete');
+  const { contacts: contextContacts, deals, updateOrganization } = useData();
 
   // ── On-demand contacts fetch ─────────────────────────────────────────────
   // DataContext.contacts is no longer populated at startup.
@@ -1497,7 +1518,7 @@ export function AccountPanel({ open, onOpenChange, account, onEdit }: AccountPan
   const [customFields, setCustomFields] = useState<CustomFieldItem[]>([]);
   const [files, setFiles] = useState<FileRecord[]>([]);
   const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
-  const { dialogProps: confirmDialogProps, confirm: showConfirm } = useConfirmDialog();
+  const { dialogProps: confirmDialogProps, confirm: showConfirm, close: closeConfirm } = useConfirmDialog();
 
   // Tenant-aware currency for deal values shown in this panel
   const { tenant } = useAuth();
@@ -1515,21 +1536,25 @@ export function AccountPanel({ open, onOpenChange, account, onEdit }: AccountPan
   const overflowItems: OverflowMenuItem[] = [
     { label: 'Edit', icon: <Pencil className="size-4" />, onClick: () => onEdit?.(account) },
     {
-      label: 'Delete',
-      icon: <Trash2 className="size-4" />,
+      label: 'Archive',
+      icon: <Archive className="size-4" />,
       onClick: () => showConfirm({
-        title: 'Delete Account',
-        description: `Delete ${accountName}?`,
-        warning: 'Associated leads, contacts, and deals will be unlinked.',
-        confirmLabel: 'Delete Account',
-        variant: 'destructive',
+        title: 'Archive Account',
+        description: `${accountName} will be removed from active Accounts and moved to Archived Data.`,
+        warning: 'You can restore this record later from Settings → Archived Data.',
+        confirmLabel: 'Archive Account',
+        variant: 'default',
         onConfirm: async () => {
-          await deleteOrganization(account.id);
-          onOpenChange(false);
-          toast.success('Account deleted');
+          try {
+            await accountsService.archive(account.id);
+            closeConfirm();
+            onOpenChange(false);
+            toast.success('Account archived');
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Failed to archive account');
+          }
         },
       }),
-      destructive: true,
       permission: 'accounts.delete',
     },
   ];
@@ -1760,23 +1785,27 @@ export function AccountPanel({ open, onOpenChange, account, onEdit }: AccountPan
             onSelect: () => onEdit?.(account),
           },
           {
-            label: 'Delete Account',
-            icon: Trash2,
-            destructive: true,
+            label: 'Archive Account',
+            icon: Archive,
             onSelect: () => showConfirm({
-              title: 'Delete Account',
-              description: `Delete ${accountName}?`,
-              warning: 'Associated leads, contacts, and deals will be unlinked.',
-              confirmLabel: 'Delete Account',
-              variant: 'destructive',
+              title: 'Archive Account',
+              description: `${accountName} will be removed from active Accounts and moved to Archived Data.`,
+              warning: 'You can restore this record later from Settings → Archived Data.',
+              confirmLabel: 'Archive Account',
+              variant: 'default',
               onConfirm: async () => {
-                await deleteOrganization(account.id);
-                onOpenChange(false);
-                toast.success('Account deleted');
+                try {
+                  await accountsService.archive(account.id);
+                  closeConfirm();
+                  onOpenChange(false);
+                  toast.success('Account archived');
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : 'Failed to archive account');
+                }
               },
             }),
           },
-        ]}
+        ].filter(item => !item.label.startsWith('Archive') || canArchive)}
       />
       {selectedDeal && (
         <DealPanel

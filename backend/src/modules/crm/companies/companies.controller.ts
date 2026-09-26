@@ -1,4 +1,5 @@
 ﻿import { Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import * as service from './companies.service';
 
 export async function getCompanies(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -27,9 +28,18 @@ export async function updateCompany(req: Request, res: Response, next: NextFunct
   } catch (err) { next(err); }
 }
 
-export async function archiveCompany(req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function archiveCompany(req: Request, res: Response, next: NextFunction) {
   try {
-    await service.archiveCompany(String(req.params.id), req.user!.tenantId, req.user!.userId);
+    const id = z.string().uuid().parse(req.params.id);
+    await service.archiveCompany(id, req.user!.tenantId, req.user!.userId);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+}
+
+export async function restoreCompany(req: Request, res: Response, next: NextFunction) {
+  try {
+    const id = z.string().uuid().parse(req.params.id);
+    await service.restoreCompany(id, req.user!.tenantId, req.user!.userId);
     res.json({ success: true });
   } catch (err) { next(err); }
 }

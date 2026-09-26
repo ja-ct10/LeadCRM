@@ -1,5 +1,5 @@
 import {
-  Pencil, Trash2, Mail, Phone, MapPin, Building,
+  Pencil, Archive, Mail, Phone, MapPin, Building,
   Tag, Trophy, CheckCircle2, User,
 } from 'lucide-react';
 import type { RecordDetailConfig, StatusConfig } from '@/shared/components/crm/record-detail.types';
@@ -24,7 +24,7 @@ export const contactDetailConfig: RecordDetailConfig = {
 
   actionTemplates: [
     { id: 'edit', label: 'Edit', icon: Pencil, primary: true, permission: 'contacts.edit' },
-    { id: 'delete', label: 'Archive', icon: Trash2, variant: 'destructive', permission: 'contacts.delete' },
+    { id: 'archive', label: 'Archive', icon: Archive, permission: 'contacts.delete' },
   ],
 
   buildFieldSections: (record, onSave): FieldSection[] => [

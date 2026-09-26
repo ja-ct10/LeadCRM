@@ -20,7 +20,7 @@ export interface AccountQueryParams {
  * and ensure the backend is running with `npm run dev` in /backend.
  */
 export const accountsService = {
-  getAll: (params?: AccountQueryParams): Promise<PaginatedResponse<any>> => {
+  getAll: (params?: AccountQueryParams, signal?: AbortSignal): Promise<PaginatedResponse<any>> => {
     const query = new URLSearchParams();
     if (params?.page)     query.set('page',     String(params.page));
     if (params?.limit)    query.set('limit',    String(params.limit));
@@ -28,7 +28,7 @@ export const accountsService = {
     if (params?.archived) query.set('archived', 'true');
     const qs = query.toString();
     // canonical path: /crm/accounts
-    return apiClient.get<PaginatedResponse<any>>(`/crm/accounts${qs ? `?${qs}` : ''}`);
+    return apiClient.get<PaginatedResponse<any>>(`/crm/accounts${qs ? `?${qs}` : ''}`, { signal });
   },
 
   getById: (id: string): Promise<ApiResponse<any>> =>
@@ -42,4 +42,6 @@ export const accountsService = {
 
   archive: (id: string): Promise<void> =>
     apiClient.patch<void>(`/crm/accounts/${id}/archive`),
+  restore: (id: string): Promise<void> =>
+    apiClient.patch<void>(`/crm/accounts/${id}/restore`),
 };

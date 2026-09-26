@@ -81,6 +81,9 @@ avatar reference in `User.avatarUrl`. Do not expose the service key as a `NEXT_P
 
 All require an authenticated session and completed workspace onboarding.
 
+For Lead, Contact, and Account archive/restore endpoints, permissions, archived
+queries, and migration requirements, see [CRM archive verification](crm-archive-verification.md).
+
 ### Contacts
 
 | Method | Path | Description | Permission |

@@ -116,18 +116,17 @@ export async function updateContact(
 }
 
 export async function archiveContact(id: string, tenantId: string, userId: string) {
-  const contact = await repo.archiveContact(id, tenantId, userId);
-  if (!contact) throw new NotFoundError('Contact');
+  const result = await repo.archiveContact(id, tenantId, userId);
+  if (!result.count) throw new NotFoundError('Active Lead');
+  await writeAuditLog({ tenantId, userId, action: 'lead.archived',
+    entityType: 'Lead', entityId: id, after: { isArchived: true } });
+}
 
-  await writeAuditLog({
-    tenantId, userId,
-    action:     'contact.archived',
-    entityType: 'Contact',
-    entityId:   id,
-    after:      { status: 'Archived' },
-  });
-
-  return contact;
+export async function restoreContact(id: string, tenantId: string, userId: string) {
+  const result = await repo.restoreContact(id, tenantId);
+  if (!result.count) throw new NotFoundError('Archived Lead');
+  await writeAuditLog({ tenantId, userId, action: 'lead.restored',
+    entityType: 'Lead', entityId: id, after: { isArchived: false } });
 }
 
 /**

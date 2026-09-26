@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Building2, Pencil, Trash2 } from 'lucide-react';
+import { Building2, Pencil, Archive } from 'lucide-react';
 import { Button } from '@/shared/components/ui/button';
 import { Badge } from '@/shared/components/ui/badge';
 import type { Account } from '../types/account.types';
@@ -9,13 +9,13 @@ import type { Account } from '../types/account.types';
 interface AccountsTableProps {
   accounts: Account[];
   onEdit: (account: Account) => void;
-  onDelete: (id: string) => void;
+  onArchive: (id: string) => void;
   canEdit: boolean;
-  canDelete: boolean;
+  canArchive: boolean;
 }
 
 export default function AccountsTable({
-  accounts, onEdit, onDelete, canEdit, canDelete,
+  accounts, onEdit, onArchive, canEdit, canArchive,
 }: AccountsTableProps) {
   if (accounts.length === 0) {
     return (
@@ -74,10 +74,10 @@ export default function AccountsTable({
                       <Pencil className="w-3.5 h-3.5" />
                     </Button>
                   )}
-                  {canDelete && (
-                    <Button size="icon" variant="ghost" onClick={() => onDelete(account.id)}
-                      className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10">
-                      <Trash2 className="w-3.5 h-3.5" />
+                  {canArchive && (
+                    <Button size="icon" variant="ghost" onClick={() => onArchive(account.id)} aria-label="Archive account"
+                      className="h-7 w-7 text-slate-500 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700">
+                      <Archive className="w-3.5 h-3.5" />
                     </Button>
                   )}
                 </div>

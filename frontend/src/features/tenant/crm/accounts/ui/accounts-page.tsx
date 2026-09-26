@@ -1,5 +1,7 @@
 ﻿'use client';
 
+import { useConfirmDialog } from '@/shared/hooks/use-confirm-dialog';
+import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { ModuleWorkspace, ViewType, AccountPanel, StatusBadge } from '@/shared/components/crm';
 import { DataLoadingSkeleton } from '@/shared/components/crm/data-view-states';
@@ -32,6 +34,7 @@ import type { ColumnConfigItem } from '@leadcrm/shared';
 
 export default function AccountsPage(): React.ReactElement {
   const router = useRouter();
+  const { dialogProps, confirm, close } = useConfirmDialog();
   const canCreate = useHasPermission('accounts.create');
   const canEdit = useHasPermission('accounts.edit');
   const canDelete = useHasPermission('accounts.delete');
@@ -149,7 +152,7 @@ export default function AccountsPage(): React.ReactElement {
     editTarget,
     handleCreate,
     handleUpdate,
-    handleDelete,
+    handleArchive,
     handleOpenCreate,
     handleOpenEdit,
     handleCloseForm,
@@ -309,8 +312,25 @@ export default function AccountsPage(): React.ReactElement {
     }
   };
 
+  const confirmArchive = (ids: string[], name: string) => confirm({
+    title: 'Archive Account' + (ids.length > 1 ? 's?' : '?'),
+    description: `${name} will be removed from active Accounts and moved to Archived Data. You can restore this record later.`,
+    confirmLabel: 'Archive',
+    onConfirm: async () => {
+      try {
+        await Promise.all(ids.map((id) => handleArchive(id)));
+
+        close();
+        toast.success('Account archived');
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to archive account');
+      }
+    },
+  });
+
   return (
     <>
+      <ConfirmActionDialog {...dialogProps} />
       <ModuleWorkspace
         moduleId="accounts"
         title="Accounts"
@@ -377,9 +397,9 @@ export default function AccountsPage(): React.ReactElement {
             onSelectionChange={setAccountSelectedIds}
             getOwnerName={getOwnerName}
             canEdit={canEdit}
-            canDelete={canDelete}
+            canArchive={canDelete}
             onEdit={handleOpenEdit}
-            onDelete={(account) => handleDelete(account.id)}
+            onArchive={(account) => confirmArchive([account.id], account.name)}
             onHideColumn={async (columnId) => {
               const updated = effectiveColumns.map((col) =>
                 col.id === columnId ? { ...col, visible: false } : col,

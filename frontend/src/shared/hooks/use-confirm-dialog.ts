@@ -39,12 +39,12 @@ const DEFAULT_STATE: ConfirmDialogState = {
  *
  * // Trigger
  * onClick: () => confirm({
- *   title: 'Delete Lead?',
+ *   title: 'Archive Lead?',
  *   description: 'This will archive the lead.',
- *   warning: 'This cannot be undone.',
- *   variant: 'destructive',
- *   confirmLabel: 'Delete',
- *   onConfirm: async () => { await deleteLead(id); },
+ *   warning: 'You can restore this record from Archived Data.',
+ *   variant: 'default',
+ *   confirmLabel: 'Archive',
+ *   onConfirm: async () => { await archiveLead(id); },
  * })
  *
  * // Render

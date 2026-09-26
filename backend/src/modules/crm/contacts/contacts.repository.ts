@@ -24,15 +24,7 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
 
   const where: Record<string, unknown> = {
     tenantId,
-    // Lead has no isArchived — archive is expressed as status='Archived'.
-    // When filter[status]=in:Hot,Warm is present, archived records are naturally
-    // excluded because 'Archived' is not in the list.
-    // When no status filter is active, explicitly exclude archived records.
-    ...(query.archived === 'true'
-      ? { status: 'Archived' }
-      : filterClauses.some((c) => 'status' in c)
-        ? {}                            // filter[status] handles its own scoping
-        : { status: { not: 'Archived' } }),
+    isArchived: query.archived === 'true',
     // accountId direct param (still used by relationship lookups)
     ...(query.accountId ? { accountId: String(query.accountId) } : {}),
     ...(query.search
@@ -126,14 +118,20 @@ export async function updateContact(
   }
 }
 
-export async function archiveContact(id: string, tenantId: string, _userId: string) {
-  try {
-    // Lead has no isArchived — archive is expressed as status change
-    return await prisma.lead.update({
-      where: { id, tenantId },
-      data:  { status: 'Archived' },
-    });
-  } catch {
-    return null;
-  }
+export async function archiveContact(id: string, tenantId: string, userId: string) {
+  return prisma.lead.updateMany({
+    where: { id, tenantId, isArchived: false },
+    data: { isArchived: true, deletedAt: new Date(), deletedBy: userId },
+  });
+}
+
+export async function restoreContact(id: string, tenantId: string) {
+  const lead = await prisma.lead.findFirst({ where: { id, tenantId, isArchived: true } });
+  if (!lead) return { count: 0 };
+  return prisma.lead.updateMany({
+    where: { id, tenantId, isArchived: true },
+    // Legacy archives have no recoverable prior status.
+    data: { isArchived: false, deletedAt: null, deletedBy: null,
+      ...(lead.status === 'Archived' ? { status: 'Inquiry' } : {}) },
+  });
 }

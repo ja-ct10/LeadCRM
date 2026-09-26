@@ -5,7 +5,7 @@ import { clearPageCache, getPageCache, setPageCache } from '../page-cache';
 beforeEach(() => {
   clearPageCache();
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true }) }));
-  for (const module of ['leads', 'contacts', 'accounts', 'campaigns', 'reports', 'activities', 'notifications']) {
+  for (const module of ['leads', 'contacts', 'accounts', 'campaigns', 'reports', 'activities', 'notifications', 'archived-crm', 'counts-leads', 'counts-contacts', 'counts-accounts']) {
     setPageCache(module, 'tenant-a', {}, ['before-write']);
   }
 });
@@ -13,6 +13,9 @@ afterEach(() => { vi.unstubAllGlobals(); clearPageCache(); });
 
 it.each([
   ['/crm/contacts/123/archive', ['contacts', 'leads', 'accounts', 'reports', 'activities']],
+  ['/crm/leads/123/restore', ['leads', 'counts-leads', 'archived-crm']],
+  ['/crm/contacts/123/restore', ['contacts', 'counts-contacts', 'archived-crm']],
+  ['/crm/accounts/123/restore', ['accounts', 'counts-accounts', 'archived-crm']],
   ['/crm/leads/123/convert', ['contacts', 'leads', 'accounts']],
   ['/marketing/templates/123', ['campaigns']],
   ['/notifications/123/read', ['notifications']],

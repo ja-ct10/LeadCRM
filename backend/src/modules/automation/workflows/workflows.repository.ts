@@ -72,7 +72,7 @@ export function listExecutions(workflowId: string, tenantId: string, page = 1) {
     include: { steps: { orderBy: { stepIndex: 'asc' } }, trigger: { select: { triggerType: true, entityType: true, triggeredAt: true, payload: true } } } });
 }
 export async function entityContext(entity: WorkflowEntity, id: string, tenantId: string): Promise<Record<string, unknown> | null> {
-  const record = entity === 'lead' ? await prisma.lead.findFirst({ where: { id, tenantId, status: { not: 'Archived' } } })
+  const record = entity === 'lead' ? await prisma.lead.findFirst({ where: { id, tenantId, isArchived: false } })
     : entity === 'contact' ? await prisma.contact.findFirst({ where: { id, tenantId, isArchived: false } })
     : await prisma.deal.findFirst({ where: { id, tenantId, isArchived: false } });
   if (!record) return null;

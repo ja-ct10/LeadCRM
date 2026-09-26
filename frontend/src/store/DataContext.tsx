@@ -107,12 +107,10 @@ interface DataContextType {
   refreshOrganizations: () => Promise<void>;
   refreshDeals: () => Promise<void>;
   updateContact: (id: string, updates: Partial<Contact>) => Promise<void>;
-  deleteContact: (id: string) => Promise<void>;
   addOrganization: (
     org: Omit<Organization, "id" | "tenantId" | "createdAt">,
   ) => Promise<string | null>;
   updateOrganization: (id: string, updates: Partial<Organization>) => Promise<void>;
-  deleteOrganization: (id: string) => Promise<void>;
   addDeal: (deal: Omit<Deal, "id" | "tenantId" | "createdAt">) => Promise<void>;
   updateDeal: (id: string, updates: Partial<Deal>) => Promise<void>;
   moveDealStage: (id: string, stageId: string, note?: string, lostReason?: string, handoff?: any) => Promise<void>;
@@ -159,8 +157,6 @@ interface DataContextType {
   deleteUser: (id: string) => void;
   restoreRecord: (
     type:
-      | "Organization"
-      | "Contact"
       | "Deal"
       | "Pipeline"
       | "Workflow"
@@ -748,31 +744,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const deleteOrganization = async (id: string): Promise<void> => {
-    if (!USE_MOCK_DATA) {
-      try {
-        await organizationsService.archive(id);
-        setOrganizations((prev) =>
-          prev.map((o) => (o.id === id ? { ...o, isArchived: true, archivedAt: new Date().toISOString(), archivedBy: user?.id } : o)),
-        );
-        invalidatePageCache('accounts', tenant?.id || user?.tenantId || '');
-        addAuditLog("Organization Archived", `Archived organization id '${id}'.`);
-      } catch (err: unknown) {
-        throw new Error(err instanceof Error ? err.message : 'Failed to archive organization');
-      }
-      return;
-    }
-
-    const original = organizations.find((o) => o.id === id);
-    const arr = organizations.map((o) =>
-      o.id === id ? { ...o, isArchived: true, archivedAt: new Date().toISOString(), archivedBy: user?.id } : o,
-    );
-    saveAndSet("leadcrm_organizations", arr, setOrganizations);
-    if (original) {
-      addAuditLog("Organization Archived", `Archived corporate client profile '${original.name}'.`);
-    }
-  };
-
 
   /** Re-fetch contacts/leads from the API and update state (for use after bulk operations like import) */
   const refreshContacts = async (): Promise<void> => {
@@ -905,35 +876,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
           ? `Updated ${changes.join(", ")} for contact '${original.companyName}'.`
           : `Modified contact profile details for '${original.companyName}'.`;
       addAuditLog("Contact Updated", details, id, changeset);
-    }
-  };
-
-  const deleteContact = async (id: string): Promise<void> => {
-    if (!USE_MOCK_DATA) {
-      try {
-        await contactsService.archive(id);
-        setContacts((prev) =>
-          prev.map((l) => (l.id === id ? { ...l, isArchived: true, archivedAt: new Date().toISOString(), archivedBy: user?.id } : l)),
-        );
-        invalidatePageCache('leads',    tenant?.id || user?.tenantId || '');
-        invalidatePageCache('contacts', tenant?.id || user?.tenantId || '');
-        addAuditLog("Contact Archived", `Archived contact id '${id}'.`);
-      } catch (err: unknown) {
-        throw new Error(err instanceof Error ? err.message : 'Failed to archive contact');
-      }
-      return;
-    }
-
-    const original = contacts.find((l) => l.id === id);
-    const newLeads = contacts.map((l) =>
-      l.id === id ? { ...l, isArchived: true, archivedAt: new Date().toISOString(), archivedBy: user?.id } : l,
-    );
-    saveAndSet("leadcrm_leads", newLeads, setContacts);
-    if (original) {
-      addAuditLog(
-        "Contact Archived",
-        `Archived contact profile belonging to company '${original.companyName}'.`,
-      );
     }
   };
 
@@ -1755,8 +1697,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const restoreRecord = (
     type:
-      | "Organization"
-      | "Contact"
       | "Deal"
       | "Pipeline"
       | "Workflow"
@@ -1767,32 +1707,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     id: string,
   ) => {
     switch (type) {
-      case "Organization":
-        saveAndSet(
-          "leadcrm_organizations",
-          organizations.map((o) =>
-            o.id === id ? { ...o, isArchived: false } : o,
-          ),
-          setOrganizations,
-        );
-        addAuditLog(
-          "Organization Restored",
-          `Restored corporate client profile (ID: ${id}).`,
-        );
-        break;
-      case "Contact":
-        saveAndSet(
-          "leadcrm_leads",
-          contacts.map((c) =>
-            c.id === id ? { ...c, isArchived: false, status: "Cold" } : c,
-          ),
-          setContacts,
-        );
-        addAuditLog(
-          "Contact Restored",
-          `Restored contact profile (ID: ${id}).`,
-        );
-        break;
       case "Deal":
         saveAndSet(
           "leadcrm_deals",
@@ -2020,8 +1934,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     loadData();
   };
 
-
-
   // ── Column Preferences: Save & Reset ───────────────────────────────────────
   const saveColumnPreference = useCallback(async (module: string, columns: ColumnConfigItem[]): Promise<void> => {
     const previous = columnPreferencesRef.current[module];
@@ -2073,13 +1985,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     auditLogs,
     addOrganization,
     updateOrganization,
-    deleteOrganization,
     addContact,
     refreshContacts,
     refreshOrganizations,
     refreshDeals,
     updateContact,
-    deleteContact,
     addDeal,
     updateDeal,
     moveDealStage,

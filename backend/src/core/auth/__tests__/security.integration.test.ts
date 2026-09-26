@@ -35,7 +35,7 @@ beforeAll(async () => {
     INSERT INTO "User" (id,"tenantId",email,"firstName","lastName",role,"updatedAt") VALUES ('migration-user','migration-tenant','migration@camxian.com','Migration','User','Sales',NOW());
     INSERT INTO "Invoice" (id,"tenantId","invoiceNumber",amount,"totalAmount",frequency,"startDate","updatedAt") VALUES ('retired-invoice','migration-tenant','OLD-001',100,100,'Monthly',NOW(),NOW());
     INSERT INTO "Activity" (id,"tenantId","createdById",type,title,"invoiceId") VALUES ('keep-activity','migration-tenant','migration-user','note','Historical record','retired-invoice');`);
-  for (const name of ['20261007000000_add_mfa', '20261008000000_remove_retired_billing_domains']) {
+  for (const name of ['20261007000000_add_mfa', '20261008000000_remove_retired_billing_domains', '20261009000000_lead_archive_state']) {
     await pg.exec(readFileSync(resolve(__dirname, '../../../../prisma/migrations', name, 'migration.sql'), 'utf8'));
   }
   socket = new PGLiteSocketServer({ db: pg, host: '127.0.0.1', port: 0 });

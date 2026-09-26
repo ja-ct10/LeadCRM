@@ -24,7 +24,7 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
 
   const where: Record<string, unknown> = {
     tenantId,
-    isArchived: false,
+    isArchived: query.archived === 'true',
   };
 
   // Status filter — value must be a valid ContactStatus enum member
@@ -97,13 +97,16 @@ export async function updateContact(id: string, tenantId: string, dto: Record<st
   }
 }
 
-export async function archiveContact(id: string, tenantId: string) {
-  try {
-    return await prisma.contact.update({
-      where: { id, tenantId } as never,
-      data:  { isArchived: true, archiveReason: 'Archived by user' },
-    });
-  } catch {
-    return null;
-  }
+export async function archiveContact(id: string, tenantId: string, userId: string) {
+  return prisma.contact.updateMany({
+    where: { id, tenantId, isArchived: false },
+    data: { isArchived: true, deletedAt: new Date(), deletedBy: userId },
+  });
+}
+
+export async function restoreContact(id: string, tenantId: string) {
+  return prisma.contact.updateMany({
+    where: { id, tenantId, isArchived: true },
+    data: { isArchived: false, deletedAt: null, deletedBy: null, archiveReason: null },
+  });
 }

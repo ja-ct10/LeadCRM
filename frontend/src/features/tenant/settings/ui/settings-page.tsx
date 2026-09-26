@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import { useData } from "@/store/DataContext";
+import { ArchivedData } from './archived-data';
 import { useAuth } from "@/store/AuthContext";
 import {
   Shield,
@@ -108,18 +108,6 @@ const NAV_GROUPS: NavGroup[] = [
 
 export default function SettingsPage(): React.ReactElement {
   const { user, tenant, userCan } = useAuth();
-  const {
-    organizations,
-    contacts,
-    deals,
-    pipelines,
-    workflows,
-    campaigns,
-    templates,
-    users,
-    roles,
-    restoreRecord,
-  } = useData();
 
   const isClientAdmin = user?.role === "Client Admin";
 
@@ -154,9 +142,6 @@ export default function SettingsPage(): React.ReactElement {
   const [appTheme, setAppTheme] = useState(localStorage.getItem("app_theme") || "Light");
   const [appFontSize, setAppFontSize] = useState(localStorage.getItem("app_font_size") || "Medium");
   const [appAccentColor, setAppAccentColor] = useState(localStorage.getItem(ACCENT_KEY) || "blue");
-
-  // Archived filter
-  const [archivedFilter, setArchivedFilter] = useState<string>("All");
 
   useEffect(() => {
     const handleSync = () => {
@@ -412,60 +397,7 @@ export default function SettingsPage(): React.ReactElement {
   const renderUsersTab = (): React.ReactElement => <TeamManagement />;
 
   // â”€â”€ Archived Data Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const renderArchivedTab = (): React.ReactElement => {
-    const allArchived = [
-      ...organizations.filter((o) => o.isArchived).map((o) => ({ type: "Organization", id: o.id, name: o.name })),
-      ...contacts.filter((c) => c.isArchived).map((c) => ({ type: "Contact", id: c.id, name: c.contactPerson + " (" + c.companyName + ")" })),
-      ...deals.filter((d) => d.isArchived).map((d) => ({ type: "Deal", id: d.id, name: d.title })),
-      ...pipelines.filter((p) => p.isArchived).map((p) => ({ type: "Pipeline", id: p.id, name: p.name })),
-      ...workflows.filter((w) => w.isArchived).map((w) => ({ type: "Workflow", id: w.id, name: w.name })),
-      ...campaigns.filter((c) => c.isArchived).map((c) => ({ type: "Campaign", id: c.id, name: c.name })),
-      ...templates.filter((t) => t.isArchived).map((t) => ({ type: "Template", id: t.id, name: t.name })),
-      ...roles.filter((r) => r.isArchived).map((r) => ({ type: "Role", id: r.id, name: r.name })),
-      ...users.filter((u) => u.isArchived).map((u) => ({ type: "User", id: u.id, name: `${u.firstName} ${u.lastName}` })),
-    ];
-    const filteredArchived = archivedFilter === "All" ? allArchived : allArchived.filter((x) => x.type === archivedFilter);
-
-    return (
-      <div className="max-w-3xl space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Archived Data Recovery</h3>
-            <p className="text-xs text-slate-400 mt-0.5">Restore records previously archived instead of deleted.</p>
-          </div>
-        </div>
-        <div className="flex gap-1.5 flex-wrap">
-          {["All", "Contact", "Organization", "Deal", "Pipeline", "User", "Role", "Workflow", "Campaign", "Template"].map((type) => (
-            <button key={type} onClick={() => setArchivedFilter(type)}
-              className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${archivedFilter === type ? "bg-[#3B82F6] text-white" : "bg-slate-100 dark:bg-[#1B252F] text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"}`}>
-              {type}
-            </button>
-          ))}
-        </div>
-        <div className="space-y-2">
-          {filteredArchived.length === 0 ? (
-            <div className="text-center py-10 bg-slate-50 dark:bg-[#25313D] rounded-xl border border-dashed border-slate-200 dark:border-slate-700/60">
-              <Archive className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
-              <p className="text-xs text-slate-400">No archived records found.</p>
-            </div>
-          ) : (
-            filteredArchived.map((item) => (
-              <div key={item.id} className="flex items-center justify-between p-3 bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-xl">
-                <div>
-                  <span className="text-[10px] font-bold text-[#3B82F6] uppercase tracking-wider">{item.type}</span>
-                  <p className="text-xs font-semibold text-slate-900 dark:text-white mt-0.5">{item.name}</p>
-                </div>
-                <button onClick={() => { restoreRecord(item.type as Parameters<typeof restoreRecord>[0], item.id); toast.success(`${item.type} restored`); }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#3B82F6]/10 hover:bg-[#3B82F6]/15 dark:bg-[#3B82F6]/10 dark:hover:bg-[#3B82F6]/20 text-[#3B82F6] dark:text-[#60A5FA] rounded-lg text-xs font-semibold transition-colors cursor-pointer">
-                  <RefreshCw size={12} /> Restore
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    );
-  };
+  const renderArchivedTab = () => <ArchivedData />;
 
   const renderCustomFieldsTab = (): React.ReactElement => (
     <div className="max-w-2xl space-y-4">

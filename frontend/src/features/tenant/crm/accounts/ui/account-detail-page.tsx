@@ -1,5 +1,6 @@
 'use client';
 
+import { accountsService } from '../services/accounts.service';
 import React, { useState, useMemo, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Layers, Users, Clock, Paperclip } from 'lucide-react';
@@ -26,7 +27,7 @@ export default function AccountDetailPage(): React.ReactElement {
     id: recordId,
   });
 
-  const { updateOrganization, deleteOrganization } = useData();
+  const { updateOrganization } = useData();
 
   // ── Archive confirmation state ───────────────────────────────────────────
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -46,13 +47,13 @@ export default function AccountDetailPage(): React.ReactElement {
           case 'edit':
             toast.info('Edit form coming soon — use the side panel for now');
             break;
-          case 'delete':
+          case 'archive':
             if (recordId) setConfirmOpen(true);
             break;
         }
       },
     }));
-  }, [recordId, deleteOrganization, router]);
+  }, [recordId, router]);
 
   // ── Derived display data ────────────────────────────────────────────────
   const title = (record?.name as string) ?? 'Loading...';
@@ -157,15 +158,19 @@ export default function AccountDetailPage(): React.ReactElement {
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         title="Archive Account"
-        description="This account and its associated data will be moved to the archive."
-        warning="You can restore it later from archived records."
+        description={`${title} will be removed from active Accounts and moved to Archived Data.`}
+        warning="You can restore this record later from Settings → Archived Data."
         confirmLabel="Archive"
-        variant="destructive"
+        variant="default"
         onConfirm={async () => {
           if (!recordId) return;
-          await deleteOrganization(recordId);
-          toast.success('Account archived');
-          router.push('/crm/accounts');
+          try {
+            await accountsService.archive(recordId);
+            toast.success('Account archived');
+            router.push('/crm/accounts');
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Failed to archive account');
+          }
         }}
       />
     </>

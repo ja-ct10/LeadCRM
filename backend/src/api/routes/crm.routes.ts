@@ -60,6 +60,7 @@ router.get(   '/leads/:id',          authorize('contacts.view'),   contactContro
 router.post(  '/leads',              authorize('contacts.create'), validate(CreateContactSchema),  contactController.createContact);
 router.put(   '/leads/:id',          authorize('contacts.edit'),   validate(UpdateContactSchema),  contactController.updateContact);
 router.patch( '/leads/:id/archive',  authorize('contacts.delete'), contactController.archiveContact);
+router.patch( '/leads/:id/restore',  authorize('contacts.edit'), contactController.restoreContact);
 router.post(  '/leads/:id/convert',  authorize('contacts.edit'),   validate(ConvertContactSchema), contactController.convertContact);
 router.get(   '/leads/:id/relationships', authorize('contacts.view'), relationshipsController.getLeadRelationships);
 
@@ -73,6 +74,7 @@ router.get(   '/contacts/:id',          authorize('contacts.view'),   contactsV2
 router.post(  '/contacts',              authorize('contacts.create'), contactsV2Controller.createContact);
 router.put(   '/contacts/:id',          authorize('contacts.edit'),   contactsV2Controller.updateContact);
 router.patch( '/contacts/:id/archive',  authorize('contacts.delete'), contactsV2Controller.archiveContact);
+router.patch( '/contacts/:id/restore',  authorize('contacts.edit'), contactsV2Controller.restoreContact);
 router.get(   '/contacts/:id/relationships', authorize('contacts.view'), relationshipsController.getContactRelationships);
 
 // ── Accounts (canonical name; /companies kept as alias) ──────────────────
@@ -85,6 +87,7 @@ router.get(   '/accounts/:id',          authorize('accounts.view'),   companyCon
 router.post(  '/accounts',              authorize('accounts.create'), validate(CreateCompanySchema), companyController.createCompany);
 router.put(   '/accounts/:id',          authorize('accounts.edit'),   validate(UpdateCompanySchema), companyController.updateCompany);
 router.patch( '/accounts/:id/archive',  authorize('accounts.delete'), companyController.archiveCompany);
+router.patch( '/accounts/:id/restore',  authorize('accounts.edit'), companyController.restoreCompany);
 router.get(   '/accounts/:id/relationships', authorize('accounts.view'), relationshipsController.getAccountRelationships);
 
 // Backward-compat aliases
@@ -93,6 +96,7 @@ router.get(   '/companies/:id',         authorize('accounts.view'),   companyCon
 router.post(  '/companies',             authorize('accounts.create'), validate(CreateCompanySchema), companyController.createCompany);
 router.put(   '/companies/:id',         authorize('accounts.edit'),   validate(UpdateCompanySchema), companyController.updateCompany);
 router.patch( '/companies/:id/archive', authorize('accounts.delete'), companyController.archiveCompany);
+router.patch( '/companies/:id/restore', authorize('accounts.edit'), companyController.restoreCompany);
 
 // ── Deals ─────────────────────────────────────────────────────────────────
 router.get(   '/deals',              authorize('deals.view'),   dealController.getDeals);

@@ -68,3 +68,11 @@ export const PATH_TO_PATHNAME: Record<string, string> = {
   'admin-clients':       '/admin/clients',
   'admin-audit-log':     '/admin/audit',
 };
+
+export function resolveModulePath(pathname: string): string {
+  if (PATHNAME_TO_PATH[pathname]) return PATHNAME_TO_PATH[pathname];
+  const parent = Object.keys(PATHNAME_TO_PATH)
+    .sort((a, b) => b.length - a.length)
+    .find((path) => pathname.startsWith(`${path}/`));
+  return parent ? PATHNAME_TO_PATH[parent] : 'dashboard';
+}

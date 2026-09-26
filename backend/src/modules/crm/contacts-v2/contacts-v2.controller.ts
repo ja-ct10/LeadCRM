@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import * as service from './contacts-v2.service';
 
 /**
@@ -36,7 +37,16 @@ export async function updateContact(req: Request, res: Response, next: NextFunct
 
 export async function archiveContact(req: Request, res: Response, next: NextFunction) {
   try {
-    await service.archiveContact(String(req.params.id), req.user!.tenantId);
+    const id = z.string().uuid().parse(req.params.id);
+    await service.archiveContact(id, req.user!.tenantId, req.user!.userId);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+}
+
+export async function restoreContact(req: Request, res: Response, next: NextFunction) {
+  try {
+    const id = z.string().uuid().parse(req.params.id);
+    await service.restoreContact(id, req.user!.tenantId, req.user!.userId);
     res.json({ success: true });
   } catch (err) { next(err); }
 }

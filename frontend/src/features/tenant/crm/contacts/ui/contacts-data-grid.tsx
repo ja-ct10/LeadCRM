@@ -58,12 +58,12 @@ interface ContactsDataGridProps {
   getAssignedUserName: (userId?: string) => string;
   /** RBAC: can user edit */
   canEdit?: boolean;
-  /** RBAC: can user delete */
-  canDelete?: boolean;
+  /** RBAC: can user archive */
+  canArchive?: boolean;
   /** Open edit form for a contact */
   onEdit?: (contact: Contact) => void;
-  /** Delete a contact */
-  onDelete?: (contact: Contact) => void;
+  /** Archive a contact */
+  onArchive?: (contact: Contact) => void;
   /** Open manage columns drawer */
   onManageColumns?: () => void;
   /** Hide a specific column */
@@ -90,9 +90,9 @@ export function ContactsDataGrid({
   getAccountName,
   getAssignedUserName,
   canEdit = false,
-  canDelete = false,
+  canArchive = false,
   onEdit,
-  onDelete,
+  onArchive,
   onManageColumns,
   onHideColumn,
   viewMode = 'clip',
@@ -206,14 +206,14 @@ export function ContactsDataGrid({
       onView: () => onRowClick(contact),
       onEdit: onEdit ? () => onEdit(contact) : undefined,
       onSendEmail: contact.email ? () => window.open(`mailto:${contact.email}`, '_self') : undefined,
-      onDelete: onDelete ? () => onDelete(contact) : undefined,
+      onArchive: onArchive ? () => onArchive(contact) : undefined,
       onCopyUrl: () => {
         navigator.clipboard.writeText(`${window.location.origin}/crm/contacts/${contact.id}`);
       },
       canEdit,
-      canDelete,
+      canArchive,
     });
-  }, [onRowClick, onEdit, onDelete, canEdit, canDelete]);
+  }, [onRowClick, onEdit, onArchive, canEdit, canArchive]);
 
   // ─── Render ────────────────────────────────────────────────────────────
 

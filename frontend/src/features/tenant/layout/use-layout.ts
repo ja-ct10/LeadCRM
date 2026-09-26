@@ -3,7 +3,7 @@
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/store/AuthContext';
 import { usePermissions, PERMISSION_BRIDGE } from '@/shared/hooks/use-permissions';
-import { PATHNAME_TO_PATH, PATH_TO_PATHNAME } from '@/lib/route-map';
+import { resolveModulePath, PATH_TO_PATHNAME } from '@/lib/route-map';
 import {
   LayoutDashboard, Briefcase, Workflow, Mail, Settings,
   Building2, Activity, ListTodo,
@@ -40,9 +40,7 @@ export function useLayout() {
   const { user } = useAuth();
   const userPermissions = usePermissions();
 
-  const currentPath = pathname.startsWith('/help/') ? 'help'
-    : pathname.startsWith('/automation/workflows/') ? 'workflows'
-    : PATHNAME_TO_PATH[pathname] ?? 'dashboard';
+  const currentPath = resolveModulePath(pathname);
 
   const navigate = (path: string) => {
     const target = PATH_TO_PATHNAME[path];

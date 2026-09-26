@@ -27,11 +27,13 @@ export interface ContactV2Query {
   status?: string;
   assignedUserId?: string;
   accountId?: string;
+  archived?: boolean;
 }
 
 export const contactsV2Api = {
   list: (query: ContactV2Query = {}, signal?: AbortSignal): Promise<ContactsV2Response> => {
     const params: Record<string, unknown> = {};
+    if (query.archived !== undefined) params['archived'] = query.archived;
     if (query.page !== undefined) params['page'] = query.page;
     if (query.limit !== undefined) params['limit'] = query.limit;
     if (query.search) params['search'] = query.search;
@@ -52,4 +54,6 @@ export const contactsV2Api = {
 
   archive: (id: string): Promise<{ success: boolean }> =>
     apiClient.patch<{ success: boolean }>(`/crm/contacts/${id}/archive`, {}),
+  restore: (id: string): Promise<void> =>
+    apiClient.patch<void>(`/crm/contacts/${id}/restore`),
 };

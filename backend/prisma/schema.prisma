@@ -542,6 +542,9 @@ model Lead {
   createdById         String?
   updatedById         String?
   lastStatusChangedAt DateTime?
+  isArchived          Boolean   @default(false)
+  deletedAt           DateTime?
+  deletedBy           String?
   // Conversion tracking — set when lead is converted to a Contact
   contactId           String?
   convertedAt         DateTime?

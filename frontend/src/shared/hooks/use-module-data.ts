@@ -30,6 +30,7 @@ export function useModuleData({ moduleId, page, pageSize, sort, filter, search }
   const result = useCachedPage({
     module: moduleId,
     params,
+    revalidateOnInvalidation: ['leads', 'contacts', 'accounts'].includes(moduleId),
     intervalMs: 60_000,
     fetchFn: (signal) => apiClient.get<ModulePaginatedResponse<Record<string, unknown>>>(
       `/crm/${moduleId}`, { params, signal },

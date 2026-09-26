@@ -10,6 +10,7 @@ export function invalidateApiPageCache(path: string): void {
   }
   const modules = new Set<string>();
   if (area === 'crm') {
+    if (['leads', 'contacts', 'accounts', 'companies'].includes(resource)) modules.add('archived-crm');
     if (resource === 'leads' || resource === 'contacts') modules.add(`counts-${resource}`);
     if (resource === 'accounts' || resource === 'organizations') modules.add('counts-accounts');
     if (resource === 'deals' || resource === 'pipelines') modules.add('counts-deals');

@@ -127,23 +127,10 @@ export function useAccounts(params?: UseAccountsParams) {
     }
   }, [tenant, refetch]);
 
-  const handleDelete = useCallback(async (id: string) => {
-    try {
-      if (USE_MOCK_DATA) {
-        const raw = localStorage.getItem('leadcrm_accounts');
-        const all: Account[] = raw ? JSON.parse(raw) : [];
-        localStorage.setItem('leadcrm_accounts', JSON.stringify(
-          all.map((c) => c.id === id ? { ...c, isArchived: true } : c),
-        ));
-        setDisplayAccounts((prev) => prev.filter((c) => c.id !== id));
-      } else {
-        await accountsService.archive(id);
-        invalidatePageCache('accounts', tenant?.id ?? '');
-        refetch();
-      }
-    } catch (err) {
-      console.error('[useAccounts] Failed to delete account:', err);
-    }
+  const handleArchive = useCallback(async (id: string) => {
+    await accountsService.archive(id);
+    invalidatePageCache('accounts', tenant?.id ?? '');
+    refetch();
   }, [tenant, refetch]);
 
   const handleOpenCreate = useCallback(() => { setEditTarget(null); setIsFormOpen(true); }, []);
@@ -168,7 +155,7 @@ export function useAccounts(params?: UseAccountsParams) {
     editTarget,
     handleCreate,
     handleUpdate,
-    handleDelete,
+    handleArchive,
     handleOpenCreate,
     handleOpenEdit,
     handleCloseForm,

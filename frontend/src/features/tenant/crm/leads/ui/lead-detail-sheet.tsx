@@ -7,6 +7,7 @@ import { useData } from '@/store/DataContext';
 import { getCRMStatusStyles } from '@/lib/utils';
 import { AlertTriangle, Archive, Building, Briefcase, Calendar, Edit2, FileText, Mail, MapPin, Phone, Tag, TrendingUp, User } from 'lucide-react';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
+import { toast } from 'sonner';
 
 const formatDate = (dateString: string) => {
   if (!dateString) return '--';
@@ -18,7 +19,7 @@ interface ClientDetailSheetProps {
   onClose: () => void;
   client: Lead | Organization | null;
   clientType: 'individual' | 'organization';
-  onArchive: (id: string, type: 'individual' | 'organization') => void;
+  onArchive: (id: string, type: 'individual' | 'organization') => void | Promise<void>;
   onEdit?: () => void;
 }
 
@@ -281,13 +282,18 @@ export function ClientDetailSheet({
       open={confirmOpen}
       onOpenChange={setConfirmOpen}
       title="Archive Client"
-      description={`This will archive ${clientName} and hide them from active views.`}
-      warning="Their historical data and associated deals are preserved."
+      description={`${clientName} will be removed from active views and moved to Archived Data.`}
+      warning="You can restore this record later from Settings → Archived Data."
       confirmLabel="Archive"
       variant="destructive"
       onConfirm={async () => {
-        onArchive(client.id, clientType);
-        onClose();
+        try {
+          await onArchive(client.id, clientType);
+          setConfirmOpen(false);
+          onClose();
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : 'Failed to archive record');
+        }
       }}
     />
     </>

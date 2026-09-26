@@ -49,12 +49,15 @@ export async function updateCompany(
 }
 
 export async function archiveCompany(id: string, tenantId: string, userId: string) {
-  const company = await repo.archiveCompany(id, tenantId, userId);
-  if (!company) throw new NotFoundError('Company');
-  await writeAuditLog({
-    tenantId, userId,
-    action: 'account.archived', entityType: 'Account', entityId: id,
-    after: { isArchived: true },
-  });
-  return company;
+  const result = await repo.archiveCompany(id, tenantId, userId);
+  if (!result.count) throw new NotFoundError('Active Account');
+  await writeAuditLog({ tenantId, userId, action: 'account.archived',
+    entityType: 'Account', entityId: id, after: { isArchived: true } });
+}
+
+export async function restoreCompany(id: string, tenantId: string, userId: string) {
+  const result = await repo.restoreCompany(id, tenantId);
+  if (!result.count) throw new NotFoundError('Archived Account');
+  await writeAuditLog({ tenantId, userId, action: 'account.restored',
+    entityType: 'Account', entityId: id, after: { isArchived: false } });
 }

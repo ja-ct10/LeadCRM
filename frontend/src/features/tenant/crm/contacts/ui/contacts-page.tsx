@@ -1,5 +1,7 @@
 ﻿'use client';
 
+import { useConfirmDialog } from '@/shared/hooks/use-confirm-dialog';
+import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
@@ -31,6 +33,7 @@ import { useCachedPage } from '@/shared/hooks/use-cached-page';
 export default function ContactsPage(): React.ReactElement {
   const { organizations, deals, users } = useData();
   const { user, tenant } = useAuth();
+  const { dialogProps, confirm, close } = useConfirmDialog();
   const canCreate = useHasPermission('contacts.create');
   const canEdit   = useHasPermission('contacts.edit');
   const canDelete = useHasPermission('contacts.delete');
@@ -38,6 +41,7 @@ export default function ContactsPage(): React.ReactElement {
 
   const { data: contacts = [], refetch: fetchContacts, error: contactsError } = useCachedPage({
     module: 'contacts',
+    revalidateOnInvalidation: true,
     params: { collection: 'all' },
     intervalMs: 60_000,
     fetchFn: async (signal) => {
@@ -342,9 +346,26 @@ export default function ContactsPage(): React.ReactElement {
     }
   }, []);
 
+  const confirmArchive = (ids: string[], name: string) => confirm({
+    title: 'Archive Contact' + (ids.length > 1 ? 's?' : '?'),
+    description: `${name} will be removed from active Contacts and moved to Archived Data. You can restore this record later.`,
+    confirmLabel: 'Archive',
+    onConfirm: async () => {
+      try {
+        await Promise.all(ids.map((id) => contactsV2Api.archive(id)));
+        await fetchContacts();
+        close();
+        toast.success('Contact archived');
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to archive contact');
+      }
+    },
+  });
+
   return (
     <>
-    <ModuleWorkspace
+    <ConfirmActionDialog {...dialogProps} />
+      <ModuleWorkspace
       moduleId="contacts"
       title="Contacts"
       moduleConfig={CONTACTS_MODULE_CONFIG}
@@ -412,17 +433,9 @@ export default function ContactsPage(): React.ReactElement {
             return u ? `${u.firstName} ${u.lastName}` : '—';
           }}
           canEdit={canEdit}
-          canDelete={canDelete}
+          canArchive={canDelete}
           onEdit={(contact) => { setEditingContact(contact); setIsFormOpen(true); }}
-          onDelete={async (contact) => {
-            try {
-              await contactsV2Api.archive(contact.id);
-              await fetchContacts();
-              toast.success('Contact archived successfully');
-            } catch (err: unknown) {
-              toast.error(err instanceof Error ? err.message : 'Failed to archive contact');
-            }
-          }}
+          onArchive={(contact) => confirmArchive([contact.id], getName(contact))}
           onHideColumn={async (columnId) => {
             const updated = effectiveColumns.map((col) =>
               col.id === columnId ? { ...col, visible: false } : col,

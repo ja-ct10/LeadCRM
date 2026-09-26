@@ -39,8 +39,16 @@ export async function updateContact(id: string, tenantId: string, dto: Record<st
   return contact;
 }
 
-export async function archiveContact(id: string, tenantId: string) {
-  const contact = await repo.archiveContact(id, tenantId);
-  if (!contact) throw new NotFoundError('Contact');
-  return contact;
+export async function archiveContact(id: string, tenantId: string, userId: string) {
+  const result = await repo.archiveContact(id, tenantId, userId);
+  if (!result.count) throw new NotFoundError('Active Contact');
+  await writeAuditLog({ tenantId, userId, action: 'contact.archived',
+    entityType: 'Contact', entityId: id, after: { isArchived: true } });
+}
+
+export async function restoreContact(id: string, tenantId: string, userId: string) {
+  const result = await repo.restoreContact(id, tenantId);
+  if (!result.count) throw new NotFoundError('Archived Contact');
+  await writeAuditLog({ tenantId, userId, action: 'contact.restored',
+    entityType: 'Contact', entityId: id, after: { isArchived: false } });
 }

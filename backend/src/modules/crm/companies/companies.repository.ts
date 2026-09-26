@@ -76,12 +76,15 @@ export async function updateCompany(id: string, tenantId: string, dto: UpdateCom
 }
 
 export async function archiveCompany(id: string, tenantId: string, userId: string) {
-  try {
-    return await prisma.account.update({
-      where: { id, tenantId },
-      data: { isArchived: true, deletedAt: new Date(), deletedBy: userId },
-    });
-  } catch {
-    return null;
-  }
+  return prisma.account.updateMany({
+    where: { id, tenantId, isArchived: false },
+    data: { isArchived: true, deletedAt: new Date(), deletedBy: userId },
+  });
+}
+
+export async function restoreCompany(id: string, tenantId: string) {
+  return prisma.account.updateMany({
+    where: { id, tenantId, isArchived: true },
+    data: { isArchived: false, deletedAt: null, deletedBy: null },
+  });
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import { leadsService } from '../services/leads.service';
 import React, { useState, useMemo, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Layers, Users, Clock, Paperclip } from 'lucide-react';
@@ -26,7 +27,7 @@ export default function LeadDetailPage(): React.ReactElement {
     id: recordId,
   });
 
-  const { updateContact: updateLead, deleteContact: deleteLead } = useData();
+  const { updateContact: updateLead } = useData();
 
   // ── Archive confirmation state ───────────────────────────────────────────
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -50,13 +51,13 @@ export default function LeadDetailPage(): React.ReactElement {
           case 'convert':
             toast.info('Convert to Contact functionality coming soon');
             break;
-          case 'delete':
+          case 'archive':
             if (recordId) setConfirmOpen(true);
             break;
         }
       },
     }));
-  }, [recordId, deleteLead, router]);
+  }, [recordId, router]);
 
   // ── Derived display data ────────────────────────────────────────────────
   const title = record
@@ -168,15 +169,19 @@ export default function LeadDetailPage(): React.ReactElement {
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         title="Archive Lead"
-        description="This lead will be moved to the archive and hidden from active views."
-        warning="You can restore it later from archived records."
+        description={`${title} will be removed from active Leads and moved to Archived Data.`}
+        warning="You can restore this record later from Settings → Archived Data."
         confirmLabel="Archive"
-        variant="destructive"
+        variant="default"
         onConfirm={async () => {
           if (!recordId) return;
-          await deleteLead(recordId);
-          toast.success('Lead archived');
-          router.push('/crm/leads');
+          try {
+            await leadsService.archive(recordId);
+            toast.success('Lead archived');
+            router.push('/crm/leads');
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Failed to archive lead');
+          }
         }}
       />
     </>

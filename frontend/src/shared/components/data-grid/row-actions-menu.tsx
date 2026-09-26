@@ -6,9 +6,8 @@
  * - Edit
  * - Send Email
  * - Create Task
- * - Add Tags
  * - Convert
- * - Delete
+ * - Archive
  * - Copy URL
  * - More...
  *
@@ -17,7 +16,7 @@
 
 'use client';
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
   MoreHorizontal,
@@ -25,7 +24,7 @@ import {
   Edit,
   Mail,
   ListTodo,
-  Tags,
+  Archive,
   RefreshCw,
   Trash2,
   Link,
@@ -71,6 +70,35 @@ export function RowActionsMenu({
   const menuRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const [coordinates, setCoordinates] = useState({ top: 0, left: 0 });
+
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    const placeMenu = () => {
+      if (!buttonRef.current || !dropdownRef.current) return;
+      const trigger = buttonRef.current.getBoundingClientRect();
+      const menu = dropdownRef.current.getBoundingClientRect();
+      const margin = 8;
+      const below = trigger.bottom + 4;
+      const top = below + menu.height <= window.innerHeight - margin
+        ? below : trigger.top - menu.height - 4;
+      const left = position === 'left' ? trigger.left : trigger.right - menu.width;
+      setCoordinates({
+        top: Math.max(margin, Math.min(top, window.innerHeight - menu.height - margin)),
+        left: Math.max(margin, Math.min(left, window.innerWidth - menu.width - margin)),
+      });
+    };
+    placeMenu();
+    window.addEventListener('resize', placeMenu);
+    window.addEventListener('scroll', placeMenu, true);
+    const observer = new ResizeObserver(placeMenu);
+    observer.observe(dropdownRef.current!);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', placeMenu);
+      window.removeEventListener('scroll', placeMenu, true);
+    };
+  }, [isOpen, position]);
 
   // Close on outside click
   useEffect(() => {
@@ -137,10 +165,10 @@ export function RowActionsMenu({
             'rounded-lg shadow-xl',
           )}
           style={{
-            top: buttonRef.current ? buttonRef.current.getBoundingClientRect().bottom + 4 : 0,
-            left: position === 'left'
-              ? (buttonRef.current?.getBoundingClientRect().left ?? 0)
-              : (buttonRef.current ? buttonRef.current.getBoundingClientRect().right - 180 : 0),
+            ...coordinates,
+            maxHeight: 'calc(100dvh - 16px)',
+            maxWidth: 'calc(100vw - 16px)',
+            overflowY: 'auto',
           }}
           role="menu"
           aria-label="Row actions menu"
@@ -156,8 +184,8 @@ export function RowActionsMenu({
                 onClick={(e) => {
                   e.stopPropagation();
                   if (!action.disabled) {
-                    action.onClick();
                     setIsOpen(false);
+                    action.onClick();
                   }
                 }}
                 disabled={action.disabled}
@@ -197,7 +225,8 @@ export function buildDefaultRowActions(options: {
   onEdit?: () => void;
   onSendEmail?: () => void;
   onCreateTask?: () => void;
-  onAddTags?: () => void;
+  onArchive?: () => void;
+  canArchive?: boolean;
   onConvert?: () => void;
   onDelete?: () => void;
   onCopyUrl?: () => void;
@@ -220,15 +249,14 @@ export function buildDefaultRowActions(options: {
     actions.push({ id: 'create-task', label: 'Create Task', icon: <ListTodo size={14} />, onClick: options.onCreateTask });
   }
 
-  if (options.onAddTags) {
-    actions.push({ id: 'add-tags', label: 'Add Tags', icon: <Tags size={14} />, onClick: options.onAddTags });
-  }
-
   if (options.onConvert) {
     actions.push({ id: 'convert', label: 'Convert', icon: <RefreshCw size={14} />, onClick: options.onConvert });
   }
 
-  if (options.onDelete && options.canDelete !== false) {
+  if (options.onArchive && options.canArchive !== false) {
+    actions.push({ id: 'archive', label: 'Archive', icon: <Archive size={14} />,
+      onClick: options.onArchive, separator: true });
+  } else if (options.onDelete && options.canDelete !== false) {
     actions.push({
       id: 'delete',
       label: 'Delete',

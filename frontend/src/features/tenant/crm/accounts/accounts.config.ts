@@ -43,10 +43,10 @@ export const ACCOUNTS_MODULE_CONFIG: ModuleConfig = {
   rowActions: [
     { id: 'view', label: 'View' },
     { id: 'edit', label: 'Edit' },
-    { id: 'delete', label: 'Delete' },
+    { id: 'archive', label: 'Archive' },
   ],
   bulkActions: [
-    { id: 'delete', label: 'Delete', destructive: true },
+    { id: 'archive', label: 'Archive', destructive: false },
     { id: 'export', label: 'Export', destructive: false },
   ],
 };
