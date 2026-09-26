@@ -40,8 +40,8 @@ export const authApi = {
   login: (payload: LoginPayload) =>
     apiClient.post<import('@leadcrm/shared').LoginResponse>('/auth/login', payload),
 
-  changePassword: (currentPassword: string, password: string) =>
-    apiClient.post<AuthResponse>('/auth/change-password', { currentPassword, password }),
+  changePassword: (payload: import('@leadcrm/shared').ChangePasswordInput) =>
+    apiClient.post<AuthResponse>('/auth/change-password', payload),
 
   mfaStatus: () => apiClient.get<{ data: import('@leadcrm/shared').MfaStatus }>('/auth/mfa/status'),
   setupMfa: (currentPassword: string) => apiClient.post<{ data: import('@leadcrm/shared').MfaSetup }>('/auth/mfa/setup', { currentPassword }),

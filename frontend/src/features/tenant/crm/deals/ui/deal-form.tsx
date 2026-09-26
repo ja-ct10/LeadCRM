@@ -11,7 +11,8 @@ import { DealAccountField } from './deal-account-field';
 import { DealContactsField } from './deal-contacts-field';
 import { DealLeadsField } from './deal-leads-field';
 import { EntityCombobox } from '@/shared/components/entity-combobox';
-import { AlertCircle, ChevronDown } from 'lucide-react';
+import { AlertCircle, ChevronDown, Plus, X } from 'lucide-react';
+import { Button } from '@/shared/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { Deal } from '@/store/types';
 
@@ -449,12 +450,12 @@ export function DealForm({
               placeholder="Enter address..."
             />
           </FieldWrap>
-          <FieldWrap label="Product Interests">
+          <FieldWrap label="Product Interests" htmlFor={`${fieldId}-product-interest`}>
             <Controller
               name="productInterests"
               control={control}
               render={({ field }) => (
-                <ProductInterestsSelect values={field.value || []} onChange={field.onChange} />
+                <ProductInterestsSelect id={`${fieldId}-product-interest`} values={field.value || []} onChange={field.onChange} />
               )}
             />
           </FieldWrap>
@@ -507,43 +508,41 @@ export function DealCreateForm({ onSave, onCancel }: LegacyDealCreateFormProps):
 // ── Product Interests Multi-Select ─────────────────────────────────────────
 
 interface ProductInterestsSelectProps {
+  id: string;
   values: string[];
   onChange: (values: string[]) => void;
 }
 
-function ProductInterestsSelect({ values, onChange }: ProductInterestsSelectProps): React.ReactElement {
-  const toggleProduct = (product: string): void => {
-    if (values.includes(product)) {
-      onChange(values.filter((v) => v !== product));
-    } else {
-      onChange([...values, product]);
-    }
+function ProductInterestsSelect({ id, values, onChange }: ProductInterestsSelectProps): React.ReactElement {
+  const [selected, setSelected] = React.useState('');
+  const canAdd = PRODUCT_OPTIONS.includes(selected) && !values.includes(selected);
+  const addProduct = (): void => {
+    if (!canAdd) return;
+    onChange([...values, selected]);
+    setSelected('');
   };
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap gap-2">
-        {PRODUCT_OPTIONS.map((product) => {
-          const isSelected = values.includes(product);
-          return (
-            <button
-              key={product}
-              type="button"
-              onClick={() => toggleProduct(product)}
-              className={cn(
-                'px-3 py-1.5 text-xs font-medium rounded-lg border transition-all',
-                isSelected
-                  ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
-                  : 'bg-white dark:bg-white/[0.04] border-gray-200 dark:border-white/[0.08] text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/[0.06]',
-              )}
-            >
-              {product}
-            </button>
-          );
-        })}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-0 flex-[1_1_220px]">
+          <select id={id} value={selected} onChange={event => setSelected(event.target.value)} aria-describedby={`${id}-help`}
+            className="w-full min-w-0 appearance-none rounded-xl border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 px-3.5 py-2.5 pr-8 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+            <option value="">Select a product interest...</option>
+            {PRODUCT_OPTIONS.map(product => <option key={product} value={product}>{product}</option>)}
+          </select>
+          <ChevronDown size={13} aria-hidden="true" className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
+        </div>
+        <Button type="button" variant="outline" disabled={!canAdd} onClick={addProduct} className="h-10 w-20 shrink-0"><Plus />Add</Button>
       </div>
+      <p id={`${id}-help`} className="text-xs text-slate-500 dark:text-slate-400">Select an interest and add more as needed.</p>
       {values.length > 0 && (
-        <p className="text-xs text-slate-500 dark:text-slate-400">Selected: {values.join(', ')}</p>
+        <div className="flex flex-wrap gap-2">
+          {values.map(product => <span key={product} className="inline-flex max-w-full items-center gap-1 rounded-lg border border-gray-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.04] pl-2.5 pr-1 py-1 text-xs text-slate-700 dark:text-slate-300">
+            <span className="min-w-0 break-words">{product}</span>
+            <button type="button" aria-label={`Remove ${product}`} onClick={() => onChange(values.filter(value => value !== product))} className="shrink-0 rounded p-1 hover:bg-slate-200 dark:hover:bg-slate-700"><X size={14} /></button>
+          </span>)}
+        </div>
       )}
     </div>
   );

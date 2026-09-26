@@ -7,21 +7,20 @@ vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'employee'
 import ChangePasswordPage from '../ui/change-password-page';
 beforeEach(() => { cleanup(); vi.resetAllMocks(); });
 function fill(confirm = 'Personal2!') {
-  fireEvent.change(screen.getByLabelText('Current Password *'), { target: { value: 'Temporary1!' } });
-  fireEvent.change(screen.getByLabelText('New Password *'), { target: { value: 'Personal2!' } });
-  fireEvent.change(screen.getByLabelText('Confirm New Password *'), { target: { value: confirm } });
-  fireEvent.click(screen.getByRole('button', { name: 'Change Password' }));
+  fireEvent.change(screen.getByLabelText('New password *'), { target: { value: 'Personal2!' } });
+  fireEvent.change(screen.getByLabelText('Confirm new password *'), { target: { value: confirm } });
+  fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
 }
 it('changes credentials then applies the canonical response using the preserved session', async () => {
   changePassword.mockResolvedValue({ success: true, data: { user: { id: 'employee', mustChangePassword: false } } });
   render(<ChangePasswordPage />); fill();
   await waitFor(() => expect(applyAuthUser).toHaveBeenCalledWith({ id: 'employee', mustChangePassword: false }, 'employee'));
-  expect(changePassword).toHaveBeenCalledWith('Temporary1!', 'Personal2!');
+  expect(changePassword).toHaveBeenCalledWith({ password: 'Personal2!' });
 });
-it('does not update authentication after the server rejects the current password', async () => {
-  changePassword.mockRejectedValue(new Error('Current password is incorrect.'));
+it('does not update authentication after the server rejects password reuse', async () => {
+  changePassword.mockRejectedValue(new Error('Choose a password different from your current password.'));
   render(<ChangePasswordPage />); fill();
-  expect((await screen.findByRole('alert')).textContent).toContain('Current password is incorrect');
+  expect((await screen.findByRole('alert')).textContent).toContain('Choose a password');
   expect(applyAuthUser).not.toHaveBeenCalled();
 });
 it('checks confirmation before sending credentials', async () => {

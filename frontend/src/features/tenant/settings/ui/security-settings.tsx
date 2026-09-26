@@ -5,6 +5,7 @@ import { authApi } from '@/shared/services/auth.api';
 import { useAuth } from '@/store/AuthContext';
 import { Dialog, DialogContent, DialogTitle } from '@/shared/components/ui/dialog';
 import { PasswordChangeForm } from './password-change-form';
+import { ShieldCheck } from 'lucide-react';
 
 type Mode = 'password' | 'setup' | 'disable' | 'regenerate';
 const button = 'rounded-lg border px-3 py-2 text-sm disabled:opacity-50';
@@ -38,7 +39,7 @@ function SecurityDialog({ mode, onClose, onChanged }: { mode: Mode; onClose: () 
     const timer = setTimeout(() => dialogRef.current?.querySelector<HTMLElement>('input, button')?.focus(), 0);
     return () => { clearTimeout(timer); previous?.focus(); };
   }, []);
-  const title = mode === 'password' ? 'Change Password' : mode === 'setup' ? 'Set Up Two-Factor Authentication' : mode === 'disable' ? 'Disable Two-Factor Authentication' : 'Regenerate Recovery Codes';
+  const title = mode === 'password' ? 'Change password' : mode === 'setup' ? 'Set Up Two-Factor Authentication' : mode === 'disable' ? 'Disable Two-Factor Authentication' : 'Regenerate Recovery Codes';
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (busy) return;
@@ -62,7 +63,12 @@ function SecurityDialog({ mode, onClose, onChanged }: { mode: Mode; onClose: () 
     const first = focusable[0], last = focusable[focusable.length - 1];
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
     if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
-  }} aria-labelledby="security-dialog-title" className="max-w-lg max-h-[90vh] overflow-y-auto"><DialogTitle id="security-dialog-title" className="mb-4">{title}</DialogTitle>
+  }} aria-labelledby="security-dialog-title" aria-describedby={mode === 'password' ? 'password-dialog-description' : undefined} className="max-w-lg max-h-[90dvh] overflow-y-auto p-4 sm:p-6">
+    {mode === 'password' ? <div className="mb-5 border-b border-gray-200 dark:border-slate-700 pb-5">
+      <div className="mb-4 inline-flex rounded-lg bg-blue-50 dark:bg-blue-500/10 p-2 text-blue-600 dark:text-blue-400"><ShieldCheck size={20} aria-hidden="true" /></div>
+      <DialogTitle id="security-dialog-title">{title}</DialogTitle>
+      <p id="password-dialog-description" className="mt-2 text-xs text-slate-500 dark:text-slate-400">Keep your account secure with a strong password.</p>
+    </div> : <DialogTitle id="security-dialog-title" className="mb-4">{title}</DialogTitle>}
     {mode === 'password' ? <PasswordChangeForm onBusy={setBusy} onSuccess={() => { onChanged(); onClose(); }} onCancel={onClose} /> : codes ? <div className="space-y-4"><p>Save these recovery codes in a secure location. They will not be shown again.</p><ul className="grid grid-cols-2 gap-2 font-mono text-sm">{codes.map(value => <li key={value}>{value}</li>)}</ul><button className={button} onClick={onClose}>I saved my recovery codes</button></div> : <form onSubmit={submit} className="space-y-4">
       {setup ? <><p className="text-sm">Scan this QR code with your authenticator app, then enter its 6-digit code.</p><img src={setup.qrCode} alt="Authenticator setup QR code" width={220} height={220} className="mx-auto" /><p className="text-xs">Manual setup key:</p><code className="block break-all select-all">{setup.secret}</code><p className="text-xs text-slate-500">Setup expires after 10 minutes.</p></> : <div><label htmlFor="mfa-password" className="block text-sm mb-1">Current Password *</label><input id="mfa-password" autoFocus type="password" autoComplete="current-password" maxLength={72} required value={password} onChange={e => setPassword(e.target.value)} className="w-full border rounded-lg p-3 bg-transparent" /></div>}
       {(setup || mode !== 'setup') && <div><label htmlFor="mfa-code" className="block text-sm mb-1">{setup ? 'Authenticator Code' : 'Authenticator or Recovery Code'} *</label><input id="mfa-code" autoComplete="one-time-code" inputMode={setup ? 'numeric' : 'text'} pattern={setup ? '[0-9]{6}' : '(?:[0-9]{6}|[a-f0-9]{8}-[a-f0-9]{8})'} maxLength={setup ? 6 : 17} required value={code} onChange={e => setCode(e.target.value)} className="w-full border rounded-lg p-3 bg-transparent" /></div>}

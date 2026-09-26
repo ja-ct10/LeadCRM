@@ -6,6 +6,9 @@ export const StrongPasswordSchema = z.string().min(8, 'Use at least 8 characters
   'Use uppercase and lowercase letters, a number, and a special character',
 );
 
+export const ChangePasswordSchema = z.object({ password: StrongPasswordSchema }).strict();
+export type ChangePasswordInput = z.infer<typeof ChangePasswordSchema>;
+
 export const RegisterSchema = z.object({
   firstName: z.string().trim().min(2, 'First name is required').max(100),
   lastName: z.string().trim().min(2, 'Last name is required').max(100),

@@ -21,7 +21,7 @@ Tenant user management also marks provisioned passwords as temporary. When no pa
 
 User.mustChangePassword is persisted. Until cleared, authenticated tenant users can read /auth/me, change their password, or log out. Other protected APIs, including onboarding completion and preference endpoints, reject requests with PASSWORD_CHANGE_REQUIRED.
 
-POST /auth/change-password accepts currentPassword and password. It checks the current hash, enforces the existing shared strong-password policy, rejects password reuse, writes the new hash, clears the flag, revokes other sessions, pending MFA challenges, and account-bound reset tokens, and records an audit event in one serializable transaction. The current database session stays valid and the frontend applies the returned canonical user. Password recovery uses the same strength policy, clears the flag, and revokes sessions.
+POST /auth/change-password accepts `{ password }` from the authenticated session. It enforces the existing shared strong-password policy, rejects password reuse, writes the new hash, clears the flag, revokes other sessions, pending MFA challenges, and account-bound reset tokens, and records an audit event in one serializable transaction. The current database session stays valid and the frontend applies the returned canonical user. Password recovery uses the same strength policy, clears the flag, and revokes sessions.
 
 User update and bulk-update payloads have an explicit allowlist. They cannot inject mustChangePassword, passwordHash, or tenantId. Primary-role changes synchronize User.role and UserRole in the same transaction; custom permission definitions remain unchanged.
 

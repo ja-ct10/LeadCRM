@@ -49,7 +49,7 @@ All paths are relative to /api/v1. See [authentication and onboarding](authentic
 | GET | /auth/profile/avatar/:avatarId | Authenticated retrieval of the current user's saved avatar; private, uncached response |
 | PATCH | /auth/environment | Persist the authenticated tenant user's Sandbox/Live preference; see [CRM environments](crm-environments.md) |
 | POST | /auth/logout | Revoke session and expire cookie |
-| POST | /auth/change-password | Verify currentPassword, store strong password, clear first-login flag and revoke other sessions |
+| POST | /auth/change-password | Use authenticated session, store strong password, clear first-login flag and revoke other sessions |
 | GET | /auth/mfa/status | Saved MFA state, remaining recovery codes, password-change timestamp |
 | POST | /auth/mfa/setup | Password reauthentication; encrypted pending setup and QR code |
 | POST | /auth/mfa/enable | Verify TOTP, enable MFA, return recovery codes once |

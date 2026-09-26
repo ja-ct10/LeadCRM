@@ -5,10 +5,10 @@ import { db, user, resetDb } from './auth-test-db';
 import { comparePassword, hashPassword } from '../../../shared/helpers/crypto';
 import { changePassword, ChangePasswordSchema } from '../change-password.service';
 const actor = { userId: 'user-1', tenantId: 'tenant-1' };
-const input = { currentPassword: 'Temporary1!', password: 'Personal2!' };
+const input = { password: 'Personal2!' };
 beforeEach(() => { resetDb(); user.mustChangePassword = true; vi.mocked(hashPassword).mockResolvedValue('new-hash'); });
 it('atomically stores the new hash, clears the requirement, revokes sessions and reset tokens', async () => {
-  vi.mocked(comparePassword).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+  vi.mocked(comparePassword).mockResolvedValue(false);
   await changePassword(actor, input);
   expect(db.user.findFirst).toHaveBeenCalledWith({ where: { id: actor.userId, tenantId: actor.tenantId } });
   expect(db.user.update).toHaveBeenCalledWith({ where: { id: user.id }, data: { passwordHash: 'new-hash', mustChangePassword: false, passwordChangedAt: expect.any(Date) } });
@@ -16,8 +16,8 @@ it('atomically stores the new hash, clears the requirement, revokes sessions and
   expect(db.passwordResetToken.deleteMany).toHaveBeenCalled();
   expect(db.auditLog.create).toHaveBeenCalled();
 });
-it('rejects the wrong current password without clearing the flag', async () => {
-  vi.mocked(comparePassword).mockResolvedValue(false);
+it('rejects an unavailable account without changing credentials', async () => {
+  db.user.findFirst.mockResolvedValueOnce(null);
   await expect(changePassword(actor, input)).rejects.toHaveProperty('statusCode', 400);
   expect(db.user.update).not.toHaveBeenCalled();
 });

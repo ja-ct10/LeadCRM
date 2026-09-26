@@ -69,16 +69,26 @@ export function OrganizationSettingsForm() {
 
   if (error) return <div role="alert" className="space-y-3 text-sm"><p>{error}</p><button type="button" onClick={() => setReload(value => value + 1)} className="border rounded-lg px-3 py-2">Retry</button></div>;
   if (!draft) return <div role="status" aria-label="Loading organization settings" className="max-w-2xl space-y-6">
-    <div className="flex items-center justify-between"><h2 className="text-xl font-bold text-slate-900 dark:text-white">General</h2><div className="h-9 w-16 rounded-lg bg-slate-200 dark:bg-slate-700 animate-pulse motion-reduce:animate-none" /></div>
+    <h2 className="text-xl font-bold text-slate-900 dark:text-white">General</h2>
+    <section className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-5">
+    <div><h3 className="text-sm font-semibold">Organization Details</h3><p className="text-xs text-slate-500 mt-1">Your organization's profile and contact details</p></div>
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" aria-hidden="true">{fields.map(([key]) => <div key={key} className={`space-y-1.5 ${key === 'address' ? 'sm:col-span-2' : ''}`}>
       <div className="h-4 w-28 rounded bg-slate-200 dark:bg-slate-700 animate-pulse motion-reduce:animate-none" />
       <div className={`${key === 'address' ? 'h-16' : 'h-10'} rounded-lg bg-slate-100 dark:bg-slate-800 animate-pulse motion-reduce:animate-none`} />
     </div>)}</div>
+    </section>
   </div>;
 
   return <form onSubmit={save} noValidate className="max-w-2xl space-y-6">
-    <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-bold text-slate-900 dark:text-white">General</h2>
-    {canEdit && !editing && <div><button type="button" onClick={() => { setDraft(saved); setEditing(true); }} className="flex items-center gap-1 border rounded-lg px-3 py-2 text-sm"><Pencil size={13} />Edit</button></div>}</div>
+    <h2 className="text-xl font-bold text-slate-900 dark:text-white">General</h2>
+    <section aria-labelledby="organization-details-title" className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-5">
+    <div>
+      <div className="flex items-center justify-between gap-3">
+        <h3 id="organization-details-title" className="text-sm font-semibold">Organization Details</h3>
+        {canEdit && !editing && <button type="button" onClick={() => { setDraft(saved); setEditing(true); }} className="shrink-0 flex items-center gap-1 border rounded-lg px-3 py-2 text-sm"><Pencil size={13} />Edit</button>}
+      </div>
+      <p className="text-xs text-slate-500 mt-1">Your organization's profile and contact details</p>
+    </div>
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       {fields.map(([key, label, Icon]) => {
         const props = {
@@ -98,5 +108,6 @@ export function OrganizationSettingsForm() {
       <button type="button" disabled={saving} onClick={() => { setDraft(saved); setEditing(false); }} className="border rounded-lg px-4 py-2 text-sm">Cancel</button>
       <button type="submit" disabled={saving} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-50"><Save size={14} />{saving ? 'Saving…' : 'Save Changes'}</button>
     </div>}
+    </section>
   </form>;
 }

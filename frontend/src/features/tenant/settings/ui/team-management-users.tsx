@@ -352,19 +352,22 @@ export function UsersSubTab({ onUsersLoaded }: { onUsersLoaded?: (users: User[])
         </button>}
       </div>
 
-      <div className="flex min-w-0 flex-col lg:flex-row gap-3 items-stretch">
-        {showFilters && <aside id="user-filters" aria-label="User filters" className="w-full lg:w-[280px] shrink-0 self-start rounded-xl border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[#E4E9F0] dark:border-slate-700">
+      <div className="flex min-w-0 gap-3 items-stretch">
+        {showFilters && <div className="fixed inset-0 z-30 bg-black/30 sm:hidden" aria-hidden="true" onClick={() => setShowFilters(false)} />}
+        {showFilters && <motion.aside initial={{ x: -260, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+          id="user-filters" aria-label="User filters" onKeyDown={event => { if (event.key === 'Escape') setShowFilters(false); }}
+          className="fixed inset-y-0 left-0 z-40 w-[260px] max-w-full flex flex-col shadow-2xl sm:static sm:z-auto sm:shadow-none sm:max-h-[calc(100dvh-12rem)] shrink-0 sm:self-start sm:rounded-xl border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden">
+          <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-[#E4E9F0] dark:border-slate-700">
             <span className="text-[13px] font-semibold text-slate-900 dark:text-white">Filter by</span>
-            <button aria-label="Close filters" onClick={() => setShowFilters(false)} className="p-1 text-slate-500"><X size={14} /></button>
+            <button aria-label="Close filters" onClick={() => setShowFilters(false)} className="p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-slate-500"><X size={14} /></button>
           </div>
-          <div className="p-3">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 custom-scrollbar">
             <FilterGroupSection group={{ id: 'status', label: 'Status', items: ['active', 'inactive'].map(id => ({ id, label: id === 'active' ? 'Active' : 'Inactive', isChecked: statusFilter.includes(id) })) }} onToggle={(_, id) => setStatusFilter(previous => previous.includes(id) ? previous.filter(value => value !== id) : [...previous, id])} />
             <FilterGroupSection group={{ id: 'department', label: 'Department', items: departments.map(id => ({ id, label: id, isChecked: departmentFilter.includes(id) })) }} onToggle={(_, id) => setDepartmentFilter(previous => previous.includes(id) ? previous.filter(value => value !== id) : [...previous, id])} />
             <FilterGroupSection group={{ id: 'role', label: 'Role', items: roleNames.map(id => ({ id, label: id, isChecked: roleFilter.includes(id) })) }} onToggle={(_, id) => setRoleFilter(previous => previous.includes(id) ? previous.filter(value => value !== id) : [...previous, id])} />
           </div>
-          <div className="border-t border-[#E4E9F0] dark:border-slate-700 px-4 py-2.5 text-xs text-slate-500">{filtered.length} users in this module</div>
-        </aside>}
+          <div className="shrink-0 border-t border-[#E4E9F0] dark:border-slate-700 px-4 py-2.5 text-xs text-slate-500">{filtered.length} users in this module</div>
+        </motion.aside>}
         <div className="min-w-0 flex-1 space-y-4">
       {/* Users table */}
       <div className="bg-white dark:bg-slate-900/60 border border-gray-200 dark:border-white/[0.07] rounded-xl overflow-hidden">
