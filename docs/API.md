@@ -224,6 +224,7 @@ metadata and does not change the fixed employee-email policy.
 |---|---|---|---|
 | `GET` | `/administration/users` | List users | `users.canView` |
 | `GET` | `/administration/users/:id` | Read a tenant user | `users.canView` |
+| `GET` | `/administration/users/:id/avatar/:avatarId` | Read that tenant user's saved private profile image; verifies the persisted reference and returns an uncached image | `users.canView` |
 | `POST` | `/administration/users` | Create user + send password setup email | `users.canEdit` (`users.manage`) |
 | `PUT` | `/administration/users/:id` | Update user profile / role | `users.canEdit` |
 | `DELETE` | `/administration/users/:id` | Delete user | `users.canEdit` (`users.manage`) |

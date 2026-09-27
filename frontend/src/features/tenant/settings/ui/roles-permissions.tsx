@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import type { RoleDefinition, Permission } from '@/store/types';
 import { Button } from '@/shared/components/ui/button';
 import { cn } from '@/lib/utils';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/shared/components/ui/dropdown-menu';
 
 // ── Permission group definitions ─────────────────────────────────────────────
 
@@ -331,73 +331,6 @@ function RoleEditor({ role, allPerms, allUsers, onSave, onCancel }: RoleEditorPr
   );
 }
 
-// ── Dropdown Menu Component (Local) ───────────────────────────────────────────
-
-interface DropdownMenuProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onEdit: () => void;
-  onDuplicate: () => void;
-  onDelete: () => void;
-  isSystemRole: boolean;
-}
-
-function RoleDropdownMenu({ isOpen, onClose, onEdit, onDuplicate, onDelete, isSystemRole }: DropdownMenuProps) {
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isOpen, onClose]);
-
-  if (!isOpen) return null;
-
-  return (
-    <div 
-      ref={menuRef}
-      className="absolute top-10 right-3 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-10 py-1 overflow-hidden"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <button onClick={() => { onEdit(); onClose(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-        <Edit2 size={14} className="text-slate-400" /> Edit Permissions
-      </button>
-      <button onClick={() => { onDuplicate(); onClose(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-        <Copy size={14} className="text-slate-400" /> Duplicate Role
-      </button>
-      
-      <div className="h-px w-full bg-slate-100 dark:bg-slate-800 my-1" />
-      
-      {isSystemRole ? (
-        <TooltipProvider>
-          <Tooltip delayDuration={100}>
-            <TooltipTrigger asChild>
-              <div className="w-full">
-                <button disabled className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-60">
-                  <Trash2 size={14} /> Delete Role
-                </button>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent side="left" className="text-xs">
-              System roles cannot be deleted
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      ) : (
-        <button onClick={() => { onDelete(); onClose(); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors">
-          <Trash2 size={14} /> Delete Role
-        </button>
-      )}
-    </div>
-  );
-}
-
-
 // ── Main RolesPermissions component ──────────────────────────────────────────
 
 interface RolesPermissionsProps {
@@ -426,6 +359,7 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
   const notify = (isActive: boolean) => onViewActiveChange?.(isActive);
 
   const openEdit = (role: RoleDefinition) => {
+    if (role.isSystemRole) return;
     setSelectedRole(role);
     setView('edit');
     notify(true);
@@ -576,31 +510,33 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
                   
                   {/* Actions Dropdown */}
                   {canManage && (
-                    <div className="relative shrink-0">
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setOpenDropdownId(isDropdownOpen ? null : role.id);
-                        }}
-                        className={cn(
-                          "p-2 rounded-lg transition-colors duration-200",
-                          isDropdownOpen 
-                            ? "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-white" 
-                            : "text-slate-400 hover:bg-slate-50 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-300"
-                        )}
-                      >
-                        <MoreHorizontal size={18} />
-                      </button>
-                      
-                      <RoleDropdownMenu 
-                        isOpen={isDropdownOpen}
-                        onClose={() => setOpenDropdownId(null)}
-                        onEdit={() => openEdit(role)}
-                        onDuplicate={() => handleCopy(role)}
-                        onDelete={() => setDeleteConfirmId(role.id)}
-                        isSystemRole={role.isSystemRole}
-                      />
-                    </div>
+                    <DropdownMenu open={isDropdownOpen} onOpenChange={open => setOpenDropdownId(current => open ? role.id : current === role.id ? null : current)}>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          aria-label={`Actions for ${role.name}`}
+                          className={cn(
+                            "p-2 rounded-lg transition-colors duration-200",
+                            isDropdownOpen
+                              ? "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-white"
+                              : "text-slate-400 hover:bg-slate-50 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                          )}
+                        >
+                          <MoreHorizontal size={18} />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="w-48" aria-label={`Actions for ${role.name}`}>
+                        <DropdownMenuItem disabled={role.isSystemRole} onSelect={() => openEdit(role)}>
+                          <Edit2 size={14} className="text-slate-400" /> Edit Permissions
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => handleCopy(role)}>
+                          <Copy size={14} className="text-slate-400" /> Duplicate Role
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem disabled={role.isSystemRole} destructive onSelect={() => setDeleteConfirmId(role.id)}>
+                          <Trash2 size={14} /> Delete Role
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   )}
                 </div>
 
@@ -621,7 +557,7 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
                   </div>
                   <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
                     <span className="font-medium">{enabledCount}</span>
-                    <span className="text-slate-400">perms</span>
+                    <span className="text-slate-400">permissions</span>
                   </div>
                 </div>
               </motion.div>

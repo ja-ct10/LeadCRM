@@ -31,6 +31,7 @@ router.patch('/organization-settings', authorize('settings.edit'), validate(Upda
 // -- Users ---------------------------------------------
 router.get(   '/users',                  authorize('users.view'),   userController.getAll);
 router.get(   '/users/:id',              authorize('users.view'),   userController.getById);
+router.get(   '/users/:id/avatar/:avatarId', authorize('users.view'), userController.getAvatar);
 router.post(  '/users',                  authorize('users.manage'), validate(CreateUsersSchema), userController.create);
 router.put(   '/users/:id',              authorize('users.manage'), validate(UpdateUsersSchema), userController.update);
 router.delete('/users/:id',              authorize('users.manage'), userController.deleteRecord);

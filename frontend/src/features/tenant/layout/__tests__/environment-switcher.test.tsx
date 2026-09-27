@@ -7,11 +7,24 @@ vi.mock('next/navigation', () => ({ usePathname: () => '/crm/leads', useRouter: 
 import { EnvironmentSwitcher } from '../environment-switcher';
 beforeEach(() => { vi.clearAllMocks(); state.user = { role: 'User', activeEnvironment: 'SANDBOX' }; state.isSwitchingEnvironment = false; });
 afterEach(cleanup);
+it('toggles with a full pointer sequence and closes on outside click and Escape', () => {
+  render(<EnvironmentSwitcher />);
+  const trigger = screen.getByRole('button', { name: 'Environment: Sandbox' });
+  const click = () => { fireEvent.mouseDown(trigger); fireEvent.mouseUp(trigger); fireEvent.click(trigger); };
+  click(); expect(screen.getAllByRole('menu')).toHaveLength(1);
+  expect(trigger.getAttribute('aria-expanded')).toBe('true');
+  click(); expect(screen.queryByRole('menu')).toBeNull();
+  click(); fireEvent.mouseDown(document.body); expect(screen.queryByRole('menu')).toBeNull();
+  click(); fireEvent.keyDown(document, { key: 'Escape' }); expect(screen.queryByRole('menu')).toBeNull();
+  expect(document.activeElement).toBe(trigger);
+  expect(state.switchEnvironment).not.toHaveBeenCalled();
+});
 it.each(['Client Admin', 'User', 'Sales Agent'])('requires confirmation for %s', async role => {
   state.user.role = role;
   render(<EnvironmentSwitcher />);
   fireEvent.click(screen.getByRole('button', { name: 'Environment: Sandbox' }));
   fireEvent.click(await screen.findByRole('menuitem', { name: /Live/ }));
+  expect(screen.queryByRole('menu')).toBeNull();
   expect(screen.getByRole('alertdialog')).toBeTruthy();
   expect(state.switchEnvironment).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Switch to Live' }));

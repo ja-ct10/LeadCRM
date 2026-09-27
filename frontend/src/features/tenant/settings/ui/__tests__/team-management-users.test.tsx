@@ -9,6 +9,21 @@ vi.mock('@/shared/services/invitations.api', () => ({ invitationsApi: { list: as
 import { UsersSubTab } from '../team-management-users';
 beforeEach(() => vi.resetAllMocks());
 afterEach(cleanup);
+it('renders saved avatars through the tenant endpoint and falls back on missing or broken images', async () => {
+  mocks.list.mockResolvedValue({ data: [
+    { id: 'photo', tenantId: 't', firstName: 'Ana', lastName: 'Photo', avatarUrl: '/api/proxy/auth/profile/avatar/saved-image', role: 'Sales' },
+    { id: 'missing', tenantId: 't', firstName: 'Ben', lastName: 'Missing', role: 'Sales' },
+  ] });
+  render(<UsersSubTab />);
+  const image = await screen.findByRole('img', { name: 'Ana Photo' });
+  expect(image.getAttribute('src')).toBe('/api/proxy/administration/users/photo/avatar/saved-image');
+  expect(screen.getByText('BM')).toBeTruthy();
+  fireEvent.error(image);
+  expect(screen.queryByRole('img', { name: 'Ana Photo' })).toBeNull();
+  expect(screen.getByText('AP')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Filter users' }).title).toBe('Filter users');
+  expect(screen.getByRole('button', { name: 'New user' }).title).toBe('New user');
+});
 it('keeps the toolbar/header, shows a spinner until API rows arrive and opens readonly details', async () => {
   let resolve!: (value: unknown) => void;
   mocks.list.mockReturnValueOnce(new Promise(done => { resolve = done; }));
@@ -40,7 +55,7 @@ it('uses a responsive filter rail with persisted departments and roles and combi
   render(<UsersSubTab />); await screen.findByRole('button', { name: 'View Ana Sales' });
   for (const label of ['Show archived', 'Export', 'Invite']) expect(screen.queryByText(label)).toBeNull();
   expect(screen.queryByRole('complementary')).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Filter' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Filter users' }));
   const panel = screen.getByRole('complementary', { name: 'User filters' });
   expect(panel.className).toContain('fixed');
   expect(panel.className).toContain('sm:static');

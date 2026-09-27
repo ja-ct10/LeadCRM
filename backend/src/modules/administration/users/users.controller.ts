@@ -13,6 +13,13 @@ export async function getById(req: Request, res: Response, next: NextFunction): 
   } catch (err) { next(err); }
 }
 
+export async function getAvatar(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const bytes = await service.getAvatar(String(req.params.id), req.user!.tenantId, String(req.params.avatarId));
+    res.set({ 'Content-Type': 'image/webp', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' }).send(bytes);
+  } catch (err) { next(err); }
+}
+
 export async function create(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const user = await service.create(req.user!.tenantId, req.user!.userId, req.body);
