@@ -88,24 +88,42 @@ it('keeps tenant-wide permissions when environment switches while CRM startup is
   expect(screen.queryByText('0/0')).toBeNull();
 });
 
-it('displays effective Client Admin permissions as enabled and readonly without saving', async () => {
+it('keeps protected actions visible and disabled without navigation or requests', async () => {
   savedRoles.push({ id: 'admin-role', name: 'Client Admin', tenantId: 'tenant-a', isSystemRole: true, isArchived: false, permissions: [] });
-  mount(); const title = await screen.findByText('Client Admin');
-  const card = title.closest<HTMLElement>('.group')!;
-  fireEvent.click(within(card).getByRole('button'));
-  fireEvent.click(screen.getByRole('button', { name: 'Edit Permissions' }));
-  await screen.findByText('Edit Role');
-  const switches = screen.getAllByRole('switch');
-  expect(switches.length).toBeGreaterThan(7);
-  for (const toggle of switches) {
-    expect(toggle.getAttribute('aria-checked')).toBe('true');
-    expect((toggle as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(toggle);
-    expect(toggle.getAttribute('aria-checked')).toBe('true');
+  mount();
+  fireEvent.click(await screen.findByRole('button', { name: 'Actions for Client Admin' }));
+  const callsBefore = fetcher.mock.calls.length;
+  for (const name of ['Edit Permissions', 'Delete Role']) {
+    const action = screen.getByRole('menuitem', { name });
+    expect(action.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(action);
+    fireEvent.keyDown(action, { key: 'Enter' });
+    fireEvent.keyDown(action, { key: ' ' });
   }
-  const count = switches.length - 7;
-  expect(screen.getByText(`${count} of ${count}`)).toBeTruthy();
-  expect((screen.getByRole('button', { name: 'Save Changes' }) as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.submit(screen.getByLabelText('Role Name *').closest('form')!);
-  expect(fetcher.mock.calls.filter(([, options]) => ['PUT', 'POST'].includes(options?.method ?? ''))).toHaveLength(0);
+  expect(screen.queryByText('Edit Role')).toBeNull();
+  expect(screen.queryByText('Delete Role?')).toBeNull();
+  expect(fetcher.mock.calls.length).toBe(callsBefore);
+  expect(screen.getByRole('menuitem', { name: 'Duplicate Role' }).getAttribute('aria-disabled')).toBe('false');
+  expect(screen.queryByText('perms')).toBeNull();
+  expect(screen.getByText('permissions')).toBeTruthy();
+});
+
+it('toggles a role menu with a full pointer sequence, dismisses it, and opens only one role at a time', async () => {
+  savedRoles.push(...['First', 'Second'].map(name => ({ id: name, name, tenantId: 'tenant-a', isSystemRole: false, isArchived: false, permissions: [] })));
+  mount();
+  const first = await screen.findByRole('button', { name: 'Actions for First' });
+  const second = screen.getByRole('button', { name: 'Actions for Second' });
+  const click = (element: HTMLElement) => { fireEvent.mouseDown(element); fireEvent.mouseUp(element); fireEvent.click(element); };
+  click(first); expect(screen.getAllByRole('menu')).toHaveLength(1);
+  click(first); expect(screen.queryByRole('menu')).toBeNull();
+  click(first); click(second);
+  expect(screen.getAllByRole('menu')).toHaveLength(1);
+  expect(screen.getByRole('menu', { name: 'Actions for Second' })).toBeTruthy();
+  expect(first.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.keyDown(document, { key: 'Escape' }); expect(screen.queryByRole('menu')).toBeNull();
+  expect(document.activeElement).toBe(second);
+  click(first); fireEvent.mouseDown(document.body); expect(screen.queryByRole('menu')).toBeNull();
+  click(first); fireEvent.click(screen.getByRole('menuitem', { name: 'Edit Permissions' }));
+  expect(screen.getByText('Edit Role')).toBeTruthy();
+  expect(screen.queryByRole('menu')).toBeNull();
 });

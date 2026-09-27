@@ -1,4 +1,5 @@
 import { requestPasswordReset } from '../../../core/auth/password-reset.service';
+import { readSelfAvatar } from '../../../core/auth/profile.service';
 import { replaceUserRole } from '../roles/roles.repository';
 import { CreateUsersSchema, UpdateUsersSchema } from './users.dto';
 import { requireEmployeeAccount } from '../../../core/auth/account-access';
@@ -49,6 +50,11 @@ export async function getById(id: string, tenantId: string) {
   const user = await prisma.user.findFirst({ where: { id, tenantId }, select: SAFE_USER_SELECT });
   if (!user) throw new NotFoundError('User');
   return user;
+}
+
+export async function getAvatar(id: string, tenantId: string, avatarId: string) {
+  await getById(id, tenantId);
+  return readSelfAvatar(id, tenantId, avatarId);
 }
 
 export async function create(tenantId: string, actorId: string, dto: {

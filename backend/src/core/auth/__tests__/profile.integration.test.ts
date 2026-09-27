@@ -70,6 +70,25 @@ describe.skipIf(!disposable)('profile and sorting persistence through authentica
     expect((await request(reference.replace('/api/proxy', ''), 'GET', undefined, false)).status).toBe(401);
     expect(objects.size).toBe(1);
   });
+  it('serves saved team avatars only to authorized users in the same tenant', async () => {
+    const owner = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    const avatarId = owner.avatarUrl!.split('/').pop();
+    const viewer = await prisma.user.create({ data: { tenantId, email: 'team-avatar-viewer@camxian.com', firstName: 'Team', lastName: 'Viewer', role: 'Client Admin', mustChangePassword: false } });
+    const viewerToken = (await issueAuthSession(viewer)).token;
+    const path = `/administration/users/${userId}/avatar/${avatarId}`;
+    const image = await fetch(base + path, { headers: { Authorization: `Bearer ${viewerToken}` } });
+    expect(image.status).toBe(200);
+    expect(image.headers.get('cache-control')).toBe('private, no-store');
+    expect(await sharp(Buffer.from(await image.arrayBuffer())).metadata()).toMatchObject({ width: 512, height: 512, format: 'webp' });
+    expect((await request(path, 'GET', undefined, false)).status).toBe(401);
+    expect((await request(path.replace(avatarId!, '00000000-0000-0000-0000-000000000000'))).status).toBe(404);
+    const otherTenant = await prisma.tenant.create({ data: { name: 'Other avatar tenant', slug: `avatar-other-${Date.now()}` } });
+    const outsider = await prisma.user.create({ data: { tenantId: otherTenant.id, email: 'other-avatar@camxian.com', firstName: 'Other', lastName: 'User', role: 'Sales', avatarUrl: owner.avatarUrl } });
+    expect((await request(`/administration/users/${outsider.id}/avatar/${avatarId}`)).status).toBe(404);
+    await prisma.user.update({ where: { id: viewer.id }, data: { role: 'Sales' } });
+    const denied = await fetch(base + path, { headers: { Authorization: `Bearer ${viewerToken}` } });
+    expect(denied.status).toBe(403);
+  });
   it('rejects oversized image requests with a clear error before storage', async () => {
     const response = await fetch(base + '/auth/profile/avatar', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'image/png' }, body: Buffer.alloc(5 * 1024 * 1024 + 1) });
     expect(response.status).toBe(413);

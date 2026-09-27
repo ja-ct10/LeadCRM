@@ -17,6 +17,7 @@ import { auditApi } from '@/shared/services/audit.api';
 import { FilterGroupSection } from '@/shared/components/crm/module-workspace';
 import { usersService } from '@/features/tenant/administration/users/services/users.service';
 import { UserPanel } from './user-panel';
+import { UserAvatar as ProfileAvatar } from '@/shared/components/user-avatar';
 import { DataLoadingSpinner, DataErrorState } from '@/shared/components/crm/data-view-states';
 import { cn } from '@/lib/utils';
 import { USE_MOCK_DATA } from '@/lib/config';
@@ -26,12 +27,15 @@ import type { PendingInvitation } from '@/store/types/invitation.types';
 // ── Avatar ─────────────────────────────────────────────────────────────────
 
 function UserAvatar({ user, size = 8 }: { user: User; size?: number }): React.ReactElement {
-  const initials = `${user.firstName?.charAt(0) ?? ''}${user.lastName?.charAt(0) ?? ''}`.toUpperCase();
   const px = size * 4;
+  // Private profile images are read through the tenant's users permission guard.
+  const avatarUrl = user.avatarUrl?.startsWith('/api/proxy/auth/profile/avatar/')
+    ? user.avatarUrl.replace('/api/proxy/auth/profile/avatar/', `/api/proxy/administration/users/${encodeURIComponent(user.id)}/avatar/`)
+    : user.avatarUrl;
   return (
     <div style={{ width: px, height: px, minWidth: px }}
       className="rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold shrink-0 text-[10px]">
-      {initials || '?'}
+      <ProfileAvatar user={{ ...user, avatarUrl }} />
     </div>
   );
 }
@@ -338,17 +342,17 @@ export function UsersSubTab({ onUsersLoaded }: { onUsersLoaded?: (users: User[])
     <div className="min-w-0 max-w-full space-y-4">
       {rolesError && <div role="alert" className="text-sm text-red-500">{rolesError} <button onClick={() => void refreshRoles()} className="underline">Retry roles</button></div>}
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative w-full sm:flex-1 min-w-0 sm:max-w-xs">
+      <div className="flex flex-nowrap items-center gap-2 sm:gap-3">
+        <div className="relative flex-1 min-w-0 sm:max-w-xs">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input type="text" placeholder="Search users..." value={search} onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-white/[0.08] text-slate-900 dark:text-white rounded-lg text-xs focus:outline-none focus:border-blue-500 transition-colors placeholder-slate-400" />
+            aria-label="Search users" className="w-full min-w-0 h-11 sm:h-auto pl-8 sm:pl-9 pr-2 sm:pr-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-white/[0.08] text-slate-900 dark:text-white rounded-lg text-xs focus:outline-none focus:border-blue-500 transition-colors placeholder-slate-400" />
         </div>
-        <button aria-expanded={showFilters} aria-controls="user-filters" onClick={() => setShowFilters(value => !value)} className={cn('flex items-center gap-2 px-3 py-2 border rounded-lg text-xs font-semibold', showFilters ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300')}>
-          <Filter size={14} /> Filter
+        <button aria-label="Filter users" title="Filter users" aria-expanded={showFilters} aria-controls="user-filters" onClick={() => setShowFilters(value => !value)} className={cn('flex shrink-0 h-11 w-11 sm:h-auto sm:w-auto items-center justify-center gap-2 sm:px-3 py-2 border rounded-lg text-xs font-semibold', showFilters ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300')}>
+          <Filter size={14} /> <span className="hidden sm:inline">Filter</span>
         </button>
-        {canManageUsers && <button disabled={rolesLoading || !!rolesError} onClick={() => setIsAddOpen(true)} className="sm:ml-auto flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold disabled:opacity-50">
-          <Plus size={13} /> New User
+        {canManageUsers && <button aria-label="New user" title="New user" disabled={rolesLoading || !!rolesError} onClick={() => setIsAddOpen(true)} className="sm:ml-auto flex shrink-0 h-11 w-11 sm:h-auto sm:w-auto items-center justify-center gap-1.5 sm:px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold disabled:opacity-50">
+          <Plus size={16} /> <span className="hidden sm:inline">New User</span>
         </button>}
       </div>
 
