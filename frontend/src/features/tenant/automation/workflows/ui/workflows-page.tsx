@@ -46,7 +46,7 @@ export default function WorkflowsPage() {
   const filtered = useMemo(() => workflows.filter(workflow => !workflow.isArchived && workflow.name.toLowerCase().includes(search.toLowerCase()) &&
     (!statuses.length || statuses.includes((workflow.status ?? (workflow.isActive ? 'ACTIVE' : 'PAUSED')).toLowerCase())) && (!triggers.length || triggers.includes(workflow.trigger))), [workflows, search, statuses, triggers]);
   const pagination = usePagination({ totalItems: filtered.length, resetDeps: [search, statuses.join(','), triggers.join(',')] });
-  async function mutate(work: () => Promise<void>, message: string) {
+  async function mutate(work: () => Promise<unknown>, message: string) {
     setBusy(true);
     try { await work(); toast.success(message); }
     catch (failure) { toast.error(failure instanceof Error ? failure.message : 'Unable to complete this action.'); }

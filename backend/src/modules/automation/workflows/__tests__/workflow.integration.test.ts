@@ -90,6 +90,31 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     expect(await prisma.activity.count({ where: { leadId: record.id, title: 'Workflow: Acceptance workflow', createdById: actor.id } })).toBe(1);
     expect((await call(`/automation/workflows/${workflow.id}/executions`)).body.data[0].id).toBe(history[0].id);
   });
+  it('persists disabled steps, skips their side effects, and validates them again when enabled', async () => {
+    const workflow = await create([
+      { type: 'create_task', config: { title: 'Enabled before' } },
+      { type: 'send_email', enabled: false, config: {} },
+      { type: 'create_task', enabled: false, config: { title: 'Must never exist' } },
+      { type: 'create_notification', config: { title: 'Enabled after' } },
+    ]);
+    const saved = await call(`/automation/workflows/${workflow.id}`);
+    expect(saved.body.data.actions[1].enabled).toBe(false);
+    const check = await scope(() => workflows.testWorkflow(workflow.id, tenantId, lead.id));
+    expect(check.valid).toBe(true); expect(check.actions[1].message).toContain('Disabled');
+    await fire();
+    expect(vi.mocked(sendEmail)).not.toHaveBeenCalled();
+    expect(await prisma.task.count({ where: { tenantId, title: 'Must never exist' } })).toBe(0);
+    const history = (await runs(workflow.id))[0];
+    expect(history.status).toBe('completed');
+    expect(history.steps.map(step => step.status)).toEqual(['success','skipped','skipped','success']);
+    expect(history.steps[1].output).toEqual({ reason: 'Action disabled' });
+    await expect(scope(() => workflows.updateWorkflow(workflow.id, tenantId, actor.id, {
+      actions: [{ type: 'send_email', enabled: true, config: {} }],
+    }))).rejects.toThrow('Connected Gmail sender is required');
+  });
+  it('does not accept foreign references even in disabled steps', async () => {
+    await expect(create([{ type: 'create_task', config: { title: 'Enabled' } }, { type: 'assign_owner', enabled: false, config: { userId: outsider.id } }])).rejects.toThrow('Active workspace user');
+  });
   it('keeps Client Profile actions attached to Contact, with the relationship Status unchanged', async () => {
     const workflow = await create([{ type: 'assign_owner', config: { userId: owner.id } }, { type: 'update_field', config: { field: 'notes', value: 'Client follow-up' } },
       { type: 'create_task', config: { title: 'Call Client Profile', priority: '', dueDaysFromNow: '' } }], { trigger: 'contact.created' });

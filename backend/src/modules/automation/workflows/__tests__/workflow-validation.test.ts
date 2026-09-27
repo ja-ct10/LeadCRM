@@ -26,4 +26,8 @@ describe('workflow activation errors', () => {
     vi.mocked(validateAction).mockRejectedValue(databaseFailure);
     await expect(validateWorkflow(draft, 'tenant')).rejects.toBe(databaseFailure);
   });
+  it('requires at least one enabled action while preserving legacy enabled defaults', async () => {
+    await expect(validateWorkflow({ ...draft, actions: [{ ...draft.actions[0], enabled: false }] }, 'tenant')).rejects.toThrow('Enable at least one action');
+    await expect(validateWorkflow(draft, 'tenant')).resolves.toBeUndefined();
+  });
 });

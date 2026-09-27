@@ -52,8 +52,9 @@ export async function fireWorkflowTrigger(params: WorkflowFireParams): Promise<v
           const action = draft.actions[index];
           const current = await repo.findWorkflowById(workflow.id, params.tenantId);
           if (!current?.isActive || current.isArchived || current.updatedAt.getTime() !== workflow.updatedAt.getTime()) status = status === 'failed' ? status : 'skipped';
-          if (status !== 'completed') {
-            await repo.createExecutionStep({ tenantId: params.tenantId, executionId: run.id, stepIndex: index, actionType: action.type, status: 'skipped' });
+          if (status !== 'completed' || action.enabled === false) {
+            await repo.createExecutionStep({ tenantId: params.tenantId, executionId: run.id, stepIndex: index, actionType: action.type, status: 'skipped',
+              ...(action.enabled === false ? { output: { reason: 'Action disabled' } } : {}) });
             recordedSteps++;
             continue;
           }

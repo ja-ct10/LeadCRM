@@ -23,7 +23,7 @@ export async function validateAction(action: WorkflowAction, entity: WorkflowEnt
   }
   for (const [key, field] of Object.entries(definition.configSchema)) {
     const value = action.config[key];
-    if (!incomplete && field.required && (typeof value !== 'string' || !value.trim())) throw new ValidationError(`${field.label} is required.`);
+    if (!incomplete && action.enabled !== false && field.required && (typeof value !== 'string' || !value.trim())) throw new ValidationError(`${field.label} is required.`);
     if (value === undefined || value === '') continue;
     if (field.type === 'number') {
       if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 365) throw new ValidationError(`${field.label} must be a whole number from 0 to 365.`);
@@ -39,9 +39,11 @@ export async function validateAction(action: WorkflowAction, entity: WorkflowEnt
     if (field.type === 'template' && !await repo.findTemplate(String(value), tenantId)) throw new NotFoundError('Email template');
     if (field.type === 'campaign' && !await repo.findCampaign(String(value), tenantId)) throw new NotFoundError('Campaign');
   }
-  if (action.type === 'update_field' && (!incomplete || action.config.field) && action.config.field !== (entity === 'contact' ? 'notes' : 'description')) {
+  if (action.type === 'update_field' && ((!incomplete && action.enabled !== false) || action.config.field) && action.config.field !== (entity === 'contact' ? 'notes' : 'description')) {
     throw new ValidationError('Relationship Status and other protected fields cannot be automated. Choose notes for Client Profiles or description for Leads/Deals.');
   }
+  // Disabled steps retain safe configuration and scoped references, but need no delivery readiness.
+  if (action.enabled === false) return;
   if (incomplete && Object.entries(definition.configSchema).some(([key, field]) => field.required && !action.config[key])) return;
   if (incomplete && action.type === 'send_email' && !action.config.templateId && (!action.config.subject || !action.config.body)) return;
   if (context && ['create_task', 'create_notification'].includes(action.type)) {

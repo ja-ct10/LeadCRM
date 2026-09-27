@@ -53,7 +53,7 @@ Accessibility observations are limited: several Brevo icon buttons were exposed 
 | Multiple triggers | One trigger string in the contract. | No | One trigger at start. Replacing entity type previews affected steps; never silently deletes them. |
 | YES/NO, percentage splits, loops | No branch edges or branch evaluator. | Future | Would require a deliberate canonical contract/engine change; no frontend-only branches. |
 | Delays / event waits | No durable workflow scheduling or suspended-run continuation. | Future | Omit. Task due dates remain supported and do not imply delayed action execution. |
-| Disable individual action | No enabled/disabled property in canonical actions. | Future | Show incomplete steps and unavailable operations honestly; do not pretend an action is skipped at runtime. |
+| Disable individual action | No enabled/disabled property in canonical actions. | Yes | Show incomplete steps and unavailable operations honestly; do not pretend an action is skipped at runtime. |
 | Re-entry / exit / restart settings | Event-based engine, deduplication and recursion guards. | Future | Keep current behavior; no settings unsupported by the engine. |
 | Brevo autosave | Explicit API saves; a saved active definition is authoritative immediately. | No for this release | Update the local draft instantly; explicit Save/Activate/Pause with clear status and unsaved-navigation protection. |
 

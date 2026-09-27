@@ -17,6 +17,7 @@ export type WorkflowCondition = z.infer<typeof WorkflowConditionSchema>;
 export type WorkflowConditionGroup = WorkflowCondition;
 export const WorkflowActionSchema = z.object({
   type: z.enum(['create_task', 'send_email', 'assign_owner', 'update_field', 'create_notification', 'move_deal_stage', 'send_campaign']),
+  enabled: z.boolean().optional(),
   config: z.record(z.unknown()),
 }).strict();
 export type WorkflowAction = z.infer<typeof WorkflowActionSchema>;

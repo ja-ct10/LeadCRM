@@ -1,0 +1,381 @@
+import {
+  workflowOperators,
+  type ActionDefinition,
+  type TriggerDefinition,
+  type WorkflowAction,
+  type WorkflowConditionRule,
+  type WorkflowDraft,
+  type WorkflowOptions,
+} from '@leadcrm/shared';
+
+export type StepSelection =
+  | 'details'
+  | 'trigger'
+  | 'conditions'
+  | `action:${string}`;
+export interface EditorDocument {
+  draft: WorkflowDraft;
+  actionIds: string[];
+}
+export type LibraryItem =
+  | { kind: 'trigger'; type: string }
+  | { kind: 'condition'; field?: string }
+  | { kind: 'action'; type: WorkflowAction['type'] };
+export type DragItem = LibraryItem | { kind: 'move'; id: string };
+export type Placement =
+  | { kind: 'trigger' }
+  | { kind: 'condition' }
+  | { kind: 'action'; index: number };
+export interface EditorIssue {
+  step: StepSelection;
+  message: string;
+}
+
+export function toDraft(value: WorkflowDraft): WorkflowDraft {
+  return {
+    name: value.name,
+    description: value.description,
+    trigger: value.trigger,
+    conditions: value.conditions,
+    actions: value.actions,
+    isActive: value.isActive,
+  };
+}
+export function editorDocument(draft: WorkflowDraft): EditorDocument {
+  const copy = structuredClone(toDraft(draft));
+  copy.actions = copy.actions.map((action) => ({
+    ...action,
+    config: action.config ?? {},
+  }));
+  return {
+    draft: copy,
+    actionIds: draft.actions.map(() => crypto.randomUUID()),
+  };
+}
+export function canPlace(
+  item: DragItem,
+  target: Placement,
+  document: EditorDocument,
+  triggers: TriggerDefinition[],
+  actions: ActionDefinition[],
+): boolean {
+  const trigger = triggers.find(
+    (entry) => entry.type === document.draft.trigger,
+  );
+  if (item.kind === 'trigger')
+    return (
+      target.kind === 'trigger' &&
+      triggers.some((entry) => entry.type === item.type)
+    );
+  if (item.kind === 'condition')
+    return (
+      target.kind === 'condition' &&
+      !!trigger &&
+      (!item.field ||
+        trigger.fields.some((field) => field.field === item.field)) &&
+      (document.draft.conditions?.conditions.length ?? 0) < 30
+    );
+  if (
+    target.kind !== 'action' ||
+    !trigger ||
+    !Number.isInteger(target.index) ||
+    target.index < 0 ||
+    target.index > document.draft.actions.length
+  )
+    return false;
+  if (item.kind === 'move') return document.actionIds.includes(item.id);
+  return (
+    document.draft.actions.length < 20 &&
+    actions.some(
+      (entry) =>
+        entry.type === item.type && entry.entities.includes(trigger.entity),
+    )
+  );
+}
+/** Destination is an insertion boundary in the original sequence, including the end. */
+export function moveAction(
+  document: EditorDocument,
+  id: string,
+  boundary: number,
+): EditorDocument {
+  const from = document.actionIds.indexOf(id);
+  if (from < 0 || boundary < 0 || boundary > document.actionIds.length)
+    return document;
+  const to = boundary > from ? boundary - 1 : boundary;
+  if (from === to) return document;
+  const actions = [...document.draft.actions],
+    actionIds = [...document.actionIds];
+  actions.splice(to, 0, actions.splice(from, 1)[0]);
+  actionIds.splice(to, 0, actionIds.splice(from, 1)[0]);
+  return { draft: { ...document.draft, actions }, actionIds };
+}
+export function insertAction(
+  document: EditorDocument,
+  action: WorkflowAction,
+  index: number,
+  id: string,
+): EditorDocument {
+  if (
+    document.draft.actions.length >= 20 ||
+    index < 0 ||
+    index > document.actionIds.length
+  )
+    return document;
+  const actions = [...document.draft.actions],
+    actionIds = [...document.actionIds];
+  actions.splice(index, 0, structuredClone(action));
+  actionIds.splice(index, 0, id);
+  return { draft: { ...document.draft, actions }, actionIds };
+}
+export function references(
+  type: string,
+  options: WorkflowOptions,
+): Array<{ id: string; name: string }> | undefined {
+  if (type === 'user') return options.users;
+  if (type === 'pipeline') return options.pipelines;
+  if (type === 'stage')
+    return options.pipelines.flatMap((pipeline) =>
+      pipeline.stages.map((stage) => ({
+        id: stage.id,
+        name: `${pipeline.name} / ${stage.name}`,
+      })),
+    );
+  if (type === 'template') return options.templates;
+  if (type === 'campaign') return options.campaigns;
+}
+export function referenceName(
+  type: string,
+  value: unknown,
+  options: WorkflowOptions,
+  fallback = 'Choose…',
+) {
+  return value
+    ? (references(type, options)?.find((entry) => entry.id === value)?.name ??
+        'Unavailable selection')
+    : fallback;
+}
+export const operatorLabels: Record<WorkflowConditionRule['operator'], string> =
+  {
+    equals: 'is',
+    not_equals: 'is not',
+    greater_than: 'is greater than',
+    less_than: 'is less than',
+    greater_than_or_equal: 'is at least',
+    less_than_or_equal: 'is at most',
+    contains: 'contains',
+    not_contains: 'does not contain',
+    starts_with: 'starts with',
+    ends_with: 'ends with',
+    is_empty: 'is empty',
+    is_not_empty: 'is not empty',
+    before: 'is before',
+    after: 'is after',
+  };
+export function conditionSummary(
+  rule: WorkflowConditionRule,
+  trigger: TriggerDefinition | undefined,
+  options: WorkflowOptions,
+) {
+  const field = trigger?.fields.find((entry) => entry.field === rule.field);
+  const value = references(field?.type ?? '', options)
+    ? referenceName(field!.type, rule.value, options)
+    : String(rule.value ?? '');
+  return `${field?.label ?? 'Choose a field'} ${operatorLabels[rule.operator]}${['is_empty', 'is_not_empty'].includes(rule.operator) ? '' : ` ${value || '…'}`}`;
+}
+export function actionSummary(
+  action: WorkflowAction,
+  options: WorkflowOptions,
+): string[] {
+  const config = action.config;
+  switch (action.type) {
+    case 'create_task':
+      return [
+        String(config.title || 'Add a task title'),
+        `Assigned to ${referenceName('user', config.assignedUserId, options, 'current record owner')}`,
+        `Due in ${config.dueDaysFromNow === '' || config.dueDaysFromNow == null ? 3 : config.dueDaysFromNow} day(s) · ${config.priority || 'Medium'} priority`,
+      ];
+    case 'create_notification':
+      return [
+        String(config.title || 'Add a notification title'),
+        `Notify ${referenceName('user', config.userId, options, 'current record owner')}`,
+      ];
+    case 'assign_owner':
+      return [
+        `Assign to ${referenceName('user', config.userId, options, 'an agent')}`,
+      ];
+    case 'send_email':
+      return [
+        config.templateId
+          ? `Template: ${referenceName('template', config.templateId, options)}`
+          : String(config.subject || 'Add an email template or message'),
+        `Sender: ${referenceName('user', config.senderUserId, options, 'choose connected Gmail sender')}`,
+      ];
+    case 'move_deal_stage':
+      return [
+        `Move Deal → ${referenceName('stage', config.stageId, options, 'choose a stage')}`,
+      ];
+    case 'update_field':
+      return [
+        `Update ${config.field === 'notes' ? 'notes' : 'description'}`,
+        String(config.value || 'Add a value'),
+      ];
+    case 'send_campaign':
+      return [
+        referenceName(
+          'campaign',
+          config.campaignId,
+          options,
+          'Choose a draft campaign',
+        ),
+        'Sends once to the campaign’s saved audience',
+      ];
+    default:
+      return [
+        'This older action is unsupported. Remove it and choose an available action.',
+      ];
+  }
+}
+export function conditionIssues(
+  draft: WorkflowDraft,
+  trigger: TriggerDefinition | undefined,
+  options: WorkflowOptions,
+): string[] {
+  return (draft.conditions?.conditions ?? []).flatMap((rule, index) => {
+    const field = trigger?.fields.find((entry) => entry.field === rule.field);
+    let message = '';
+    if (!field) message = 'Choose an available field.';
+    else if (!workflowOperators(field.type).includes(rule.operator))
+      message = 'Choose an operator supported by this field.';
+    else if (!['is_empty', 'is_not_empty'].includes(rule.operator)) {
+      const choices = references(field.type, options);
+      if (
+        field.type === 'number' &&
+        (typeof rule.value !== 'number' || !Number.isFinite(rule.value))
+      )
+        message = 'Enter a valid number.';
+      else if (field.type === 'boolean' && typeof rule.value !== 'boolean')
+        message = 'Choose Yes or No.';
+      else if (field.options && !field.options.includes(String(rule.value)))
+        message = 'Choose an available value.';
+      else if (choices && !choices.some((entry) => entry.id === rule.value))
+        message = 'Choose an available record.';
+      else if (
+        field.type === 'date' &&
+        (typeof rule.value !== 'string' ||
+          !/^\d{4}-\d{2}-\d{2}$/.test(rule.value) ||
+          Number.isNaN(Date.parse(rule.value)) ||
+          new Date(rule.value).toISOString().slice(0, 10) !== rule.value)
+      )
+        message = 'Choose a valid date.';
+    }
+    return message ? [`Condition ${index + 1}: ${message}`] : [];
+  });
+}
+// Immediate editing guidance. Server validation still owns permissions, references and integrations.
+export function actionIssues(
+  action: WorkflowAction,
+  definition: ActionDefinition | undefined,
+  entity: TriggerDefinition['entity'] | undefined,
+  options: WorkflowOptions,
+  incomplete = false,
+): string[] {
+  incomplete = incomplete || action.enabled === false;
+  if (!definition || !entity || !definition.entities.includes(entity))
+    return ['This action is unavailable for the trigger.'];
+  const issues: string[] = [];
+  for (const [key, field] of Object.entries(definition.configSchema)) {
+    const value = action.config[key];
+    if (
+      value == null ||
+      value === '' ||
+      (typeof value === 'string' && !value.trim())
+    ) {
+      if (field.required && !incomplete)
+        issues.push(`${field.label} is required.`);
+      continue;
+    }
+    const choices = references(field.type, options);
+    if (choices && !choices.some((entry) => entry.id === value))
+      issues.push(`${field.label}: choose an available selection.`);
+    if (field.options && !field.options.includes(String(value)))
+      issues.push(`${field.label}: choose a supported value.`);
+    if (
+      field.type === 'number' &&
+      (typeof value !== 'number' ||
+        !Number.isInteger(value) ||
+        value < 0 ||
+        value > 365)
+    )
+      issues.push(`${field.label}: enter a whole number from 0 to 365.`);
+    if (
+      ['title', 'description', 'subject', 'body'].includes(key) &&
+      typeof value === 'string' &&
+      [...value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)].some(
+        (match) =>
+          !['first_name', 'last_name', 'email', 'company'].includes(match[1]),
+      )
+    )
+      issues.push(
+        `${field.label}: use the supported personalization variables.`,
+      );
+  }
+  if (
+    action.type === 'send_email' &&
+    !incomplete &&
+    !action.config.templateId &&
+    (!String(action.config.subject ?? '').trim() ||
+      !String(action.config.body ?? '').trim())
+  )
+    issues.push(
+      'Choose a complete template or enter both subject and message.',
+    );
+  if (
+    action.type === 'update_field' &&
+    action.config.field &&
+    action.config.field !== (entity === 'contact' ? 'notes' : 'description')
+  )
+    issues.push('Choose the safe field available for this record type.');
+  return issues;
+}
+export function editorIssues(
+  document: EditorDocument,
+  triggers: TriggerDefinition[],
+  definitions: ActionDefinition[],
+  options: WorkflowOptions,
+  incomplete = false,
+): EditorIssue[] {
+  const { draft, actionIds } = document;
+  const trigger = triggers.find((entry) => entry.type === draft.trigger);
+  return [
+    ...(!draft.name.trim()
+      ? [{ step: 'details' as const, message: 'Workflow name is required.' }]
+      : []),
+    ...(!trigger
+      ? [{ step: 'trigger' as const, message: 'Choose a trigger.' }]
+      : []),
+    ...conditionIssues(draft, trigger, options).map((message) => ({
+      step: 'conditions' as const,
+      message,
+    })),
+    ...(!incomplete && !draft.actions.some((action) => action.enabled !== false)
+      ? [
+          {
+            step: 'details' as const,
+            message: 'Enable at least one action before activating.',
+          },
+        ]
+      : []),
+    ...draft.actions.flatMap((action, index) =>
+      actionIssues(
+        action,
+        definitions.find((entry) => entry.type === action.type),
+        trigger?.entity,
+        options,
+        incomplete,
+      ).map((message) => ({
+        step: `action:${actionIds[index]}` as const,
+        message: `Action ${index + 1}: ${message}`,
+      })),
+    ),
+  ];
+}

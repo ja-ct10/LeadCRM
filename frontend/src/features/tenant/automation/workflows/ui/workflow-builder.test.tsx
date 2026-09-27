@@ -1,65 +1,260 @@
 import React from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { WORKFLOW_TRIGGERS, getAvailableActions, type WorkflowDraft } from '@leadcrm/shared';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import {
+  WORKFLOW_TRIGGERS,
+  getAvailableActions,
+  type WorkflowDraft,
+} from '@leadcrm/shared';
 import WorkflowBuilder from './visual-workflow-builder';
 import { workflowsApi } from '@/shared/services/workflows.api';
-vi.mock('@/shared/services/workflows.api', () => ({ workflowsApi: { validate: vi.fn() } }));
-afterEach(() => {cleanup();vi.clearAllMocks();});
-const initial:WorkflowDraft = {name:'Deal follow-up',trigger:'deal.created',isActive:false,
-  conditions:{operator:'AND',conditions:[{field:'deal.value',operator:'greater_than',value:1000}]},
-  actions:[{type:'create_task',config:{title:'Call owner'}}]};
-function setup(options:{save?:(draft:WorkflowDraft)=>Promise<void>;readOnly?:boolean;canActivate?:boolean;initial?:WorkflowDraft}={}) {
-  const save=options.save ?? vi.fn().mockResolvedValue(undefined),close=vi.fn();
-  render(<WorkflowBuilder initial={options.initial ?? structuredClone(initial)} triggers={WORKFLOW_TRIGGERS} actions={getAvailableActions()} canActivate={options.canActivate ?? true} readOnly={options.readOnly} onSave={save} onClose={close}/>);
-  return {save,close};
+vi.mock('@/shared/services/workflows.api', () => ({
+  workflowsApi: { validate: vi.fn() },
+}));
+beforeEach(() => {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi
+      .fn()
+      .mockReturnValue({
+        matches: true,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }),
+  });
+  // Newer browser scroll implementations can return a Promise; effects must not return it.
+  Element.prototype.scrollTo = vi.fn().mockResolvedValue(undefined);
+});
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
+const initial: WorkflowDraft = {
+  name: 'Deal follow-up',
+  trigger: 'deal.created',
+  isActive: false,
+  conditions: {
+    operator: 'AND',
+    conditions: [
+      { field: 'deal.value', operator: 'greater_than', value: 1000 },
+    ],
+  },
+  actions: [{ type: 'create_task', config: { title: 'Call owner' } }],
+};
+function setup(
+  options: {
+    save?: (draft: WorkflowDraft) => Promise<void>;
+    readOnly?: boolean;
+    canActivate?: boolean;
+    initial?: WorkflowDraft;
+  } = {},
+) {
+  const save = options.save ?? vi.fn().mockResolvedValue(undefined),
+    close = vi.fn();
+  render(
+    <WorkflowBuilder
+      initial={options.initial ?? structuredClone(initial)}
+      triggers={WORKFLOW_TRIGGERS}
+      actions={getAvailableActions()}
+      canActivate={options.canActivate ?? true}
+      readOnly={options.readOnly}
+      onSave={save}
+      onClose={close}
+    />,
+  );
+  return { save, close };
 }
-describe('workflow page builder', () => {
-  it('opens a new blank workflow without a legacy warning or losing its recipe steps', () => {
-    setup({initial:{...initial,name:''}});
-    expect(screen.queryByRole('alert')).toBeNull();
-    expect(screen.getByText('Call owner')).toBeTruthy();
+const button = (name: string | RegExp) => screen.getByRole('button', { name });
+describe('visual workflow editor', () => {
+  it('updates condition summaries immediately and serializes numeric ALL rules', async () => {
+    const { save } = setup();
+    fireEvent.click(button(/ALL conditions match/));
+    fireEvent.change(screen.getByLabelText('Condition 1 value'), {
+      target: { value: '25000' },
+    });
+    expect(screen.getByText('Deal value is greater than 25000')).toBeTruthy();
+    fireEvent.click(button('Save and activate'));
+    await waitFor(() =>
+      expect(save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          isActive: true,
+          conditions: {
+            operator: 'AND',
+            conditions: [
+              { field: 'deal.value', operator: 'greater_than', value: 25000 },
+            ],
+          },
+        }),
+      ),
+    );
   });
-  it('keeps unsaved typed condition edits in the drawer until Save step', async () => {
-    const {save}=setup();
-    const name=screen.getByLabelText('Workflow name');name.focus();fireEvent.change(name,{target:{value:'Updated follow-up'}});expect(document.activeElement).toBe(name);
-    fireEvent.click(screen.getByRole('button',{name:/IF/}));
-    fireEvent.change(screen.getByLabelText('Condition 1 value'),{target:{value:'25000'}});
-    expect(screen.queryByRole('option',{name:'contains'})).toBeNull();
-    fireEvent.click(screen.getByRole('button',{name:'Save step'}));
-    fireEvent.click(screen.getByRole('button',{name:'Save and activate'}));
-    await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({name:'Updated follow-up',isActive:true,conditions:{operator:'AND',conditions:[{field:'deal.value',operator:'greater_than',value:25000}]}})));
+  it('inserts between actions using the same library, preserves config through reordering and undo', async () => {
+    const { save } = setup({
+      initial: {
+        ...initial,
+        actions: [
+          ...initial.actions,
+          { type: 'create_notification', config: { title: 'Notify owner' } },
+        ],
+      },
+    });
+    fireEvent.click(button('Add step at position 2'));
+    fireEvent.click(button('Add Create task'));
+    fireEvent.change(screen.getByLabelText('Task title'), {
+      target: { value: 'Prepare proposal' },
+    });
+    fireEvent.click(button('Move action 2 up'));
+    expect(screen.getByLabelText('Task title').getAttribute('value')).toBe(
+      'Prepare proposal',
+    );
+    fireEvent.click(button('Remove action 1'));
+    fireEvent.click(button('Undo'));
+    fireEvent.click(button('Save draft'));
+    await waitFor(() =>
+      expect(save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actions: [
+            { type: 'create_task', config: { title: 'Prepare proposal' } },
+            initial.actions[0],
+            { type: 'create_notification', config: { title: 'Notify owner' } },
+          ],
+        }),
+      ),
+    );
   });
-  it('shows one required name error below the input and does not save', async () => {
-    const {save}=setup();fireEvent.change(screen.getByLabelText('Workflow name'),{target:{value:'   '}});
-    fireEvent.click(screen.getByRole('button',{name:'Save draft'}));
-    expect(screen.getAllByText('Workflow name is required.')).toHaveLength(1);
-    expect(screen.getByLabelText('Workflow name').getAttribute('aria-describedby')).toBe('workflow-name-error');expect(save).not.toHaveBeenCalled();
+  it('supports click-to-place and excludes incompatible actions', () => {
+    setup();
+    expect(screen.queryByRole('button', { name: 'Add Send email' })).toBeNull();
+    fireEvent.click(button('Add Create task'));
+    expect(button('Insert at position 1')).toBeTruthy();
+    fireEvent.click(button('Insert at position 1'));
+    expect(screen.getByLabelText('Task title')).toBeTruthy();
   });
-  it('retains the page and server error after an unsuccessful save', async () => {
-    const {close}=setup({save:vi.fn().mockRejectedValue(new Error('Choose an active workspace user.'))});
-    fireEvent.click(screen.getByRole('button',{name:'Save and activate'}));
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Choose an active workspace user.'));expect(close).not.toHaveBeenCalled();
+  it('duplicates independent configuration and saves real disabled state', async () => {
+    const { save } = setup();
+    fireEvent.click(button('Duplicate action 1'));
+    fireEvent.change(screen.getByLabelText('Task title'), {
+      target: { value: 'Later task' },
+    });
+    fireEvent.click(screen.getByLabelText('Action enabled'));
+    expect(
+      screen.getByText('Disabled · skipped during execution'),
+    ).toBeTruthy();
+    fireEvent.click(button('Save and activate'));
+    await waitFor(() =>
+      expect(save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actions: [
+            initial.actions[0],
+            {
+              type: 'create_task',
+              enabled: false,
+              config: { title: 'Later task' },
+            },
+          ],
+        }),
+      ),
+    );
   });
-  it('discards cancelled step changes and restores focus to the node', async () => {
-    setup();const node=screen.getByRole('button',{name:/THEN/});node.focus();fireEvent.click(node);
-    fireEvent.change(screen.getByLabelText(/Task title/),{target:{value:'Unsaved title'}});
-    fireEvent.click(screen.getByRole('button',{name:'Cancel'}));
-    expect(screen.getByText('Call owner')).toBeTruthy();await waitFor(() => expect(document.activeElement).toBe(node));
+  it('blocks activation with only disabled actions, but permits saving the draft', async () => {
+    const { save } = setup({
+      initial: {
+        ...initial,
+        actions: [{ type: 'send_email', enabled: false, config: {} }],
+        trigger: 'lead.created',
+        conditions: null,
+      },
+    });
+    fireEvent.click(button('Save and activate'));
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Enable at least one action',
+    );
+    expect(save).not.toHaveBeenCalled();
+    fireEvent.click(button('Save draft'));
+    await waitFor(() => expect(save).toHaveBeenCalledOnce());
   });
-  it('validates without invoking persistence or execution', async () => {
-    vi.mocked(workflowsApi.validate).mockResolvedValue({success:true,data:{valid:true,message:'Configuration valid. No actions executed.'}});
-    const {save,close}=setup();fireEvent.click(screen.getByRole('button',{name:'Validate'}));
-    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('No actions executed'));
-    expect(save).not.toHaveBeenCalled();expect(close).not.toHaveBeenCalled();
+  it('previews entity changes, lets users cancel, and preserves compatible actions', () => {
+    setup();
+    fireEvent.click(button(/Configure trigger: Deal created/));
+    fireEvent.change(screen.getByLabelText('Start when'), {
+      target: { value: 'lead.created' },
+    });
+    expect(
+      screen.getByRole('dialog', { name: 'Change workflow record type?' }),
+    ).toBeTruthy();
+    fireEvent.click(button('Keep current trigger'));
+    expect(screen.getByText('Deal value is greater than 1000')).toBeTruthy();
   });
-  it('makes details read-only and omits mutation controls', () => {
-    setup({readOnly:true});expect(screen.queryByRole('button',{name:'Save draft'})).toBeNull();
-    expect((screen.getByLabelText('Workflow name').closest('fieldset') as HTMLFieldSetElement).disabled).toBe(true);
-    fireEvent.click(screen.getByRole('button',{name:/THEN/}));expect(screen.queryByRole('button',{name:'Save step'})).toBeNull();
+  it('keeps edits after a server error and validates without saving', async () => {
+    const { save, close } = setup({
+      save: vi
+        .fn()
+        .mockRejectedValue(new Error('Choose an active workspace user.')),
+    });
+    fireEvent.click(button('Save and activate'));
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toContain(
+        'Choose an active workspace user.',
+      ),
+    );
+    expect(close).not.toHaveBeenCalled();
+    vi.mocked(workflowsApi.validate).mockResolvedValue({
+      success: true,
+      data: {
+        valid: true,
+        message: 'Configuration valid. No actions executed.',
+      },
+    });
+    fireEvent.click(button('Validate'));
+    await waitFor(() =>
+      expect(
+        screen.getByText('Configuration valid. No actions executed.')
+          .textContent,
+      ).toContain('No actions executed'),
+    );
+    expect(save).toHaveBeenCalledOnce();
   });
-  it('opens legacy definitions for explicit repair without exposing raw config', () => {
-    const {save}=setup({initial:{...initial,actions:[{type:'send_sms',message:'Legacy'}]} as unknown as WorkflowDraft});
-    expect(screen.getByRole('alert').textContent).toContain('older configuration');expect(screen.queryByText('send_sms')).toBeNull();expect(save).not.toHaveBeenCalled();
+  it('guards dirty exits and leaves saved changes in the editor', async () => {
+    const { save, close } = setup();
+    fireEvent.click(button(/Configure action: 1. Create task/));
+    fireEvent.change(screen.getByLabelText('Task title'), {
+      target: { value: 'New title' },
+    });
+    fireEvent.click(button('Back to workflows'));
+    expect(
+      screen.getByRole('dialog', { name: 'Discard unsaved changes?' }),
+    ).toBeTruthy();
+    fireEvent.click(button('Keep editing'));
+    fireEvent.click(button('Save draft'));
+    await waitFor(() => expect(save).toHaveBeenCalledOnce());
+    expect(close).not.toHaveBeenCalled();
+  });
+  it('keeps read-only configuration inspectable and omits mutations', () => {
+    setup({ readOnly: true });
+    expect(screen.queryByRole('button', { name: 'Save draft' })).toBeNull();
+    fireEvent.click(button(/Configure action: 1. Create task/));
+    expect(
+      screen.getByLabelText('Task title').closest('fieldset')?.disabled,
+    ).toBe(true);
+    expect(
+      screen.queryByRole('button', { name: 'Remove action 1' }),
+    ).toBeNull();
+  });
+  it('retains unsupported legacy steps for explicit repair without exposing raw config', () => {
+    const { save } = setup({
+      initial: {
+        ...initial,
+        actions: [{ type: 'send_sms', message: 'Legacy' }],
+      } as unknown as WorkflowDraft,
+    });
+    expect(screen.getByText(/This older action is unsupported/)).toBeTruthy();
+    expect(screen.queryByText('send_sms')).toBeNull();
+    expect(save).not.toHaveBeenCalled();
   });
 });

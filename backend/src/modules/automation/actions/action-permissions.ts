@@ -12,6 +12,7 @@ export async function assertWorkflowPermissions(draft: WorkflowDraft, tenantId: 
   const entity = findTrigger(draft.trigger)?.entity;
   const required: PermissionKey[] = ['workflows.activate', entity === 'deal' ? 'deals.view' : 'contacts.view'];
   for (const action of draft.actions) {
+    if (action.enabled === false) continue;
     // Operations routes use deals.create for linked CRM tasks.
     if (action.type === 'create_task') required.push('deals.create');
     if (action.type === 'send_campaign') required.push('campaigns.view', 'campaigns.send');

@@ -1,74 +1,1004 @@
 'use client';
-import { useState } from 'react';
-import { WorkflowDraftSchema, type WorkflowDraft, type ActionDefinition, type TriggerDefinition, type WorkflowOptions } from '@leadcrm/shared';
-import { ArrowDown, Plus, ChevronLeft } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  pointerWithin,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  WorkflowDraftSchema,
+  type Workflow,
+  type WorkflowDraft,
+  type ActionDefinition,
+  type TriggerDefinition,
+  type WorkflowOptions,
+} from '@leadcrm/shared';
+import {
+  ArrowLeft,
+  PanelLeft,
+  Undo2,
+  Redo2,
+  X,
+  Settings2,
+  Activity,
+  FlaskConical,
+} from 'lucide-react';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import { workflowsApi } from '@/shared/services/workflows.api';
 import { WorkflowDialog } from './workflow-dialog';
-import { ActionFields, ConditionFields, emptyOptions, workflowControl } from './workflow-fields';
+import {
+  ActionFields,
+  ConditionFields,
+  emptyOptions,
+  workflowControl,
+} from './workflow-fields';
+import { WorkflowLibrary } from './workflow-library';
+import { WorkflowCanvas } from './workflow-canvas';
+import { WorkflowRuns } from './workflow-execution-log-modal';
+import { WorkflowTestPanel } from './workflow-test-panel';
+import {
+  canPlace,
+  editorDocument,
+  editorIssues,
+  insertAction,
+  moveAction,
+  toDraft,
+  type DragItem,
+  type EditorDocument,
+  type LibraryItem,
+  type Placement,
+  type StepSelection,
+} from '../services/workflow-editor';
+
 interface Props {
-  initial: WorkflowDraft; triggers: TriggerDefinition[]; actions: ActionDefinition[]; options?: WorkflowOptions;
-  canActivate: boolean; readOnly?: boolean; onSave: (draft: WorkflowDraft) => Promise<void>; onClose: () => void;
+  initial: WorkflowDraft;
+  workflowId?: string;
+  initialStatus?: Workflow['status'];
+  triggers: TriggerDefinition[];
+  actions: ActionDefinition[];
+  options?: WorkflowOptions;
+  canActivate: boolean;
+  readOnly?: boolean;
+  onSave: (draft: WorkflowDraft) => Promise<Workflow | void>;
+  onPause?: () => Promise<Workflow>;
+  onClose: () => void;
 }
-export default function WorkflowBuilder({initial,triggers,actions:definitions,options=emptyOptions,canActivate,readOnly,onSave,onClose}:Props) {
-  const parsed = WorkflowDraftSchema.safeParse({...initial,name:initial.name || 'New workflow'});
-  const [draft,setDraft] = useState<WorkflowDraft>(parsed.success ? {...parsed.data,name:initial.name} : {name:initial.name,description:initial.description,trigger:triggers[0]?.type ?? '',isActive:false,actions:[]});
-  const [panel,setPanel] = useState<'trigger'|'conditions'|'add'|number|null>(null);
-  const [editing,setEditing] = useState(draft);
-  const [search,setSearch] = useState('');
-  const [error,setError] = useState('');
-  const [nameError,setNameError] = useState('');
-  const [message,setMessage] = useState('');
-  const [busy,setBusy] = useState(false);
-  const [confirmExit,setConfirmExit] = useState(false);
-  const dirty = JSON.stringify(draft) !== JSON.stringify(initial);
-  const trigger = triggers.find(trigger => trigger.type === draft.trigger);
-  const open = (next:typeof panel) => {setEditing(structuredClone(draft));setPanel(next);setSearch('');};
-  async function submit(activate:boolean,validateOnly=false) {
-    setError('');setNameError('');setMessage('');
-    const result = WorkflowDraftSchema.safeParse({...draft,isActive:activate});
-    if (!result.success) {
-      const nameIssue = result.error.issues.find(issue => issue.path[0] === 'name');
-      if (nameIssue) setNameError(nameIssue.message);
-      const other = result.error.issues.find(issue => issue.path[0] !== 'name');if (other) setError(other.message);
+interface History {
+  present: EditorDocument;
+  past: EditorDocument[];
+  future: EditorDocument[];
+}
+export default function WorkflowBuilder({
+  initial,
+  workflowId,
+  initialStatus,
+  triggers,
+  actions: definitions,
+  options = emptyOptions,
+  canActivate,
+  readOnly,
+  onSave,
+  onPause,
+  onClose,
+}: Props) {
+  const [history, setHistory] = useState<History>(() => ({
+    present: editorDocument(initial),
+    past: [],
+    future: [],
+  }));
+  const [saved, setSaved] = useState(() => toDraft(initial)),
+    [savedId, setSavedId] = useState(workflowId);
+  const [savedStatus, setSavedStatus] = useState(
+    initialStatus ?? (initial.isActive ? 'ACTIVE' : 'DRAFT'),
+  );
+  const [selected, setSelected] = useState<StepSelection | null>(
+    initial.name ? null : 'details',
+  );
+  const [pending, setPending] = useState<LibraryItem | null>(null),
+    [dragging, setDragging] = useState<DragItem | null>(null);
+  const [insertAt, setInsertAt] = useState<number | null>(null),
+    [showLibrary, setShowLibrary] = useState(false);
+  const [view, setView] = useState<'builder' | 'activity'>('builder'),
+    [showTest, setShowTest] = useState(false);
+  const [wide, setWide] = useState(false),
+    [error, setError] = useState(''),
+    [message, setMessage] = useState(''),
+    [busy, setBusy] = useState(false);
+  const [changeTrigger, setChangeTrigger] = useState<string | null>(null),
+    [exit, setExit] = useState<(() => void) | null>(null);
+  const operation = useRef(false),
+    focusOrigin = useRef<HTMLElement | null>(null),
+    leaving = useRef(false);
+  const inspectorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (wide && selected)
+      inspectorRef.current
+        ?.querySelector<HTMLElement>('input,select,textarea')
+        ?.focus();
+  }, [selected, wide]);
+  const { present: document } = history,
+    { draft } = document;
+  const trigger = triggers.find((entry) => entry.type === draft.trigger);
+  const dirty = JSON.stringify(toDraft(draft)) !== JSON.stringify(saved);
+  const locked = !!readOnly || busy;
+  const issues = editorIssues(document, triggers, definitions, options);
+  const actionIndex = selected?.startsWith('action:')
+    ? document.actionIds.indexOf(selected.slice(7))
+    : -1;
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  );
+
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 1280px)');
+    const update = () => setWide(media.matches);
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+  useEffect(() => {
+    if (!dirty || readOnly) return;
+    const unload = (event: BeforeUnloadEvent) => {
+      if (!leaving.current) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    };
+    const link = (event: MouseEvent) => {
+      const anchor = (event.target as HTMLElement).closest?.('a[href]');
+      if (
+        !(anchor instanceof HTMLAnchorElement) ||
+        anchor.target === '_blank' ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        event.button !== 0 ||
+        anchor.href === window.location.href
+      )
+        return;
+      event.preventDefault();
+      event.stopPropagation();
+      setExit(() => () => window.location.assign(anchor.href));
+    };
+    // Chromium's Navigation API lets us guard history traversal before the route unmounts.
+    const navigation = (window as unknown as { navigation?: EventTarget })
+      .navigation;
+    const traverse = (event: Event) => {
+      const entry = event as Event & {
+        navigationType?: string;
+        destination?: { url: string };
+      };
+      if (
+        leaving.current ||
+        !entry.cancelable ||
+        entry.navigationType !== 'traverse' ||
+        !entry.destination
+      )
+        return;
+      entry.preventDefault();
+      const url = entry.destination.url;
+      setExit(() => () => window.location.assign(url));
+    };
+    window.addEventListener('beforeunload', unload);
+    window.document.addEventListener('click', link, true);
+    navigation?.addEventListener('navigate', traverse);
+    return () => {
+      window.removeEventListener('beforeunload', unload);
+      window.document.removeEventListener('click', link, true);
+      navigation?.removeEventListener('navigate', traverse);
+    };
+  }, [dirty, readOnly]);
+  const commit = useCallback((next: EditorDocument) => {
+    setHistory((previous) =>
+      JSON.stringify(previous.present) === JSON.stringify(next)
+        ? previous
+        : {
+            present: next,
+            past: [...previous.past.slice(-49), previous.present],
+            future: [],
+          },
+    );
+    setError('');
+    setMessage('');
+    setShowTest(false);
+  }, []);
+  const updateDraft = (next: WorkflowDraft) =>
+    commit({ ...document, draft: next });
+  const undo = useCallback((redo = false) => {
+    setHistory((previous) => {
+      if (redo)
+        return previous.future.length
+          ? {
+              present: previous.future[0],
+              past: [...previous.past, previous.present],
+              future: previous.future.slice(1),
+            }
+          : previous;
+      return previous.past.length
+        ? {
+            present: previous.past[previous.past.length - 1],
+            past: previous.past.slice(0, -1),
+            future: [previous.present, ...previous.future],
+          }
+        : previous;
+    });
+    setSelected(null);
+    setPending(null);
+    setError('');
+    setMessage('');
+    setShowTest(false);
+  }, []);
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setPending(null);
+        setInsertAt(null);
+      }
+      if (
+        locked ||
+        !(event.ctrlKey || event.metaKey) ||
+        event.key.toLowerCase() !== 'z' ||
+        (event.target as HTMLElement).closest(
+          'input,textarea,select,[contenteditable="true"]',
+        )
+      )
+        return;
+      event.preventDefault();
+      undo(event.shiftKey);
+    };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  }, [locked, undo]);
+  function select(step: StepSelection) {
+    focusOrigin.current = window.document.activeElement as HTMLElement;
+    setSelected(step);
+    setShowLibrary(false);
+  }
+  function closeInspector() {
+    setSelected(null);
+    focusOrigin.current?.focus();
+  }
+  function applyTrigger(type: string) {
+    const next = triggers.find((entry) => entry.type === type);
+    if (!next) return;
+    const changedEntity = trigger?.entity !== next.entity;
+    const indices = draft.actions
+      .map((action, index) =>
+        definitions.some(
+          (def) =>
+            def.type === action.type && def.entities.includes(next.entity),
+        )
+          ? index
+          : -1,
+      )
+      .filter((index) => index !== -1);
+    commit({
+      draft: {
+        ...draft,
+        trigger: type,
+        ...(changedEntity
+          ? {
+              conditions: { operator: 'AND', conditions: [] },
+              actions: indices.map((index) => draft.actions[index]),
+            }
+          : {}),
+      },
+      actionIds: changedEntity
+        ? indices.map((index) => document.actionIds[index])
+        : document.actionIds,
+    });
+    setChangeTrigger(null);
+    select('trigger');
+  }
+  function place(item: DragItem, target: Placement) {
+    if (locked || !canPlace(item, target, document, triggers, definitions))
+      return;
+    setPending(null);
+    setInsertAt(null);
+    setShowLibrary(false);
+    if (item.kind === 'trigger') {
+      const next = triggers.find((entry) => entry.type === item.type);
+      if (
+        trigger &&
+        next?.entity !== trigger.entity &&
+        (draft.actions.length || draft.conditions?.conditions.length)
+      ) {
+        setSelected(null);
+        setChangeTrigger(item.type);
+      } else applyTrigger(item.type);
+    } else if (item.kind === 'condition') {
+      const field =
+        trigger?.fields.find((entry) => entry.field === item.field) ??
+        trigger?.fields[0];
+      updateDraft({
+        ...draft,
+        conditions: {
+          operator: draft.conditions?.operator ?? 'AND',
+          conditions: [
+            ...(draft.conditions?.conditions ?? []),
+            {
+              field: field?.field ?? '',
+              operator: 'equals',
+              value:
+                field?.type === 'number'
+                  ? 0
+                  : field?.type === 'boolean'
+                    ? false
+                    : '',
+            },
+          ],
+        },
+      });
+      select('conditions');
+    } else if (item.kind === 'move' && target.kind === 'action') {
+      commit(moveAction(document, item.id, target.index));
+      setMessage('Action order updated.');
+    } else if (item.kind === 'action' && target.kind === 'action') {
+      const id = crypto.randomUUID();
+      commit(
+        insertAction(
+          document,
+          { type: item.type, config: {} },
+          target.index,
+          id,
+        ),
+      );
+      select(`action:${id}`);
+    }
+  }
+  function choose(item: LibraryItem) {
+    if (locked) return;
+    if (item.kind !== 'action') place(item, { kind: item.kind });
+    else if (insertAt !== null)
+      place(item, { kind: 'action', index: insertAt });
+    else {
+      setPending(item);
+      setSelected(null);
+      setShowLibrary(false);
+      setMessage('Choose a highlighted insertion position on the canvas.');
+    }
+  }
+  function endDrag(event: DragEndEvent) {
+    const item = event.active.data.current?.item as DragItem | undefined;
+    const target = event.over?.data.current?.target as Placement | undefined;
+    setDragging(null);
+    if (item && target) place(item, target);
+  }
+  async function submit(activate: boolean, validateOnly = false) {
+    if (operation.current || readOnly || (activate && !canActivate)) return;
+    setError('');
+    setMessage('');
+    const local = editorIssues(
+      document,
+      triggers,
+      definitions,
+      options,
+      !activate && !validateOnly,
+    );
+    if (local.length) {
+      select(local[0].step);
+      setError(local[0].message);
       return;
     }
+    const parsed = WorkflowDraftSchema.safeParse({
+      ...toDraft(draft),
+      isActive: activate,
+    });
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message ?? 'Review the workflow.');
+      return;
+    }
+    operation.current = true;
     setBusy(true);
-    try {if(validateOnly) setMessage((await workflowsApi.validate(result.data)).data.message);else {await onSave(result.data);onClose();}}
-    catch(failure) {setError(failure instanceof Error ? failure.message : 'Unable to save workflow.');}
-    finally {setBusy(false);}
+    try {
+      if (validateOnly)
+        setMessage((await workflowsApi.validate(parsed.data)).data.message);
+      else {
+        const result = await onSave(parsed.data),
+          persisted = result ? toDraft(result) : parsed.data;
+        setSaved(persisted);
+        setSavedStatus(result?.status ?? (activate ? 'ACTIVE' : 'DRAFT'));
+        if (result) setSavedId(result.id);
+        setHistory({
+          present: { ...document, draft: persisted },
+          past: [],
+          future: [],
+        });
+        setMessage(
+          activate
+            ? 'Saved and active. Matching CRM events will run this workflow.'
+            : 'Draft saved. This workflow is inactive.',
+        );
+      }
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : 'Unable to save workflow.',
+      );
+    } finally {
+      operation.current = false;
+      setBusy(false);
+    }
   }
-  function move(index:number,offset:number) {const next=[...draft.actions];[next[index+offset],next[index]]=[next[index],next[index+offset]];setDraft({...draft,actions:next});setMessage('');}
-  const connector = <div className="flex justify-center py-3 text-muted-foreground" aria-hidden="true"><ArrowDown size={20}/></div>;
-  const nodeClass = 'w-full rounded-xl border border-border bg-card p-5 text-left shadow-sm hover:border-primary';
-  return <div className="min-w-0 p-3 sm:p-6 text-foreground space-y-6">
-    <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-5">
-      <div className="min-w-0 flex-1"><Button variant="ghost" onClick={() => dirty && !readOnly ? setConfirmExit(true) : onClose()} disabled={busy}><ChevronLeft size={16}/> Workflows</Button><h1 className="text-2xl font-semibold break-words">{draft.name || 'New workflow'}</h1><p className="mt-1 text-sm text-muted-foreground">{dirty ? 'Unsaved changes' : draft.isActive ? 'Active' : 'Draft'} · When → If → Then</p></div>
-      {!readOnly && <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={busy} onClick={() => void submit(false,true)}>Validate</Button><Button variant="outline" disabled={busy} onClick={() => void submit(false)}>Save draft</Button>{canActivate && <Button disabled={busy} onClick={() => void submit(true)}>Save and activate</Button>}</div>}
-    </div>
-    {!parsed.success && <p role="alert" className="rounded-lg border border-border p-3">This workflow uses an older configuration. Rebuild its steps and save a draft. Existing history is preserved.</p>}
-    {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}{message && <p role="status" className="rounded-lg border border-border p-3">{message}</p>}
-    <fieldset disabled={readOnly || busy} className="mx-auto max-w-2xl min-w-0 space-y-4">
-      <label className="block space-y-1"><span>Workflow name <span className="text-red-600">*</span></span><Input aria-label="Workflow name" aria-required="true" aria-invalid={!!nameError} aria-describedby={nameError ? 'workflow-name-error' : undefined} maxLength={255} value={draft.name} onChange={event => {setDraft({...draft,name:event.target.value});setNameError('');setMessage('');}} />{nameError && <span id="workflow-name-error" role="alert" className="block text-sm text-red-600">{nameError}</span>}</label>
-      <label className="block space-y-1">Description<Input maxLength={2000} value={draft.description ?? ''} onChange={event => {setDraft({...draft,description:event.target.value});setMessage('');}}/></label>
-    </fieldset>
-    <div className="mx-auto max-w-xl min-w-0 py-3">
-      <button type="button" disabled={busy} className={nodeClass} onClick={() => open('trigger')}><span className="text-sm font-semibold text-primary">WHEN</span><span className="mt-2 block font-medium">{trigger?.label ?? 'Choose a trigger'}</span></button>
-      {connector}
-      <button type="button" disabled={busy} className={nodeClass} onClick={() => open('conditions')}><span className="text-sm font-semibold text-primary">IF — optional</span><span className="mt-2 block text-sm">{draft.conditions?.conditions.length ? `${draft.conditions.operator === 'AND' ? 'All' : 'Any'} of ${draft.conditions.conditions.length} conditions` : 'Continue for every matching event'}</span>{draft.conditions?.conditions.map((rule,index) => <span key={index} className="mt-1 block text-sm text-muted-foreground">{trigger?.fields.find(field => field.field === rule.field)?.label ?? 'Condition'} {rule.operator.replaceAll('_',' ')}</span>)}</button>
-      {draft.actions.map((action,index) => <div key={index}>{connector}<div className="rounded-xl border border-border bg-card shadow-sm"><button disabled={busy} className="w-full p-5 text-left hover:text-primary" type="button" onClick={() => open(index)}><span className="text-sm font-semibold text-primary">THEN · {index+1}</span><span className="mt-2 block font-medium">{definitions.find(def => def.type === action.type)?.label ?? 'Configure action'}</span><span className="mt-1 block truncate text-sm text-muted-foreground">{String(action.config.title ?? '')}</span></button>{!readOnly && <div className="flex flex-wrap gap-1 border-t border-border p-2"><Button variant="ghost" size="sm" disabled={busy || index === 0} onClick={() => move(index,-1)}>Move up</Button><Button variant="ghost" size="sm" disabled={busy || index === draft.actions.length-1} onClick={() => move(index,1)}>Move down</Button><Button variant="ghost" size="sm" disabled={busy} onClick={() => {setDraft({...draft,actions:draft.actions.filter((_,i) => i !== index)});setMessage('');}}>Remove action</Button></div>}</div></div>)}
-      {!readOnly && <div className="flex justify-center pt-5"><Button variant="outline" disabled={busy || draft.actions.length >= 20} onClick={() => open('add')}><Plus size={16}/> Add step</Button></div>}
-    </div>
-    {panel !== null && <WorkflowDialog sidePanel title={panel === 'trigger' ? 'When this happens' : panel === 'conditions' ? 'Conditions' : panel === 'add' ? 'Add a step' : definitions.find(def => def.type === editing.actions[panel]?.type)?.label ?? 'Configure action'} onClose={() => setPanel(null)}>
-      <fieldset disabled={readOnly || busy} className="min-w-0 space-y-5">
-        {panel === 'trigger' && <label className="block">Trigger<select className={workflowControl} value={editing.trigger} onChange={event => {const next=triggers.find(trigger => trigger.type === event.target.value);setEditing({...editing,trigger:event.target.value,conditions:{operator:'AND',conditions:[]},actions:editing.actions.filter(action => definitions.some(def => def.type === action.type && next && def.entities.includes(next.entity)))});}}>{triggers.map(trigger => <option key={trigger.type} value={trigger.type}>{trigger.label}</option>)}</select><span className="mt-3 block text-sm text-muted-foreground">Changing the record type clears conditions and incompatible actions.</span></label>}
-        {panel === 'conditions' && <ConditionFields value={editing.conditions ?? {operator:'AND',conditions:[]}} trigger={trigger} options={options} onChange={conditions => setEditing({...editing,conditions})}/>}
-        {typeof panel === 'number' && editing.actions[panel] && <ActionFields action={editing.actions[panel]} definition={definitions.find(def => def.type === editing.actions[panel].type)} options={options} onChange={config => setEditing({...editing,actions:editing.actions.map((action,index) => index === panel ? {...action,config} : action)})}/>}
-        {panel === 'add' && <><Input aria-label="Search steps" placeholder="Search steps…" value={search} onChange={event => setSearch(event.target.value)}/>{'condition'.includes(search.toLowerCase()) && <Button className="w-full justify-start" variant="outline" onClick={() => setPanel('conditions')}>Condition</Button>}{definitions.filter(def => trigger && def.entities.includes(trigger.entity) && def.label.toLowerCase().includes(search.toLowerCase())).map(def => <Button className="w-full justify-start" key={def.type} variant="outline" onClick={() => {setEditing({...draft,actions:[...draft.actions,{type:def.type,config:{}}]});setPanel(draft.actions.length);}}>{def.label}</Button>)}</>}
+  async function pause() {
+    if (!onPause || operation.current || !canActivate) return;
+    operation.current = true;
+    setBusy(true);
+    setError('');
+    try {
+      const result = await onPause();
+      setSaved(toDraft(result));
+      setSavedStatus('PAUSED');
+      setHistory((previous) => ({
+        ...previous,
+        present: {
+          ...previous.present,
+          draft: { ...previous.present.draft, isActive: false },
+        },
+      }));
+      setMessage(
+        'Workflow paused. Remaining actions will be skipped; an already dispatched action cannot be recalled.',
+      );
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : 'Unable to pause workflow.',
+      );
+    } finally {
+      operation.current = false;
+      setBusy(false);
+    }
+  }
+  const inspector = selected && (
+    <div ref={inspectorRef} className="space-y-5 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="font-semibold">
+          {selected === 'details'
+            ? 'Workflow details'
+            : selected === 'trigger'
+              ? 'Trigger'
+              : selected === 'conditions'
+                ? 'Conditions'
+                : (definitions.find(
+                    (def) => def.type === draft.actions[actionIndex]?.type,
+                  )?.label ?? 'Select a step')}
+        </h2>
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-label="Close configuration"
+          onClick={closeInspector}
+        >
+          <X size={16} />
+        </Button>
+      </div>
+      <fieldset disabled={locked} className="min-w-0 space-y-4">
+        {selected === 'details' && (
+          <>
+            <label className="block space-y-2 text-sm">
+              Workflow name
+              <Input
+                aria-label="Workflow name"
+                aria-required="true"
+                aria-invalid={!draft.name.trim()}
+                aria-describedby={
+                  !draft.name.trim() ? 'workflow-name-error' : undefined
+                }
+                maxLength={255}
+                value={draft.name}
+                onChange={(event) =>
+                  updateDraft({ ...draft, name: event.target.value })
+                }
+              />
+              {!draft.name.trim() && (
+                <span
+                  id="workflow-name-error"
+                  className="text-xs text-amber-700 dark:text-amber-300"
+                >
+                  Workflow name is required.
+                </span>
+              )}
+            </label>
+            <label className="block space-y-2 text-sm">
+              Description
+              <textarea
+                className={workflowControl}
+                rows={4}
+                maxLength={2000}
+                value={draft.description ?? ''}
+                onChange={(event) =>
+                  updateDraft({ ...draft, description: event.target.value })
+                }
+              />
+            </label>
+          </>
+        )}
+        {selected === 'trigger' && (
+          <>
+            <label className="block space-y-2 text-sm">
+              Start when
+              <select
+                className={workflowControl}
+                value={draft.trigger}
+                onChange={(event) =>
+                  place(
+                    { kind: 'trigger', type: event.target.value },
+                    { kind: 'trigger' },
+                  )
+                }
+              >
+                <option value="">Choose a trigger</option>
+                {triggers.map((entry) => (
+                  <option key={entry.type} value={entry.type}>
+                    {entry.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="text-sm text-muted-foreground">
+              A real CRM event starts this workflow on the server. It continues
+              when you close the editor.
+            </p>
+          </>
+        )}
+        {selected === 'conditions' && (
+          <>
+            <p className="text-sm text-muted-foreground">
+              Check these rules before any action runs. Records that do not
+              match exit the workflow.
+            </p>
+            <ConditionFields
+              value={draft.conditions ?? { operator: 'AND', conditions: [] }}
+              trigger={trigger}
+              options={options}
+              onChange={(conditions) => updateDraft({ ...draft, conditions })}
+            />
+          </>
+        )}
+        {actionIndex >= 0 && (
+          <>
+            <label className="flex items-center gap-3 rounded-lg border border-border p-3 text-sm">
+              <input
+                type="checkbox"
+                checked={draft.actions[actionIndex].enabled !== false}
+                onChange={(event) =>
+                  updateDraft({
+                    ...draft,
+                    actions: draft.actions.map((action, index) =>
+                      index === actionIndex
+                        ? { ...action, enabled: event.target.checked }
+                        : action,
+                    ),
+                  })
+                }
+              />
+              Action enabled
+            </label>
+            <ActionFields
+              key={document.actionIds[actionIndex]}
+              action={draft.actions[actionIndex]}
+              definition={definitions.find(
+                (def) => def.type === draft.actions[actionIndex].type,
+              )}
+              entity={trigger?.entity}
+              options={options}
+              onChange={(config) =>
+                updateDraft({
+                  ...draft,
+                  actions: draft.actions.map((action, index) =>
+                    index === actionIndex ? { ...action, config } : action,
+                  ),
+                })
+              }
+            />
+          </>
+        )}
       </fieldset>
-      <div className="flex flex-wrap justify-end gap-2"><Button variant="outline" onClick={() => setPanel(null)}>Cancel</Button>{panel !== 'add' && !readOnly && <Button onClick={() => {setDraft(editing);setMessage('');setPanel(null);}}>Save step</Button>}</div>
-    </WorkflowDialog>}
-    {confirmExit && <WorkflowDialog title="Discard unsaved changes?" onClose={() => setConfirmExit(false)}><p>Your last saved workflow will be kept.</p><Button variant="outline" onClick={() => setConfirmExit(false)}>Keep editing</Button><Button onClick={onClose}>Discard changes</Button></WorkflowDialog>}
-  </div>;
+      {issues.filter((issue) => issue.step === selected).length > 0 && (
+        <ul className="space-y-1 rounded-lg bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+          {issues
+            .filter((issue) => issue.step === selected)
+            .map((issue, index) => (
+              <li key={index}>{issue.message}</li>
+            ))}
+        </ul>
+      )}
+      <p className="text-xs text-muted-foreground">
+        Changes update the canvas immediately. Save the workflow to apply them.
+      </p>
+      <Button variant="outline" onClick={closeInspector}>
+        Done
+      </Button>
+    </div>
+  );
+  const library = (
+    <WorkflowLibrary
+      triggers={triggers}
+      actions={definitions}
+      trigger={trigger}
+      disabled={locked}
+      insertAt={insertAt}
+      onChoose={choose}
+    />
+  );
+  return (
+    <div
+      className="flex min-w-0 flex-col bg-background text-foreground"
+      style={{ height: 'calc(100dvh - 80px)', minHeight: 640 }}
+    >
+      <header className="space-y-3 border-b border-border bg-card p-3 sm:px-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="Back to workflows"
+              disabled={busy}
+              onClick={() =>
+                dirty && !readOnly ? setExit(() => onClose) : onClose()
+              }
+            >
+              <ArrowLeft size={18} />
+            </Button>
+            <div className="min-w-0">
+              <button
+                type="button"
+                onClick={() => select('details')}
+                className="max-w-full truncate rounded text-left text-base font-semibold focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {draft.name || 'New workflow'}
+              </button>
+              <p className="text-xs text-muted-foreground">
+                {savedStatus === 'ACTIVE'
+                  ? 'Active'
+                  : savedStatus === 'PAUSED'
+                    ? 'Paused'
+                    : 'Draft'}{' '}
+                ·{' '}
+                {dirty
+                  ? 'Unsaved changes'
+                  : savedId
+                    ? 'All changes saved'
+                    : 'Not saved yet'}
+              </p>
+            </div>
+          </div>
+          {!readOnly && (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                onClick={() => void submit(false, true)}
+              >
+                Validate
+              </Button>
+              {saved.isActive && onPause ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => void pause()}
+                >
+                  Pause
+                </Button>
+              ) : null}
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                onClick={() => void submit(false)}
+              >
+                {saved.isActive ? 'Save and pause' : 'Save draft'}
+              </Button>
+              {canActivate && (
+                <Button
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => void submit(true)}
+                >
+                  {busy
+                    ? 'Working…'
+                    : saved.isActive
+                      ? 'Save active workflow'
+                      : 'Save and activate'}
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex gap-1">
+            <Button
+              variant={view === 'builder' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setView('builder')}
+            >
+              <PanelLeft size={15} />
+              Builder
+            </Button>
+            <Button
+              variant={view === 'activity' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setView('activity')}
+            >
+              <Activity size={15} />
+              Activity
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => select('details')}
+              aria-label="Workflow details"
+            >
+              <Settings2 size={15} />
+            </Button>
+          </div>
+          <div className="flex gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={locked || !history.past.length}
+              onClick={() => undo()}
+              aria-label="Undo"
+            >
+              <Undo2 size={16} />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={locked || !history.future.length}
+              onClick={() => undo(true)}
+              aria-label="Redo"
+            >
+              <Redo2 size={16} />
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy || !savedId || dirty || !trigger}
+              title={
+                !savedId || dirty
+                  ? 'Save changes before testing'
+                  : 'Check the saved workflow without executing actions'
+              }
+              onClick={() => setShowTest(true)}
+            >
+              <FlaskConical size={15} />
+              Test
+            </Button>
+          </div>
+        </div>
+      </header>
+      {error && (
+        <p
+          role="alert"
+          className="border-b border-border bg-red-50 px-5 py-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300"
+        >
+          {error}
+        </p>
+      )}
+      {message && (
+        <p role="status" className="border-b border-border px-5 py-2 text-sm">
+          {message}
+        </p>
+      )}
+      {saved.isActive && dirty && (
+        <p className="border-b border-border px-5 py-2 text-xs text-muted-foreground">
+          The saved version is still active. Save to apply your changes, or
+          pause it while editing.
+        </p>
+      )}
+      {(pending || insertAt !== null) && (
+        <div className="flex items-center justify-between gap-2 border-b border-[var(--primary)]/20 bg-[var(--primary)]/5 px-5 py-2 text-sm">
+          <span>
+            {pending
+              ? 'Choose an insertion position.'
+              : `Choose an action to insert at position ${insertAt! + 1}.`}
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setPending(null);
+              setInsertAt(null);
+            }}
+          >
+            Cancel placement
+          </Button>
+        </div>
+      )}
+      {view === 'activity' ? (
+        <main className="min-h-0 flex-1 overflow-auto p-5">
+          {savedId ? (
+            <WorkflowRuns workflowId={savedId} />
+          ) : (
+            <p>Save this workflow to see its execution activity.</p>
+          )}
+        </main>
+      ) : (
+        <DndContext
+          accessibility={{
+            screenReaderInstructions: {
+              draggable:
+                'Drag with a pointer. To use the keyboard, choose Add in the library, choose an insertion position, or use an action’s Move up and Move down controls.',
+            },
+          }}
+          sensors={sensors}
+          collisionDetection={pointerWithin}
+          onDragStart={(event) => {
+            setPending(null);
+            setDragging(event.active.data.current?.item as DragItem);
+          }}
+          onDragCancel={() => setDragging(null)}
+          onDragEnd={endDrag}
+        >
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col xl:flex-row">
+            {wide ? (
+              <aside className="w-72 shrink-0 overflow-y-auto border-r border-border">
+                {library}
+              </aside>
+            ) : (
+              <div className="border-b border-border p-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={locked}
+                  onClick={() => setShowLibrary(true)}
+                >
+                  <PanelLeft size={16} />
+                  Add steps
+                </Button>
+              </div>
+            )}
+            <WorkflowCanvas
+              document={document}
+              triggers={triggers}
+              actions={definitions}
+              options={options}
+              selected={selected}
+              issues={issues}
+              item={dragging ?? pending}
+              locked={locked}
+              onSelect={select}
+              onPlace={(target) => {
+                if (pending) place(pending, target);
+              }}
+              onAdd={(index) => {
+                setInsertAt(index);
+                setSelected(null);
+                setShowLibrary(true);
+              }}
+              onMove={(id, boundary) =>
+                commit(moveAction(document, id, boundary))
+              }
+              onDuplicate={(index) => {
+                const id = crypto.randomUUID();
+                commit(
+                  insertAction(document, draft.actions[index], index + 1, id),
+                );
+                select(`action:${id}`);
+              }}
+              onRemove={(index) => {
+                commit({
+                  draft: {
+                    ...draft,
+                    actions: draft.actions.filter((_, i) => i !== index),
+                  },
+                  actionIds: document.actionIds.filter((_, i) => i !== index),
+                });
+                if (actionIndex === index) setSelected(null);
+                setMessage('Action removed. Use Undo to restore it.');
+              }}
+            />
+            {wide && inspector && (
+              <aside
+                aria-label="Step configuration"
+                className="w-80 shrink-0 overflow-y-auto border-l border-border"
+              >
+                {inspector}
+              </aside>
+            )}
+          </div>
+          {!wide && showLibrary && (
+            <WorkflowDialog
+              sidePanel
+              title="Add a workflow step"
+              onClose={() => setShowLibrary(false)}
+            >
+              {library}
+            </WorkflowDialog>
+          )}
+          <DragOverlay dropAnimation={null}>
+            {dragging && (
+              <div className="rounded-xl border border-[var(--primary)] bg-card px-5 py-3 text-sm font-semibold text-foreground shadow-lg">
+                {dragging.kind === 'move'
+                  ? 'Move action'
+                  : dragging.kind === 'condition'
+                    ? 'Condition'
+                    : dragging.kind === 'trigger'
+                      ? triggers.find((entry) => entry.type === dragging.type)
+                          ?.label
+                      : definitions.find(
+                          (entry) => entry.type === dragging.type,
+                        )?.label}
+              </div>
+            )}
+          </DragOverlay>
+        </DndContext>
+      )}
+      {inspector && (!wide || view === 'activity') && (
+        <WorkflowDialog
+          sidePanel
+          title="Step configuration"
+          onClose={closeInspector}
+        >
+          {inspector}
+        </WorkflowDialog>
+      )}
+      {showTest && savedId && trigger && !dirty && (
+        <WorkflowDialog
+          title="Test saved workflow"
+          onClose={() => setShowTest(false)}
+        >
+          <WorkflowTestPanel workflowId={savedId} trigger={trigger} />
+        </WorkflowDialog>
+      )}
+      {changeTrigger && (
+        <WorkflowDialog
+          title="Change workflow record type?"
+          onClose={() => setChangeTrigger(null)}
+        >
+          <p>
+            This clears {draft.conditions?.conditions.length ?? 0} condition
+            rules and removes{' '}
+            {
+              draft.actions.filter(
+                (action) =>
+                  !definitions
+                    .find((def) => def.type === action.type)
+                    ?.entities.includes(
+                      triggers.find((entry) => entry.type === changeTrigger)!
+                        .entity,
+                    ),
+              ).length
+            }{' '}
+            incompatible actions. Compatible actions are kept. Review their
+            configuration before saving.
+          </p>
+          <Button variant="outline" onClick={() => setChangeTrigger(null)}>
+            Keep current trigger
+          </Button>
+          <Button onClick={() => applyTrigger(changeTrigger)}>
+            Change trigger
+          </Button>
+        </WorkflowDialog>
+      )}
+      {exit && (
+        <WorkflowDialog
+          title="Discard unsaved changes?"
+          onClose={() => setExit(null)}
+        >
+          <p>Your last saved workflow will be kept.</p>
+          <Button variant="outline" onClick={() => setExit(null)}>
+            Keep editing
+          </Button>
+          <Button
+            onClick={() => {
+              leaving.current = true;
+              setSaved(toDraft(draft));
+              exit();
+            }}
+          >
+            Discard changes
+          </Button>
+        </WorkflowDialog>
+      )}
+    </div>
+  );
 }

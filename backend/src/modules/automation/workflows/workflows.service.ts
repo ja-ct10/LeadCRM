@@ -110,6 +110,10 @@ export async function testWorkflow(id: string, tenantId: string, entityId: strin
   const conditionContext = { ...context };
   const actions: WorkflowTestResult['actions'] = [];
   for (const action of draft.actions) {
+    if (action.enabled === false) {
+      actions.push({ type: action.type, valid: true, message: 'Disabled. This action will be skipped.' });
+      continue;
+    }
     try { await validateAction(action, trigger.entity, tenantId, context); actions.push({ type: action.type, valid: true,
       message: action.type === 'send_email' ? 'Recipient resolved; template and sender available. No email sent.' : 'Configuration and references valid. No changes made.' });
       // Project validated earlier actions into this in-memory sample only.
@@ -122,7 +126,7 @@ export async function testWorkflow(id: string, tenantId: string, entityId: strin
   const rules = draft.conditions?.conditions ?? [];
   return { trigger: { type: draft.trigger, matched: true }, conditions: { total: rules.length,
     passed: rules.filter(rule => evaluateRule(rule, conditionContext)).length, matched: !draft.conditions || evaluateCondition(draft.conditions, conditionContext) },
-    actions, valid: actions.length > 0 && actions.every(action => action.valid) };
+    actions, valid: draft.actions.some(action => action.enabled !== false) && actions.every(action => action.valid) };
 }
 
 export async function validateDraft(tenantId: string, userId: string, input: unknown) {

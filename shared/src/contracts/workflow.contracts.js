@@ -16,6 +16,7 @@ exports.WorkflowConditionSchema = zod_1.z.object({
 }).strict();
 exports.WorkflowActionSchema = zod_1.z.object({
     type: zod_1.z.enum(['create_task', 'send_email', 'assign_owner', 'update_field', 'create_notification', 'move_deal_stage', 'send_campaign']),
+    enabled: zod_1.z.boolean().optional(),
     config: zod_1.z.record(zod_1.z.unknown()),
 }).strict();
 exports.WorkflowDraftSchema = zod_1.z.object({

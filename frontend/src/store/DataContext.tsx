@@ -123,8 +123,8 @@ interface DataContextType {
   deleteTask: (id: string) => Promise<void>;
   addWorkflow: (
     workflow: WorkflowDraft,
-  ) => Promise<void>;
-  updateWorkflow: (id: string, updates: Partial<WorkflowDraft>) => Promise<void>;
+  ) => Promise<Workflow>;
+  updateWorkflow: (id: string, updates: Partial<WorkflowDraft>) => Promise<Workflow>;
   deleteWorkflow: (id: string) => Promise<void>;
   toggleWorkflow: (id: string) => Promise<void>;
   addCampaign: (
@@ -1463,11 +1463,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const identity = dataIdentityRef.current;
     const response = await workflowsApi.create(WorkflowDraftSchema.parse(workflowData));
     if (identity === dataIdentityRef.current) setWorkflows(previous => [response.data, ...previous]);
+    return response.data;
   };
   const updateWorkflow = async (id: string, updates: Partial<WorkflowDraft>) => {
     const identity = dataIdentityRef.current;
     const response = await workflowsApi.update(id, updates);
     if (identity === dataIdentityRef.current) setWorkflows(previous => previous.map(workflow => workflow.id === id ? { ...workflow, ...response.data } : workflow));
+    return response.data;
   };
   const toggleWorkflow = async (id: string) => {
     const identity = dataIdentityRef.current;
