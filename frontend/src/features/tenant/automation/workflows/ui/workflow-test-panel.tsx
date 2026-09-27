@@ -87,7 +87,7 @@ export function WorkflowTestPanel({
   }
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
+      <p className="text-sm text-[var(--muted-foreground)]">
         Check the saved workflow against a real{' '}
         {trigger.entity === 'contact' ? 'Client Profile' : trigger.entity}. No
         actions are executed and no messages are sent. This does not simulate a
@@ -125,7 +125,7 @@ export function WorkflowTestPanel({
             ))}
           </select>
           {!records.length && (
-            <span className="mt-2 block text-muted-foreground">
+            <span className="mt-2 block text-[var(--muted-foreground)]">
               No matching records are available.
             </span>
           )}
@@ -167,7 +167,7 @@ export function WorkflowTestPanel({
       {result && (
         <div
           role="status"
-          className="space-y-3 rounded-xl border border-border p-4"
+          className="space-y-3 rounded-xl border border-[var(--border)] p-4"
         >
           <h3 className="font-semibold">
             {result.valid

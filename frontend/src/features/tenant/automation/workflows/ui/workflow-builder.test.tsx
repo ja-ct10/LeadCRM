@@ -1,6 +1,7 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -245,6 +246,51 @@ describe('visual workflow editor', () => {
     expect(
       screen.queryByRole('button', { name: 'Remove action 1' }),
     ).toBeNull();
+  });
+  it('guards sidebar clicks before router rendering and replays only confirmed navigation', () => {
+    const navigate = vi.fn();
+    render(<nav><button onClick={navigate}>Sidebar destination</button></nav>);
+    setup();
+    fireEvent.click(button(/Configure action: 1. Create task/));
+    fireEvent.change(screen.getByLabelText('Task title'), {
+      target: { value: 'Unsaved task' },
+    });
+    fireEvent.click(button('Sidebar destination'));
+    expect(navigate).not.toHaveBeenCalled();
+    fireEvent.click(button('Keep editing'));
+    expect(navigate).not.toHaveBeenCalled();
+    fireEvent.click(button('Sidebar destination'));
+    fireEvent.click(button('Discard changes'));
+    expect(navigate).toHaveBeenCalledOnce();
+  });
+  it('guards browser history while allowing the first-save URL replacement', () => {
+    const navigation = new EventTarget();
+    Object.defineProperty(window, 'navigation', {
+      configurable: true,
+      value: navigation,
+    });
+    try {
+      setup();
+      fireEvent.click(button(/Configure action: 1. Create task/));
+      fireEvent.change(screen.getByLabelText('Task title'), {
+        target: { value: 'Unsaved task' },
+      });
+      const navigate = (navigationType: string) => {
+        const event = new Event('navigate', { cancelable: true });
+        Object.assign(event, {
+          navigationType,
+          destination: { url: 'http://localhost/automation/workflows' },
+        });
+        act(() => { navigation.dispatchEvent(event); });
+        return event;
+      };
+      expect(navigate('replace').defaultPrevented).toBe(false);
+      expect(navigate('traverse').defaultPrevented).toBe(true);
+      expect(screen.getByRole('dialog', { name: 'Discard unsaved changes?' })).toBeTruthy();
+      fireEvent.click(button('Keep editing'));
+    } finally {
+      Reflect.deleteProperty(window, 'navigation');
+    }
   });
   it('retains unsupported legacy steps for explicit repair without exposing raw config', () => {
     const { save } = setup({

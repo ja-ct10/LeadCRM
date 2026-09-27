@@ -1,5 +1,6 @@
 import prisma from '../../../config/database.config';
 import { writeAuditLog } from '../../../core/audit/audit.service';
+import { moveDealStage } from './deals.service';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { BulkArchiveDto, BulkReassignDto, BulkStageChangeDto } from './deals.dto';
 
@@ -168,47 +169,15 @@ export async function bulkStageChange(
         }
       }
 
-      // Calculate time in previous stage (minutes)
-      const now = new Date();
-      const previousStageEntry = deal.updatedAt || deal.createdAt;
-      const timeInPrevStage = Math.round(
-        (now.getTime() - new Date(previousStageEntry).getTime()) / (1000 * 60),
-      );
-
-      // Create stage history record
-      await prisma.dealStageHistory.create({
-        data: {
-          dealId,
-          tenantId,
-          previousStageId: deal.stageId,
-          newStageId: dto.stageId,
-          movedById: userId,
-          movedAt: now,
-          timeInPrevStage,
-          note: dto.note,
-        },
-      });
-
-      // Update deal stage
-      await prisma.deal.update({
-        where: { id: dealId },
-        data: {
+      // Reuse the governed transition: transactional history, pipeline consistency,
+      // stage requirements, audit, notifications, and the existing Workflow events.
+      if (deal.stageId !== dto.stageId) {
+        await moveDealStage(dealId, tenantId, userId, {
           stageId: dto.stageId,
-          ...(dto.lostReason ? { lostReason: dto.lostReason } : {}),
-          ...(targetStage.isWon ? { closedAt: now } : {}),
-          ...(targetStage.isLost ? { closedAt: now } : {}),
-        },
-      });
-
-      await writeAuditLog({
-        tenantId,
-        userId,
-        action: 'deal.stage_changed',
-        entityType: 'Deal',
-        entityId: dealId,
-        after: { newStageId: dto.stageId, previousStageId: deal.stageId, bulk: true },
-      });
-
+          note: dto.note,
+          lostReason: dto.lostReason,
+        });
+      }
       result.succeeded += 1;
     } catch {
       result.failed += 1;

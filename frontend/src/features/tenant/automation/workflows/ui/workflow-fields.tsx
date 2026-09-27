@@ -13,7 +13,7 @@ import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import { operatorLabels, references } from '../services/workflow-editor';
 export const workflowControl =
-  'w-full min-w-0 rounded-lg border border-border bg-background p-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+  'w-full min-w-0 rounded-lg border border-[var(--border)] bg-[var(--background)] p-2 text-sm text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]';
 export const emptyOptions: WorkflowOptions = {
   users: [],
   pipelines: [],
@@ -64,9 +64,9 @@ export function ConditionFields({
         return (
           <div
             key={index}
-            className="space-y-3 rounded-xl border border-border p-3"
+            className="space-y-3 rounded-xl border border-[var(--border)] p-3"
           >
-            <p className="text-xs font-semibold text-muted-foreground">
+            <p className="text-xs font-semibold text-[var(--muted-foreground)]">
               Condition {index + 1}
             </p>
             <label className="block">
@@ -230,7 +230,7 @@ export function ActionFields({
     )?.id ?? pipeline;
   return (
     <div className="space-y-4 text-sm">
-      <p className="text-muted-foreground">{definition?.description}</p>
+      <p className="text-[var(--muted-foreground)]">{definition?.description}</p>
       {action.type === 'move_deal_stage' && (
         <label className="block space-y-1">
           Pipeline
@@ -249,7 +249,7 @@ export function ActionFields({
               </option>
             ))}
           </select>
-          <span className="block text-xs text-muted-foreground">
+          <span className="block text-xs text-[var(--muted-foreground)]">
             Stage entry requirements are checked by the Deal service.
           </span>
         </label>
@@ -332,12 +332,12 @@ export function ActionFields({
               )}
             </label>
             {choices?.length === 0 && (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-[var(--muted-foreground)]">
                 No available {field.label.toLowerCase()} options.
               </p>
             )}
             {key === 'dueDaysFromNow' && (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-[var(--muted-foreground)]">
                 Leave empty for 3 days. Use 0 for today or 1 for tomorrow.
               </p>
             )}
@@ -356,7 +356,7 @@ export function ActionFields({
                     key={token}
                     type="button"
                     title={`Append ${label.toLowerCase()}`}
-                    className="rounded border border-border px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+                    className="rounded border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--muted-foreground)] hover:bg-[var(--muted)] focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
                     onClick={() => change(`${value}{{${token}}}`)}
                   >
                     {label}

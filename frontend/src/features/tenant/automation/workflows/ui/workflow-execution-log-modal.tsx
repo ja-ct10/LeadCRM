@@ -50,7 +50,7 @@ export function WorkflowRuns({ workflowId }: { workflowId: string }) {
   }, [workflowId, page, retry]);
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
+      <p className="text-sm text-[var(--muted-foreground)]">
         Runs show the action order at execution time. Older runs may differ from
         the current canvas.
       </p>
@@ -71,12 +71,12 @@ export function WorkflowRuns({ workflowId }: { workflowId: string }) {
         </p>
       ) : (
         runs.map((run) => (
-          <details key={run.id} className="rounded-lg border border-border p-3">
+          <details key={run.id} className="rounded-lg border border-[var(--border)] p-3">
             <summary className="cursor-pointer">
               {run.status} · {new Date(run.startedAt).toLocaleString()} ·{' '}
               {run.entityType}
             </summary>
-            <p className="mt-2 text-sm text-muted-foreground">
+            <p className="mt-2 text-sm text-[var(--muted-foreground)]">
               Record: {run.trigger.payload?.recordName || run.entityType}
               <br />
               Trigger: {run.trigger.triggerType.replaceAll('_', ' ')}
@@ -89,11 +89,11 @@ export function WorkflowRuns({ workflowId }: { workflowId: string }) {
             {run.errorMessage && <p role="alert">{run.errorMessage}</p>}
             <ol className="mt-3 space-y-2">
               {run.steps.map((step) => (
-                <li key={step.id} className="rounded border border-border p-2">
+                <li key={step.id} className="rounded border border-[var(--border)] p-2">
                   {step.stepIndex + 1}. {step.actionType.replaceAll('_', ' ')} —{' '}
                   {step.status}
                   {step.output?.reason === 'Action disabled' && (
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-sm text-[var(--muted-foreground)]">
                       Action disabled
                     </p>
                   )}

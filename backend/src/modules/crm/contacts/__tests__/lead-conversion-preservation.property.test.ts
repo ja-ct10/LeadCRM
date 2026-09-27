@@ -54,7 +54,10 @@ vi.mock('../../../../core/audit/audit.service', () => ({
   writeAuditLog: vi.fn(),
 }));
 
-vi.mock('../../automation/triggers/triggers.service', () => ({
+vi.mock('../../../automation/triggers/triggers.service', () => ({
+  fireLeadCreated: vi.fn().mockResolvedValue(undefined),
+  fireLeadStatusChanged: vi.fn().mockResolvedValue(undefined),
+  fireDealCreated: vi.fn().mockResolvedValue(undefined),
   fireContactCreated:       vi.fn(() => Promise.resolve()),
   fireContactStatusChanged: vi.fn(() => Promise.resolve()),
 }));

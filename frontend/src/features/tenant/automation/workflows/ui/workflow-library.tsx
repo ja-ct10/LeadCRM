@@ -35,14 +35,14 @@ function LibraryCard({
   return (
     <div
       ref={setNodeRef}
-      className={`flex rounded-xl border border-border bg-card shadow-sm ${isDragging ? 'opacity-40' : ''}`}
+      className={`flex rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-sm ${isDragging ? 'opacity-40' : ''}`}
     >
       <button
         type="button"
         aria-label={`Add ${title}`}
         disabled={disabled}
         onClick={() => onChoose(item)}
-        className="flex min-w-0 flex-1 items-start gap-3 rounded-l-xl p-3 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+        className="flex min-w-0 flex-1 items-start gap-3 rounded-l-xl p-3 text-left hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-50"
       >
         <span className={`rounded-lg p-2 ${stepColors[item.kind]}`}>
           <Icon size={16} />
@@ -50,7 +50,7 @@ function LibraryCard({
         <span className="min-w-0">
           <span className="block text-sm font-medium">{title}</span>
           {description && (
-            <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
+            <span className="mt-1 block text-xs leading-relaxed text-[var(--muted-foreground)]">
               {description}
             </span>
           )}
@@ -63,7 +63,7 @@ function LibraryCard({
         disabled={disabled}
         aria-label={`Drag ${title}`}
         tabIndex={-1}
-        className="touch-none rounded-r-xl px-2 text-muted-foreground hover:bg-muted disabled:opacity-40"
+        className="touch-none rounded-r-xl px-2 text-[var(--muted-foreground)] hover:bg-[var(--muted)] disabled:opacity-40"
       >
         <GripVertical size={16} />
       </button>
@@ -133,14 +133,14 @@ export function WorkflowLibrary({
     <section aria-label="Builder library" className="space-y-4 p-4">
       <div>
         <h2 className="font-semibold">Builder library</h2>
-        <p className="mt-1 text-xs text-muted-foreground">
+        <p className="mt-1 text-xs text-[var(--muted-foreground)]">
           Drag a step, or click to place it.
         </p>
       </div>
       <div className="relative">
         <Search
           size={16}
-          className="pointer-events-none absolute left-3 top-3 text-muted-foreground"
+          className="pointer-events-none absolute left-3 top-3 text-[var(--muted-foreground)]"
         />
         <Input
           aria-label="Search steps"
@@ -151,7 +151,7 @@ export function WorkflowLibrary({
         />
       </div>
       <div
-        className="flex gap-1 rounded-xl bg-muted p-1"
+        className="flex gap-1 rounded-xl bg-[var(--muted)] p-1"
         role="group"
         aria-label="Step categories"
       >
@@ -161,7 +161,7 @@ export function WorkflowLibrary({
             key={kind}
             aria-pressed={category === kind}
             onClick={() => setCategory(kind)}
-            className={`min-h-10 flex-1 rounded-lg px-1 text-xs font-medium focus-visible:ring-2 focus-visible:ring-ring ${category === kind ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'}`}
+            className={`min-h-10 flex-1 rounded-lg px-1 text-xs font-medium focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${category === kind ? 'bg-[var(--card)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--muted-foreground)]'}`}
           >
             {kind === 'condition'
               ? 'Conditions'
@@ -171,7 +171,7 @@ export function WorkflowLibrary({
           </button>
         ))}
       </div>
-      <p className="text-xs leading-relaxed text-muted-foreground">
+      <p className="text-xs leading-relaxed text-[var(--muted-foreground)]">
         {category === 'trigger'
           ? 'One event starts this workflow.'
           : category === 'condition'
@@ -191,7 +191,7 @@ export function WorkflowLibrary({
       {!entries.length && (
         <p
           role="status"
-          className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground"
+          className="rounded-lg border border-dashed border-[var(--border)] p-4 text-sm text-[var(--muted-foreground)]"
         >
           {!trigger && category !== 'trigger'
             ? 'Choose a trigger first.'

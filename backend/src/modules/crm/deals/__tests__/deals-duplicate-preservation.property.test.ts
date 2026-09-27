@@ -48,6 +48,10 @@ vi.mock('../../../../core/audit/audit.service', () => ({
 vi.mock('../deals.repository', () => ({
   findDealById: vi.fn(),
 }));
+vi.mock('../../../automation/triggers/triggers.service', () => ({
+  fireDealCreated: vi.fn().mockResolvedValue(undefined),
+  fireDealStageChanged: vi.fn().mockResolvedValue(undefined),
+}));
 
 // Import after mocking
 import * as repo from '../deals.repository';

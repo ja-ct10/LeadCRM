@@ -1,6 +1,6 @@
 # Workflow visual builder: Brevo reference audit and proposed scope
 
-Date: 2026-09-27. Status: **audit complete; implementation awaiting scope approval**.
+Date: 2026-09-27. Status: **implemented and verified within the approved scope; verification limits documented**. The comparison below records the pre-implementation audit. See the [implementation report](visual-builder-release-report.md) for current behavior and verification.
 
 Upgrade the existing LeadCRM builder into a connected, drag-and-drop CRM automation editor. Keep the current workflow routes, canonical definition, APIs, permissions, domain services, and server execution. The reference is interaction design, not Brevo code, assets, or a pixel copy.
 
@@ -53,7 +53,7 @@ Accessibility observations are limited: several Brevo icon buttons were exposed 
 | Multiple triggers | One trigger string in the contract. | No | One trigger at start. Replacing entity type previews affected steps; never silently deletes them. |
 | YES/NO, percentage splits, loops | No branch edges or branch evaluator. | Future | Would require a deliberate canonical contract/engine change; no frontend-only branches. |
 | Delays / event waits | No durable workflow scheduling or suspended-run continuation. | Future | Omit. Task due dates remain supported and do not imply delayed action execution. |
-| Disable individual action | No enabled/disabled property in canonical actions. | Yes | Show incomplete steps and unavailable operations honestly; do not pretend an action is skipped at runtime. |
+| Disable individual action | No enabled/disabled property in canonical actions. | Yes, explicitly approved | Optional canonical `enabled` flag; omitted means enabled. The server skips disabled actions and records the reason, while validating supplied values and tenant references. Re-enabling requires full activation validation. |
 | Re-entry / exit / restart settings | Event-based engine, deduplication and recursion guards. | Future | Keep current behavior; no settings unsupported by the engine. |
 | Brevo autosave | Explicit API saves; a saved active definition is authoritative immediately. | No for this release | Update the local draft instantly; explicit Save/Activate/Pause with clear status and unsaved-navigation protection. |
 
@@ -152,4 +152,4 @@ Screenshots are reference evidence only and must not be reused as product assets
 
 ## Approval boundary
 
-The user's request explicitly sequences the Brevo comparison and implementation plan before proceeding with approved scope. The proposed scope is the six steps above, including the connected canvas, real lifecycle controls, and focused verification. Branching, delays, SMS, multiple triggers, per-action disabling, new runtime behavior, and production deployment are excluded. Implementation begins after this scope is approved.
+The user approved implementation of the six steps above and explicitly added real per-action enable/disable support. Branching, delays, SMS, multiple triggers, a separate runtime, and production deployment remain excluded. During cross-module verification, the user separately approved correcting bulk Deal stage changes, Lead conversion, and Deal duplication to emit existing Workflow events. The user explicitly chose to keep imports excluded; imported records do not automatically start workflows.

@@ -115,6 +115,7 @@ export default function WorkflowBuilder({
     focusOrigin = useRef<HTMLElement | null>(null),
     leaving = useRef(false);
   const inspectorRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (wide && selected)
       inspectorRef.current
@@ -150,6 +151,18 @@ export default function WorkflowBuilder({
       }
     };
     const link = (event: MouseEvent) => {
+      if (leaving.current) return;
+      // Next's router can render before pushState fires. Guard navigation controls
+      // at capture time, then replay the user's click only after confirmation.
+      const control = (event.target as HTMLElement).closest?.(
+        'nav button, [role="navigation"] button, [role="menuitem"]',
+      );
+      if (control instanceof HTMLElement && !editorRef.current?.contains(control)) {
+        event.preventDefault();
+        event.stopPropagation();
+        setExit(() => () => control.click());
+        return;
+      }
       const anchor = (event.target as HTMLElement).closest?.('a[href]');
       if (
         !(anchor instanceof HTMLAnchorElement) ||
@@ -165,7 +178,7 @@ export default function WorkflowBuilder({
       event.stopPropagation();
       setExit(() => () => window.location.assign(anchor.href));
     };
-    // Chromium's Navigation API lets us guard history traversal before the route unmounts.
+    // Guard browser history before popstate; first-save URL replacement is allowed.
     const navigation = (window as unknown as { navigation?: EventTarget })
       .navigation;
     const traverse = (event: Event) => {
@@ -177,7 +190,8 @@ export default function WorkflowBuilder({
         leaving.current ||
         !entry.cancelable ||
         entry.navigationType !== 'traverse' ||
-        !entry.destination
+        !entry.destination ||
+        entry.destination.url === window.location.href
       )
         return;
       entry.preventDefault();
@@ -540,7 +554,7 @@ export default function WorkflowBuilder({
                 ))}
               </select>
             </label>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-[var(--muted-foreground)]">
               A real CRM event starts this workflow on the server. It continues
               when you close the editor.
             </p>
@@ -548,7 +562,7 @@ export default function WorkflowBuilder({
         )}
         {selected === 'conditions' && (
           <>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-[var(--muted-foreground)]">
               Check these rules before any action runs. Records that do not
               match exit the workflow.
             </p>
@@ -562,7 +576,7 @@ export default function WorkflowBuilder({
         )}
         {actionIndex >= 0 && (
           <>
-            <label className="flex items-center gap-3 rounded-lg border border-border p-3 text-sm">
+            <label className="flex items-center gap-3 rounded-lg border border-[var(--border)] p-3 text-sm">
               <input
                 type="checkbox"
                 checked={draft.actions[actionIndex].enabled !== false}
@@ -608,7 +622,7 @@ export default function WorkflowBuilder({
             ))}
         </ul>
       )}
-      <p className="text-xs text-muted-foreground">
+      <p className="text-xs text-[var(--muted-foreground)]">
         Changes update the canvas immediately. Save the workflow to apply them.
       </p>
       <Button variant="outline" onClick={closeInspector}>
@@ -628,10 +642,11 @@ export default function WorkflowBuilder({
   );
   return (
     <div
-      className="flex min-w-0 flex-col bg-background text-foreground"
+      ref={editorRef}
+      className="flex min-w-0 flex-col bg-[var(--background)] text-[var(--text-primary)]"
       style={{ height: 'calc(100dvh - 80px)', minHeight: 640 }}
     >
-      <header className="space-y-3 border-b border-border bg-card p-3 sm:px-5">
+      <header className="space-y-3 border-b border-[var(--border)] bg-[var(--card)] p-3 sm:px-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
             <Button
@@ -649,11 +664,11 @@ export default function WorkflowBuilder({
               <button
                 type="button"
                 onClick={() => select('details')}
-                className="max-w-full truncate rounded text-left text-base font-semibold focus-visible:ring-2 focus-visible:ring-ring"
+                className="max-w-full truncate rounded text-left text-base font-semibold focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
               >
                 {draft.name || 'New workflow'}
               </button>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-[var(--muted-foreground)]">
                 {savedStatus === 'ACTIVE'
                   ? 'Active'
                   : savedStatus === 'PAUSED'
@@ -778,18 +793,18 @@ export default function WorkflowBuilder({
       {error && (
         <p
           role="alert"
-          className="border-b border-border bg-red-50 px-5 py-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300"
+          className="border-b border-[var(--border)] bg-red-50 px-5 py-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300"
         >
           {error}
         </p>
       )}
       {message && (
-        <p role="status" className="border-b border-border px-5 py-2 text-sm">
+        <p role="status" className="border-b border-[var(--border)] px-5 py-2 text-sm">
           {message}
         </p>
       )}
       {saved.isActive && dirty && (
-        <p className="border-b border-border px-5 py-2 text-xs text-muted-foreground">
+        <p className="border-b border-[var(--border)] px-5 py-2 text-xs text-[var(--muted-foreground)]">
           The saved version is still active. Save to apply your changes, or
           pause it while editing.
         </p>
@@ -814,13 +829,13 @@ export default function WorkflowBuilder({
         </div>
       )}
       {view === 'activity' ? (
-        <main className="min-h-0 flex-1 overflow-auto p-5">
+        <section aria-label="Workflow activity" className="min-h-0 flex-1 overflow-auto p-5">
           {savedId ? (
             <WorkflowRuns workflowId={savedId} />
           ) : (
             <p>Save this workflow to see its execution activity.</p>
           )}
-        </main>
+        </section>
       ) : (
         <DndContext
           accessibility={{
@@ -840,11 +855,11 @@ export default function WorkflowBuilder({
         >
           <div className="flex min-h-0 min-w-0 flex-1 flex-col xl:flex-row">
             {wide ? (
-              <aside className="w-72 shrink-0 overflow-y-auto border-r border-border">
+              <aside className="w-72 shrink-0 overflow-y-auto border-r border-[var(--border)]">
                 {library}
               </aside>
             ) : (
-              <div className="border-b border-border p-2">
+              <div className="border-b border-[var(--border)] p-2">
                 <Button
                   variant="outline"
                   size="sm"
@@ -899,7 +914,7 @@ export default function WorkflowBuilder({
             {wide && inspector && (
               <aside
                 aria-label="Step configuration"
-                className="w-80 shrink-0 overflow-y-auto border-l border-border"
+                className="w-80 shrink-0 overflow-y-auto border-l border-[var(--border)]"
               >
                 {inspector}
               </aside>
@@ -916,7 +931,7 @@ export default function WorkflowBuilder({
           )}
           <DragOverlay dropAnimation={null}>
             {dragging && (
-              <div className="rounded-xl border border-[var(--primary)] bg-card px-5 py-3 text-sm font-semibold text-foreground shadow-lg">
+              <div className="rounded-xl border border-[var(--primary)] bg-[var(--card)] px-5 py-3 text-sm font-semibold text-[var(--text-primary)] shadow-lg">
                 {dragging.kind === 'move'
                   ? 'Move action'
                   : dragging.kind === 'condition'

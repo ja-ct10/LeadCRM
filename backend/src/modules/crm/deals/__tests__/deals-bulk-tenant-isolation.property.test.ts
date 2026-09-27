@@ -46,6 +46,8 @@ vi.mock('../../../../core/audit/audit.service', () => {
 import prisma from '../../../../config/database.config';
 import { writeAuditLog } from '../../../../core/audit/audit.service';
 import { bulkArchive, bulkReassign, bulkStageChange } from '../bulk-deals.service';
+import { moveDealStage } from '../deals.service';
+vi.mock('../deals.service', () => ({ moveDealStage: vi.fn().mockResolvedValue({}) }));
 
 // ─────────────────────────────────────────────────────
 // GENERATORS
@@ -334,7 +336,7 @@ describe('Feature: deals-module-modernization, Property 7: Bulk Tenant Isolation
     );
   });
 
-  it('non-tenant deal IDs do NOT trigger update or history creation calls', async () => {
+  it('non-tenant deal IDs never reach the governed stage transition', async () => {
     await fc.assert(
       fc.asyncProperty(mixedDealIdsArb, async (records) => {
         // Arrange
@@ -360,16 +362,18 @@ describe('Feature: deals-module-modernization, Property 7: Bulk Tenant Isolation
           stageId: 'stage-target',
         });
 
-        // Assert: update and history only called for owned deals
-        expect(prisma.deal.update).toHaveBeenCalledTimes(ownedCount);
-        expect(prisma.dealStageHistory.create).toHaveBeenCalledTimes(ownedCount);
+        expect(moveDealStage).toHaveBeenCalledTimes(ownedCount);
+        expect(prisma.deal.update).not.toHaveBeenCalled();
+        expect(prisma.dealStageHistory.create).not.toHaveBeenCalled();
 
         // Assert: non-owned IDs never passed
         const nonOwnedIds = new Set(records.filter((r) => !r.isOwnedByTenant).map((r) => r.id));
-        const updateCalls = vi.mocked(prisma.deal.update).mock.calls;
+        const updateCalls = vi.mocked(moveDealStage).mock.calls;
         for (const call of updateCalls) {
-          const updatedId = (call[0] as { where: { id: string } }).where.id;
+          const updatedId = call[0];
           expect(nonOwnedIds.has(updatedId)).toBe(false);
+          expect(call[1]).toBe(TENANT_ID);
+          expect(call[2]).toBe(USER_ID);
         }
       }),
       { numRuns: 100 },

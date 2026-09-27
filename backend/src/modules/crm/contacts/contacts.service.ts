@@ -1,10 +1,10 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, type Contact } from '@prisma/client';
 import * as repo from './contacts.repository';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 import { CreateContactDto, UpdateContactDto, ConvertContactDto } from './contacts.dto';
 import { paginate } from '../../../shared/helpers/pagination';
-import { fireLeadCreated, fireLeadStatusChanged } from '../../automation/triggers/triggers.service';
+import { fireLeadCreated, fireLeadStatusChanged, fireContactCreated, fireDealCreated } from '../../automation/triggers/triggers.service';
 import { createNotification } from '../../notifications/notifications.service';
 import prisma from '../../../config/database.config';
 
@@ -170,7 +170,7 @@ export async function convertContact(
 
     // ─── 2. Resolve or create the Contact ─────────────────────────────────
     let contactId: string | null = null;
-    let contact: { id: string; firstName: string; lastName: string } | null = null;
+    let contact: Pick<Contact, 'id' | 'firstName' | 'lastName' | 'status' | 'updatedAt'> | null = null;
 
     if (dto.contactId) {
       // Link to existing contact
@@ -300,7 +300,7 @@ export async function convertContact(
     }
 
     // ─── 4. Update the Lead record ────────────────────────────────────────
-    await tx.lead.update({
+    const convertedLead = await tx.lead.update({
       where: { id } as never,
       data: {
         status: 'Converted',
@@ -324,7 +324,7 @@ export async function convertContact(
     };
     await tx.activity.create({ data: conversionActivity });
 
-    return { lead, contact, account, deal };
+    return { lead, contact, account, deal, convertedLead };
   });
 
   await writeAuditLog({
@@ -340,5 +340,15 @@ export async function convertContact(
     },
   });
 
-  return result;
+  // Emit only after the conversion transaction commits. Linking existing records
+  // is not a creation event; rolled-back conversions must never run automations.
+  await fireLeadStatusChanged({ tenantId, actorId: userId, lead: result.convertedLead, prevStatus: lead.status });
+  if (!dto.contactId && dto.createContact !== false && result.contact) {
+    await fireContactCreated({ tenantId, actorId: userId, contact: result.contact });
+  }
+  if (!dto.dealId && dto.createDeal && result.deal) {
+    await fireDealCreated({ tenantId, actorId: userId, deal: result.deal });
+  }
+  const { convertedLead: _convertedLead, ...response } = result;
+  return response;
 }

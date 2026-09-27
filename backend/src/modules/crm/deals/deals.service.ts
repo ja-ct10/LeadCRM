@@ -322,5 +322,6 @@ export async function duplicateDeal(id: string, tenantId: string, userId: string
     after: { sourceId: id, title: newDeal.title },
   });
 
+  await fireDealCreated({ tenantId, actorId: userId, deal: newDeal });
   return newDeal;
 }

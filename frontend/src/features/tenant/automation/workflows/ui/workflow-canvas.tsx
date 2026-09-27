@@ -67,7 +67,7 @@ function DropTarget({
         <button
           type="button"
           onClick={() => onPlace(target)}
-          className="w-full rounded-xl p-3 text-sm font-semibold text-[var(--primary)] focus-visible:ring-2 focus-visible:ring-ring"
+          className="w-full rounded-xl p-3 text-sm font-semibold text-[var(--primary)] focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
         >
           {target.kind === 'trigger'
             ? 'Place trigger here'
@@ -104,21 +104,21 @@ function NodeCard({
   const Icon = stepIcons[kind];
   return (
     <div
-      className={`overflow-hidden rounded-xl border bg-card shadow-sm ${selected ? 'border-[var(--primary)] ring-2 ring-[var(--primary)]/25' : 'border-border'} ${disabled ? 'border-dashed' : ''}`}
+      className={`overflow-hidden rounded-xl border bg-[var(--card)] shadow-sm ${selected ? 'border-[var(--primary)] ring-2 ring-[var(--primary)]/25' : 'border-[var(--border)]'} ${disabled ? 'border-dashed' : ''}`}
     >
       <button
         type="button"
         aria-label={`Configure ${kind}: ${label}`}
         onClick={onSelect}
         aria-pressed={selected}
-        className="w-full p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring hover:bg-muted/40"
+        className="w-full p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)] hover:bg-[var(--muted)]/40"
       >
         <span className="flex items-center gap-3">
           <span className={`rounded-lg p-2 ${stepColors[kind]}`}>
             <Icon size={18} />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+            <span className="block text-[10px] font-semibold uppercase tracking-widest text-[var(--muted-foreground)]">
               {kind === 'condition' ? 'Condition gate' : kind}
             </span>
             <span className="block break-words text-sm font-semibold">
@@ -129,7 +129,7 @@ function NodeCard({
             <Pause
               aria-label="Disabled"
               size={16}
-              className="text-muted-foreground"
+              className="text-[var(--muted-foreground)]"
             />
           ) : issues.length ? (
             <AlertCircle
@@ -141,16 +141,16 @@ function NodeCard({
             <Check
               aria-label="Configured"
               size={16}
-              className="text-muted-foreground"
+              className="text-[var(--muted-foreground)]"
             />
           )}
         </span>
         {!compact && (
-          <span className="mt-3 block space-y-1 border-t border-border pt-3">
+          <span className="mt-3 block space-y-1 border-t border-[var(--border)] pt-3">
             {summary.map((line, index) => (
               <span
                 key={index}
-                className="block break-words text-xs leading-relaxed text-muted-foreground"
+                className="block break-words text-xs leading-relaxed text-[var(--muted-foreground)]"
               >
                 {line}
               </span>
@@ -158,7 +158,7 @@ function NodeCard({
           </span>
         )}
         {disabled && (
-          <span className="mt-2 block text-xs text-muted-foreground">
+          <span className="mt-2 block text-xs text-[var(--muted-foreground)]">
             Disabled · skipped during execution
           </span>
         )}
@@ -199,7 +199,7 @@ function MovableAction({
           disabled={disabled}
           tabIndex={-1}
           aria-label="Drag to reorder action"
-          className="touch-none rounded-lg p-2 text-muted-foreground hover:bg-muted disabled:hidden"
+          className="touch-none rounded-lg p-2 text-[var(--muted-foreground)] hover:bg-[var(--muted)] disabled:hidden"
         >
           <GripVertical size={18} />
         </button>
@@ -273,7 +273,7 @@ export function WorkflowCanvas({
   const dropProps = { item, document, triggers, actions, onPlace };
   const connector = (
     <div
-      className="mx-auto flex h-10 w-px items-end justify-center bg-border text-muted-foreground"
+      className="mx-auto flex h-10 w-px items-end justify-center bg-[var(--border)] text-[var(--muted-foreground)]"
       aria-hidden="true"
     >
       <ArrowDown size={13} className="shrink-0" />
@@ -286,14 +286,14 @@ export function WorkflowCanvas({
       target={{ kind: 'action', index }}
     >
       <div className="relative flex h-14 justify-center">
-        <div className="h-full w-px bg-border" />
+        <div className="h-full w-px bg-[var(--border)]" />
         {!locked && !item && (
           <button
             type="button"
             aria-label={`Add step at position ${index + 1}`}
             onClick={() => onAdd(index)}
             disabled={document.draft.actions.length >= 20}
-            className="absolute top-3 rounded-full border border-border bg-card p-2 text-muted-foreground hover:border-[var(--primary)] hover:text-[var(--primary)] focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40"
+            className="absolute top-3 rounded-full border border-[var(--border)] bg-[var(--card)] p-2 text-[var(--muted-foreground)] hover:border-[var(--primary)] hover:text-[var(--primary)] focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-40"
           >
             <Plus size={14} />
           </button>
@@ -304,10 +304,10 @@ export function WorkflowCanvas({
   return (
     <section
       aria-label="Workflow canvas"
-      className="relative flex min-h-[520px] min-w-0 flex-1 flex-col overflow-hidden bg-muted/30"
+      className="relative flex min-h-[520px] min-w-0 flex-1 flex-col overflow-hidden bg-[var(--muted)]/30"
     >
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-card/80 px-4 py-2 text-xs">
-        <span className="text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--card)]/80 px-4 py-2 text-xs">
+        <span className="text-[var(--muted-foreground)]">
           {document.draft.actions.length}/20 actions ·{' '}
           {trigger?.entity === 'contact'
             ? 'Client Profiles'
@@ -321,7 +321,7 @@ export function WorkflowCanvas({
           type="button"
           aria-pressed={compact}
           onClick={() => setCompact(!compact)}
-          className="rounded-lg px-3 py-2 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+          className="rounded-lg px-3 py-2 hover:bg-[var(--muted)] focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
         >
           {compact ? 'Expand cards' : 'Compact cards'}
         </button>
@@ -344,7 +344,7 @@ export function WorkflowCanvas({
             className="absolute left-0 top-0 w-[440px] px-12 py-10"
             style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}
           >
-            <p className="mb-3 text-center text-[10px] font-semibold uppercase tracking-[.2em] text-muted-foreground">
+            <p className="mb-3 text-center text-[10px] font-semibold uppercase tracking-[.2em] text-[var(--muted-foreground)]">
               Workflow starts
             </p>
             <DropTarget
@@ -389,7 +389,7 @@ export function WorkflowCanvas({
               />
             </DropTarget>
             {!!document.draft.conditions?.conditions.length && (
-              <p className="mt-2 text-center text-[11px] text-muted-foreground">
+              <p className="mt-2 text-center text-[11px] text-[var(--muted-foreground)]">
                 Matched ↓ continue · Not matched → exit
               </p>
             )}
@@ -412,7 +412,7 @@ export function WorkflowCanvas({
                     }
                   >
                     {!locked && (
-                      <div className="flex justify-end gap-1 border-t border-border px-2 py-1">
+                      <div className="flex justify-end gap-1 border-t border-[var(--border)] px-2 py-1">
                         {[
                           {
                             label: `Move action ${index + 1} up`,
@@ -449,7 +449,7 @@ export function WorkflowCanvas({
                             title={control.label}
                             disabled={control.disabled}
                             onClick={control.run}
-                            className="rounded-lg p-2 text-muted-foreground hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-25"
+                            className="rounded-lg p-2 text-[var(--muted-foreground)] hover:bg-[var(--muted)] focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-25"
                           >
                             <control.icon size={15} />
                           </button>
@@ -462,23 +462,23 @@ export function WorkflowCanvas({
             ))}
             {slot(document.draft.actions.length)}
             {!document.draft.actions.length && (
-              <div className="mb-5 rounded-xl border border-dashed border-border bg-card/70 p-5 text-center">
+              <div className="mb-5 rounded-xl border border-dashed border-[var(--border)] bg-[var(--card)]/70 p-5 text-center">
                 <h3 className="text-sm font-medium">
                   What should happen next?
                 </h3>
-                <p className="mt-2 text-xs text-muted-foreground">
+                <p className="mt-2 text-xs text-[var(--muted-foreground)]">
                   Add an action from the library or use the + above.
                 </p>
               </div>
             )}
-            <div className="mx-auto w-fit rounded-full border border-border bg-card px-4 py-2 text-xs text-muted-foreground">
+            <div className="mx-auto w-fit rounded-full border border-[var(--border)] bg-[var(--card)] px-4 py-2 text-xs text-[var(--muted-foreground)]">
               End
             </div>
           </div>
         </div>
       </div>
       <div
-        className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-xl border border-border bg-card p-1 shadow-sm"
+        className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-xl border border-[var(--border)] bg-[var(--card)] p-1 shadow-sm"
         aria-label="Canvas controls"
       >
         <Button
