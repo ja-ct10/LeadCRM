@@ -4,6 +4,17 @@ import { NotFoundError } from '../../../shared/errors/http-error';
 import { getPaginationParams, paginate } from '../../../shared/helpers/pagination';
 import type { CreateFormDto, UpdateFormDto } from './forms.dto';
 
+export async function duplicateForm(id: string, tenantId: string, userId: string) {
+  const form = await repo.duplicate(id, tenantId, userId);
+  void writeAuditLog({ tenantId, userId, action: 'form.duplicated', entityType: 'MarketingForm', entityId: form.id });
+  return form;
+}
+export async function getSubmissions(id: string, tenantId: string, query: Record<string, unknown>) {
+  const { page, limit } = getPaginationParams(query);
+  const { data, total } = await repo.submissions(id, tenantId, page, limit);
+  return paginate(data, total, { page, limit });
+}
+
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
 /**

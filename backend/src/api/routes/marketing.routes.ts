@@ -41,6 +41,8 @@ router.patch( '/templates/:id/archive', authorize('campaigns.delete'), templateC
 // Forms share the campaigns permission scope — they are a marketing capability.
 // Reads: campaigns.view  |  Writes: campaigns.create / campaigns.edit / campaigns.delete
 router.get(   '/forms',                 authorize('campaigns.view'),   formController.getForms);
+router.get('/forms/:id/submissions', authorize('campaigns.view'), formController.getSubmissions);
+router.post('/forms/:id/duplicate', authorize('campaigns.create'), writeLimiter, formController.duplicateForm);
 router.get(   '/forms/:id',             authorize('campaigns.view'),   formController.getFormById);
 router.post(  '/forms',                 authorize('campaigns.create'), validate(CreateFormSchema), formController.createForm);
 router.put(   '/forms/:id',             authorize('campaigns.edit'),   validate(UpdateFormSchema), formController.updateForm);

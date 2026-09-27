@@ -149,6 +149,9 @@ Valid rows write `Deal` and optional `ContactDeal`; all rows receive a saved
 
 ## Marketing Endpoints (`/api/v1/marketing/`) — Stub
 
+For the database-backed Forms management, anonymous public routes, and submission
+history, see [Forms implementation and verification](forms-production-report.md#actual-api-endpoints).
+
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/marketing/campaigns` | List campaigns |

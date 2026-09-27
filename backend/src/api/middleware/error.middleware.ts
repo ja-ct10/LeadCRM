@@ -9,6 +9,10 @@ export function errorMiddleware(
   res: Response,
   _next: NextFunction,
 ): void {
+  if ('type' in err && err.type === 'entity.too.large') {
+    res.status(413).json({ success: false, error: 'Request body is too large.' });
+    return;
+  }
   // Log internally — never expose internals to client.
   // Include Prisma-specific fields when available so production logs are debuggable.
   const errAsUnknown = err as unknown as Record<string, unknown>;
