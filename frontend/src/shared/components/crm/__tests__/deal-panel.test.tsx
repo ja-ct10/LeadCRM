@@ -112,6 +112,10 @@ vi.mock('@/shared/services/deals-actions.api', () => ({
 
 // ─── Import Component Under Test ──────────────────────────────────────────────
 
+vi.mock('@/features/tenant/operations/tasks/use-tasks', async () => {
+ const { useData } = await import('@/store/DataContext');
+ return { useTasks: (query: { dealId: string }) => { const tasks = useData().tasks.filter(task => task.dealId === query.dealId); return { tasks, summary: { total: tasks.length, active: 1 }, canRead: true, loading: false, identity: 'test', refresh: vi.fn(), meta: { total: tasks.length, hasMore: false } }; } };
+});
 import { DealPanel } from '../RecordPanelWrappers';
 import type { Deal } from '@/store/types';
 

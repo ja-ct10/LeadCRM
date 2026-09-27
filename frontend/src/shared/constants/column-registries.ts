@@ -1,3 +1,4 @@
+import { TASK_COLUMN_DEFINITIONS } from '@leadcrm/shared';
 /**
  * Frontend column registry definitions — mirrors the backend column-registry.ts.
  * Used by the ManageColumnsDrawer to display labels and enforce required columns.
@@ -167,6 +168,7 @@ export const DEALS_COLUMN_REGISTRY: ColumnDefinition[] = [
 // ─────────────────────────────────────────────────────
 
 export const MODULE_COLUMN_REGISTRIES: Record<string, ColumnDefinition[]> = {
+  tasks: TASK_COLUMN_DEFINITIONS,
   leads: LEADS_COLUMN_REGISTRY,
   accounts: ACCOUNTS_COLUMN_REGISTRY,
   contacts: CONTACTS_COLUMN_REGISTRY,

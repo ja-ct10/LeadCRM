@@ -172,7 +172,7 @@ export async function seedDemoRichData() {
       create: {
         id: 'seed-task-2', tenantId: tId, assignedUserId: aId, assignedById: aId,
         title: 'Prepare proposal for Nexus Digital',
-        status: 'in-progress', priority: 'Medium',
+        status: 'in_progress', priority: 'Medium',
         dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
         contactId: contacts[1].id, dealId: deals[1].id,
       },

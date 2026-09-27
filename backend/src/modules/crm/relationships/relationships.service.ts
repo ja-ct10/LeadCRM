@@ -6,7 +6,7 @@ const DEFAULT_LIMIT = 10;
 /**
  * Get relationships for a Lead record.
  */
-export async function getLeadRelationships(id: string, tenantId: string, limit = DEFAULT_LIMIT) {
+export async function getLeadRelationships(id: string, tenantId: string, limit = DEFAULT_LIMIT, includeTasks = false) {
   const lead = await prisma.lead.findFirst({
     where: { id, tenantId },
     select: { id: true, contactId: true, accountId: true },
@@ -47,12 +47,12 @@ export async function getLeadRelationships(id: string, tenantId: string, limit =
       select: { id: true, type: true, title: true, createdAt: true },
     }),
     // Tasks
-    prisma.task.findMany({
+    includeTasks ? prisma.task.findMany({
       where: { leadId: id, tenantId, isArchived: false },
       take: limit,
       orderBy: { createdAt: 'desc' },
       select: { id: true, title: true, status: true, priority: true, dueDate: true },
-    }),
+    }) : Promise.resolve([]),
   ]);
 
   return {
@@ -67,7 +67,7 @@ export async function getLeadRelationships(id: string, tenantId: string, limit =
 /**
  * Get relationships for a Contact record.
  */
-export async function getContactRelationships(id: string, tenantId: string, limit = DEFAULT_LIMIT) {
+export async function getContactRelationships(id: string, tenantId: string, limit = DEFAULT_LIMIT, includeTasks = false) {
   const contact = await prisma.contact.findFirst({
     where: { id, tenantId },
     select: { id: true, accountId: true },
@@ -109,12 +109,12 @@ export async function getContactRelationships(id: string, tenantId: string, limi
       select: { id: true, type: true, title: true, createdAt: true },
     }),
     // Tasks
-    prisma.task.findMany({
+    includeTasks ? prisma.task.findMany({
       where: { contactId: id, tenantId, isArchived: false },
       take: limit,
       orderBy: { createdAt: 'desc' },
       select: { id: true, title: true, status: true, priority: true, dueDate: true },
-    }),
+    }) : Promise.resolve([]),
   ]);
 
   return {
@@ -170,7 +170,7 @@ export async function getAccountRelationships(id: string, tenantId: string, limi
 /**
  * Get relationships for a Deal record.
  */
-export async function getDealRelationships(id: string, tenantId: string, limit = DEFAULT_LIMIT) {
+export async function getDealRelationships(id: string, tenantId: string, limit = DEFAULT_LIMIT, includeTasks = false) {
   const deal = await prisma.deal.findFirst({
     where: { id, tenantId },
     select: { id: true, accountId: true },
@@ -213,12 +213,12 @@ export async function getDealRelationships(id: string, tenantId: string, limit =
       select: { id: true, type: true, title: true, createdAt: true },
     }),
     // Tasks
-    prisma.task.findMany({
+    includeTasks ? prisma.task.findMany({
       where: { dealId: id, tenantId, isArchived: false },
       take: limit,
       orderBy: { createdAt: 'desc' },
       select: { id: true, title: true, status: true, priority: true, dueDate: true },
-    }),
+    }) : Promise.resolve([]),
   ]);
 
   return {

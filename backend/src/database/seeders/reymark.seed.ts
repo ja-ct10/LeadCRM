@@ -127,7 +127,7 @@ async function main() {
   await prisma.task.createMany({
     data: [
       { tenantId: TENANT_ID, assignedUserId: USER_ID, assignedById: USER_ID, title: 'Follow up with Anna Reyes re: Enterprise demo', status: 'pending', priority: 'High', dueDate: new Date(Date.now() + 2 * 86400000), contactId: contacts[0].id, dealId: deals[0].id },
-      { tenantId: TENANT_ID, assignedUserId: USER_ID, assignedById: USER_ID, title: 'Prepare proposal document for Nexwave', status: 'in-progress', priority: 'Medium', dueDate: new Date(Date.now() + 5 * 86400000), contactId: contacts[1].id, dealId: deals[1].id },
+      { tenantId: TENANT_ID, assignedUserId: USER_ID, assignedById: USER_ID, title: 'Prepare proposal document for Nexwave', status: 'in_progress', priority: 'Medium', dueDate: new Date(Date.now() + 5 * 86400000), contactId: contacts[1].id, dealId: deals[1].id },
       { tenantId: TENANT_ID, assignedUserId: USER_ID, assignedById: USER_ID, title: 'Contract negotiation call — CloudPH', status: 'pending', priority: 'High', dueDate: new Date(Date.now() + 1 * 86400000), contactId: contacts[2].id, dealId: deals[2].id },
       { tenantId: TENANT_ID, assignedUserId: USER_ID, assignedById: USER_ID, title: 'Send onboarding docs — CloudPH Won', status: 'completed', priority: 'Medium', dueDate: new Date(Date.now() - 3 * 86400000), contactId: contacts[7].id, dealId: deals[4].id },
       { tenantId: TENANT_ID, assignedUserId: USER_ID, assignedById: USER_ID, title: 'LinkedIn outreach — Jerico Tan', status: 'pending', priority: 'Low', dueDate: new Date(Date.now() + 7 * 86400000), contactId: contacts[5].id },

@@ -1,4 +1,6 @@
 'use client';
+import { TaskEditor } from '@/features/tenant/operations/tasks/ui/task-editor';
+import { RelatedTasks } from '@/features/tenant/operations/tasks/ui/related-tasks';
 
 import { accountsService } from '@/features/tenant/crm/accounts/services/accounts.service';
 import { contactsV2Api } from '@/shared/services/contacts-v2.api';
@@ -33,15 +35,13 @@ import { RecordActionBar } from './record-action-bar';
 import type { OverflowMenuItem } from './record-action-bar';
 import { ConfirmActionDialog } from './confirm-action-dialog';
 import { useConfirmDialog } from '@/shared/hooks/use-confirm-dialog';
-import { InlineTaskForm } from './inline-task-form';
 import { InlineDealForm } from './inline-deal-form';
 import { CustomFieldsSection } from './custom-fields-section';
 import { FilesSection } from './files-section';
 import type { FileRecord } from './files-section';
-import { Checkbox } from '@/shared/components/ui/checkbox';
 import { useData } from '@/store/DataContext';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
-import type { Lead, Contact, Deal, Task } from '@/store/types';
+import type { Lead, Contact, Deal } from '@/store/types';
 import { leadsService } from '@/features/tenant/crm/leads/services/leads.service';
 import { toFrontendContact } from '@/lib/api/adapters/contact.adapter';
 import { cn } from '@/lib/utils';
@@ -494,168 +494,6 @@ function ExpandableDealCard({ deal, isExpanded, onToggle, pipelines, users, cont
   );
 }
 
-interface ExpandableTaskCardProps {
-  task: Task;
-  isExpanded: boolean;
-  onToggle: () => void;
-  users: Array<{ id: string; firstName: string; lastName: string }>;
-  onUpdate: (id: string, updates: Partial<Task>) => Promise<void>;
-}
-
-function ExpandableTaskCard({ task, isExpanded, onToggle, users, onUpdate }: ExpandableTaskCardProps) {
-  const handleFieldChange = async (field: string, value: string) => {
-    try {
-      await onUpdate(task.id, { [field]: value } as Partial<Task>);
-      toast.success('Task updated');
-    } catch {
-      toast.error('Failed to update task');
-    }
-  };
-
-  const handleComplete = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      await onUpdate(task.id, { status: task.status === 'completed' ? 'pending' : 'completed' } as Partial<Task>);
-      toast.success(task.status === 'completed' ? 'Task reopened' : 'Task completed');
-    } catch {
-      toast.error('Failed to update task');
-    }
-  };
-
-  return (
-    <div className="border-b border-border last:border-b-0">
-      {/* Collapsed header */}
-      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3 hover:bg-secondary/50 transition-colors cursor-pointer group">
-        <Checkbox
-          checked={task.status === 'completed'}
-          onCheckedChange={() => handleComplete({} as React.MouseEvent)}
-          onClick={(e) => e.stopPropagation()}
-          className="h-4 w-4"
-        />
-        <button
-          type="button"
-          onClick={onToggle}
-          className="min-w-0 text-left"
-        >
-          <p className={cn(
-            'truncate text-sm font-medium text-foreground group-hover:text-primary transition-colors',
-            task.status === 'completed' && 'line-through text-muted-foreground'
-          )}>{task.title}</p>
-          <p className="text-xs text-muted-foreground">
-            Due: {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'No date'}
-          </p>
-        </button>
-        <Chip className={task.priority === 'High' ? 'text-destructive bg-destructive/10' : ''}>
-          {task.priority || 'Medium'}
-        </Chip>
-        <button type="button" onClick={onToggle}>
-          <ChevronDown
-            className={cn(
-              'h-4 w-4 text-muted-foreground transition-transform duration-200',
-              isExpanded && 'rotate-180'
-            )}
-          />
-        </button>
-      </div>
-
-      {/* Expanded area */}
-      <AnimatePresence initial={false}>
-        {isExpanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2, ease: 'easeInOut' }}
-            className="overflow-hidden"
-          >
-            <div className="border-t border-border px-4 py-2 space-y-2">
-              {/* Title edit */}
-              <div>
-                <label className={inlineLabelCls}>Title</label>
-                <input
-                  type="text"
-                  defaultValue={task.title}
-                  onBlur={(e) => {
-                    if (e.target.value !== task.title) {
-                      handleFieldChange('title', e.target.value);
-                    }
-                  }}
-                  className={inlineInputCls}
-                />
-              </div>
-
-              {/* Row 1: Status + Priority */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className={inlineLabelCls}>Status</label>
-                  <div className="relative">
-                    <select
-                      value={task.status || 'pending'}
-                      onChange={(e) => handleFieldChange('status', e.target.value)}
-                      className={inlineSelectCls}
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="in_progress">In Progress</option>
-                      <option value="blocked">Blocked</option>
-                      <option value="completed">Completed</option>
-                      <option value="cancelled">Cancelled</option>
-                    </select>
-                    <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
-                  </div>
-                </div>
-                <div>
-                  <label className={inlineLabelCls}>Priority</label>
-                  <div className="relative">
-                    <select
-                      value={task.priority || 'Medium'}
-                      onChange={(e) => handleFieldChange('priority', e.target.value)}
-                      className={inlineSelectCls}
-                    >
-                      <option value="Low">Low</option>
-                      <option value="Medium">Medium</option>
-                      <option value="High">High</option>
-                    </select>
-                    <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Row 2: Due Date + Assigned */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className={inlineLabelCls}>Due Date</label>
-                  <input
-                    type="date"
-                    defaultValue={task.dueDate ? task.dueDate.split('T')[0] : ''}
-                    onChange={(e) => handleFieldChange('dueDate', e.target.value)}
-                    className={inlineInputCls}
-                  />
-                </div>
-                <div>
-                  <label className={inlineLabelCls}>Assigned</label>
-                  <div className="relative">
-                    <select
-                      value={(task as any).assignedUserId || ''}
-                      onChange={(e) => handleFieldChange('assignedUserId', e.target.value)}
-                      className={inlineSelectCls}
-                    >
-                      <option value="">Unassigned</option>
-                      {users.map((u) => (
-                        <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
-                      ))}
-                    </select>
-                    <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
 /* -------------------------------------------------------------------------- */
 /*                                1. LEAD PANEL                               */
 /* -------------------------------------------------------------------------- */
@@ -671,15 +509,12 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
   const canArchive = useHasPermission('contacts.delete');
   const {
     updateContact: updateLead,
-    tasks,
     deals,
     organizations,
     contacts,
-    addTask,
     addDeal,
     addContact,
     updateDeal,
-    updateTask,
     pipelines,
     users,
   } = useData();
@@ -688,7 +523,6 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [showDealForm, setShowDealForm] = useState(false);
   const [expandedDealId, setExpandedDealId] = useState<string | null>(null);
-  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const { dialogProps: confirmDialogProps, confirm: showConfirm, close: closeConfirm } = useConfirmDialog();
 
   const [customFields, setCustomFields] = useState<CustomFieldItem[]>([
@@ -701,9 +535,7 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
   const leadOrg = organizations.find((o) => o.id === lead.accountId || o.name === lead.companyName);
 
   // Associated tasks & deals
-  const leadTasks = tasks.filter(
-    (t: Task) => (t as any).leadId === lead.id || (t as any).contactId === lead.id || t.title.toLowerCase().includes(leadName.toLowerCase())
-  );
+
   const leadDeals = deals.filter(
     (d: Deal) => d.leadId === lead.id || (d.leadIds ?? []).includes(lead.id)
   );
@@ -842,67 +674,7 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
         </div>
       ),
     },
-    {
-      id: 'tasks',
-      title: 'Tasks',
-      icon: CheckCircle2,
-      count: leadTasks.length,
-      collapsible: true,
-      actions: (
-        <SmallAction label="Add Task" onClick={() => setShowTaskForm((v) => !v)}>
-          <Plus className="h-4 w-4" />
-        </SmallAction>
-      ),
-      content: (
-        <div className="divide-y divide-border">
-          {leadTasks.map((t) => (
-            <ExpandableTaskCard
-              key={t.id}
-              task={t}
-              isExpanded={expandedTaskId === t.id}
-              onToggle={() => setExpandedTaskId((prev) => (prev === t.id ? null : t.id))}
-              users={users}
-              onUpdate={updateTask}
-            />
-          ))}
-
-          {showTaskForm && (
-            <div className="p-4">
-              <InlineTaskForm
-                recordName={leadName}
-                onSubmit={async (taskData) => {
-                  await addTask({
-                    title: taskData.title,
-                    description: taskData.title,
-                    leadId: lead.id,
-                    priority: taskData.priority === 'HIGH' ? 'High' : taskData.priority === 'LOW' ? 'Low' : 'Medium',
-                    assignedUserId: taskData.assignedUserId || lead.assignedUserId || '',
-                    dueDate: taskData.dueDate || new Date(Date.now() + 86400000 * 2).toISOString(),
-                    status: 'pending',
-                  } as any);
-                  toast.success(taskData.type === 'call' ? 'Call task scheduled' : 'Task created');
-                  setShowTaskForm(false);
-                }}
-                onCancel={() => setShowTaskForm(false)}
-              />
-            </div>
-          )}
-
-          {!showTaskForm && leadTasks.length === 0 && (
-            <div className="p-4 text-center">
-              <p className="text-xs text-muted-foreground">No tasks scheduled for this lead.</p>
-              <button
-                type="button"
-                onClick={() => setShowTaskForm(true)}
-                className="mt-1 text-xs font-semibold text-primary hover:underline"
-              >
-                + Add Task
-              </button>
-            </div>
-          )}
-        </div>
-      ),
-    },
+    { id: 'tasks', title: 'Tasks', icon: CheckCircle2, collapsible: true, content: <RelatedTasks links={{ leadId: lead.id }} /> },
     {
       id: 'deals',
       title: 'Deals',
@@ -1116,6 +888,7 @@ export function LeadPanel({ open, onOpenChange, lead, onEdit }: LeadPanelProps) 
         },
       ].filter(item => !item.label.startsWith('Archive') || canArchive)}
     />
+    {open && showTaskForm && <TaskEditor key={lead.id} links={{ leadId: lead.id }} onClose={() => setShowTaskForm(false)} />}
     </>
   );
 }
@@ -1133,10 +906,9 @@ export interface ContactPanelProps {
 
 export function ContactPanel({ open, onOpenChange, contact, onEdit }: ContactPanelProps) {
   const canArchive = useHasPermission('contacts.delete');
-  const { updateContact, tasks, deals, organizations, addTask } = useData();
+  const { updateContact, deals, organizations } = useData();
 
   // Local UI states
-  const [showTaskForm, setShowTaskForm] = useState(false);
   const [customFields, setCustomFields] = useState<CustomFieldItem[]>([]);
   const [files, setFiles] = useState<FileRecord[]>([]);
   const [selectedDealId, setSelectedDealId] = useState<string | null>(null);
@@ -1153,9 +925,7 @@ export function ContactPanel({ open, onOpenChange, contact, onEdit }: ContactPan
   const contactDeals = deals.filter(
     (d) => (d.contactIds ?? []).includes(contact.id) || d.contactId === contact.id
   );
-  const contactTasks = tasks.filter(
-    (t: Task) => (t as any).contactId === contact.id || t.title.toLowerCase().includes(contactName.toLowerCase())
-  );
+
 
   // Overflow menu items for RecordActionBar
   const overflowItems: OverflowMenuItem[] = [
@@ -1251,70 +1021,7 @@ export function ContactPanel({ open, onOpenChange, contact, onEdit }: ContactPan
       ),
     },
     // Tasks section with InlineTaskForm
-    {
-      id: 'tasks',
-      title: 'Tasks',
-      icon: CheckCircle2,
-      count: contactTasks.length,
-      collapsible: true,
-      actions: (
-        <SmallAction label="Add Task" onClick={() => setShowTaskForm((v) => !v)}>
-          <Plus className="h-4 w-4" />
-        </SmallAction>
-      ),
-      content: (
-        <div className="divide-y divide-border">
-          {contactTasks.map((t) => (
-            <div key={t.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-4 py-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-foreground">{t.title}</p>
-                <p className="text-xs text-muted-foreground">
-                  Due: {t.dueDate ? new Date(t.dueDate).toLocaleDateString() : 'No date'}
-                </p>
-              </div>
-              <Chip className={t.priority === 'High' ? 'text-destructive bg-destructive/10' : ''}>
-                {t.priority || 'Medium'}
-              </Chip>
-            </div>
-          ))}
-
-          {showTaskForm && (
-            <div className="p-4">
-              <InlineTaskForm
-                recordName={contactName}
-                onSubmit={async (taskData) => {
-                  await addTask({
-                    title: taskData.title,
-                    description: taskData.title,
-                    contactId: contact.id,
-                    priority: taskData.priority === 'HIGH' ? 'High' : taskData.priority === 'LOW' ? 'Low' : 'Medium',
-                    assignedUserId: taskData.assignedUserId || '',
-                    dueDate: taskData.dueDate || new Date(Date.now() + 86400000 * 2).toISOString(),
-                    status: 'pending',
-                  } as any);
-                  toast.success(taskData.type === 'call' ? 'Call task scheduled' : 'Task created');
-                  setShowTaskForm(false);
-                }}
-                onCancel={() => setShowTaskForm(false)}
-              />
-            </div>
-          )}
-
-          {!showTaskForm && contactTasks.length === 0 && (
-            <div className="p-4 text-center">
-              <p className="text-xs text-muted-foreground">No tasks scheduled for this contact.</p>
-              <button
-                type="button"
-                onClick={() => setShowTaskForm(true)}
-                className="mt-1 text-xs font-semibold text-primary hover:underline"
-              >
-                + Add Task
-              </button>
-            </div>
-          )}
-        </div>
-      ),
-    },
+    { id: 'tasks', title: 'Tasks', icon: CheckCircle2, collapsible: true, content: <RelatedTasks links={{ contactId: contact.id }} /> },
     {
       id: 'deals',
       title: 'Deals',
@@ -1832,7 +1539,7 @@ export interface DealPanelProps {
 }
 
 export function DealPanel({ open, onOpenChange, deal, onEdit, onOpenContactPanel, onOpenAccountPanel }: DealPanelProps) {
-  const { pipelines, moveDealStage, deleteDeal, tasks, contacts: contextContacts, organizations, addTask, updateDeal, updateTask } = useData();
+  const { pipelines, moveDealStage, deleteDeal, contacts: contextContacts, organizations, updateDeal } = useData();
   const canEditDeal = useHasPermission('deals.edit');
   const canDeleteDeal = useHasPermission('deals.delete');
   const canCreateDeal = useHasPermission('deals.create');
@@ -1856,7 +1563,6 @@ export function DealPanel({ open, onOpenChange, deal, onEdit, onOpenContactPanel
   }, [open, fetchDealContacts]);
 
   // Local UI states for DealPanel
-  const [showTaskForm, setShowTaskForm] = useState(false);
   const [customFields, setCustomFields] = useState<CustomFieldItem[]>(
     (deal as any)?.customFields ?? []
   );
@@ -1879,7 +1585,7 @@ export function DealPanel({ open, onOpenChange, deal, onEdit, onOpenContactPanel
   })) || DEFAULT_PIPELINE.stages;
 
   const currentStage = dealStages.find((s) => s.id === deal.stageId)?.label || 'In Progress';
-  const dealTasks = tasks.filter((t) => t.dealId === deal.id);
+
 
   // Associated contacts: from deal.contactIds or deal.leadIds, or fallback to contactId
   const linkedContactIds = deal.contactIds ?? (deal.leadIds ?? (deal.leadId ? [deal.leadId] : []));
@@ -2121,87 +1827,7 @@ export function DealPanel({ open, onOpenChange, deal, onEdit, onOpenContactPanel
       ),
     },
     // 21.5: Tasks section with InlineTaskForm
-    {
-      id: 'tasks',
-      title: 'Tasks',
-      icon: CheckCircle2,
-      count: dealTasks.length,
-      collapsible: true,
-      actions: (
-        <SmallAction label="Add Task" onClick={() => setShowTaskForm((v) => !v)}>
-          <Plus className="h-4 w-4" />
-        </SmallAction>
-      ),
-      content: (
-        <div className="divide-y divide-border">
-          {dealTasks.map((t) => (
-            <div key={t.id} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3">
-              <Checkbox
-                checked={t.status === 'completed'}
-                onCheckedChange={async (checked) => {
-                  try {
-                    await updateTask(t.id, { status: checked ? 'completed' : 'pending' });
-                    toast.success(checked ? 'Task completed' : 'Task reopened');
-                  } catch {
-                    toast.error('Failed to update task status');
-                  }
-                }}
-                className="shrink-0"
-              />
-              <div className="min-w-0">
-                <p className={cn(
-                  "truncate text-sm font-medium text-foreground",
-                  t.status === 'completed' && "line-through text-muted-foreground"
-                )}>
-                  {t.title}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Due: {t.dueDate ? new Date(t.dueDate).toLocaleDateString() : 'No date'}
-                </p>
-              </div>
-              <Chip className={t.priority === 'High' ? 'text-destructive bg-destructive/10' : ''}>
-                {t.priority || 'Medium'}
-              </Chip>
-            </div>
-          ))}
-
-          {showTaskForm && (
-            <div className="p-4">
-              <InlineTaskForm
-                recordName={deal.title}
-                onSubmit={async (taskData) => {
-                  await addTask({
-                    title: taskData.title,
-                    description: taskData.title,
-                    dealId: deal.id,
-                    priority: taskData.priority === 'HIGH' ? 'High' : taskData.priority === 'LOW' ? 'Low' : 'Medium',
-                    assignedUserId: taskData.assignedUserId || '',
-                    dueDate: taskData.dueDate || new Date(Date.now() + 86400000 * 2).toISOString(),
-                    status: 'pending',
-                  } as any);
-                  toast.success(taskData.type === 'call' ? 'Call task scheduled' : 'Task created');
-                  setShowTaskForm(false);
-                }}
-                onCancel={() => setShowTaskForm(false)}
-              />
-            </div>
-          )}
-
-          {!showTaskForm && dealTasks.length === 0 && (
-            <div className="p-4 text-center">
-              <p className="text-xs text-muted-foreground">No tasks linked to this deal.</p>
-              <button
-                type="button"
-                onClick={() => setShowTaskForm(true)}
-                className="mt-1 text-xs font-semibold text-primary hover:underline"
-              >
-                + Add Task
-              </button>
-            </div>
-          )}
-        </div>
-      ),
-    },
+    { id: 'tasks', title: 'Tasks', icon: CheckCircle2, collapsible: true, content: <RelatedTasks links={{ dealId: deal.id }} /> },
     // 21.6: Custom Fields section
     {
       id: 'custom-fields',

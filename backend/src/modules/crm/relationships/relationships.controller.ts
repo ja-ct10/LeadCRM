@@ -1,5 +1,12 @@
+import { assertPermissions } from '../../../core/permissions/permission.service';
+import { AppError } from '../../../shared/errors/app-error';
 import { Request, Response, NextFunction } from 'express';
 import * as relationshipsService from './relationships.service';
+
+async function mayReadTasks(req: Request): Promise<boolean> {
+  try { await assertPermissions(req.user!, ['deals.view']); return true; }
+  catch (error) { if (error instanceof AppError && error.statusCode === 403) return false; throw error; }
+}
 
 /**
  * GET /api/v1/crm/leads/:id/relationships
@@ -10,7 +17,7 @@ export async function getLeadRelationships(req: Request, res: Response, next: Ne
     const tenantId = req.user!.tenantId;
     const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 10));
 
-    const data = await relationshipsService.getLeadRelationships(id, tenantId, limit);
+    const data = await relationshipsService.getLeadRelationships(id, tenantId, limit, await mayReadTasks(req));
     res.json({ success: true, data });
   } catch (err) {
     next(err);
@@ -26,7 +33,7 @@ export async function getContactRelationships(req: Request, res: Response, next:
     const tenantId = req.user!.tenantId;
     const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 10));
 
-    const data = await relationshipsService.getContactRelationships(id, tenantId, limit);
+    const data = await relationshipsService.getContactRelationships(id, tenantId, limit, await mayReadTasks(req));
     res.json({ success: true, data });
   } catch (err) {
     next(err);
@@ -58,7 +65,7 @@ export async function getDealRelationships(req: Request, res: Response, next: Ne
     const tenantId = req.user!.tenantId;
     const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 10));
 
-    const data = await relationshipsService.getDealRelationships(id, tenantId, limit);
+    const data = await relationshipsService.getDealRelationships(id, tenantId, limit, await mayReadTasks(req));
     res.json({ success: true, data });
   } catch (err) {
     next(err);

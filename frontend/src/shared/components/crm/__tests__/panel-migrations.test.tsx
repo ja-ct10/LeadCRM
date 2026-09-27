@@ -96,6 +96,14 @@ vi.mock('next/link', () => ({
   ),
 }));
 
+vi.mock('@/features/tenant/operations/tasks/use-tasks', async () => {
+  const { useData } = await import('@/store/DataContext');
+  return { useTasks: (query: { leadId?: string; contactId?: string; dealId?: string }) => {
+    const tasks = useData().tasks.filter(task => (!query.leadId || task.leadId === query.leadId) && (!query.contactId || task.contactId === query.contactId) && (!query.dealId || task.dealId === query.dealId));
+    return { tasks, summary: { total: tasks.length, active: tasks.filter(task => task.status !== 'completed').length }, canRead: true, loading: false, identity: 'test', refresh: vi.fn(), meta: { total: tasks.length, hasMore: false } };
+  } };
+});
+
 // ─── Import Components Under Test ─────────────────────────────────────────────
 
 import { LeadPanel, ContactPanel, AccountPanel } from '../RecordPanelWrappers';

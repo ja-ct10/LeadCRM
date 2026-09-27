@@ -1,3 +1,4 @@
+import { TASK_COLUMN_DEFINITIONS } from '@leadcrm/shared';
 import type { ColumnConfig, ColumnConfigItem, ColumnDefinition } from '@leadcrm/shared';
 
 /**
@@ -190,6 +191,7 @@ export const DEALS_COLUMN_REGISTRY: ModuleRegistry = {
 // ─────────────────────────────────────────────────────
 
 export const COLUMN_REGISTRIES: Record<string, ModuleRegistry> = {
+  tasks: { module: 'tasks', columns: TASK_COLUMN_DEFINITIONS, sortableFields: ['title', 'dueDate', 'createdAt', 'updatedAt'] },
   leads: LEADS_COLUMN_REGISTRY,
   accounts: ACCOUNTS_COLUMN_REGISTRY,
   contacts: CONTACTS_COLUMN_REGISTRY,

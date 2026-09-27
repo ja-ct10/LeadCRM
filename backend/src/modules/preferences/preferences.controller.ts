@@ -18,6 +18,7 @@ const MODULE_VIEW_PERMISSIONS: Record<string, string> = {
   contacts: 'contacts.view',
   accounts: 'accounts.view',
   deals: 'deals.view',
+  tasks: 'deals.view',
 };
 
 /** R12 AC2: Check module-level view permission (returns 404 to not reveal existence) */
