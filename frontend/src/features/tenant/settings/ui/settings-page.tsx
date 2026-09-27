@@ -527,7 +527,7 @@ export default function SettingsPage(): React.ReactElement {
           activeTab === 'users' ||
           activeTab === 'roles' ||
           activeTab === 'audit' ||
-          (activeTab === 'forms' && isFormBuilderActive);
+          activeTab === 'forms';
 
         return (
           <div className={`flex-1 min-w-0 overflow-y-auto custom-scrollbar ${isFullPane ? '' : 'px-4 sm:px-6 py-5'}`}>

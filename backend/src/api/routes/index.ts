@@ -13,6 +13,7 @@ import preferencesRoutes from '../../modules/preferences/preferences.routes';
 import tablePreferencesRoutes from '../../modules/preferences/table-preferences.routes';
 import invitationsRoutes from '../../modules/administration/invitations/invitations.routes';
 import adminRoutes from './admin.routes';
+import { publicFormsRouter } from './public-forms.routes';
 
 const router = Router();
 
@@ -29,6 +30,7 @@ router.get('/health', (_req, res) => {
 });
 
 router.use('/webhooks/brevo', brevoWebhookRouter);
+router.use('/public/forms', publicFormsRouter);
 router.use('/auth', authRoutes);
 router.use('/crm', crmRoutes);
 router.use('/marketing', marketingRoutes);

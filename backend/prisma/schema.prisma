@@ -521,6 +521,7 @@ model Account {
 // LEAD
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Lead {
+  formSubmissions FormSubmission[]
   environment CrmEnvironment @default(PRODUCTION)
   id                  String    @id @default(uuid())
   tenantId            String
@@ -586,6 +587,7 @@ model Lead {
 
 // -----------------------------------------------------
 model Contact {
+  formSubmissions FormSubmission[]
   environment CrmEnvironment @default(PRODUCTION)
   id                  String               @id @default(uuid())
   tenantId            String
@@ -1048,6 +1050,12 @@ model Campaign {
 // Soft-deleted via isArchived — no hard deletes on business data.
 // ─────────────────────────────────────────────────────────────────────────────
 model MarketingForm {
+  publicId String @unique @default(uuid())
+  revision Int @default(0)
+  publishedRevision Int?
+  publishedVersion Int @default(0)
+  publishedConfig Json?
+  submissions FormSubmission[]
   environment CrmEnvironment @default(PRODUCTION)
   id          String    @id @default(uuid())
   tenantId    String
@@ -1068,6 +1076,29 @@ model MarketingForm {
   @@index([tenantId, isArchived, createdAt])
   @@index([tenantId, status])
   @@index([tenantId, environment])
+}
+
+model FormSubmission {
+  id String @id @default(uuid())
+  tenantId String
+  environment CrmEnvironment
+  formId String
+  publishedVersion Int
+  publishedConfig Json
+  leadId String?
+  contactId String?
+  submittedAt DateTime @default(now())
+  email String?
+  phone String?
+  values Json
+  tracking Json @default("{}")
+  notificationStatus String @default("not_requested")
+  form MarketingForm @relation(fields: [formId], references: [id], onDelete: Restrict)
+  lead Lead? @relation(fields: [leadId], references: [id], onDelete: Restrict)
+  contact Contact? @relation(fields: [contactId], references: [id], onDelete: Restrict)
+  @@index([tenantId, environment, formId, submittedAt])
+  @@index([leadId])
+  @@index([contactId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

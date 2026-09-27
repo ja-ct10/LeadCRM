@@ -1,0 +1,57 @@
+import React from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { defaultContactForm } from '@leadcrm/shared';
+import { FormBuilderPage } from './form-builder-page';
+import PublicFormPage from './public-form-page';
+import FormsPage from './forms-page';
+import * as service from '../services/forms.service';
+vi.mock('../services/forms.service', () => ({ updateForm: vi.fn(), publishForm: vi.fn(), getFormsByTenant: vi.fn(), createForm: vi.fn(), archiveForm: vi.fn(), duplicateForm: vi.fn(), getShareLink: () => 'https://example.com/forms/public', getEmbedCode: () => '<iframe />' }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { activeEnvironment: 'PRODUCTION' } }) }));
+const form = { ...defaultContactForm(), id: 'form', tenantId: 'tenant', publicId: 'public', revision: 0, publishedRevision: null, publishedVersion: 0, status: 'draft' as const, createdAt: '', updatedAt: '' };
+beforeEach(() => { vi.resetAllMocks(); vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} }); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+describe('Forms UI', () => {
+  it('distinguishes loading, error and empty lists and retries', async () => {
+    vi.mocked(service.getFormsByTenant).mockRejectedValueOnce(new Error('Network failed')).mockResolvedValue([]);
+    render(<FormsPage />); expect(screen.getByLabelText('Loading forms')).toBeTruthy(); expect(screen.queryByText('No forms yet')).toBeNull();
+    await screen.findByText('Network failed'); fireEvent.click(screen.getByText('Retry')); await screen.findByText('No forms yet');
+  });
+  it('uses the portal menu with exactly Edit, Duplicate, Archive', async () => {
+    vi.mocked(service.getFormsByTenant).mockResolvedValue([form]); render(<FormsPage />); await screen.findByText('Contact Us');
+    fireEvent.click(screen.getByLabelText('Row actions')); const menu = screen.getByRole('menu'); expect(within(menu).getAllByRole('menuitem').map(e => e.textContent)).toEqual(['Edit','Duplicate','Archive']);
+    expect(menu.parentElement).toBe(document.body); fireEvent.keyDown(document, { key: 'Escape' }); expect(screen.queryByRole('menu')).toBeNull();
+  });
+  it('opens mobile tools, adds fields, closes with Escape and keeps edits', async () => {
+    render(<FormBuilderPage form={form} onBack={() => {}} onFormUpdate={() => {}} />);
+    fireEvent.click(screen.getByText('Add fields or change design'));
+    const dialog = await screen.findByRole('dialog'); expect(dialog.getAttribute('aria-label')).toBe('Form tools');
+    fireEvent.click(within(dialog).getByText('Single Line')); fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.getByLabelText('Move Short answer up')).toBeTruthy(); expect(screen.getByText('Unsaved changes')).toBeTruthy(); expect(service.updateForm).not.toHaveBeenCalled();
+  });
+  it('persists reordered fields before publishing and passes the saved revision', async () => {
+    vi.mocked(service.updateForm).mockImplementation(async (_id, dto) => ({ ...form, ...dto, revision: 1 }));
+    vi.mocked(service.publishForm).mockResolvedValue({ ...form, revision: 1, publishedRevision: 1, publishedVersion: 1, status: 'published' });
+    render(<FormBuilderPage form={form} onBack={() => {}} onFormUpdate={() => {}} />);
+    fireEvent.click(screen.getByLabelText('Move Last Name up')); fireEvent.click(screen.getByText('Publish'));
+    await waitFor(() => expect(service.publishForm).toHaveBeenCalledWith('form'));
+    expect(vi.mocked(service.updateForm).mock.calls[0][1].fields?.[0].id).toBe('lastName');
+    expect(service.updateForm).toHaveBeenCalledWith('form', expect.objectContaining({ revision: 0 }));
+    expect(vi.mocked(service.updateForm).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(service.publishForm).mock.invocationCallOrder[0]);
+  });
+  it('keeps failed edits and prevents publishing after a failed save', async () => {
+    vi.mocked(service.updateForm).mockRejectedValue(new Error('Save failed'));
+    render(<FormBuilderPage form={form} onBack={() => {}} onFormUpdate={() => {}} />);
+    fireEvent.change(screen.getByLabelText('Form name'), { target: { value: 'New name' } }); fireEvent.click(screen.getByText('Publish'));
+    await screen.findByText('Save failed'); expect(service.publishForm).not.toHaveBeenCalled(); expect(screen.getByText('Unsaved changes')).toBeTruthy();
+  });
+  it('shows one error per public field, limits phone digits, submits and thanks the visitor', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ data: { ...defaultContactForm(), version: 1, trackUrlParams: true } }) }).mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) });
+    vi.stubGlobal('fetch', fetchMock); render(<PublicFormPage publicId="public" />); await screen.findByText('Contact Us');
+    fireEvent.click(screen.getByText('Submit')); expect(screen.getAllByText('First Name is required.')).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText(/First Name/), { target: { value: 'Anne' } }); fireEvent.change(screen.getByLabelText(/Last Name/), { target: { value: "O'Connor" } });
+    fireEvent.change(screen.getByLabelText(/Email Address/), { target: { value: 'anne@example.com' } }); fireEvent.change(screen.getByLabelText(/Product Interest/), { target: { value: 'Smart Lock' } });
+    const phone = screen.getByLabelText('Contact Number') as HTMLInputElement; fireEvent.change(phone, { target: { value: '9123456789123' } }); expect(phone.value).toBe('9123456789');
+    fireEvent.click(screen.getByText('Submit')); await screen.findByText('Thank you!'); expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
