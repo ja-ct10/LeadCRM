@@ -1,6 +1,6 @@
 'use client';
 import { apiClient } from '@/lib/api/client';
-import type { Workflow, WorkflowDraft, WorkflowExecutionRun, WorkflowTestResult, ActionDefinition, TriggerDefinition, WorkflowOptions } from '@leadcrm/shared';
+import type { Workflow, WorkflowDraft, WorkflowExecutionRun, WorkflowTestResult, ActionDefinition, TriggerDefinition, WorkflowOptions, WorkflowListQuery } from '@leadcrm/shared';
 export type { ActionDefinition, TriggerDefinition } from '@leadcrm/shared';
 export interface WorkflowsResponse { success: boolean; data: Workflow[]; meta: { total: number; page: number; limit: number; hasMore: boolean }; }
 export interface WorkflowResponse { success: boolean; data: Workflow; }
@@ -15,7 +15,7 @@ export const workflowsApi = {
       if (!result.meta.hasMore) return rows;
     }
   },
-  list: (query: Record<string, unknown> = {}) => apiClient.get<WorkflowsResponse>(`/automation/workflows?${new URLSearchParams(Object.entries(query).map(([key,value]) => [key,String(value)]))}`),
+  list: (query: WorkflowListQuery = {}) => apiClient.get<WorkflowsResponse>(`/automation/workflows?${new URLSearchParams(Object.entries(query).filter(([,value]) => value !== undefined).map(([key,value]) => [key,String(value)]))}`),
   get: (id: string) => apiClient.get<WorkflowResponse>(`/automation/workflows/${id}`),
   create: (draft: WorkflowDraft) => apiClient.post<WorkflowResponse>('/automation/workflows', draft),
   validate: (draft: WorkflowDraft) => apiClient.post<{success:boolean;data:{valid:boolean;message:string}}>('/automation/workflows/validate', draft),

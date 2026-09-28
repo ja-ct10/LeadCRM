@@ -13,9 +13,9 @@ import { sanitizeCampaignHtml, renderCampaignMessage } from './campaign-content'
 export async function getCampaigns(tenantId: string, query: Record<string, unknown>) {
   const { page, limit } = getPaginationParams(query);
   const where: Prisma.CampaignWhereInput = { ...campaignScope(tenantId), isArchived: query.archived === 'true',
-    ...(query.status ? { status: z.nativeEnum(CampaignStatus).parse(query.status) } : {}),
-    ...(query.type ? { type: z.nativeEnum(CampaignType).parse(query.type) } : {}),
-    ...(query.search ? { name: { contains: String(query.search).slice(0, 150), mode: 'insensitive' } } : {}) };
+    ...(query.status ? { status: { in: z.array(z.nativeEnum(CampaignStatus)).parse(String(query.status).split(',')) } } : {}),
+    ...(query.type ? { type: { in: z.array(z.nativeEnum(CampaignType)).parse(String(query.type).split(',')) } } : {}),
+    ...(query.search ? { OR: ['name', 'description'].map(field => ({ [field]: { contains: String(query.search).slice(0, 150), mode: 'insensitive' as const } })) } : {}) };
   const [data, total] = await Promise.all([
     prisma.campaign.findMany({ where, skip: (page - 1) * limit, take: limit, orderBy: { createdAt: 'desc' }, include: { targetAudience: { select: { name: true } } } }),
     prisma.campaign.count({ where }),

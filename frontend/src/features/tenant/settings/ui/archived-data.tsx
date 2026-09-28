@@ -7,7 +7,7 @@ import { ARCHIVE_TYPES, type ArchivedRecord, type ArchiveType } from '@leadcrm/s
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
 import { DataGrid, type DataGridColumnDef } from '@/shared/components/data-grid';
 import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
-import { PaginationControls } from '@/shared/components/crm/pagination-controls';
+import { LeadsPagination } from '@/shared/components/crm/leads-pagination';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
 import { archivedDataService } from '../services/archived-data.service';
@@ -33,7 +33,7 @@ export function ArchivedData(): React.ReactElement {
   const [restoring, setRestoring] = useState(false);
   const busy = useRef(false);
   useEffect(() => { setSelectedIds(new Set()); setPending(null); }, [identity]);
-  const { data, error, isInitialLoad, refetch } = useCachedPage({
+  const { data, error, isInitialLoad, isRefreshing, refetch } = useCachedPage({
     module: 'archived-crm', params: { filter, page, pageSize }, disabled: false,
     intervalMs: 60_000, revalidateOnInvalidation: true,
     fetchFn: signal => archivedDataService.list(filter, page, pageSize, signal),
@@ -141,10 +141,10 @@ export function ArchivedData(): React.ReactElement {
             enableColumnMenu={false} emptyMessage={error ? 'Unable to load archived records.' : 'No archived records found.'}
             ariaLabel="Archived data grid" />
         )}
-        {!isInitialLoad && !error && total > 0 && <div inert={restoring}>
-          <PaginationControls currentPage={page} totalRecords={total} pageSize={pageSize}
+        {!isInitialLoad && !error && <div inert={restoring}>
+          <LeadsPagination currentPage={page} totalRecords={total} pageSize={pageSize}
             onPageChange={changePage} onPageSizeChange={size => { setPageSize(size); changePage(1); }}
-            className="flex-wrap gap-3 px-0 border-0 bg-transparent dark:bg-transparent" />
+            refreshing={isRefreshing} disabled={restoring || isRefreshing} />
         </div>}
         <ConfirmActionDialog open={pending !== null} onOpenChange={open => { if (!open && !restoring) setPending(null); }}
           title={pending?.bulk ? 'Restore selected records?' : 'Restore record?'}

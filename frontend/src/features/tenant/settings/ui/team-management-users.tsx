@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
 import { usePagination } from '@/shared/hooks/use-pagination';
-import { Pagination } from '@/shared/components/ui/pagination';
+import { LeadsPagination, LEADS_PAGE_SIZES } from '@/shared/components/crm/leads-pagination';
 import { invitationsApi } from '@/shared/services/invitations.api';
 import { auditApi } from '@/shared/services/audit.api';
 import { FilterGroupSection } from '@/shared/components/crm/module-workspace';
@@ -312,10 +312,10 @@ export function UsersSubTab({ onUsersLoaded }: { onUsersLoaded?: (users: User[])
     });
   }, [tenantUsers, search, roleFilter, statusFilter, departmentFilter]);
 
-  const { currentPage, totalPages, pageSize, totalItems, paginateItems, goToPage, setPageSize } = usePagination({
+  const { currentPage, pageSize, totalItems, paginateItems, goToPage, setPageSize } = usePagination({
     totalItems: filtered.length,
     initialPageSize: 25,
-    pageSizeOptions: [10, 25, 50],
+    pageSizeOptions: LEADS_PAGE_SIZES,
     resetDeps: [search, roleFilter, statusFilter, departmentFilter],
   });
   const paginated = paginateItems(filtered);
@@ -428,15 +428,13 @@ export function UsersSubTab({ onUsersLoaded }: { onUsersLoaded?: (users: User[])
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <Pagination
+      {!loading && !loadError && (
+        <LeadsPagination
           currentPage={currentPage}
-          totalPages={totalPages}
           pageSize={pageSize}
-          totalItems={totalItems}
+          totalRecords={totalItems}
           onPageChange={goToPage}
           onPageSizeChange={setPageSize}
-          pageSizeOptions={[10, 25, 50]}
         />
       )}
 

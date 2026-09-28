@@ -5,10 +5,11 @@ import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } f
 import { arrayMove } from '@dnd-kit/sortable';
 import { toast } from 'sonner';
 import { FormDefinitionSchema, DEFAULT_DESIGN, DEFAULT_SETTINGS } from '@leadcrm/shared';
+import { useAuth } from '@/store/AuthContext';
 import { RowActionsMenu } from '@/shared/components/data-grid/row-actions-menu';
 import { Dialog, DialogContent } from '@/shared/components/ui/dialog';
 import type { FormField, FormFieldType, FormRecord } from '../types/form.types';
-import { getEmbedCode, getShareLink, publishForm, updateForm } from '../services/forms.service';
+import { getEmbedCode, getShareLink, publishForm, unpublishForm, updateForm } from '../services/forms.service';
 import { FormCanvas } from './form-canvas';
 import { FieldPalette, isPaletteDrag, paletteTypeFromId } from './field-palette';
 import { FormSettingsPanel } from './form-settings-panel';
@@ -20,6 +21,8 @@ function makeField(type: FormFieldType): FormField {
   return { id: 'field_' + crypto.randomUUID(), type, label: labels[type] ?? type.charAt(0).toUpperCase() + type.slice(1), required: false, mapToField: mapping[type as keyof typeof mapping], ...(['dropdown', 'radio'].includes(type) ? { options: ['Option 1', 'Option 2'] } : {}) };
 }
 export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormRecord; onBack: () => void; onFormUpdate: (form: FormRecord) => void }) {
+  const { userCan } = useAuth();
+  const canEdit = userCan('campaigns', 'canEdit');
   const [local, setLocal] = useState<FormRecord>({ ...form, design: { ...DEFAULT_DESIGN, ...form.design }, settings: { ...DEFAULT_SETTINGS, ...form.settings } });
   const [tab, setTab] = useState<'Builder' | 'Settings' | 'Share'>('Builder');
   const [panel, setPanel] = useState<'Fields' | 'Design'>('Fields');
@@ -68,6 +71,20 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
       toast.success(publish ? 'Form published' : 'Draft saved');
     } catch (err) { setError(err instanceof Error ? err.message : 'Unable to save form.'); } finally { setSaving(false); }
   }
+  async function unpublish() {
+    if (saving || !canEdit) return;
+    setSaving(true); setError('');
+    try {
+      const saved = await unpublishForm(local.id);
+      // Preserve unsaved edits while adopting the server publication state and revision.
+      setLocal(current => dirty ? { ...saved, name: current.name, fields: current.fields, design: current.design, settings: current.settings } : saved);
+      onFormUpdate(saved);
+      toast.success('Form unpublished.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to unpublish form.';
+      setError(message); toast.error(message);
+    } finally { setSaving(false); }
+  }
   function discard() { setLocal({ ...form, design: { ...DEFAULT_DESIGN, ...form.design }, settings: { ...DEFAULT_SETTINGS, ...form.settings } }); setDirty(false); setError(''); }
   const panelContent = <>
     <div className="flex border-b">{(['Fields', 'Design'] as const).map(t => <button key={t} type="button" onClick={() => setPanel(t)} className={'flex-1 p-3 text-sm ' + (panel === t ? 'border-b-2 border-blue-600 text-blue-600' : '')}>{t}</button>)}</div>
@@ -78,9 +95,12 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
       <header className="flex items-center gap-2 border-b py-3">
         <button aria-label="Back to Forms" disabled={saving} onClick={() => { if (dirty) { setError('Save or discard your edits before leaving.'); return; } onBack(); }} className="shrink-0 p-2"><ArrowLeft size={16} /></button>
         <h1 className="min-w-0 flex-1 truncate text-sm font-semibold">{local.name}</h1>
-        <span className="text-[9px] uppercase rounded bg-slate-100 text-slate-600 px-1">{local.publishedVersion ? 'Published' : 'Draft'}</span>
+        <span className="text-[9px] uppercase rounded bg-slate-100 text-slate-600 px-1">{local.status.toLowerCase() === 'published' ? 'Published' : 'Draft'}</span>
         <button disabled={saving} onClick={() => void save(true)} className="bg-blue-600 text-white rounded p-2 text-xs disabled:opacity-50">Publish</button>
-        <RowActionsMenu position="right" actions={[{ id: 'discard', label: 'Discard changes', disabled: saving || !dirty, onClick: discard }]} />
+        <RowActionsMenu label="More actions" position="right" actions={[
+          { id: 'discard', label: 'Discard changes', disabled: saving || !dirty, onClick: discard },
+          ...(local.status.toLowerCase() === 'published' ? [{ id: 'unpublish', label: 'Unpublish', disabled: saving || !canEdit, onClick: () => void unpublish() }] : []),
+        ]} />
       </header>
       <nav className="flex items-center border-b min-w-0">{(['Builder', 'Settings', 'Share'] as const).map(t => <button key={t} onClick={() => setTab(t)} className={'px-2 sm:px-4 py-3 text-xs ' + (tab === t ? 'text-blue-600 border-b-2 border-blue-600' : '')}>{t}</button>)}
         <button disabled={saving || !dirty} onClick={() => void save()} className="ml-auto text-xs text-blue-600 px-2 disabled:text-slate-400">{saving ? 'Saving…' : 'Save draft'}</button>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 const mocks = vi.hoisted(() => ({ list: vi.fn() }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'admin', tenantId: 't' }, userCan: () => true }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ roles: [{ id: 'r', name: 'Sales', isArchived: false, isSystemRole: false }], refreshRoles: vi.fn() }) }));
@@ -71,4 +71,20 @@ it('uses a responsive filter rail with persisted departments and roles and combi
   expect(screen.getByRole('button', { name: 'View Ben Sales' })).toBeTruthy();
   fireEvent.click(screen.getByLabelText('Close filters'));
   expect(screen.queryByRole('complementary')).toBeNull();
+});
+
+it('shows Leads pagination on a single page and pages the complete API-backed user set', async () => {
+  const users = Array.from({ length: 27 }, (_, index) => ({ id: String(index), tenantId: 't', firstName: 'Saved', lastName: `User ${index}`, email: `user${index}@example.com`, role: 'Sales', status: 'active' }));
+  mocks.list.mockResolvedValue({ data: users, meta: { total: 27, page: 1, limit: 100, hasMore: false } });
+  render(<UsersSubTab />); await screen.findByText('Page 1 of 2');
+  fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+  await screen.findByText('Saved User 26');
+  expect(screen.queryByText('Saved User 0')).toBeNull();
+  fireEvent.click(screen.getByLabelText('Records per page'));
+  fireEvent.click(screen.getByRole('option', { name: '50' }));
+  await screen.findByText('Page 1 of 1');
+  expect(screen.getByText('27 total records')).toBeTruthy();
+  expect((screen.getByLabelText('Next page') as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(screen.getByPlaceholderText('Search users...'), { target: { value: 'user26@' } });
+  await waitFor(() => expect(screen.getByText('1 total record')).toBeTruthy());
 });

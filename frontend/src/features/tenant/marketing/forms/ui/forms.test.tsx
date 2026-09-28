@@ -19,7 +19,7 @@ describe('Forms UI', () => {
   });
   it('uses the portal menu with exactly Edit, Duplicate, Delete', async () => {
     vi.mocked(service.getFormsByTenant).mockResolvedValue([form]); render(<FormsPage />); await screen.findByText('Contact Us');
-    fireEvent.click(screen.getByLabelText('Row actions')); const menu = screen.getByRole('menu'); expect(within(menu).getAllByRole('menuitem').map(e => e.textContent)).toEqual(['Edit','Duplicate','Delete']);
+    fireEvent.click(screen.getByLabelText('More actions')); const menu = screen.getByRole('menu'); expect(within(menu).getAllByRole('menuitem').map(e => e.textContent)).toEqual(['Edit','Duplicate','Delete']);
     expect(menu.parentElement).toBe(document.body); fireEvent.keyDown(document, { key: 'Escape' }); expect(screen.queryByRole('menu')).toBeNull();
   });
   it('blocks published deletion with an explanation and allows deletion after unpublishing', async () => {
@@ -27,23 +27,53 @@ describe('Forms UI', () => {
     vi.mocked(service.getFormsByTenant).mockResolvedValue([published]);
     vi.mocked(service.unpublishForm).mockResolvedValue({ ...published, status: 'draft' });
     render(<FormsPage />); await screen.findByText('Contact Us');
-    fireEvent.click(screen.getByLabelText('Row actions'));
+    fireEvent.click(screen.getByLabelText('More actions'));
     expect((screen.getByRole('menuitem', { name: 'Delete' }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText('Unpublish this form before deleting it.')).toBeTruthy();
     fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
     expect(screen.queryByRole('alertdialog')).toBeNull();
-    fireEvent.keyDown(document, { key: 'Escape' });
-    fireEvent.click(screen.getByText('Unpublish')); await screen.findByText('Draft');
+    expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map(item => item.textContent?.split('Unpublish this')[0])).toEqual(['Edit', 'Duplicate', 'Unpublish', 'Delete']);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Unpublish' })); await screen.findByText('Draft');
     expect(service.unpublishForm).toHaveBeenCalledWith('form');
-    fireEvent.click(screen.getByLabelText('Row actions'));
+    fireEvent.click(screen.getByLabelText('More actions'));
     expect((screen.getByRole('menuitem', { name: 'Delete' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+  it('unpublishes from the builder menu, updates the list, and preserves unsaved edits', async () => {
+    const published = { ...form, status: 'published' as const, publishedVersion: 2 };
+    const updated = { ...published, status: 'draft' as const, revision: 3 };
+    vi.mocked(service.getFormsByTenant).mockResolvedValue([published]);
+    vi.mocked(service.unpublishForm).mockResolvedValue(updated);
+    render(<FormsPage />); await screen.findByText('Contact Us');
+    expect(screen.queryByText('Unpublish')).toBeNull();
+    fireEvent.click(screen.getByLabelText('Edit Contact Us'));
+    fireEvent.change(screen.getByLabelText('Form name'), { target: { value: 'Unsaved title' } });
+    fireEvent.click(screen.getByLabelText('More actions'));
+    expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Discard changes', 'Unpublish']);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Unpublish' }));
+    await screen.findByText('Draft');
+    expect(service.unpublishForm).toHaveBeenCalledWith('form');
+    expect((screen.getByLabelText('Form name') as HTMLInputElement).value).toBe('Unsaved title');
+    fireEvent.click(screen.getByLabelText('More actions'));
+    expect(screen.queryByRole('menuitem', { name: 'Unpublish' })).toBeNull();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Discard changes' }));
+    fireEvent.click(screen.getByLabelText('Back to Forms'));
+    fireEvent.click(screen.getByLabelText('More actions'));
+    expect((screen.getByRole('menuitem', { name: 'Delete' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+  it('keeps a published builder published if the unpublish request fails', async () => {
+    vi.mocked(service.unpublishForm).mockRejectedValue(new Error('Unpublish failed'));
+    render(<FormBuilderPage form={{ ...form, status: 'published', publishedVersion: 1 }} onBack={() => {}} onFormUpdate={() => {}} />);
+    fireEvent.click(screen.getByLabelText('More actions'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Unpublish' }));
+    await screen.findByRole('alert');
+    expect(screen.getByText('Published')).toBeTruthy();
   });
   it('requires confirmation, cancels without deleting, and prevents duplicate requests until success', async () => {
     vi.mocked(service.getFormsByTenant).mockResolvedValue([form]);
     let resolve!: () => void;
     vi.mocked(service.deleteForm).mockReturnValue(new Promise(done => { resolve = done; }));
     render(<FormsPage />); await screen.findByText('Contact Us');
-    const open = () => { fireEvent.click(screen.getByLabelText('Row actions')); fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' })); };
+    const open = () => { fireEvent.click(screen.getByLabelText('More actions')); fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' })); };
     open(); expect(service.deleteForm).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(service.deleteForm).not.toHaveBeenCalled();
@@ -59,7 +89,7 @@ describe('Forms UI', () => {
     vi.mocked(service.getFormsByTenant).mockResolvedValue([form]);
     vi.mocked(service.deleteForm).mockRejectedValue(new Error('Published forms must be unpublished before they can be deleted.'));
     render(<FormsPage />); await screen.findByText('Contact Us');
-    fireEvent.click(screen.getByLabelText('Row actions')); fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    fireEvent.click(screen.getByLabelText('More actions')); fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
     fireEvent.click(screen.getByRole('button', { name: 'Delete Form' }));
     await waitFor(() => expect((screen.getByRole('button', { name: 'Delete Form' }) as HTMLButtonElement).disabled).toBe(false));
     expect(screen.getByText('Contact Us')).toBeTruthy(); expect(screen.getByRole('alertdialog')).toBeTruthy();

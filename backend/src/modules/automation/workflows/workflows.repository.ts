@@ -19,6 +19,8 @@ export function findWorkflowById(id: string, tenantId: string) {
 export async function listWorkflows(tenantId: string, query: Record<string, unknown>) {
   const { page, limit } = getPaginationParams(query);
   const where: Prisma.WorkflowWhereInput = { tenantId, isArchived: query.archived === 'true',
+    ...(query.status ? { status: { in: String(query.status).split(',') } } : {}),
+    ...(query.trigger ? { trigger: { in: String(query.trigger).split(',') } } : {}),
     ...(query.isActive !== undefined ? { isActive: query.isActive === 'true' } : {}),
     ...(query.search ? { name: { contains: String(query.search), mode: 'insensitive' } } : {}) };
   const [rows, total] = await Promise.all([

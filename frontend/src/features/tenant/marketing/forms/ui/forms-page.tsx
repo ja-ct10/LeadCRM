@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Plus, Layout, Edit, Copy, Trash2 } from 'lucide-react';
+import { Plus, Layout, Edit, Copy, Trash2, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/store/AuthContext';
 import { RowActionsMenu } from '@/shared/components/data-grid/row-actions-menu';
@@ -70,24 +70,24 @@ export default function FormsPage({ onBuilderActiveChange }: { onBuilderActiveCh
         </button>
         <div className="flex justify-between items-center gap-2 p-4">
           <div className="min-w-0"><button className="text-sm font-semibold truncate max-w-full block" onClick={() => setActive(form)}>{form.name}</button><div className="text-xs text-slate-500 mt-1 flex gap-2"><Badge variant={form.status.toLowerCase() === 'published' ? 'default' : 'secondary'} className="uppercase px-1 py-0 text-[10px]">{form.status.toLowerCase() === 'published' ? 'Published' : 'Draft'}</Badge><span>{form.fields.length} fields</span></div></div>
-          <RowActionsMenu position="right" actions={[
+          <RowActionsMenu label="More actions" position="right" actions={[
             { id: 'edit', label: 'Edit', icon: <Edit size={14} />, onClick: () => setActive(form) },
             { id: 'duplicate', label: 'Duplicate', icon: <Copy size={14} />, disabled: busy, onClick: () => void mutate(async () => { const copy = await duplicateForm(form.id); setForms(items => [copy, ...items]); }) },
+            ...(form.status.toLowerCase() === 'published' ? [{ id: 'unpublish', label: 'Unpublish', icon: <EyeOff size={14} />, disabled: busy || !canEdit,
+              onClick: () => void mutate(async () => {
+                const requestedIdentity = identity;
+                const updated = await unpublishForm(form.id);
+                if (currentIdentity.current !== requestedIdentity) return;
+                setForms(items => items.map(item => item.id === updated.id ? updated : item));
+                toast.success('Form unpublished.');
+              }) }] : []),
             { id: 'delete', label: 'Delete', icon: <Trash2 size={14} />, destructive: true,
               disabled: busy || !canDelete || form.status.toLowerCase() === 'published',
               disabledReason: form.status.toLowerCase() === 'published' ? 'Unpublish this form before deleting it.' : undefined,
               onClick: () => setDeleteTarget(form) },
           ]} />
         </div>
-        {form.status.toLowerCase() === 'published' && canEdit && <div className="px-4 pb-4">
-          <button type="button" disabled={busy} className="text-xs text-blue-600 hover:underline disabled:opacity-50" onClick={() => void mutate(async () => {
-            const requestedIdentity = identity;
-            const updated = await unpublishForm(form.id);
-            if (currentIdentity.current !== requestedIdentity) return;
-            setForms(items => items.map(item => item.id === updated.id ? updated : item));
-            toast.success('Form unpublished.');
-          })}>Unpublish</button>
-        </div>}
+
       </article>)}</div>}
     <ConfirmActionDialog
       open={!!deleteTarget} onOpenChange={open => { if (!open && !busy) setDeleteTarget(null); }}

@@ -10,7 +10,7 @@ import { campaignsApi } from '@/shared/services/campaigns.api';
 import { templatesApi } from '@/shared/services/templates.api';
 import { EMAIL_VARIABLE_TOKENS, MarketingTemplateSchema, renderEmailVariables } from '@leadcrm/shared';
 import { FieldError } from './audience-panel';
-import { DataLoadingSkeleton } from '@/shared/components/crm/data-view-states';
+import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { useAuth } from '@/store/AuthContext';
 import { toast } from 'sonner';
 import { Plus, Send, X, Mail, MessageSquare, Megaphone, BarChart2, Eye, MousePointerClick, Edit2, Trash2, Play, Pause, Search, Filter, TrendingUp, TrendingDown, Copy, Calendar, ArrowLeft, SplitSquareHorizontal, ListOrdered, Monitor, Smartphone, Tags, Wand2, LayoutTemplate, Zap, Trophy, MoreVertical, Sparkles, Users, Loader2 } from 'lucide-react';
@@ -19,27 +19,14 @@ import { ModuleFilterRail } from '@/shared/components/crm/module-filter-rail';
 import { SideSheet } from '@/shared/components/side-sheet';
 import { CampaignReportView } from './campaign-report-view';
 import { CampaignBuilder } from './campaign-builder';
-import { usePagination } from '@/shared/hooks/use-pagination';
-import { Pagination } from '@/shared/components/ui/pagination';
+
+import { LeadsPagination } from '@/shared/components/crm/leads-pagination';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
 
 
 export default function CampaignsPage() {
 
 
-  // Route-scoped fetch — replaces DataContext Batch 2 startup load
-  const {
-    metrics,
-    campaigns: serverCampaigns,
-    templates: serverTemplates,
-    isInitialLoad,
-    isRefreshing,
-    error: campaignsError,
-    refetch: refetchCampaigns,
-  } = useCampaignsData();
-
-  const campaigns = serverCampaigns;
-  const templates = serverTemplates;
   const [editingCampaign, setEditingCampaign] = useState<Campaign | undefined>();
   const [builderSubject, setBuilderSubject] = useState('');
   const [templateErrors, setTemplateErrors] = useState<Record<string, string>>({});
@@ -53,6 +40,30 @@ export default function CampaignsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
+  const [currentPage, goToPage] = useState(1);
+  const [pageSize, updatePageSize] = useState(25);
+  const setPageSize = (size: number) => { updatePageSize(size); goToPage(1); };
+  // Route-scoped fetch — replaces DataContext Batch 2 startup load
+  const {
+    metrics,
+    total: totalItems,
+    campaigns: serverCampaigns,
+    templates: serverTemplates,
+    isInitialLoad,
+    isRefreshing,
+    error: campaignsError,
+    refetch: refetchCampaigns,
+  } = useCampaignsData({ query: { page: currentPage, limit: pageSize, search: searchTerm,
+    status: statusFilter.map(value => value.toUpperCase()).join(','),
+    type: typeFilter.map(value => value.toUpperCase().replace('-', '_')).join(','),
+  } });
+
+  const campaigns = serverCampaigns;
+  const templates = serverTemplates;
+  useEffect(() => { goToPage(1); }, [searchTerm, statusFilter, typeFilter, activeTab]);
+  useEffect(() => {
+    if (!isInitialLoad && !campaignsError && currentPage > Math.max(1, Math.ceil(totalItems / pageSize))) goToPage(Math.max(1, Math.ceil(totalItems / pageSize)));
+  }, [isInitialLoad, campaignsError, currentPage, totalItems, pageSize]);
   const [showFilters, setShowFilters] = useState(false);
   const [filterSearchTerm, setFilterSearchTerm] = useState('');
   const [selectedCampaignForReport, setSelectedCampaignForReport] = useState<Campaign | null>(null);
@@ -142,30 +153,7 @@ export default function CampaignsPage() {
   const emailTemplates = templates.filter(t => t.type === 'Email');
   const smsTemplates = templates.filter(t => t.type === 'SMS');
 
-  const filteredCampaigns = campaigns.filter(camp => {
-    if (camp.isArchived) return false;
-    const matchesSearch = !searchTerm ||
-      (camp.name ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (camp.description ?? '').toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter.length === 0 || statusFilter.some(s => (camp.status ?? '').toLowerCase() === s.toLowerCase());
-    const matchesType = typeFilter.length === 0 || typeFilter.some(t => (camp.type ?? '').toLowerCase() === t.toLowerCase());
-    return matchesSearch && matchesStatus && matchesType;
-  });
-
-  const {
-    currentPage,
-    pageSize,
-    totalPages,
-    totalItems,
-    goToPage,
-    setPageSize,
-    paginateItems,
-  } = usePagination({
-    totalItems: filteredCampaigns.length,
-    initialPageSize: 25,
-    pageSizeOptions: [10, 25, 50, 100],
-    resetDeps: [searchTerm, statusFilter, typeFilter, activeTab],
-  });
+  const filteredCampaigns = campaigns;
 
   if (showBuilder) {
     return <CampaignBuilder key={`${user?.tenantId}:${user?.activeEnvironment}`} initialCampaign={editingCampaign} initialType={builderInitialType} initialContent={builderInitialContent} initialSubject={builderSubject} canSend={canSendCampaign}
@@ -180,15 +168,6 @@ export default function CampaignsPage() {
         onMetricTabChange={setActiveMetricTab}
         onBack={() => setSelectedCampaignForReport(null)}
       />
-    );
-  }
-
-  // ── Initial load skeleton ─────────────────────────────────────────────────
-  if (isInitialLoad) {
-    return (
-      <div className="p-4 lg:p-6">
-        <DataLoadingSkeleton rowCount={6} columnCount={5} />
-      </div>
     );
   }
 
@@ -222,7 +201,7 @@ export default function CampaignsPage() {
             Campaigns
           </h1>
           <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 shrink-0">
-            {filteredCampaigns.length} total
+            {isInitialLoad ? '…' : totalItems} total
           </span>
         </div>
         {canCreateCampaign && campaigns.length > 0 && (
@@ -380,7 +359,7 @@ export default function CampaignsPage() {
 
       {/* Tab Content */}
       {activeTab === 'all' && (
-        campaigns.length === 0 ? (
+        totalItems === 0 && !searchTerm && !statusFilter.length && !typeFilter.length && !isInitialLoad ? (
           <div className="py-12">
             <EmptyState
               type="campaigns"
@@ -430,7 +409,7 @@ export default function CampaignsPage() {
                 onToggleFilters={() => setShowFilters(false)}
                 filterSearchTerm={filterSearchTerm}
                 onFilterSearch={setFilterSearchTerm}
-                totalRecords={filteredCampaigns.length}
+                totalRecords={totalItems}
                 onClearFilters={searchTerm || statusFilter.length || typeFilter.length ? () => { setSearchTerm(''); setStatusFilter([]); setTypeFilter([]); } : undefined}
                 filterGroups={[
                   { id: 'status', label: 'Status', items: [
@@ -471,7 +450,7 @@ export default function CampaignsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
-                    {filteredCampaigns.length > 0 ? paginateItems(filteredCampaigns).map(camp => (
+                    {isInitialLoad ? <tr><td colSpan={7}><TableLoadingState label="Loading campaigns..." /></td></tr> : filteredCampaigns.length > 0 ? filteredCampaigns.map(camp => (
                       <tr key={camp.id} className="hover:bg-white dark:bg-white/2 transition-colors group">
                         <td className="px-6 py-4">
                           <div className="font-medium text-slate-900 dark:text-white">{camp.name}</div>
@@ -572,12 +551,11 @@ export default function CampaignsPage() {
             </div>
 
             <div className="mt-4">
-              <Pagination
+              <LeadsPagination
                 currentPage={currentPage}
-                totalPages={totalPages}
                 pageSize={pageSize}
-                totalItems={totalItems}
-                pageSizeOptions={[10, 25, 50, 100]}
+                totalRecords={totalItems}
+                loading={isInitialLoad} refreshing={isRefreshing} disabled={isInitialLoad || isRefreshing}
                 onPageChange={goToPage}
                 onPageSizeChange={setPageSize}
               />

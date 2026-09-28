@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo, ReactNode } from 'react';
 import {
   List, LayoutGrid, Table2, Columns3, Grid3X3,
-  TrendingUp, Filter, RefreshCw, Search,
+  TrendingUp, Search,
   Settings2, ChevronDown, ChevronLeft, ChevronRight, X, Upload,
   ListOrdered, Eye, Check, FileUp, UserPlus, Plus,
 } from 'lucide-react';
@@ -15,6 +15,8 @@ import { useViewTypePreference } from '@/shared/hooks/use-view-type-preference';
 import { VIEW_OPTIONS as VIEW_RENDERERS } from './view-registry';
 import { validateModuleConfig } from './validate-module-config';
 import { ModuleFilterRail, type FilterGroup } from './module-filter-rail';
+import { FilterButton } from './filter-button';
+import { RefreshButton } from './refresh-button';
 import { TableLoadingState } from './table-loading-state';
 import { PaginationControls } from './pagination-controls';
 import {
@@ -353,26 +355,7 @@ export function ModuleWorkspace({
         <div className="flex flex-wrap items-center gap-2 sm:contents">
 
           {/* 2. Filter toggle */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={onToggleFilters}
-                  aria-label={`Filter ${title}`}
-                  className={cn(
-                    'inline-flex items-center gap-1.5 h-8 px-3 text-[12px] font-semibold rounded-lg border transition-colors',
-                    showFilters
-                      ? 'bg-[#2563EB] text-white border-[#2563EB]'
-                      : 'bg-white dark:bg-slate-800 text-[#5A6B85] dark:text-slate-300 border-[#E4E9F0] dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700',
-                  )}
-                >
-                  <Filter size={13} aria-hidden="true" />
-                  Filter
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Filter {title}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <FilterButton title={title} open={showFilters} onClick={onToggleFilters} />
 
           {/* 3. Page-size selector */}
           {onPageSizeChange && (
@@ -523,21 +506,7 @@ export function ModuleWorkspace({
 
           {/* Refresh */}
           {onRefresh && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={() => { if (!refreshDisabled && !loading) onRefresh(); }}
-                    disabled={refreshDisabled || loading}
-                    className="p-1.5 text-[#5A6B85] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-                    aria-label="Refresh"
-                  >
-                    <RefreshCw size={15} aria-hidden="true" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>Refresh</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <RefreshButton onClick={() => onRefresh()} disabled={refreshDisabled || loading} refreshing={loading} />
           )}
 
           {/* Extra toolbar (pipeline selector, etc.) */}
