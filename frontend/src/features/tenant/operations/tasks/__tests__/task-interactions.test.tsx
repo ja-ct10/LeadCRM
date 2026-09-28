@@ -225,3 +225,23 @@ it("uses saved table order and selects only the displayed page", () => {
   fireEvent.click(screen.getByRole("button", { name: "Due date" }));
   expect(sort).toHaveBeenCalledWith({ sortBy: "dueDate", sortOrder: "desc" });
 });
+
+it("keeps multiple checked records across searches and supports removing and clearing", async()=>{
+  api.options.mockImplementation(async (_kind,search)=>({data:search?[{id:"b",label:"Beta"}]:[{id:"a",label:"Alpha"},{id:"b",label:"Beta"}]}));
+  function Multiple(){const [ids,setIds]=useState<string[]>([]);return <><output aria-label="Selected IDs">{ids.join(",")}</output><TaskSelector multiple kind="lead" label="Leads" value={ids} onChange={setIds}/></>}
+  render(<Multiple/>);
+  fireEvent.click(screen.getByRole("button",{name:"Leads"}));
+  fireEvent.click(await screen.findByRole("checkbox",{name:"Alpha"}));
+  fireEvent.change(screen.getByRole("textbox",{name:"Search lead"}),{target:{value:"Beta"}});
+  fireEvent.click(await screen.findByRole("checkbox",{name:"Beta"}));
+  expect(screen.getByLabelText("Selected IDs").textContent).toBe("a,b");
+  fireEvent.click(screen.getByRole("button",{name:"Done"}));
+  expect(screen.getByRole("button",{name:"Leads"}).textContent).toContain("Alpha +1");
+  fireEvent.click(screen.getByRole("button",{name:"Leads"}));
+  const alpha=await screen.findByRole("checkbox",{name:"Alpha"}) as HTMLInputElement;
+  expect(alpha.checked).toBe(true);
+  fireEvent.click(alpha);
+  expect(screen.getByLabelText("Selected IDs").textContent).toBe("b");
+  fireEvent.click(screen.getByRole("button",{name:"Clear selection"}));
+  expect(screen.getByLabelText("Selected IDs").textContent).toBe("");
+});

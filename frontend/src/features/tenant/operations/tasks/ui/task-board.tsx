@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   DndContext,
   KeyboardSensor,
@@ -203,12 +204,27 @@ export default function TaskBoard() {
   const data = useTasks(query);
   const columnPreferences = useTaskColumns(data.identity, data.canRead);
   const [columnsOpen, setColumnsOpen] = useState(false);
+  const bulkBarRef = useRef<HTMLElement>(null);
+  const [bulkBarHeight, setBulkBarHeight] = useState(0);
+  const hasSelection = selected.length > 0;
+  useEffect(() => {
+    if (!hasSelection || !bulkBarRef.current) {
+      setBulkBarHeight(0);
+      return;
+    }
+    const bar = bulkBarRef.current;
+    const measure = () => setBulkBarHeight(bar.getBoundingClientRect().height);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, [hasSelection]);
   const identity = useRef(data.identity);
   identity.current = data.identity;
   useEffect(() => {
     setSelected([]);
     setBulkAction(null);
-  }, [JSON.stringify(query), data.identity]);
+  }, [JSON.stringify(query), data.identity, view]);
   useEffect(() => {
     setEditor(null);
     setColumnsOpen(false);
@@ -294,7 +310,10 @@ export default function TaskBoard() {
       </div>
     );
   return (
-    <div className="space-y-4 p-4 text-foreground sm:p-6 lg:p-8">
+    <div
+      className="space-y-4 p-4 text-foreground sm:p-6 lg:p-8"
+      style={hasSelection ? { paddingBottom: bulkBarHeight + 48 } : undefined}
+    >
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="mt-1 text-2xl font-semibold">Tasks</h1>
@@ -470,89 +489,6 @@ export default function TaskBoard() {
           {notice}
         </p>
       )}
-      {selected.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-secondary/40 p-3">
-          <span className="mr-2 text-sm">{selected.length} selected</span>
-          <Button size="sm" variant="ghost" onClick={() => setSelected([])}>
-            Clear selection
-          </Button>
-          {canEdit && (
-            <>
-              <Button
-                size="sm"
-                disabled={busy}
-                onClick={() => void runBulk("complete")}
-              >
-                Mark done
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={busy}
-                onClick={() => setBulkAction("assign")}
-              >
-                Assign
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={busy}
-                onClick={() => setBulkAction("reschedule")}
-              >
-                Reschedule
-              </Button>
-            </>
-          )}
-          {canArchive && (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={busy}
-              onClick={() => setBulkAction("archive")}
-            >
-              Archive
-            </Button>
-          )}
-          {bulkAction && (
-            <div className="w-full space-y-3 border-t border-border pt-3">
-              {bulkAction === "assign" ? (
-                <TaskSelector
-                  kind="user"
-                  label="New owner"
-                  required
-                  value={owner}
-                  onChange={setOwner}
-                />
-              ) : bulkAction === "reschedule" ? (
-                <label className="block text-sm">
-                  New due date and time
-                  <input
-                    className={taskInputClass}
-                    type="datetime-local"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                  />
-                </label>
-              ) : (
-                <p className="text-sm">
-                  Archive {selected.length} selected tasks? They remain
-                  available in the archive.
-                </p>
-              )}
-              <Button
-                disabled={
-                  busy ||
-                  (bulkAction === "assign" && !owner) ||
-                  (bulkAction === "reschedule" && !date)
-                }
-                onClick={() => void runBulk(bulkAction)}
-              >
-                Confirm {bulkAction}
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
       {data.loading ? (
         <div
           role="status"
@@ -684,6 +620,113 @@ export default function TaskBoard() {
           </>
         )
       )}
+      {selected.length > 0 &&
+        createPortal(
+          <section
+            ref={bulkBarRef}
+            aria-label="Selected task actions"
+            className="fixed inset-x-4 bottom-4 z-40 mx-auto flex w-fit max-w-[calc(100%-2rem)] flex-wrap items-center justify-center gap-2 rounded-xl border border-border bg-background p-3 shadow-xl"
+            style={{ bottom: "max(1rem, env(safe-area-inset-bottom))" }}
+          >
+            <span aria-live="polite" className="mr-2 text-sm">
+              {selected.length} selected
+            </span>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={busy}
+              onClick={() => {
+                setSelected([]);
+                setBulkAction(null);
+              }}
+            >
+              Clear selection
+            </Button>
+            {canEdit && (
+              <>
+                <Button
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => void runBulk("complete")}
+                >
+                  Mark done
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => setBulkAction("assign")}
+                >
+                  Assign
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => setBulkAction("reschedule")}
+                >
+                  Reschedule
+                </Button>
+              </>
+            )}
+            {canArchive && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                onClick={() => setBulkAction("archive")}
+              >
+                Archive
+              </Button>
+            )}
+            {bulkAction && (
+              <div className="w-full space-y-3 border-t border-border pt-3">
+                {bulkAction === "assign" ? (
+                  <TaskSelector
+                    kind="user"
+                    label="New owner"
+                    required
+                    value={owner}
+                    onChange={setOwner}
+                  />
+                ) : bulkAction === "reschedule" ? (
+                  <label className="block text-sm">
+                    New due date and time
+                    <input
+                      className={taskInputClass}
+                      type="datetime-local"
+                      value={date}
+                      onChange={(e) => setDate(e.target.value)}
+                    />
+                  </label>
+                ) : (
+                  <p className="text-sm">
+                    Archive {selected.length} selected tasks? They remain
+                    available in the archive.
+                  </p>
+                )}
+                <Button
+                  disabled={
+                    busy ||
+                    (bulkAction === "assign" && !owner) ||
+                    (bulkAction === "reschedule" && !date)
+                  }
+                  onClick={() => void runBulk(bulkAction)}
+                >
+                  Confirm {bulkAction}
+                </Button>
+                <Button
+                  variant="ghost"
+                  disabled={busy}
+                  onClick={() => setBulkAction(null)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            )}
+          </section>,
+          document.body,
+        )}
       {columnPreferences.error && (
         <p role="alert" className="text-sm text-destructive">
           {columnPreferences.error}{" "}

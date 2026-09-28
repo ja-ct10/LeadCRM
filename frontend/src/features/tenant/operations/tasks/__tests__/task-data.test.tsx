@@ -133,3 +133,13 @@ describe("Task query owner", () => {
     });
   });
 });
+
+it("validates bounded multiple links and finds tasks through secondary links",()=>{
+  expect(UpdateTaskSchema.parse({leadIds:["a","a","b"]}).leadIds).toEqual(["a","b"]);
+  expect(UpdateTaskSchema.safeParse({leadId:"a",leadIds:["b"]}).success).toBe(false);
+  expect(UpdateTaskSchema.safeParse({leadIds:Array.from({length:51},(_,i)=>String(i))}).success).toBe(false);
+  const result=localTaskQuery([{...task,leadId:"a",leadIds:["a","b"]}],{leadId:"b"});
+  expect(result.page.data).toHaveLength(1);
+  expect(result.summary.total).toBe(1);
+  expect(localTaskQuery([{...task,leadId:null,leadIds:[]}],{leadId:"b"}).page.data).toHaveLength(0);
+});

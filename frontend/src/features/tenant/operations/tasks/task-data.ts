@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   TASK_STATUSES,
+  taskAssociationIds,
   TaskQuerySchema,
   TaskStatusSchema,
   isTaskOverdue,
@@ -27,10 +28,14 @@ export function localTaskQuery(
         (!query.priority || task.priority === query.priority) &&
         (!query.assignedUserId ||
           task.assignedUserId === query.assignedUserId) &&
-        (!query.leadId || task.leadId === query.leadId) &&
-        (!query.contactId || task.contactId === query.contactId) &&
-        (!query.dealId || task.dealId === query.dealId) &&
-        (!query.accountId || task.accountId === query.accountId) &&
+        (!query.leadId ||
+          taskAssociationIds(task, "lead").includes(query.leadId)) &&
+        (!query.contactId ||
+          taskAssociationIds(task, "contact").includes(query.contactId)) &&
+        (!query.dealId ||
+          taskAssociationIds(task, "deal").includes(query.dealId)) &&
+        (!query.accountId ||
+          taskAssociationIds(task, "account").includes(query.accountId)) &&
         (query.state !== "active" ||
           !["completed", "cancelled"].includes(status)) &&
         (query.state !== "completed" || status === "completed") &&

@@ -7,6 +7,10 @@ import {
   TaskBulkSchema,
   TaskOptionsQuerySchema,
   TaskStatusSchema,
+  TASK_LINK_KINDS,
+  taskAssociationIds,
+  type TaskLinkInput,
+  type TaskAssociations,
   type TaskRecord,
   type TaskSummary,
   type TaskBulkResult,
@@ -38,6 +42,46 @@ function requireScope(tenantId: string) {
       "A matching CRM environment is required for tasks.",
     );
 }
+function storedLinks(task: repo.TaskRow): TaskAssociations {
+  return {
+    leadIds: [
+      ...new Set([
+        ...(task.leadLinks ?? []).map((row) => row.leadId),
+        ...(task.leadId ? [task.leadId] : []),
+      ]),
+    ],
+    contactIds: [
+      ...new Set([
+        ...(task.contactLinks ?? []).map((row) => row.contactId),
+        ...(task.contactId ? [task.contactId] : []),
+      ]),
+    ],
+    dealIds: [
+      ...new Set([
+        ...(task.dealLinks ?? []).map((row) => row.dealId),
+        ...(task.dealId ? [task.dealId] : []),
+      ]),
+    ],
+    accountIds: [
+      ...new Set([
+        ...(task.accountLinks ?? []).map((row) => row.accountId),
+        ...(task.accountId ? [task.accountId] : []),
+      ]),
+    ],
+  };
+}
+function splitLinks<T extends TaskLinkInput>(dto: T) {
+  const { leadIds, contactIds, dealIds, accountIds, ...data } = dto;
+  const links: TaskAssociations = {};
+  for (const kind of TASK_LINK_KINDS) {
+    if (dto[`${kind}Ids`] !== undefined || dto[`${kind}Id`] !== undefined) {
+      const ids = taskAssociationIds(dto, kind);
+      links[`${kind}Ids`] = ids;
+      data[`${kind}Id`] = ids[0] ?? null;
+    }
+  }
+  return { data, links };
+}
 export function serializeTask(task: repo.TaskRow): TaskRecord {
   const person = (value: typeof task.assignedUser | null) =>
     value?.tenantId === task.tenantId
@@ -47,6 +91,7 @@ export function serializeTask(task: repo.TaskRow): TaskRecord {
     value?.environment === task.environment ? person(value) : null;
   return {
     id: task.id,
+    ...storedLinks(task),
     tenantId: task.tenantId,
     environment: task.environment,
     title: task.title,
@@ -66,6 +111,40 @@ export function serializeTask(task: repo.TaskRow): TaskRecord {
     contactId: task.contactId,
     dealId: task.dealId,
     accountId: task.accountId,
+    leads: (task.leadLinks?.length
+      ? task.leadLinks.map((row) => row.lead)
+      : task.lead
+        ? [task.lead]
+        : []
+    ).flatMap((row) => linkedPerson(row) ?? []),
+    contacts: (task.contactLinks?.length
+      ? task.contactLinks.map((row) => row.contact)
+      : task.contact
+        ? [task.contact]
+        : []
+    ).flatMap((row) => linkedPerson(row) ?? []),
+    deals: (task.dealLinks?.length
+      ? task.dealLinks.map((row) => row.deal)
+      : task.deal
+        ? [task.deal]
+        : []
+    )
+      .filter(
+        (row) =>
+          row.tenantId === task.tenantId &&
+          row.environment === task.environment,
+      )
+      .map(({ id, title }) => ({ id, title })),
+    accounts: (task.accountLinks ?? [])
+      .filter(
+        (row) =>
+          row.account.tenantId === task.tenantId &&
+          row.account.environment === task.environment,
+      )
+      .map(({ account: { id, name } }) => ({ id, name })),
+    account:
+      task.accountLinks?.find((row) => row.accountId === task.accountId)
+        ?.account ?? null,
     assignedUser: person(task.assignedUser),
     assignedByUser: person(task.assignedBy),
     completedBy: person(task.completedBy),
@@ -111,13 +190,7 @@ export async function getTaskById(id: string, tenantId: string) {
 async function validateReferences(
   tenantId: string,
   userId: string,
-  data: {
-    assignedUserId?: string;
-    leadId?: string | null;
-    contactId?: string | null;
-    dealId?: string | null;
-    accountId?: string | null;
-  },
+  data: TaskLinkInput & { assignedUserId?: string },
   client: repo.TaskClient,
 ) {
   if (!(await repo.findTaskUser(userId, tenantId, client)))
@@ -128,13 +201,18 @@ async function validateReferences(
   )
     throw new NotFoundError("Active workspace assignee");
   for (const kind of ["lead", "contact", "deal", "account"] as const) {
-    const id = data[`${kind}Id`];
-    if (id && !(await repo.findTaskLink(kind, id, tenantId, client)))
+    const ids = taskAssociationIds(data, kind);
+    if (
+      ids.length &&
+      (await repo.findTaskLinkIds(kind, ids, tenantId, client)).length !==
+        ids.length
+    )
       throw new NotFoundError("Related record");
   }
 }
 function auditState(task: repo.TaskRow) {
   return {
+    ...storedLinks(task),
     title: task.title,
     description: task.description,
     status: task.status,
@@ -162,9 +240,11 @@ export async function createTask(
     throw new ValidationError("Task reminder delivery is not available.");
   const task = await repo.withTaskTransaction(async (client) => {
     await validateReferences(tenantId, userId, dto, client);
-    return repo.createTask(
+    await validateDependentLinks(tenantId, dto, undefined, client);
+    const { data, links } = splitLinks(dto);
+    const created = await repo.createTask(
       {
-        ...dto,
+        ...data,
         tenantId,
         assignedById: userId,
         ...(dto.status === "completed"
@@ -173,6 +253,9 @@ export async function createTask(
       },
       client,
     );
+    if (!Object.keys(links).length) return created;
+    await repo.replaceTaskLinks(created, links, client);
+    return (await repo.findTaskById(created.id, tenantId, client))!;
   });
   await writeAuditLog({
     tenantId,
@@ -198,7 +281,9 @@ export async function updateTask(
     await validateReferences(tenantId, userId, dto, client);
     if (dto.reminderAt && dto.reminderAt !== before.reminderAt?.toISOString())
       throw new ValidationError("Task reminder delivery is not available.");
-    const data: Prisma.TaskUncheckedUpdateInput = { ...dto };
+    await validateDependentLinks(tenantId, dto, before, client);
+    const split = splitLinks(dto);
+    const data: Prisma.TaskUncheckedUpdateInput = { ...split.data };
     if (dto.assignedUserId && dto.assignedUserId !== before.assignedUserId)
       data.assignedById = userId;
     if (dto.status === "completed" && before.status !== "completed") {
@@ -215,7 +300,11 @@ export async function updateTask(
       Object.keys(dto).length === 1
     )
       return { before, task: before, changed: false };
-    const task = await repo.updateTask(id, tenantId, data, client);
+    let task = await repo.updateTask(id, tenantId, data, client);
+    if (Object.keys(split.links).length) {
+      await repo.replaceTaskLinks(task, split.links, client);
+      task = (await repo.findTaskById(id, tenantId, client))!;
+    }
     return { before, task, changed: true };
   });
   if (result.changed)
@@ -363,5 +452,37 @@ export async function getTaskOptions(
 ) {
   requireScope(tenantId);
   const query = parseInput(TaskOptionsQuerySchema, input);
-  return repo.findTaskOptions(tenantId, query.kind, query.search);
+  return repo.findTaskOptions(
+    tenantId,
+    query.kind,
+    query.search,
+    query.leadIds,
+  );
+}
+
+/** New plural writes obey the cascading picker; legacy Workflow inputs retain their contract. */
+async function validateDependentLinks(
+  tenantId: string,
+  dto: TaskLinkInput,
+  before: repo.TaskRow | undefined,
+  client: repo.TaskClient,
+) {
+  if (!TASK_LINK_KINDS.some((kind) => dto[`${kind}Ids`] !== undefined)) return;
+  const effective = {
+    ...(before ? storedLinks(before) : {}),
+    ...splitLinks(dto).links,
+  };
+  const leads = effective.leadIds ?? [];
+  if (!leads.length) return;
+  for (const kind of ["contact", "deal", "account"] as const) {
+    const ids = effective[`${kind}Ids`] ?? [];
+    if (
+      ids.length &&
+      (await repo.findTaskLinkIds(kind, ids, tenantId, client, leads))
+        .length !== ids.length
+    )
+      throw new ValidationError(
+        "Select only records explicitly linked to the selected leads.",
+      );
+  }
 }

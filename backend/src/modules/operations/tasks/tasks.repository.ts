@@ -1,11 +1,27 @@
 import { Prisma } from "@prisma/client";
-import { TaskQuery, TaskOptionKind } from "@leadcrm/shared";
+import {
+  TaskQuery,
+  TaskOptionKind,
+  TaskAssociations,
+  TaskLinkKind,
+} from "@leadcrm/shared";
+import { environmentContext } from "../../../core/environment/environment-context";
+import { NotFoundError } from "../../../shared/errors/http-error";
 import prisma from "../../../config/database.config";
 import { ConflictError } from "../../../shared/errors/http-error";
 
 export type TaskClient = Pick<
   Prisma.TransactionClient,
-  "task" | "user" | "lead" | "contact" | "deal" | "account"
+  | "task"
+  | "user"
+  | "lead"
+  | "contact"
+  | "deal"
+  | "account"
+  | "taskLead"
+  | "taskContact"
+  | "taskDeal"
+  | "taskAccount"
 >;
 const person = {
   id: true,
@@ -14,6 +30,30 @@ const person = {
   tenantId: true,
 } as const;
 export const taskInclude = {
+  leadLinks: {
+    orderBy: [{ position: "asc" }, { leadId: "asc" }],
+    include: { lead: { select: { ...person, environment: true } } },
+  },
+  contactLinks: {
+    orderBy: [{ position: "asc" }, { contactId: "asc" }],
+    include: { contact: { select: { ...person, environment: true } } },
+  },
+  dealLinks: {
+    orderBy: [{ position: "asc" }, { dealId: "asc" }],
+    include: {
+      deal: {
+        select: { id: true, title: true, tenantId: true, environment: true },
+      },
+    },
+  },
+  accountLinks: {
+    orderBy: [{ position: "asc" }, { accountId: "asc" }],
+    include: {
+      account: {
+        select: { id: true, name: true, tenantId: true, environment: true },
+      },
+    },
+  },
   assignedUser: { select: person },
   assignedBy: { select: person },
   completedBy: { select: person },
@@ -74,16 +114,16 @@ export function taskWhere(
         ...(query.dueTo ? { lt: new Date(query.dueTo) } : {}),
       },
     });
+  for (const kind of ["lead", "contact", "deal", "account"] as const) {
+    const id = query[`${kind}Id`];
+    if (id) AND.push(taskAssociationWhere(kind, id, tenantId));
+  }
   return {
     tenantId,
     isArchived: query.archived,
     AND,
     ...(query.priority ? { priority: query.priority } : {}),
     ...(query.assignedUserId ? { assignedUserId: query.assignedUserId } : {}),
-    ...(query.leadId ? { leadId: query.leadId } : {}),
-    ...(query.contactId ? { contactId: query.contactId } : {}),
-    ...(query.dealId ? { dealId: query.dealId } : {}),
-    ...(query.accountId ? { accountId: query.accountId } : {}),
     ...(query.search
       ? {
           OR: [
@@ -208,6 +248,7 @@ export async function findTaskOptions(
   tenantId: string,
   kind: TaskOptionKind,
   search: string,
+  leadIds: string[] = [],
 ) {
   const contains = { contains: search, mode: "insensitive" as const };
   const people = {
@@ -230,6 +271,7 @@ export async function findTaskOptions(
       label: `${row.firstName} ${row.lastName}`.trim(),
     }));
   }
+  const related = await relatedOptionFilters(tenantId, leadIds);
   const where = { tenantId, isArchived: false };
   if (kind === "lead" || kind === "contact") {
     const args = {
@@ -241,7 +283,10 @@ export async function findTaskOptions(
     const rows =
       kind === "lead"
         ? await prisma.lead.findMany(args)
-        : await prisma.contact.findMany(args);
+        : await prisma.contact.findMany({
+            ...args,
+            where: { ...args.where, AND: [related.contact] },
+          });
     return rows.map((row) => ({
       id: row.id,
       label:
@@ -251,7 +296,7 @@ export async function findTaskOptions(
   }
   if (kind === "deal") {
     const rows = await prisma.deal.findMany({
-      where: { ...where, title: contains },
+      where: { ...where, title: contains, AND: [related.deal] },
       take: 50,
       orderBy: [{ title: "asc" }, { id: "asc" }],
       select: { id: true, title: true },
@@ -259,7 +304,7 @@ export async function findTaskOptions(
     return rows.map((row) => ({ id: row.id, label: row.title }));
   }
   const rows = await prisma.account.findMany({
-    where: { ...where, name: contains },
+    where: { ...where, name: contains, AND: [related.account] },
     take: 50,
     orderBy: [{ name: "asc" }, { id: "asc" }],
     select: { id: true, name: true },
@@ -272,4 +317,191 @@ export function findTaskAccounts(tenantId: string, ids: string[]) {
     where: { tenantId, id: { in: ids } },
     select: { id: true, name: true },
   });
+}
+
+export function taskAssociationWhere(
+  kind: TaskLinkKind,
+  id: string,
+  tenantId: string,
+): Prisma.TaskWhereInput {
+  return {
+    OR: [
+      { [`${kind}Id`]: id },
+      {
+        [`${kind}Links`]: {
+          some: {
+            [`${kind}Id`]: id,
+            tenantId,
+            environment: environmentContext.getStore()?.environment,
+          },
+        },
+      },
+    ],
+  };
+}
+export async function replaceTaskLinks(
+  task: { id: string; tenantId: string; environment: "PRODUCTION" | "SANDBOX" },
+  links: TaskAssociations,
+  client: TaskClient,
+) {
+  const where = {
+    taskId: task.id,
+    tenantId: task.tenantId,
+    environment: task.environment,
+  };
+  if (links.leadIds !== undefined) {
+    await client.taskLead.deleteMany({ where });
+    if (links.leadIds.length)
+      await client.taskLead.createMany({
+        data: links.leadIds.map((leadId, position) => ({
+          ...where,
+          leadId,
+          position,
+        })),
+      });
+  }
+  if (links.contactIds !== undefined) {
+    await client.taskContact.deleteMany({ where });
+    if (links.contactIds.length)
+      await client.taskContact.createMany({
+        data: links.contactIds.map((contactId, position) => ({
+          ...where,
+          contactId,
+          position,
+        })),
+      });
+  }
+  if (links.dealIds !== undefined) {
+    await client.taskDeal.deleteMany({ where });
+    if (links.dealIds.length)
+      await client.taskDeal.createMany({
+        data: links.dealIds.map((dealId, position) => ({
+          ...where,
+          dealId,
+          position,
+        })),
+      });
+  }
+  if (links.accountIds !== undefined) {
+    await client.taskAccount.deleteMany({ where });
+    if (links.accountIds.length)
+      await client.taskAccount.createMany({
+        data: links.accountIds.map((accountId, position) => ({
+          ...where,
+          accountId,
+          position,
+        })),
+      });
+  }
+}
+export async function findTaskLinkIds(
+  kind: TaskLinkKind,
+  ids: string[],
+  tenantId: string,
+  client: TaskClient,
+  leadIds: string[] = [],
+) {
+  const related = await relatedOptionFilters(tenantId, leadIds, client);
+  const where = {
+    tenantId,
+    environment: environmentContext.getStore()!.environment,
+    isArchived: false,
+    id: { in: ids },
+  };
+  const select = { id: true } as const;
+  switch (kind) {
+    case "lead":
+      return client.lead.findMany({ where, select });
+    case "contact":
+      return client.contact.findMany({
+        where: { ...where, AND: [related.contact] },
+        select,
+      });
+    case "deal":
+      return client.deal.findMany({
+        where: { ...where, AND: [related.deal] },
+        select,
+      });
+    case "account":
+      return client.account.findMany({
+        where: { ...where, AND: [related.account] },
+        select,
+      });
+  }
+}
+async function relatedOptionFilters(
+  tenantId: string,
+  leadIds: string[],
+  client: TaskClient = prisma,
+): Promise<{
+  contact: Prisma.ContactWhereInput;
+  account: Prisma.AccountWhereInput;
+  deal: Prisma.DealWhereInput;
+}> {
+  if (!leadIds.length) return { contact: {}, account: {}, deal: {} };
+  const environment = environmentContext.getStore()!.environment;
+  const leads = await client.lead.findMany({
+    where: { tenantId, environment, isArchived: false, id: { in: leadIds } },
+    select: { id: true, contactId: true, accountId: true },
+  });
+  if (leads.length !== leadIds.length)
+    throw new NotFoundError("Selected leads");
+  return {
+    contact: {
+      id: {
+        in: leads.flatMap((row) => (row.contactId ? [row.contactId] : [])),
+      },
+    },
+    account: {
+      id: {
+        in: leads.flatMap((row) => (row.accountId ? [row.accountId] : [])),
+      },
+    },
+    deal: {
+      OR: [
+        { leadId: { in: leadIds } },
+        {
+          leadDeals: {
+            some: { tenantId, environment, leadId: { in: leadIds } },
+          },
+        },
+      ],
+    },
+  };
+}
+
+/** Called only from an already-authorized CRM merge transaction. */
+export async function reassignTaskLinks(
+  client: TaskClient,
+  kind: TaskLinkKind,
+  primaryId: string,
+  secondaryId: string,
+  tenantId: string,
+) {
+  const tasks = await client.task.findMany({
+    where: { tenantId, ...taskAssociationWhere(kind, secondaryId, tenantId) },
+    include: taskInclude,
+  });
+  for (const task of tasks) {
+    const all = {
+      lead: task.leadLinks.map((row) => row.leadId),
+      contact: task.contactLinks.map((row) => row.contactId),
+      deal: task.dealLinks.map((row) => row.dealId),
+      account: task.accountLinks.map((row) => row.accountId),
+    };
+    const legacy = task[`${kind}Id`];
+    const ids = [
+      ...new Set(
+        [...all[kind], ...(legacy ? [legacy] : [])].map((id) =>
+          id === secondaryId ? primaryId : id,
+        ),
+      ),
+    ];
+    await client.task.update({
+      where: { id: task.id, tenantId },
+      data: { [`${kind}Id`]: ids[0] ?? null },
+    });
+    await replaceTaskLinks(task, { [`${kind}Ids`]: ids }, client);
+  }
+  return { count: tasks.length };
 }

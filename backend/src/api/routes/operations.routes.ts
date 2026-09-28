@@ -23,6 +23,7 @@ router.get('/tasks/options', authorize('deals.view'), (req, res, next) => {
   const parsed = TaskOptionsQuerySchema.safeParse(req.query);
   if (!parsed.success) { next(new ValidationError(parsed.error.issues[0]?.message ?? 'Invalid task options query.')); return; }
   const permission = parsed.data.kind === 'account' ? 'accounts.view' : ['lead', 'contact'].includes(parsed.data.kind) ? 'contacts.view' : 'deals.view';
+  if (parsed.data.leadIds.length) return authorize('contacts.view')(req, res, error => error ? next(error) : authorize(permission)(req,res,next));
   return authorize(permission)(req, res, next);
 }, taskController.getOptions);
 router.post('/tasks/bulk', validate(TaskBulkSchema), (req, res, next) =>

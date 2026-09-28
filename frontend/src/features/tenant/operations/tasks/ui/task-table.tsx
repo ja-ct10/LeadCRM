@@ -52,6 +52,25 @@ export function TaskTable({
     );
   const person = (value?: { firstName: string; lastName: string } | null) =>
     value ? value.firstName + " " + value.lastName : undefined;
+  const relations = (task: TaskRecord, names: (string | undefined)[]) => {
+    const labels = names.filter((name): name is string => !!name);
+    return (
+      <span className="inline-flex items-center gap-1">
+        {relation(labels[0])}
+        {labels.length > 1 && (
+          <button
+            type="button"
+            onClick={() => onOpen(task)}
+            className="rounded-full bg-primary/10 px-2 py-1 text-xs text-primary hover:bg-primary/20"
+            aria-label={`View all ${labels.length} associated records: ${labels.join(", ")}`}
+            title={labels.join(", ")}
+          >
+            +{labels.length - 1}
+          </button>
+        )}
+      </span>
+    );
+  };
   const cell = (task: TaskRecord, id: string): ReactNode => {
     switch (id) {
       case "action":
@@ -120,13 +139,29 @@ export function TaskTable({
           </span>
         );
       case "lead":
-        return relation(person(task.lead));
+        return relations(
+          task,
+          (task.leads ?? (task.lead ? [task.lead] : [])).map(person),
+        );
       case "contact":
-        return relation(person(task.contact));
+        return relations(
+          task,
+          (task.contacts ?? (task.contact ? [task.contact] : [])).map(person),
+        );
       case "deal":
-        return relation(task.deal?.title);
+        return relations(
+          task,
+          (task.deals ?? (task.deal ? [task.deal] : [])).map(
+            (row) => row.title,
+          ),
+        );
       case "account":
-        return relation(task.account?.name);
+        return relations(
+          task,
+          (task.accounts ?? (task.account ? [task.account] : [])).map(
+            (row) => row.name,
+          ),
+        );
       case "assignedUser":
         return person(task.assignedUser) ?? "—";
       case "createdAt":

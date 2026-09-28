@@ -1,3 +1,4 @@
+import {taskAssociationWhere} from "../../operations/tasks/tasks.repository";
 import prisma from '../../../config/database.config';
 import { NotFoundError } from '../../../shared/errors/http-error';
 
@@ -48,7 +49,7 @@ export async function getLeadRelationships(id: string, tenantId: string, limit =
     }),
     // Tasks
     includeTasks ? prisma.task.findMany({
-      where: { leadId: id, tenantId, isArchived: false },
+      where: { tenantId, isArchived: false, ...taskAssociationWhere("lead",id,tenantId) },
       take: limit,
       orderBy: { createdAt: 'desc' },
       select: { id: true, title: true, status: true, priority: true, dueDate: true },
@@ -110,7 +111,7 @@ export async function getContactRelationships(id: string, tenantId: string, limi
     }),
     // Tasks
     includeTasks ? prisma.task.findMany({
-      where: { contactId: id, tenantId, isArchived: false },
+      where: { tenantId, isArchived: false, ...taskAssociationWhere("contact",id,tenantId) },
       take: limit,
       orderBy: { createdAt: 'desc' },
       select: { id: true, title: true, status: true, priority: true, dueDate: true },
@@ -214,7 +215,7 @@ export async function getDealRelationships(id: string, tenantId: string, limit =
     }),
     // Tasks
     includeTasks ? prisma.task.findMany({
-      where: { dealId: id, tenantId, isArchived: false },
+      where: { tenantId, isArchived: false, ...taskAssociationWhere("deal",id,tenantId) },
       take: limit,
       orderBy: { createdAt: 'desc' },
       select: { id: true, title: true, status: true, priority: true, dueDate: true },

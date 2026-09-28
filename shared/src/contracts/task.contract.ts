@@ -22,6 +22,34 @@ export const TaskStatusSchema = z.preprocess(
   z.enum(TASK_STATUSES),
 );
 const recordId = z.string().trim().min(1).max(128);
+export const TASK_LINK_KINDS = ["lead", "contact", "deal", "account"] as const;
+export type TaskLinkKind = (typeof TASK_LINK_KINDS)[number];
+export type TaskAssociations = { [K in TaskLinkKind as `${K}Ids`]?: string[] };
+export type TaskLinkInput = TaskAssociations & {
+  [K in TaskLinkKind as `${K}Id`]?: string | null;
+};
+const linkIds = z
+  .array(recordId)
+  .max(50)
+  .transform((ids) => [...new Set(ids)]);
+/** Plural lists are authoritative, including an explicit empty list. */
+export function taskAssociationIds(
+  task: TaskLinkInput,
+  kind: TaskLinkKind,
+): string[] {
+  return task[`${kind}Ids`] ?? (task[`${kind}Id`] ? [task[`${kind}Id`]!] : []);
+}
+function validateLinkInputs(data: TaskLinkInput, ctx: z.RefinementCtx) {
+  for (const kind of TASK_LINK_KINDS) {
+    if (data[`${kind}Ids`] !== undefined && data[`${kind}Id`] !== undefined)
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [`${kind}Ids`],
+        message:
+          "Send either a single association or an association list, not both.",
+      });
+  }
+}
 const instant = z.string().datetime({ offset: true });
 const taskFields = z.object({
   title: z.string().trim().min(1, "Enter a task title.").max(255),
@@ -35,12 +63,19 @@ const taskFields = z.object({
   contactId: recordId.nullable().optional(),
   dealId: recordId.nullable().optional(),
   accountId: recordId.nullable().optional(),
+  leadIds: linkIds.optional(),
+  contactIds: linkIds.optional(),
+  dealIds: linkIds.optional(),
+  accountIds: linkIds.optional(),
 });
-export const CreateTaskSchema = taskFields.strict();
+export const CreateTaskSchema = taskFields
+  .strict()
+  .superRefine(validateLinkInputs);
 export const UpdateTaskSchema = taskFields
   .partial()
   .extend({ reassignReason: z.string().trim().max(1000).optional() })
-  .strict();
+  .strict()
+  .superRefine(validateLinkInputs);
 export type CreateTaskInput = z.input<typeof CreateTaskSchema>;
 export type CreateTaskDto = z.output<typeof CreateTaskSchema>;
 export type UpdateTaskDto = z.output<typeof UpdateTaskSchema>;
@@ -113,7 +148,7 @@ export interface TaskPerson {
   firstName: string;
   lastName: string;
 }
-export interface TaskRecord {
+export interface TaskRecord extends TaskAssociations {
   id: string;
   tenantId: string;
   environment?: CrmEnvironment;
@@ -134,6 +169,10 @@ export interface TaskRecord {
   contactId?: string | null;
   dealId?: string | null;
   accountId?: string | null;
+  leads?: TaskPerson[];
+  contacts?: TaskPerson[];
+  deals?: { id: string; title: string }[];
+  accounts?: { id: string; name: string }[];
   assignedUser?: TaskPerson | null;
   assignedByUser?: TaskPerson | null;
   completedBy?: TaskPerson | null;
@@ -165,6 +204,13 @@ export interface TaskSummary {
 export const TaskOptionsQuerySchema = z
   .object({
     kind: z.enum(["user", "lead", "contact", "deal", "account"]),
+    leadIds: z
+      .preprocess(
+        (value) =>
+          typeof value === "string" ? (value ? value.split(",") : []) : value,
+        linkIds,
+      )
+      .default([]),
     search: z.string().trim().max(255).default(""),
   })
   .strict();
@@ -236,7 +282,7 @@ export const TASK_COLUMN_DEFINITIONS: ColumnDefinition[] = [
       priority: "Priority",
       dueDate: "Due date",
       lead: "Lead",
-      contact: "Client profile",
+      contact: "Contact",
       deal: "Deal",
       account: "Account",
       assignedUser: "Task owner",
@@ -250,3 +296,16 @@ export const TASK_COLUMN_DEFINITIONS: ColumnDefinition[] = [
     priority: "medium" as const,
   })),
 ];
+
+/** Keep the first link available to existing single-link consumers. */
+export function taskAssociationPatch(input: TaskLinkInput): TaskLinkInput {
+  const patch: TaskLinkInput = {};
+  for (const kind of TASK_LINK_KINDS) {
+    if (input[`${kind}Ids`] !== undefined || input[`${kind}Id`] !== undefined) {
+      const ids = taskAssociationIds(input, kind);
+      patch[`${kind}Ids`] = ids;
+      patch[`${kind}Id`] = ids[0] ?? null;
+    }
+  }
+  return patch;
+}

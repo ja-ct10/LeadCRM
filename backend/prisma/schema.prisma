@@ -512,6 +512,10 @@ model Account {
   @@index([tenantId, createdAt])
   @@index([tenantId, assignedUserId])
   @@index([tenantId, environment])
+  taskLinks TaskAccount[]
+
+  @@unique([id, tenantId, environment])
+
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -575,6 +579,10 @@ model Lead {
   @@index([tenantId, createdById])
   @@index([tenantId, contactId])
   @@index([tenantId, environment])
+  taskLinks TaskLead[]
+
+  @@unique([id, tenantId, environment])
+
 }
 
 // -----------------------------------------------------
@@ -646,6 +654,10 @@ model Contact {
   @@index([tenantId, accountId])
   @@map("Contact")
   @@index([tenantId, environment])
+  taskLinks TaskContact[]
+
+  @@unique([id, tenantId, environment])
+
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -756,6 +768,10 @@ model Deal {
   @@index([tenantId, createdAt])
   @@index([tenantId, isArchived])
   @@index([tenantId, environment])
+  taskLinks TaskDeal[]
+
+  @@unique([id, tenantId, environment])
+
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -895,6 +911,13 @@ model Task {
   @@index([tenantId, dueDate])
   @@index([tenantId, dealId])
   @@index([tenantId, environment])
+  leadLinks TaskLead[]
+  contactLinks TaskContact[]
+  dealLinks TaskDeal[]
+  accountLinks TaskAccount[]
+
+  @@unique([id, tenantId, environment])
+
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -1753,4 +1776,60 @@ model MfaRecoveryCode {
   codeHash String
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@unique([userId, codeHash])
+}
+
+// Explicit Task links preserve tenant/environment integrity on both sides.
+model TaskLead {
+  taskId String
+  leadId String
+  tenantId String
+  environment CrmEnvironment
+  position Int @default(0)
+  task Task @relation(fields: [taskId, tenantId, environment], references: [id, tenantId, environment], onDelete: Cascade)
+  lead Lead @relation(fields: [leadId, tenantId, environment], references: [id, tenantId, environment], onDelete: Cascade)
+
+  @@id([taskId, leadId])
+  @@index([tenantId, environment, leadId])
+}
+
+// Explicit Task links preserve tenant/environment integrity on both sides.
+model TaskContact {
+  taskId String
+  contactId String
+  tenantId String
+  environment CrmEnvironment
+  position Int @default(0)
+  task Task @relation(fields: [taskId, tenantId, environment], references: [id, tenantId, environment], onDelete: Cascade)
+  contact Contact @relation(fields: [contactId, tenantId, environment], references: [id, tenantId, environment], onDelete: Cascade)
+
+  @@id([taskId, contactId])
+  @@index([tenantId, environment, contactId])
+}
+
+// Explicit Task links preserve tenant/environment integrity on both sides.
+model TaskDeal {
+  taskId String
+  dealId String
+  tenantId String
+  environment CrmEnvironment
+  position Int @default(0)
+  task Task @relation(fields: [taskId, tenantId, environment], references: [id, tenantId, environment], onDelete: Cascade)
+  deal Deal @relation(fields: [dealId, tenantId, environment], references: [id, tenantId, environment], onDelete: Cascade)
+
+  @@id([taskId, dealId])
+  @@index([tenantId, environment, dealId])
+}
+
+// Explicit Task links preserve tenant/environment integrity on both sides.
+model TaskAccount {
+  taskId String
+  accountId String
+  tenantId String
+  environment CrmEnvironment
+  position Int @default(0)
+  task Task @relation(fields: [taskId, tenantId, environment], references: [id, tenantId, environment], onDelete: Cascade)
+  account Account @relation(fields: [accountId, tenantId, environment], references: [id, tenantId, environment], onDelete: Cascade)
+
+  @@id([taskId, accountId])
+  @@index([tenantId, environment, accountId])
 }

@@ -3,6 +3,10 @@ import { ChevronDown, Search, Plus } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import {
   TASK_STATUSES,
+  TASK_LINK_KINDS,
+  taskAssociationIds,
+  type TaskLinkInput,
+  type TaskLinkKind,
   TASK_STATUS_LABELS,
   type TaskRecord,
   type TaskOption,
@@ -21,27 +25,32 @@ import { localDateTime, taskDueInstant } from "../task-data";
 
 export const taskInputClass =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-export type TaskLinks = Pick<
-  CreateTaskInput,
-  "leadId" | "contactId" | "dealId" | "accountId"
->;
-export function TaskSelector({
-  kind,
-  label,
-  value,
-  selectedLabel,
-  onChange,
-  onCreate,
-  required = false,
-}: {
+export type TaskLinks = TaskLinkInput;
+type TaskSelectorProps = {
   kind: TaskOptionKind;
   label: string;
-  value: string;
   selectedLabel?: string;
-  onChange: (value: string) => void;
+  selectedLabels?: TaskOption[];
   onCreate?: () => void;
   required?: boolean;
-}) {
+  leadIds?: string[];
+} & (
+  | { multiple: true; value: string[]; onChange: (value: string[]) => void }
+  | { multiple?: false; value: string; onChange: (value: string) => void }
+);
+export function TaskSelector(props: TaskSelectorProps) {
+  const {
+    kind,
+    label,
+    value,
+    selectedLabel,
+    selectedLabels = [],
+    onCreate,
+    required = false,
+    leadIds = [],
+  } = props;
+  const selectedIds = Array.isArray(value) ? value : value ? [value] : [];
+  const leadKey = JSON.stringify(leadIds);
   const id = useId();
   const { users, contacts, deals, organizations } = useData();
   const { user, tenant } = useAuth();
@@ -49,7 +58,7 @@ export function TaskSelector({
   const [above, setAbove] = useState(false);
   const [search, setSearch] = useState("");
   const [options, setOptions] = useState<TaskOption[]>([]);
-  const [selected, setSelected] = useState<TaskOption>();
+  const [selected, setSelected] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [retry, setRetry] = useState(0);
@@ -80,6 +89,7 @@ export function TaskSelector({
     if (!open) return;
     const abort = new AbortController();
     setLoading(true);
+    setOptions([]);
     setError("");
     const timer = setTimeout(async () => {
       try {
@@ -94,9 +104,26 @@ export function TaskSelector({
                     label: u.firstName + " " + u.lastName,
                   }))
               : kind === "deal"
-                ? deals.map((d) => ({ id: d.id, label: d.title }))
+                ? deals
+                    .filter(
+                      (d) =>
+                        !leadIds.length ||
+                        leadIds.includes(d.leadId ?? "") ||
+                        d.leadIds?.some((id) => leadIds.includes(id)),
+                    )
+                    .map((d) => ({ id: d.id, label: d.title }))
                 : kind === "account"
-                  ? organizations.map((o) => ({ id: o.id, label: o.name }))
+                  ? organizations
+                      .filter(
+                        (o) =>
+                          !leadIds.length ||
+                          contacts.some(
+                            (c) =>
+                              leadIds.includes(c.id) &&
+                              (c.accountId ?? c.organizationId) === o.id,
+                          ),
+                      )
+                      .map((o) => ({ id: o.id, label: o.name }))
                   : kind === "lead"
                     ? contacts.map((c) => ({
                         id: c.id,
@@ -108,7 +135,12 @@ export function TaskSelector({
               row.label.toLowerCase().includes(search.toLowerCase()),
             )
             .slice(0, 50);
-        } else rows = (await tasksApi.options(kind, search, abort.signal)).data;
+        } else
+          rows = (
+            await (leadIds.length
+              ? tasksApi.options(kind, search, abort.signal, leadIds)
+              : tasksApi.options(kind, search, abort.signal))
+          ).data;
         if (!abort.signal.aborted) setOptions(rows);
       } catch (e) {
         if (!abort.signal.aborted)
@@ -126,6 +158,7 @@ export function TaskSelector({
     kind,
     search,
     retry,
+    leadKey,
     tenant?.id,
     user?.activeEnvironment,
     users,
@@ -133,14 +166,26 @@ export function TaskSelector({
     deals,
     organizations,
   ]);
-  const caption =
-    options.find((option) => option.id === value)?.label ||
-    (selected?.id === value ? selected.label : selectedLabel) ||
+  const labelFor = (id: string) =>
+    options.find((option) => option.id === id)?.label ||
+    selected[id] ||
+    selectedLabels.find((option) => option.id === id)?.label ||
+    (!props.multiple ? selectedLabel : undefined) ||
     "Selected record";
-  const visible =
-    value && !options.some((option) => option.id === value) && !search
-      ? [{ id: value, label: caption }, ...options]
-      : options;
+  const caption = selectedIds.length
+    ? labelFor(selectedIds[0]) +
+      (selectedIds.length > 1 ? ` +${selectedIds.length - 1}` : "")
+    : "";
+  const visible = !search
+    ? [
+        ...selectedIds
+          .filter((id) => !options.some((option) => option.id === id))
+          .map((id) => ({ id, label: labelFor(id) })),
+        ...options,
+      ]
+    : options;
+  const filteredByLeads =
+    kind !== "lead" && kind !== "user" && leadIds.length > 0;
   return (
     <div
       ref={wrapper}
@@ -177,8 +222,12 @@ export function TaskSelector({
           taskInputClass + " flex items-center justify-between gap-2 text-left"
         }
       >
-        <span className={"truncate " + (value ? "" : "text-muted-foreground")}>
-          {value
+        <span
+          className={
+            "truncate " + (selectedIds.length ? "" : "text-muted-foreground")
+          }
+        >
+          {selectedIds.length
             ? caption
             : "Select " +
               (kind === "user" || kind === "account" ? "an " : "a ") +
@@ -239,10 +288,25 @@ export function TaskSelector({
                     <input
                       type="checkbox"
                       className="mt-0.5 accent-primary"
-                      checked={value === option.id}
+                      checked={selectedIds.includes(option.id)}
+                      disabled={
+                        props.multiple &&
+                        selectedIds.length >= 50 &&
+                        !selectedIds.includes(option.id)
+                      }
                       onChange={() => {
-                        setSelected(option);
-                        onChange(value === option.id ? "" : option.id);
+                        setSelected((previous) => ({
+                          ...previous,
+                          [option.id]: option.label,
+                        }));
+                        if (props.multiple)
+                          props.onChange(
+                            selectedIds.includes(option.id)
+                              ? selectedIds.filter((id) => id !== option.id)
+                              : [...selectedIds, option.id],
+                          );
+                        else
+                          props.onChange(value === option.id ? "" : option.id);
                       }}
                     />
                     <span className="min-w-0 break-words">{option.label}</span>
@@ -250,7 +314,9 @@ export function TaskSelector({
                 ))}
                 {!visible.length && (
                   <p className="p-3 text-sm text-muted-foreground">
-                    No matching records.
+                    {filteredByLeads
+                      ? `No related ${kind === "contact" ? "contacts" : kind === "deal" ? "deals" : "accounts"} for the selected leads.`
+                      : "No matching records."}
                   </p>
                 )}
               </>
@@ -272,8 +338,20 @@ export function TaskSelector({
               </Button>
             ) : (
               <span className="text-xs text-muted-foreground">
-                Select one {singular}
+                {props.multiple
+                  ? `${selectedIds.length} selected (up to 50)`
+                  : `Select one ${singular}`}
               </span>
+            )}
+            {props.multiple && selectedIds.length > 0 && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => props.onChange([])}
+              >
+                Clear selection
+              </Button>
             )}
             <Button
               type="button"
@@ -324,18 +402,29 @@ export function TaskEditor({
   const [assignedUserId, setOwner] = useState(
     task?.assignedUserId ?? user?.id ?? "",
   );
-  const [relations, setRelations] = useState<TaskLinks>({
-    leadId: task?.leadId ?? links.leadId,
-    contactId: task?.contactId ?? links.contactId,
-    dealId: task?.dealId ?? links.dealId,
-    accountId: task?.accountId ?? links.accountId,
-  });
+  const [relations, setRelations] = useState<Record<TaskLinkKind, string[]>>(
+    () => ({
+      lead: taskAssociationIds(task ?? links, "lead"),
+      contact: taskAssociationIds(task ?? links, "contact"),
+      deal: taskAssociationIds(task ?? links, "deal"),
+      account: taskAssociationIds(task ?? links, "account"),
+    }),
+  );
+  const [associationNotice, setAssociationNotice] = useState("");
+  const changeRelations = (kind: TaskLinkKind, ids: string[]) => {
+    if (kind === "lead") {
+      setRelations({ lead: ids, contact: [], deal: [], account: [] });
+      setAssociationNotice(
+        "Lead selection changed. Choose related contacts, deals, and accounts again.",
+      );
+    } else setRelations((previous) => ({ ...previous, [kind]: ids }));
+  };
   const [creating, setCreating] = useState<Exclude<
     TaskOptionKind,
     "user"
   > | null>(null);
   const [createdLabels, setCreatedLabels] = useState<
-    Partial<Record<TaskOptionKind, string>>
+    Partial<Record<TaskLinkKind, TaskOption[]>>
   >({});
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -393,20 +482,22 @@ export function TaskEditor({
             ? task.dueDate
             : taskDueInstant(dueDate),
         assignedUserId,
-        ...relations,
+        leadIds: relations.lead,
+        contactIds: relations.contact,
+        dealIds: relations.deal,
+        accountIds: relations.account,
       };
       if (task) {
         const updates: Partial<TaskRecord> = { ...data };
-        // Do not revalidate unchanged archived links or overwrite reassignment.
-        for (const field of [
-          "assignedUserId",
-          "leadId",
-          "contactId",
-          "dealId",
-          "accountId",
-        ] as const) {
-          if ((updates[field] ?? null) === (task[field] ?? null))
-            delete updates[field];
+        // Preserve untouched links, including historical archived relationships.
+        if (assignedUserId === task.assignedUserId)
+          delete updates.assignedUserId;
+        for (const kind of TASK_LINK_KINDS) {
+          if (
+            JSON.stringify(relations[kind]) ===
+            JSON.stringify(taskAssociationIds(task, kind))
+          )
+            delete updates[`${kind}Ids`];
         }
         await updateTask(task.id, updates);
       } else await addTask(data);
@@ -460,8 +551,7 @@ export function TaskEditor({
         <header className="border-b border-border bg-primary/10 px-6 py-5 pr-14">
           <h2 id={heading} className="mt-1 text-xl font-semibold">
             {creating
-              ? "Create " +
-                (creating === "contact" ? "client profile" : creating)
+              ? "Create " + creating
               : task
                 ? "Task details"
                 : "Create task"}
@@ -473,13 +563,10 @@ export function TaskEditor({
             onBusy={setBusy}
             onCancel={() => setCreating(null)}
             onCreated={(option) => {
-              setRelations((previous) => ({
-                ...previous,
-                [creating + "Id"]: option.id,
-              }));
+              changeRelations(creating, [...relations[creating], option.id]);
               setCreatedLabels((previous) => ({
                 ...previous,
-                [creating]: option.label,
+                [creating]: [...(previous[creating] ?? []), option],
               }));
               setCreating(null);
             }}
@@ -590,11 +677,24 @@ export function TaskEditor({
                 <section>
                   <h3 className="text-sm font-semibold text-primary">
                     Associate task (
-                    {Object.values(relations).filter(Boolean).length})
+                    {Object.values(relations).reduce(
+                      (sum, ids) => sum + ids.length,
+                      0,
+                    )}
+                    )
                   </h3>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Link one record of each type.
+                    Select multiple records. Contacts, deals, and accounts are
+                    filtered by the selected leads.
                   </p>
+                  {associationNotice && (
+                    <p
+                      role="status"
+                      className="mt-2 text-xs text-muted-foreground"
+                    >
+                      {associationNotice}
+                    </p>
+                  )}
                   <div className="mt-4 space-y-4">
                     {(["lead", "contact", "deal", "account"] as const)
                       .filter(
@@ -603,39 +703,66 @@ export function TaskEditor({
                           (kind === "account" ? canAccounts : canContacts),
                       )
                       .map((kind) => {
-                        const field = (kind + "Id") as keyof TaskLinks;
-                        const record =
+                        const options: TaskOption[] =
                           kind === "lead"
-                            ? task?.lead
+                            ? (
+                                task?.leads ?? (task?.lead ? [task.lead] : [])
+                              ).map((row) => ({
+                                id: row.id,
+                                label: row.firstName + " " + row.lastName,
+                              }))
                             : kind === "contact"
-                              ? task?.contact
-                              : null;
+                              ? (
+                                  task?.contacts ??
+                                  (task?.contact ? [task.contact] : [])
+                                ).map((row) => ({
+                                  id: row.id,
+                                  label: row.firstName + " " + row.lastName,
+                                }))
+                              : kind === "deal"
+                                ? (
+                                    task?.deals ??
+                                    (task?.deal ? [task.deal] : [])
+                                  ).map((row) => ({
+                                    id: row.id,
+                                    label: row.title,
+                                  }))
+                                : (
+                                    task?.accounts ??
+                                    (task?.account ? [task.account] : [])
+                                  ).map((row) => ({
+                                    id: row.id,
+                                    label: row.name,
+                                  }));
                         return (
                           <TaskSelector
-                            key={kind}
+                            key={
+                              kind +
+                              (kind === "lead"
+                                ? ""
+                                : JSON.stringify(relations.lead))
+                            }
+                            multiple
+                            leadIds={kind === "lead" ? [] : relations.lead}
                             kind={kind}
                             label={
                               kind === "contact"
-                                ? "Associate task to client profile"
+                                ? "Associate task to contact"
                                 : kind === "account"
                                   ? "Associate task to account"
                                   : kind === "lead"
                                     ? "Associate task to lead"
                                     : "Associate task to deal"
                             }
-                            value={relations[field] ?? ""}
-                            selectedLabel={
-                              createdLabels[kind] ||
-                              (kind === "account"
-                                ? task?.account?.name
-                                : kind === "deal"
-                                  ? task?.deal?.title
-                                  : record
-                                    ? record.firstName + " " + record.lastName
-                                    : undefined)
-                            }
+                            value={relations[kind]}
+                            selectedLabels={[
+                              ...options,
+                              ...(createdLabels[kind] ?? []),
+                            ]}
                             onCreate={
                               !USE_MOCK_DATA &&
+                              (kind === "lead" || !relations.lead.length) &&
+                              relations[kind].length < 50 &&
                               (kind === "deal"
                                 ? canCreate
                                 : kind === "account"
@@ -644,12 +771,7 @@ export function TaskEditor({
                                 ? () => setCreating(kind)
                                 : undefined
                             }
-                            onChange={(value) =>
-                              setRelations((previous) => ({
-                                ...previous,
-                                [field]: value || null,
-                              }))
-                            }
+                            onChange={(ids) => changeRelations(kind, ids)}
                           />
                         );
                       })}

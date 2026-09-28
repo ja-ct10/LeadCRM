@@ -78,6 +78,7 @@ beforeEach(() => {
     Promise.resolve({ ...original, ...data }),
   );
   db.task.updateMany.mockResolvedValue({ count: 1 });
+  for (const model of [db.lead,db.contact,db.deal,db.account]) model.findMany.mockResolvedValue([]);
 });
 
 describe("Task service authority", () => {

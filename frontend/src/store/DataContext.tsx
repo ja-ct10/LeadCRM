@@ -1,4 +1,5 @@
 'use client';
+import {taskAssociationIds, taskAssociationPatch} from "@leadcrm/shared";
 
 import { isOnboardingComplete, WorkflowDraftSchema, type WorkflowDraft } from "@leadcrm/shared";
 import React, {
@@ -347,6 +348,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const taskRows = useMemo(() => USE_MOCK_DATA ? tasks.map(task => ({
     ...task,
+    leads: taskAssociationIds(task,"lead").flatMap(id=>contacts.find(record=>record.id===id) ?? task.leads?.find(record=>record.id===id) ?? []),
+    deals: taskAssociationIds(task,"deal").flatMap(id=>deals.find(record=>record.id===id) ?? task.deals?.find(record=>record.id===id) ?? []),
+    accounts: taskAssociationIds(task,"account").flatMap(id=>organizations.find(record=>record.id===id) ?? task.accounts?.find(record=>record.id===id) ?? []),
     assignedUser: users.find(person => person.id === task.assignedUserId) ?? task.assignedUser,
     lead: contacts.find(record => record.id === task.leadId) ?? task.lead,
     deal: deals.find(record => record.id === task.dealId) ?? task.deal,
@@ -1355,7 +1359,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const dto = CreateTaskSchema.parse({ ...taskData, dueDate: taskDueInstant(taskData.dueDate) });
     const now = new Date().toISOString();
     const created: Task = USE_MOCK_DATA ? {
-      ...dto, description: dto.description ?? '', id: uuid(), tenantId: tenant.id, createdAt: now,
+      ...dto, ...taskAssociationPatch(dto), description: dto.description ?? '', id: uuid(), tenantId: tenant.id, createdAt: now,
       assignedById: user.id, completedAt: dto.status === 'completed' ? now : null,
       completedById: dto.status === 'completed' ? user.id : null,
     } : (await tasksApi.create(dto)).data;
@@ -1378,7 +1382,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         if (task.id !== id) return task;
         if (updated) return updated;
         const completed = dto.status === 'completed';
-        return { ...task, ...dto, description: dto.description === undefined ? task.description : dto.description ?? '',
+        return { ...task, ...dto, ...taskAssociationPatch(dto), description: dto.description === undefined ? task.description : dto.description ?? '',
           ...(dto.status === undefined ? {} : { completedAt: completed ? task.completedAt ?? new Date().toISOString() : null, completedById: completed ? task.completedById ?? user?.id : null }),
           ...(dto.assignedUserId && dto.assignedUserId !== task.assignedUserId ? { assignedById: user?.id } : {}) };
       });

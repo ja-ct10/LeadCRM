@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   updateTask: vi.fn(),
   deleteTask: vi.fn(),
   canEdit: true,
+  options: vi.fn(),
 }));
 const user = {
   id: "owner",
@@ -37,9 +38,7 @@ vi.mock("@/shared/hooks/use-permissions", () => ({
 vi.mock("@/lib/config", () => ({ USE_MOCK_DATA: false }));
 vi.mock("@/shared/services/tasks.api", () => ({
   tasksApi: {
-    options: vi
-      .fn()
-      .mockResolvedValue({ data: [{ id: "owner", label: "Test Owner" }] }),
+    options: mocks.options,
   },
 }));
 import { TaskEditor } from "../ui/task-editor";
@@ -89,7 +88,7 @@ it("preserves the due instant and existing identity on successful edits", async 
   );
   expect(mocks.addTask).not.toHaveBeenCalled();
 });
-it("prefills the explicit client profile association for creation", async () => {
+it("prefills the explicit Contact association for creation", async () => {
   mocks.addTask.mockResolvedValue(undefined);
   render(<TaskEditor links={{ contactId: "profile-id" }} onClose={vi.fn()} />);
   fireEvent.change(await screen.findByLabelText("Title *"), {
@@ -99,7 +98,7 @@ it("prefills the explicit client profile association for creation", async () => 
   await waitFor(() =>
     expect(mocks.addTask).toHaveBeenCalledWith(
       expect.objectContaining({
-        contactId: "profile-id",
+        contactIds: ["profile-id"],
         title: "Profile follow up",
         assignedUserId: "owner",
       }),
@@ -111,4 +110,24 @@ it("does not render a save action without the existing edit permission", async (
   render(<TaskEditor task={task} onClose={vi.fn()} />);
   await screen.findByRole("dialog");
   expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
+});
+
+it("uses Contact wording, clears dependent links on Lead changes, and sends the selected Lead scope", async()=>{
+  mocks.options.mockResolvedValue({data:[{id:"new-lead",label:"New Lead"}]});
+  render(<TaskEditor task={{...task,leadIds:["old-lead"],contactIds:["old-contact"],dealIds:["old-deal"],accountIds:["old-account"]}} onClose={vi.fn()}/>);
+  expect(await screen.findByRole("button",{name:"Associate task to contact"})).toBeTruthy();
+  expect(screen.queryByText(/client profile/i)).toBeNull();
+  fireEvent.click(screen.getByRole("button",{name:"Associate task to lead"}));
+  fireEvent.click(await screen.findByRole("checkbox",{name:"New Lead"}));
+  expect(screen.getByRole("status").textContent).toContain("Lead selection changed");
+  fireEvent.click(screen.getByRole("button",{name:"Done"}));
+  expect(screen.getByRole("button",{name:"Associate task to contact"}).textContent).toContain("Select a contact");
+  mocks.options.mockResolvedValue({data:[]});
+  fireEvent.click(screen.getByRole("button",{name:"Associate task to contact"}));
+  expect(await screen.findByText("No related contacts for the selected leads.")).toBeTruthy();
+  expect(mocks.options).toHaveBeenLastCalledWith("contact","",expect.any(AbortSignal),["old-lead","new-lead"]);
+  expect(screen.queryByRole("button",{name:"Create a contact"})).toBeNull();
+  fireEvent.click(screen.getByRole("button",{name:"Done"}));
+  fireEvent.click(screen.getByRole("button",{name:"Save changes"}));
+  await waitFor(()=>expect(mocks.updateTask).toHaveBeenCalledWith("task",expect.objectContaining({leadIds:["old-lead","new-lead"],contactIds:[],dealIds:[],accountIds:[]})));
 });

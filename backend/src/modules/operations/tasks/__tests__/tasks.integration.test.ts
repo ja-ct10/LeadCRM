@@ -509,5 +509,57 @@ describe.skipIf(!disposable)(
         ).status,
       ).toBe(403);
     });
+
+    it("persists multiple associations, filters every linked record, and clears lists atomically", async () => {
+      const second = await scope(()=>prisma.lead.create({data:{tenantId,firstName:"Second",lastName:"Lead"}}));
+      const created=await call("/operations/tasks","POST",{...draft("Multiple links"),leadIds:[lead.id,second.id,lead.id]});
+      expect(created.status).toBe(201);
+      expect(created.body.data.leadIds).toEqual([lead.id,second.id]);
+      expect(created.body.data.leads).toHaveLength(2);
+      const id=created.body.data.id;
+      expect((await call(`/operations/tasks?leadId=${second.id}`)).body.data.some((row:any)=>row.id===id)).toBe(true);
+      expect((await call(`/crm/leads/${second.id}/relationships`)).body.data.tasks.some((row:any)=>row.id===id)).toBe(true);
+      const unchanged=await call(`/operations/tasks/${id}`,"PUT",{title:"Renamed multiple links"});
+      expect(unchanged.body.data.leadIds).toEqual([lead.id,second.id]);
+      const rejected=await call(`/operations/tasks/${id}`,"PUT",{leadIds:[lead.id,sandboxLead.id]});
+      expect(rejected.status).toBe(404);
+      expect((await call(`/operations/tasks/${id}`)).body.data.leadIds).toEqual([lead.id,second.id]);
+      const cleared=await call(`/operations/tasks/${id}`,"PUT",{leadIds:[]});
+      expect(cleared.body.data.leadIds).toEqual([]);
+      expect(cleared.body.data.leadId).toBeNull();
+      expect(await prisma.taskLead.count({where:{taskId:id}})).toBe(0);
+    });
+    it("restricts dependent options to explicit Lead relationships and enforces them on save", async()=>{
+      const relatedLead=await scope(()=>prisma.lead.create({data:{tenantId,firstName:"Related",lastName:"Lead",contactId:contact.id,accountId:account.id}}));
+      await scope(()=>prisma.leadDeal.create({data:{tenantId,leadId:relatedLead.id,dealId:deal.id}}));
+      for(const [kind,expected] of [["contact",contact.id],["account",account.id],["deal",deal.id]]) {
+        const result=await call(`/operations/tasks/options?kind=${kind}&leadIds=${relatedLead.id}`);
+        expect(result.status).toBe(200);
+        expect(result.body.data.map((row:any)=>row.id)).toEqual([expected]);
+        const empty=await call(`/operations/tasks/options?kind=${kind}&leadIds=${lead.id}`);
+        expect(empty.body.data).toEqual([]);
+      }
+      expect((await call(`/operations/tasks/options?kind=deal&leadIds=${sandboxLead.id}`)).status).toBe(404);
+      expect((await call(`/operations/tasks/options?kind=deal&leadIds=${relatedLead.id}`,"GET",undefined,readerToken)).status).toBe(403);
+      const invalid=await call("/operations/tasks","POST",{...draft(),leadIds:[lead.id],contactIds:[contact.id]});
+      expect(invalid.status).toBe(400);
+      const valid=await call("/operations/tasks","POST",{...draft(),leadIds:[relatedLead.id],contactIds:[contact.id],dealIds:[deal.id],accountIds:[account.id]});
+      expect(valid.status).toBe(201);
+      expect(valid.body.data.contacts[0].id).toBe(contact.id);
+      expect(valid.body.data.accounts[0].id).toBe(account.id);
+      expect(valid.body.data.deals[0].id).toBe(deal.id);
+    });
+    it("preserves and deduplicates all Task links through approved Merge integration", async()=>{
+      const merge = await import("../../../crm/merge/merge.repository");
+      for(const kind of ["lead","contact","account"] as const) {
+        const second = await scope(async()=>kind==="lead" ? prisma.lead.create({data:{tenantId,firstName:"Merge",lastName:"Lead"}}) : kind==="contact" ? prisma.contact.create({data:{tenantId,firstName:"Merge",lastName:"Contact"}}) : prisma.account.create({data:{tenantId,name:"Merge Account"}}));
+        const primary=kind==="lead" ? lead.id : kind==="contact" ? contact.id : account.id;
+        const task=(await call("/operations/tasks","POST",{...draft("Merge links"),[kind+"Ids"]:[second.id,primary]})).body.data;
+        await scope(()=>prisma.$transaction(tx => kind==="lead" ? merge.reassignLeadRelationships(tx,primary,second.id,tenantId) : kind==="contact" ? merge.reassignContactRelationships(tx,primary,second.id,tenantId) : merge.reassignAccountRelationships(tx,primary,second.id,tenantId)));
+        const stored=(await call(`/operations/tasks/${task.id}`)).body.data;
+        expect(stored[kind+"Ids"]).toEqual([primary]);
+        expect(stored[kind+"Id"]).toBe(primary);
+      }
+    });
   },
 );
