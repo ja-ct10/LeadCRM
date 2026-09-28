@@ -17,7 +17,7 @@ Keep `/operations/taskboard`, its Kanban/List/Workload views, `tasksApi`, the ex
 - The database snapshot contains no `in-progress` rows. Legacy seeders and frontend types do contain that spelling. Do not run a speculative production migration or infer that old deployments have no legacy rows.
 - Live database **reads** were verified during the audit. The implementation section below records subsequent isolated HTTP/database and Workflow tests; live production writes and deployment acceptance remain unverified.
 
-## Findings
+## Findings before implementation
 
 | Priority | Finding | Evidence / implication |
 |---|---|---|
@@ -186,6 +186,7 @@ npm run build
 - Isolated database/HTTP acceptance: **36 tests passed in 2 files**, including all four associated-record create APIs, Task lifecycle, associations, audit metadata, pagination beyond 100 records, composed filters, bulk partial failures, tenant/environment/RBAC checks, column persistence isolation and existing Workflow execution. The final run also passed email-option and Account datetime assertions.
 - Database tests run through `node backend/scripts/test-tasks-isolated.mjs`, which creates a disposable in-memory PostgreSQL-compatible database on localhost from the existing Prisma schema, overrides configured database URLs, and closes the database afterward. It never migrates or writes the configured Supabase database.
 - Local mock browser: verified table/columns, attribute search and saved column visibility, checkbox/search association menus, Task creation, completion and reopening with count updates. Confirmed archive removed the disposable demonstration task from the active list and restored the original counts. Browser screenshots occasionally had clipped rendering in the host; DOM geometry confirmed horizontal scrolling is confined to the table, with no document-width overflow at the default viewport.
+- Responsive check: at an observed 390 CSS-pixel viewport, document width remained 390 pixels and the Task drawer occupied the viewport without horizontal page overflow. Reset the temporary viewport override and left the mock Tasks preview open. This was a focused layout check, not a full accessibility certification.
 - The live production application was not deployed or write-tested. This is a verified local implementation, not a claim of live production acceptance.
 
 ## Recommendations for other modules — not implemented
