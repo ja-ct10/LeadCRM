@@ -47,6 +47,8 @@ export interface RowActionItem {
   destructive?: boolean;
   /** Whether this action is disabled */
   disabled?: boolean;
+  /** Explanation displayed below an unavailable action. */
+  disabledReason?: string;
   /** Whether to show a sub-menu indicator (chevron) */
   hasSubmenu?: boolean;
   /** Separator before this item */
@@ -189,6 +191,7 @@ export function RowActionsMenu({
                   }
                 }}
                 disabled={action.disabled}
+                aria-describedby={action.disabledReason ? `action-${action.id}-reason` : undefined}
                 className={cn(
                   'flex items-center gap-2.5 w-full px-3 py-2 text-[13px] text-left transition-colors rounded-md',
                   action.disabled && 'opacity-40 cursor-not-allowed',
@@ -205,6 +208,7 @@ export function RowActionsMenu({
                 <span className="flex-1">{action.label}</span>
                 {action.hasSubmenu && <ChevronRight size={12} className="text-slate-400" />}
               </button>
+              {action.disabledReason && <p id={`action-${action.id}-reason`} className="px-3 pb-2 text-xs text-slate-500 dark:text-slate-400">{action.disabledReason}</p>}
             </React.Fragment>
           ))}
         </div>,

@@ -101,13 +101,13 @@ export async function publishForm(
   }
 }
 
-export async function archiveForm(
+export async function deleteForm(
   req: Request,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
-    await service.archiveForm(
+    await service.deleteForm(
       String(req.params.id),
       req.user!.tenantId,
       req.user!.userId,
@@ -116,4 +116,9 @@ export async function archiveForm(
   } catch (err) {
     next(err);
   }
+}
+
+export async function unpublishForm(req: Request, res: Response, next: NextFunction) {
+  try { res.json({ success: true, data: await service.unpublishForm(String(req.params.id), req.user!.tenantId, req.user!.userId) }); }
+  catch (err) { next(err); }
 }

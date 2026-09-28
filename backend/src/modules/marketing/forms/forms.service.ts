@@ -121,27 +121,13 @@ export async function publishForm(
   return form;
 }
 
-/**
- * Soft-delete a form by setting isArchived = true.
- * Business data is never hard-deleted.
- * Verifies the form belongs to the tenant before archiving.
- */
-export async function archiveForm(
-  id:       string,
-  tenantId: string,
-  userId:   string,
-) {
-  const existing = await repo.findById(id, tenantId);
-  if (!existing) throw new NotFoundError('Form');
+export async function deleteForm(id: string, tenantId: string, userId: string) {
+  const before = await repo.remove(id, tenantId);
+  void writeAuditLog({ tenantId, userId, action: 'form.deleted', entityType: 'MarketingForm', entityId: id, severity: 'WARNING', before });
+}
 
-  await repo.archive(id, tenantId);
-
-  void writeAuditLog({
-    tenantId,
-    userId,
-    action:     'form.archived',
-    entityType: 'MarketingForm',
-    entityId:   id,
-    severity:   'WARNING',
-  });
+export async function unpublishForm(id: string, tenantId: string, userId: string) {
+  const form = await repo.unpublish(id, tenantId);
+  void writeAuditLog({ tenantId, userId, action: 'form.unpublished', entityType: 'MarketingForm', entityId: id });
+  return form;
 }

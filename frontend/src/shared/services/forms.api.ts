@@ -70,10 +70,6 @@ export const formsApi = {
   publish: (id: string) =>
     apiClient.patch<FormResponse>(`/marketing/forms/${id}/publish`),
 
-  /**
-   * Soft-delete — marks the form as archived (isArchived = true).
-   * Retains submission history on success.
-   */
-  archive: (id: string) =>
-    apiClient.patch<void>(`/marketing/forms/${id}/archive`),
+  delete: (id: string) => apiClient.delete<{ success: boolean }>(`/marketing/forms/${id}`),
+  unpublish: (id: string) => apiClient.patch<FormResponse>(`/marketing/forms/${id}/unpublish`),
 };

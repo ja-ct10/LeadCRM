@@ -34,10 +34,10 @@ describe.skipIf(!disposable)('organization and account settings over authenticat
   afterAll(async () => { if (server) await new Promise<void>(resolve => server.close(() => resolve())); await prisma.$disconnect(); });
 
   it('persists all six fields, reloads them, audits changes, and leaves another tenant unchanged', async () => {
-    const values = { name: ' Saved ', industry: 'IT', email: 'info@example.com', phone: '123', domain: 'example.com', address: 'Manila' };
+    const values = { name: ' Saved ', industry: 'IT', email: 'info@example.com', phone: '+63 (28) 123-3488', domain: 'example.com', address: 'Manila' };
     const saved = await call('/administration/organization-settings', 'PATCH', values);
     expect(saved.status).toBe(200);
-    expect(saved.body.data).toMatchObject({ ...values, name: 'Saved', id: tenantId });
+    expect(saved.body.data).toMatchObject({ ...values, name: 'Saved', phone: '+63281233488', id: tenantId });
     expect((await call('/administration/organization-settings')).body.data).toEqual(saved.body.data);
     expect(await prisma.tenant.findUnique({ where: { id: tenantId } })).toMatchObject({ domain: 'example.com', address: 'Manila' });
     expect((await prisma.tenant.findUniqueOrThrow({ where: { id: otherTenantId } })).name).toBe('Other tenant');
@@ -53,6 +53,19 @@ describe.skipIf(!disposable)('organization and account settings over authenticat
     for (const payload of [{ id: otherTenantId }, { tenantId: otherTenantId }, { status: 'ACTIVE' }, { name: ' ' }, { email: 'invalid' }]) {
       expect((await call('/administration/organization-settings', 'PATCH', payload)).status).toBe(400);
     }
+  });
+
+  it('rejects malformed telephones before persistence and normalizes supported landline formats', async () => {
+    for (const phone of ['fbdfbdgddfg', '123', '+639123456789', '+1 281233488', '(28 123-3488', '28/123/3488', '<script>281233488</script>', 281233488]) {
+      const before = await prisma.tenant.findUniqueOrThrow({ where: { id: tenantId } });
+      const result = await call('/administration/organization-settings', 'PATCH', { phone });
+      expect(result.status).toBe(400); expect(result.body.fieldErrors.phone.length).toBeGreaterThan(0);
+      expect((await prisma.tenant.findUniqueOrThrow({ where: { id: tenantId } })).phone).toBe(before.phone);
+    }
+    for (const phone of ['+63 (28) 123-3488', '(28) 123-3488', '02 8123 3488']) {
+      expect((await call('/administration/organization-settings', 'PATCH', { phone })).body.data.phone).toBe('+63281233488');
+    }
+    expect((await call('/administration/organization-settings', 'PATCH', { phone: '(32) 123-4567' })).body.data.phone).toBe('+63321234567');
   });
 
   it('removes timezone from database/auth and rejects obsolete profile payloads', async () => {

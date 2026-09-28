@@ -31,6 +31,33 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     server = app.listen(0); await new Promise<void>(r => server.once('listening', r)); base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1`;
   });
   afterAll(async () => { if (server) await new Promise<void>(r => server.close(() => r())); await prisma.$disconnect(); });
+  it('permanently deletes a draft over HTTP and enforces authentication, permission and ownership', async () => {
+    const form = await draft();
+    expect((await request('/marketing/forms/' + form.id, 'DELETE', undefined, '')).status).toBe(401);
+    expect((await request('/marketing/forms/' + form.id, 'DELETE', undefined, denied)).status).toBe(403);
+    await expect(service.deleteForm(form.id, otherTenant, userId)).rejects.toMatchObject({ statusCode: 404 });
+    const sandbox = await scoped(() => service.createForm(tenantId, userId, { name: 'Sandbox' }), 'SANDBOX');
+    expect((await request('/marketing/forms/' + sandbox.id, 'DELETE')).status).toBe(404);
+    expect(await prisma.marketingForm.findUnique({ where: { id: sandbox.id } })).not.toBeNull();
+    expect((await request('/marketing/forms/' + form.id, 'DELETE')).status).toBe(200);
+    expect(await prisma.marketingForm.findUnique({ where: { id: form.id } })).toBeNull();
+    expect((await request('/marketing/forms/' + form.id, 'DELETE')).status).toBe(404);
+  });
+  it('blocks published deletion, then atomically removes unpublished forms and their submissions while retaining CRM records', async () => {
+    const form = await publish((await draft()).id); await submit(form.publicId);
+    const submission = await prisma.formSubmission.findFirstOrThrow({ where: { formId: form.id } });
+    const blocked = await request('/marketing/forms/' + form.id, 'DELETE');
+    expect(blocked.status).toBe(409); expect(blocked.body.error).toBe('Published forms must be unpublished before they can be deleted.');
+    expect(await prisma.formSubmission.count({ where: { formId: form.id } })).toBe(1);
+    expect((await request('/marketing/forms/' + form.id + '/unpublish', 'PATCH', undefined, denied)).status).toBe(403);
+    const result = await request('/marketing/forms/' + form.id + '/unpublish', 'PATCH');
+    expect(result.status).toBe(200); expect(result.body.data.status).toBe('draft');
+    await expect(getPublicForm(form.publicId)).rejects.toMatchObject({ statusCode: 404 });
+    expect((await request('/marketing/forms/' + form.id, 'DELETE')).status).toBe(200);
+    expect(await prisma.marketingForm.findUnique({ where: { id: form.id } })).toBeNull();
+    expect(await prisma.formSubmission.count({ where: { formId: form.id } })).toBe(0);
+    expect(await prisma.lead.findUnique({ where: { id: submission.leadId! } })).not.toBeNull();
+  });
   it('persists the template, duplicates independently and refuses draft public access', async () => {
     const form = await draft(); expect((await scoped(() => service.getFormById(form.id, tenantId))).fields).toHaveLength(7);
     await expect(getPublicForm(form.publicId)).rejects.toMatchObject({ statusCode: 404 }); await expect(submit(form.publicId)).rejects.toMatchObject({ statusCode: 404 });
@@ -127,8 +154,8 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     await expect(scoped(() => service.getFormById(f.id, tenantId))).rejects.toMatchObject({ statusCode: 404 });
     await expect(service.getFormById(f.id, otherTenant)).rejects.toMatchObject({ statusCode: 404 });
   });
-  it('retains submissions after archive and blocks new submissions', async () => {
-    const f = await publish((await draft()).id); await submit(f.publicId); await scoped(() => service.archiveForm(f.id, tenantId, userId));
+  it('retains submissions after unpublish and blocks new submissions', async () => {
+    const f = await publish((await draft()).id); await submit(f.publicId); await scoped(() => service.unpublishForm(f.id, tenantId, userId));
     expect((await scoped(() => service.getSubmissions(f.id, tenantId, {}))).data).toHaveLength(1);
     await expect(submit(f.publicId)).rejects.toMatchObject({ statusCode: 404 });
   });
