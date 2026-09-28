@@ -136,10 +136,11 @@ export async function archive(id: string, tenantId: string, actorId: string) {
 }
 
 export async function restore(id: string, tenantId: string, actorId: string) {
-  const existing = await prisma.user.findFirst({ where: { id, tenantId } });
+  const existing = await prisma.user.findFirst({ where: { id, tenantId, status: 'INACTIVE' } });
   if (!existing) throw new NotFoundError('User');
-
-  await prisma.user.update({ where: { id }, data: { status: 'ACTIVE' } });
+  if (isSystemAdminRole(existing.role)) throw new ForbiddenError('Cannot restore System Admin users');
+  const result = await prisma.user.updateMany({ where: { id, tenantId, status: 'INACTIVE' }, data: { status: 'ACTIVE' } });
+  if (!result.count) throw new NotFoundError('Archived user');
   await writeAuditLog({ tenantId, userId: actorId, action: 'user.restored', entityType: 'User', entityId: id, after: { status: 'ACTIVE' }, severity: 'INFO' });
 }
 

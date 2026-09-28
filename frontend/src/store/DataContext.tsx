@@ -114,6 +114,7 @@ interface DataContextType {
   refreshContacts: () => Promise<void>;
   refreshOrganizations: () => Promise<void>;
   refreshDeals: () => Promise<void>;
+  refreshPipelines: () => Promise<void>;
   updateContact: (id: string, updates: Partial<Contact>) => Promise<void>;
   addOrganization: (
     org: Omit<Organization, "id" | "tenantId" | "createdAt">,
@@ -765,6 +766,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setOrganizations((apiOrgs as Organization[]).filter((o: any) => !o.isArchived));
     } catch (err) {
       console.error('[DataContext] Failed to refresh organizations:', err);
+    }
+  };
+
+  /** Refresh shared pipeline selectors after a database-backed restore. */
+  const refreshPipelines = async (): Promise<void> => {
+    if (USE_MOCK_DATA || !user) return;
+    const identity = dataIdentityRef.current;
+    const result = await pipelineService.getPipelines();
+    if (identity === dataIdentityRef.current) {
+      setPipelines((result.data ?? []).map(toFrontendPipeline).filter(pipeline => !pipeline.isArchived));
     }
   };
 
@@ -1959,6 +1970,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     refreshContacts,
     refreshOrganizations,
     refreshDeals,
+    refreshPipelines,
     updateContact,
     addDeal,
     updateDeal,
