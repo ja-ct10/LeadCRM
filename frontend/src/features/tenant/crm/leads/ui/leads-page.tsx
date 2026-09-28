@@ -7,7 +7,7 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
 import { useLeadsData } from '../hooks/use-leads-data';
-import { DataLoadingSkeleton, DataErrorState } from '@/shared/components/crm/data-view-states';
+import { DataErrorState } from '@/shared/components/crm/data-view-states';
 import type { Lead, Organization } from '@/store/types';
 import { ModuleWorkspace, ViewType, LeadPanel, StatusBadge } from '@/shared/components/crm';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
@@ -184,6 +184,10 @@ export default function LeadsPage(): React.ReactElement {
     search: debouncedSearch || undefined,
     filter: serverFilters.length > 0 ? serverFilters : undefined,
   });
+
+  useEffect(() => {
+    if (leadsError) toast.error(leadsError);
+  }, [leadsError]);
 
   // Total record count from server metadata (falls back to current page
   // length while metadata is still loading on first render)
@@ -472,7 +476,10 @@ export default function LeadsPage(): React.ReactElement {
         pageSize={pageSize}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
-        onRefresh={() => toast.success('Data refreshed')}
+        onRefresh={refetchLeads}
+        refreshDisabled={isLeadsInitialLoad || isLeadsRefreshing}
+        loading={(activeView === 'list' || activeView === 'table') && (isLeadsInitialLoad || isLeadsRefreshing || isColumnsLoading)}
+        loadingLabel={isLeadsInitialLoad || isLeadsRefreshing ? 'Loading leads...' : 'Loading columns...'}
         onManageColumns={() => setIsManageColumnsOpen(true)}
         onResetColumns={() => {
           resetColumns();
@@ -502,11 +509,6 @@ export default function LeadsPage(): React.ReactElement {
           <button className="text-blue-600 underline" onClick={() => updateParams({ highlight: null, search: null })}>Show all records</button>
         </div>}
         {/* ── List View ─────────────────────────────────────────── */}
-        {/* Initial load: show skeleton when no data has arrived yet */}
-        {(activeView === 'list' || activeView === 'table') && isLeadsInitialLoad && (
-          <DataLoadingSkeleton rowCount={8} columnCount={6} />
-        )}
-
         {/* Error state: only show when there's no data at all to display */}
         {(activeView === 'list' || activeView === 'table') && leadsError && !isLeadsInitialLoad && leads.length === 0 && (
           <DataErrorState
@@ -515,18 +517,7 @@ export default function LeadsPage(): React.ReactElement {
           />
         )}
 
-        {/* Column preferences loading (separate from data loading) */}
-        {(activeView === 'list' || activeView === 'table') && isColumnsLoading && !isLeadsInitialLoad && (
-          <div className="bg-white dark:bg-slate-800/40 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-8">
-            <div className="flex items-center justify-center gap-2 text-[13px] text-[#5A6B85] dark:text-slate-400">
-              <div className="w-4 h-4 border-2 border-[#2563EB] border-t-transparent rounded-full animate-spin" />
-              Loading columns...
-            </div>
-          </div>
-        )}
-
-        {/* ── List / Table View (DataGrid) ─────────────────── */}
-        {(activeView === 'list' || activeView === 'table') && !isColumnsLoading && !isLeadsInitialLoad && (
+        {(activeView === 'list' || activeView === 'table') && !(leadsError && leads.length === 0) && (
           <LeadsDataGrid
             sort={sort}
             onSortChange={setSort}

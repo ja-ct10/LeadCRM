@@ -41,7 +41,7 @@ export default function ContactsPage(): React.ReactElement {
 
   const highlightId = getParam('highlight') || undefined;
 
-  const { data: contacts = [], refetch: fetchContacts, error: contactsError } = useCachedPage({
+  const { data: contacts = [], refetch: fetchContacts, error: contactsError, isInitialLoad, isRefreshing } = useCachedPage({
     module: 'contacts',
     revalidateOnInvalidation: true,
     params: { collection: 'all', recordId: highlightId },
@@ -410,7 +410,10 @@ export default function ContactsPage(): React.ReactElement {
       searchTerm={searchTerm}
       onSearch={setSearchTerm}
       searchPlaceholder="Search contacts..."
-      onRefresh={() => toast.success('Refreshed')}
+      onRefresh={fetchContacts}
+      refreshDisabled={isInitialLoad || isRefreshing}
+      loading={isInitialLoad || isRefreshing || isColumnsLoading}
+      loadingLabel={isInitialLoad || isRefreshing ? 'Loading contacts...' : 'Loading columns...'}
       onManageColumns={() => setIsManageColumnsOpen(true)}
     >
         {highlightId && <div className="mb-3 flex items-center justify-between gap-3 text-sm text-slate-500">

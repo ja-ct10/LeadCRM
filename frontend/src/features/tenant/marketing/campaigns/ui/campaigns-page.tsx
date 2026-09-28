@@ -15,7 +15,7 @@ import { useAuth } from '@/store/AuthContext';
 import { toast } from 'sonner';
 import { Plus, Send, X, Mail, MessageSquare, Megaphone, BarChart2, Eye, MousePointerClick, Edit2, Trash2, Play, Pause, Search, Filter, TrendingUp, TrendingDown, Copy, Calendar, ArrowLeft, SplitSquareHorizontal, ListOrdered, Monitor, Smartphone, Tags, Wand2, LayoutTemplate, Zap, Trophy, MoreVertical, Sparkles, Users, Loader2 } from 'lucide-react';
 import EmptyState from '@/shared/components/empty-state';
-import { TrelloFilter } from '@/shared/components/trello-filter';
+import { ModuleFilterRail } from '@/shared/components/crm/module-filter-rail';
 import { SideSheet } from '@/shared/components/side-sheet';
 import { CampaignReportView } from './campaign-report-view';
 import { CampaignBuilder } from './campaign-builder';
@@ -53,6 +53,8 @@ export default function CampaignsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterSearchTerm, setFilterSearchTerm] = useState('');
   const [selectedCampaignForReport, setSelectedCampaignForReport] = useState<Campaign | null>(null);
   const [activeMetricTab, setActiveMetricTab] = useState<'sent' | 'delivered' | 'opened' | 'clicked' | 'bounced'>('sent');
   
@@ -120,6 +122,10 @@ export default function CampaignsPage() {
 
   const getStatusBadge = (status: string) => {
     switch (status.toLowerCase()) {
+      case 'sent':
+        return <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20">{status}</span>;
+      case 'failed':
+        return <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-red-50 text-red-700 border border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20">{status}</span>;
       case 'active':
         return <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">active</span>;
       case 'completed':
@@ -206,7 +212,7 @@ export default function CampaignsPage() {
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className="w-full space-y-4"
+      className="w-full min-w-0 space-y-4"
     >
 
       {/* 1. Standardized Header Row */}
@@ -219,7 +225,29 @@ export default function CampaignsPage() {
             {filteredCampaigns.length} total
           </span>
         </div>
-        {canCreateCampaign && campaigns.length > 0 && <button onClick={() => { setEditingCampaign(undefined); setBuilderInitialType('Email'); setBuilderInitialContent(undefined); setBuilderSubject(''); setShowBuilder(true); }} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white"><Plus size={16} /> Create Campaign</button>}
+        {canCreateCampaign && campaigns.length > 0 && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => {
+                    setEditingCampaign(undefined);
+                    setBuilderInitialType('Email');
+                    setBuilderInitialContent(undefined);
+                    setBuilderSubject('');
+                    setShowBuilder(true);
+                  }}
+                  aria-label="Create campaign"
+                  className="inline-flex h-9 w-9 sm:w-auto shrink-0 items-center justify-center gap-2 rounded-lg bg-blue-600 sm:px-4 text-sm font-semibold text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                >
+                  <Plus size={16} aria-hidden="true" />
+                  <span className="hidden sm:inline">Create Campaign</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Create Campaign</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </div>
 
       {/* 2. Overview Operational KPI Strip */}
@@ -365,33 +393,47 @@ export default function CampaignsPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Filters & Search */}
-            <div className="flex flex-col sm:flex-row gap-4 justify-between items-center bg-white dark:bg-white/2 p-3 rounded-2xl border border-gray-200 dark:border-white/5 shadow-sm mb-4">
-              <div className="flex-1 w-full relative flex items-center bg-slate-50 dark:bg-slate-900/50 hover:bg-white dark:hover:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl transition-all duration-200 focus-within:bg-white dark:focus-within:bg-slate-900 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/80 shadow-sm max-w-md">
-                <div className="pl-3.5 flex items-center gap-2 shrink-0 py-2.5">
-                  <Search size={15} className="text-slate-400 dark:text-slate-500" />
-                </div>
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="relative min-w-0 flex-1 sm:max-w-md">
+                <Search size={14} aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-[#5A6B85]" />
                 <input
                   type="text"
-                  placeholder="Search campaigns by name or target..."
+                  aria-label="Search campaigns"
+                  placeholder="Search campaigns..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-1.5 pr-10 py-2 text-sm bg-transparent text-slate-800 dark:text-slate-200 focus:outline-none placeholder-slate-400 dark:placeholder-slate-500"
+                  className="h-9 w-full min-w-0 rounded-lg border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 pl-9 pr-8 text-[13px] text-[#0F172A] dark:text-slate-200 placeholder:text-[#5A6B85] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
                 />
                 {searchTerm && (
-                  <button
-                    onClick={() => setSearchTerm('')}
-                    className="absolute right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                  >
-                    <X size={14} />
-                  </button>
+                  <TooltipProvider><Tooltip><TooltipTrigger asChild>
+                    <button onClick={() => setSearchTerm('')} aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-[#5A6B85] focus-visible:ring-2 focus-visible:ring-blue-600">
+                      <X size={14} aria-hidden="true" />
+                    </button>
+                  </TooltipTrigger><TooltipContent>Clear search</TooltipContent></Tooltip></TooltipProvider>
                 )}
               </div>
-              <div className="shrink-0 flex items-center gap-2">
-                 <TrelloFilter
-                   searchTerm={searchTerm}
-                   setSearchTerm={setSearchTerm}
-                   statuses={[
+              <TooltipProvider><Tooltip><TooltipTrigger asChild>
+                <button
+                  onClick={() => setShowFilters(!showFilters)}
+                  aria-label="Filter campaigns"
+                  aria-expanded={showFilters}
+                  className={`inline-flex h-9 w-9 sm:w-auto shrink-0 items-center justify-center gap-1.5 sm:px-3 rounded-lg border text-[12px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 ${showFilters ? 'border-blue-200 bg-blue-50 text-blue-600 dark:bg-blue-500/10' : 'border-[#E4E9F0] bg-white text-[#5A6B85] dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300'}`}
+                >
+                  <Filter size={14} aria-hidden="true" /><span className="hidden sm:inline">Filter</span>
+                </button>
+              </TooltipTrigger><TooltipContent>Filter</TooltipContent></Tooltip></TooltipProvider>
+            </div>
+
+            <div className="flex min-w-0 items-start gap-3">
+              <ModuleFilterRail
+                showFilters={showFilters}
+                onToggleFilters={() => setShowFilters(false)}
+                filterSearchTerm={filterSearchTerm}
+                onFilterSearch={setFilterSearchTerm}
+                totalRecords={filteredCampaigns.length}
+                onClearFilters={searchTerm || statusFilter.length || typeFilter.length ? () => { setSearchTerm(''); setStatusFilter([]); setTypeFilter([]); } : undefined}
+                filterGroups={[
+                  { id: 'status', label: 'Status', items: [
                      { id: 'sending', label: 'Sending' },
                      { id: 'sent', label: 'Sent to provider' },
                      { id: 'partially_sent', label: 'Partially sent' },
@@ -401,21 +443,19 @@ export default function CampaignsPage() {
                      { id: 'paused', label: 'Paused' },
                      { id: 'completed', label: 'Completed' },
                      { id: 'draft', label: 'Draft' },
-                   ]}
-                   selectedStatuses={statusFilter}
-                   setSelectedStatuses={setStatusFilter}
-                   labelsTitle="Type"
-                   labels={[
+                   ].map(item => ({ ...item, isChecked: statusFilter.includes(item.id) })) },
+                  { id: 'type', label: 'Type', items: [
                      { id: 'email', label: 'Email' },
                      { id: 'sms', label: 'SMS' },
                      { id: 'multi-channel', label: 'Multi-Channel' },
-                   ]}
-                   selectedLabels={typeFilter}
-                   setSelectedLabels={setTypeFilter}
-                 />
-              </div>
-            </div>
-
+                   ].map(item => ({ ...item, isChecked: typeFilter.includes(item.id) })) },
+                ]}
+                onFilterToggle={(groupId, itemId) => {
+                  const setFilter = groupId === 'status' ? setStatusFilter : setTypeFilter;
+                  setFilter(previous => previous.includes(itemId) ? previous.filter(id => id !== itemId) : [...previous, itemId]);
+                }}
+              />
+              <div className="min-w-0 flex-1">
             <div className="bg-white dark:bg-white/2 rounded-xl border border-gray-200 dark:border-white/5 shadow-lg backdrop-blur-xl overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
@@ -488,30 +528,30 @@ export default function CampaignsPage() {
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-1">
-                            <button 
-                              title="View Report" 
+                            <TooltipProvider><Tooltip><TooltipTrigger asChild><button
+                              aria-label="View Report"
                               onClick={() => setSelectedCampaignForReport(camp)}
                               className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-md transition-colors"
                             >
                               <BarChart2 size={16} />
-                            </button>
+                            </button></TooltipTrigger><TooltipContent>View Report</TooltipContent></Tooltip></TooltipProvider>
                             {canCreateCampaign && (
-                              <button onClick={() => handleDuplicate(camp)} title="Duplicate" className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-md transition-colors">
+                              <TooltipProvider><Tooltip><TooltipTrigger asChild><button onClick={() => handleDuplicate(camp)} aria-label="Duplicate" className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-md transition-colors">
                                 <Copy size={16} />
-                              </button>
+                              </button></TooltipTrigger><TooltipContent>Duplicate</TooltipContent></Tooltip></TooltipProvider>
                             )}
                             {canEditCampaign && camp.status === 'Draft' && (
-                              <button onClick={() => {
+                              <TooltipProvider><Tooltip><TooltipTrigger asChild><button onClick={() => {
                                 setEditingCampaign(camp);
                                 setShowBuilder(true);
-                              }} title="Edit" className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-md transition-colors">
+                              }} aria-label="Edit" className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-md transition-colors">
                                 <Edit2 size={16} />
-                              </button>
+                              </button></TooltipTrigger><TooltipContent>Edit</TooltipContent></Tooltip></TooltipProvider>
                             )}
                             {canDeleteCampaign && (
-                              <button onClick={() => { if(confirm('Archive this campaign?')) deleteCampaign(camp.id); }} title="Archive" className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/20 rounded-md transition-colors">
+                              <TooltipProvider><Tooltip><TooltipTrigger asChild><button onClick={() => { if(confirm('Archive this campaign?')) deleteCampaign(camp.id); }} aria-label="Archive" className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/20 rounded-md transition-colors">
                                 <Trash2 size={16} />
-                              </button>
+                              </button></TooltipTrigger><TooltipContent>Archive</TooltipContent></Tooltip></TooltipProvider>
                             )}
                           </div>
                         </td>
@@ -541,6 +581,8 @@ export default function CampaignsPage() {
                 onPageChange={goToPage}
                 onPageSizeChange={setPageSize}
               />
+            </div>
+              </div>
             </div>
           </div>
         )
