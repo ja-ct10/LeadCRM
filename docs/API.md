@@ -214,7 +214,10 @@ Duplicate uses `POST /automation/workflows` with an inactive copy. Removal uses 
 
 Both endpoints require an authenticated, ready tenant workspace. PATCH accepts
 only `name`, `industry`, `email`, `phone`, `domain`, and `address`. Name cannot be
-blank; nonempty email must be valid. Cleared optional fields become `null`. The
+blank; nonempty email must be valid. Phone accepts a Philippine landline such as
+`+63 (28) 123-3488` and stores `+63281233488`. The shared Zod schema rejects letters,
+malformed punctuation, mobile numbers and invalid lengths. All text is trimmed.
+Cleared optional fields become `null`. The
 response contains `id` and all six canonical saved values. Tenant identity comes
 from the session, never the request body. `domain` is descriptive organization
 metadata and does not change the fixed employee-email policy.

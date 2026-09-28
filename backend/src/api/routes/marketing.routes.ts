@@ -47,6 +47,7 @@ router.get(   '/forms/:id',             authorize('campaigns.view'),   formContr
 router.post(  '/forms',                 authorize('campaigns.create'), validate(CreateFormSchema), formController.createForm);
 router.put(   '/forms/:id',             authorize('campaigns.edit'),   validate(UpdateFormSchema), formController.updateForm);
 router.patch( '/forms/:id/publish',     authorize('campaigns.edit'),   formController.publishForm);
-router.patch( '/forms/:id/archive',     authorize('campaigns.delete'), formController.archiveForm);
+router.delete('/forms/:id', authorize('campaigns.delete'), formController.deleteForm);
+router.patch('/forms/:id/unpublish', authorize('campaigns.edit'), formController.unpublishForm);
 
 export default router;

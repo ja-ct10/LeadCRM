@@ -1,22 +1,31 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
-import { Plus, Layout, Edit, Copy, Archive } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Plus, Layout, Edit, Copy, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/store/AuthContext';
 import { RowActionsMenu } from '@/shared/components/data-grid/row-actions-menu';
-import { getFormsByTenant, createForm, archiveForm, duplicateForm } from '../services/forms.service';
+import { getFormsByTenant, createForm, deleteForm, duplicateForm, unpublishForm } from '../services/forms.service';
 import type { FormRecord } from '../types/form.types';
+import { Badge } from '@/shared/components/ui/badge';
+import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { FormBuilderPage } from './form-builder-page';
 
 export default function FormsPage({ onBuilderActiveChange }: { onBuilderActiveChange?: (active: boolean) => void }) {
-  const { tenant, user } = useAuth();
+  const { tenant, user, userCan } = useAuth();
+  const canDelete = userCan('campaigns', 'canDelete');
+  const canEdit = userCan('campaigns', 'canEdit');
   const [forms, setForms] = useState<FormRecord[]>([]);
   const [active, setActive] = useState<FormRecord | null>(null);
   const [loading, setLoading] = useState(true), [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<FormRecord | null>(null);
+  const mutationLock = useRef(false);
+  const identity = `${tenant?.id}:${user?.activeEnvironment}`;
+  const currentIdentity = useRef(identity);
+  currentIdentity.current = identity;
   const [retry, setRetry] = useState(0);
   useEffect(() => {
-    let cancelled = false; setActive(null); setLoading(true); setError('');
+    let cancelled = false; setActive(null); setDeleteTarget(null); setLoading(true); setError('');
     if (!tenant?.id) return;
     getFormsByTenant(tenant.id).then(data => { if (!cancelled) setForms(data); })
       .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to load forms.'); })
@@ -25,8 +34,8 @@ export default function FormsPage({ onBuilderActiveChange }: { onBuilderActiveCh
   }, [tenant?.id, user?.activeEnvironment, retry]);
   useEffect(() => { onBuilderActiveChange?.(!!active); return () => onBuilderActiveChange?.(false); }, [!!active, onBuilderActiveChange]);
   const mutate = async (work: () => Promise<void>) => {
-    if (busy) return; setBusy(true);
-    try { await work(); } catch (err) { toast.error(err instanceof Error ? err.message : 'Unable to save form.'); } finally { setBusy(false); }
+    if (mutationLock.current) return; mutationLock.current = true; setBusy(true);
+    try { await work(); } catch (err) { toast.error(err instanceof Error ? err.message : 'Unable to save form.'); } finally { mutationLock.current = false; setBusy(false); }
   };
   const update = useCallback((form: FormRecord) => { setForms(items => items.map(f => f.id === form.id ? form : f)); setActive(form); }, []);
   const create = () => void mutate(async () => {
@@ -34,6 +43,18 @@ export default function FormsPage({ onBuilderActiveChange }: { onBuilderActiveCh
     const form = await createForm({ name: 'Contact Us', tenantId: tenant.id });
     setForms(items => [form, ...items]); setActive(form);
   });
+  const confirmDelete = async () => {
+    if (!deleteTarget || !canDelete || deleteTarget.status.toLowerCase() === 'published') return;
+    const target = deleteTarget;
+    const requestedIdentity = identity;
+    await mutate(async () => {
+      await deleteForm(target.id);
+      if (currentIdentity.current !== requestedIdentity) return;
+      setForms(items => items.filter(form => form.id !== target.id));
+      setDeleteTarget(null);
+      toast.success('Form permanently deleted.');
+    });
+  };
   if (active) return <FormBuilderPage key={active.id} form={active} onBack={() => setActive(null)} onFormUpdate={update} />;
   return <div className="space-y-5 min-w-0">
     <header className="flex items-start justify-between gap-4">
@@ -48,13 +69,31 @@ export default function FormsPage({ onBuilderActiveChange }: { onBuilderActiveCh
           <div aria-hidden="true" className="w-24 bg-white border rounded-md p-3 shadow-sm space-y-2"><div className="h-2 w-2/3 bg-slate-800 rounded" /><div className="h-2 bg-slate-100 rounded" /><div className="h-2 bg-slate-100 rounded" /><div className="h-3 bg-blue-600 rounded" /></div>
         </button>
         <div className="flex justify-between items-center gap-2 p-4">
-          <div className="min-w-0"><button className="text-sm font-semibold truncate max-w-full block" onClick={() => setActive(form)}>{form.name}</button><div className="text-xs text-slate-500 mt-1 flex gap-2"><span className="uppercase bg-slate-100 text-slate-600 px-1 rounded">{form.publishedVersion ? 'Published' : 'Draft'}</span><span>{form.fields.length} fields</span></div></div>
+          <div className="min-w-0"><button className="text-sm font-semibold truncate max-w-full block" onClick={() => setActive(form)}>{form.name}</button><div className="text-xs text-slate-500 mt-1 flex gap-2"><Badge variant={form.status.toLowerCase() === 'published' ? 'default' : 'secondary'} className="uppercase px-1 py-0 text-[10px]">{form.status.toLowerCase() === 'published' ? 'Published' : 'Draft'}</Badge><span>{form.fields.length} fields</span></div></div>
           <RowActionsMenu position="right" actions={[
             { id: 'edit', label: 'Edit', icon: <Edit size={14} />, onClick: () => setActive(form) },
             { id: 'duplicate', label: 'Duplicate', icon: <Copy size={14} />, disabled: busy, onClick: () => void mutate(async () => { const copy = await duplicateForm(form.id); setForms(items => [copy, ...items]); }) },
-            { id: 'archive', label: 'Archive', icon: <Archive size={14} />, disabled: busy, onClick: () => void mutate(async () => { await archiveForm(form.id); setForms(items => items.filter(f => f.id !== form.id)); toast.success('Form archived. Submission history retained.'); }) },
+            { id: 'delete', label: 'Delete', icon: <Trash2 size={14} />, destructive: true,
+              disabled: busy || !canDelete || form.status.toLowerCase() === 'published',
+              disabledReason: form.status.toLowerCase() === 'published' ? 'Unpublish this form before deleting it.' : undefined,
+              onClick: () => setDeleteTarget(form) },
           ]} />
         </div>
+        {form.status.toLowerCase() === 'published' && canEdit && <div className="px-4 pb-4">
+          <button type="button" disabled={busy} className="text-xs text-blue-600 hover:underline disabled:opacity-50" onClick={() => void mutate(async () => {
+            const requestedIdentity = identity;
+            const updated = await unpublishForm(form.id);
+            if (currentIdentity.current !== requestedIdentity) return;
+            setForms(items => items.map(item => item.id === updated.id ? updated : item));
+            toast.success('Form unpublished.');
+          })}>Unpublish</button>
+        </div>}
       </article>)}</div>}
+    <ConfirmActionDialog
+      open={!!deleteTarget} onOpenChange={open => { if (!open && !busy) setDeleteTarget(null); }}
+      title="Delete form?" description="This will permanently delete this form and cannot be undone."
+      warning="Its submission history will also be deleted. Linked Leads and Contacts will be kept."
+      confirmLabel="Delete Form" cancelLabel="Cancel" variant="destructive" isLoading={busy} onConfirm={confirmDelete}
+    />
   </div>;
 }

@@ -15,7 +15,10 @@ validates and snapshots the saved configuration. Draft edits never change the pu
 form until published. The Share panel includes paginated submission history.
 
 The mobile list uses a compact New Form button and the existing portal menu with
-Edit, Duplicate, Archive. The mobile builder uses a scrollable bottom drawer with
+Edit, Duplicate, Delete. Published cards offer Unpublish; their Delete action stays
+disabled with an explanation until unpublished. Permanent deletion requires the
+existing destructive confirmation dialog. Published badges are blue; drafts gray.
+The mobile builder uses a scrollable bottom drawer with
 Fields/Design, Escape, focus containment and focus return. The desktop uses a right
 panel. File Upload is disabled and rejected by the server pending secure storage.
 
@@ -31,7 +34,9 @@ panel. File Upload is disabled and rejected by the server pending secure storage
   It backfills public IDs without altering existing draft contents, adds indexes,
   restrictive foreign keys, and a constraint requiring exactly one person link.
   Existing forms require explicit publication of a valid snapshot before anonymous
-  access. Archive never deletes history.
+  access. Unpublishing retains history. Confirmed permanent deletion removes the
+  form and its submission history in one transaction, preserving linked Leads and
+  Contacts. No schema change is required for deletion.
 
 Before deploying the backend, use the intended database environment and run:
 
@@ -56,14 +61,18 @@ existing same-origin `/api/proxy` transport.
 | PUT | `/api/v1/marketing/forms/:id` | Save validated draft with required `revision` |
 | POST | `/api/v1/marketing/forms/:id/duplicate` | Independent unpublished copy |
 | PATCH | `/api/v1/marketing/forms/:id/publish` | Publish saved snapshot |
-| PATCH | `/api/v1/marketing/forms/:id/archive` | Archive, retaining history |
+| PATCH | `/api/v1/marketing/forms/:id/unpublish` | Return to draft, retaining publication snapshots and history |
+| DELETE | `/api/v1/marketing/forms/:id` | Permanently delete an unpublished form and its submission history |
 | GET | `/api/v1/marketing/forms/:id/submissions` | Paginated history, including archived forms |
 | GET | `/api/v1/public/forms/:publicId` | Anonymous published definition |
 | POST | `/api/v1/public/forms/:publicId/submissions` | Validate and record anonymous inquiry |
 
 Management retains the existing `campaigns.view/create/edit/delete` permission
-scope plus authentication, workspace and tenant/environment middleware. No DELETE
-route exists. Public responses omit tenant IDs, owners, CRM person IDs and
+scope plus authentication, workspace and tenant/environment middleware. DELETE
+requires `campaigns.delete`; unpublish requires `campaigns.edit`. The server returns
+409 for published-form deletion and uses a conditional revision update to prevent
+a concurrent publish from bypassing that rule. The former archive route is removed.
+Public responses omit tenant IDs, owners, CRM person IDs and
 notification addresses. Submission responses only confirm acceptance.
 
 Public URL format: `https://lead-crm-frontend-pi.vercel.app/forms/<publicId>`.

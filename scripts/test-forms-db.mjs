@@ -29,9 +29,12 @@ if (!upgraded.publicId || upgraded.name !== 'Existing draft' || upgraded.publish
 console.log('PASS: actual migration retains existing forms and backfills public IDs.');
 const server = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 55439 });
 await server.start();
-const url = 'postgresql://postgres:postgres@127.0.0.1:55439/leadcrm_forms_test_1?connection_limit=1';
+const organization = process.argv.includes('--organization');
+const databaseName = organization ? 'leadcrm_environment_test_1' : 'leadcrm_forms_test_1';
+const url = `postgresql://postgres:postgres@127.0.0.1:55439/${databaseName}?connection_limit=1`;
 const preview = process.argv.includes('--preview');
-const args = preview ? ['-r', 'ts-node/register/transpile-only', 'src/modules/marketing/forms/forms.preview.ts'] : ['../node_modules/vitest/vitest.mjs', 'run', 'src/modules/marketing/forms'];
+const suite = organization ? 'src/modules/administration/organization-settings/organization-settings.integration.test.ts' : 'src/modules/marketing/forms';
+const args = preview ? ['-r', 'ts-node/register/transpile-only', 'src/modules/marketing/forms/forms.preview.ts'] : ['../node_modules/vitest/vitest.mjs', 'run', suite];
 const child = spawn(process.execPath, args, {
   cwd: 'backend', stdio: 'inherit', env: { ...process.env, DATABASE_URL: url, DIRECT_URL: url, JWT_SECRET: 'forms-test-secret-for-disposable-database-only' },
 });

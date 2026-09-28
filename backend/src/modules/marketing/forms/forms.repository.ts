@@ -34,7 +34,31 @@ export async function publish(id: string, tenantId: string) {
     return tx.marketingForm.findFirstOrThrow({ where: { id, tenantId } });
   });
 }
-export async function archive(id: string, tenantId: string) { await prisma.marketingForm.updateMany({ where: { id, tenantId }, data: { isArchived: true } }); }
+/** Lock the scoped draft before deleting dependents; publishing uses the same revision guard. */
+export async function remove(id: string, tenantId: string) {
+  return prisma.$transaction(async tx => {
+    const current = await tx.marketingForm.findFirst({ where: { id, tenantId, isArchived: false } });
+    if (!current) throw new NotFoundError('Form');
+    const publishedError = 'Published forms must be unpublished before they can be deleted.';
+    if (current.status.toLowerCase() === 'published') throw new ConflictError(publishedError);
+    const locked = await tx.marketingForm.updateMany({
+      where: { id, tenantId, isArchived: false, revision: current.revision, status: { not: 'published', mode: 'insensitive' } },
+      data: { revision: { increment: 1 } },
+    });
+    if (!locked.count) throw new ConflictError('This form changed. Reload it and unpublish it before deleting.');
+    // Submission snapshots belong to the form. CRM leads/contacts are independent and remain intact.
+    const submissions = await tx.formSubmission.deleteMany({ where: { formId: id, tenantId, environment: current.environment } });
+    await tx.marketingForm.deleteMany({ where: { id, tenantId, environment: current.environment } });
+    return { name: current.name, deletedSubmissions: submissions.count };
+  });
+}
+export async function unpublish(id: string, tenantId: string) {
+  return prisma.$transaction(async tx => {
+    const changed = await tx.marketingForm.updateMany({ where: { id, tenantId, isArchived: false }, data: { status: 'draft', revision: { increment: 1 } } });
+    if (!changed.count) throw new NotFoundError('Form');
+    return tx.marketingForm.findFirstOrThrow({ where: { id, tenantId } });
+  });
+}
 export async function duplicate(id: string, tenantId: string, createdById: string) {
   const source = await findById(id, tenantId);
   if (!source) throw new NotFoundError('Form');

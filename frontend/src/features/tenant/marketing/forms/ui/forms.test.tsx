@@ -6,8 +6,8 @@ import { FormBuilderPage } from './form-builder-page';
 import PublicFormPage from './public-form-page';
 import FormsPage from './forms-page';
 import * as service from '../services/forms.service';
-vi.mock('../services/forms.service', () => ({ updateForm: vi.fn(), publishForm: vi.fn(), getFormsByTenant: vi.fn(), createForm: vi.fn(), archiveForm: vi.fn(), duplicateForm: vi.fn(), getShareLink: () => 'https://example.com/forms/public', getEmbedCode: () => '<iframe />' }));
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { activeEnvironment: 'PRODUCTION' } }) }));
+vi.mock('../services/forms.service', () => ({ updateForm: vi.fn(), publishForm: vi.fn(), getFormsByTenant: vi.fn(), createForm: vi.fn(), deleteForm: vi.fn(), unpublishForm: vi.fn(), duplicateForm: vi.fn(), getShareLink: () => 'https://example.com/forms/public', getEmbedCode: () => '<iframe />' }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { activeEnvironment: 'PRODUCTION' }, userCan: () => true }) }));
 const form = { ...defaultContactForm(), id: 'form', tenantId: 'tenant', publicId: 'public', revision: 0, publishedRevision: null, publishedVersion: 0, status: 'draft' as const, createdAt: '', updatedAt: '' };
 beforeEach(() => { vi.resetAllMocks(); vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} }); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -17,10 +17,52 @@ describe('Forms UI', () => {
     render(<FormsPage />); expect(screen.getByLabelText('Loading forms')).toBeTruthy(); expect(screen.queryByText('No forms yet')).toBeNull();
     await screen.findByText('Network failed'); fireEvent.click(screen.getByText('Retry')); await screen.findByText('No forms yet');
   });
-  it('uses the portal menu with exactly Edit, Duplicate, Archive', async () => {
+  it('uses the portal menu with exactly Edit, Duplicate, Delete', async () => {
     vi.mocked(service.getFormsByTenant).mockResolvedValue([form]); render(<FormsPage />); await screen.findByText('Contact Us');
-    fireEvent.click(screen.getByLabelText('Row actions')); const menu = screen.getByRole('menu'); expect(within(menu).getAllByRole('menuitem').map(e => e.textContent)).toEqual(['Edit','Duplicate','Archive']);
+    fireEvent.click(screen.getByLabelText('Row actions')); const menu = screen.getByRole('menu'); expect(within(menu).getAllByRole('menuitem').map(e => e.textContent)).toEqual(['Edit','Duplicate','Delete']);
     expect(menu.parentElement).toBe(document.body); fireEvent.keyDown(document, { key: 'Escape' }); expect(screen.queryByRole('menu')).toBeNull();
+  });
+  it('blocks published deletion with an explanation and allows deletion after unpublishing', async () => {
+    const published = { ...form, status: 'published' as const, publishedVersion: 2 };
+    vi.mocked(service.getFormsByTenant).mockResolvedValue([published]);
+    vi.mocked(service.unpublishForm).mockResolvedValue({ ...published, status: 'draft' });
+    render(<FormsPage />); await screen.findByText('Contact Us');
+    fireEvent.click(screen.getByLabelText('Row actions'));
+    expect((screen.getByRole('menuitem', { name: 'Delete' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText('Unpublish this form before deleting it.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(screen.getByText('Unpublish')); await screen.findByText('Draft');
+    expect(service.unpublishForm).toHaveBeenCalledWith('form');
+    fireEvent.click(screen.getByLabelText('Row actions'));
+    expect((screen.getByRole('menuitem', { name: 'Delete' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+  it('requires confirmation, cancels without deleting, and prevents duplicate requests until success', async () => {
+    vi.mocked(service.getFormsByTenant).mockResolvedValue([form]);
+    let resolve!: () => void;
+    vi.mocked(service.deleteForm).mockReturnValue(new Promise(done => { resolve = done; }));
+    render(<FormsPage />); await screen.findByText('Contact Us');
+    const open = () => { fireEvent.click(screen.getByLabelText('Row actions')); fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' })); };
+    open(); expect(service.deleteForm).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(service.deleteForm).not.toHaveBeenCalled();
+    open(); const button = screen.getByRole('button', { name: 'Delete Form' });
+    fireEvent.click(button); fireEvent.click(button);
+    expect(service.deleteForm).toHaveBeenCalledTimes(1);
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText('Contact Us')).toBeTruthy();
+    resolve(); await screen.findByText('No forms yet');
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+  });
+  it('keeps the form and confirmation available after a server deletion failure', async () => {
+    vi.mocked(service.getFormsByTenant).mockResolvedValue([form]);
+    vi.mocked(service.deleteForm).mockRejectedValue(new Error('Published forms must be unpublished before they can be deleted.'));
+    render(<FormsPage />); await screen.findByText('Contact Us');
+    fireEvent.click(screen.getByLabelText('Row actions')); fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Form' }));
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Delete Form' }) as HTMLButtonElement).disabled).toBe(false));
+    expect(screen.getByText('Contact Us')).toBeTruthy(); expect(screen.getByRole('alertdialog')).toBeTruthy();
   });
   it('opens mobile tools, adds fields, closes with Escape and keeps edits', async () => {
     render(<FormBuilderPage form={form} onBack={() => {}} onFormUpdate={() => {}} />);
