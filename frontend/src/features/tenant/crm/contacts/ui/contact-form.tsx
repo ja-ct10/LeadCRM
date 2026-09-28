@@ -69,6 +69,7 @@ const STATUS_OPTIONS = [
 // ─── Props ─────────────────────────────────────────────────────────────────
 
 interface ContactFormProps {
+  statusOptions?: string[];
   initialData?: Contact;
   isOpen: boolean;
   onClose: () => void;
@@ -76,6 +77,7 @@ interface ContactFormProps {
 }
 
 interface ContactFormInnerProps {
+  statusOptions?: string[];
   initialData?: Contact;
   onSave: (data: Partial<Contact>) => void;
   onCancel: () => void;
@@ -83,7 +85,7 @@ interface ContactFormInnerProps {
 
 // ─── Form Component ────────────────────────────────────────────────────────
 
-export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormInnerProps): React.ReactElement {
+export function ContactFormInner({ initialData, onSave, onCancel, statusOptions }: ContactFormInnerProps): React.ReactElement {
   const { users } = useData();
   const isEdit = !!initialData;
 
@@ -275,7 +277,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
                   aria-describedby={errors.status ? `${fieldId}-status-error` : undefined}
                   className={`${selectCls} ${errors.status ? inputErrorCls : ''}`}
                 >
-                  {STATUS_OPTIONS.map((opt) => (
+                  {(statusOptions?.map(value => ({ value, label: value })) ?? STATUS_OPTIONS).map((opt) => (
                     <option key={opt.value} value={opt.value}>
                       {opt.label}
                     </option>
@@ -444,7 +446,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
 
 // ─── Sheet Wrapper ─────────────────────────────────────────────────────────
 
-export function ContactFormSheet({ initialData, isOpen, onClose, onSave }: ContactFormProps): React.ReactElement {
+export function ContactFormSheet({ initialData, isOpen, onClose, onSave, statusOptions }: ContactFormProps): React.ReactElement {
   return (
     <SlidingDrawer
       isOpen={isOpen}
@@ -452,7 +454,7 @@ export function ContactFormSheet({ initialData, isOpen, onClose, onSave }: Conta
       title={initialData ? 'Edit Contact' : 'New Contact'}
       subtitle="Complete the contact details below."
     >
-      <ContactFormInner initialData={initialData} onSave={onSave} onCancel={onClose} />
+      <ContactFormInner initialData={initialData} onSave={onSave} onCancel={onClose} statusOptions={statusOptions} />
     </SlidingDrawer>
   );
 }

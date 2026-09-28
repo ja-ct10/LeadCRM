@@ -7,7 +7,7 @@ import { Button } from "@/shared/components/ui/button";
 import { useTasks } from "../use-tasks";
 import { TaskEditor, type TaskLinks } from "./task-editor";
 
-export function RelatedTasks({ links }: { links: TaskLinks }) {
+export function RelatedTasks({ links, onCountChange }: { links: TaskLinks; onCountChange?: (count: number | undefined) => void }) {
   const [page, setPage] = useState(1),
     [editor, setEditor] = useState<TaskRecord | "new" | null>(null);
   const canCreate = useHasPermission("deals.create");
@@ -16,6 +16,9 @@ export function RelatedTasks({ links }: { links: TaskLinks }) {
   ) as TaskListQuery;
   const data = useTasks({ ...query, page, limit: 10 });
   const key = JSON.stringify(links) + data.identity;
+  useEffect(() => {
+    onCountChange?.(data.canRead && !data.loading && !data.error ? data.summary?.total : undefined);
+  }, [data.canRead, data.loading, data.error, data.summary?.total, onCountChange]);
   useEffect(() => {
     setPage(1);
     setEditor(null);
@@ -32,7 +35,7 @@ export function RelatedTasks({ links }: { links: TaskLinks }) {
     );
   return (
     <div className="space-y-3 p-4">
-      <div className="flex items-center justify-between gap-2">
+      <div className={onCountChange ? "flex flex-wrap items-center justify-between gap-2" : "flex items-center justify-between gap-2"}>
         <span className="text-xs text-muted-foreground">
           {data.summary
             ? data.summary.total + " tasks · " + data.summary.active + " active"
@@ -75,7 +78,7 @@ export function RelatedTasks({ links }: { links: TaskLinks }) {
             onClick={() => setEditor(task)}
             className="block w-full rounded py-3 text-left hover:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <span className="block text-sm font-medium">{task.title}</span>
+            <span className={onCountChange ? "block text-sm font-medium [overflow-wrap:anywhere]" : "block text-sm font-medium"}>{task.title}</span>
             <span className="block text-xs text-muted-foreground">
               {TASK_STATUS_LABELS[task.status]} ·{" "}
               {new Date(task.dueDate).toLocaleString()}

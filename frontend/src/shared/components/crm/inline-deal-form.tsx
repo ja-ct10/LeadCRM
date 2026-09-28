@@ -53,6 +53,7 @@ interface InlineDealFormProps {
   }) => Promise<void>;
   onCancel?: () => void;
   isLoading?: boolean;
+  onError?: (error: unknown) => void;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -62,6 +63,7 @@ export function InlineDealForm({
   onSubmit,
   onCancel,
   isLoading = false,
+  onError,
 }: InlineDealFormProps): React.ReactElement {
   const { pipelines } = useData();
 
@@ -119,7 +121,13 @@ export function InlineDealForm({
       }
     }
 
-    await onSubmit(payload);
+    try {
+      await onSubmit(payload);
+    } catch (error) {
+      if (!onError) throw error;
+      onError(error);
+      return;
+    }
     reset();
     onCancel?.();
     toast.success('Deal created successfully');

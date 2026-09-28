@@ -13,6 +13,7 @@ import {
   Send,
   Search,
   Plus,
+  Activity,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -30,6 +31,8 @@ import type { RecordModule } from '@/shared/hooks/use-record-detail';
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface RecordTimelineTabProps {
+  /** Compact record layout; leave the existing Deal timeline unchanged. */
+  compact?: boolean;
   /** Activities from the useRecordDetail hook */
   activities: TimelineActivity[];
   loading?: boolean;
@@ -233,12 +236,14 @@ export function RecordTimelineTab({
   onActivityCreated,
   loading = false,
   error,
+  compact = false,
 }: RecordTimelineTabProps): React.ReactElement {
   const canCreate = useHasPermission('contacts.create');
   const canLog = canCreate && (USE_MOCK_DATA || module === 'accounts' || module === 'deals');
   const [filter, setFilter] = useState<FilterType>('All');
   const [searchTerm, setSearchTerm] = useState('');
   const [visibleCount, setVisibleCount] = useState(20);
+  const [composerOpen, setComposerOpen] = useState(false);
 
   const filters: FilterType[] = ['All', 'Notes', 'Calls & Emails', 'Tasks', 'Status'];
 
@@ -276,8 +281,8 @@ export function RecordTimelineTab({
   return (
     <div className="w-full min-w-0 px-[var(--panel-gutter,1.5rem)] py-5 space-y-4">
       {/* Quick Composer */}
-      {canLog ? <QuickComposer key={recordId} module={module} recordId={recordId} onCreated={onActivityCreated} /> : canCreate ? <p className="rounded-lg border border-border p-3 text-sm text-muted-foreground">Activity history is available below. Quick Log is currently unavailable for this record.</p> : null}
-      <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Activity Timeline ({activities.length})</h3>
+      {canLog && (!compact || composerOpen) ? <QuickComposer key={recordId} module={module} recordId={recordId} onCreated={() => { setComposerOpen(false); onActivityCreated?.(); }} /> : !compact && canCreate ? <p className="rounded-lg border border-border p-3 text-sm text-muted-foreground">Activity history is available below. Quick Log is currently unavailable for this record.</p> : null}
+      <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Activity Timeline{!loading && !error ? ` (${activities.length})` : ''}</h3>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {loading && <p role="status" className="text-sm text-muted-foreground">Loading activity history…</p>}
 
@@ -291,8 +296,9 @@ export function RecordTimelineTab({
               aria-pressed={filter === f}
               onClick={() => { setFilter(f); setVisibleCount(20); }}
               className={cn(
-                'px-3 py-1.5 text-xs font-medium rounded-full whitespace-nowrap transition-colors',
-                filter === f
+                'px-3 py-1.5 text-xs font-medium rounded-full whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-ring',
+                compact && 'min-h-9 border border-border bg-card px-2',
+                compact && filter === f ? 'bg-[var(--primary)] text-white border-transparent' : filter === f
                   ? 'bg-primary/10 text-primary'
                   : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
               )}
@@ -316,7 +322,7 @@ export function RecordTimelineTab({
       </div>
 
       {/* Timeline list */}
-      <div className="border border-border rounded-xl bg-card overflow-hidden divide-y divide-border/50">
+      {!loading && !error && <div className="border border-border rounded-xl bg-card overflow-hidden divide-y divide-border/50">
         {visibleActivities.length > 0 ? (
           <>
             {visibleActivities.map((activity) => (
@@ -338,15 +344,17 @@ export function RecordTimelineTab({
           </>
         ) : (
           <div className="px-4 py-12 text-center">
-            <Plus className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
+            {compact ? <Activity className="mx-auto mb-3 h-9 w-9 rounded-full bg-[var(--primary)]/10 p-2 text-[var(--primary)]" /> : <Plus className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />}
             <p className="text-sm text-muted-foreground">
               {activities.length === 0
                 ? 'No activity recorded for this record.'
                 : 'No activities match your filter.'}
             </p>
+            {compact && canLog && !composerOpen && <Button variant="ghost" size="sm" className="mt-2 gap-1 text-[var(--primary)]" onClick={() => setComposerOpen(true)}><Plus size={13} />Log an activity</Button>}
           </div>
         )}
-      </div>
+      </div>}
+      {compact && canLog && activities.length > 0 && !composerOpen && <Button variant="ghost" size="sm" className="gap-1 text-[var(--primary)]" onClick={() => setComposerOpen(true)}><Plus size={13} />Log an activity</Button>}
     </div>
   );
 }

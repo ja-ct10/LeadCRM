@@ -1,272 +1,131 @@
-/**
- * Integration tests for panel migrations — LeadPanel, ContactPanel, AccountPanel.
- *
- * Validates that each panel renders its core sections after migration:
- * - RecordActionBar for quick actions
- * - Tasks section with InlineTaskForm support (Lead, Contact)
- * - CustomFieldsSection for extensible metadata
- * - FilesSection for file attachments (Contact, Account)
- */
-
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+const mocks = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), permissions: ['*'], push: vi.fn() }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push }) }));
+vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
+vi.mock('@/lib/api/client', () => ({ apiClient: { get: mocks.get, put: mocks.put } }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { id: 'user', tenantId: 'tenant', role: 'Client Admin', activeEnvironment: 'SANDBOX' } }) }));
+vi.mock('@/store/DataContext', () => ({ useData: () => ({ contacts: [], organizations: [], activities: [], users: [], pipelines: [] }) }));
+vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (permission: string) => mocks.permissions.includes('*') || mocks.permissions.includes(permission) }));
+vi.mock('@/features/tenant/operations/tasks/ui/related-tasks', () => ({ RelatedTasks: ({ links }: { links: object }) => <div data-testid="related-tasks">{JSON.stringify(links)}</div> }));
+vi.mock('@/features/tenant/crm/leads/ui/lead-form', () => ({ LeadFormSheet: () => null }));
+vi.mock('@/features/tenant/crm/contacts/ui/contact-form', () => ({ ContactFormSheet: ({ onSave, statusOptions }: { onSave: (value: object) => void; statusOptions: string[] }) => <button onClick={() => onSave({ firstName: 'Nora', lastName: 'Lim', companyName: 'Updated Company', leadSource: 'Referral', productInterest: ['CCTV'], status: 'Warm' })}>Save contact {statusOptions.join(',')}</button> }));
+vi.mock('@/features/tenant/crm/accounts/ui/account-form', () => ({ AccountFormSheet: () => null }));
+vi.mock('@/features/tenant/crm/leads/ui/convert-lead-dialog', () => ({ ConvertLeadDialog: () => null }));
+import { CrmRecordPanel, CrmRecordView, type CrmRecordModule } from '../crm-record-view';
+import { clearPageCache } from '@/shared/cache/page-cache';
 
-// ─── Mocks ────────────────────────────────────────────────────────────────────
-
-const mockUpdateContact = vi.fn().mockResolvedValue(undefined);
-const mockDeleteContact = vi.fn().mockResolvedValue(undefined);
-const mockAddTask = vi.fn().mockResolvedValue(undefined);
-const mockAddDeal = vi.fn().mockResolvedValue(undefined);
-const mockUpdateOrganization = vi.fn().mockResolvedValue(undefined);
-const mockDeleteOrganization = vi.fn().mockResolvedValue(undefined);
-
-vi.mock('@/store/DataContext', () => ({
-  useData: () => ({
-    activities: [],
-    addActivity: vi.fn(),
-    pipelines: [
-      {
-        id: 'pipe-1',
-        name: 'Sales Pipeline',
-        stages: [
-          { id: 'stg-1', name: 'Prospect', order: 1, isWon: false, isLost: false },
-          { id: 'stg-2', name: 'Proposal', order: 2, isWon: false, isLost: false },
-          { id: 'stg-3', name: 'Won', order: 3, isWon: true, isLost: false },
-        ],
-      },
-    ],
-    tasks: [
-      {
-        id: 'task-1',
-        title: 'Follow up call',
-        status: 'pending',
-        priority: 'High',
-        dueDate: '2025-03-01T00:00:00.000Z',
-        leadId: 'lead-1',
-      },
-    ],
-    deals: [
-      {
-        id: 'deal-1',
-        title: 'Security Package',
-        value: 100000,
-        leadId: 'lead-1',
-        companyName: 'Acme Corp',
-        priority: 'High',
-      },
-    ],
-    contacts: [
-      { id: 'contact-1', firstName: 'Alice', lastName: 'Smith', email: 'alice@example.com', phone: '+639001111', accountId: 'org-1' },
-    ],
-    organizations: [
-      { id: 'org-1', name: 'Acme Corp', industry: 'Technology', city: 'Manila' },
-    ],
-    users: [
-      { id: 'u-1', firstName: 'Admin', lastName: 'User', email: 'admin@test.com' },
-    ],
-    roles: [],
-    updateContact: mockUpdateContact,
-    deleteContact: mockDeleteContact,
-    addTask: mockAddTask,
-    addDeal: mockAddDeal,
-    updateOrganization: mockUpdateOrganization,
-    deleteOrganization: mockDeleteOrganization,
-  }),
-}));
-
-vi.mock('@/store/AuthContext', () => ({
-  useAuth: () => ({
-    user: { id: 'u-1', role: 'Client Admin', email: 'admin@test.com' },
-  }),
-}));
-
-const mockUseHasPermission = vi.fn((_permission: string): boolean => true);
-vi.mock('@/shared/hooks/use-permissions', () => ({
-  useHasPermission: (permission: string) => mockUseHasPermission(permission),
-  usePermissions: () => ['*'],
-  useCanAny: () => true,
-  PERMISSION_BRIDGE: {},
-}));
-
-// Mock next/link to render a plain anchor
-vi.mock('next/link', () => ({
-  default: ({ children, href, ...props }: { children: React.ReactNode; href: string; [key: string]: unknown }) => (
-    <a href={href} {...props}>{children}</a>
-  ),
-}));
-
-vi.mock('@/features/tenant/operations/tasks/use-tasks', async () => {
-  const { useData } = await import('@/store/DataContext');
-  return { useTasks: (query: { leadId?: string; contactId?: string; dealId?: string }) => {
-    const tasks = useData().tasks.filter(task => (!query.leadId || task.leadId === query.leadId) && (!query.contactId || task.contactId === query.contactId) && (!query.dealId || task.dealId === query.dealId));
-    return { tasks, summary: { total: tasks.length, active: tasks.filter(task => task.status !== 'completed').length }, canRead: true, loading: false, identity: 'test', refresh: vi.fn(), meta: { total: tasks.length, hasMore: false } };
-  } };
-});
-
-// ─── Import Components Under Test ─────────────────────────────────────────────
-
-import { LeadPanel, ContactPanel, AccountPanel } from '../RecordPanelWrappers';
-import type { Lead, Contact } from '@/store/types';
-
-// ─── Test Data ────────────────────────────────────────────────────────────────
-
-const MOCK_LEAD: Lead = {
-  id: 'lead-1',
-  firstName: 'John',
-  lastName: 'Doe',
-  email: 'john@example.com',
-  phone: '+639123456',
-  companyName: 'Acme Corp',
-  status: 'Hot',
-  source: 'Website',
-  leadSource: 'Web',
-  productInterests: ['Security', 'CCTV'],
-  accountId: 'org-1',
-  createdAt: '2025-01-15T00:00:00.000Z',
-} as unknown as Lead;
-
-const MOCK_CONTACT: Contact = {
-  id: 'contact-1',
-  firstName: 'Alice',
-  lastName: 'Smith',
-  email: 'alice@example.com',
-  phone: '+639001111',
-  companyName: 'Acme Corp',
-  status: 'Qualified',
-  accountId: 'org-1',
-  createdAt: '2025-02-01T00:00:00.000Z',
-} as unknown as Contact;
-
-const MOCK_ACCOUNT = {
-  id: 'org-1',
-  name: 'Acme Corp',
-  industry: 'Technology',
-  website: 'https://acme.com',
-  city: 'Manila',
-  province: 'NCR',
-  country: 'Philippines',
-  customerType: 'Active Customer',
-  createdAt: '2025-01-01T00:00:00.000Z',
+const records = {
+  leads: { id: 'one', firstName: 'Lina', lastName: 'Reyes', email: 'lina@example.test', source: 'Referral', status: 'Warm', productInterest: ['CCTV'], assignedUser: { firstName: 'Sam', lastName: 'Cruz' } },
+  contacts: { id: 'one', firstName: 'Nora', lastName: 'Lim', status: 'WARM', company: 'North Company' },
+  accounts: { id: 'one', name: 'North Company', industry: 'Services', customerType: 'Prospect', website: 'example.test' },
 };
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/** Renders a panel and navigates to the "Details" tab to reveal sections */
-function clickDetailsTab(): void {
-  const detailsTab = screen.getByRole('tab', { name: /details/i });
-  fireEvent.click(detailsTab);
-}
-
-// ─── Tests ────────────────────────────────────────────────────────────────────
-
-describe('LeadPanel — panel migration', () => {
-  beforeEach(() => {
-    mockUseHasPermission.mockImplementation((): boolean => true);
-  });
-
-  it('renders RecordActionBar section with email/phone buttons', () => {
-    render(<LeadPanel open={true} onOpenChange={() => {}} lead={MOCK_LEAD} />);
-    clickDetailsTab();
-
-    // RecordActionBar renders titled buttons for the lead's email/phone
-    expect(screen.getByTitle('Email john@example.com')).toBeDefined();
-    expect(screen.getByTitle('Call +639123456')).toBeDefined();
-  });
-
-  it('renders Tasks section with "Task" heading text', () => {
-    render(<LeadPanel open={true} onOpenChange={() => {}} lead={MOCK_LEAD} />);
-    clickDetailsTab();
-
-    // Section header for Tasks
-    expect(screen.getByText('Tasks')).toBeDefined();
-    // A task from the mocked data should appear
-    expect(screen.getByText('Follow up call')).toBeDefined();
-  });
-
-  it('renders CustomFieldsSection in the details tab', () => {
-    render(<LeadPanel open={true} onOpenChange={() => {}} lead={MOCK_LEAD} />);
-    clickDetailsTab();
-
-    // "Custom Fields" section header (may appear in tab badge too)
-    const customFieldsElements = screen.getAllByText('Custom Fields');
-    expect(customFieldsElements.length).toBeGreaterThanOrEqual(1);
+beforeEach(() => {
+  clearPageCache(); vi.clearAllMocks(); mocks.permissions = ['*'];
+  mocks.get.mockImplementation(async (path: string) => {
+    if (path.includes('/relationships')) return { data: { account: null, contact: null, sourceLead: null, deals: [], contacts: [], activities: [] } };
+    if (path.includes('/activities')) return { data: [] };
+    const module = path.split('/')[2] as CrmRecordModule;
+    return { data: records[module] };
   });
 });
+afterEach(cleanup);
 
-describe('ContactPanel — panel migration', () => {
-  beforeEach(() => {
-    mockUseHasPermission.mockImplementation((): boolean => true);
-  });
-
-  it('renders RecordActionBar section with email/phone buttons', () => {
-    render(<ContactPanel open={true} onOpenChange={() => {}} contact={MOCK_CONTACT} />);
-    clickDetailsTab();
-
-    expect(screen.getByTitle('Email alice@example.com')).toBeDefined();
-    expect(screen.getByTitle('Call +639001111')).toBeDefined();
-  });
-
-  it('renders Tasks section', () => {
-    render(<ContactPanel open={true} onOpenChange={() => {}} contact={MOCK_CONTACT} />);
-    clickDetailsTab();
-
-    expect(screen.getByText('Tasks')).toBeDefined();
-  });
-
-  it('renders CustomFieldsSection', () => {
-    render(<ContactPanel open={true} onOpenChange={() => {}} contact={MOCK_CONTACT} />);
-    clickDetailsTab();
-
-    const customFieldsElements = screen.getAllByText('Custom Fields');
-    expect(customFieldsElements.length).toBeGreaterThanOrEqual(1);
-  });
-
-  it('renders FilesSection', () => {
-    render(<ContactPanel open={true} onOpenChange={() => {}} contact={MOCK_CONTACT} />);
-    clickDetailsTab();
-
-    // "Files" appears as both tab trigger and section header
-    const filesElements = screen.getAllByText('Files');
-    expect(filesElements.length).toBeGreaterThanOrEqual(1);
-    // Verify at least one is a section header (h3)
-    const sectionHeader = filesElements.find((el) => el.tagName === 'H3');
-    expect(sectionHeader).toBeDefined();
-  });
+it.each(['leads', 'contacts', 'accounts'] as const)('%s uses the same identity and three tabs on both surfaces', async module => {
+  const title = module === 'accounts' ? records.accounts.name : module === 'leads' ? 'Lina Reyes' : 'Nora Lim';
+  const panel = render(<CrmRecordPanel module={module} id="one" open onOpenChange={() => {}} />);
+  await screen.findByRole('heading', { name: title });
+  expect(screen.getByRole('link', { name: /Open full page/ }).getAttribute('href')).toBe(`/crm/${module}/one`);
+  expect(screen.getAllByRole('tab').map(el => el.textContent)).toEqual(expect.arrayContaining([expect.stringContaining('Activity'), expect.stringContaining('Details'), 'Files']));
+  fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  await screen.findByRole('button', { name: /^Deals/ });
+  expect(screen.getByTestId('related-tasks').textContent).toContain(module === 'leads' ? 'leadId' : module === 'contacts' ? 'contactId' : 'accountId');
+  expect(screen.queryByText('Security, Cabling, CCTV')).toBeNull();
+  fireEvent.click(screen.getByRole('tab', { name: 'Files' }));
+  expect(screen.getByText('No files attached.')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: /Upload/ })).toBeNull();
+  panel.unmount();
+  render(<CrmRecordView module={module} id="one" />);
+  await screen.findByRole('heading', { name: title });
+  expect(screen.getByRole('navigation', { name: 'Breadcrumb' }).textContent).toContain(title);
+  expect(screen.queryByRole('link', { name: /Open full page/ })).toBeNull();
 });
 
-describe('AccountPanel — panel migration', () => {
-  beforeEach(() => {
-    mockUseHasPermission.mockImplementation((): boolean => true);
-  });
+it('does not refetch relationships when switching tabs and retains collapsible sections', async () => {
+  render(<CrmRecordView module="leads" id="one" />);
+  await screen.findByText('Lina Reyes', { selector: 'h1' });
+  expect(mocks.get.mock.calls.filter(([path]) => path.includes('/relationships'))).toHaveLength(0);
+  fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  await screen.findByRole('button', { name: /Converted contact/ });
+  const about = screen.getByRole('button', { name: 'About' });
+  fireEvent.click(about);
+  expect(about.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(screen.getByRole('tab', { name: /Activity/ }));
+  fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  expect(mocks.get.mock.calls.filter(([path]) => path.includes('/relationships'))).toHaveLength(1);
+});
 
-  it('renders RecordActionBar section', () => {
-    render(<AccountPanel open={true} onOpenChange={() => {}} account={MOCK_ACCOUNT} />);
-    clickDetailsTab();
+it('reuses contact relationship history instead of requesting it twice', async () => {
+  render(<CrmRecordView module="contacts" id="one" />);
+  await screen.findByText('No activity recorded for this record.');
+  expect(mocks.get.mock.calls.filter(([path]) => path.includes('/relationships'))).toHaveLength(1);
+});
 
-    // AccountPanel has RecordActionBar with no email/phone (org-level)
-    // The "Actions" section should be present
-    expect(screen.getByText('Actions')).toBeDefined();
-    // The overflow menu trigger (More button) should exist
-    expect(screen.getByTitle('Send message')).toBeDefined();
-  });
+it('hides mutation controls without permissions', async () => {
+  mocks.permissions = ['contacts.view'];
+  render(<CrmRecordView module="leads" id="one" />);
+  await screen.findByRole('heading', { name: 'Lina Reyes' });
+  expect(screen.queryByRole('button', { name: 'Record actions' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Warm' })).toBeNull();
+  fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  expect(screen.queryByRole('button', { name: 'Edit record details' })).toBeNull();
+});
 
-  it('renders CustomFieldsSection', () => {
-    render(<AccountPanel open={true} onOpenChange={() => {}} account={MOCK_ACCOUNT} />);
-    clickDetailsTab();
+it('shows related request failures instead of empty relationship counts', async () => {
+  const implementation = mocks.get.getMockImplementation()!;
+  mocks.get.mockImplementation((path: string) => path.includes('/relationships') ? Promise.reject(new Error('Relationships unavailable')) : implementation(path));
+  render(<CrmRecordView module="leads" id="one" />);
+  await screen.findByRole('heading', { name: 'Lina Reyes' });
+  fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  await screen.findByText('Relationships unavailable');
+  expect(screen.queryByRole('button', { name: /^Deals/ })).toBeNull();
+});
 
-    const customFieldsElements = screen.getAllByText('Custom Fields');
-    expect(customFieldsElements.length).toBeGreaterThanOrEqual(1);
-  });
+it('clears the previous identity while a new record loads', async () => {
+  const view = render(<CrmRecordPanel module="leads" id="one" open onOpenChange={() => {}} />);
+  await screen.findByRole('heading', { name: 'Lina Reyes' });
+  mocks.get.mockImplementation(() => new Promise(() => {}));
+  view.rerender(<CrmRecordPanel module="leads" id="two" open onOpenChange={() => {}} />);
+  expect(screen.queryByRole('heading', { name: 'Lina Reyes' })).toBeNull();
+  expect(screen.getByRole('status', { name: 'Loading lead' })).toBeTruthy();
+});
 
-  it('renders FilesSection', () => {
-    render(<AccountPanel open={true} onOpenChange={() => {}} account={MOCK_ACCOUNT} />);
-    clickDetailsTab();
+it('shows record access errors with a retry action', async () => {
+  mocks.get.mockRejectedValue(Object.assign(new Error('Access denied'), { status: 403 }));
+  render(<CrmRecordView module="accounts" id="one" />);
+  await screen.findByRole('alert');
+  expect(screen.getByRole('alert').textContent).toBe('Access denied');
+  expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+  expect(screen.queryByRole('heading', { name: 'North Company' })).toBeNull();
+});
 
-    const filesElements = screen.getAllByText('Files');
-    expect(filesElements.length).toBeGreaterThanOrEqual(1);
-    // Verify at least one is a section header (h3)
-    const sectionHeader = filesElements.find((el) => el.tagName === 'H3');
-    expect(sectionHeader).toBeDefined();
-  });
+it('supports arrow-key tab navigation', async () => {
+  render(<CrmRecordView module="leads" id="one" />);
+  await screen.findByRole('heading', { name: 'Lina Reyes' });
+  const activity = screen.getByRole('tab', { name: /Activity/ });
+  activity.focus(); fireEvent.keyDown(activity, { key: 'ArrowRight' });
+  await waitFor(() => expect(screen.getByRole('tab', { name: /Details/ }).getAttribute('aria-selected')).toBe('true'));
+});
+
+it('maps the existing Contact editor to canonical API fields', async () => {
+  mocks.put.mockResolvedValue({ success: true });
+  render(<CrmRecordView module="contacts" id="one" />);
+  await screen.findByRole('heading', { name: 'Nora Lim' });
+  fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Edit record details' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save contact Hot,Warm,Cold,Cancelled,Closed' }));
+  await waitFor(() => expect(mocks.put).toHaveBeenCalledWith('/crm/contacts/one', {
+    firstName: 'Nora', lastName: 'Lim', company: 'Updated Company', source: 'Referral', productInterests: ['CCTV'], status: 'WARM',
+  }));
 });
