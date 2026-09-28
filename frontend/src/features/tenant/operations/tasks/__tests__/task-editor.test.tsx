@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   updateTask: vi.fn(),
   deleteTask: vi.fn(),
   canEdit: true,
+  canEditLeads: true,
   options: vi.fn(),
 }));
 const user = {
@@ -33,7 +34,9 @@ vi.mock("@/store/AuthContext", () => ({
 }));
 vi.mock("@/shared/hooks/use-permissions", () => ({
   useHasPermission: (permission: string) =>
-    permission !== "deals.edit" || mocks.canEdit,
+    permission === "contacts.edit"
+      ? mocks.canEditLeads
+      : permission !== "deals.edit" || mocks.canEdit,
 }));
 vi.mock("@/lib/config", () => ({ USE_MOCK_DATA: false }));
 vi.mock("@/shared/services/tasks.api", () => ({
@@ -57,6 +60,7 @@ afterEach(cleanup);
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.canEdit = true;
+  mocks.canEditLeads = true;
 });
 it("keeps the editor and entered values after a rejected save", async () => {
   mocks.updateTask.mockRejectedValue(new Error("Task update rejected"));
@@ -112,22 +116,93 @@ it("does not render a save action without the existing edit permission", async (
   expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
 });
 
-it("uses Contact wording, clears dependent links on Lead changes, and sends the selected Lead scope", async()=>{
-  mocks.options.mockResolvedValue({data:[{id:"new-lead",label:"New Lead"}]});
-  render(<TaskEditor task={{...task,leadIds:["old-lead"],contactIds:["old-contact"],dealIds:["old-deal"],accountIds:["old-account"]}} onClose={vi.fn()}/>);
-  expect(await screen.findByRole("button",{name:"Associate task to contact"})).toBeTruthy();
+it("uses Contact wording, clears dependent links on Lead changes, and sends the selected Lead scope", async () => {
+  mocks.options.mockResolvedValue({
+    data: [{ id: "new-lead", label: "New Lead" }],
+  });
+  render(
+    <TaskEditor
+      task={{
+        ...task,
+        leadIds: ["old-lead"],
+        contactIds: ["old-contact"],
+        dealIds: ["old-deal"],
+        accountIds: ["old-account"],
+      }}
+      onClose={vi.fn()}
+    />,
+  );
+  expect(
+    await screen.findByRole("button", { name: "Associate task to contact" }),
+  ).toBeTruthy();
   expect(screen.queryByText(/client profile/i)).toBeNull();
-  fireEvent.click(screen.getByRole("button",{name:"Associate task to lead"}));
-  fireEvent.click(await screen.findByRole("checkbox",{name:"New Lead"}));
-  expect(screen.getByRole("status").textContent).toContain("Lead selection changed");
-  fireEvent.click(screen.getByRole("button",{name:"Done"}));
-  expect(screen.getByRole("button",{name:"Associate task to contact"}).textContent).toContain("Select a contact");
-  mocks.options.mockResolvedValue({data:[]});
-  fireEvent.click(screen.getByRole("button",{name:"Associate task to contact"}));
-  expect(await screen.findByText("No related contacts for the selected leads.")).toBeTruthy();
-  expect(mocks.options).toHaveBeenLastCalledWith("contact","",expect.any(AbortSignal),["old-lead","new-lead"]);
-  expect(screen.queryByRole("button",{name:"Create a contact"})).toBeNull();
-  fireEvent.click(screen.getByRole("button",{name:"Done"}));
-  fireEvent.click(screen.getByRole("button",{name:"Save changes"}));
-  await waitFor(()=>expect(mocks.updateTask).toHaveBeenCalledWith("task",expect.objectContaining({leadIds:["old-lead","new-lead"],contactIds:[],dealIds:[],accountIds:[]})));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Associate task to lead" }),
+  );
+  fireEvent.click(await screen.findByRole("checkbox", { name: "New Lead" }));
+  expect(screen.getByRole("status").textContent).toContain(
+    "Lead selection changed",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Done" }));
+  expect(
+    screen.getByRole("button", { name: "Associate task to contact" })
+      .textContent,
+  ).toContain("Select a contact");
+  mocks.options.mockResolvedValue({ data: [] });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Associate task to contact" }),
+  );
+  expect(
+    await screen.findByText("No related contacts for the selected leads."),
+  ).toBeTruthy();
+  expect(mocks.options).toHaveBeenLastCalledWith(
+    "contact",
+    "",
+    expect.any(AbortSignal),
+    ["old-lead", "new-lead"],
+  );
+  expect(screen.getByRole("button", { name: "Create a contact" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Done" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+  await waitFor(() =>
+    expect(mocks.updateTask).toHaveBeenCalledWith(
+      "task",
+      expect.objectContaining({
+        leadIds: ["old-lead", "new-lead"],
+        contactIds: [],
+        dealIds: [],
+        accountIds: [],
+      }),
+    ),
+  );
+});
+
+it.each(["contact", "deal", "account"])(
+  "offers creation in an empty related %s menu",
+  async (kind) => {
+    mocks.options.mockResolvedValue({ data: [] });
+    render(<TaskEditor links={{ leadIds: ["lead"] }} onClose={vi.fn()} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: `Associate task to ${kind}` }),
+    );
+    expect(
+      await screen.findByText(`No related ${kind}s for the selected leads.`),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: `Create ${kind === "account" ? "an" : "a"} ${kind}`,
+      }),
+    ).toBeTruthy();
+  },
+);
+
+it("does not offer Lead relationship changes without Lead edit permission", async () => {
+  mocks.canEditLeads = false;
+  mocks.options.mockResolvedValue({ data: [] });
+  render(<TaskEditor links={{ leadIds: ["lead"] }} onClose={vi.fn()} />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Associate task to contact" }),
+  );
+  await screen.findByText("No related contacts for the selected leads.");
+  expect(screen.queryByRole("button", { name: "Create a contact" })).toBeNull();
 });

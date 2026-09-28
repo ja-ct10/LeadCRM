@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { apiClient } from "@/lib/api/client";
 import type { TaskOption, TaskOptionKind } from "@leadcrm/shared";
 import { Button } from "@/shared/components/ui/button";
+import { TaskRelatedRecordCreator } from "./task-related-record-creator";
 const LeadForm = dynamic(() =>
   import("@/features/tenant/crm/leads/ui/lead-form").then(
     (module) => module.AddLeadForm,
@@ -92,11 +93,13 @@ function ContactQuickCreate({
 /** Uses CRM forms and public routes; creation never clears the parent Task draft. */
 export function TaskRecordCreator({
   kind,
+  leadIds = [],
   onCreated,
   onCancel,
   onBusy,
 }: {
   kind: Exclude<TaskOptionKind, "user">;
+  leadIds?: string[];
   onCreated: (option: TaskOption) => void;
   onCancel: () => void;
   onBusy: (busy: boolean) => void;
@@ -142,12 +145,30 @@ export function TaskRecordCreator({
       onBusy(false);
     }
   };
+  if (leadIds.length && (kind === "contact" || kind === "account")) {
+    return (
+      <TaskRelatedRecordCreator
+        kind={kind}
+        leadIds={leadIds}
+        onCreated={onCreated}
+        onCancel={onCancel}
+        onBusy={onBusy}
+      />
+    );
+  }
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-6">
       <p className="mb-4 text-sm text-muted-foreground">
         Your task draft is preserved. The new record will be selected after it
         is saved.
       </p>
+      {kind === "deal" && leadIds.length > 0 && (
+        <p className="mb-4 text-sm text-muted-foreground">
+          This deal will be linked to the {leadIds.length} selected
+          {leadIds.length === 1 ? " lead" : " leads"}. You can add other leads
+          below.
+        </p>
+      )}
       {error && (
         <p
           role="alert"
@@ -190,6 +211,7 @@ export function TaskRecordCreator({
               const { organizationId, ...payload } = data;
               await submit({
                 ...payload,
+                leadIds: [...new Set([...leadIds, ...(payload.leadIds ?? [])])],
                 accountId: organizationId || undefined,
               });
             }}

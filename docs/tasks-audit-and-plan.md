@@ -2,6 +2,23 @@
 
 Audit: 2026-09-27. Updated: 2026-09-28. Status: **Approved implementation complete; final verification recorded below.**
 
+## Approved follow-up: multiple associations and related creation
+
+Final production build: `npm run build` passed both build tasks, including frontend type checking and all 189 generated pages. The local API proxy warning remains an environment configuration reminder, not deployment verification.
+
+This section supersedes the initial single-association/no-migration scope recorded below. The owner approved Extra High scope for typed association tables, a preserving migration, Task APIs/consumers, and Task-only Merge repair. See [ADR-002](decisions/002-task-multiple-associations.md) for contracts, rollout and rollback constraints. The migration is prepared and tested, not applied to production.
+
+The Task editor now uses Contact wording, persistent multiple checkbox selections, explicit Lead-dependent options, and a floating bottom bulk-action bar. Empty Contact, Deal and Account menus offer Create actions for permitted users. The owner approved explicit Lead linking and confirmation for conversion or Account replacement:
+
+- Deals are created with all selected Leads plus additional Leads chosen in the existing form.
+- For a Contact, choose one selected unconverted Lead, choose/create an Account, and explicitly confirm conversion. Existing Lead details become the Contact. Already converted/linked Leads cannot be converted again through this flow.
+- For an Account, choose one selected Lead, complete the existing Account form, review the existing Account link and confirm replacement. Failed linking can retry the same created Account without duplicating it.
+- Changes save immediately in CRM and preserve the Task draft. Account selections are reviewed after a Lead relationship changes to avoid submitting stale unrelated IDs. Permission checks use existing definitions; no RBAC or conversion-service architecture changes.
+
+Follow-up validation: 27 frontend Task tests and 40 isolated database/HTTP and Workflow tests passed. Workspace TypeScript checks passed in all three workspaces. Tests verify empty-menu Create actions, explicit confirmations, permission guards, conversion failures, Account-link retry, newly created records in scoped options, and successful Task persistence. CRM creation is intentionally unavailable in the existing mock preview; these persistence checks use the disposable database rather than production.
+
+Additional recommendation, not implemented: add an atomic CRM operation for creating an Account and linking one Lead. The Task flow safely retries linking a successfully returned Account, but the existing two-request API can leave an unlinked Account if the user cancels after a linking error. A CRM-level transaction/idempotency design would need separately approved scope.
+
 This report applies the supplied Tasks brief to the existing repository. Screenshots are references, not specifications. No application source, schema, role definitions, or live records were changed during this audit. Local Prisma Client generation is tooling only, not a migration.
 
 ## Decision
