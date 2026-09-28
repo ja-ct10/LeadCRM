@@ -206,11 +206,18 @@ export function TaskEditor({
         <header className="border-b border-border bg-primary/10 px-6 py-5 pr-14">
           <h2 id={heading} className="mt-1 text-xl font-semibold">
             {creating
-              ? "Create " + creating
+              ? creating === "contact"
+                ? "New Contact"
+                : "Create " + creating
               : task
                 ? "Task details"
                 : "Create task"}
           </h2>
+          {creating === "contact" && (
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Complete the contact details below.
+            </p>
+          )}
         </header>
         {creating ? (
           <TaskRecordCreator

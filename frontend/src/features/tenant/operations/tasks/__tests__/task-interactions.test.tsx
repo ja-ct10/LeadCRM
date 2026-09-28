@@ -105,21 +105,21 @@ it("preserves a failed contact draft and selects the saved response only after a
       onBusy={vi.fn()}
     />,
   );
-  fireEvent.change(screen.getByLabelText("First name *"), {
+  fireEvent.change(screen.getByLabelText(/first name \*/i), {
     target: { value: "Test" },
   });
-  fireEvent.change(screen.getByLabelText("Last name *"), {
+  fireEvent.change(screen.getByLabelText(/last name \*/i), {
     target: { value: "Person" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Create contact" }));
+  fireEvent.click(screen.getByRole("button", { name: /create contact/i }));
   expect((await screen.findByRole("alert")).textContent).toBe(
     "Contact save failed",
   );
   expect(created).not.toHaveBeenCalled();
   expect(
-    (screen.getByLabelText("First name *") as HTMLInputElement).value,
+    (screen.getByLabelText(/first name \*/i) as HTMLInputElement).value,
   ).toBe("Test");
-  fireEvent.click(screen.getByRole("button", { name: "Create contact" }));
+  fireEvent.click(screen.getByRole("button", { name: /create contact/i }));
   await waitFor(() =>
     expect(created).toHaveBeenCalledWith({
       id: "new-contact",
