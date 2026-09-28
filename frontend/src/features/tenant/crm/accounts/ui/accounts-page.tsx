@@ -4,7 +4,7 @@ import { useConfirmDialog } from '@/shared/hooks/use-confirm-dialog';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { ModuleWorkspace, ViewType, AccountPanel, StatusBadge } from '@/shared/components/crm';
-import { DataLoadingSkeleton } from '@/shared/components/crm/data-view-states';
+import { DataErrorState } from '@/shared/components/crm/data-view-states';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useColumnPreferences } from '@/shared/hooks/use-column-preferences';
 import { useAccounts } from '../hooks/use-accounts';
@@ -160,6 +160,8 @@ export default function AccountsPage(): React.ReactElement {
     isFormOpen,
     isLoading,
     isRefreshing,
+    error: accountsError,
+    refetch: refetchAccounts,
     editTarget,
     handleCreate,
     handleUpdate,
@@ -175,6 +177,10 @@ export default function AccountsPage(): React.ReactElement {
     search: debouncedSearch || undefined,
     filter: serverFilters.length > 0 ? serverFilters : undefined,
   });
+
+  useEffect(() => {
+    if (accountsError) toast.error(accountsError);
+  }, [accountsError]);
 
   // Server total from metadata
   const serverTotal = totalCount;
@@ -374,7 +380,10 @@ export default function AccountsPage(): React.ReactElement {
         searchTerm={searchTerm}
         onSearch={setSearchTerm}
         searchPlaceholder="Search accounts..."
-        onRefresh={() => toast.success('Refreshed')}
+        onRefresh={refetchAccounts}
+        refreshDisabled={isLoading || isRefreshing}
+        loading={isLoading || isRefreshing || isColumnsLoading}
+        loadingLabel={isLoading || isRefreshing ? 'Loading accounts...' : 'Loading columns...'}
         onManageColumns={() => setIsManageColumnsOpen(true)}
       >
         {highlightId && <div className="mb-3 flex items-center justify-between gap-3 text-sm text-slate-500">
@@ -384,11 +393,8 @@ export default function AccountsPage(): React.ReactElement {
         {/* List View — DataGrid */}
         {(activeView === 'list' || activeView === 'table') && (
           <>
-            {/* Initial load skeleton */}
-            {isLoading && filteredAccounts.length === 0 && (
-              <DataLoadingSkeleton rowCount={8} columnCount={6} />
-            )}
-            {filteredAccounts.length === 0 && !isLoading && (
+            {accountsError && accounts.length === 0 && <DataErrorState message={accountsError} onRetry={refetchAccounts} />}
+            {filteredAccounts.length === 0 && !isLoading && !accountsError && (
               <ActionableEmptyState
                 icon={Building2}
                 title={debouncedSearch ? 'No accounts match your search' : 'No accounts yet'}
@@ -441,9 +447,6 @@ export default function AccountsPage(): React.ReactElement {
               <PageSizeSelect value={pageSize} onChange={(size) => { setPageSize(size); setCurrentPage(1); }} />
               <span className="text-xs text-slate-400 dark:text-slate-500 ml-2">
                 {serverTotal} total records
-                {isRefreshing && (
-                  <span className="ml-1.5 text-blue-400 dark:text-blue-500" aria-live="polite" aria-label="Refreshing data">↻</span>
-                )}
               </span>
             </div>
             <div className="flex items-center gap-2">
