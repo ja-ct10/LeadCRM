@@ -9,6 +9,14 @@ export function invalidateApiPageCache(path: string): void {
     return;
   }
   const modules = new Set<string>();
+  if (['crm', 'marketing', 'automation', 'administration'].includes(area)) modules.add('archived-crm');
+  if (area === 'administration' && resource === 'archived-data') {
+    const type = path.split('/')[3];
+    if (type === 'Role') { clearPageCache(); return; }
+    if (type === 'Pipeline') { modules.add('pipeline'); modules.add('pipelines'); }
+    if (type === 'Workflow') modules.add('workflows');
+    if (type === 'Campaign' || type === 'Template') { modules.add('campaigns'); modules.add('templates'); }
+  }
   if (area === 'crm') {
     if (['leads', 'contacts', 'accounts', 'companies'].includes(resource)) modules.add('archived-crm');
     if (resource === 'leads' || resource === 'contacts') modules.add(`counts-${resource}`);

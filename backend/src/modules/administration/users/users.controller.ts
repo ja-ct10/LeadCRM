@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import * as service from './users.service';
+import { z } from 'zod';
 
 export async function getAll(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -42,7 +43,7 @@ export async function archive(req: Request, res: Response, next: NextFunction): 
 
 export async function restore(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    await service.restore(String(req.params.id), req.user!.tenantId, req.user!.userId);
+    await service.restore(z.string().uuid().parse(req.params.id), req.user!.tenantId, req.user!.userId);
     res.json({ success: true });
   } catch (err) { next(err); }
 }

@@ -7,6 +7,7 @@ import { authorize } from '../middleware/rbac.middleware';
 import { validate } from '../middleware/validate.middleware';
 import { UpdateOrganizationSettingsSchema } from '@leadcrm/shared';
 import * as organizationSettings from '../../modules/administration/organization-settings/organization-settings.controller';
+import * as archivedData from '../../modules/administration/archived-data/archived-data.controller';
 import * as userController       from '../../modules/administration/users/users.controller';
 import * as roleController       from '../../modules/administration/roles/roles.controller';
 import { CreateRoleSchema, UpdateRoleSchema, AssignRoleSchema } from '../../modules/administration/roles/roles.dto';
@@ -24,6 +25,10 @@ router.get('/users/:id/permissions', (req, res, next) => {
   return workspaceReadyMiddleware(req, res, next);
 }, roleController.getUserPermissions);
 router.use(workspaceReadyMiddleware);
+
+// Per-type RBAC is enforced by the archive service before querying or restoring.
+router.get('/archived-data', archivedData.list);
+router.patch('/archived-data/:type/:id/restore', archivedData.restore);
 
 router.get('/organization-settings', authorize('settings.view'), organizationSettings.get);
 router.patch('/organization-settings', authorize('settings.edit'), validate(UpdateOrganizationSettingsSchema), organizationSettings.update);

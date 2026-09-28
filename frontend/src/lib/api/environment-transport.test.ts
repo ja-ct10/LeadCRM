@@ -17,3 +17,11 @@ it('blocks CRM mutations during the transition', async () => {
   expect(fetchMock).not.toHaveBeenCalled();
   endEnvironmentSwitch();
 });
+it('guards archived-data reads and restores during environment transitions', async () => {
+  const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock);
+  await beginEnvironmentSwitch();
+  await expect(apiClient.get('/administration/archived-data')).rejects.toThrow('Switching environment');
+  await expect(apiClient.patch('/administration/archived-data/Pipeline/id/restore')).rejects.toThrow('Switching environment');
+  expect(fetchMock).not.toHaveBeenCalled();
+  endEnvironmentSwitch();
+});

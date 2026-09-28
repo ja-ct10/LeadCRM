@@ -194,14 +194,14 @@ export default function SettingsPage(): React.ReactElement {
 
   // -- Profile Settings Tab --
   const renderProfileTab = (): React.ReactElement => (
-    <div className="space-y-6 max-w-2xl"><ProfileForm />
+    <div className="space-y-6 w-full max-w-6xl"><ProfileForm />
       <SecuritySettings />
     </div>
   );
 
   // -- Account Details Tab (Admin only) --
   const renderAccountDetailsTab = (): React.ReactElement => (
-    <div className="max-w-2xl space-y-4">
+    <div className="w-full max-w-6xl space-y-4">
       <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-4">
         <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
           <Shield className="w-4 h-4 text-[#3B82F6]" /> Account Details
@@ -213,7 +213,7 @@ export default function SettingsPage(): React.ReactElement {
           </div>
           <div className="p-3 bg-slate-50 dark:bg-[#1B252F] rounded-xl border border-slate-100 dark:border-slate-700/60">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Account ID</p>
-            <p className="text-xs font-mono text-slate-700 dark:text-slate-300">{tenant?.id || 'N/A'}</p>
+            <p className="text-xs font-mono break-all text-slate-700 dark:text-slate-300">{tenant?.id || 'N/A'}</p>
           </div>
 
           <div className="p-3 bg-slate-50 dark:bg-[#1B252F] rounded-xl border border-slate-100 dark:border-slate-700/60">
@@ -236,7 +236,7 @@ export default function SettingsPage(): React.ReactElement {
 
   // -- Appearance Tab --
   const renderAppearanceTab = (): React.ReactElement => (
-    <div className="max-w-2xl space-y-6">
+    <div className="w-full max-w-6xl space-y-6">
       <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-6 space-y-6">
         <div>
           <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">

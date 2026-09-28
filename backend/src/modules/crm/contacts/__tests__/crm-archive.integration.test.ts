@@ -138,3 +138,115 @@ describe.sequential('CRM archive and restore through authenticated HTTP and Post
     }
   });
 });
+
+async function archiveRequest(path = '', method = 'GET', cookie = adminCookie) {
+  const response = await fetch(`${base}/administration/archived-data${path}`, { method, headers: { Cookie: cookie } });
+  return { status: response.status, body: await response.json() };
+}
+
+describe.sequential('Settings archived-data aggregation and missing restore routes', () => {
+  it('restores deals through the existing endpoint while preserving stage, value and relationships', async () => {
+    const pipeline = await db.pipeline.create({ data: { tenantId, name: 'Deal recovery pipeline' } });
+    const stage = await db.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Qualified', order: 1 } });
+    const lead = await create('leads');
+    const deal = await db.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: stage.id, leadId: lead.id, title: 'Recover deal', value: 1200, currency: 'PHP', isArchived: true } });
+    const listed = await archiveRequest('?type=Deal');
+    expect(listed.body.data.find((row: any) => row.id === deal.id)).toMatchObject({ name: deal.title, detail: 'PHP 1200', archivedAt: null });
+    expect((await call('deals/invalid/restore', 'PATCH')).status).toBe(400);
+    expect((await call(`deals/${deal.id}/restore`, 'PATCH', viewerCookie)).status).toBe(403);
+    expect((await call(`deals/${deal.id}/restore`, 'PATCH')).status).toBe(200);
+    expect(await db.deal.findUniqueOrThrow({ where: { id: deal.id } })).toMatchObject({ isArchived: false, stageId: stage.id, pipelineId: pipeline.id, leadId: lead.id, value: 1200 });
+    expect((await archiveRequest('?type=Deal')).body.data.some((row: any) => row.id === deal.id)).toBe(false);
+    expect((await call(`deals/${deal.id}/restore`, 'PATCH')).status).toBe(400);
+  });
+  it('paginates real archive identities and timestamps, excludes other tenants/environments and validates queries', async () => {
+    const lead = await create('leads');
+    await call(`leads/${lead.id}/archive`, 'PATCH');
+    const first = await archiveRequest('?type=Lead&limit=1&page=1');
+    expect(first.status).toBe(200);
+    expect(first.body.data).toHaveLength(1);
+    const ids: string[] = [];
+    for (let page = 1; page <= first.body.meta.total; page++) {
+      const response = await archiveRequest(`?type=Lead&limit=1&page=${page}`);
+      ids.push(...response.body.data.map((row: any) => row.id));
+      expect(response.body.data.every((row: any) => row.type === 'Lead' && row.archivedAt && row.canRestore)).toBe(true);
+    }
+    expect(ids).toContain(lead.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    const scopedCount = await db.lead.count({ where: { tenantId, environment: 'PRODUCTION', isArchived: true } });
+    expect(first.body.meta.total).toBe(scopedCount);
+    for (const query of ['?type=unknown', '?type=__proto__', '?page=0', '?limit=51', '?tenantId=other']) {
+      expect((await archiveRequest(query)).status).toBe(400);
+    }
+    expect((await archiveRequest('', 'GET', '')).status).toBe(401);
+    const viewer = await archiveRequest('', 'GET', viewerCookie);
+    expect(viewer.status).toBe(200);
+    expect(viewer.body.data.every((row: any) => ['Lead', 'Contact'].includes(row.type) && !row.canRestore)).toBe(true);
+    expect((await archiveRequest('?type=Workflow', 'GET', viewerCookie)).status).toBe(403);
+  });
+
+  const extraTypes = ['Pipeline', 'Workflow', 'Campaign', 'Template', 'Role'] as const;
+  async function createExtra(type: typeof extraTypes[number], tenant = tenantId, environment: 'PRODUCTION' | 'SANDBOX' = 'PRODUCTION') {
+    const data = { tenantId: tenant, environment, name: 'Archive ' + randomUUID(), isArchived: true };
+    switch (type) {
+      case 'Pipeline': return db.pipeline.create({ data });
+      case 'Workflow': return db.workflow.create({ data: { ...data, trigger: 'deal.created', actions: [], isActive: false, status: 'PAUSED' } });
+      case 'Campaign': return db.campaign.create({ data: { ...data, type: 'EMAIL', status: 'SENT', sentCount: 7 } });
+      case 'Template': return db.template.create({ data: { ...data, type: 'Email', content: 'Preserved content' } });
+      case 'Role': return db.roleDefinition.create({ data: { tenantId: tenant, name: data.name, isArchived: true, permissions: { create: { tenantId: tenant, module: 'contacts', canView: true } } } });
+    }
+  }
+  async function readExtra(type: typeof extraTypes[number], id: string) {
+    switch (type) {
+      case 'Pipeline': return db.pipeline.findUniqueOrThrow({ where: { id } });
+      case 'Workflow': return db.workflow.findUniqueOrThrow({ where: { id } });
+      case 'Campaign': return db.campaign.findUniqueOrThrow({ where: { id } });
+      case 'Template': return db.template.findUniqueOrThrow({ where: { id } });
+      case 'Role': return db.roleDefinition.findUniqueOrThrow({ where: { id }, include: { permissions: true } });
+    }
+  }
+  it.each(extraTypes)('%s restores the original database row and preserves content/history', async type => {
+    const row = await createExtra(type);
+    expect((await archiveRequest(`?type=${type}`)).body.data.some((item: any) => item.id === row.id && item.archivedAt === null)).toBe(true);
+    const before = await readExtra(type, row.id);
+    expect((await archiveRequest(`/${type}/${row.id}/restore`, 'PATCH')).status).toBe(200);
+    const after = await readExtra(type, row.id);
+    expect(after).toMatchObject({ ...before, isArchived: false, updatedAt: expect.any(Date) });
+    if (type === 'Workflow') expect(after).toMatchObject({ isActive: false, status: 'PAUSED' });
+    expect((await archiveRequest(`?type=${type}`)).body.data.some((item: any) => item.id === row.id)).toBe(false);
+    expect((await archiveRequest(`/${type}/${row.id}/restore`, 'PATCH')).status).toBe(404);
+    expect(await db.auditLog.count({ where: { entityId: row.id, action: type.toLowerCase() + '.restored' } })).toBe(1);
+  });
+  it.each(extraTypes)('%s rejects unauthenticated, unauthorized, cross-tenant and invalid restore requests', async type => {
+    const own = await createExtra(type);
+    expect((await archiveRequest(`/${type}/${own.id}/restore`, 'PATCH', '')).status).toBe(401);
+    expect((await archiveRequest(`/${type}/${own.id}/restore`, 'PATCH', viewerCookie)).status).toBe(403);
+    expect((await archiveRequest(`/${type}/invalid/restore`, 'PATCH')).status).toBe(400);
+    const other = await createExtra(type, otherTenantId);
+    expect((await archiveRequest(`/${type}/${other.id}/restore`, 'PATCH')).status).toBe(404);
+    expect(await readExtra(type, other.id)).toHaveProperty('isArchived', true);
+    if (type !== 'Role') {
+      const sandbox = await createExtra(type, tenantId, 'SANDBOX');
+      expect((await archiveRequest(`/${type}/${sandbox.id}/restore`, 'PATCH')).status).toBe(404);
+      expect((await archiveRequest(`?type=${type}`)).body.data.some((item: any) => item.id === sandbox.id)).toBe(false);
+    }
+  });
+  it('rejects unknown restore types and protected roles', async () => {
+    expect((await archiveRequest(`/User/${randomUUID()}/restore`, 'PATCH')).status).toBe(400);
+    const role = await db.roleDefinition.create({ data: { tenantId, name: 'System-Admin', isArchived: true } });
+    expect((await archiveRequest(`/Role/${role.id}/restore`, 'PATCH')).status).toBe(403);
+    expect((await archiveRequest('?type=Role')).body.data.find((item: any) => item.id === role.id).canRestore).toBe(false);
+  });
+  it('uses the existing user restore route, validates UUIDs and rejects already-active/cross-tenant users', async () => {
+    const user = await db.user.create({ data: { tenantId, email: 'inactive@camxian.com', firstName: 'Inactive', lastName: 'User', role: 'Sales', status: 'INACTIVE' } });
+    const userRestore = (id: string, cookie = adminCookie) => fetch(`${base}/administration/users/${id}/restore`, { method: 'PATCH', headers: { Cookie: cookie } });
+    expect((await archiveRequest('?type=User')).body.data.some((row: any) => row.id === user.id)).toBe(true);
+    expect((await userRestore('invalid')).status).toBe(400);
+    expect((await userRestore(user.id, viewerCookie)).status).toBe(403);
+    expect((await userRestore(user.id)).status).toBe(200);
+    expect(await db.user.findUniqueOrThrow({ where: { id: user.id } })).toMatchObject({ status: 'ACTIVE', email: user.email });
+    expect((await userRestore(user.id)).status).toBe(404);
+    const other = await db.user.create({ data: { tenantId: otherTenantId, email: 'other@camxian.com', firstName: 'Other', lastName: 'User', role: 'Sales', status: 'INACTIVE' } });
+    expect((await userRestore(other.id)).status).toBe(404);
+  });
+});

@@ -54,7 +54,7 @@ export function ProfileForm() {
     probe.onerror = () => { URL.revokeObjectURL(url); toast.error('The selected file is not a valid image.'); };
     probe.src = url;
   };
-  return <div className="max-w-2xl space-y-6">
+  return <div className="w-full space-y-6">
     <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl overflow-hidden">
       <div className="h-20 bg-gradient-to-r from-[#25313D] to-[#384653]" />
       <div className="px-5 pb-5">

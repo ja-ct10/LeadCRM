@@ -19,3 +19,4 @@ export * from './validation/deal-import.schema';
 
 export * from './contracts/campaign-email';
 export * from './contracts/forms.contract';
+export * from './contracts/archived-data.contract';
