@@ -20,6 +20,7 @@ Copy from `backend/.env.example`. Required before running the backend.
 | `PAYMONGO_WEBHOOK_SECRET` | Optional | For verifying webhook signatures. |
 | `SYSTEM_ADMIN_EMAIL` | Optional | Email for the seeded System Admin account. |
 | `SYSTEM_ADMIN_PASSWORD` | Optional | Password for the seeded System Admin account. |
+| `SUPABASE_RECORD_FILES_BUCKET` | Required for CRM file uploads | Private Supabase Storage bucket used for Lead, Contact, and Account attachments (separate from the WebP-only avatar bucket). Allow the CRM attachment MIME types and set the maximum file size to 10 MB. |
 
 ## Frontend (`frontend/.env.local`)
 

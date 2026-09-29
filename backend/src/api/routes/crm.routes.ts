@@ -1,3 +1,4 @@
+import { recordFilesRouter } from '../../modules/crm/record-files/record-files.routes';
 import * as dealImportController from '../../modules/crm/deal-imports/deal-imports.controller';
 import { CreateDealImportSchema } from '@leadcrm/shared';
 import { Router } from 'express';
@@ -42,6 +43,7 @@ const router = Router();
 router.use(authMiddleware);
 router.use(tenantMiddleware);
 router.use(workspaceReadyMiddleware);
+router.use(recordFilesRouter);
 
 // ── Duplicate Detection ───────────────────────────────────────────────────
 router.post(  '/duplicate-check',    authorize('contacts.view'),   validate(DuplicateCheckSchema), duplicateDetectionController.duplicateCheck);

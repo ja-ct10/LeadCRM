@@ -588,12 +588,6 @@ export function RecordPanel({
                       disabled={!actions?.email}
                     />
                     <ActionPillButton
-                      icon={Phone}
-                      label="Call"
-                      onClick={actions?.call}
-                      disabled={!actions?.call}
-                    />
-                    <ActionPillButton
                       icon={MessageSquare}
                       label="Message"
                       onClick={actions?.message}

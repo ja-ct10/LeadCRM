@@ -327,9 +327,6 @@ export function ModuleWorkspace({
               )}
             </button>
           ))}
-          <button className="px-2 py-2 text-[#5A6B85] hover:text-[#0F172A] dark:hover:text-white transition-colors">
-            <span className="text-lg leading-none">···</span>
-          </button>
         </div>
       )}
 

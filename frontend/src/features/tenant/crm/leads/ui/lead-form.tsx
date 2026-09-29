@@ -1,4 +1,5 @@
 'use client';
+import { LeadStatusSchema, LEAD_STATUSES } from '@leadcrm/shared';
 import { FORM_PRODUCT_INTERESTS, type ProductInterestConfig } from '@leadcrm/shared';
 import { apiClient } from '@/lib/api/client';
 
@@ -37,7 +38,7 @@ const LeadFormSchema = z.object({
   email: z.string().email('Invalid email address').optional().or(z.literal('')),
   phone: z.string().optional(),
   companyName: z.string().optional(),
-  status: z.string().min(1),
+  status: LeadStatusSchema,
   source: z.string().optional(),
   accountId: z.string().optional(),
   assignedUserId: z.string().optional(),
@@ -49,14 +50,7 @@ type LeadFormData = z.infer<typeof LeadFormSchema>;
 
 
 
-const STATUS_OPTIONS = [
-  { value: 'Inquiry', label: 'Inquiry' },
-  { value: 'Hot', label: 'Hot' },
-  { value: 'Warm', label: 'Warm' },
-  { value: 'Cold', label: 'Cold' },
-  { value: 'Closed', label: 'Closed' },
-  { value: 'Cancelled', label: 'Cancelled' },
-];
+const STATUS_OPTIONS = LEAD_STATUSES.map(value => ({ value, label: value }));
 
 const SOURCE_OPTIONS = [
   'Google Ads',
@@ -119,7 +113,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
       email: '',
       phone: '',
       companyName: '',
-      status: 'Inquiry',
+      status: 'Warm',
       source: '',
       accountId: '',
       assignedUserId: '',
@@ -166,7 +160,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
         email: initialData.email || '',
         phone: phone,
         companyName: initialData.companyName || '',
-        status: initialData.status || 'Inquiry',
+        status: (LeadStatusSchema.safeParse(initialData.status).success ? initialData.status : 'Warm') as LeadFormData['status'],
         source: initialData.leadSource || initialData.source || '',
         accountId: initialData.accountId || initialData.organizationId || '',
         assignedUserId: initialData.assignedUserId || '',
@@ -184,7 +178,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
         email: '',
         phone: '',
         companyName: '',
-        status: 'Inquiry',
+        status: 'Warm',
         source: '',
         accountId: '',
         assignedUserId: '',
@@ -209,7 +203,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
       email: data.email || undefined,
       phone: fullPhone || undefined,
       companyName: data.companyName || undefined,
-      status: data.status || 'Inquiry',
+      status: data.status || 'Warm',
       source: data.source || undefined,
       accountId: data.accountId || undefined,
       assignedUserId: data.assignedUserId || undefined,

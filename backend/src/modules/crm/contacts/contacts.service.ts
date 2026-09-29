@@ -134,7 +134,7 @@ export async function restoreContact(id: string, tenantId: string, userId: strin
  * Lead → Contact (create/link) + Account (create/link) + optional Deal (create/link).
  *
  * After conversion:
- * - Lead.status = 'Converted'
+ * - Lead.status = 'Closed'
  * - Lead.contactId = created/linked Contact ID
  * - Lead.convertedAt = now
  * - Lead.convertedById = userId
@@ -147,7 +147,7 @@ export async function convertContact(
   if (!lead) throw new NotFoundError('Contact');
 
   // Prevent re-conversion
-  if (lead.status === 'Converted') {
+  if (lead.convertedAt || lead.contactId || lead.status === 'Converted') {
     throw new ValidationError('This lead has already been converted');
   }
 
@@ -303,7 +303,7 @@ export async function convertContact(
     const convertedLead = await tx.lead.update({
       where: { id } as never,
       data: {
-        status: 'Converted',
+        status: 'Closed',
         accountId: accountId,
         contactId: contactId,
         convertedAt: now,

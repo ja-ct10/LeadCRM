@@ -1,4 +1,4 @@
-﻿/**
+/**
  * LeadsDataGrid — Leads table implemented with the shared DataGrid component.
  *
  * Close.com-style features:
@@ -30,13 +30,17 @@ import type { Lead } from '@/store/types';
 // ─── Status Dot Colors (Close.com style) ─────────────────────────────────────
 
 const STATUS_DOT_COLORS: Record<string, string> = {
-  Inquiry:   '#94a3b8',
   Qualified: '#22c55e',
   HOT:       '#ef4444',
+  Hot:       '#ef4444',
   WARM:      '#f59e0b',
+  Warm:      '#f59e0b',
   COLD:      '#3b82f6',
+  Cold:      '#3b82f6',
   CANCELLED: '#6b7280',
+  Cancelled: '#6b7280',
   CLOSED:    '#8b5cf6',
+  Closed:    '#8b5cf6',
   Converted: '#8b5cf6',
   Archived:  '#d1d5db',
 };
@@ -339,13 +343,6 @@ export function LeadsDataGrid({
   // ─── Quick Actions ─────────────────────────────────────────────────────
 
   const quickActions: QuickAction<Lead>[] = useMemo(() => [
-    {
-      id: 'call',
-      label: 'Call',
-      icon: <Phone size={14} />,
-      onClick: (lead: Lead) => { if (lead.phone) window.open(`tel:${lead.phone}`, '_self'); },
-      visible: (lead: Lead) => Boolean(lead.phone),
-    },
     {
       id: 'email',
       label: 'Email',

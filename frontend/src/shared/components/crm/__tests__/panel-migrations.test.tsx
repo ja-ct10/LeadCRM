@@ -27,6 +27,7 @@ beforeEach(() => {
   mocks.get.mockImplementation(async (path: string) => {
     if (path.includes('/relationships')) return { data: { account: null, contact: null, sourceLead: null, deals: [], contacts: [], activities: [] } };
     if (path.includes('/activities')) return { data: [] };
+    if (path.includes('/files')) return { data: [] };
     const module = path.split('/')[2] as CrmRecordModule;
     return { data: records[module] };
   });
@@ -37,20 +38,38 @@ it.each(['leads', 'contacts', 'accounts', 'deals'] as const)('%s uses the same i
   const title = module === 'deals' ? records.deals.title : module === 'accounts' ? records.accounts.name : module === 'leads' ? 'Lina Reyes' : 'Nora Lim';
   const panel = render(<CrmRecordPanel module={module} id="one" open onOpenChange={() => {}} />);
   await screen.findByRole('heading', { name: title });
-  expect(screen.getByRole('link', { name: /Open full page/ }).getAttribute('href')).toBe(`/crm/${module}/one`);
+  expect(screen.getByRole('link', { name: /Open full page/ }).getAttribute('href')).toBe(`/crm/${module}/one?from=${module}`);
+  const header = screen.getByRole('heading', { name: title }).closest('header')!;
+  const headerButtons = Array.from(header.querySelectorAll('button')).map(button => button.getAttribute('aria-label') || button.textContent?.trim());
+  expect(headerButtons.filter(label => label === 'Record actions')).toHaveLength(1);
+  expect(headerButtons.indexOf('Record actions')).toBeLessThan(headerButtons.indexOf(module === 'leads' || module === 'contacts' ? 'Warm' : module === 'accounts' ? 'Prospect' : 'Lead'));
   expect(screen.getAllByRole('tab').map(el => el.textContent)).toEqual(expect.arrayContaining([expect.stringContaining('Activity'), expect.stringContaining('Details'), 'Files']));
+  fireEvent.click(screen.getByRole('tab', { name: /Activity/ }));
+  if (module !== 'deals') {
+    expect(screen.getAllByRole('button', { name: 'Tasks' }).length).toBeGreaterThan(0);
+    expect(screen.getByTestId('related-tasks').textContent).toContain(module === 'leads' ? 'leadId' : module === 'contacts' ? 'contactId' : 'accountId');
+  }
+  expect(screen.getAllByTestId('related-tasks')).toHaveLength(1);
+  expect(screen.getByTestId('related-tasks').closest('[role="tabpanel"]')?.getAttribute('aria-labelledby')).toBe(module === 'deals' ? 'tab-details' : 'tab-activity');
   fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
   await screen.findByRole('button', { name: module === 'deals' ? /^Associations/ : /^Deals/ });
-  expect(screen.getByTestId('related-tasks').textContent).toContain(module === 'leads' ? 'leadId' : module === 'contacts' ? 'contactId' : module === 'deals' ? 'dealId' : 'accountId');
+  expect(screen.getAllByTestId('related-tasks')).toHaveLength(1);
+  expect(screen.getByTestId('related-tasks').textContent).toContain(module === 'deals' ? 'dealId' : module === 'leads' ? 'leadId' : module === 'contacts' ? 'contactId' : 'accountId');
+  expect(screen.getByTestId('related-tasks').closest('[role="tabpanel"]')?.getAttribute('aria-labelledby')).toBe(module === 'deals' ? 'tab-details' : 'tab-activity');
   expect(screen.queryByText('Security, Cabling, CCTV')).toBeNull();
   fireEvent.click(screen.getByRole('tab', { name: 'Files' }));
-  expect(screen.getByText('No files attached.')).toBeTruthy();
-  expect(screen.queryByRole('button', { name: /Upload/ })).toBeNull();
+  if (module !== 'deals') {
+    expect(screen.getByRole('button', { name: 'Upload file' })).toBeTruthy();
+    await screen.findByText('No files uploaded yet.');
+  } else expect(screen.getByText('No files attached.')).toBeTruthy();
   panel.unmount();
   render(<CrmRecordView module={module} id="one" />);
   await screen.findByRole('heading', { name: title });
   expect(screen.getByRole('navigation', { name: 'Breadcrumb' }).textContent).toContain(title);
   expect(screen.queryByRole('link', { name: /Open full page/ })).toBeNull();
+  mocks.push.mockClear();
+  fireEvent.click(screen.getByRole('button', { name: 'Go back' }));
+  expect(mocks.push).toHaveBeenCalledWith(`/crm/${module}`);
 });
 
 it('does not refetch relationships when switching tabs and retains collapsible sections', async () => {
@@ -78,9 +97,9 @@ it('hides mutation controls without permissions', async () => {
   render(<CrmRecordView module="leads" id="one" />);
   await screen.findByRole('heading', { name: 'Lina Reyes' });
   expect(screen.queryByRole('button', { name: 'Record actions' })).toBeNull();
-  expect(screen.queryByRole('button', { name: 'Warm' })).toBeNull();
+  expect((screen.getByRole('button', { name: 'Warm' }) as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
-  expect(screen.queryByRole('button', { name: 'Edit record details' })).toBeNull();
+  expect(screen.queryByRole('button', { name: /Edit (First name|Email|Account name)/ })).toBeNull();
 });
 
 it('shows related request failures instead of empty relationship counts', async () => {
@@ -119,16 +138,28 @@ it('supports arrow-key tab navigation', async () => {
   await waitFor(() => expect(screen.getByRole('tab', { name: /Details/ }).getAttribute('aria-selected')).toBe('true'));
 });
 
-it('maps the existing Contact editor to canonical API fields', async () => {
+it('edits Contact details inline using canonical API fields', async () => {
   mocks.put.mockResolvedValue({ success: true });
   render(<CrmRecordView module="contacts" id="one" />);
   await screen.findByRole('heading', { name: 'Nora Lim' });
   fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
-  fireEvent.click(screen.getByRole('button', { name: 'Edit record details' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Save contact Hot,Warm,Cold,Cancelled,Closed' }));
-  await waitFor(() => expect(mocks.put).toHaveBeenCalledWith('/crm/contacts/one', {
-    firstName: 'Nora', lastName: 'Lim', company: 'Updated Company', source: 'Referral', productInterests: ['CCTV'], status: 'WARM',
-  }));
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Company' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Company' }), { target: { value: 'Updated Company' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(mocks.put).toHaveBeenCalledWith('/crm/contacts/one', { company: 'Updated Company' }));
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+it('cancels inline Lead edits without submitting or changing the loaded value', async () => {
+  render(<CrmRecordView module="leads" id="one" />);
+  await screen.findByRole('heading', { name: 'Lina Reyes' });
+  fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Email' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Email' }), { target: { value: 'changed@example.test' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(screen.getByRole('button', { name: 'Edit Email' }).textContent).toContain('lina@example.test');
+  expect(mocks.put).not.toHaveBeenCalled();
+  expect(screen.queryByRole('dialog')).toBeNull();
 });
 
 
@@ -136,7 +167,7 @@ it('Deal stage changes use the governed API without supplying a new owner', asyn
   mocks.move.mockResolvedValue(undefined);
   render(<CrmRecordView module="deals" id="one" />);
   await screen.findByRole('heading', { name: records.deals.title });
-  fireEvent.click(screen.getByRole('button', { name: 'Lead' }));
+  fireEvent.click(screen.getAllByRole('button', { name: 'Lead' })[0]);
   fireEvent.click(screen.getByRole('menuitem', { name: 'Won' }));
   await waitFor(() => expect(mocks.move).toHaveBeenCalledWith('one', 'won', undefined, undefined));
 });
@@ -144,7 +175,7 @@ it('Deal stage changes use the governed API without supplying a new owner', asyn
 it('requires a lost reason before submitting the Deal transition', async () => {
   render(<CrmRecordView module="deals" id="one" />);
   await screen.findByRole('heading', { name: records.deals.title });
-  fireEvent.click(screen.getByRole('button', { name: 'Lead' }));
+  fireEvent.click(screen.getAllByRole('button', { name: 'Lead' })[0]);
   fireEvent.click(screen.getByRole('menuitem', { name: 'Lost' }));
   expect(mocks.move).not.toHaveBeenCalled();
   expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);

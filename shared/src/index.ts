@@ -23,3 +23,5 @@ export * from './contracts/archived-data.contract';
 export * from './contracts/list-pagination';
 
 export * from './contracts/product-interests.contract';
+
+export * from './contracts/record-experience';

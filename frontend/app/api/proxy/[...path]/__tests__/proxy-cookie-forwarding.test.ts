@@ -71,3 +71,17 @@ it('preserves uploaded and downloaded image bytes through the proxy', async () =
   expect(new Uint8Array(await res.arrayBuffer())).toEqual(bytes);
   expect(res.headers.get('cache-control')).toBe('no-store');
 });
+
+it('forwards CRM attachment bytes and download metadata through the proxy', async () => {
+  const bytes = new Uint8Array([37, 80, 68, 70, 45, 49, 46, 55, 10, 255]);
+  const fetchMock = vi.fn().mockResolvedValue(new Response(bytes, { headers: { 'Content-Type': 'application/octet-stream', 'Content-Disposition': "attachment; filename*=UTF-8''agreement.pdf" } }));
+  vi.stubGlobal('fetch', fetchMock);
+  const request = new NextRequest('https://app.example.com/api/proxy/crm/leads/lead-id/files?name=agreement.pdf&type=application%2Fpdf', {
+    method: 'POST', headers: { Cookie: 'leadcrm_token=session-token', 'Content-Type': 'application/octet-stream' }, body: bytes,
+  });
+  const response = await POST(request, { params: Promise.resolve({ path: ['crm', 'leads', 'lead-id', 'files'] }) });
+  expect(new Uint8Array(fetchMock.mock.calls[0][1].body)).toEqual(bytes);
+  expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+  expect(response.headers.get('content-disposition')).toContain('agreement.pdf');
+  expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+});

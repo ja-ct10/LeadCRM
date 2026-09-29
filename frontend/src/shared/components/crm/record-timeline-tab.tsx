@@ -33,6 +33,7 @@ import type { RecordModule } from '@/shared/hooks/use-record-detail';
 export interface RecordTimelineTabProps {
   /** Compact record layout; leave the existing Deal timeline unchanged. */
   compact?: boolean;
+  tasks?: React.ReactNode;
   /** Activities from the useRecordDetail hook */
   activities: TimelineActivity[];
   loading?: boolean;
@@ -45,7 +46,7 @@ export interface RecordTimelineTabProps {
   onActivityCreated?: () => void;
 }
 
-type FilterType = 'All' | 'Notes' | 'Calls & Emails' | 'Tasks' | 'Status';
+type FilterType = 'All' | 'Emails' | 'Notes' | 'Calls & Emails' | 'Tasks' | 'Status';
 type ComposerMode = 'note' | 'call' | 'email' | 'task';
 
 // ─── Activity icon/color mapping ─────────────────────────────────────────────
@@ -67,10 +68,11 @@ const ACTIVITY_ICON_MAP: Record<string, { icon: React.ComponentType<{ className?
 
 const FILTER_MAPPING: Record<FilterType, string[]> = {
   All: [],
+  Emails: ['email'],
   Notes: ['note'],
-  'Calls & Emails': ['call', 'email', 'sms'],
+  'Calls & Emails': ['call', 'email'],
   Tasks: ['task'],
-  Status: ['stage_change', 'stage-change', 'deal_action'],
+  Status: ['stage_change', 'stage-change', 'status_change', 'deal_action'],
 };
 
 
@@ -125,8 +127,7 @@ function QuickComposer({ module, recordId, onCreated }: QuickComposerProps): Rea
       } else {
         // The current API supports these record links. Never send a stripped or
         // unknown field, which would create an unlinked activity.
-        if (module !== 'accounts' && module !== 'deals') throw new Error('Activity logging is unavailable for this record');
-        await activitiesService.create({ type: mode, title: text.trim(), ...(module === 'accounts' ? { accountId: recordId } : { dealId: recordId }) });
+        await activitiesService.create({ type: mode, title: text.trim(), ...(module === 'leads' ? { leadId: recordId } : module === 'contacts' ? { contactId: recordId } : module === 'accounts' ? { accountId: recordId } : { dealId: recordId }) });
       }
       setText('');
       toast.success(`${mode.charAt(0).toUpperCase() + mode.slice(1)} logged`);
@@ -237,15 +238,16 @@ export function RecordTimelineTab({
   loading = false,
   error,
   compact = false,
+  tasks,
 }: RecordTimelineTabProps): React.ReactElement {
   const canCreate = useHasPermission('contacts.create');
-  const canLog = canCreate && (USE_MOCK_DATA || module === 'accounts' || module === 'deals');
+  const canLog = canCreate;
   const [filter, setFilter] = useState<FilterType>('All');
   const [searchTerm, setSearchTerm] = useState('');
   const [visibleCount, setVisibleCount] = useState(20);
   const [composerOpen, setComposerOpen] = useState(false);
 
-  const filters: FilterType[] = ['All', 'Notes', 'Calls & Emails', 'Tasks', 'Status'];
+  const filters: FilterType[] = module === 'deals' ? ['All', 'Notes', 'Calls & Emails', 'Tasks', 'Status'] : ['All', 'Emails', 'Tasks', 'Status'];
 
   // Filter + search activities
   const filteredActivities = useMemo(() => {
@@ -321,8 +323,9 @@ export function RecordTimelineTab({
         </div>
       </div>
 
+      {tasks && (filter === 'All' || filter === 'Tasks') && tasks}
       {/* Timeline list */}
-      {!loading && !error && <div className="border border-border rounded-xl bg-card overflow-hidden divide-y divide-border/50">
+      {(!loading && !error || activities.length > 0) && <div className="border border-border rounded-xl bg-card overflow-hidden divide-y divide-border/50">
         {visibleActivities.length > 0 ? (
           <>
             {visibleActivities.map((activity) => (

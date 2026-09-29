@@ -1,42 +1,44 @@
 import { z } from 'zod';
+import { LeadStatusSchema } from '@leadcrm/shared';
+import { recordText, recordName } from '../record-validation';
 
 const id = () => z.string().min(1);
 
 // Lead model fields (schema ground truth):
-// firstName, lastName, email, phone, source, status (String, default "Inquiry"),
+// firstName, lastName, email, phone, source, status (validated Lead status, default "Warm"),
 // accountId, assignedUserId, productInterest[], address, companyName, createdAt
 
 export const CreateContactSchema = z.object({
   requestId: z.string().uuid().optional(),
-  firstName:      z.string().min(1, 'First name is required').max(100),
-  lastName:       z.string().min(1, 'Last name is required').max(100),
+  firstName:      recordName(),
+  lastName:       recordName(),
   email:          z.string().email('Invalid email address').optional().or(z.literal('')),
-  phone:          z.string().optional(),
-  companyName:    z.string().optional(),
-  status:         z.string().default('Inquiry'),
-  source:         z.string().optional(),
+  phone:          recordText().optional(),
+  companyName:    recordText().optional(),
+  status:         LeadStatusSchema.default('Warm'),
+  source:         recordText().optional(),
   accountId:      id().optional(),
   assignedUserId: id().optional(),
-  productInterest: z.array(z.string().trim().min(1).max(200)).max(100).optional(),
-  address:        z.string().optional(),
-  description:    z.string().optional(),
-  website:        z.string().optional(),
+  productInterest: z.array(recordName(200)).max(100).optional(),
+  address:        recordText().optional(),
+  description:    recordText().optional(),
+  website:        recordText().optional(),
 });
 
 export const UpdateContactSchema = z.object({
-  firstName:      z.string().min(1).max(100).optional(),
-  lastName:       z.string().min(1).max(100).optional(),
+  firstName:      recordName().optional(),
+  lastName:       recordName().optional(),
   email:          z.string().email().optional().or(z.literal('')),
-  phone:          z.string().optional(),
-  companyName:    z.string().optional(),
-  status:         z.string().optional(),
-  source:         z.string().optional(),
+  phone:          recordText().optional(),
+  companyName:    recordText().optional(),
+  status:         LeadStatusSchema.optional(),
+  source:         recordText().optional(),
   accountId:      id().optional(),
   assignedUserId: id().optional(),
-  productInterest: z.array(z.string().trim().min(1).max(200)).max(100).optional(),
-  address:        z.string().optional(),
-  description:    z.string().optional(),
-  website:        z.string().optional(),
+  productInterest: z.array(recordName(200)).max(100).optional(),
+  address:        recordText().optional(),
+  description:    recordText().optional(),
+  website:        recordText().optional(),
 });
 
 export type CreateContactDto = z.infer<typeof CreateContactSchema>;

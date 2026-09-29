@@ -5,22 +5,19 @@ import {
 import type { RecordDetailConfig, StatusConfig } from '@/shared/components/crm/record-detail.types';
 import type { FieldSection } from '@/shared/components/crm/record-overview-tab';
 import type { RelatedSectionConfig } from '@/shared/components/crm/record-related-tab';
+import { LEAD_STATUSES } from '@leadcrm/shared';
 
-const LEAD_STATUSES: StatusConfig[] = [
-  { value: 'Hot', label: 'Hot', variant: 'danger' },
-  { value: 'Warm', label: 'Warm', variant: 'warning' },
-  { value: 'Cold', label: 'Cold', variant: 'neutral' },
-  { value: 'Qualified', label: 'Qualified', variant: 'success' },
-  { value: 'Cancelled', label: 'Cancelled', variant: 'neutral' },
-  { value: 'Closed', label: 'Closed', variant: 'info' },
-];
+const LEAD_STATUS_VARIANTS: Record<typeof LEAD_STATUSES[number], StatusConfig['variant']> = {
+  Hot: 'danger', Warm: 'warning', Cold: 'neutral', Closed: 'info', Cancelled: 'neutral',
+};
+const leadStatuses: StatusConfig[] = LEAD_STATUSES.map(value => ({ value, label: value, variant: LEAD_STATUS_VARIANTS[value] }));
 
 export const leadDetailConfig: RecordDetailConfig = {
   module: 'leads',
   permissionModule: 'contacts',
   editPermission: 'contacts.edit',
   deletePermission: 'contacts.delete',
-  statuses: LEAD_STATUSES,
+  statuses: leadStatuses,
   activityFilterKey: 'contactId',
 
   actionTemplates: [
@@ -56,7 +53,7 @@ export const leadDetailConfig: RecordDetailConfig = {
       fields: [
         { key: 'leadSource', label: 'Source', value: record.leadSource ?? record.source, type: 'text', editable: true, onSave: (v) => onSave('leadSource', v) },
         { key: 'score', label: 'Score', value: record.score, type: 'number', editable: false },
-        { key: 'status', label: 'Status', value: record.status, type: 'select', editable: true, options: LEAD_STATUSES.map((s) => ({ value: s.value, label: s.label })), onSave: (v) => onSave('status', v) },
+        { key: 'status', label: 'Status', value: record.status, type: 'select', editable: true, options: leadStatuses.map(({ value, label }) => ({ value, label })), onSave: (v) => onSave('status', v) },
         { key: 'productInterests', label: 'Product Interests', value: record.productInterests, type: 'tags', editable: true, icon: Tag, onSave: (v) => onSave('productInterests', v) },
         { key: 'priority', label: 'Priority', value: record.priority, type: 'select', editable: true, options: [{ value: 'Low', label: 'Low' }, { value: 'Medium', label: 'Medium' }, { value: 'High', label: 'High' }], onSave: (v) => onSave('priority', v) },
       ],

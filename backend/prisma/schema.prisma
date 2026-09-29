@@ -106,6 +106,7 @@ model SystemAdmin {
 // TENANT
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Tenant {
+  recordFiles        RecordFile[]
   id                 String             @id @default(uuid())
   name               String
   domain             String?
@@ -185,6 +186,7 @@ enum CrmEnvironment {
 }
 
 model User {
+  recordFiles        RecordFile[]
   activeEnvironment CrmEnvironment @default(SANDBOX)
   id            String     @id @default(uuid())
   tenantId      String
@@ -506,6 +508,7 @@ model Account {
   deals        Deal[]
   activities   Activity[]
   contacts     Contact[]
+  recordFiles  RecordFile[]
 
   @@index([tenantId, isArchived])
   @@index([tenantId, name])
@@ -544,7 +547,7 @@ model Lead {
   productInterest     String[]
   source              String?
   assignedUserId      String?
-  status              String    @default("Inquiry")
+  status              String    @default("Warm")
   accountId           String?
   createdById         String?
   updatedById         String?
@@ -572,6 +575,7 @@ model Lead {
   campaignContacts  CampaignContact[]
   emailDeliveryLogs EmailDeliveryLog[]
   SMSQueue          SMSQueue[]
+  recordFiles       RecordFile[]
 
   @@index([tenantId, status])
   @@index([tenantId, assignedUserId])
@@ -648,6 +652,7 @@ model Contact {
   campaignContacts   CampaignContact[]
   emailDeliveryLogs  EmailDeliveryLog[]
   SMSQueue           SMSQueue[]
+  recordFiles        RecordFile[]
 
   @@index([tenantId, status])
   @@index([tenantId, assignedUserId])
@@ -1837,5 +1842,30 @@ model TaskAccount {
   account Account @relation(fields: [accountId, tenantId, environment], references: [id, tenantId, environment], onDelete: Cascade)
 
   @@id([taskId, accountId])
+  @@index([tenantId, environment, accountId])
+}
+
+model RecordFile {
+  id String @id @default(uuid())
+  tenantId String
+  environment CrmEnvironment @default(PRODUCTION)
+  leadId String?
+  contactId String?
+  accountId String?
+  uploadedById String
+  name String
+  size Int
+  type String
+  objectKey String @unique
+  uploadedAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  lead Lead? @relation(fields: [leadId, tenantId, environment], references: [id, tenantId, environment], onDelete: Cascade)
+  contact Contact? @relation(fields: [contactId, tenantId, environment], references: [id, tenantId, environment], onDelete: Cascade)
+  account Account? @relation(fields: [accountId, tenantId, environment], references: [id, tenantId, environment], onDelete: Cascade)
+  uploadedBy User @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, environment, leadId])
+  @@index([tenantId, environment, contactId])
   @@index([tenantId, environment, accountId])
 }

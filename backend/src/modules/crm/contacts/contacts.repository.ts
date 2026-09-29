@@ -109,6 +109,9 @@ export async function updateContact(
         updatedBy:    { select: { id: true, firstName: true, lastName: true } },
       },
     });
+      if (updatedById && dto.status && dto.status !== prevStatus) await tx.activity.create({ data: {
+        tenantId, createdById: updatedById, leadId: id, type: 'stage_change', title: `Status changed from ${prevStatus} to ${dto.status}`,
+      } });
       if (dto.assignedUserId || dto.productInterest) await createProductDeals(tx, tenantId, id, updatedById);
       return updated;
     });
@@ -131,6 +134,6 @@ export async function restoreContact(id: string, tenantId: string) {
     where: { id, tenantId, isArchived: true },
     // Legacy archives have no recoverable prior status.
     data: { isArchived: false, deletedAt: null, deletedBy: null,
-      ...(lead.status === 'Archived' ? { status: 'Inquiry' } : {}) },
+      ...(lead.status === 'Archived' ? { status: 'Warm' } : {}) },
   });
 }

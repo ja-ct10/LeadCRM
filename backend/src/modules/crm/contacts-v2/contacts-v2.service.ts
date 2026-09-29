@@ -1,3 +1,5 @@
+import { CreateClientContactSchema, UpdateClientContactSchema } from './contacts-v2.dto';
+import prisma from '../../../config/database.config';
 import * as repo from './contacts-v2.repository';
 import { NotFoundError } from '../../../shared/errors/http-error';
 import { paginate } from '../../../shared/helpers/pagination';
@@ -17,6 +19,8 @@ export async function getContactById(id: string, tenantId: string) {
 }
 
 export async function createContact(tenantId: string, dto: Record<string, unknown>, actorId?: string) {
+  dto = CreateClientContactSchema.parse(dto);
+  await validateLinks(tenantId, dto);
   const contact = await repo.createContact(tenantId, dto);
   if (actorId) {
     await writeAuditLog({ tenantId, userId: actorId, action: 'contact.created', entityType: 'Contact', entityId: contact.id });
@@ -26,10 +30,13 @@ export async function createContact(tenantId: string, dto: Record<string, unknow
 }
 
 export async function updateContact(id: string, tenantId: string, dto: Record<string, unknown>, actorId?: string) {
+  dto = UpdateClientContactSchema.parse(dto);
+  await validateLinks(tenantId, dto);
   const before = await getContactById(id, tenantId);
   const contact = await repo.updateContact(id, tenantId, dto);
   if (!contact) throw new NotFoundError('Contact');
   if (actorId) {
+    if (contact.status !== before.status) await prisma.activity.create({ data: { tenantId, contactId: id, createdById: actorId, type: 'stage_change', title: `Status changed from ${before.status} to ${contact.status}` } });
     await writeAuditLog({ tenantId, userId: actorId, action: 'contact.updated', entityType: 'Contact', entityId: id });
     if (contact.status !== before.status) await fireContactStatusChanged({ tenantId, actorId, contact, prevStatus: before.status });
     if (contact.assignedUserId && contact.assignedUserId !== before.assignedUserId && contact.assignedUserId !== actorId) {
@@ -51,4 +58,9 @@ export async function restoreContact(id: string, tenantId: string, userId: strin
   if (!result.count) throw new NotFoundError('Archived Contact');
   await writeAuditLog({ tenantId, userId, action: 'contact.restored',
     entityType: 'Contact', entityId: id, after: { isArchived: false } });
+}
+
+async function validateLinks(tenantId: string, dto: Record<string, unknown>) {
+  if (dto.accountId && !await prisma.account.findFirst({ where: { id: String(dto.accountId), tenantId, isArchived: false } })) throw new NotFoundError('Account');
+  if (dto.assignedUserId && !await prisma.user.findFirst({ where: { id: String(dto.assignedUserId), tenantId, status: 'ACTIVE' } })) throw new NotFoundError('User');
 }

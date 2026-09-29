@@ -5,7 +5,7 @@ import { PrismaClient } from '@prisma/client';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { Server } from 'node:http';
+import { createServer, type Server } from 'node:http';
 
 // Always use an isolated in-memory PostgreSQL database, never DATABASE_URL.
 vi.mock('../../../../config/database.config', async () => {
@@ -15,7 +15,8 @@ vi.mock('../../../../config/database.config', async () => {
   return { default: client };
 });
 
-let pg: PGlite, socket: PGLiteSocketServer, db: PrismaClient, server: Server;
+let pg: PGlite, socket: PGLiteSocketServer, db: PrismaClient, server: Server, storageServer: Server;
+const storedObjects = new Map<string, Buffer>();
 let base: string, tenantId: string, otherTenantId: string, adminCookie: string, viewerCookie: string;
 const legacyId = randomUUID();
 const modules = ['leads', 'contacts', 'accounts'] as const;
@@ -44,10 +45,26 @@ beforeAll(async () => {
   for (const migration of ['20261007000000_add_mfa', '20261008000000_remove_retired_billing_domains', '20261009000000_lead_archive_state']) {
     await pg.exec(readFileSync(resolve(__dirname, '../../../../../prisma/migrations', migration, 'migration.sql'), 'utf8'));
   }
+  // This focused integration fixture starts from the security schema baseline,
+  // which intentionally omits the application-history migration tables.
+  await pg.exec('ALTER TABLE \"Lead\" ADD COLUMN \"creationKey\" TEXT; CREATE UNIQUE INDEX \"Lead_tenantId_environment_creationKey_key\" ON \"Lead\" (\"tenantId\", \"environment\", \"creationKey\"); ALTER TABLE \"Deal\" ADD COLUMN \"automationKey\" TEXT; CREATE UNIQUE INDEX \"Deal_tenantId_environment_automationKey_key\" ON \"Deal\" (\"tenantId\", \"environment\", \"automationKey\"); CREATE UNIQUE INDEX \"Lead_test_record_parent_key\" ON \"Lead\" (id, \"tenantId\", environment); CREATE UNIQUE INDEX \"Contact_test_record_parent_key\" ON \"Contact\" (id, \"tenantId\", environment); CREATE UNIQUE INDEX \"Account_test_record_parent_key\" ON \"Account\" (id, \"tenantId\", environment);');
+  await pg.exec(readFileSync(resolve(__dirname, '../../../../../prisma/migrations/20261013000000_record_files/migration.sql'), 'utf8'));
   socket = new PGLiteSocketServer({ db: pg, host: '127.0.0.1', port: 0 });
   await socket.start();
   process.env.CRM_ARCHIVE_TEST_DATABASE_URL = `postgresql://postgres:postgres@${socket.getServerConn()}/postgres?connection_limit=1`;
   db = (await import('../../../../config/database.config')).default;
+  storageServer = createServer((req, res) => {
+    const parts = new URL(req.url!, 'http://storage.test').pathname.split('/').filter(Boolean);
+    const bucketIndex = parts.indexOf('crm-record-files-test');
+    const key = parts.slice(bucketIndex + 1).map(decodeURIComponent).join('/').replace(/^authenticated\//, '');
+    if (req.method === 'POST') { const chunks: Buffer[] = []; req.on('data', chunk => chunks.push(Buffer.from(chunk))); req.on('end', () => { storedObjects.set(key, Buffer.concat(chunks)); res.writeHead(200, { 'Content-Type': 'application/json' }).end('{}'); }); return; }
+    const bytes = storedObjects.get(key); if (!bytes) { res.writeHead(404).end(); return; }
+    res.writeHead(200, { 'Content-Type': 'application/octet-stream' }).end(bytes);
+  });
+  await new Promise<void>(resolve => storageServer.listen(0, '127.0.0.1', resolve));
+  process.env.SUPABASE_URL = `http://127.0.0.1:${(storageServer.address() as { port: number }).port}`;
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'isolated-test-only';
+  process.env.SUPABASE_RECORD_FILES_BUCKET = 'crm-record-files-test';
   const tenant = await db.tenant.create({ data: { name: 'Archive test', slug: 'archive-test', status: 'ACTIVE', onboardingStep: 3, onboardingCompletedAt: new Date() } });
   tenantId = tenant.id;
   otherTenantId = (await db.tenant.create({ data: { name: 'Other tenant', slug: 'other-archive-test' } })).id;
@@ -64,6 +81,7 @@ beforeAll(async () => {
 }, 60_000);
 afterAll(async () => {
   if (server) await new Promise<void>(resolve => server.close(() => resolve()));
+  if (storageServer) await new Promise<void>(resolve => storageServer.close(() => resolve()));
   await db?.$disconnect(); await socket?.stop(); await pg?.close();
 });
 
@@ -72,7 +90,7 @@ describe.sequential('CRM archive and restore through authenticated HTTP and Post
     expect(await db.lead.findUniqueOrThrow({ where: { id: legacyId } })).toMatchObject({ status: 'Archived', isArchived: true });
     const { restoreContact } = await import('../contacts.repository');
     await restoreContact(legacyId, 'legacy-tenant');
-    expect(await db.lead.findUniqueOrThrow({ where: { id: legacyId } })).toMatchObject({ status: 'Inquiry', isArchived: false });
+    expect(await db.lead.findUniqueOrThrow({ where: { id: legacyId } })).toMatchObject({ status: 'Warm', isArchived: false });
   });
   it.each(modules)('%s persists archive, excludes active lists/counts, and restores without deleting relationships', async module => {
     const row = await create(module);
@@ -116,6 +134,36 @@ describe.sequential('CRM archive and restore through authenticated HTTP and Post
       expect((await call(`${module}/${randomUUID()}/${action}`, 'PATCH')).status).toBe(404);
     }
     expect(await (delegate(module) as any).findUniqueOrThrow({ where: { id: row.id } })).toHaveProperty('isArchived', false);
+  });
+  it('accepts only the supported Lead statuses and persists edits through the authenticated API', async () => {
+    const lead = await create('leads');
+    expect((await call(`leads/${lead.id}`, 'PUT', adminCookie, { status: 'Inquiry' })).status).toBe(400);
+    expect((await call(`leads/${lead.id}`, 'PUT', adminCookie, { status: 'Hot', description: '<script>alert(1)</script> Follow up' })).status).toBe(200);
+    expect(await db.lead.findUniqueOrThrow({ where: { id: lead.id } })).toMatchObject({ status: 'Hot', description: 'Follow up' });
+  });
+  it.each(['leads', 'contacts', 'accounts'] as const)('%s uploads private file bytes, lists saved history and downloads after a separate request', async module => {
+    const row = await create(module);
+    const bytes = Buffer.from('%PDF-1.7\nSaved attachment');
+    const path = `${module}/${row.id}/files?name=agreement.pdf&type=application/pdf`;
+    const response = await fetch(`${base}/crm/${path}`, { method: 'POST', headers: { Cookie: adminCookie, 'Content-Type': 'application/octet-stream' }, body: new Uint8Array(bytes) });
+    expect(response.status).toBe(201);
+    const uploaded = (await response.json()).data;
+    expect(uploaded).toMatchObject({ name: 'agreement.pdf', size: bytes.length, type: 'application/pdf', uploadedBy: 'Archive Admin' });
+    expect((await (delegate(module) as any).findUniqueOrThrow({ where: { id: row.id } })).recordFiles).toBeUndefined();
+    const list = await fetch(`${base}/crm/${module}/${row.id}/files`, { headers: { Cookie: adminCookie } });
+    expect((await list.json()).data[0]).toMatchObject({ id: uploaded.id, name: 'agreement.pdf' });
+    const persisted = await db.recordFile.findUniqueOrThrow({ where: { id: uploaded.id } });
+    expect(persisted).toMatchObject({ name: 'agreement.pdf', [module === 'leads' ? 'leadId' : module === 'contacts' ? 'contactId' : 'accountId']: row.id });
+    const download = await fetch(`${base}/crm/${module}/${row.id}/files/${uploaded.id}/download`, { headers: { Cookie: adminCookie } });
+    expect(Buffer.from(await download.arrayBuffer())).toEqual(bytes);
+    expect(download.headers.get('content-disposition')).toContain('agreement.pdf');
+    const viewerDownload = await fetch(`${base}/crm/${module}/${row.id}/files/${uploaded.id}/download`, { headers: { Cookie: viewerCookie } });
+    if (module === 'accounts') expect(viewerDownload.status).toBe(403);
+    else {
+      expect(viewerDownload.status).toBe(200);
+      expect(Buffer.from(await viewerDownload.arrayBuffer())).toEqual(bytes);
+    }
+    expect((await fetch(`${base}/crm/${module}/${row.id}/files/${uploaded.id}/download`)).status).toBe(401);
   });
   it('does not allow a status filter to expose archived leads', async () => {
     const row = await create('leads');

@@ -96,7 +96,7 @@ export async function processImport(
           phone: validation.data.phone,
           companyName: validation.data.companyName,
           address: validation.data.address,
-          status: validation.data.status || 'Inquiry',
+          status: validation.data.status || 'Warm',
           website: validation.data.website || undefined,
           source: validation.data.source || undefined,
           description: validation.data.description || undefined,

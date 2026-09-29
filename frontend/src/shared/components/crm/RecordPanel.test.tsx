@@ -14,7 +14,7 @@ vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => false
 describe('moduleConfig defaults', () => {
   it('defines valid lead statuses with tones', () => {
     expect(DEFAULT_LEAD_STATUSES.length).toBeGreaterThan(0);
-    expect(DEFAULT_LEAD_STATUSES.some((s) => s.label === 'Inquiry')).toBe(true);
+    expect(DEFAULT_LEAD_STATUSES.map((status) => status.label)).toEqual(['Hot', 'Warm', 'Cold', 'Closed', 'Cancelled']);
     expect(DEFAULT_LEAD_STATUSES.some((s) => s.label === 'Hot')).toBe(true);
   });
 
@@ -53,7 +53,7 @@ describe('RecordPanel Component', () => {
     {
       id: 'act-2',
       type: 'stage_change',
-      title: 'Status changed from Inquiry to Hot',
+      title: 'Status changed from Warm to Hot',
       createdAt: '2026-08-19T12:00:00Z',
     },
   ];
@@ -106,7 +106,7 @@ describe('RecordPanel Component', () => {
     );
 
     expect(screen.getByText('Lead created for Acme Corporation')).toBeDefined();
-    expect(screen.getByText('Status changed from Inquiry to Hot')).toBeDefined();
+    expect(screen.getByText('Status changed from Warm to Hot')).toBeDefined();
     expect(screen.getByText('Reymark Panes')).toBeDefined();
   });
 
@@ -136,8 +136,7 @@ describe('RecordPanel Component', () => {
     fireEvent.click(emailButton);
     expect(emailMock).toHaveBeenCalledTimes(1);
 
-    const callButton = screen.getByLabelText('Call');
-    fireEvent.click(callButton);
-    expect(callMock).toHaveBeenCalledTimes(1);
+    expect(screen.queryByLabelText('Call')).toBeNull();
+    expect(callMock).not.toHaveBeenCalled();
   });
 });

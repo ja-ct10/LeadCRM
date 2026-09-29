@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useConfirmDialog } from '@/shared/hooks/use-confirm-dialog';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
@@ -147,7 +147,7 @@ export default function LeadsPage(): React.ReactElement {
       conditions.push({ field: 'assignedUserId', operator: 'equals', value: user.id });
     }
     if (activeTab === 'active') {
-      conditions.push({ field: 'status', operator: 'in', value: ['Hot', 'Warm', 'Inquiry'] });
+      conditions.push({ field: 'status', operator: 'in', value: ['Hot', 'Warm'] });
     }
 
     // Status filter
