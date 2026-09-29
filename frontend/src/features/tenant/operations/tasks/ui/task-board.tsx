@@ -2,188 +2,82 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  useDraggable,
-  useDroppable,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import { GripVertical, Plus, RefreshCw, Search, Columns3 } from "lucide-react";
-import {
+  TASK_COLUMN_DEFINITIONS,
   TASK_STATUSES,
   TASK_STATUS_LABELS,
-  isTaskOverdue,
   taskDateRange,
   type TaskListQuery,
   type TaskRecord,
-  type TaskStatus,
   type TaskBulkInput,
+  type TaskOption,
 } from "@leadcrm/shared";
 import { useData } from "@/store/DataContext";
 import { useHasPermission } from "@/shared/hooks/use-permissions";
+import { USE_MOCK_DATA } from "@/lib/config";
+import { tasksApi } from "@/shared/services/tasks.api";
+import { ModuleWorkspace } from "@/shared/components/crm/module-workspace";
+import { LeadsPagination } from "@/shared/components/crm/leads-pagination";
+import { ConfirmActionDialog } from "@/shared/components/crm/confirm-action-dialog";
+import { ManageColumnsDrawer } from "@/shared/components/manage-columns-drawer";
 import { Button } from "@/shared/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/shared/components/ui/dialog";
+import {
+  DatePicker,
+  TimePicker,
+} from "@/shared/components/ui/date-time-picker";
 import { TaskTable } from "./task-table";
-import { TaskColumnsDrawer } from "./task-columns-drawer";
 import { useTaskColumns } from "../use-task-columns";
 import { useTasks } from "../use-tasks";
-import { taskDueInstant } from "../task-data";
-import { TaskEditor, TaskSelector, taskInputClass } from "./task-editor";
+import { localDateTime, taskDueInstant } from "../task-data";
+import { TaskEditor, TaskSelector } from "./task-editor";
 
-function TaskCard({
-  task,
-  disabled,
-  open,
-}: {
-  task: TaskRecord;
-  disabled: boolean;
-  open: () => void;
-}) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({ id: task.id, disabled });
-  return (
-    <article
-      ref={setNodeRef}
-      style={{
-        transform: transform
-          ? "translate3d(" + transform.x + "px," + transform.y + "px,0)"
-          : undefined,
-      }}
-      className={
-        "rounded-xl border border-border bg-background p-4 shadow-sm " +
-        (isDragging ? "relative z-20 opacity-60" : "")
-      }
-    >
-      <div className="flex items-start gap-2">
-        <button
-          type="button"
-          {...attributes}
-          {...listeners}
-          disabled={disabled}
-          aria-label={"Move " + task.title}
-          className="touch-none rounded py-1 text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <GripVertical size={16} />
-        </button>
-        <button
-          className="text-left text-sm font-semibold hover:underline"
-          onClick={open}
-        >
-          {task.title}
-        </button>
-      </div>
-      {task.description && (
-        <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
-          {task.description}
-        </p>
-      )}
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs">
-        <span
-          className={
-            task.priority === "High"
-              ? "font-medium text-destructive"
-              : "text-muted-foreground"
-          }
-        >
-          {task.priority ?? "Medium"}
-        </span>
-        <span
-          className={
-            isTaskOverdue(task) ? "text-destructive" : "text-muted-foreground"
-          }
-        >
-          {isTaskOverdue(task) ? "Overdue · " : ""}
-          {new Date(task.dueDate).toLocaleString([], {
-            month: "short",
-            day: "numeric",
-            hour: "numeric",
-            minute: "2-digit",
-          })}
-        </span>
-      </div>
-      <p className="mt-2 text-xs text-muted-foreground">
-        {task.assignedUser
-          ? task.assignedUser.firstName + " " + task.assignedUser.lastName
-          : "Team member"}
-      </p>
-    </article>
-  );
-}
-function TaskColumn({
-  status,
-  tasks,
-  count,
-  disabled,
-  open,
-}: {
-  status: TaskStatus;
-  tasks: TaskRecord[];
-  count: number;
-  disabled: boolean;
-  open: (task: TaskRecord) => void;
-}) {
-  const { setNodeRef, isOver } = useDroppable({ id: status, disabled });
-  return (
-    <section
-      ref={setNodeRef}
-      aria-label={TASK_STATUS_LABELS[status]}
-      className={
-        "min-h-56 min-w-64 flex-1 rounded-xl border p-3 " +
-        (isOver
-          ? "border-primary bg-primary/5"
-          : "border-border bg-secondary/30")
-      }
-    >
-      <h2 className="mb-4 flex items-center justify-between text-sm font-semibold">
-        {TASK_STATUS_LABELS[status]}
-        <span className="rounded-full bg-background px-2 py-0.5 text-xs text-muted-foreground">
-          {count}
-        </span>
-      </h2>
-      <div className="space-y-3">
-        {tasks.map((task) => (
-          <TaskCard
-            key={task.id}
-            task={task}
-            disabled={disabled}
-            open={() => open(task)}
-          />
-        ))}
-        {!tasks.length && (
-          <p className="py-8 text-center text-xs text-muted-foreground">
-            No tasks on this page
-          </p>
-        )}
-      </div>
-    </section>
-  );
-}
+type Period = "all" | "overdue" | "today" | "week";
+const periods = [
+  { id: "all", label: "All" },
+  { id: "overdue", label: "Overdue" },
+  { id: "today", label: "Today" },
+  { id: "week", label: "This week" },
+];
+
 export default function TaskBoard() {
-  const { updateTask, bulkTasks } = useData();
+  const { updateTask, bulkTasks, users } = useData();
   const canCreate = useHasPermission("deals.create"),
     canEdit = useHasPermission("deals.edit"),
-    canArchive = useHasPermission("deals.delete");
-  const [view, setView] = useState<"list" | "kanban" | "workload">("list");
-  const [period, setPeriod] = useState<"all" | "overdue" | "today" | "week">(
-    "all",
-  );
+    canDelete = useHasPermission("deals.delete");
+  const [period, setPeriod] = useState<Period>("all");
   const [search, setSearch] = useState(""),
     [debounced, setDebounced] = useState("");
   const [filters, setFilters] = useState<TaskListQuery>({});
   const [page, setPage] = useState(1),
     [limit, setLimit] = useState(25);
-  const [editor, setEditor] = useState<TaskRecord | "new" | null>(null);
+  const [editor, setEditor] = useState<{
+    task?: TaskRecord;
+    readOnly?: boolean;
+  } | null>(null);
   const [selected, setSelected] = useState<string[]>([]),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false);
+  const [error, setError] = useState(""),
     [notice, setNotice] = useState("");
-  const [bulkAction, setBulkAction] = useState<
-      "assign" | "reschedule" | "archive" | null
-    >(null),
-    [owner, setOwner] = useState(""),
-    [date, setDate] = useState("");
+  const [bulkAction, setBulkAction] = useState<"assign" | "reschedule" | null>(
+    null,
+  );
+  const [deleteIds, setDeleteIds] = useState<string[]>([]);
+  const [owner, setOwner] = useState(""),
+    [date, setDate] = useState(""),
+    [time, setTime] = useState("");
+  const [showFilters, setShowFilters] = useState(false),
+    [filterSearch, setFilterSearch] = useState("");
+  const [owners, setOwners] = useState<TaskOption[]>([]),
+    [ownerError, setOwnerError] = useState("");
+  const [columnsOpen, setColumnsOpen] = useState(false);
+  const mutationPending = useRef(false),
+    refreshPending = useRef(false);
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebounced(search);
@@ -201,9 +95,81 @@ export default function TaskBoard() {
     page,
     limit,
   };
+  const queryKey = JSON.stringify(query);
   const data = useTasks(query);
   const columnPreferences = useTaskColumns(data.identity, data.canRead);
-  const [columnsOpen, setColumnsOpen] = useState(false);
+  const identity = useRef(data.identity);
+  identity.current = data.identity;
+  useEffect(() => {
+    if (!data.loading) refreshPending.current = false;
+  }, [data.loading]);
+  const refresh = () => {
+    if (data.loading || mutationPending.current || refreshPending.current)
+      return;
+    refreshPending.current = true;
+    data.refresh();
+  };
+  useEffect(() => {
+    setSelected([]);
+    setBulkAction(null);
+    setDeleteIds([]);
+  }, [queryKey, data.identity]);
+  useEffect(() => {
+    if (data.loading || data.error) return;
+    const visibleIds = new Set(data.tasks.map((task) => task.id));
+    setSelected((previous) => {
+      const next = previous.filter((id) => visibleIds.has(id));
+      return next.length === previous.length ? previous : next;
+    });
+  }, [data.tasks, data.loading, data.error]);
+  useEffect(() => {
+    setEditor(null);
+    setColumnsOpen(false);
+    setShowFilters(false);
+    setError("");
+    setNotice("");
+    setOwners([]);
+  }, [data.identity]);
+  useEffect(() => {
+    if (data.meta && page > Math.max(1, Math.ceil(data.meta.total / limit)))
+      setPage(Math.max(1, Math.ceil(data.meta.total / limit)));
+  }, [data.meta, page, limit]);
+  useEffect(() => {
+    if (!showFilters || !data.canRead) return;
+    const abort = new AbortController();
+    setOwnerError("");
+    if (USE_MOCK_DATA) {
+      setOwners(
+        users
+          .filter((user) => user.status.toLowerCase() === "active")
+          .map((user) => ({
+            id: user.id,
+            label: `${user.firstName} ${user.lastName}`,
+          })),
+      );
+      return;
+    }
+    const timer = setTimeout(() => {
+      tasksApi
+        .options("user", filterSearch.replace(/^owner:\s*/i, ""), abort.signal)
+        .then((response) => {
+          if (!abort.signal.aborted) setOwners(response.data);
+        })
+        .catch((reason) => {
+          if (!abort.signal.aborted)
+            setOwnerError(
+              reason instanceof Error
+                ? reason.message
+                : "Unable to load task owners.",
+            );
+        });
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      abort.abort();
+    };
+  }, [showFilters, data.canRead, data.identity, filterSearch, users]);
+
   const bulkBarRef = useRef<HTMLElement>(null);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const hasSelection = selected.length > 0;
@@ -219,50 +185,55 @@ export default function TaskBoard() {
     observer.observe(bar);
     return () => observer.disconnect();
   }, [hasSelection]);
-  const identity = useRef(data.identity);
-  identity.current = data.identity;
-  useEffect(() => {
-    setSelected([]);
-    setBulkAction(null);
-  }, [JSON.stringify(query), data.identity, view]);
-  useEffect(() => {
-    setEditor(null);
-    setColumnsOpen(false);
-    setError("");
-    setNotice("");
-  }, [data.identity]);
-  useEffect(() => {
-    if (data.meta && page > Math.max(1, Math.ceil(data.meta.total / limit)))
-      setPage(Math.max(1, Math.ceil(data.meta.total / limit)));
-  }, [data.meta, page, limit]);
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor),
-  );
-  const change = async (task: TaskRecord, status: TaskStatus) => {
-    if (busy || task.status === status || !canEdit || task.isArchived) return;
+
+  const change = async (task: TaskRecord) => {
+    if (mutationPending.current || !canEdit || task.isArchived) return;
     const started = identity.current;
+    mutationPending.current = true;
     setBusy(true);
     setError("");
     try {
-      await updateTask(task.id, { status });
+      await updateTask(task.id, {
+        status: task.status === "completed" ? "pending" : "completed",
+      });
       if (started === identity.current) setNotice("Task updated.");
-    } catch (e) {
+    } catch (reason) {
       if (started === identity.current)
-        setError(e instanceof Error ? e.message : "Unable to update task.");
+        setError(
+          reason instanceof Error ? reason.message : "Unable to update task.",
+        );
     } finally {
+      mutationPending.current = false;
       setBusy(false);
     }
   };
-  const drop = (event: DragEndEvent) => {
-    if (!event.over) return;
-    const task = data.tasks.find((row) => row.id === event.active.id);
-    const target = String(event.over.id);
-    if (task && TASK_STATUSES.includes(target as TaskStatus))
-      void change(task, target as TaskStatus);
-  };
-  const runBulk = async (operation: TaskBulkInput["operation"]) => {
-    if (!selected.length || busy) return;
+  let dueDate: string | undefined;
+  try {
+    if (
+      date &&
+      time &&
+      localDateTime(taskDueInstant(`${date}T${time}`)) === `${date}T${time}`
+    )
+      dueDate = taskDueInstant(`${date}T${time}`);
+  } catch {
+    /* Invalid selections keep Reschedule disabled. */
+  }
+  const runBulk = async (
+    operation: TaskBulkInput["operation"],
+    ids = selected,
+  ) => {
+    if (
+      !ids.length ||
+      mutationPending.current ||
+      (operation === "delete" ? !canDelete : !canEdit)
+    )
+      return;
+    if (
+      (operation === "reschedule" && !dueDate) ||
+      (operation === "assign" && !owner)
+    )
+      return;
+    mutationPending.current = true;
     setBusy(true);
     setError("");
     setNotice("");
@@ -270,37 +241,132 @@ export default function TaskBoard() {
     try {
       const request: TaskBulkInput =
         operation === "assign"
-          ? { operation, ids: selected, assignedUserId: owner }
+          ? { operation, ids, assignedUserId: owner }
           : operation === "reschedule"
-            ? { operation, ids: selected, dueDate: taskDueInstant(date) }
-            : { operation, ids: selected };
+            ? { operation, ids, dueDate: dueDate! }
+            : { operation, ids };
       const result = await bulkTasks(request);
       if (started !== identity.current) return;
-      setNotice(result.succeeded.length + " task(s) updated.");
+      setNotice(
+        `${result.succeeded.length} task(s) ${operation === "delete" ? "deleted" : "updated"}.`,
+      );
       setError(
         result.failed
           .map(
             (failure) =>
-              (data.tasks.find((t) => t.id === failure.id)?.title ?? "Task") +
-              ": " +
-              failure.error,
+              `${data.tasks.find((task) => task.id === failure.id)?.title ?? "Task"}: ${failure.error}`,
           )
           .join(" "),
       );
-      setSelected(result.failed.map((f) => f.id));
+      setSelected((previous) =>
+        previous.filter((id) => !result.succeeded.includes(id)),
+      );
       setBulkAction(null);
-    } catch (e) {
+      setDeleteIds([]);
+    } catch (reason) {
       if (started === identity.current)
         setError(
-          e instanceof Error ? e.message : "Unable to update selected tasks.",
+          reason instanceof Error
+            ? reason.message
+            : "Unable to update selected tasks.",
         );
     } finally {
+      mutationPending.current = false;
       setBusy(false);
     }
   };
   const updateFilter = (values: TaskListQuery) => {
     setFilters((previous) => ({ ...previous, ...values }));
     setPage(1);
+  };
+  const choosePeriod = (value: string) => {
+    setPeriod(value as Period);
+    setPage(1);
+  };
+  const clearFilters = () => {
+    setSearch("");
+    setFilters({});
+    setPeriod("all");
+    setPage(1);
+  };
+  const filterGroups = [
+    {
+      id: "status",
+      label: "Status",
+      isExpanded: true,
+      items: TASK_STATUSES.map((value) => ({
+        id: value,
+        label: TASK_STATUS_LABELS[value],
+        isChecked: filters.status === value,
+      })),
+    },
+    {
+      id: "priority",
+      label: "Priority",
+      isExpanded: true,
+      items: ["Low", "Medium", "High"].map((value) => ({
+        id: value,
+        label: value,
+        isChecked: filters.priority === value,
+      })),
+    },
+    {
+      id: "assignedUserId",
+      label: "Task owner",
+      isExpanded: true,
+      items: owners.map((value) => ({
+        id: value.id,
+        label: `Owner: ${value.label}`,
+        isChecked: filters.assignedUserId === value.id,
+      })),
+    },
+    {
+      id: "period",
+      label: "Due date",
+      isExpanded: true,
+      items: periods.map((value) => ({
+        ...value,
+        isChecked: period === value.id,
+      })),
+    },
+    {
+      id: "state",
+      label: "Task state",
+      isExpanded: true,
+      items: [
+        { id: "all", label: "All task states" },
+        { id: "active", label: "Active tasks" },
+        { id: "completed", label: "Completed tasks" },
+      ].map((value) => ({
+        ...value,
+        isChecked: (filters.state ?? "all") === value.id,
+      })),
+    },
+    {
+      id: "archived",
+      label: "Show",
+      isExpanded: true,
+      items: [
+        { id: "current", label: "Current tasks", isChecked: !filters.archived },
+        {
+          id: "archived",
+          label: "Archived tasks",
+          isChecked: !!filters.archived,
+        },
+      ],
+    },
+  ];
+  const toggleFilter = (group: string, value: string) => {
+    if (group === "period") choosePeriod(period === value ? "all" : value);
+    else if (group === "archived")
+      updateFilter({ archived: value === "archived" });
+    else if (
+      group === "status" ||
+      group === "priority" ||
+      group === "assignedUserId" ||
+      group === "state"
+    )
+      updateFilter({ [group]: filters[group] === value ? undefined : value });
   };
   const total = data.meta?.total ?? 0;
   if (!data.canRead)
@@ -311,316 +377,97 @@ export default function TaskBoard() {
     );
   return (
     <div
-      className="space-y-4 p-4 text-foreground sm:p-6 lg:p-8"
-      style={hasSelection ? { paddingBottom: bulkBarHeight + 48 } : undefined}
+      className="min-w-0 max-w-full"
+      style={hasSelection ? { paddingBottom: bulkBarHeight + 32 } : undefined}
     >
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="mt-1 text-2xl font-semibold">Tasks</h1>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={data.refresh} disabled={busy}>
-            <RefreshCw size={16} />
-            Refresh
-          </Button>
-          {canCreate && (
-            <Button onClick={() => setEditor("new")}>
-              <Plus size={16} />
-              Create task
-            </Button>
-          )}
-        </div>
-      </header>
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border">
-        <nav aria-label="Task due period" className="flex gap-1">
-          {(["all", "overdue", "today", "week"] as const).map((value) => (
-            <button
-              key={value}
-              onClick={() => {
-                setPeriod(value);
+      <ModuleWorkspace
+        moduleId="tasks"
+        title="Tasks"
+        primaryActionLabel="Create task"
+        onPrimaryAction={() => setEditor({})}
+        canCreate={canCreate}
+        availableViews={["table"]}
+        activeView="table"
+        onViewChange={() => {}}
+        savedTabs={periods}
+        activeTab={period}
+        onTabChange={choosePeriod}
+        searchTerm={search}
+        onSearch={setSearch}
+        searchPlaceholder="Search tasks..."
+        showFilters={showFilters}
+        onToggleFilters={() => setShowFilters((open) => !open)}
+        filterGroups={filterGroups}
+        onFilterToggle={toggleFilter}
+        filterSearchTerm={filterSearch}
+        onFilterSearch={setFilterSearch}
+        onClearFilters={clearFilters}
+        totalRecords={total}
+        onRefresh={refresh}
+        refreshLabel="Refresh tasks"
+        refreshDisabled={busy || data.loading}
+        loading={data.loading || columnPreferences.loading}
+        loadingLabel={data.loading ? "Loading tasks..." : "Loading columns..."}
+        onManageColumns={() => setColumnsOpen(true)}
+        directManageColumns
+      >
+        {(error || data.error || ownerError) && (
+          <div
+            role="alert"
+            className="mb-3 rounded-lg border border-destructive/30 p-3 text-sm text-destructive"
+          >
+            {error || data.error || ownerError}
+            {data.error && (
+              <Button variant="ghost" onClick={refresh}>
+                Retry
+              </Button>
+            )}
+          </div>
+        )}
+        {notice && (
+          <p role="status" className="mb-2 text-sm text-muted-foreground">
+            {notice}
+          </p>
+        )}
+        {!data.error && (
+          <>
+            <TaskTable
+              tasks={data.tasks}
+              columns={columnPreferences.columns}
+              selected={selected}
+              onSelect={setSelected}
+              onOpen={(task) => setEditor({ task, readOnly: true })}
+              onEdit={(task) => setEditor({ task })}
+              onDelete={(task) => setDeleteIds([task.id])}
+              onStatus={(task) => void change(task)}
+              onSort={updateFilter}
+              query={query}
+              busy={busy}
+              canEdit={canEdit}
+              canDelete={canDelete}
+              totalRecords={total}
+              onManageColumns={() => setColumnsOpen(true)}
+            />
+            <LeadsPagination
+              currentPage={page}
+              totalRecords={total}
+              pageSize={limit}
+              onPageChange={setPage}
+              onPageSizeChange={(size) => {
+                setLimit(size);
                 setPage(1);
               }}
-              aria-current={period === value ? "page" : undefined}
-              className={
-                "border-b-2 px-3 py-3 text-sm " +
-                (period === value
-                  ? "border-primary font-semibold text-primary"
-                  : "border-transparent text-muted-foreground")
-              }
-            >
-              {value === "week"
-                ? "This week"
-                : value[0].toUpperCase() + value.slice(1)}
-            </button>
-          ))}
-        </nav>
-        <div className="flex gap-1 pb-2" aria-label="Task view">
-          {(["list", "kanban", "workload"] as const).map((value) => (
-            <Button
-              key={value}
-              size="sm"
-              variant={view === value ? "secondary" : "ghost"}
-              aria-pressed={view === value}
-              onClick={() => setView(value)}
-            >
-              {value[0].toUpperCase() + value.slice(1)}
-            </Button>
-          ))}
-        </div>
-      </div>
-      <div className="flex flex-wrap items-center gap-3">
-        <Button
-          variant="ghost"
-          className="order-last ml-auto text-primary"
-          disabled={columnPreferences.loading}
-          onClick={() => setColumnsOpen(true)}
-        >
-          <Columns3 size={15} />
-          Customise columns
-        </Button>
-        <label className="relative w-full sm:w-72">
-          <span className="sr-only">Search tasks</span>
-          <Search
-            size={16}
-            className="absolute left-3 top-3 text-muted-foreground"
-          />
-          <input
-            className={taskInputClass + " pl-9"}
-            placeholder="Search tasks"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </label>
-      </div>
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="text-xs text-muted-foreground">
-          Status
-          <select
-            aria-label="Filter status"
-            className={taskInputClass}
-            value={filters.status ?? ""}
-            onChange={(e) =>
-              updateFilter({
-                status: e.target.value
-                  ? (e.target.value as TaskStatus)
-                  : undefined,
-              })
-            }
-          >
-            <option value="">All statuses</option>
-            {TASK_STATUSES.map((status) => (
-              <option key={status} value={status}>
-                {TASK_STATUS_LABELS[status]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-xs text-muted-foreground">
-          Priority
-          <select
-            aria-label="Filter priority"
-            className={taskInputClass}
-            value={filters.priority ?? ""}
-            onChange={(e) =>
-              updateFilter({
-                priority: e.target.value
-                  ? (e.target.value as "Low" | "Medium" | "High")
-                  : undefined,
-              })
-            }
-          >
-            <option value="">All priorities</option>
-            {["Low", "Medium", "High"].map((value) => (
-              <option key={value}>{value}</option>
-            ))}
-          </select>
-        </label>
-        <label className="text-xs text-muted-foreground">
-          Show
-          <select
-            aria-label="Archive filter"
-            className={taskInputClass}
-            value={filters.archived ? "archived" : "current"}
-            onChange={(e) =>
-              updateFilter({ archived: e.target.value === "archived" })
-            }
-          >
-            <option value="current">Current tasks</option>
-            <option value="archived">Archived tasks</option>
-          </select>
-        </label>
-        <Button
-          variant="ghost"
-          onClick={() => {
-            setSearch("");
-            setFilters({});
-            setPeriod("all");
-            setPage(1);
-          }}
-        >
-          Clear filters
-        </Button>
-        <div className="w-full sm:w-56">
-          <TaskSelector
-            kind="user"
-            label="Task owner"
-            value={filters.assignedUserId ?? ""}
-            onChange={(value) =>
-              updateFilter({ assignedUserId: value || undefined })
-            }
-          />
-        </div>
-      </div>
-      {(error || data.error) && (
-        <div
-          role="alert"
-          className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive"
-        >
-          {error || data.error}
-          {data.error && (
-            <Button variant="ghost" onClick={data.refresh}>
-              Retry
-            </Button>
-          )}
-        </div>
-      )}
-      {notice && (
-        <p role="status" className="text-sm text-muted-foreground">
-          {notice}
-        </p>
-      )}
-      {data.loading ? (
-        <div
-          role="status"
-          className="rounded-xl border border-border p-12 text-center text-muted-foreground"
-        >
-          Loading tasks…
-        </div>
-      ) : (
-        !data.error && (
-          <>
-            <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-              <span>{total} tasks</span>
+              disabled={busy || data.loading}
+            />
+            <p className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
               <span>{data.summary?.active ?? 0} active</span>
               <span>{data.summary?.overdue ?? 0} overdue</span>
               <span>{data.summary?.completed ?? 0} completed</span>
-            </div>
-            {view === "workload" ? (
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {data.summary?.workload.map((row) => (
-                  <article
-                    key={row.assignedUserId}
-                    className="rounded-xl border border-border bg-background p-5"
-                  >
-                    <h2 className="font-semibold">{row.name}</h2>
-                    <p className="mt-2 text-2xl font-semibold">
-                      {row.total}{" "}
-                      <span className="text-sm font-normal text-muted-foreground">
-                        active tasks
-                      </span>
-                    </p>
-                    <p className="mt-3 text-sm text-muted-foreground">
-                      {row.pending} to do · {row.inProgress} in progress ·{" "}
-                      {row.blocked} blocked
-                    </p>
-                    <p className="mt-2 text-sm text-destructive">
-                      {row.overdue} overdue
-                    </p>
-                  </article>
-                ))}
-                {!data.summary?.workload.length && (
-                  <p className="p-6 text-muted-foreground">
-                    No active workload matches these filters.
-                  </p>
-                )}
-              </div>
-            ) : view === "kanban" ? (
-              <>
-                <p className="text-xs text-muted-foreground">
-                  Columns show this page of results. Counts include all matching
-                  tasks. Open a task to change its status without dragging.
-                </p>
-                <DndContext sensors={sensors} onDragEnd={drop}>
-                  <div className="flex gap-4 overflow-x-auto pb-4">
-                    {TASK_STATUSES.map((status) => (
-                      <TaskColumn
-                        key={status}
-                        status={status}
-                        tasks={data.tasks.filter((t) => t.status === status)}
-                        count={data.summary?.byStatus[status] ?? 0}
-                        disabled={busy || !canEdit || !!filters.archived}
-                        open={setEditor}
-                      />
-                    ))}
-                  </div>
-                </DndContext>
-              </>
-            ) : (
-              <TaskTable
-                tasks={data.tasks}
-                columns={columnPreferences.columns}
-                selected={selected}
-                onSelect={setSelected}
-                onOpen={setEditor}
-                onStatus={(task) =>
-                  void change(
-                    task,
-                    task.status === "completed" ? "pending" : "completed",
-                  )
-                }
-                onSort={updateFilter}
-                query={query}
-                busy={busy}
-                canEdit={canEdit}
-                canArchive={canArchive}
-              />
-            )}
-            {view !== "workload" && (
-              <footer className="!mt-0 flex flex-wrap items-center justify-end gap-3 rounded-b-xl border border-t-0 border-border bg-background p-3 text-sm text-muted-foreground">
-                <label>
-                  Rows per page{" "}
-                  <select
-                    className="rounded border border-border bg-background p-2"
-                    value={limit}
-                    onChange={(e) => {
-                      setLimit(Number(e.target.value));
-                      setPage(1);
-                    }}
-                  >
-                    {[25, 50, 100].map((value) => (
-                      <option key={value}>{value}</option>
-                    ))}
-                  </select>
-                </label>
-                <span>
-                  {total ? (page - 1) * limit + 1 : 0}–
-                  {Math.min(page * limit, total)} of {total}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page === 1 || busy}
-                  onClick={() => setPage((value) => value - 1)}
-                >
-                  Previous
-                </Button>
-                <span>
-                  Page {page} of {Math.max(1, Math.ceil(total / limit))}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={!data.meta?.hasMore || busy}
-                  onClick={() => setPage((value) => value + 1)}
-                >
-                  Next
-                </Button>
-              </footer>
-            )}
+            </p>
           </>
-        )
-      )}
-      {selected.length > 0 &&
+        )}
+      </ModuleWorkspace>
+      {hasSelection &&
         createPortal(
           <section
             ref={bulkBarRef}
@@ -635,10 +482,7 @@ export default function TaskBoard() {
               size="sm"
               variant="ghost"
               disabled={busy}
-              onClick={() => {
-                setSelected([]);
-                setBulkAction(null);
-              }}
+              onClick={() => setSelected([])}
             >
               Clear selection
             </Button>
@@ -646,106 +490,177 @@ export default function TaskBoard() {
               <>
                 <Button
                   size="sm"
-                  disabled={busy}
+                  disabled={busy || data.loading || !!filters.archived}
                   onClick={() => void runBulk("complete")}
                 >
-                  Mark done
+                  Mark as done
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={busy}
-                  onClick={() => setBulkAction("assign")}
+                  disabled={busy || data.loading || !!filters.archived}
+                  onClick={() => {
+                    setOwner("");
+                    setBulkAction("assign");
+                  }}
                 >
                   Assign
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={busy}
-                  onClick={() => setBulkAction("reschedule")}
+                  disabled={busy || data.loading || !!filters.archived}
+                  onClick={() => {
+                    setDate("");
+                    setTime("");
+                    setBulkAction("reschedule");
+                  }}
                 >
                   Reschedule
                 </Button>
               </>
             )}
-            {canArchive && (
+            {canDelete && (
               <Button
                 size="sm"
                 variant="outline"
-                disabled={busy}
-                onClick={() => setBulkAction("archive")}
+                disabled={busy || data.loading}
+                onClick={() => setDeleteIds([...selected])}
               >
-                Archive
+                Delete
               </Button>
-            )}
-            {bulkAction && (
-              <div className="w-full space-y-3 border-t border-border pt-3">
-                {bulkAction === "assign" ? (
-                  <TaskSelector
-                    kind="user"
-                    label="New owner"
-                    required
-                    value={owner}
-                    onChange={setOwner}
-                  />
-                ) : bulkAction === "reschedule" ? (
-                  <label className="block text-sm">
-                    New due date and time
-                    <input
-                      className={taskInputClass}
-                      type="datetime-local"
-                      value={date}
-                      onChange={(e) => setDate(e.target.value)}
-                    />
-                  </label>
-                ) : (
-                  <p className="text-sm">
-                    Archive {selected.length} selected tasks? They remain
-                    available in the archive.
-                  </p>
-                )}
-                <Button
-                  disabled={
-                    busy ||
-                    (bulkAction === "assign" && !owner) ||
-                    (bulkAction === "reschedule" && !date)
-                  }
-                  onClick={() => void runBulk(bulkAction)}
-                >
-                  Confirm {bulkAction}
-                </Button>
-                <Button
-                  variant="ghost"
-                  disabled={busy}
-                  onClick={() => setBulkAction(null)}
-                >
-                  Cancel
-                </Button>
-              </div>
             )}
           </section>,
           document.body,
         )}
+      <Dialog
+        open={bulkAction !== null}
+        onOpenChange={(open) => {
+          if (!open && !busy) setBulkAction(null);
+        }}
+      >
+        <DialogContent
+          className="max-w-md"
+          aria-labelledby="task-bulk-title"
+          aria-describedby="task-bulk-description"
+        >
+          <DialogTitle id="task-bulk-title">
+            {bulkAction === "assign" ? "Assign tasks" : "Reschedule tasks"}
+          </DialogTitle>
+          <DialogDescription id="task-bulk-description">
+            Update {selected.length} selected task(s).
+          </DialogDescription>
+          {bulkAction === "assign" ? (
+            <TaskSelector
+              kind="user"
+              label="New owner"
+              required
+              value={owner}
+              onChange={setOwner}
+            />
+          ) : (
+            <div className="grid gap-4">
+              <div>
+                <label
+                  htmlFor="task-reschedule-date"
+                  className="mb-1 block text-sm"
+                >
+                  Due date
+                </label>
+                <DatePicker
+                  id="task-reschedule-date"
+                  value={date}
+                  onChange={setDate}
+                  minDate="0001-01-01"
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="task-reschedule-time"
+                  className="mb-1 block text-sm"
+                >
+                  Due time
+                </label>
+                <TimePicker
+                  id="task-reschedule-time"
+                  value={time}
+                  onChange={setTime}
+                />
+              </div>
+              {date && time && !dueDate && (
+                <p role="alert" className="text-sm text-destructive">
+                  Choose a valid date and time.
+                </p>
+              )}
+            </div>
+          )}
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() => setBulkAction(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={busy || (bulkAction === "assign" ? !owner : !dueDate)}
+              onClick={() => {
+                if (bulkAction) void runBulk(bulkAction);
+              }}
+            >
+              {bulkAction === "assign" ? "Confirm assignment" : "Reschedule"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <ConfirmActionDialog
+        open={deleteIds.length > 0}
+        onOpenChange={(open) => {
+          if (!open && !busy) setDeleteIds([]);
+        }}
+        title={deleteIds.length === 1 ? "Delete task?" : "Delete tasks?"}
+        description={`Permanently delete ${deleteIds.length} task(s)?${error ? ` ${error}` : ""}`}
+        warning="This cannot be undone."
+        confirmLabel="Delete"
+        variant="destructive"
+        isLoading={busy}
+        onConfirm={() => runBulk("delete", deleteIds)}
+      />
       {columnPreferences.error && (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="mt-2 text-sm text-destructive">
           {columnPreferences.error}{" "}
           <button onClick={columnPreferences.retry} className="underline">
             Retry columns
           </button>
         </p>
       )}
-      {columnsOpen && (
-        <TaskColumnsDrawer
-          columns={columnPreferences.columns}
-          onSave={columnPreferences.save}
-          onClose={() => setColumnsOpen(false)}
-        />
-      )}
+      <ManageColumnsDrawer
+        isOpen={columnsOpen && !columnPreferences.loading}
+        onClose={() => setColumnsOpen(false)}
+        module="tasks"
+        registry={TASK_COLUMN_DEFINITIONS}
+        effectiveColumns={columnPreferences.columns}
+        onSave={columnPreferences.save}
+        onReset={() =>
+          columnPreferences.save(
+            TASK_COLUMN_DEFINITIONS.map((column) => ({
+              id: column.id,
+              visible: column.defaultVisible,
+              order: column.defaultOrder,
+            })),
+          )
+        }
+      />
       {editor && (
         <TaskEditor
-          key={data.identity + (editor === "new" ? "new" : editor.id)}
-          task={editor === "new" ? undefined : editor}
+          key={data.identity + (editor.task?.id ?? "new") + editor.readOnly}
+          task={editor.task}
+          readOnly={editor.readOnly}
           onClose={() => setEditor(null)}
         />
       )}

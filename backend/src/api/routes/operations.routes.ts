@@ -27,7 +27,7 @@ router.get('/tasks/options', authorize('deals.view'), (req, res, next) => {
   return authorize(permission)(req, res, next);
 }, taskController.getOptions);
 router.post('/tasks/bulk', validate(TaskBulkSchema), (req, res, next) =>
-  authorize(req.body.operation === 'archive' ? 'deals.delete' : 'deals.edit')(req, res, next), taskController.bulkTasks);
+  authorize(['archive', 'delete'].includes(req.body.operation) ? 'deals.delete' : 'deals.edit')(req, res, next), taskController.bulkTasks);
 router.get(   '/tasks/:id',             authorize('deals.view'),   taskController.getTaskById);
 router.post(  '/tasks',                 authorize('deals.create'), validate(CreateTaskSchema), taskController.createTask);
 router.put(   '/tasks/:id',             authorize('deals.edit'),   validate(UpdateTaskSchema), taskController.updateTask);

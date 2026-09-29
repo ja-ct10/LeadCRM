@@ -96,6 +96,9 @@ export interface ModuleWorkspaceProps {
   loading?: boolean;
   loadingLabel?: string;
   refreshDisabled?: boolean;
+  refreshLabel?: string;
+  directManageColumns?: boolean;
+  onClearFilters?: () => void;
   /** Saved view tabs */
   savedTabs?: SavedViewTab[];
   /** Active tab id */
@@ -198,6 +201,9 @@ export function ModuleWorkspace({
   loading = false,
   loadingLabel = 'Loading records...',
   refreshDisabled = false,
+  refreshLabel,
+  directManageColumns = false,
+  onClearFilters,
   savedTabs,
   activeTab,
   onTabChange,
@@ -503,21 +509,28 @@ export function ModuleWorkspace({
 
           {/* Refresh */}
           {onRefresh && (
-            <RefreshButton onClick={() => onRefresh()} disabled={refreshDisabled || loading} refreshing={loading} />
+            <RefreshButton onClick={() => onRefresh()} disabled={refreshDisabled || loading} refreshing={loading} label={refreshLabel} />
           )}
 
           {/* Extra toolbar (pipeline selector, etc.) */}
           {toolbarExtra}
 
           {/* Table Settings Menu (Manage Columns, Reset Columns, View Mode) */}
-          <TableSettingsMenuInline
+          {directManageColumns ? (
+            <TooltipProvider><Tooltip><TooltipTrigger asChild>
+              <button type="button" onClick={onManageColumns} aria-label="Manage Columns" title="Manage Columns"
+                className="inline-flex items-center justify-center h-8 px-2.5 min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 text-[#5A6B85] dark:text-slate-300 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-500/40">
+                <Settings2 size={14} aria-hidden="true" />
+              </button>
+            </TooltipTrigger><TooltipContent>Manage Columns</TooltipContent></Tooltip></TooltipProvider>
+          ) : <TableSettingsMenuInline
             pageSize={pageSize}
             onPageSizeChange={onPageSizeChange}
             viewMode={viewMode}
             onViewModeChange={onViewModeChange}
             onManageColumns={onManageColumns}
             onResetColumns={onResetColumns}
-          />
+          />}
 
         </div>{/* end secondary controls row */}
       </div>
@@ -549,6 +562,7 @@ export function ModuleWorkspace({
       {/* ── Main Content Area ───────────────────────────────────────── */}
       <div className="flex flex-1 min-h-0 gap-0">
         <ModuleFilterRail
+          onClearFilters={onClearFilters}
           showFilters={showFilters}
           filterGroups={filterGroups}
           onToggleFilters={onToggleFilters}

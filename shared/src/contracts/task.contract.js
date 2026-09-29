@@ -92,6 +92,7 @@ const bulkIds = zod_1.z
 exports.TaskBulkSchema = zod_1.z.discriminatedUnion("operation", [
     zod_1.z.object({ operation: zod_1.z.literal("complete"), ids: bulkIds }).strict(),
     zod_1.z.object({ operation: zod_1.z.literal("archive"), ids: bulkIds }).strict(),
+    zod_1.z.object({ operation: zod_1.z.literal("delete"), ids: bulkIds }).strict(),
     zod_1.z
         .object({
         operation: zod_1.z.literal("assign"),

@@ -8,6 +8,12 @@ import {
   type TaskRecord,
   type TaskListQuery,
 } from "@leadcrm/shared";
+import {
+  DataGrid,
+  useDataGridColumns,
+  type CellRendererMap,
+} from "@/shared/components/data-grid";
+import { Eye, Edit, Trash2 } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 interface Props {
   tasks: TaskRecord[];
@@ -20,7 +26,11 @@ interface Props {
   query: TaskListQuery;
   busy: boolean;
   canEdit: boolean;
-  canArchive: boolean;
+  canDelete: boolean;
+  onEdit: (task: TaskRecord) => void;
+  onDelete: (task: TaskRecord) => void;
+  totalRecords: number;
+  onManageColumns: () => void;
 }
 export function TaskTable({
   tasks,
@@ -33,12 +43,13 @@ export function TaskTable({
   query,
   busy,
   canEdit,
-  canArchive,
+  canDelete,
+  onEdit,
+  onDelete,
+  totalRecords,
+  onManageColumns,
 }: Props) {
-  const visible = columns
-    .filter((column) => column.visible)
-    .sort((a, b) => a.order - b.order);
-  const selectable = !query.archived && (canEdit || canArchive) && !busy;
+  const selectable = canEdit || canDelete;
   const relation = (text?: string | null) =>
     text ? (
       <span
@@ -80,7 +91,10 @@ export function TaskTable({
             variant="outline"
             className="h-7 rounded-lg px-2.5 font-normal"
             disabled={busy}
-            onClick={() => onStatus(task)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onStatus(task);
+            }}
           >
             {task.status === "completed" ? "Reopen" : "Done"}
           </Button>
@@ -174,138 +188,76 @@ export function TaskTable({
         return "—";
     }
   };
+  const cellRenderers: CellRendererMap<TaskRecord> = Object.fromEntries(
+    TASK_COLUMN_DEFINITIONS.map(({ id }) => [
+      id,
+      (_value: unknown, task: TaskRecord) => cell(task, id),
+    ]),
+  );
+  const { gridColumns } = useDataGridColumns<TaskRecord>({
+    registry: TASK_COLUMN_DEFINITIONS,
+    effectiveColumns: columns,
+    cellRenderers,
+    sortableColumns: ["title", "dueDate", "createdAt"],
+    defaultWidths: {
+      action: 100,
+      title: 250,
+      status: 145,
+      priority: 120,
+      dueDate: 240,
+    },
+  });
   return (
-    <div className="overflow-x-auto rounded-t-xl border border-border">
-      <table className="w-full border-collapse text-left text-sm">
-        <thead className="bg-background text-xs">
-          <tr>
-            <th className="sticky left-0 z-10 w-10 bg-background px-3 py-4">
-              <input
-                type="checkbox"
-                aria-label="Select all tasks on this page"
-                disabled={!selectable}
-                checked={
-                  tasks.length > 0 &&
-                  tasks.every((task) => selected.includes(task.id))
-                }
-                ref={(element) => {
-                  if (element)
-                    element.indeterminate =
-                      selected.length > 0 && selected.length < tasks.length;
-                }}
-                onChange={(event) =>
-                  onSelect(
-                    event.target.checked ? tasks.map((task) => task.id) : [],
-                  )
-                }
-              />
-            </th>
-            {visible.map((column) => {
-              const sortable = ["title", "dueDate", "createdAt"].includes(
-                column.id,
-              );
-              const label = TASK_COLUMN_DEFINITIONS.find(
-                (item) => item.id === column.id,
-              )?.label;
-              return (
-                <th
-                  key={column.id}
-                  className={
-                    "whitespace-nowrap px-4 py-4 font-medium " +
-                    (column.id === "action"
-                      ? "sticky left-10 z-10 bg-background"
-                      : "")
-                  }
-                  aria-sort={
-                    sortable && query.sortBy === column.id
-                      ? query.sortOrder === "desc"
-                        ? "descending"
-                        : "ascending"
-                      : undefined
-                  }
-                >
-                  {sortable ? (
-                    <button
-                      className="flex w-full items-center justify-between gap-8"
-                      onClick={() =>
-                        onSort({
-                          sortBy: column.id as TaskListQuery["sortBy"],
-                          sortOrder:
-                            query.sortBy === column.id &&
-                            query.sortOrder !== "desc"
-                              ? "desc"
-                              : "asc",
-                        })
-                      }
-                    >
-                      {label}
-                      <span aria-hidden="true">
-                        {query.sortBy === column.id
-                          ? query.sortOrder === "desc"
-                            ? "↓"
-                            : "↑"
-                          : "↕"}
-                      </span>
-                    </button>
-                  ) : (
-                    label
-                  )}
-                </th>
-              );
-            })}
-          </tr>
-        </thead>
-        <tbody>
-          {tasks.map((task) => (
-            <tr
-              key={task.id}
-              className={
-                "group border-t border-border " +
-                (selected.includes(task.id)
-                  ? "bg-primary/5"
-                  : "bg-background hover:bg-secondary/20")
-              }
-            >
-              <td className="sticky left-0 z-10 bg-inherit px-3 py-3">
-                <input
-                  type="checkbox"
-                  aria-label={"Select " + task.title}
-                  disabled={!selectable}
-                  checked={selected.includes(task.id)}
-                  onChange={(event) =>
-                    onSelect(
-                      event.target.checked
-                        ? [...selected, task.id]
-                        : selected.filter((id) => id !== task.id),
-                    )
-                  }
-                />
-              </td>
-              {visible.map((column) => (
-                <td
-                  key={column.id}
-                  className={
-                    "whitespace-nowrap px-4 py-3 " +
-                    (column.id === "action"
-                      ? "sticky left-10 z-10 bg-inherit"
-                      : "")
-                  }
-                >
-                  {cell(task, column.id)}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {!tasks.length && (
-        <div className="p-12 text-center">
-          <p className="font-medium">No tasks match these filters</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Try a different date, status, or search.
-          </p>
-        </div>
-      )}
-    </div>
+    <DataGrid<TaskRecord>
+      columns={gridColumns}
+      data={tasks}
+      getRowId={(task) => task.id}
+      height={600}
+      selectable={selectable}
+      selectedIds={new Set(selected)}
+      onSelectionChange={(ids) => {
+        if (!busy) onSelect([...ids]);
+      }}
+      onRowClick={onOpen}
+      sortingMode="external"
+      sort={{
+        field: query.sortBy ?? "dueDate",
+        direction: query.sortOrder ?? "asc",
+      }}
+      onSortChange={(sort) =>
+        onSort({
+          sortBy: (sort?.field ?? "dueDate") as TaskListQuery["sortBy"],
+          sortOrder: sort?.direction ?? "asc",
+        })
+      }
+      rowActions={(task) => [
+        {
+          id: "view",
+          label: "View",
+          icon: <Eye size={14} />,
+          onClick: () => onOpen(task),
+        },
+        {
+          id: "edit",
+          label: "Edit",
+          icon: <Edit size={14} />,
+          disabled: busy || !canEdit || !!task.isArchived,
+          onClick: () => onEdit(task),
+        },
+        {
+          id: "delete",
+          label: "Delete",
+          icon: <Trash2 size={14} />,
+          destructive: true,
+          disabled: busy || !canDelete,
+          onClick: () => onDelete(task),
+        },
+      ]}
+      onSettingsClick={onManageColumns}
+      summaryLabel={`${totalRecords} total records`}
+      emptyMessage="No tasks match these filters. Try a different date, status, or search."
+      ariaLabel="Tasks data grid"
+      viewMode="clip"
+    />
   );
 }

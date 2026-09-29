@@ -355,6 +355,29 @@ export async function archiveTask(
     });
   return task;
 }
+export async function deleteTask(id: string, tenantId: string, userId: string) {
+  requireScope(tenantId);
+  const before = await repo.withTaskTransaction(async (client) => {
+    const task = await repo.findTaskById(id, tenantId, client);
+    if (
+      !task ||
+      task.environment !== environmentContext.getStore()!.environment
+    )
+      throw new NotFoundError("Task");
+    await validateReferences(tenantId, userId, {}, client);
+    await repo.deleteTask(id, tenantId, client);
+    return task;
+  });
+  await writeAuditLog({
+    tenantId,
+    userId,
+    action: "task.deleted",
+    entityType: "Task",
+    entityId: id,
+    before: auditState(before),
+  });
+}
+
 export async function bulkTasks(
   tenantId: string,
   userId: string,
@@ -366,6 +389,8 @@ export async function bulkTasks(
   for (const id of dto.ids) {
     try {
       if (dto.operation === "archive") await archiveTask(id, tenantId, userId);
+      else if (dto.operation === "delete")
+        await deleteTask(id, tenantId, userId);
       else
         await updateTask(
           id,

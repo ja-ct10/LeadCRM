@@ -27,9 +27,7 @@ export function useTaskColumns(identity: string, enabled: boolean) {
     const read = async () => {
       try {
         const columns = USE_MOCK_DATA
-          ? (JSON.parse(
-              localStorage.getItem("task-columns:" + identity) || "null",
-            ) ?? defaults())
+          ? defaults()
           : (await preferencesApi.getEffectiveColumns("tasks")).data.columns;
         if (!cancelled)
           setState({ identity, columns: normalizeTaskColumns(columns) });
@@ -57,8 +55,6 @@ export function useTaskColumns(identity: string, enabled: boolean) {
       ? input
       : (await preferencesApi.saveUserPreference("tasks", input)).data.columns;
     if (current.current !== started) return;
-    if (USE_MOCK_DATA)
-      localStorage.setItem("task-columns:" + identity, JSON.stringify(saved));
     setState({ identity, columns: normalizeTaskColumns(saved) });
   };
   return {

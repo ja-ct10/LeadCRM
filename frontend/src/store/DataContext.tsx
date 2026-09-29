@@ -1421,6 +1421,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       try {
         if (!tasks.some(task => task.id === id && !task.isArchived)) throw new Error('Task not found.');
         if (dto.operation === 'archive') await deleteTask(id);
+        else if (dto.operation === 'delete') {
+          setTasks(previous => previous.filter(task => task.id !== id));
+          taskQueries.refreshTasks();
+        }
         else await updateTask(id, dto.operation === 'complete' ? { status: 'completed' } : dto.operation === 'assign' ? { assignedUserId: dto.assignedUserId } : { dueDate: dto.dueDate });
         result.succeeded.push(id);
       } catch (error) { result.failed.push({ id, error: error instanceof Error ? error.message : 'Task update failed.' }); }

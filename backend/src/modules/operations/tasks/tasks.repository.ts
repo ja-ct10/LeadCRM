@@ -161,6 +161,20 @@ export function findTaskById(
     include: taskInclude,
   });
 }
+export async function deleteTask(
+  id: string,
+  tenantId: string,
+  client: TaskClient,
+) {
+  const result = await client.task.deleteMany({
+    where: {
+      id,
+      tenantId,
+      environment: environmentContext.getStore()!.environment,
+    },
+  });
+  if (result.count !== 1) throw new NotFoundError("Task");
+}
 export function findTaskUser(
   id: string,
   tenantId: string,

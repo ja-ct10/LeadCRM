@@ -28,10 +28,12 @@ export { TaskSelector, taskInputClass } from "./task-selector";
 export function TaskEditor({
   task,
   links = {},
+  readOnly = false,
   onClose,
 }: {
   task?: TaskRecord;
   links?: TaskLinks;
+  readOnly?: boolean;
   onClose: () => void;
 }) {
   const { user } = useAuth();
@@ -44,7 +46,7 @@ export function TaskEditor({
     canCreateAccounts = useHasPermission("accounts.create");
   const canContacts = useHasPermission("contacts.view"),
     canAccounts = useHasPermission("accounts.view");
-  const editable = !task?.isArchived && (task ? canEdit : canCreate);
+  const editable = !readOnly && !task?.isArchived && (task ? canEdit : canCreate);
   const [title, setTitle] = useState(task?.title ?? "");
   const [description, setDescription] = useState(task?.description ?? "");
   const [status, setStatus] = useState(task?.status ?? "pending");
@@ -511,7 +513,7 @@ export function TaskEditor({
               )}
             </div>
             <footer className="flex items-center justify-between gap-3 border-t border-border p-4">
-              {task && canArchive && !task.isArchived ? (
+              {task && !readOnly && canArchive && !task.isArchived ? (
                 <Button
                   type="button"
                   variant="ghost"

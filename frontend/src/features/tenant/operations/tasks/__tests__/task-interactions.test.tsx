@@ -23,12 +23,22 @@ vi.mock("@/store/AuthContext", () => ({
 vi.mock("@/shared/services/tasks.api", () => ({ tasksApi: api }));
 vi.mock("@/lib/api/client", () => ({ apiClient: api }));
 import { TaskSelector } from "../ui/task-editor";
-import { TaskColumnsDrawer } from "../ui/task-columns-drawer";
+import { ManageColumnsDrawer } from "@/shared/components/manage-columns-drawer";
+import { TASK_COLUMN_DEFINITIONS } from "@leadcrm/shared";
 import { TaskRecordCreator } from "../ui/task-record-creator";
 import { TaskTable } from "../ui/task-table";
 import { normalizeTaskColumns } from "../task-columns";
 afterEach(cleanup);
-beforeEach(() => vi.resetAllMocks());
+beforeEach(() => {
+  vi.resetAllMocks();
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+});
 
 it("searches inside the association dropdown, checks one explicit record, and supports clearing and creating", async () => {
   api.options.mockImplementation(async (_kind, search) => ({
@@ -132,17 +142,21 @@ it("preserves a failed contact draft and selects the saved response only after a
   );
 });
 
-it("keeps column edits as a draft, prevents removing defaults, reorders and retries failed persistence", async () => {
+it("uses shared column drafts, protects defaults and retries failed persistence", async () => {
   const save = vi
       .fn()
       .mockRejectedValueOnce(new Error("Column save failed"))
       .mockResolvedValueOnce(undefined),
     close = vi.fn();
   render(
-    <TaskColumnsDrawer
-      columns={normalizeTaskColumns(null)}
+    <ManageColumnsDrawer
+      isOpen
+      module="tasks"
+      registry={TASK_COLUMN_DEFINITIONS}
+      effectiveColumns={normalizeTaskColumns(null)}
       onSave={save}
       onClose={close}
+      onReset={vi.fn()}
     />,
   );
   expect(
@@ -153,23 +167,21 @@ it("keeps column edits as a draft, prevents removing defaults, reorders and retr
     ).disabled,
   ).toBe(true);
   expect(
-    screen.queryByRole("button", { name: "Remove Task title" }),
-  ).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "Remove Priority" }));
-  fireEvent.click(screen.getByRole("button", { name: "Move Task title down" }));
+    (
+      screen.getByLabelText(
+        "Task title visibility (locked)",
+      ) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  fireEvent.click(screen.getByLabelText("Toggle Priority visibility"));
+  fireEvent.click(screen.getByLabelText("Toggle Created visibility"));
   expect(save).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "Select attributes" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "Search attributes" }), {
-    target: { value: "Created" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: /Created/ }));
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
-  expect((await screen.findByRole("alert")).textContent).toBe(
-    "Column save failed",
-  );
+  expect(await screen.findByText("Unable to save")).toBeTruthy();
   expect(close).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "Save" }));
-  await waitFor(() => expect(close).toHaveBeenCalledOnce());
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+  expect(await screen.findByText("Saved")).toBeTruthy();
   const columns = save.mock.calls[1][0];
   expect(columns[0].id).toBe("action");
   expect(
@@ -209,39 +221,80 @@ it("uses saved table order and selects only the displayed page", () => {
       query={{ sortBy: "dueDate", sortOrder: "asc" }}
       busy={false}
       canEdit
-      canArchive
+      canDelete
+      onEdit={vi.fn()}
+      onDelete={vi.fn()}
+      totalRecords={1}
+      onManageColumns={vi.fn()}
     />,
   );
   const headers = screen
     .getAllByRole("columnheader")
     .map((element) => element.textContent);
-  expect(headers.indexOf("Due date↑")).toBeLessThan(
-    headers.indexOf("Task title↕"),
-  );
-  fireEvent.click(
-    screen.getByRole("checkbox", { name: "Select all tasks on this page" }),
-  );
+  expect(
+    headers.findIndex((label) => label?.startsWith("Due date")),
+  ).toBeLessThan(headers.findIndex((label) => label?.startsWith("Task title")));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select all records" }));
   expect(select).toHaveBeenCalledWith(["one"]);
-  fireEvent.click(screen.getByRole("button", { name: "Due date" }));
+  fireEvent.click(screen.getByRole("columnheader", { name: /Due date/ }));
   expect(sort).toHaveBeenCalledWith({ sortBy: "dueDate", sortOrder: "desc" });
+  const row = screen.getAllByRole("row")[1];
+  expect(
+    row.children[0].querySelector('[aria-label="Row actions"]'),
+  ).toBeTruthy();
+  expect(row.children[1].querySelector('input[type="checkbox"]')).toBeTruthy();
+  const trigger = screen.getByRole("button", { name: "Row actions" });
+  fireEvent.click(trigger);
+  expect(
+    screen.getAllByRole("menuitem").map((item) => item.textContent),
+  ).toEqual(["View", "Edit", "Delete"]);
+  fireEvent.click(trigger);
+  expect(screen.queryByRole("menu")).toBeNull();
 });
 
-it("keeps multiple checked records across searches and supports removing and clearing", async()=>{
-  api.options.mockImplementation(async (_kind,search)=>({data:search?[{id:"b",label:"Beta"}]:[{id:"a",label:"Alpha"},{id:"b",label:"Beta"}]}));
-  function Multiple(){const [ids,setIds]=useState<string[]>([]);return <><output aria-label="Selected IDs">{ids.join(",")}</output><TaskSelector multiple kind="lead" label="Leads" value={ids} onChange={setIds}/></>}
-  render(<Multiple/>);
-  fireEvent.click(screen.getByRole("button",{name:"Leads"}));
-  fireEvent.click(await screen.findByRole("checkbox",{name:"Alpha"}));
-  fireEvent.change(screen.getByRole("textbox",{name:"Search lead"}),{target:{value:"Beta"}});
-  fireEvent.click(await screen.findByRole("checkbox",{name:"Beta"}));
+it("keeps multiple checked records across searches and supports removing and clearing", async () => {
+  api.options.mockImplementation(async (_kind, search) => ({
+    data: search
+      ? [{ id: "b", label: "Beta" }]
+      : [
+          { id: "a", label: "Alpha" },
+          { id: "b", label: "Beta" },
+        ],
+  }));
+  function Multiple() {
+    const [ids, setIds] = useState<string[]>([]);
+    return (
+      <>
+        <output aria-label="Selected IDs">{ids.join(",")}</output>
+        <TaskSelector
+          multiple
+          kind="lead"
+          label="Leads"
+          value={ids}
+          onChange={setIds}
+        />
+      </>
+    );
+  }
+  render(<Multiple />);
+  fireEvent.click(screen.getByRole("button", { name: "Leads" }));
+  fireEvent.click(await screen.findByRole("checkbox", { name: "Alpha" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Search lead" }), {
+    target: { value: "Beta" },
+  });
+  fireEvent.click(await screen.findByRole("checkbox", { name: "Beta" }));
   expect(screen.getByLabelText("Selected IDs").textContent).toBe("a,b");
-  fireEvent.click(screen.getByRole("button",{name:"Done"}));
-  expect(screen.getByRole("button",{name:"Leads"}).textContent).toContain("Alpha +1");
-  fireEvent.click(screen.getByRole("button",{name:"Leads"}));
-  const alpha=await screen.findByRole("checkbox",{name:"Alpha"}) as HTMLInputElement;
+  fireEvent.click(screen.getByRole("button", { name: "Done" }));
+  expect(screen.getByRole("button", { name: "Leads" }).textContent).toContain(
+    "Alpha +1",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Leads" }));
+  const alpha = (await screen.findByRole("checkbox", {
+    name: "Alpha",
+  })) as HTMLInputElement;
   expect(alpha.checked).toBe(true);
   fireEvent.click(alpha);
   expect(screen.getByLabelText("Selected IDs").textContent).toBe("b");
-  fireEvent.click(screen.getByRole("button",{name:"Clear selection"}));
+  fireEvent.click(screen.getByRole("button", { name: "Clear selection" }));
   expect(screen.getByLabelText("Selected IDs").textContent).toBe("");
 });

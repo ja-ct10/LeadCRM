@@ -8,6 +8,7 @@ const db = vi.hoisted(() => {
     create: vi.fn(),
     update: vi.fn(),
     updateMany: vi.fn(),
+    deleteMany: vi.fn(),
     count: vi.fn(),
   });
   return {
@@ -78,7 +79,8 @@ beforeEach(() => {
     Promise.resolve({ ...original, ...data }),
   );
   db.task.updateMany.mockResolvedValue({ count: 1 });
-  for (const model of [db.lead,db.contact,db.deal,db.account]) model.findMany.mockResolvedValue([]);
+  for (const model of [db.lead, db.contact, db.deal, db.account])
+    model.findMany.mockResolvedValue([]);
 });
 
 describe("Task service authority", () => {
@@ -220,4 +222,65 @@ describe("Task service authority", () => {
     ).rejects.toBe(outage);
     expect(writeAuditLog).not.toHaveBeenCalled();
   });
+
+  it("deletes within the tenant/environment and audits the removed task", async () => {
+    db.task.deleteMany.mockResolvedValue({ count: 1 });
+    const result = await scoped(() =>
+      service.bulkTasks(tenantId, actorId, {
+        operation: "delete",
+        ids: [original.id, original.id],
+      }),
+    );
+    expect(result).toEqual({ succeeded: [original.id], failed: [] });
+    expect(db.task.deleteMany).toHaveBeenCalledExactlyOnceWith({
+      where: { id: original.id, tenantId, environment: "SANDBOX" },
+    });
+    expect(writeAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "task.deleted",
+        entityId: original.id,
+      }),
+    );
+  });
+
+  it("never deletes a task from another environment or an unavailable actor", async () => {
+    db.task.findFirst.mockResolvedValueOnce({
+      ...original,
+      environment: "PRODUCTION",
+    });
+    expect(
+      (
+        await scoped(() =>
+          service.bulkTasks(tenantId, actorId, {
+            operation: "delete",
+            ids: [original.id],
+          }),
+        )
+      ).failed,
+    ).toHaveLength(1);
+    db.user.findFirst.mockResolvedValueOnce(null);
+    expect(
+      (
+        await scoped(() =>
+          service.bulkTasks(tenantId, actorId, {
+            operation: "delete",
+            ids: [original.id],
+          }),
+        )
+      ).failed,
+    ).toHaveLength(1);
+    expect(db.task.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it.each([[], [""], Array(101).fill("id")])(
+    "rejects invalid deletion IDs before accessing storage",
+    async (ids) => {
+      await expect(
+        scoped(() =>
+          service.bulkTasks(tenantId, actorId, { operation: "delete", ids }),
+        ),
+      ).rejects.toThrow();
+      expect(db.task.deleteMany).not.toHaveBeenCalled();
+    },
+  );
 });

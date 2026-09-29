@@ -678,6 +678,124 @@ describe.skipIf(!disposable)(
       expect(saved.body.data.accountIds).toEqual([accountId]);
       expect(saved.body.data.dealIds).toEqual([dealId]);
     });
+    it("reschedules through the existing API and validates dates and assignees", async () => {
+      const saved = (
+        await call("/operations/tasks", "POST", draft("Reschedule acceptance"))
+      ).body.data;
+      const dueDate = "2030-10-15T01:00:00.000Z";
+      const payload = { operation: "reschedule", ids: [saved.id], dueDate };
+      expect(
+        (await call("/operations/tasks/bulk", "POST", payload, readerToken))
+          .status,
+      ).toBe(403);
+      expect(
+        (
+          await call("/operations/tasks/bulk", "POST", {
+            ...payload,
+            dueDate: "invalid",
+          })
+        ).status,
+      ).toBe(400);
+      const response = await call("/operations/tasks/bulk", "POST", payload);
+      expect(response.body.data).toEqual({ succeeded: [saved.id], failed: [] });
+      expect(
+        (await call(`/operations/tasks/${saved.id}`)).body.data.dueDate,
+      ).toBe(dueDate);
+      const assigned = await call("/operations/tasks/bulk", "POST", {
+        operation: "assign",
+        ids: [saved.id],
+        assignedUserId: outsider.id,
+      });
+      expect(assigned.body.data.succeeded).toEqual([]);
+      expect(assigned.body.data.failed).toHaveLength(1);
+      expect(
+        (await call(`/operations/tasks/${saved.id}`)).body.data.assignedUserId,
+      ).toBe(owner.id);
+    });
+    it("deletes persisted tasks and links, updates counts, and enforces delete authority", async () => {
+      const saved = (
+        await call("/operations/tasks", "POST", {
+          ...draft("Delete acceptance"),
+          leadIds: [lead.id],
+        })
+      ).body.data;
+      const sandbox = await scope(
+        async () =>
+          await prisma.task.create({
+            data: {
+              ...draft("Protected sandbox"),
+              dueDate: new Date(draft().dueDate),
+              tenantId,
+            },
+          }),
+        "SANDBOX",
+      );
+      const foreign = await environmentContext.run(
+        { tenantId: otherTenantId, environment: "PRODUCTION" },
+        async () =>
+          await prisma.task.create({
+            data: {
+              ...draft("Protected foreign"),
+              dueDate: new Date(draft().dueDate),
+              tenantId: otherTenantId,
+              assignedUserId: outsider.id,
+            },
+          }),
+      );
+      const before = (await call("/operations/tasks/summary")).body.data.total;
+      const payload = { operation: "delete", ids: [saved.id] };
+      expect(
+        (await call("/operations/tasks/bulk", "POST", payload, readerToken))
+          .status,
+      ).toBe(403);
+      expect(
+        (
+          await call("/operations/tasks/bulk", "POST", {
+            ...payload,
+            ids: [""],
+          })
+        ).status,
+      ).toBe(400);
+      expect(
+        (
+          await call("/operations/tasks/bulk", "POST", {
+            ...payload,
+            tenantId: otherTenantId,
+          })
+        ).status,
+      ).toBe(400);
+      const deleted = await call("/operations/tasks/bulk", "POST", {
+        operation: "delete",
+        ids: [saved.id, sandbox.id, foreign.id],
+      });
+      expect(deleted.status).toBe(200);
+      expect(deleted.body.data.succeeded).toEqual([saved.id]);
+      expect(
+        deleted.body.data.failed.map((item: { id: string }) => item.id),
+      ).toEqual([sandbox.id, foreign.id]);
+      expect((await call(`/operations/tasks/${saved.id}`)).status).toBe(404);
+      expect(
+        await scope(
+          async () =>
+            await prisma.taskLead.count({ where: { taskId: saved.id } }),
+        ),
+      ).toBe(0);
+      expect((await call("/operations/tasks/summary")).body.data.total).toBe(
+        before - 1,
+      );
+      expect(
+        await scope(
+          async () => await prisma.task.count({ where: { id: sandbox.id } }),
+          "SANDBOX",
+        ),
+      ).toBe(1);
+      expect(
+        await environmentContext.run(
+          { tenantId: otherTenantId, environment: "PRODUCTION" },
+          async () => await prisma.task.count({ where: { id: foreign.id } }),
+        ),
+      ).toBe(1);
+    });
     it("preserves and deduplicates all Task links through approved Merge integration", async () => {
       const merge = await import("../../../crm/merge/merge.repository");
       for (const kind of ["lead", "contact", "account"] as const) {
