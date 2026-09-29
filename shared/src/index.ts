@@ -21,3 +21,5 @@ export * from './contracts/campaign-email';
 export * from './contracts/forms.contract';
 export * from './contracts/archived-data.contract';
 export * from './contracts/list-pagination';
+
+export * from './contracts/product-interests.contract';

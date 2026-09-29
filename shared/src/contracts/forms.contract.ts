@@ -43,8 +43,9 @@ export const FormDefinitionSchema = z.object({ name: text(200).pipe(z.string().m
 export const CreateFormSchema = z.object({ name: text(200).pipe(z.string().min(1)).default('Contact Us') }).strict();
 export const UpdateFormSchema = z.object({ name: text(200).pipe(z.string().min(1)).optional(), fields: z.array(FormFieldSchema).max(100).optional(), design: FormDesignSchema.optional(), settings: FormSettingsSchema.optional(), revision: z.number().int().nonnegative() }).strict();
 export const PublicSubmissionSchema = z.object({
+  requestId: z.string().uuid().optional(),
   version: z.number().int().positive(),
-  values: z.record(z.string().max(80), z.union([z.string().max(4000), z.boolean()])).refine(v => Object.keys(v).length <= 100, 'Too many fields.'),
+  values: z.record(z.string().max(80), z.union([z.string().max(4000), z.boolean(), z.array(z.string().max(200)).max(100)])).refine(v => Object.keys(v).length <= 100, 'Too many fields.'),
   tracking: z.record(z.enum(FORM_TRACKING_KEYS), text(200)).default({}),
   website: z.string().max(200).default(''), // honeypot; never CRM data
 }).strict();
@@ -57,7 +58,7 @@ export type PublicFormDefinition = Omit<FormDefinition, 'settings'> & { version:
 export interface FormSubmissionRecord {
   id: string; formId: string; leadId: string | null; contactId: string | null;
   submittedAt: string; publishedVersion: number; publishedConfig: Omit<FormDefinition, 'settings'>;
-  values: Record<string, string | boolean>; tracking: Record<string, string>; notificationStatus: string;
+  values: Record<string, string | boolean | string[]>; tracking: Record<string, string>; notificationStatus: string;
 }
 export const DEFAULT_DESIGN = FormDesignSchema.parse({});
 export const DEFAULT_SETTINGS = FormSettingsSchema.parse({});
@@ -75,11 +76,16 @@ export function defaultContactForm(name = 'Contact Us'): FormDefinition {
 
 /** Same field rules in the public UI and authoritative server validation. Text stays plain text. */
 export function validateFormValues(fields: FormField[], values: Record<string, unknown>) {
-  const errors: Record<string, string> = {}, clean: Record<string, string | boolean> = {};
+  const errors: Record<string, string> = {}, clean: Record<string, string | boolean | string[]> = {};
   const inputs = fields.filter(f => !['heading', 'paragraph', 'divider'].includes(f.type));
   for (const key of Object.keys(values)) if (!inputs.some(f => f.id === key)) errors[key] = 'Unknown field.';
   for (const f of inputs) {
     const raw = values[f.id] ?? (f.type === 'checkbox' ? false : '');
+    if (f.mapToField === 'productInterest' && Array.isArray(raw)) {
+      if ((f.required && !raw.length) || raw.some(v => typeof v !== 'string' || !f.options?.includes(v) || !(FORM_PRODUCT_INTERESTS as readonly string[]).includes(v))) errors[f.id] = 'Select approved product interests.';
+      else clean[f.id] = [...new Set(raw)];
+      continue;
+    }
     if (f.type === 'checkbox') { if (typeof raw !== 'boolean' || (f.required && !raw)) errors[f.id] = 'Please check this field.'; else clean[f.id] = raw; continue; }
     const parsed = text(f.mapToField === 'firstName' || f.mapToField === 'lastName' ? 100 : f.type === 'multi-line' ? 4000 : 254).safeParse(raw);
     if (!parsed.success) { errors[f.id] = parsed.error.issues[0].message; continue; }

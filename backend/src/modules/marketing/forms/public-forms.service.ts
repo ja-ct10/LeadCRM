@@ -6,6 +6,7 @@ import { environmentContext } from '../../../core/environment/environment-contex
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 import { sendMail } from '../../../shared/services/email.service';
 import { normalizePhone } from '../../crm/duplicate-detection/duplicate-detection.service';
+import { createAssignedLead } from '../../crm/leads/lead-automation.service';
 
 export class SubmissionValidationError extends ValidationError {
   constructor(public fieldErrors: Record<string, string>) { super('Please check the highlighted fields.'); }
@@ -33,11 +34,18 @@ export async function submitPublicForm(publicId: string, body: unknown) {
           const live = await tx.marketingForm.findFirst({ where: { ...publicWhere(publicId), ...scope } });
           if (!live?.publishedConfig) throw new NotFoundError('Form');
           if (live.publishedVersion !== input.version) throw new ConflictError('This form has changed. Reload it before submitting.');
+          if (input.requestId) {
+            const previous = await tx.formSubmission.findFirst({ where: { ...scope, formId: live.id, requestKey: input.requestId } });
+            if (previous) return { submission: previous, notificationEmail: '' };
+          }
           const config = FormDefinitionSchema.parse(live.publishedConfig);
           const validated = validateFormValues(config.fields, input.values);
           if (Object.keys(validated.errors).length) throw new SubmissionValidationError(validated.errors);
           const mapped: Record<string, string> = {};
           for (const field of config.fields) if (field.mapToField && typeof validated.values[field.id] === 'string') mapped[field.mapToField] = validated.values[field.id] as string;
+          const productField = config.fields.find(field => field.mapToField === 'productInterest');
+          const productValue = productField ? validated.values[productField.id] : undefined;
+          const selectedProducts = Array.isArray(productValue) ? productValue : typeof productValue === 'string' && productValue ? [productValue] : [];
           const email = mapped.email || undefined, phone = mapped.phone || undefined;
           if (!email && !phone) throw new ValidationError('An email address or phone number is required.');
           const identity: Prisma.LeadWhereInput[] = [];
@@ -91,12 +99,12 @@ export async function submitPublicForm(publicId: string, body: unknown) {
           if (contactId) leadId = null;
           if (!leadId && !contactId) {
             const names = (mapped.fullName || '').split(/\s+/);
-            const created = await tx.lead.create({ data: { ...scope, firstName: mapped.firstName || names[0] || 'Website', lastName: mapped.lastName || names.slice(1).join(' ') || 'Inquiry',
+            const created = await createAssignedLead(tx, { ...scope, firstName: mapped.firstName || names[0] || 'Website', lastName: mapped.lastName || names.slice(1).join(' ') || 'Inquiry',
               email, phone, companyName: mapped.companyName || null, website: mapped.website || null, address: mapped.address || null,
-              productInterest: mapped.productInterest ? [mapped.productInterest] : [], source: 'Website' } });
+              productInterest: selectedProducts, source: 'Website' });
             leadId = created.id;
           }
-          const submission = await tx.formSubmission.create({ data: { ...scope, formId: live.id, publishedVersion: live.publishedVersion,
+          const submission = await tx.formSubmission.create({ data: { ...scope, formId: live.id, requestKey: input.requestId, publishedVersion: live.publishedVersion,
             publishedConfig: { name: config.name, fields: config.fields, design: config.design }, leadId, contactId, email, phone,
             values: validated.values, tracking: config.settings.trackUrlParams ? input.tracking : {}, notificationStatus: config.settings.notificationEmail ? 'pending' : 'not_requested' } });
           return { submission, notificationEmail: config.settings.notificationEmail };
@@ -111,7 +119,7 @@ export async function submitPublicForm(publicId: string, body: unknown) {
         }
         return { accepted: true };
       } catch (error) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && ['P2034', 'P2002'].includes(error.code)) {
           if (attempt < 3) continue;
           throw new ConflictError('Another inquiry is being processed. Please try again.');
         }

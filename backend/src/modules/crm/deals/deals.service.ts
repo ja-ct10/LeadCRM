@@ -1,3 +1,4 @@
+import { validateSalesOwner } from '../leads/lead-automation.service';
 import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
 import * as repo from './deals.repository';
@@ -50,6 +51,9 @@ export async function getDealById(id: string, tenantId: string) {
 }
 
 export async function createDeal(tenantId: string, userId: string, dto: CreateDealDto) {
+  if (dto.assignedUserId) await validateSalesOwner(prisma, tenantId, dto.assignedUserId);
+  const stage = await prisma.stage.findFirst({ where: { id: dto.stageId, tenantId, pipelineId: dto.pipelineId } });
+  if (!stage) throw new ValidationError('Stage must belong to the selected pipeline.');
 
   let deal;
   try {
@@ -85,6 +89,7 @@ export async function createDeal(tenantId: string, userId: string, dto: CreateDe
 }
 
 export async function updateDeal(id: string, tenantId: string, userId: string, dto: UpdateDealDto) {
+  if (dto.assignedUserId) await validateSalesOwner(prisma, tenantId, dto.assignedUserId);
   const before = await repo.findDealById(id, tenantId);
   if (!before) throw new NotFoundError('Deal');
 
@@ -179,6 +184,7 @@ export async function moveDealStage(id: string, tenantId: string, userId: string
     mapRepositoryError(error, 'moveDealStage');
   }
   if (!result) throw new NotFoundError('Deal');
+  if (!result.stageHistory) return result;
 
   await writeAuditLog({
     tenantId, userId,
@@ -277,7 +283,7 @@ export async function duplicateDeal(id: string, tenantId: string, userId: string
     isArchived: _a, deletedAt: _d,
     // Exclude relation fields that Prisma won't accept in create
     stage: _stage, pipeline: _pipeline, organization: _org, assignedUser: _au,
-    owner: _owner, leadDeals: _ld, stageHistories: _sh,
+    owner: _owner, leadDeals: _ld, contactDeals: _cd, stageHistories: _sh,
     ...copyData
   } = source as Record<string, unknown>;
 
@@ -286,6 +292,7 @@ export async function duplicateDeal(id: string, tenantId: string, userId: string
     newDeal = await prisma.deal.create({
       data: {
         ...copyData,
+        automationKey: null,
         title: `${source.title} (Copy)`,
         tenantId,
         ownerId: userId,

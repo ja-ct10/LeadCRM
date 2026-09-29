@@ -1,5 +1,6 @@
 'use client';
 
+import { FORM_PRODUCT_INTERESTS } from '@leadcrm/shared';
 import React, { useEffect, useRef, useMemo } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -24,7 +25,7 @@ const CreateDealFormSchema = z.object({
   pipelineId: z.string().min(1, 'Pipeline is required'),
   stageId: z.string().min(1, 'Stage is required'),
   title: z.string().min(1, 'Title is required').max(255, 'Max 255 characters'),
-  value: z.number().positive('Must be a positive number').max(999_999_999_999, 'Value exceeds maximum').optional(),
+  value: z.number().finite().nonnegative('Must be zero or greater').max(999_999_999_999, 'Value exceeds maximum').optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH']),
   expectedCloseDate: z.string().optional(),
   description: z.string().optional(),
@@ -40,7 +41,7 @@ const CreateDealFormSchema = z.object({
 
 const UpdateDealFormSchema = z.object({
   title: z.string().min(1, 'Title is required').max(255, 'Max 255 characters'),
-  value: z.number().positive('Must be a positive number').max(999_999_999_999, 'Value exceeds maximum').optional(),
+  value: z.number().finite().nonnegative('Must be zero or greater').max(999_999_999_999, 'Value exceeds maximum').optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH']).optional(),
   expectedCloseDate: z.string().optional(),
   description: z.string().optional(),
@@ -66,11 +67,7 @@ const PRIORITY_OPTIONS: { value: 'LOW' | 'MEDIUM' | 'HIGH'; label: string }[] = 
   { value: 'HIGH', label: 'High' },
 ];
 
-const PRODUCT_OPTIONS = [
-  'CCTV', 'Biometrics', 'Door Access', 'Door access/Biometrics',
-  'Network/Structured Cabling', 'FDAS', 'PABX', 'PC/Laptop/Server Assembly',
-  'Software/Web Development', 'Others',
-];
+const PRODUCT_OPTIONS: readonly string[] = FORM_PRODUCT_INTERESTS;
 
 const SOURCE_OPTIONS = [
   'Google Ads', 'Referral', 'Email Campaign', 'Website', 'LinkedIn Ads',
@@ -110,7 +107,8 @@ export function DealForm({
   onCancel,
   isLoading = false,
 }: DealFormProps): React.ReactElement {
-  const { pipelines } = useData();
+  const { pipelines: allPipelines } = useData();
+  const pipelines = useMemo(() => allPipelines.filter(p => p.name.trim().toLowerCase() === 'sales pipeline'), [allPipelines]);
   const canCreate = useHasPermission('deals.create');
   const canEdit = useHasPermission('deals.edit');
   const isCreateMode = mode === 'create';
@@ -120,8 +118,8 @@ export function DealForm({
   const defaultValues = useMemo(() => {
     if (isCreateMode) {
       return {
-        pipelineId: preselect?.pipelineId || '',
-        stageId: preselect?.stageId || '',
+        pipelineId: preselect?.pipelineId || pipelines[0]?.id || '',
+        stageId: preselect?.stageId || pipelines[0]?.stages.find(s => s.name.toLowerCase() === 'lead')?.id || '',
         title: '',
         value: undefined,
         priority: 'MEDIUM' as const,
@@ -254,23 +252,7 @@ export function DealForm({
           <div className="space-y-4">
             <SectionHeader num={1} title="Pipeline & Stage" />
             <div className="grid grid-cols-2 gap-4">
-              <FieldWrap label="Pipeline *" htmlFor={`${fieldId}-pipelineId`} error={errors.pipelineId?.message}>
-                <div className="relative">
-                  <select
-                    {...register('pipelineId')}
-                    id={`${fieldId}-pipelineId`}
-                    aria-invalid={!!errors.pipelineId}
-                    aria-describedby={errors.pipelineId ? `${fieldId}-pipelineId-error` : undefined}
-                    className={cn(selectCls, errors.pipelineId && errorInputCls)}
-                  >
-                    <option value="">Select pipeline...</option>
-                    {pipelines.map((p) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
-                  <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
-                </div>
-              </FieldWrap>
+              <div><span className="block text-xs text-muted-foreground">Pipeline</span><p className="py-2 text-sm">Sales Pipeline</p><input type="hidden" {...register('pipelineId')} /></div>
               <FieldWrap label="Stage *" htmlFor={`${fieldId}-stageId`} error={errors.stageId?.message}>
                 <div className="relative">
                   <select

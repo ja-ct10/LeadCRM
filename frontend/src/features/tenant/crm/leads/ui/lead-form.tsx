@@ -1,4 +1,6 @@
 'use client';
+import { FORM_PRODUCT_INTERESTS, type ProductInterestConfig } from '@leadcrm/shared';
+import { apiClient } from '@/lib/api/client';
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useForm, Controller } from 'react-hook-form';
@@ -45,18 +47,7 @@ const LeadFormSchema = z.object({
 
 type LeadFormData = z.infer<typeof LeadFormSchema>;
 
-const PRODUCTS = [
-  'CCTV',
-  'Biometrics',
-  'Door Access',
-  'Door access/Biometrics',
-  'Network/Structured Cabling',
-  'FDAS',
-  'PABX',
-  'PC/Laptop/Server Assembly',
-  'Software/Web Development',
-  'Others',
-];
+
 
 const STATUS_OPTIONS = [
   { value: 'Inquiry', label: 'Inquiry' },
@@ -100,6 +91,16 @@ interface AddLeadFormProps {
 export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps) {
   const { users } = useData();
   const isEdit = !!initialData;
+  const requestId = useRef<string | undefined>(undefined);
+  const [products, setProducts] = useState<string[]>([...FORM_PRODUCT_INTERESTS]);
+  const [productError, setProductError] = useState('');
+  useEffect(() => {
+    const controller = new AbortController();
+    apiClient.get<{ data: ProductInterestConfig }>('/administration/product-interests', { signal: controller.signal })
+      .then(response => setProducts(response.data.map(p => p.name)))
+      .catch(error => { if (!controller.signal.aborted) setProductError(error.message); });
+    return () => controller.abort();
+  }, []);
 
   const {
     register,
@@ -128,9 +129,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
   });
 
   // Product interest state (for custom dropdown UX)
-  const [selectedProduct, setSelectedProduct] = useState<string>('');
-  const [customProduct, setCustomProduct] = useState<string>('');
-  const [isProductDropdownOpen, setIsProductDropdownOpen] = useState(false);
+  const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
 
   // Philippine phone — local 10-digit number, no country code
   const [phoneLocal, setPhoneLocal] = useState('');
@@ -160,19 +159,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
       const phone = initialData.phone || '';
       setPhoneLocal(normalizePhInput(phone));
 
-      // Determine product interest from existing data
-      const prod = initialData.productInterests?.[0] || initialData.productInterest?.[0] || '';
-      if (prod) {
-        const matched = PRODUCTS.find((p) => p.toLowerCase() === prod.toLowerCase());
-        if (matched) {
-          setSelectedProduct(matched);
-          setCustomProduct('');
-        } else {
-          setSelectedProduct('Others');
-          setCustomProduct(prod);
-        }
-      }
-
+      setSelectedProducts(initialData.productInterests ?? (Array.isArray(initialData.productInterest) ? initialData.productInterest : initialData.productInterest ? [initialData.productInterest] : []));
       reset({
         firstName: initialData.firstName || '',
         lastName: initialData.lastName || '',
@@ -187,8 +174,8 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
         address: initialData.address || '',
       });
     } else {
-      setSelectedProduct('');
-      setCustomProduct('');
+      setSelectedProducts([]);
+
       setPhoneLocal('');
       setPhoneTouched(false);
       reset({
@@ -211,13 +198,12 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
     // Build phone in E.164 format from local 10-digit number
     const fullPhone = phoneLocal ? toE164(phoneLocal) : '';
 
-    // Build productInterest array
-    const finalProduct = selectedProduct === 'Others' ? customProduct : selectedProduct;
-    const productInterest = finalProduct ? [finalProduct] : [];
-
+    const productInterest = selectedProducts;
+    if (!isEdit) requestId.current ??= crypto.randomUUID();
     // Build payload matching backend CreateContactSchema field names exactly.
     // No phantom fields — adapter handles any remaining mapping.
     const payload: Partial<Lead> = {
+      ...(!isEdit ? { requestId: requestId.current } : {}),
       firstName: data.firstName,
       lastName: data.lastName,
       email: data.email || undefined,
@@ -334,50 +320,10 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
               </div>
             </FieldWrap>
             <FieldWrap label="Product Interest">
-              <div className="space-y-2">
-                <div className="relative">
-                  <div
-                    className={`${inputCls} flex items-center justify-between cursor-pointer select-none`}
-                    onClick={() => setIsProductDropdownOpen(!isProductDropdownOpen)}
-                  >
-                    <span className={selectedProduct ? 'text-slate-900 dark:text-white' : 'text-slate-400'}>
-                      {selectedProduct || 'Select product...'}
-                    </span>
-                    <ChevronDown size={14} className={`text-slate-400 transition-transform ${isProductDropdownOpen ? 'rotate-180' : ''}`} />
-                  </div>
-                  {isProductDropdownOpen && (
-                    <>
-                      <div className="fixed inset-0 z-40" onClick={() => setIsProductDropdownOpen(false)} />
-                      <div className="absolute z-50 w-full mt-1.5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-white/[0.08] rounded-xl shadow-xl shadow-blue-900/5 dark:shadow-black/40 py-1 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 max-h-60 overflow-y-auto">
-                        {PRODUCTS.map((p) => (
-                          <div
-                            key={p}
-                            className={`px-3.5 py-2.5 text-sm cursor-pointer transition-colors ${selectedProduct === p ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.04]'}`}
-                            onClick={() => {
-                              setSelectedProduct(p);
-                              setIsProductDropdownOpen(false);
-                            }}
-                          >
-                            {p}
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-                {selectedProduct === 'Others' && (
-                  <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-                    <input
-                      type="text"
-                      autoFocus
-                      className="w-full bg-white dark:bg-white/[0.04] border border-blue-400 dark:border-blue-500/60 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all shadow-sm shadow-blue-500/10"
-                      placeholder="Specify product or service"
-                      value={customProduct}
-                      onChange={(e) => setCustomProduct(e.target.value)}
-                    />
-                  </div>
-                )}
+              <div className="max-h-48 space-y-1 overflow-y-auto rounded-xl border border-border p-2">
+                {[...new Set([...products, ...selectedProducts])].map(product => <label key={product} className="flex min-h-9 items-start gap-2 px-1 py-1.5 text-xs"><input type="checkbox" checked={selectedProducts.includes(product)} onChange={e => setSelectedProducts(old => e.target.checked ? [...old, product] : old.filter(p => p !== product))} className="mt-0.5" /><span>{product}</span></label>)}
               </div>
+              {productError && <p role="alert" className="mt-1 text-xs text-red-600">Unable to load configured products. Retry before submitting.</p>}
             </FieldWrap>
           </div>
         </div>
@@ -432,7 +378,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
                   aria-describedby={errors.assignedUserId ? `${fieldId}-assignedUserId-error` : undefined}
                   className={selectCls}
                 >
-                  <option value="">Unassigned</option>
+                  <option value="">{isEdit ? 'Unassigned' : 'Assign automatically'}</option>
                   {users.map((u) => (
                     <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
                   ))}

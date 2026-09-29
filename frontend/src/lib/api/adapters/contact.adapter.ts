@@ -67,6 +67,7 @@ export function toBackendCreateContact(data: Record<string, any>): Record<string
       };
 
   return {
+    requestId: data.requestId,
     firstName,
     lastName,
     email: data.email || undefined,

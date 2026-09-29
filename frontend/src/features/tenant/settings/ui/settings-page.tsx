@@ -1,4 +1,5 @@
 'use client';
+import { ProductInterestsSettings } from './product-interests-settings';
 
 import React, { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
@@ -399,19 +400,7 @@ export default function SettingsPage(): React.ReactElement {
   // â”€â”€ Archived Data Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const renderArchivedTab = () => <ArchivedData />;
 
-  const renderCustomFieldsTab = (): React.ReactElement => (
-    <div className="max-w-2xl space-y-4">
-      <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5">
-        <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-          <Zap className="w-4 h-4 text-[#3B82F6]" /> Custom Fields
-        </h3>
-        <div className="text-center py-8 border border-dashed border-gray-200 dark:border-slate-700 rounded-xl">
-          <Zap className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
-          <p className="text-xs text-slate-400">Custom fields configuration coming soon.</p>
-        </div>
-      </div>
-    </div>
-  );
+  const renderCustomFieldsTab = () => <ProductInterestsSettings />;
 
   const tabContentMap: Record<Exclude<SettingsTab, 'forms' | 'roles' | 'audit'>, () => React.ReactElement> = {
     'profile': renderProfileTab,

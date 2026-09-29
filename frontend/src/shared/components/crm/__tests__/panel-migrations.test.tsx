@@ -1,12 +1,12 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-const mocks = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), permissions: ['*'], push: vi.fn() }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), permissions: ['*'], push: vi.fn(), move: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('@/lib/api/client', () => ({ apiClient: { get: mocks.get, put: mocks.put } }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { id: 'user', tenantId: 'tenant', role: 'Client Admin', activeEnvironment: 'SANDBOX' } }) }));
-vi.mock('@/store/DataContext', () => ({ useData: () => ({ contacts: [], organizations: [], activities: [], users: [], pipelines: [] }) }));
+vi.mock('@/store/DataContext', () => ({ useData: () => ({ contacts: [], organizations: [], activities: [], users: [], deals: [], moveDealStage: mocks.move, pipelines: [{ id: 'sales', stages: [{ id: 'lead', name: 'Lead' }, { id: 'won', name: 'Won', isWon: true }, { id: 'lost', name: 'Lost', isLost: true }] }] }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (permission: string) => mocks.permissions.includes('*') || mocks.permissions.includes(permission) }));
 vi.mock('@/features/tenant/operations/tasks/ui/related-tasks', () => ({ RelatedTasks: ({ links }: { links: object }) => <div data-testid="related-tasks">{JSON.stringify(links)}</div> }));
 vi.mock('@/features/tenant/crm/leads/ui/lead-form', () => ({ LeadFormSheet: () => null }));
@@ -17,6 +17,7 @@ import { CrmRecordPanel, CrmRecordView, type CrmRecordModule } from '../crm-reco
 import { clearPageCache } from '@/shared/cache/page-cache';
 
 const records = {
+  deals: { id: 'one', title: 'Lina Reyes – Smart Lock', pipelineId: 'sales', stageId: 'lead', stage: { name: 'Lead' }, pipeline: { name: 'Sales Pipeline' }, value: 1250.75, priority: 'MEDIUM', productInterests: ['Smart Lock'], assignedUser: { firstName: 'Sam', lastName: 'Cruz' }, leadDeals: [{ lead: { id: 'lead-one', firstName: 'Lina', lastName: 'Reyes', email: 'lina@example.test' } }], contactDeals: [] },
   leads: { id: 'one', firstName: 'Lina', lastName: 'Reyes', email: 'lina@example.test', source: 'Referral', status: 'Warm', productInterest: ['CCTV'], assignedUser: { firstName: 'Sam', lastName: 'Cruz' } },
   contacts: { id: 'one', firstName: 'Nora', lastName: 'Lim', status: 'WARM', company: 'North Company' },
   accounts: { id: 'one', name: 'North Company', industry: 'Services', customerType: 'Prospect', website: 'example.test' },
@@ -32,15 +33,15 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-it.each(['leads', 'contacts', 'accounts'] as const)('%s uses the same identity and three tabs on both surfaces', async module => {
-  const title = module === 'accounts' ? records.accounts.name : module === 'leads' ? 'Lina Reyes' : 'Nora Lim';
+it.each(['leads', 'contacts', 'accounts', 'deals'] as const)('%s uses the same identity and three tabs on both surfaces', async module => {
+  const title = module === 'deals' ? records.deals.title : module === 'accounts' ? records.accounts.name : module === 'leads' ? 'Lina Reyes' : 'Nora Lim';
   const panel = render(<CrmRecordPanel module={module} id="one" open onOpenChange={() => {}} />);
   await screen.findByRole('heading', { name: title });
   expect(screen.getByRole('link', { name: /Open full page/ }).getAttribute('href')).toBe(`/crm/${module}/one`);
   expect(screen.getAllByRole('tab').map(el => el.textContent)).toEqual(expect.arrayContaining([expect.stringContaining('Activity'), expect.stringContaining('Details'), 'Files']));
   fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
-  await screen.findByRole('button', { name: /^Deals/ });
-  expect(screen.getByTestId('related-tasks').textContent).toContain(module === 'leads' ? 'leadId' : module === 'contacts' ? 'contactId' : 'accountId');
+  await screen.findByRole('button', { name: module === 'deals' ? /^Associations/ : /^Deals/ });
+  expect(screen.getByTestId('related-tasks').textContent).toContain(module === 'leads' ? 'leadId' : module === 'contacts' ? 'contactId' : module === 'deals' ? 'dealId' : 'accountId');
   expect(screen.queryByText('Security, Cabling, CCTV')).toBeNull();
   fireEvent.click(screen.getByRole('tab', { name: 'Files' }));
   expect(screen.getByText('No files attached.')).toBeTruthy();
@@ -63,13 +64,13 @@ it('does not refetch relationships when switching tabs and retains collapsible s
   expect(about.getAttribute('aria-expanded')).toBe('false');
   fireEvent.click(screen.getByRole('tab', { name: /Activity/ }));
   fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
-  expect(mocks.get.mock.calls.filter(([path]) => path.includes('/relationships'))).toHaveLength(1);
+  await waitFor(() => expect(mocks.get.mock.calls.filter(([path]) => path.includes('/relationships'))).toHaveLength(1));
 });
 
 it('reuses contact relationship history instead of requesting it twice', async () => {
   render(<CrmRecordView module="contacts" id="one" />);
   await screen.findByText('No activity recorded for this record.');
-  expect(mocks.get.mock.calls.filter(([path]) => path.includes('/relationships'))).toHaveLength(1);
+  await waitFor(() => expect(mocks.get.mock.calls.filter(([path]) => path.includes('/relationships'))).toHaveLength(1));
 });
 
 it('hides mutation controls without permissions', async () => {
@@ -128,4 +129,26 @@ it('maps the existing Contact editor to canonical API fields', async () => {
   await waitFor(() => expect(mocks.put).toHaveBeenCalledWith('/crm/contacts/one', {
     firstName: 'Nora', lastName: 'Lim', company: 'Updated Company', source: 'Referral', productInterests: ['CCTV'], status: 'WARM',
   }));
+});
+
+
+it('Deal stage changes use the governed API without supplying a new owner', async () => {
+  mocks.move.mockResolvedValue(undefined);
+  render(<CrmRecordView module="deals" id="one" />);
+  await screen.findByRole('heading', { name: records.deals.title });
+  fireEvent.click(screen.getByRole('button', { name: 'Lead' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Won' }));
+  await waitFor(() => expect(mocks.move).toHaveBeenCalledWith('one', 'won', undefined, undefined));
+});
+
+it('requires a lost reason before submitting the Deal transition', async () => {
+  render(<CrmRecordView module="deals" id="one" />);
+  await screen.findByRole('heading', { name: records.deals.title });
+  fireEvent.click(screen.getByRole('button', { name: 'Lead' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Lost' }));
+  expect(mocks.move).not.toHaveBeenCalled();
+  expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText('Lost reason'), { target: { value: 'Project postponed' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(mocks.move).toHaveBeenCalledWith('one', 'lost', undefined, 'Project postponed'));
 });

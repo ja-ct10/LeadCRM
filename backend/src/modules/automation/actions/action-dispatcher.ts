@@ -47,7 +47,7 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
     if (action.type === 'move_deal_stage') {
       if (context['deal.stageId'] === config.stageId) return { success: true, output: { unchanged: true, stageId: config.stageId } };
       const result = await moveDealStage(entityId, tenantId, actorId, { stageId: String(config.stageId), lostReason: config.lostReason ? String(config.lostReason) : undefined });
-      return { success: true, output: { historyId: result.stageHistory.id, stageId: config.stageId } };
+      return { success: true, output: { historyId: result.stageHistory?.id, stageId: config.stageId } };
     }
     const update = action.type === 'assign_owner' ? { assignedUserId: String(config.userId) } : { [String(config.field)]: String(config.value) };
     if (entity === 'deal') {

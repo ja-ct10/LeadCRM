@@ -122,7 +122,7 @@ describe('Forms UI', () => {
     vi.stubGlobal('fetch', fetchMock); render(<PublicFormPage publicId="public" />); await screen.findByText('Contact Us');
     fireEvent.click(screen.getByText('Submit')); expect(screen.getAllByText('First Name is required.')).toHaveLength(1);
     fireEvent.change(screen.getByLabelText(/First Name/), { target: { value: 'Anne' } }); fireEvent.change(screen.getByLabelText(/Last Name/), { target: { value: "O'Connor" } });
-    fireEvent.change(screen.getByLabelText(/Email Address/), { target: { value: 'anne@example.com' } }); fireEvent.change(screen.getByLabelText(/Product Interest/), { target: { value: 'Smart Lock' } });
+    fireEvent.change(screen.getByLabelText(/Email Address/), { target: { value: 'anne@example.com' } }); fireEvent.click(screen.getByRole('checkbox', { name: 'Smart Lock' }));
     const phone = screen.getByLabelText('Contact Number') as HTMLInputElement; fireEvent.change(phone, { target: { value: '9123456789123' } }); expect(phone.value).toBe('9123456789');
     fireEvent.click(screen.getByText('Submit')); await screen.findByText('Thank you!'); expect(fetchMock).toHaveBeenCalledTimes(2);
   });

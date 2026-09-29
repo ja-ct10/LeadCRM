@@ -31,6 +31,13 @@ export function invalidateApiPageCache(path: string): void {
       // Conversion can update all three entity lists.
       ['leads', 'contacts', 'accounts'].forEach((module) => modules.add(module));
     }
+    if (resource === 'leads') { modules.add('deals'); modules.add('counts-deals'); }
+    if (resource === 'deals') {
+      modules.add('deals');
+      if (path.split('?')[0].endsWith('/stage')) {
+        ['leads', 'contacts', 'accounts', 'counts-contacts', 'counts-accounts'].forEach(module => modules.add(module));
+      }
+    }
     if (resource === 'accounts' || resource === 'organizations') modules.add('accounts');
     if (resource === 'deals' || resource === 'pipelines') modules.add('pipeline');
   }

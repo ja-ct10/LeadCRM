@@ -7,8 +7,8 @@ const id = () => z.string().min(1);
 export const CreateDealSchema = z.object({
   pipelineId:        id(),
   stageId:           id(),
-  title:             z.string().min(1).max(255),
-  value:             z.number().positive().max(999_999_999_999).optional(),
+  title:             z.string().trim().min(1).max(255),
+  value:             z.number().finite().nonnegative().max(999_999_999_999).optional(),
   currency:          z.string().default('PHP'),
   billingFrequency:  z.enum(['monthly', 'one_time', 'annual', 'quarterly']).optional(),
   priority:          z.enum(['LOW', 'MEDIUM', 'HIGH']).default('MEDIUM'),
@@ -21,7 +21,7 @@ export const CreateDealSchema = z.object({
   leadIds:           z.array(id()).optional(),
   industry:          z.string().optional(),
   address:           z.string().optional(),
-  productInterests:  z.array(z.string()).optional(),
+  productInterests:  z.array(z.string().trim().min(1).max(200)).max(100).optional(),
 });
 
 // DI-2 fix: stageId is explicitly excluded from updates.
@@ -38,7 +38,7 @@ export const DealHandoffSchema = z.object({
 export const MoveDealStageSchema = z.object({
   stageId:    id(),
   note:       z.string().optional(),
-  lostReason: z.string().optional(),
+  lostReason: z.string().trim().max(2000).optional(),
   handoff:    DealHandoffSchema.optional(),
 });
 
@@ -58,7 +58,7 @@ export const BulkStageChangeSchema = z.object({
   dealIds:    z.array(z.string().min(1)).min(1).max(50),
   stageId:    z.string().min(1),
   note:       z.string().optional(),
-  lostReason: z.string().optional(),
+  lostReason: z.string().trim().max(2000).optional(),
 });
 
 // --- Inferred Types ---

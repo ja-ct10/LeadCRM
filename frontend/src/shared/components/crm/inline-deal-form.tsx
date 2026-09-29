@@ -65,7 +65,8 @@ export function InlineDealForm({
   isLoading = false,
   onError,
 }: InlineDealFormProps): React.ReactElement {
-  const { pipelines } = useData();
+  const { pipelines: allPipelines } = useData();
+  const pipelines = useMemo(() => allPipelines.filter(p => p.name.trim().toLowerCase() === 'sales pipeline'), [allPipelines]);
 
   // Auto-select first pipeline and first stage as defaults
   const defaultPipeline = pipelines[0];
@@ -181,18 +182,7 @@ export function InlineDealForm({
       <div className="grid grid-cols-2 gap-2">
         <div>
           <label className={labelCls}>Pipeline <span className="text-red-500">*</span></label>
-          <div className="relative">
-            <select
-              {...register('pipelineId')}
-              className={cn(selectCls, errors.pipelineId && errorCls)}
-            >
-              <option value="">Select pipeline</option>
-              {pipelines.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-            <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
-          </div>
+          <p className="py-2 text-sm">Sales Pipeline</p><input type="hidden" {...register('pipelineId')} />
           {errors.pipelineId && (
             <p className="text-xs text-destructive mt-0.5">{errors.pipelineId.message}</p>
           )}

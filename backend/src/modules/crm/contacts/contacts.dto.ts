@@ -7,6 +7,7 @@ const id = () => z.string().min(1);
 // accountId, assignedUserId, productInterest[], address, companyName, createdAt
 
 export const CreateContactSchema = z.object({
+  requestId: z.string().uuid().optional(),
   firstName:      z.string().min(1, 'First name is required').max(100),
   lastName:       z.string().min(1, 'Last name is required').max(100),
   email:          z.string().email('Invalid email address').optional().or(z.literal('')),
@@ -16,7 +17,7 @@ export const CreateContactSchema = z.object({
   source:         z.string().optional(),
   accountId:      id().optional(),
   assignedUserId: id().optional(),
-  productInterest: z.array(z.string()).optional(),
+  productInterest: z.array(z.string().trim().min(1).max(200)).max(100).optional(),
   address:        z.string().optional(),
   description:    z.string().optional(),
   website:        z.string().optional(),
@@ -32,7 +33,7 @@ export const UpdateContactSchema = z.object({
   source:         z.string().optional(),
   accountId:      id().optional(),
   assignedUserId: id().optional(),
-  productInterest: z.array(z.string()).optional(),
+  productInterest: z.array(z.string().trim().min(1).max(200)).max(100).optional(),
   address:        z.string().optional(),
   description:    z.string().optional(),
   website:        z.string().optional(),

@@ -7,6 +7,7 @@ import { authorize } from '../middleware/rbac.middleware';
 import { validate } from '../middleware/validate.middleware';
 import { UpdateOrganizationSettingsSchema } from '@leadcrm/shared';
 import * as organizationSettings from '../../modules/administration/organization-settings/organization-settings.controller';
+import * as productInterests from '../../modules/administration/product-interests/product-interests.controller';
 import * as archivedData from '../../modules/administration/archived-data/archived-data.controller';
 import * as userController       from '../../modules/administration/users/users.controller';
 import * as roleController       from '../../modules/administration/roles/roles.controller';
@@ -31,6 +32,8 @@ router.get('/archived-data', archivedData.list);
 router.patch('/archived-data/:type/:id/restore', archivedData.restore);
 
 router.get('/organization-settings', authorize('settings.view'), organizationSettings.get);
+router.get('/product-interests', productInterests.get);
+router.put('/product-interests', authorize('settings.edit'), productInterests.update);
 router.patch('/organization-settings', authorize('settings.edit'), validate(UpdateOrganizationSettingsSchema), organizationSettings.update);
 
 // -- Users ---------------------------------------------

@@ -1,7 +1,7 @@
 import React from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-vi.mock('@/store/DataContext', () => ({ useData: () => ({ pipelines: [{ id: 'pipeline', name: 'Sales', stages: [{ id: 'stage', name: 'New' }] }] }) }));
+vi.mock('@/store/DataContext', () => ({ useData: () => ({ pipelines: [{ id: 'pipeline', name: 'Sales Pipeline', stages: [{ id: 'stage', name: 'New' }] }] }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
 vi.mock('./deal-account-field', () => ({ DealAccountField: () => null }));
 vi.mock('./deal-contacts-field', () => ({ DealContactsField: () => null }));
@@ -16,18 +16,18 @@ it('adds approved interests once, resets the select, removes chips and preserves
   const select = screen.getByLabelText('Product Interests') as HTMLSelectElement;
   const add = screen.getByRole('button', { name: 'Add' }) as HTMLButtonElement;
   expect(add.disabled).toBe(true);
-  expect(screen.queryByRole('button', { name: 'CCTV' })).toBeNull();
-  for (const value of ['CCTV', 'Biometrics']) {
+  expect(screen.queryByRole('button', { name: 'CCTV Surveillance System' })).toBeNull();
+  for (const value of ['CCTV Surveillance System', 'Biometrics']) {
     fireEvent.change(select, { target: { value } });
     expect(add.disabled).toBe(false);
     fireEvent.click(add);
     expect(select.value).toBe('');
     expect(add.disabled).toBe(true);
   }
-  fireEvent.change(select, { target: { value: 'CCTV' } });
+  fireEvent.change(select, { target: { value: 'CCTV Surveillance System' } });
   expect(add.disabled).toBe(true);
   fireEvent.click(add);
-  expect(screen.getAllByRole('button', { name: 'Remove CCTV' })).toHaveLength(1);
+  expect(screen.getAllByRole('button', { name: 'Remove CCTV Surveillance System' })).toHaveLength(1);
   fireEvent.click(screen.getByRole('button', { name: 'Remove Biometrics' }));
   fireEvent.change(select, { target: { value: '<script>invalid</script>' } });
   expect(add.disabled).toBe(true);
@@ -35,5 +35,5 @@ it('adds approved interests once, resets the select, removes chips and preserves
   fireEvent.change(screen.getByLabelText('Value'), { target: { value: '1000' } });
   await waitFor(() => expect((screen.getByRole('button', { name: 'Create Deal' }) as HTMLButtonElement).disabled).toBe(false));
   fireEvent.click(screen.getByRole('button', { name: 'Create Deal' }));
-  await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ productInterests: ['CCTV'], pipelineId: 'pipeline', stageId: 'stage', currency: 'PHP' })));
+  await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ productInterests: ['CCTV Surveillance System'], pipelineId: 'pipeline', stageId: 'stage', currency: 'PHP' })));
 });

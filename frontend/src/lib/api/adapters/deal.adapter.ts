@@ -78,7 +78,8 @@ export function toBackendCreateDeal(data: Partial<any>): any {
     expectedCloseDate: toISODatetime(data.expectedCloseDate),
     description: data.description || undefined,
     leadSource: data.leadSource || undefined,
-    organizationId: data.companyId || data.organizationId || undefined,
+    accountId: data.accountId || data.companyId || data.organizationId || undefined,
+    productInterests: data.productInterests,
     assignedUserId: data.assignedUserId || undefined,
   };
 
@@ -111,8 +112,9 @@ export function toBackendUpdateDeal(data: Partial<any>): any {
   if (data.billingFrequency !== undefined) updateData.billingFrequency = data.billingFrequency;
 
   // Strip empty strings for optional UUID fields
-  const orgId = data.companyId || data.organizationId;
-  if (orgId) updateData.organizationId = orgId;
+  const orgId = data.accountId || data.companyId || data.organizationId;
+  if (orgId) updateData.accountId = orgId;
+  if (data.productInterests !== undefined) updateData.productInterests = data.productInterests;
 
   if (data.assignedUserId) updateData.assignedUserId = data.assignedUserId;
 
@@ -212,7 +214,8 @@ export function toFrontendDeal(backendDeal: any): any {
     contactIds: contactIds,
     companyId: backendDeal.organizationId || backendDeal.organization?.id || undefined,
     companyName: companyName,
-    contactPerson: contactPerson,
+    contactPerson: contactPerson || (leadPerson ? [leadPerson.firstName, leadPerson.lastName].filter(Boolean).join(' ') : ''),
+    productInterests: Array.isArray(backendDeal.productInterests) ? backendDeal.productInterests : [],
     value: typeof backendDeal.value === 'number' ? backendDeal.value : 0,
     priority: toFrontendPriority(backendDeal.priority),
     expectedCloseDate: backendDeal.expectedCloseDate || '',

@@ -803,6 +803,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         // Invalidate leads + contacts page cache so next navigation shows fresh data
         const cTenantId = tenant?.id || user?.tenantId || '';
         invalidatePageCache('leads',    cTenantId);
+        invalidatePageCache('deals', cTenantId);
         invalidatePageCache('contacts', cTenantId);
         addAuditLog(
           "Contact Created",
@@ -1104,18 +1105,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const deal = toFrontendDeal(rawDeal) as Deal;
         setDeals((prev) => prev.map((d) => (d.id === id ? deal : d)));
 
-        const pLine = pipelines.find((p) => p.id === deal.pipelineId);
-        const newName = pLine?.stages.find((s) => s.id === stageId)?.name || stageId;
-        addAuditLog("Deal Stage Changed", `Moved deal '${deal.title}' to stage '${newName}'.`, id);
-        addActivity({
-          type: 'stage_change',
-          relatedToType: 'deal',
-          relatedToId: deal.id,
-          title: `Deal moved to new stage`,
-          createdBy: user?.id || 'system',
-          createdAt: new Date().toISOString(),
-          metadata: { newStageId: stageId },
-        });
+        // The stage API commits activity and history in the same transaction.
+        for (const module of ['deals', 'activities', 'leads', 'contacts', 'accounts']) {
+          invalidatePageCache(module, tenant?.id || user?.tenantId || '');
+        }
       } catch (err) {
         console.error("Failed to move deal stage", err);
         throw err;

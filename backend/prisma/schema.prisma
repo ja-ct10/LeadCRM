@@ -525,6 +525,8 @@ model Account {
 // LEAD
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Lead {
+  creationKey String?
+  @@unique([tenantId, environment, creationKey])
   formSubmissions FormSubmission[]
   environment CrmEnvironment @default(PRODUCTION)
   id                  String    @id @default(uuid())
@@ -716,6 +718,8 @@ model Stage {
 // DEAL
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Deal {
+  automationKey String?
+  @@unique([tenantId, environment, automationKey])
   environment CrmEnvironment @default(PRODUCTION)
   id                String    @id @default(uuid())
   tenantId          String
@@ -1102,6 +1106,8 @@ model MarketingForm {
 }
 
 model FormSubmission {
+  requestKey String?
+  @@unique([formId, requestKey])
   id String @id @default(uuid())
   tenantId String
   environment CrmEnvironment

@@ -27,9 +27,11 @@ import { LeadFormSheet } from '@/features/tenant/crm/leads/ui/lead-form';
 import { ContactFormSheet } from '@/features/tenant/crm/contacts/ui/contact-form';
 import { AccountFormSheet } from '@/features/tenant/crm/accounts/ui/account-form';
 import type { Account } from '@/features/tenant/crm/accounts/types/account.types';
+import { DealFormSheet } from '@/features/tenant/crm/deals/ui/deal-form';
+import { toBackendUpdateDeal, toFrontendDeal } from '@/lib/api/adapters/deal.adapter';
 import { ConvertLeadDialog } from '@/features/tenant/crm/leads/ui/convert-lead-dialog';
 
-export type CrmRecordModule = 'leads' | 'contacts' | 'accounts';
+export type CrmRecordModule = 'leads' | 'contacts' | 'accounts' | 'deals';
 type RecordData = Record<string, unknown>;
 interface Relationships {
   account?: RecordData | null;
@@ -40,7 +42,7 @@ interface Relationships {
   deals?: RecordData[];
   activities?: TimelineActivity[];
 }
-const labels = { leads: 'Lead', contacts: 'Contact', accounts: 'Account' };
+const labels = { leads: 'Lead', contacts: 'Contact', accounts: 'Account', deals: 'Deal' };
 const text = (value: unknown): string => typeof value === 'string' ? value : '';
 const personName = (record?: RecordData | null) => record ? [text(record.firstName), text(record.lastName)].filter(Boolean).join(' ') : '';
 const object = (value: unknown): RecordData | undefined => value && typeof value === 'object' && !Array.isArray(value) ? value as RecordData : undefined;
@@ -91,8 +93,8 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
   const router = useRouter();
   const { user, tenant } = useAuth();
   const data = useData();
-  const canEdit = useHasPermission(module === 'accounts' ? 'accounts.edit' : 'contacts.edit');
-  const hasArchivePermission = useHasPermission(module === 'accounts' ? 'accounts.delete' : 'contacts.delete');
+  const canEdit = useHasPermission(module === 'deals' ? 'deals.edit' : module === 'accounts' ? 'accounts.edit' : 'contacts.edit');
+  const hasArchivePermission = useHasPermission(module === 'deals' ? 'deals.delete' : module === 'accounts' ? 'accounts.delete' : 'contacts.delete');
   const canArchive = hasArchivePermission && !USE_MOCK_DATA;
   const canCreateDeal = useHasPermission('deals.create');
   const canReadDeals = useHasPermission('deals.view');
@@ -105,20 +107,22 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
   const [archiving, setArchiving] = useState(false);
   const [creatingDeal, setCreatingDeal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [lostStage, setLostStage] = useState<string>();
+  const [lostReason, setLostReason] = useState('');
   const [taskCount, setTaskCount] = useState<number>();
   const recordQuery = useCachedPage<RecordData>({ module, params: { recordId: id }, revalidateOnInvalidation: true,
     fetchFn: async signal => (await apiClient.get<{ data: RecordData }>(`/crm/${module}/${encodeURIComponent(id)}`, { signal })).data });
   // Contacts' timeline is already included in this endpoint; avoid a second read.
   const relatedQuery = useCachedPage<Relationships>({ module, params: { recordId: id, relationships: true }, revalidateOnInvalidation: true,
-    disabled: USE_MOCK_DATA || (!detailsVisited && module !== 'contacts') || !recordQuery.data || !!recordQuery.error,
+    disabled: module === 'deals' || USE_MOCK_DATA || (!detailsVisited && module !== 'contacts') || !recordQuery.data || !!recordQuery.error,
     fetchFn: async signal => (await apiClient.get<{ data: Relationships }>(`/crm/${module}/${encodeURIComponent(id)}/relationships?limit=50`, { signal })).data });
   const timeline = useRecordActivities(module, id, !!recordQuery.data && !recordQuery.error || USE_MOCK_DATA, module === 'contacts' ? relatedQuery.data?.activities ?? [] : undefined);
-  const mockRecords = module === 'accounts' ? data.organizations : data.contacts;
+  const mockRecords = module === 'deals' ? data.deals : module === 'accounts' ? data.organizations : data.contacts;
   const mockRecord = USE_MOCK_DATA ? mockRecords.find(item => item.id === id && item.tenantId === tenant?.id && ((item as unknown as RecordData).environment ?? 'SANDBOX') === (user?.activeEnvironment ?? 'SANDBOX')) : undefined;
   const record = USE_MOCK_DATA ? mockRecord as unknown as RecordData : recordQuery.data;
   const relationships = relatedQuery.data;
   const label = labels[module];
-  const refresh = () => { void recordQuery.refetch(); void relatedQuery.refetch(); void timeline.refetch(); };
+  const refresh = () => { void recordQuery.refetch(); if (module !== 'deals') void relatedQuery.refetch(); void timeline.refetch(); };
   const edit = () => {
     // Contact's canonical API fields differ from Lead's form fields. Keep its
     // save adapter here for both surfaces instead of the list's legacy handler.
@@ -131,10 +135,11 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
     try {
       if (USE_MOCK_DATA) {
         if (module === 'accounts') await data.updateOrganization(id, payload);
+        else if (module === 'deals') await data.updateDeal(id, payload);
         else await data.updateContact(id, payload);
       } else await apiClient.put(`/crm/${module}/${encodeURIComponent(id)}`, payload);
       setEditing(false);
-      void timeline.refetch();
+      refresh();
       toast.success(`${label} updated`);
     } catch (error) { toast.error(error instanceof Error ? error.message : `Failed to update ${label.toLowerCase()}`); }
     finally { setSaving(false); }
@@ -143,23 +148,32 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
   if (recordQuery.isInitialLoad) return <div role="status" aria-label={`Loading ${label.toLowerCase()}`} className="relative space-y-4 p-4 animate-pulse">{onClose && <Button variant="ghost" size="icon" className="absolute right-3 top-3" onClick={onClose} aria-label="Close record" title="Close record"><X size={16} /></Button>}<div className="h-12 w-12 rounded-xl bg-muted" /><div className="h-5 w-2/3 rounded bg-muted" /><div className="h-9 rounded-xl bg-muted" /><div className="h-44 rounded-xl bg-muted" /></div>;
   if (recordQuery.error || !record) return <div className="space-y-4 p-5"><h2 className="font-semibold">Unable to open {label.toLowerCase()}</h2><p role="alert" className="text-sm text-muted-foreground">{recordQuery.error || 'Record not found or access is unavailable.'}</p><Button variant="outline" onClick={() => void recordQuery.refetch()}>Retry</Button>{onClose && <Button variant="ghost" onClick={onClose}>Close</Button>}</div>;
 
-  const title = module === 'accounts' ? text(record.name) : personName(record);
-  const source = text(record.source) || text(record.leadSource);
+  const title = module === 'deals' ? text(record.title) : module === 'accounts' ? text(record.name) : personName(record);
+  const person = module === 'deals' ? object((record.leadDeals as RecordData[] | undefined)?.[0]?.lead) ?? object((record.contactDeals as RecordData[] | undefined)?.[0]?.contact) : record;
+  const source = (module === 'deals' ? (record.productInterests as string[] | undefined)?.join(', ') : '') || text(record.source) || text(record.leadSource);
   const owner = personName(object(record.assignedUser)) || personName(object(record.owner));
-  const company = text(record.companyName) || text(record.company) || text(object(record.account)?.name);
+  const company = text(object(record.organization)?.name) || text(person?.companyName) || text(person?.company) || text(record.companyName) || text(record.company) || text(object(record.account)?.name);
   const location = [text(record.address), text(record.city), text(record.province), text(record.country)].filter(Boolean).join(', ');
-  const subtitle = module === 'accounts' ? text(record.industry) || text(record.website) : company || text(record.jobTitle) || location;
-  const status = text(module === 'accounts' ? record.customerType : record.status);
+  const subtitle = module === 'deals' ? `₱${Number(record.value ?? 0).toLocaleString()} · ${text(object(record.pipeline)?.name)}` : module === 'accounts' ? text(record.industry) || text(record.website) : company || text(record.jobTitle) || location;
+  const status = text(module === 'deals' ? object(record.stage)?.name : module === 'accounts' ? record.customerType : record.status);
   const statusLabel = status === status.toUpperCase() ? status.charAt(0) + status.slice(1).toLowerCase() : status;
+  const dealStages = data.pipelines.find(p => p.id === record.pipelineId)?.stages ?? [];
+  const changeStage = async (stageId: string, reason?: string) => {
+    setSaving(true);
+    try { await data.moveDealStage(id, stageId, undefined, reason); setLostStage(undefined); refresh(); }
+    catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to move Deal'); }
+    finally { setSaving(false); }
+  };
   const statuses = module === 'accounts' ? DEFAULT_ACCOUNT_STATUSES.map(item => item.label) : module === 'leads' ? DEFAULT_LEAD_STATUSES.map(item => item.label) : ['Hot', 'Warm', 'Cold', 'Cancelled', 'Closed'];
   const rows: [string, unknown][] = [
     ...(module === 'accounts' ? [['Account name', record.name], ['Industry', record.industry], ['Company size', record.size]] as [string, unknown][] : []),
-    ['Email', record.email], ['Phone', record.phone], ['Address', location], ['Company', module !== 'accounts' ? company : undefined], ['Job title', record.jobTitle], ['Website', record.website],
-    ['Product interests', record.productInterest ?? record.productInterests], ['Source', source], ['Status', statusLabel], ['Owner / Representative', owner], ['Notes', record.notes ?? record.description],
+    ...(module === 'deals' ? [['Deal title', title], ['Deal value', subtitle.split(' · ')[0]], ['Priority', record.priority], ['Associated Lead / Contact', personName(person)], ['Created', record.createdAt ? new Date(String(record.createdAt)).toLocaleDateString() : '']] as [string, unknown][] : []),
+    ['Email', person?.email], ['Phone', person?.phone], ['Address', location], ['Company', module !== 'accounts' ? company : undefined], ['Job title', record.jobTitle], ['Website', record.website],
+    ['Product interests', record.productInterest ?? record.productInterests], ['Source', module === 'deals' ? record.leadSource : source], ['Status', statusLabel], ['Owner / Representative', owner], ['Notes', record.notes ?? record.description],
   ];
   const customFields = object(record.customFields);
   const deals = relationships?.deals ?? [];
-  const links = module === 'leads' ? { leadId: id } : module === 'contacts' ? { contactId: id } : { accountId: id };
+  const links = module === 'deals' ? { dealId: id } : module === 'leads' ? { leadId: id } : module === 'contacts' ? { contactId: id } : { accountId: id };
   const activityLoading = module === 'contacts' ? relatedQuery.isInitialLoad : timeline.isInitialLoad;
   const activityError = module === 'contacts' ? relatedQuery.error : timeline.error;
   const formRecord = { ...record, companyName: company, leadSource: source, organizationId: record.accountId, productInterests: record.productInterest ?? record.productInterests, status: statusLabel };
@@ -172,7 +186,7 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
         <div className={cn('mx-auto min-w-0', !onClose && 'max-w-4xl')}>
         {!onClose && <nav aria-label="Breadcrumb" className="mb-4 flex min-w-0 flex-wrap items-center gap-1 text-xs text-muted-foreground"><span>CRM</span><ChevronRight size={12} /><Link className="hover:text-[var(--primary)]" href={`/crm/${module}`}>{label}s</Link><ChevronRight size={12} /><span className="min-w-0 [overflow-wrap:anywhere]" aria-current="page">{title}</span></nav>}
         <div className="relative flex min-w-0 flex-wrap items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--primary)] text-sm font-semibold text-[var(--primary-foreground)]">{module === 'accounts' ? <Building size={20} /> : `${text(record.firstName)[0] || ''}${text(record.lastName)[0] || ''}`}</div>
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--primary)] text-sm font-semibold text-[var(--primary-foreground)]">{module === 'accounts' ? <Building size={20} /> : module === 'deals' ? title.split(/\s+/).slice(0, 2).map(word => word[0]).join('').toUpperCase() : `${text(record.firstName)[0] || ''}${text(record.lastName)[0] || ''}`}</div>
           <div className="min-w-0 flex-1 basis-[calc(100%-64px)] pr-9 @min-[400px]:basis-0 @min-[400px]:pr-0">
             <div className="mb-1 flex flex-wrap gap-1"><span className="rounded bg-[var(--primary)]/10 px-1.5 py-0.5 text-[9px] font-semibold tracking-wide text-[var(--primary)]">{label.toUpperCase()}</span>{source && <span className="max-w-full rounded border border-border px-1.5 py-0.5 text-[9px] text-muted-foreground [overflow-wrap:anywhere]">{source}</span>}</div>
             <h1 className="text-lg font-semibold leading-tight tracking-tight [overflow-wrap:anywhere]">{title}</h1>
@@ -180,13 +194,14 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
             {onClose && <Link href={`/crm/${module}/${encodeURIComponent(id)}`} className="mt-1 inline-flex min-h-8 items-center gap-1 text-xs font-medium text-[var(--primary)]">Open full page <ExternalLink size={11} /></Link>}
           </div>
           <div className="ml-[52px] flex max-w-[calc(100%-52px)] items-center gap-1 @min-[400px]:ml-0 @min-[400px]:pr-9">
-            {status && (canEdit ? <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" disabled={saving} className={cn('min-h-9 max-w-full gap-1 rounded-lg text-xs', getCRMStatusStyles(statusLabel))}>{statusLabel}<ChevronDown size={12} /></Button></DropdownMenuTrigger><DropdownMenuContent>{statuses.map(option => <DropdownMenuItem key={option} onSelect={() => void save({ [module === 'accounts' ? 'customerType' : 'status']: module === 'contacts' ? option.toUpperCase() : option })}>{option}</DropdownMenuItem>)}</DropdownMenuContent></DropdownMenu> : <span className={cn('rounded-lg px-2 py-1 text-xs', getCRMStatusStyles(statusLabel))}>{statusLabel}</span>)}
+            {status && (canEdit ? <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" disabled={saving} className={cn('min-h-9 max-w-full gap-1 rounded-lg text-xs', getCRMStatusStyles(statusLabel))}>{statusLabel}<ChevronDown size={12} /></Button></DropdownMenuTrigger><DropdownMenuContent>{module === 'deals' ? dealStages.map(stage => <DropdownMenuItem key={stage.id} onSelect={() => { if (stage.id === record.stageId) return; if (stage.isLost) { setLostReason(''); setLostStage(stage.id); } else void changeStage(stage.id); }}>{stage.name}</DropdownMenuItem>) : statuses.map(option => <DropdownMenuItem key={option} onSelect={() => void save({ [module === 'accounts' ? 'customerType' : 'status']: module === 'contacts' ? option.toUpperCase() : option })}>{option}</DropdownMenuItem>)}</DropdownMenuContent></DropdownMenu> : <span className={cn('rounded-lg px-2 py-1 text-xs', getCRMStatusStyles(statusLabel))}>{statusLabel}</span>)}
             {onClose && <Button variant="ghost" size="icon" className="absolute right-0 top-0 h-9 w-9" onClick={onClose} aria-label="Close record" title="Close record"><X size={16} /></Button>}
           </div>
         </div>
         <RecordQuickInfo items={[
-          { value: text(record.email), icon: Mail, href: record.email ? `mailto:${text(record.email)}` : undefined },
-          { value: text(record.phone), icon: Phone, href: record.phone ? `tel:${text(record.phone)}` : undefined },
+          { value: text(person?.email), icon: Mail, href: person?.email ? `mailto:${text(person.email)}` : undefined },
+          { value: text(person?.phone), icon: Phone, href: person?.phone ? `tel:${text(person.phone)}` : undefined },
+          ...(module === 'deals' ? [{ value: personName(person), icon: User }, { value: company, icon: Building }] : []),
           { value: owner, icon: User, label: 'Rep: ' },
           ...(module === 'accounts' ? [{ value: website, icon: Globe, href: websiteHref }] : []),
           { value: location, icon: MapPin },
@@ -218,9 +233,10 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
             {detailsVisited && module !== 'accounts' && <RecordSection title="Tasks" count={taskCount}><RelatedTasks links={links} onCountChange={setTaskCount} /></RecordSection>}
             {detailsVisited && relatedQuery.isInitialLoad && <p role="status" className="animate-pulse p-3 text-sm text-muted-foreground">Loading related records…</p>}
             {relatedQuery.error && <div role="alert" className="rounded-xl border border-border p-3 text-sm"><p>{relatedQuery.error}</p><Button variant="ghost" size="sm" onClick={() => void relatedQuery.refetch()}>Retry related records</Button></div>}
+            {module === 'deals' && <RecordSection title="Associations">{canReadContacts && <><RelatedRecords records={(record.leadDeals as RecordData[] | undefined)?.map(link => object(link.lead)!).filter(Boolean) ?? []} module="leads" empty="No originating Lead." /><RelatedRecords records={(record.contactDeals as RecordData[] | undefined)?.map(link => object(link.contact)!).filter(Boolean) ?? []} module="contacts" empty="No Contact linked yet." /></>}{canReadAccounts && record.organization != null && <RelatedRecords records={[object(record.organization)!]} module="accounts" empty="" />}</RecordSection>}
             {relationships && <>
               {module === 'accounts' && canReadContacts && <RecordSection title="Contacts" count={(relationships.contacts?.length ?? 0) < 50 ? relationships.contacts?.length : undefined}><RelatedRecords records={relationships.contacts ?? []} module="contacts" empty="No contacts linked to this account." /></RecordSection>}
-              {canReadDeals && <RecordSection title="Deals" count={deals.length < 50 ? deals.length : undefined} actions={canCreateDeal && !USE_MOCK_DATA && <Button variant="ghost" size="sm" className="min-h-9 gap-1 text-xs text-[var(--primary)]" onClick={() => setCreatingDeal(true)}><Plus size={13} />Create deal</Button>}>
+              {module !== 'deals' && canReadDeals && <RecordSection title="Deals" count={deals.length < 50 ? deals.length : undefined} actions={canCreateDeal && !USE_MOCK_DATA && <Button variant="ghost" size="sm" className="min-h-9 gap-1 text-xs text-[var(--primary)]" onClick={() => setCreatingDeal(true)}><Plus size={13} />Create deal</Button>}>
                 <RelatedRecords records={deals} module="deals" empty={`No deals attached to this ${label.toLowerCase()}.`} />
                 {deals.length === 50 && <p className="px-3 pb-3 text-xs text-muted-foreground">Showing the latest 50 linked deals.</p>}
                 {creatingDeal && <div className="border-t border-border p-3"><InlineDealForm relatedRecord={{ type: module === 'leads' ? 'lead' : module === 'contacts' ? 'contact' : 'account', id }} onError={error => toast.error(error instanceof Error ? error.message : 'Failed to create deal')} onCancel={() => setCreatingDeal(false)} onSubmit={async values => {
@@ -241,6 +257,8 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
     </Tabs>
     {editing && module === 'leads' && <LeadFormSheet isOpen initialData={formRecord as unknown as Lead} onClose={() => setEditing(false)} onSave={values => void save(values as RecordData)} />}
     {editing && module === 'contacts' && <ContactFormSheet isOpen statusOptions={statuses} initialData={formRecord as unknown as Contact} onClose={() => setEditing(false)} onSave={values => { const { companyName, leadSource, productInterest, ...rest } = values; void save({ ...rest, company: companyName, source: leadSource, productInterests: productInterest, status: text(values.status).toUpperCase() }); }} />}
+    {editing && module === 'deals' && <DealFormSheet isOpen mode="edit" initialData={toFrontendDeal(record)} onClose={() => setEditing(false)} onSubmit={async values => { await save(toBackendUpdateDeal(values)); }} />}
+    {lostStage && <div role="dialog" aria-modal="true" aria-label="Close Deal as lost" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"><form className="w-full max-w-sm space-y-3 rounded-xl bg-card p-4" onSubmit={e => { e.preventDefault(); void changeStage(lostStage, lostReason); }}><label className="block text-sm">Lost reason<textarea required maxLength={2000} value={lostReason} onChange={e => setLostReason(e.target.value)} className="mt-2 w-full rounded border bg-background p-2" /></label><Button disabled={saving || !lostReason.trim()}>Save</Button><Button type="button" variant="ghost" onClick={() => setLostStage(undefined)}>Cancel</Button></form></div>}
     {editing && module === 'accounts' && <AccountFormSheet isOpen initialData={record as unknown as Account} onClose={() => setEditing(false)} onSave={values => void save(values as RecordData)} />}
     {converting && <ConvertLeadDialog isOpen lead={formRecord as unknown as Lead} onClose={() => setConverting(false)} onSuccess={refresh} />}
     <ConfirmActionDialog open={archiving} onOpenChange={setArchiving} title={`Archive ${label}`} description={`${title} will be moved to Archived Data.`} warning="You can restore this record later from Settings → Archived Data." confirmLabel="Archive" variant="default" onConfirm={async () => {

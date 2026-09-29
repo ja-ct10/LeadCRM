@@ -1,5 +1,6 @@
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import prisma from '../../../config/database.config';
+import { createAssignedLead, salesTransaction, createProductDeals, validateSalesOwner } from '../leads/lead-automation.service';
 import { CreateContactDto, UpdateContactDto } from './contacts.dto';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
 import { parseFilterParams, buildPrismaFilters } from '../../../shared/helpers/filter-parser';
@@ -77,15 +78,9 @@ export async function createContact(
   dto: CreateContactDto,
   createdById?: string,
 ) {
-  return prisma.lead.create({
-    data: { ...dto, tenantId, ...(createdById ? { createdById, updatedById: createdById } : {}) },
-    include: {
-      assignedUser: { select: { id: true, firstName: true, lastName: true } },
-      account:      { select: { id: true, name: true } },
-      createdBy:    { select: { id: true, firstName: true, lastName: true } },
-      updatedBy:    { select: { id: true, firstName: true, lastName: true } },
-    },
-  });
+  const { requestId, ...fields } = dto;
+  return salesTransaction(tx => createAssignedLead(tx, { ...fields, tenantId, creationKey: requestId,
+    ...(createdById ? { createdById, updatedById: createdById } : {}) }, createdById));
 }
 
 export async function updateContact(
@@ -102,7 +97,9 @@ export async function updateContact(
     if (dto.status && prevStatus !== undefined && dto.status !== prevStatus) {
       data.lastStatusChangedAt = new Date();
     }
-    return await prisma.lead.update({
+    return await salesTransaction(async tx => {
+      if (dto.assignedUserId) await validateSalesOwner(tx, tenantId, dto.assignedUserId);
+      const updated = await tx.lead.update({
       where: { id, tenantId },
       data,
       include: {
@@ -112,9 +109,11 @@ export async function updateContact(
         updatedBy:    { select: { id: true, firstName: true, lastName: true } },
       },
     });
-  } catch {
-    // Record not found or cross-tenant attempt
-    return null;
+      if (dto.assignedUserId || dto.productInterest) await createProductDeals(tx, tenantId, id, updatedById);
+      return updated;
+    });
+  } catch (error) {
+    throw error;
   }
 }
 
