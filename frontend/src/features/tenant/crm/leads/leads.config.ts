@@ -33,7 +33,6 @@ export const LEADS_MODULE_CONFIG: ModuleConfig = {
         { id: 'referral', label: 'Referral' },
         { id: 'social', label: 'Social Media' },
         { id: 'email', label: 'Email Campaign' },
-        { id: 'cold-call', label: 'Cold Call' },
         { id: 'other', label: 'Other' },
       ],
     },

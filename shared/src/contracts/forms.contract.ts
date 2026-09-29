@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { AdministrationPhoneSchema } from '../validation/administration-user.schema';
 
-// CRM product fields are free-text arrays; preserve these inquiry labels verbatim.
+// Legacy seed labels for database fixtures only. Runtime forms resolve database IDs.
 export const FORM_PRODUCT_INTERESTS = [
   'CCTV Surveillance System', 'Biometrics', 'Door Access Control', 'Smart Lock',
   'Network Infrastructure', 'Structured Cabling', 'Internet and Voice Postpaid plans',
@@ -15,6 +15,7 @@ export const FORM_MAPPINGS = ['firstName', 'lastName', 'fullName', 'email', 'pho
 export const FormFieldSchema = z.object({
   id: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,79}$/).refine(id => !['constructor', 'prototype', 'toString', 'hasOwnProperty'].includes(id), 'Reserved field ID.'), type: FormFieldTypeSchema,
   label: text(500), placeholder: text(500).optional(), required: z.boolean().optional(),
+  optionLabels: z.record(z.string().uuid(), text(200)).optional(),
   options: z.array(text(200).pipe(z.string().min(1))).max(100).optional(),
   mapToField: z.enum(['', ...FORM_MAPPINGS]).optional(), width: z.enum(['half', 'full']).optional(),
 }).strict();
@@ -33,8 +34,8 @@ export const FormDefinitionSchema = z.object({ name: text(200).pipe(z.string().m
     if (ids.has(f.id)) issue('Field IDs must be unique.'); ids.add(f.id);
     if (f.type === 'file') issue('File Upload is not supported. Remove this field before saving or publishing.');
     if (f.mapToField) { if (mappings.has(f.mapToField)) issue('Each CRM mapping can only be used once.'); mappings.add(f.mapToField); }
-    if (['dropdown', 'radio'].includes(f.type) && !f.options?.length) issue('Add at least one option.');
-    if (f.mapToField === 'productInterest' && (f.type !== 'dropdown' || f.options?.some(o => !(FORM_PRODUCT_INTERESTS as readonly string[]).includes(o)))) issue('Product Interest must use the approved dropdown options.');
+    if (f.mapToField !== 'productInterest' && ['dropdown', 'radio'].includes(f.type) && !f.options?.length) issue('Add at least one option.');
+    if (f.mapToField === 'productInterest' && f.type !== 'dropdown') issue('Product Interest must use the approved dropdown options.');
     const allowed: Record<string, string[]> = { email: ['email', 'contact-email'], phone: ['phone', 'contact-phone'], website: ['url', 'company-website'], firstName: ['single-line'], lastName: ['single-line'], fullName: ['contact-name', 'single-line'], companyName: ['company-name', 'single-line'], address: ['multi-line', 'single-line'] };
     if (f.mapToField && allowed[f.mapToField] && !allowed[f.mapToField].includes(f.type)) issue('This CRM mapping is incompatible with the field type.');
   });
@@ -69,7 +70,7 @@ export function defaultContactForm(name = 'Contact Us'): FormDefinition {
     { id: 'company', type: 'single-line', label: 'Company', placeholder: 'Enter company name', mapToField: 'companyName', width: 'half' },
     { id: 'phone', type: 'phone', label: 'Contact Number', placeholder: '9XXXXXXXXX', mapToField: 'phone', width: 'half' },
     { id: 'email', type: 'email', label: 'Email Address', placeholder: 'Enter your email address', required: true, mapToField: 'email' },
-    { id: 'productInterest', type: 'dropdown', label: 'Product Interest', placeholder: 'Select a product interest', required: true, mapToField: 'productInterest', options: [...FORM_PRODUCT_INTERESTS] },
+    { id: 'productInterest', type: 'dropdown', label: 'Product Interest', placeholder: 'Select a product interest', required: true, mapToField: 'productInterest', options: [] },
     { id: 'address', type: 'multi-line', label: 'Full Address', placeholder: 'Enter your complete address', mapToField: 'address' },
   ] });
 }
@@ -82,7 +83,7 @@ export function validateFormValues(fields: FormField[], values: Record<string, u
   for (const f of inputs) {
     const raw = values[f.id] ?? (f.type === 'checkbox' ? false : '');
     if (f.mapToField === 'productInterest' && Array.isArray(raw)) {
-      if ((f.required && !raw.length) || raw.some(v => typeof v !== 'string' || !f.options?.includes(v) || !(FORM_PRODUCT_INTERESTS as readonly string[]).includes(v))) errors[f.id] = 'Select approved product interests.';
+      if ((f.required && !raw.length) || raw.some(v => typeof v !== 'string' || !f.options?.includes(v))) errors[f.id] = 'Select approved product interests.';
       else clean[f.id] = [...new Set(raw)];
       continue;
     }
@@ -94,7 +95,6 @@ export function validateFormValues(fields: FormField[], values: Record<string, u
     if (['email', 'contact-email'].includes(f.type)) { value = value.toLowerCase(); if (!z.string().email().safeParse(value).success) errors[f.id] = 'Enter a valid email address.'; }
     if (['phone', 'contact-phone'].includes(f.type)) { const phone = AdministrationPhoneSchema.safeParse(value); if (!phone.success) errors[f.id] = 'Enter 10 digits starting with 9.'; else value = phone.data; }
     if (['dropdown', 'radio'].includes(f.type) && !f.options?.includes(value)) errors[f.id] = 'Select an available option.';
-    if (f.mapToField === 'productInterest' && !(FORM_PRODUCT_INTERESTS as readonly string[]).includes(value)) errors[f.id] = 'Select an approved product interest.';
     if (['url', 'company-website'].includes(f.type) && !z.string().url().refine(v => /^https?:\/\//i.test(v)).safeParse(value).success) errors[f.id] = 'Enter an HTTP or HTTPS website URL.';
     if (f.type === 'number' && (!/^-?\d+(\.\d+)?$/.test(value) || !Number.isFinite(Number(value)))) errors[f.id] = 'Enter a valid number.';
     if (f.type === 'rating' && !/^[1-5]$/.test(value)) errors[f.id] = 'Select a rating from 1 to 5.';

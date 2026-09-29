@@ -1,4 +1,5 @@
 'use client';
+import { useProductInterests } from '@/shared/hooks/use-product-interests';
 
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
@@ -27,33 +28,16 @@ import type { Contact } from '@/store/types';
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
-const PRODUCTS = [
-  'CCTV',
-  'Biometrics',
-  'Door Access',
-  'Door access/Biometrics',
-  'Network/Structured Cabling',
-  'FDAS',
-  'PABX',
-  'PC/Laptop/Server Assembly',
-  'Software/Web Development',
-  'Others',
-];
+
 
 const SOURCES = [
   'Google Ads',
   'Referral',
   'Email Campaign',
   'Website',
-  'LinkedIn Ads',
-  'Webinar',
   'Social Media Advertisement',
-  'Partner Referral',
   'Direct Mail',
-  'Cold Call',
   'Content Marketing',
-  'YouTube Ads',
-  'SEO / Organic Search',
   'Others',
 ];
 
@@ -86,6 +70,8 @@ interface ContactFormInnerProps {
 // ─── Form Component ────────────────────────────────────────────────────────
 
 export function ContactFormInner({ initialData, onSave, onCancel, statusOptions }: ContactFormInnerProps): React.ReactElement {
+  const { products: productRecords } = useProductInterests();
+  const PRODUCTS = productRecords.map(p => p.name);
   const { users } = useData();
   const isEdit = !!initialData;
 

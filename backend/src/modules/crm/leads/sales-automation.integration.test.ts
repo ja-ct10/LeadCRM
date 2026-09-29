@@ -7,7 +7,7 @@ import { environmentContext } from '../../../core/environment/environment-contex
 import { createAssignedLead, createProductDeals, salesTransaction, productConfiguration, salesPipeline } from './lead-automation.service';
 import { moveDealStage } from '../deals/deals.repository';
 import { updateContact } from '../contacts/contacts.repository';
-import { defaultContactForm, ProductInterestConfigSchema } from '@leadcrm/shared';
+import { defaultContactForm, ProductInterestConfigSchema, FORM_PRODUCT_INTERESTS } from '@leadcrm/shared';
 import { submitPublicForm } from '../../marketing/forms/public-forms.service';
 import { issueAuthSession } from '../../../core/auth/auth-session';
 import app from '../../../app';
@@ -17,6 +17,7 @@ const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && url.path
 describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
   let tenantId: string, otherTenant: string, adminId: string, agentIds: string[], inactiveId: string, deniedId: string, token: string, deniedToken: string, base: string, server: Server;
   const scope = <T>(work: () => T, environment: 'SANDBOX' | 'PRODUCTION' = 'PRODUCTION') => environmentContext.run({ tenantId, environment }, work);
+  const productIds: Record<string, string> = {};
   const create = (products = ['Smart Lock'], extra: Record<string, unknown> = {}) => scope(() => salesTransaction(tx => createAssignedLead(tx, {
     tenantId, firstName: 'Sales', lastName: 'Customer', email: `${randomUUID()}@example.test`, productInterest: products, ...extra,
   }, adminId)));
@@ -41,10 +42,10 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     const denied = await prisma.user.create({ data: { tenantId, firstName: 'No', lastName: 'Permissions', email: 'denied@camxian.com', role: 'Viewer', activeEnvironment: 'PRODUCTION', mustChangePassword: false } });
     deniedId = denied.id; deniedToken = (await issueAuthSession(denied)).token;
     await prisma.user.create({ data: { tenantId: otherTenant, firstName: 'Foreign', lastName: 'Agent', email: 'foreign@camxian.com', role: 'Client Admin' } });
-    await scope(() => salesTransaction(async tx => {
-      const products = await productConfiguration(tx, tenantId);
-      await tx.tenantPreference.update({ where: { tenantId_module_key: { tenantId, module: 'product-interests', key: 'values' } }, data: { value: products.map(p => ({ ...p, value: p.name === 'Smart Lock' ? 1250.75 : 550 })) } });
-    }));
+    for (const name of FORM_PRODUCT_INTERESTS) {
+      const product = await prisma.productInterest.create({ data: { tenantId, name, dealValue: name === 'Smart Lock' ? 1250.75 : 550 } });
+      productIds[name] = product.id;
+    }
     server = app.listen(0); await new Promise<void>(resolve => server.once('listening', resolve));
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1`;
   });
@@ -78,10 +79,10 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     await expect(create(['Smart Lock', 'Unknown Product'])).rejects.toThrow('Unknown Product');
     expect(await prisma.lead.count({ where: { tenantId } })).toBe(before);
   });
-  it('defers Deals when no agent is eligible, then creates them on explicit assignment', async () => {
+  it('creates unassigned Deals when no agent is eligible and assigns them without duplicating', async () => {
     await prisma.user.updateMany({ where: { id: { in: agentIds }, tenantId }, data: { status: 'INACTIVE' } });
     const lead = await create(); expect(lead.assignedUserId).toBeNull();
-    expect(await prisma.deal.count({ where: { leadId: lead.id } })).toBe(0);
+    expect(await prisma.deal.count({ where: { leadId: lead.id } })).toBe(1);
     await prisma.user.updateMany({ where: { id: { in: agentIds }, tenantId }, data: { status: 'ACTIVE' } });
     await scope(() => updateContact(lead.id, tenantId, { assignedUserId: agentIds[0] }, adminId));
     expect((await prisma.deal.findFirstOrThrow({ where: { leadId: lead.id } })).assignedUserId).toBe(agentIds[0]);
@@ -158,7 +159,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
   it('public multi-product form creates owner and Deals atomically and retries once', async () => {
     const config = defaultContactForm();
     const form = await prisma.marketingForm.create({ data: { tenantId, createdById: adminId, name: 'Sales', status: 'published', fields: config.fields, design: config.design, settings: config.settings, publishedConfig: config, publishedVersion: 1 } });
-    const input = { requestId: randomUUID(), version: 1, values: { firstName: 'Form', lastName: 'Customer', email: `${randomUUID()}@example.test`, productInterest: ['Smart Lock', 'Biometrics'] } };
+    const input = { requestId: randomUUID(), version: 1, values: { firstName: 'Form', lastName: 'Customer', email: `${randomUUID()}@example.test`, productInterest: [productIds['Smart Lock'], productIds.Biometrics] } };
     await submitPublicForm(form.publicId, input); await submitPublicForm(form.publicId, input);
     const submissions = await prisma.formSubmission.findMany({ where: { formId: form.id } });
     expect(submissions).toHaveLength(1);
@@ -166,20 +167,82 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     expect(agentIds).toContain(lead.assignedUserId);
     expect(await prisma.deal.count({ where: { leadId: lead.id, assignedUserId: lead.assignedUserId } })).toBe(2);
   });
-  it('settings API persists valid prices and rejects invalid input and non-admin changes', async () => {
-    const response = await request('/administration/product-interests'); expect(response.status).toBe(200);
-    const rows = response.body.data.map((p: { name: string; value: number }) => ({ ...p, value: 45.25 }));
-    expect((await request('/administration/product-interests', 'PUT', rows, deniedToken)).status).toBe(403);
-    expect((await request('/administration/product-interests', 'PUT', [{ ...rows[0], value: -1 }])).status).toBe(400);
-    expect((await request('/administration/product-interests', 'PUT', rows)).status).toBe(200);
-    expect((await request('/administration/product-interests')).body.data[0].value).toBe(45.25);
-    for (const value of [NaN, Infinity, -1, 1e15]) expect(ProductInterestConfigSchema.safeParse([{ name: 'A', value }]).success).toBe(false);
+  it('settings API persists valid prices and rejects invalid input and unauthorized changes', async () => {
+    const path = '/administration/product-interests/' + productIds['Smart Lock'];
+    expect((await request(path, 'PATCH', { dealValue: 45.25 }, deniedToken)).status).toBe(403);
+    expect((await request(path, 'PATCH', { dealValue: -1 })).status).toBe(400);
+    expect((await request(path, 'PATCH', { dealValue: 45.25 })).status).toBe(200);
+    expect((await request('/administration/product-interests')).body.data.find((p: { id: string }) => p.id === productIds['Smart Lock']).dealValue).toBe(45.25);
+    for (const dealValue of [NaN, Infinity, -1, 1e15, '1', '1e2']) expect(ProductInterestConfigSchema.safeParse([{ name: 'A', dealValue }]).success).toBe(false);
     const lead = await create(); expect((await prisma.deal.findFirstOrThrow({ where: { leadId: lead.id } })).value).toBe(45.25);
   });
   it('manual Lead HTTP retries preserve a single Lead and automatic Deal', async () => {
-    const body = { requestId: randomUUID(), firstName: 'Manual', lastName: 'Lead', productInterest: ['Smart Lock'] };
+    const body = { requestId: randomUUID(), firstName: 'Manual', lastName: 'Lead', productInterest: [productIds['Smart Lock']] };
     const first = await request('/crm/leads', 'POST', body); expect(first.status, JSON.stringify(first.body)).toBe(201);
     const retry = await request('/crm/leads', 'POST', body); expect(retry.body.data.id).toBe(first.body.data.id);
     expect(await prisma.deal.count({ where: { leadId: first.body.data.id } })).toBe(1);
+  });
+  it('creates, renames and deletes catalog records without changing historical Deals', async () => {
+    const endpoint = '/administration/product-interests';
+    const response = await request(endpoint, 'POST', { name: '  New product  ', dealValue: 25000.50 });
+    expect(response.status).toBe(200);
+    const product = response.body.data.find((p: { name: string }) => p.name === 'New product');
+    expect(product).toMatchObject({ active: true, dealValue: 25000.50 });
+    expect(product.createdAt).toBeTruthy(); expect(product.updatedAt).toBeTruthy();
+    expect((await request(endpoint, 'POST', { name: 'new PRODUCT', dealValue: 5 })).status).toBe(409);
+    for (const body of [{ name: ' ', dealValue: 1 }, { name: 'Bad\u0000Name', dealValue: 1 }, { name: 'Bad', dealValue: '500' }, { name: 'Bad', dealValue: 1.001 }]) {
+      expect((await request(endpoint, 'POST', body)).status).toBe(400);
+    }
+    expect((await request(endpoint + '/invalid', 'PATCH', { name: 'A' })).status).toBe(400);
+    expect((await request(endpoint + '/' + randomUUID(), 'PATCH', { name: 'A' })).status).toBe(404);
+    const lead = (await request('/crm/leads', 'POST', { firstName: 'Snapshot', lastName: 'Test', productInterest: [product.id], value: 1, dealValue: 2 })).body.data;
+    const deal = await prisma.deal.findFirstOrThrow({ where: { leadId: lead.id } });
+    expect(deal.value).toBe(25000.50);
+    expect((await request('/crm/deals/' + deal.id, 'PUT', { value: 1 })).status).toBe(400);
+    expect((await request(endpoint + '/' + product.id, 'PATCH', { name: 'Renamed product', dealValue: 55000 })).status).toBe(200);
+    await scope(() => salesTransaction(tx => createProductDeals(tx, tenantId, lead.id, adminId)));
+    expect(await prisma.deal.count({ where: { leadId: lead.id } })).toBe(1);
+    expect((await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } })).value).toBe(25000.50);
+    const next = (await request('/crm/leads', 'POST', { firstName: 'Future', lastName: 'Test', productInterest: [product.id] })).body.data;
+    expect((await prisma.deal.findFirstOrThrow({ where: { leadId: next.id } })).value).toBe(55000);
+    expect((await request(endpoint + '/' + product.id, 'DELETE')).status).toBe(200);
+    expect((await prisma.productInterest.findUniqueOrThrow({ where: { id: product.id } })).active).toBe(false);
+    expect((await request('/crm/leads', 'POST', { firstName: 'Deleted', lastName: 'Test', productInterest: [product.id] })).status).toBe(400);
+    expect(await prisma.deal.count({ where: { leadId: lead.id } })).toBe(1);
+  });
+  it('rejects public forged product IDs, product names and submitted amounts with no partial writes', async () => {
+    const config = defaultContactForm();
+    const form = await prisma.marketingForm.create({ data: { tenantId, createdById: adminId, name: 'Tampering', status: 'published', fields: config.fields, design: config.design, settings: config.settings, publishedConfig: config, publishedVersion: 1 } });
+    const email = randomUUID() + '@example.test';
+    for (const values of [
+      { productInterest: [randomUUID()] }, { productInterest: ['Smart Lock'] },
+      { productInterest: [productIds['Smart Lock']], dealValue: '1' },
+    ]) {
+      await expect(submitPublicForm(form.publicId, { version: 1, values: { firstName: 'Bad', lastName: 'Input', email, ...values } })).rejects.toThrow();
+    }
+    expect(await prisma.lead.count({ where: { tenantId, email } })).toBe(0);
+    expect(await prisma.formSubmission.count({ where: { formId: form.id } })).toBe(0);
+  });
+  it('filters calendar dates inclusively in Manila and keeps pagination counts consistent', async () => {
+    for (const [index, createdAt] of ['2026-09-24T15:59:59.999Z', '2026-09-24T16:00:00.000Z', '2026-09-25T15:59:59.999Z', '2026-09-25T16:00:00.000Z'].entries()) {
+      await prisma.lead.create({ data: { tenantId, firstName: 'DateBoundary', lastName: String(index), createdAt: new Date(createdAt), productInterest: [] } });
+    }
+    const list = (filter: string) => request('/crm/leads?search=DateBoundary&limit=1&filter[createdAt]=' + encodeURIComponent(filter));
+    for (const [filter, total] of [['lte:2026-09-25', 3], ['gte:2026-09-25', 3], ['between:2026-09-25,2026-09-25', 2]] as const) {
+      const result = await list(filter);
+      expect(result.status).toBe(200); expect(result.body.meta.total).toBe(total); expect(result.body.data).toHaveLength(1);
+    }
+    expect((await request('/crm/leads?search=DateBoundary')).body.meta.total).toBe(4);
+    for (const filter of ['equals:2026-09-25', 'lte:2026-02-30', 'gte:not-a-date', 'between:2026-09-26,2026-09-25', 'between:2026-09-25', 'gte:', '']) expect((await list(filter)).status).toBe(400);
+  });
+  it('deletes the field without destroying CRM history and explicitly recreates an empty field', async () => {
+    const before = await prisma.deal.count({ where: { tenantId } });
+    expect((await request('/administration/product-interests', 'DELETE', undefined, deniedToken)).status).toBe(403);
+    expect((await request('/administration/product-interests', 'DELETE')).status).toBe(200);
+    const deleted = await request('/administration/product-interests');
+    expect(deleted.body.data).toEqual([]); expect(deleted.body.meta.enabled).toBe(false);
+    expect(await prisma.deal.count({ where: { tenantId } })).toBe(before);
+    expect((await request('/administration/product-interests/field', 'POST', {})).status).toBe(200);
+    expect((await request('/administration/product-interests')).body.meta.enabled).toBe(true);
   });
 });

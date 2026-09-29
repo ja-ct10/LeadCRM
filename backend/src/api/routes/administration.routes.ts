@@ -33,7 +33,11 @@ router.patch('/archived-data/:type/:id/restore', archivedData.restore);
 
 router.get('/organization-settings', authorize('settings.view'), organizationSettings.get);
 router.get('/product-interests', productInterests.get);
-router.put('/product-interests', authorize('settings.edit'), productInterests.update);
+router.post('/product-interests', authorize('settings.edit'), productInterests.create);
+router.post('/product-interests/field', authorize('settings.edit'), productInterests.enableField);
+router.delete('/product-interests', authorize('settings.edit'), productInterests.removeField);
+router.patch('/product-interests/:id', authorize('settings.edit'), productInterests.update);
+router.delete('/product-interests/:id', authorize('settings.edit'), productInterests.remove);
 router.patch('/organization-settings', authorize('settings.edit'), validate(UpdateOrganizationSettingsSchema), organizationSettings.update);
 
 // -- Users ---------------------------------------------

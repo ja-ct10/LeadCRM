@@ -202,6 +202,7 @@ export function toFrontendDeal(backendDeal: any): any {
 
   return {
     id: backendDeal.id || '',
+    productInterestId: backendDeal.productInterestId,
     tenantId: backendDeal.tenantId || '',
     pipelineId: backendDeal.pipelineId || '',
     stageId: backendDeal.stageId || '',

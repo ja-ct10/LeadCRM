@@ -1,3 +1,4 @@
+import { validateProductSnapshots } from '../leads/product-snapshots';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import prisma from '../../../config/database.config';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
@@ -63,10 +64,13 @@ export async function findCompanyById(id: string, tenantId: string) {
 }
 
 export async function createCompany(tenantId: string, dto: CreateCompanyDto) {
+  dto.productInterests = await validateProductSnapshots(tenantId, dto.productInterests);
   return prisma.account.create({ data: { ...dto, tenantId } as never });
 }
 
 export async function updateCompany(id: string, tenantId: string, dto: UpdateCompanyDto) {
+  const previous = await prisma.account.findFirst({ where: { id, tenantId } });
+  dto.productInterests = await validateProductSnapshots(tenantId, dto.productInterests, previous?.productInterests);
   try {
     return await prisma.account.update({ where: { id, tenantId }, data: dto as never });
   } catch {

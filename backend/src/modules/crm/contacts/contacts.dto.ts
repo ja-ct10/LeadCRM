@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { LeadStatusSchema } from '@leadcrm/shared';
+import { LeadStatusSchema, ProductInterestIdSchema } from '@leadcrm/shared';
 import { recordText, recordName } from '../record-validation';
 
 const id = () => z.string().min(1);
@@ -19,7 +19,7 @@ export const CreateContactSchema = z.object({
   source:         recordText().optional(),
   accountId:      id().optional(),
   assignedUserId: id().optional(),
-  productInterest: z.array(recordName(200)).max(100).optional(),
+  productInterest: z.array(ProductInterestIdSchema).max(100).optional(),
   address:        recordText().optional(),
   description:    recordText().optional(),
   website:        recordText().optional(),
@@ -35,7 +35,7 @@ export const UpdateContactSchema = z.object({
   source:         recordText().optional(),
   accountId:      id().optional(),
   assignedUserId: id().optional(),
-  productInterest: z.array(recordName(200)).max(100).optional(),
+  productInterest: z.array(ProductInterestIdSchema).max(100).optional(),
   address:        recordText().optional(),
   description:    recordText().optional(),
   website:        recordText().optional(),

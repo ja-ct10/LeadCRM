@@ -1,5 +1,7 @@
 'use client';
 
+import { LeadCreatedFilter, createdFilterCondition, emptyCreatedFilter, type CreatedFilterDraft } from './lead-created-filter';
+import { isCurrentLeadSource } from '@/lib/constants';
 import { useConfirmDialog } from '@/shared/hooks/use-confirm-dialog';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { leadsService } from '../services/leads.service';
@@ -114,9 +116,15 @@ export default function LeadsPage(): React.ReactElement {
   // Multi-criteria filter state
   const [selectedSystemFilters, setSelectedSystemFilters] = useState<string[]>(() => getArrayParam('system'));
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>(() => getArrayParam('statuses'));
-  const [selectedSources, setSelectedSources] = useState<string[]>(() => getArrayParam('sources'));
+  const [selectedSources, setSelectedSources] = useState<string[]>(() => getArrayParam('sources').filter(isCurrentLeadSource));
   const [selectedOwners, setSelectedOwners] = useState<string[]>(() => getArrayParam('owners'));
   const [selectedRelated, setSelectedRelated] = useState<string[]>(() => getArrayParam('related'));
+
+  const [createdFilter, setCreatedFilter] = useState<CreatedFilterDraft>(() => ({
+    operator: (getParam('createdOperator') || '') as CreatedFilterDraft['operator'],
+    from: getParam('createdFrom') || '', to: getParam('createdTo') || '',
+  }));
+  useEffect(() => { setCurrentPage(1); }, [createdFilter, selectedStatuses, selectedSources, selectedOwners, activeTab]);
 
   const debouncedSearch = useDebounce(searchTerm, 300);
 
@@ -165,8 +173,9 @@ export default function LeadsPage(): React.ReactElement {
       conditions.push({ field: 'assignedUserId', operator: 'in', value: selectedOwners });
     }
 
+    conditions.push(...createdFilterCondition(createdFilter));
     return conditions;
-  }, [activeTab, user?.id, selectedStatuses, selectedSources, selectedOwners]);
+  }, [activeTab, user?.id, selectedStatuses, selectedSources, selectedOwners, createdFilter]);
 
   const {
     leads,
@@ -204,8 +213,9 @@ export default function LeadsPage(): React.ReactElement {
       sources: selectedSources,
       owners: selectedOwners,
       related: selectedRelated,
+      createdOperator: createdFilter.operator || null, createdFrom: createdFilter.from || null, createdTo: createdFilter.to || null,
     });
-  }, [activeTab, debouncedSearch, activeView, selectedSystemFilters, selectedStatuses, selectedSources, selectedOwners, selectedRelated, highlightId, updateParams]);
+  }, [activeTab, debouncedSearch, activeView, selectedSystemFilters, selectedStatuses, selectedSources, selectedOwners, selectedRelated, createdFilter, highlightId, updateParams]);
 
   // -- Persist filter selections (fire-and-forget) ------------------------
   useEffect(() => {
@@ -225,8 +235,9 @@ export default function LeadsPage(): React.ReactElement {
     if (selectedSystemFilters.length > 0) {
       conditions.push({ field: 'system', operator: 'in', value: selectedSystemFilters });
     }
+    conditions.push(...createdFilterCondition(createdFilter));
     persistFilters(conditions);
-  }, [selectedStatuses, selectedSources, selectedOwners, selectedRelated, selectedSystemFilters, persistFilters]);
+  }, [selectedStatuses, selectedSources, selectedOwners, selectedRelated, selectedSystemFilters, createdFilter, persistFilters]);
 
   // ── Filtered Data ─────────────────────────────────────────────────────
   // Status/source/owner/tab filters are now server-side via serverFilters.
@@ -314,7 +325,7 @@ export default function LeadsPage(): React.ReactElement {
 
   const distinctSources = useMemo(() => {
     const set = new Set<string>();
-    activeLeads.forEach((l) => { if (l.leadSource) set.add(l.leadSource); });
+    activeLeads.forEach((l) => { if (l.leadSource && isCurrentLeadSource(l.leadSource)) set.add(l.leadSource); });
     return Array.from(set);
   }, [activeLeads]);
 
@@ -462,6 +473,8 @@ export default function LeadsPage(): React.ReactElement {
         ]}
         activeTab={activeTab}
         onTabChange={setActiveTab}
+        filterContent={<LeadCreatedFilter value={createdFilter} onChange={setCreatedFilter} />}
+        onClearFilters={() => { setCreatedFilter(emptyCreatedFilter); setSelectedStatuses([]); setSelectedSources([]); setSelectedOwners([]); setSelectedRelated([]); setSelectedSystemFilters([]); setActiveTab('all'); setSearchTerm(''); setCurrentPage(1); }}
         filterGroups={filterGroups}
         onFilterToggle={handleFilterToggle}
         showFilters={showFilters}

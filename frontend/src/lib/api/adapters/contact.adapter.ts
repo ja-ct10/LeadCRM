@@ -147,6 +147,7 @@ export function toFrontendContact(backendContact: any): Record<string, any> {
     jobTitle: backendContact.jobTitle || '',
     email: backendContact.email || '',
     phone: backendContact.phone || '',
+    productInterestIds: backendContact.productInterestIds,
     productInterests: Array.isArray(backendContact.productInterest)
       ? backendContact.productInterest
       : (Array.isArray(backendContact.productInterests) ? backendContact.productInterests : []),

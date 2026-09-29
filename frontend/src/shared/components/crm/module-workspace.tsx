@@ -106,6 +106,7 @@ export interface ModuleWorkspaceProps {
   /** Tab change handler */
   onTabChange?: (tabId: string) => void;
   /** Filter rail groups */
+  filterContent?: ReactNode;
   filterGroups?: FilterGroup[];
   /** Filter toggle handler */
   onFilterToggle?: (groupId: string, itemId: string) => void;
@@ -204,6 +205,7 @@ export function ModuleWorkspace({
   refreshLabel,
   directManageColumns = false,
   onClearFilters,
+  filterContent,
   savedTabs,
   activeTab,
   onTabChange,
@@ -561,7 +563,7 @@ export function ModuleWorkspace({
 
       {/* ── Main Content Area ───────────────────────────────────────── */}
       <div className="flex flex-1 min-h-0 gap-0">
-        <ModuleFilterRail
+        <ModuleFilterRail filterContent={filterContent}
           onClearFilters={onClearFilters}
           showFilters={showFilters}
           filterGroups={filterGroups}

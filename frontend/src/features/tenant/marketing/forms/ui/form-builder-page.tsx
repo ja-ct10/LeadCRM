@@ -1,4 +1,6 @@
 'use client';
+import { withProductOptions } from '@leadcrm/shared';
+import { useProductInterests } from '@/shared/hooks/use-product-interests';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Plus } from 'lucide-react';
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
@@ -21,6 +23,7 @@ function makeField(type: FormFieldType): FormField {
   return { id: 'field_' + crypto.randomUUID(), type, label: labels[type] ?? type.charAt(0).toUpperCase() + type.slice(1), required: false, mapToField: mapping[type as keyof typeof mapping], ...(['dropdown', 'radio'].includes(type) ? { options: ['Option 1', 'Option 2'] } : {}) };
 }
 export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormRecord; onBack: () => void; onFormUpdate: (form: FormRecord) => void }) {
+  const { products } = useProductInterests();
   const { userCan } = useAuth();
   const canEdit = userCan('campaigns', 'canEdit');
   const [local, setLocal] = useState<FormRecord>({ ...form, design: { ...DEFAULT_DESIGN, ...form.design }, settings: { ...DEFAULT_SETTINGS, ...form.settings } });
@@ -61,7 +64,7 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
   }
   async function save(publish = false) {
     if (saving) return; setError('');
-    const parsed = FormDefinitionSchema.safeParse({ name: local.name, fields: local.fields, design: local.design, settings: local.settings });
+    const parsed = FormDefinitionSchema.safeParse({ name: local.name, fields: withProductOptions(local.fields, products), design: local.design, settings: local.settings });
     if (!parsed.success) { setError(parsed.error.issues.map(i => i.message).join(' ')); return; }
     setSaving(true);
     try {
@@ -111,7 +114,7 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
         {tab === 'Builder' && <div className="flex min-w-0">
           <div className="flex-1 min-w-0 bg-slate-100 dark:bg-slate-900/60 p-3 sm:p-6 space-y-4">
             <label className="block text-xs text-slate-600">Form name<input className="block mt-1 w-full border rounded bg-white text-slate-900 p-2 text-sm" maxLength={200} value={local.name} onChange={e => change({ name: e.target.value })} /></label>
-            <FormCanvas fields={local.fields} design={local.design} onChange={fields => change({ fields })} />
+            <FormCanvas fields={withProductOptions(local.fields, products)} design={local.design} onChange={fields => change({ fields })} />
           </div>
           <aside aria-label="Form tools" className="hidden lg:flex w-64 shrink-0 flex-col border-l bg-white dark:bg-slate-950 max-h-[80vh] overflow-y-auto">{panelContent}</aside>
         </div>}

@@ -25,3 +25,5 @@ export * from './contracts/list-pagination';
 export * from './contracts/product-interests.contract';
 
 export * from './contracts/record-experience';
+
+export * from './contracts/lead-created.contract';

@@ -106,6 +106,7 @@ model SystemAdmin {
 // TENANT
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Tenant {
+  productInterestRecords ProductInterest[]
   recordFiles        RecordFile[]
   id                 String             @id @default(uuid())
   name               String
@@ -545,6 +546,7 @@ model Lead {
   description         String?   @db.Text
   website             String?
   productInterest     String[]
+  productInterestIds  String[] @default([])
   source              String?
   assignedUserId      String?
   status              String    @default("Warm")
@@ -723,6 +725,8 @@ model Stage {
 // DEAL
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Deal {
+  productInterestId String?
+  productInterestRecord ProductInterest? @relation(fields: [productInterestId], references: [id], onDelete: SetNull)
   automationKey String?
   @@unique([tenantId, environment, automationKey])
   environment CrmEnvironment @default(PRODUCTION)
@@ -1868,4 +1872,19 @@ model RecordFile {
   @@index([tenantId, environment, leadId])
   @@index([tenantId, environment, contactId])
   @@index([tenantId, environment, accountId])
+}
+
+// Organization-wide product defaults; Deals retain their original monetary snapshot.
+model ProductInterest {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String   @db.VarChar(200)
+  dealValue Decimal  @db.Decimal(14, 2)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deals     Deal[]
+
+  @@index([tenantId, active])
 }

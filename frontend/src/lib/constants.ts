@@ -13,36 +13,12 @@ export const LEAD_SOURCES = [
   'Referral',
   'Email Campaign',
   'Website',
-  'LinkedIn Ads',
-  'Webinar',
   'Social Media Advertisement',
-  'Partner Referral',
   'Direct Mail',
-  'Cold Call',
   'Content Marketing',
-  'YouTube Ads',
-  'SEO / Organic Search',
   'Organic',
   'Others',
 ] as const;
-
-// ─── Product / Service Options ─────────────────────────────────────────────
-export const PRODUCTS = [
-  'CCTV',
-  'Biometrics',
-  'Door Access',
-  'Door access/Biometrics',
-  'Network/Structured Cabling',
-  'FDAS',
-  'PABX',
-  'PC/Laptop/Server Assembly',
-  'Software/Web Development',
-  'Others',
-] as const;
-
-// ─── Priority Options ──────────────────────────────────────────────────────
-export const PRIORITY_LEVELS = ['Low', 'Medium', 'High', 'Critical'] as const;
-export type PriorityLevel = typeof PRIORITY_LEVELS[number];
 
 // ─── Route Paths ───────────────────────────────────────────────────────────
 export const ROUTES = {
@@ -74,3 +50,5 @@ export const ROUTES = {
 export const CRM_ROLES = ['Client Admin'] as const;
 export const ADMIN_ROLES = ['System Admin'] as const;
 export const ALL_ROLES = [...ADMIN_ROLES, ...CRM_ROLES] as const;
+
+export const isCurrentLeadSource = (value: string) => !['linkedin ads', 'webinar', 'partner referral', 'cold call', 'youtube ads', 'seo/organic search'].includes(value.toLowerCase().replace(/\s*\/\s*/g, '/').trim());

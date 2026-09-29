@@ -1,4 +1,5 @@
 'use client';
+import { useProductInterests } from '@/shared/hooks/use-product-interests';
 
 import React, { useMemo, useRef } from 'react';
 import { useForm } from 'react-hook-form';
@@ -26,18 +27,7 @@ import type { Account } from '../types/account.types';
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
-const PRODUCTS = [
-  'CCTV',
-  'Biometrics',
-  'Door Access',
-  'Door access/Biometrics',
-  'Network/Structured Cabling',
-  'FDAS',
-  'PABX',
-  'PC/Laptop/Server Assembly',
-  'Software/Web Development',
-  'Others',
-];
+
 
 // ─── Props ─────────────────────────────────────────────────────────────────
 
@@ -57,6 +47,8 @@ interface AccountFormInnerProps {
 // ─── Form Component ────────────────────────────────────────────────────────
 
 export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormInnerProps): React.ReactElement {
+  const { products: productRecords } = useProductInterests();
+  const PRODUCTS = productRecords.map(p => p.name);
   const { users } = useData();
   const isEdit = !!initialData;
 

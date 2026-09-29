@@ -1,3 +1,4 @@
+import { validateProductSnapshots } from '../leads/product-snapshots';
 import { salesTransaction, crmScope } from '../leads/lead-automation.service';
 import { resolveWonRelationships } from './won-conversion.service';
 import { Prisma } from '@prisma/client';
@@ -87,6 +88,7 @@ export async function findDealById(id: string, tenantId: string) {
 export async function createDeal(tenantId: string, ownerId: string, dto: CreateDealDto, db: Prisma.TransactionClient = prisma) {
   const { leadIds, contactIds, ...dealData } = dto as CreateDealDto & { leadIds?: string[]; contactIds?: string[] };
 
+  dealData.productInterests = await validateProductSnapshots(tenantId, dto.productInterests, [], db);
   const deal = await db.deal.create({
     data: { ...dealData, tenantId, ownerId } as never,
   });
@@ -127,6 +129,9 @@ export async function createDeal(tenantId: string, ownerId: string, dto: CreateD
 
 export async function updateDeal(id: string, tenantId: string, dto: UpdateDealDto) {
   const { leadIds: _leadIds, contactIds: _contactIds, ...updateData } = dto as UpdateDealDto & { leadIds?: string[]; contactIds?: string[] };
+  const existing = await prisma.deal.findFirst({ where: { id, tenantId } });
+  updateData.productInterests = await validateProductSnapshots(tenantId, dto.productInterests, existing?.productInterests);
+  if (existing?.productInterestId && dto.value !== undefined && dto.value !== existing.value) throw new ValidationError('Automatic Deal values cannot be overridden.');
   try {
     await prisma.deal.update({ where: { id, tenantId }, data: updateData as never });
   } catch (error) {

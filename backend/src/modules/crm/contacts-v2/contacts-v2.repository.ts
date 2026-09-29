@@ -1,3 +1,4 @@
+import { validateProductSnapshots } from '../leads/product-snapshots';
 import prisma from '../../../config/database.config';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
 
@@ -79,6 +80,7 @@ export async function findContactById(id: string, tenantId: string) {
 }
 
 export async function createContact(tenantId: string, dto: Record<string, unknown>) {
+  dto.productInterests = await validateProductSnapshots(tenantId, dto.productInterests);
   return prisma.contact.create({
     data: { ...dto, tenantId } as never,
     include: CONTACT_INCLUDE,
@@ -86,6 +88,8 @@ export async function createContact(tenantId: string, dto: Record<string, unknow
 }
 
 export async function updateContact(id: string, tenantId: string, dto: Record<string, unknown>) {
+  const previous = await prisma.contact.findFirst({ where: { id, tenantId } });
+  dto.productInterests = await validateProductSnapshots(tenantId, dto.productInterests, previous?.productInterests);
   try {
     return await prisma.contact.update({
       where:   { id, tenantId } as never,

@@ -1,4 +1,5 @@
 // Local visual verification against scripts/test-sales-db.mjs --preview only.
+import { FORM_PRODUCT_INTERESTS } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import app from '../../../app';
 import { hash } from 'bcryptjs';
@@ -14,8 +15,7 @@ async function main() {
   const agent = await prisma.user.create({ data: { tenantId: tenant.id, email: 'agent-ui@camxian.com', firstName: 'Alex', lastName: 'Santos', role: role.name } });
   await prisma.userRole.create({ data: { tenantId: tenant.id, userId: agent.id, roleId: role.id } });
   await environmentContext.run({ tenantId: tenant.id, environment: 'PRODUCTION' }, () => salesTransaction(async tx => {
-    const products = await productConfiguration(tx, tenant.id);
-    await tx.tenantPreference.update({ where: { tenantId_module_key: { tenantId: tenant.id, module: 'product-interests', key: 'values' } }, data: { value: products.map(p => ({ ...p, value: 1250.75 })) } });
+    await tx.productInterest.createMany({ data: FORM_PRODUCT_INTERESTS.map(name => ({ tenantId: tenant.id, name, dealValue: 1250.75 })) });
     await createAssignedLead(tx, { tenantId: tenant.id, firstName: 'Juan', lastName: 'Dela Cruz', email: 'juan@example.test', phone: '+639123456789', companyName: 'Example Company', productInterest: ['Smart Lock', 'CCTV Surveillance System', 'Biometrics'] }, admin.id);
   }));
   app.listen(4101, '127.0.0.1', () => console.log('Sales UI preview API :4101 ready.'));

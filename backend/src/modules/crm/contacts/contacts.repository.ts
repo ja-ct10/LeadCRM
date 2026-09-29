@@ -1,12 +1,13 @@
+import { parseLeadCreatedFilter } from '../leads/lead-created-filter';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import prisma from '../../../config/database.config';
-import { createAssignedLead, salesTransaction, createProductDeals, validateSalesOwner } from '../leads/lead-automation.service';
+import { resolveProducts, createAssignedLead, salesTransaction, createProductDeals, validateSalesOwner } from '../leads/lead-automation.service';
 import { CreateContactDto, UpdateContactDto } from './contacts.dto';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
 import { parseFilterParams, buildPrismaFilters } from '../../../shared/helpers/filter-parser';
 
 // Allowed filter fields for leads/contacts — prevents arbitrary Prisma field injection
-const CONTACT_FILTER_FIELDS = new Set(['status', 'source', 'assignedUserId', 'accountId']);
+const CONTACT_FILTER_FIELDS = new Set(['status', 'source', 'leadSource', 'assignedUserId', 'accountId']);
 // Map frontend field names → Prisma field names where they differ
 const CONTACT_FIELD_ALIASES: Record<string, string> = {
   source: 'source',          // frontend sends 'source' (maps from leadSource client-side)
@@ -23,7 +24,9 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
   const parsedFilters = parseFilterParams(query);
   const filterClauses = buildPrismaFilters(parsedFilters, CONTACT_FILTER_FIELDS, CONTACT_FIELD_ALIASES);
 
+  const createdAt = parseLeadCreatedFilter(query);
   const where: Record<string, unknown> = {
+    ...(createdAt ? { createdAt } : {}),
     tenantId,
     isArchived: query.archived === 'true',
     // accountId direct param (still used by relationship lookups)
@@ -78,8 +81,8 @@ export async function createContact(
   dto: CreateContactDto,
   createdById?: string,
 ) {
-  const { requestId, ...fields } = dto;
-  return salesTransaction(tx => createAssignedLead(tx, { ...fields, tenantId, creationKey: requestId,
+  const { requestId, productInterest, ...fields } = dto;
+  return salesTransaction(tx => createAssignedLead(tx, { ...fields, productInterestIds: productInterest ?? [], tenantId, creationKey: requestId,
     ...(createdById ? { createdById, updatedById: createdById } : {}) }, createdById));
 }
 
@@ -98,6 +101,17 @@ export async function updateContact(
       data.lastStatusChangedAt = new Date();
     }
     return await salesTransaction(async tx => {
+      if (dto.productInterest) {
+        const previous = await tx.lead.findFirstOrThrow({ where: { id, tenantId } });
+        const retained = previous.productInterestIds.filter(id => dto.productInterest!.includes(id));
+        const added = dto.productInterest.filter(id => !retained.includes(id));
+        const products = await resolveProducts(tx, tenantId, added);
+        const existing = await tx.productInterest.findMany({ where: { tenantId, id: { in: retained } } });
+        // Keep legacy snapshots that predate catalog IDs when adding a first configured product.
+        const historicalNames = previous.productInterestIds.length ? [] : previous.productInterest;
+        data.productInterestIds = [...retained, ...products.map(p => p.id)];
+        data.productInterest = [...historicalNames, ...existing.map(p => p.name), ...products.map(p => p.name)];
+      }
       if (dto.assignedUserId) await validateSalesOwner(tx, tenantId, dto.assignedUserId);
       const updated = await tx.lead.update({
       where: { id, tenantId },

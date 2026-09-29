@@ -1,14 +1,16 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { defaultContactForm } from '@leadcrm/shared';
+import { defaultContactForm, withProductOptions } from '@leadcrm/shared';
 import { FormBuilderPage } from './form-builder-page';
 import PublicFormPage from './public-form-page';
 import FormsPage from './forms-page';
 import * as service from '../services/forms.service';
 vi.mock('../services/forms.service', () => ({ updateForm: vi.fn(), publishForm: vi.fn(), getFormsByTenant: vi.fn(), createForm: vi.fn(), deleteForm: vi.fn(), unpublishForm: vi.fn(), duplicateForm: vi.fn(), getShareLink: () => 'https://example.com/forms/public', getEmbedCode: () => '<iframe />' }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { activeEnvironment: 'PRODUCTION' }, userCan: () => true }) }));
-const form = { ...defaultContactForm(), id: 'form', tenantId: 'tenant', publicId: 'public', revision: 0, publishedRevision: null, publishedVersion: 0, status: 'draft' as const, createdAt: '', updatedAt: '' };
+const products = [{ id: '0ff82f9c-48e9-4e1c-8c77-8a30755d704c', name: 'Smart Lock', dealValue: 5000, active: true, createdAt: '', updatedAt: '' }];
+vi.mock('@/shared/hooks/use-product-interests', () => ({ useProductInterests: () => ({ products: [], loading: false, error: '' }) }));
+const form = { ...defaultContactForm(), fields: withProductOptions(defaultContactForm().fields, products), id: 'form', tenantId: 'tenant', publicId: 'public', revision: 0, publishedRevision: null, publishedVersion: 0, status: 'draft' as const, createdAt: '', updatedAt: '' };
 beforeEach(() => { vi.resetAllMocks(); vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} }); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe('Forms UI', () => {
@@ -118,7 +120,7 @@ describe('Forms UI', () => {
     await screen.findByText('Save failed'); expect(service.publishForm).not.toHaveBeenCalled(); expect(screen.getByText('Unsaved changes')).toBeTruthy();
   });
   it('shows one error per public field, limits phone digits, submits and thanks the visitor', async () => {
-    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ data: { ...defaultContactForm(), version: 1, trackUrlParams: true } }) }).mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) });
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ data: { ...defaultContactForm(), fields: withProductOptions(defaultContactForm().fields, products), version: 1, trackUrlParams: true } }) }).mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) });
     vi.stubGlobal('fetch', fetchMock); render(<PublicFormPage publicId="public" />); await screen.findByText('Contact Us');
     fireEvent.click(screen.getByText('Submit')); expect(screen.getAllByText('First Name is required.')).toHaveLength(1);
     fireEvent.change(screen.getByLabelText(/First Name/), { target: { value: 'Anne' } }); fireEvent.change(screen.getByLabelText(/Last Name/), { target: { value: "O'Connor" } });

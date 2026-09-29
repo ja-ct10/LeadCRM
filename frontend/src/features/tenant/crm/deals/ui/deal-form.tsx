@@ -1,6 +1,7 @@
 'use client';
+import { useProductInterests } from '@/shared/hooks/use-product-interests';
 
-import { FORM_PRODUCT_INTERESTS } from '@leadcrm/shared';
+
 import React, { useEffect, useRef, useMemo } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -67,12 +68,12 @@ const PRIORITY_OPTIONS: { value: 'LOW' | 'MEDIUM' | 'HIGH'; label: string }[] = 
   { value: 'HIGH', label: 'High' },
 ];
 
-const PRODUCT_OPTIONS: readonly string[] = FORM_PRODUCT_INTERESTS;
+
 
 const SOURCE_OPTIONS = [
-  'Google Ads', 'Referral', 'Email Campaign', 'Website', 'LinkedIn Ads',
-  'Webinar', 'Social Media Advertisement', 'Partner Referral', 'Direct Mail',
-  'Cold Call', 'Content Marketing', 'YouTube Ads', 'SEO / Organic Search', 'Others',
+  'Google Ads', 'Referral', 'Email Campaign', 'Website',
+  'Social Media Advertisement', 'Direct Mail',
+  'Content Marketing', 'Others',
 ];
 
 // ── Props ──────────────────────────────────────────────────────────────────
@@ -293,6 +294,7 @@ export function DealForm({
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-medium select-none pointer-events-none">₱</span>
                 <input
                   type="number"
+                  readOnly={!!initialData?.productInterestId}
                   step="0.01"
                   min="0"
                   {...register('value', { valueAsNumber: true })}
@@ -496,6 +498,8 @@ interface ProductInterestsSelectProps {
 }
 
 function ProductInterestsSelect({ id, values, onChange }: ProductInterestsSelectProps): React.ReactElement {
+  const { products: productRecords } = useProductInterests();
+  const PRODUCT_OPTIONS = productRecords.map(p => p.name);
   const [selected, setSelected] = React.useState('');
   const canAdd = PRODUCT_OPTIONS.includes(selected) && !values.includes(selected);
   const addProduct = (): void => {

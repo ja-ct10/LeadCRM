@@ -20,6 +20,7 @@ interface FilterItem {
 }
 
 interface ModuleFilterRailProps {
+  filterContent?: React.ReactNode;
   showFilters: boolean;
   filterGroups?: FilterGroup[];
   onToggleFilters?: () => void;
@@ -31,7 +32,7 @@ interface ModuleFilterRailProps {
 }
 
 /** Leads filter rail: inline on desktop, a left drawer with a backdrop on mobile. */
-export function ModuleFilterRail({ showFilters, filterGroups, onToggleFilters, filterSearchTerm = '', onFilterSearch, onFilterToggle, totalRecords = 0, onClearFilters }: ModuleFilterRailProps) {
+export function ModuleFilterRail({ filterContent, showFilters, filterGroups, onToggleFilters, filterSearchTerm = '', onFilterSearch, onFilterToggle, totalRecords = 0, onClearFilters }: ModuleFilterRailProps) {
   const mobilePanel = useRef<HTMLElement>(null);
   const desktopPanel = useRef<HTMLElement>(null);
   const closeFilters = useRef(onToggleFilters);
@@ -60,7 +61,7 @@ export function ModuleFilterRail({ showFilters, filterGroups, onToggleFilters, f
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') closeFilters.current?.();
       if (event.key !== 'Tab' || !isMobile()) return;
-      const controls = mobilePanel.current?.querySelectorAll<HTMLElement>('button, input');
+      const controls = mobilePanel.current?.querySelectorAll<HTMLElement>('button, input, select');
       if (!controls?.length) return;
       const first = controls[0];
       const last = controls[controls.length - 1];
@@ -132,6 +133,7 @@ export function ModuleFilterRail({ showFilters, filterGroups, onToggleFilters, f
                 </div>
                 {/* Filter groups */}
                 <div className="flex-1 overflow-y-auto px-3 py-1 custom-scrollbar">
+                  {filterContent}
                   {filterGroups.map((group) => (
                     <FilterGroupSection
                       key={group.id}
@@ -196,6 +198,7 @@ export function ModuleFilterRail({ showFilters, filterGroups, onToggleFilters, f
 
                 {/* Filter groups */}
                 <div className="flex-1 overflow-y-auto px-3 py-1 custom-scrollbar">
+                  {filterContent}
                   {filterGroups.map((group) => (
                     <FilterGroupSection
                       key={group.id}

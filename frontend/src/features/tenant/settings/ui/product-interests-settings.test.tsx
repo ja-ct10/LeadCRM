@@ -1,0 +1,51 @@
+import React from 'react';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { ProductInterestsSettings } from './product-interests-settings';
+import { apiClient } from '@/lib/api/client';
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { tenantId: 'one' } }) }));
+vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
+vi.mock('@/lib/api/client', () => ({ apiClient: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() } }));
+const product = { id: '0ff82f9c-48e9-4e1c-8c77-8a30755d704c', name: 'CCTV Surveillance System', dealValue: 25000, active: true, createdAt: '', updatedAt: '' };
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(apiClient.get).mockResolvedValue({ data: [product], meta: { enabled: true } });
+  vi.mocked(apiClient.post).mockResolvedValue({});
+  vi.mocked(apiClient.delete).mockResolvedValue({});
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+});
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+it('shows a collapsed card and toggles the exact card and panel actions', async () => {
+  render(<ProductInterestsSettings />);
+  await screen.findByRole('button', { name: 'View Product Interest' });
+  expect(screen.queryByText(product.name)).toBeNull();
+  const trigger = screen.getByRole('button', { name: 'Product Interest actions' });
+  fireEvent.click(trigger);
+  expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['View', 'Edit', 'Delete']);
+  fireEvent.click(trigger); expect(screen.queryByRole('menu')).toBeNull();
+  fireEvent.click(trigger); fireEvent.mouseDown(document.body); expect(screen.queryByRole('menu')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'View Product Interest' }));
+  expect(await screen.findByText('₱25,000.00')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Product Interest panel actions' }));
+  expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Edit', 'Delete']);
+});
+it('validates money and persists only trimmed names and numeric amounts through the API', async () => {
+  render(<ProductInterestsSettings />);
+  fireEvent.click(await screen.findByRole('button', { name: 'View Product Interest' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add Product' }));
+  fireEvent.change(screen.getByLabelText('Product Name'), { target: { value: '  Biometrics  ' } });
+  fireEvent.change(screen.getByLabelText('Deal Value (PHP)'), { target: { value: '-5' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save Product' }));
+  expect(await screen.findByRole('alert')).toBeTruthy(); expect(apiClient.post).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText('Deal Value (PHP)'), { target: { value: '30000.50' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save Product' }));
+  await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith('/administration/product-interests', { name: 'Biometrics', dealValue: 30000.5 }));
+});
+it('requires confirmation before deleting the field', async () => {
+  render(<ProductInterestsSettings />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Product Interest actions' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+  expect(apiClient.delete).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }));
+  await waitFor(() => expect(apiClient.delete).toHaveBeenCalledWith('/administration/product-interests'));
+});

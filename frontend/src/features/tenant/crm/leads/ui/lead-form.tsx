@@ -1,7 +1,6 @@
 'use client';
 import { LeadStatusSchema, LEAD_STATUSES } from '@leadcrm/shared';
-import { FORM_PRODUCT_INTERESTS, type ProductInterestConfig } from '@leadcrm/shared';
-import { apiClient } from '@/lib/api/client';
+import { useProductInterests } from '@/shared/hooks/use-product-interests';
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useForm, Controller } from 'react-hook-form';
@@ -57,15 +56,9 @@ const SOURCE_OPTIONS = [
   'Referral',
   'Email Campaign',
   'Website',
-  'LinkedIn Ads',
-  'Webinar',
   'Social Media Advertisement',
-  'Partner Referral',
   'Direct Mail',
-  'Cold Call',
   'Content Marketing',
-  'YouTube Ads',
-  'SEO / Organic Search',
   'Others',
 ];
 
@@ -86,15 +79,8 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
   const { users } = useData();
   const isEdit = !!initialData;
   const requestId = useRef<string | undefined>(undefined);
-  const [products, setProducts] = useState<string[]>([...FORM_PRODUCT_INTERESTS]);
-  const [productError, setProductError] = useState('');
-  useEffect(() => {
-    const controller = new AbortController();
-    apiClient.get<{ data: ProductInterestConfig }>('/administration/product-interests', { signal: controller.signal })
-      .then(response => setProducts(response.data.map(p => p.name)))
-      .catch(error => { if (!controller.signal.aborted) setProductError(error.message); });
-    return () => controller.abort();
-  }, []);
+  const { products: productRecords, error: productError, loading: productsLoading } = useProductInterests();
+  const products = productRecords.map(p => p.id);
 
   const {
     register,
@@ -153,7 +139,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
       const phone = initialData.phone || '';
       setPhoneLocal(normalizePhInput(phone));
 
-      setSelectedProducts(initialData.productInterests ?? (Array.isArray(initialData.productInterest) ? initialData.productInterest : initialData.productInterest ? [initialData.productInterest] : []));
+      setSelectedProducts(initialData.productInterestIds ?? []);
       reset({
         firstName: initialData.firstName || '',
         lastName: initialData.lastName || '',
@@ -193,6 +179,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
     const fullPhone = phoneLocal ? toE164(phoneLocal) : '';
 
     const productInterest = selectedProducts;
+    if (productsLoading || productError) return;
     if (!isEdit) requestId.current ??= crypto.randomUUID();
     // Build payload matching backend CreateContactSchema field names exactly.
     // No phantom fields — adapter handles any remaining mapping.
@@ -227,7 +214,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
         {/* Section 1: Basic Information */}
         <div className="space-y-4">
           <SectionHeader num={1} title="Basic Information" />
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FieldWrap label="First Name *" htmlFor={`${fieldId}-firstName`} error={errors.firstName?.message}>
               <input
                 {...register('firstName')}
@@ -249,7 +236,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
               />
             </FieldWrap>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FieldWrap label="Email" htmlFor={`${fieldId}-email`} error={errors.email?.message}>
               <div className="relative">
                 <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
@@ -296,7 +283,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
         {/* Section 2: Status & Interest */}
         <div className="space-y-4">
           <SectionHeader num={2} title="Status & Interest" />
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FieldWrap htmlFor={`${fieldId}-status`} error={errors.status?.message} label="Status">
               <div className="relative">
                 <select
@@ -315,7 +302,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
             </FieldWrap>
             <FieldWrap label="Product Interest">
               <div className="max-h-48 space-y-1 overflow-y-auto rounded-xl border border-border p-2">
-                {[...new Set([...products, ...selectedProducts])].map(product => <label key={product} className="flex min-h-9 items-start gap-2 px-1 py-1.5 text-xs"><input type="checkbox" checked={selectedProducts.includes(product)} onChange={e => setSelectedProducts(old => e.target.checked ? [...old, product] : old.filter(p => p !== product))} className="mt-0.5" /><span>{product}</span></label>)}
+                {[...new Set([...products, ...selectedProducts])].map(product => <label key={product} className="flex min-h-9 items-start gap-2 px-1 py-1.5 text-xs"><input type="checkbox" checked={selectedProducts.includes(product)} onChange={e => setSelectedProducts(old => e.target.checked ? [...old, product] : old.filter(p => p !== product))} className="mt-0.5" /><span>{productRecords.find(p => p.id === product)?.name ?? initialData?.productInterests?.[initialData?.productInterestIds?.indexOf(product) ?? -1] ?? 'Unavailable product'}</span></label>)}
               </div>
               {productError && <p role="alert" className="mt-1 text-xs text-red-600">Unable to load configured products. Retry before submitting.</p>}
             </FieldWrap>
@@ -345,7 +332,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
         {/* Section 4: Additional Information */}
         <div className="space-y-4">
           <SectionHeader num={4} title="Additional Information" />
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FieldWrap htmlFor={`${fieldId}-source`} error={errors.source?.message} label="Lead Source">
               <div className="relative">
                 <select
@@ -415,6 +402,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
         </button>
         <button
           type="submit"
+          disabled={productsLoading || !!productError}
           className="px-6 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 rounded-xl transition-all shadow-lg shadow-blue-500/25"
         >
           {isEdit ? 'Save Changes' : 'Create Lead'}

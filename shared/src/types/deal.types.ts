@@ -33,6 +33,7 @@ export interface Deal {
   industry?: string;
   address?: string;
   productInterests?: string[];
+  productInterestId?: string;
   order?: number;
   lostReason?: string;
   isArchived?: boolean;

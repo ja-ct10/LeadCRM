@@ -26,7 +26,8 @@ function FieldRow({ field, design, index, total, onUpdate, onRemove, onMove }: {
         <label className="block">Placeholder<input className="w-full p-2 border rounded mt-1" value={field.placeholder ?? ''} maxLength={500} onChange={e => onUpdate({ placeholder: e.target.value })} /></label>
         <label className="flex gap-2 items-center"><input type="checkbox" checked={!!field.required} onChange={e => onUpdate({ required: e.target.checked })} />Required</label>
         <label className="block">CRM mapping<select className="w-full p-2 border rounded mt-1" value={field.mapToField ?? ''} onChange={e => onUpdate({ mapToField: e.target.value as FormField['mapToField'] })}><option value="">No mapping</option>{FORM_MAPPINGS.map(m => <option key={m}>{m}</option>)}</select></label>
-        {['dropdown', 'radio'].includes(field.type) && <label className="block">Options (one per line)<textarea rows={5} className="w-full p-2 border rounded mt-1" value={field.options?.join('\n') ?? ''} onChange={e => onUpdate({ options: e.target.value.split('\n') })} /></label>}
+        {field.mapToField === 'productInterest' && <p>Options are managed in Settings → Custom Fields → Product Interest.</p>}
+        {field.mapToField !== 'productInterest' && ['dropdown', 'radio'].includes(field.type) && <label className="block">Options (one per line)<textarea rows={5} className="w-full p-2 border rounded mt-1" value={field.options?.join('\n') ?? ''} onChange={e => onUpdate({ options: e.target.value.split('\n') })} /></label>}
       </>}
       <label className="block">Width<select className="w-full p-2 border rounded mt-1" value={field.width ?? 'full'} onChange={e => onUpdate({ width: e.target.value as 'half' | 'full' })}><option value="full">Full width</option><option value="half">Half width on larger screens</option></select></label>
     </div>}

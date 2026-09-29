@@ -287,7 +287,7 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
       { label: 'Source', value: source, apiField: 'source' },
     ]),
     { label: 'Address', value: record.address, apiField: 'address' },
-    { label: 'Product interests', value: record.productInterest ?? record.productInterests, apiField: module === 'leads' ? 'productInterest' : 'productInterests' },
+    { label: 'Product interests', value: record.productInterest ?? record.productInterests },
     { label: 'Status', value: statusLabel, apiField: module === 'accounts' ? 'customerType' : 'status', type: 'select', options: statuses },
     { label: 'Owner / Representative', value: owner },
     { label: 'Notes', value: module === 'leads' ? record.description : record.notes, apiField: module === 'leads' ? 'description' : 'notes', type: 'textarea' },

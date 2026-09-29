@@ -1,12 +1,12 @@
 import { Prisma } from '@prisma/client';
-import { FormDefinitionSchema, PublicSubmissionSchema, validateFormValues } from '@leadcrm/shared';
+import { FormDefinitionSchema, PublicSubmissionSchema, validateFormValues, withProductOptions } from '@leadcrm/shared';
 import type { PublicFormDefinition } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { environmentContext } from '../../../core/environment/environment-context';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 import { sendMail } from '../../../shared/services/email.service';
 import { normalizePhone } from '../../crm/duplicate-detection/duplicate-detection.service';
-import { createAssignedLead } from '../../crm/leads/lead-automation.service';
+import { createAssignedLead, createProductDeals, productConfiguration, salesTransaction, resolveProducts } from '../../crm/leads/lead-automation.service';
 
 export class SubmissionValidationError extends ValidationError {
   constructor(public fieldErrors: Record<string, string>) { super('Please check the highlighted fields.'); }
@@ -16,7 +16,8 @@ export async function getPublicForm(publicId: string): Promise<PublicFormDefinit
   const form = await prisma.marketingForm.findFirst({ where: publicWhere(publicId) });
   if (!form?.publishedConfig) throw new NotFoundError('Form');
   const config = FormDefinitionSchema.parse(form.publishedConfig);
-  return { name: config.name, fields: config.fields, design: config.design, version: form.publishedVersion, trackUrlParams: config.settings.trackUrlParams };
+  const products = await salesTransaction(tx => productConfiguration(tx, form.tenantId));
+  return { name: config.name, fields: withProductOptions(config.fields, products), design: config.design, version: form.publishedVersion, trackUrlParams: config.settings.trackUrlParams };
 }
 
 export async function submitPublicForm(publicId: string, body: unknown) {
@@ -39,6 +40,7 @@ export async function submitPublicForm(publicId: string, body: unknown) {
             if (previous) return { submission: previous, notificationEmail: '' };
           }
           const config = FormDefinitionSchema.parse(live.publishedConfig);
+          config.fields = withProductOptions(config.fields, await productConfiguration(tx, scope.tenantId));
           const validated = validateFormValues(config.fields, input.values);
           if (Object.keys(validated.errors).length) throw new SubmissionValidationError(validated.errors);
           const mapped: Record<string, string> = {};
@@ -46,6 +48,7 @@ export async function submitPublicForm(publicId: string, body: unknown) {
           const productField = config.fields.find(field => field.mapToField === 'productInterest');
           const productValue = productField ? validated.values[productField.id] : undefined;
           const selectedProducts = Array.isArray(productValue) ? productValue : typeof productValue === 'string' && productValue ? [productValue] : [];
+          const resolvedProducts = await resolveProducts(tx, scope.tenantId, selectedProducts);
           const email = mapped.email || undefined, phone = mapped.phone || undefined;
           if (!email && !phone) throw new ValidationError('An email address or phone number is required.');
           const identity: Prisma.LeadWhereInput[] = [];
@@ -97,11 +100,19 @@ export async function submitPublicForm(publicId: string, body: unknown) {
             }
           }
           if (contactId) leadId = null;
+          if (leadId && lead && !contactId) {
+            // A repeat inquiry can add interests, but must never replace historical Deals or owners.
+            await tx.lead.update({ where: { id: leadId, ...scope }, data: {
+              productInterestIds: [...new Set([...lead.productInterestIds, ...selectedProducts])],
+              productInterest: [...new Set([...lead.productInterest, ...resolvedProducts.map(p => p.name)])],
+            } });
+            await createProductDeals(tx, scope.tenantId, leadId);
+          }
           if (!leadId && !contactId) {
             const names = (mapped.fullName || '').split(/\s+/);
             const created = await createAssignedLead(tx, { ...scope, firstName: mapped.firstName || names[0] || 'Website', lastName: mapped.lastName || names.slice(1).join(' ') || 'Inquiry',
               email, phone, companyName: mapped.companyName || null, website: mapped.website || null, address: mapped.address || null,
-              productInterest: selectedProducts, source: 'Website' });
+              productInterestIds: selectedProducts, source: 'Website' });
             leadId = created.id;
           }
           const submission = await tx.formSubmission.create({ data: { ...scope, formId: live.id, requestKey: input.requestId, publishedVersion: live.publishedVersion,
