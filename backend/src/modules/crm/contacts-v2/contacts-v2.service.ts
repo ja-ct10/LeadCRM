@@ -1,4 +1,5 @@
 import { CreateClientContactSchema, UpdateClientContactSchema } from './contacts-v2.dto';
+import { normalizeCrmStatus } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import * as repo from './contacts-v2.repository';
 import { NotFoundError } from '../../../shared/errors/http-error';
@@ -9,13 +10,13 @@ import { createNotification } from '../../notifications/notifications.service';
 
 export async function getContacts(tenantId: string, query: Record<string, unknown>) {
   const result = await repo.findAllContacts(tenantId, query);
-  return paginate(result.data, result.total, { page: result.page, limit: result.limit });
+  return paginate(result.data.map(contact => ({ ...contact, status: normalizeCrmStatus(contact.status) })), result.total, { page: result.page, limit: result.limit });
 }
 
 export async function getContactById(id: string, tenantId: string) {
   const contact = await repo.findContactById(id, tenantId);
   if (!contact) throw new NotFoundError('Contact');
-  return contact;
+  return { ...contact, status: normalizeCrmStatus(contact.status) };
 }
 
 export async function createContact(tenantId: string, dto: Record<string, unknown>, actorId?: string) {
@@ -26,24 +27,25 @@ export async function createContact(tenantId: string, dto: Record<string, unknow
     await writeAuditLog({ tenantId, userId: actorId, action: 'contact.created', entityType: 'Contact', entityId: contact.id });
     await fireContactCreated({ tenantId, actorId, contact });
   }
-  return contact;
+  return { ...contact, status: normalizeCrmStatus(contact.status) };
 }
 
 export async function updateContact(id: string, tenantId: string, dto: Record<string, unknown>, actorId?: string) {
   dto = UpdateClientContactSchema.parse(dto);
   await validateLinks(tenantId, dto);
-  const before = await getContactById(id, tenantId);
+  const before = await repo.findContactById(id, tenantId);
+  if (!before) throw new NotFoundError('Contact');
   const contact = await repo.updateContact(id, tenantId, dto);
   if (!contact) throw new NotFoundError('Contact');
   if (actorId) {
-    if (contact.status !== before.status) await prisma.activity.create({ data: { tenantId, contactId: id, createdById: actorId, type: 'stage_change', title: `Status changed from ${before.status} to ${contact.status}` } });
+    if (contact.status !== before.status) await prisma.activity.create({ data: { tenantId, contactId: id, createdById: actorId, type: 'stage_change', title: `Status changed from ${normalizeCrmStatus(before.status)} to ${normalizeCrmStatus(contact.status)}` } });
     await writeAuditLog({ tenantId, userId: actorId, action: 'contact.updated', entityType: 'Contact', entityId: id });
     if (contact.status !== before.status) await fireContactStatusChanged({ tenantId, actorId, contact, prevStatus: before.status });
     if (contact.assignedUserId && contact.assignedUserId !== before.assignedUserId && contact.assignedUserId !== actorId) {
       await createNotification({ tenantId, userId: contact.assignedUserId, type: 'contact_assigned', title: 'Client Profile assigned to you', entityType: 'Contact', entityId: id });
     }
   }
-  return contact;
+  return { ...contact, status: normalizeCrmStatus(contact.status) };
 }
 
 export async function archiveContact(id: string, tenantId: string, userId: string) {

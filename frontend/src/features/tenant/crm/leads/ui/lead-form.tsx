@@ -1,5 +1,5 @@
 'use client';
-import { LeadStatusSchema, LEAD_STATUSES } from '@leadcrm/shared';
+import { LeadStatusSchema, LEAD_STATUSES, normalizeCrmStatus } from '@leadcrm/shared';
 import { useProductInterests } from '@/shared/hooks/use-product-interests';
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -146,7 +146,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
         email: initialData.email || '',
         phone: phone,
         companyName: initialData.companyName || '',
-        status: (LeadStatusSchema.safeParse(initialData.status).success ? initialData.status : 'Warm') as LeadFormData['status'],
+        status: normalizeCrmStatus(initialData.status),
         source: initialData.leadSource || initialData.source || '',
         accountId: initialData.accountId || initialData.organizationId || '',
         assignedUserId: initialData.assignedUserId || '',

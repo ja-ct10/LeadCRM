@@ -3,6 +3,7 @@
  * from backend/src/modules/crm/contacts/contacts.dto.ts
  */
 import { z } from 'zod';
+import { CrmStatusSchema } from '@leadcrm/shared';
 
 export const CreateContactFormSchema = z.object({
   firstName: z.string().min(1, 'First name is required').max(100, 'First name must be 100 characters or less'),
@@ -10,7 +11,7 @@ export const CreateContactFormSchema = z.object({
   email: z.string().email('Invalid email address').optional().or(z.literal('')),
   phone: z.string().optional(),
   companyName: z.string().optional(),
-  status: z.string().default('Inquiry'),
+  status: CrmStatusSchema.default('Warm'),
   source: z.string().optional(),
   accountId: z.string().min(1).optional().or(z.literal('')),
   assignedUserId: z.string().min(1).optional().or(z.literal('')),
@@ -24,7 +25,7 @@ export const UpdateContactFormSchema = z.object({
   email: z.string().email('Invalid email address').optional().or(z.literal('')),
   phone: z.string().optional(),
   companyName: z.string().optional(),
-  status: z.string().optional(),
+  status: CrmStatusSchema.optional(),
   source: z.string().optional(),
   accountId: z.string().min(1).optional().or(z.literal('')),
   assignedUserId: z.string().min(1).optional().or(z.literal('')),

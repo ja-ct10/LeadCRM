@@ -20,11 +20,12 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/shared/components/ui
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/shared/components/ui/dropdown-menu';
 import { RecordTimelineTab } from './record-timeline-tab';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
+import { CRM_STATUSES, normalizeCrmStatus } from '@leadcrm/shared';
 import type { RecordFileMetadata } from '@leadcrm/shared';
 import { RecordFilesTab } from './record-files-tab';
 import { ConfirmActionDialog } from './confirm-action-dialog';
 import { InlineDealForm } from './inline-deal-form';
-import { DEFAULT_LEAD_STATUSES, DEFAULT_ACCOUNT_STATUSES } from './moduleConfig';
+import { DEFAULT_ACCOUNT_STATUSES } from './moduleConfig';
 import { RelatedTasks } from '@/features/tenant/operations/tasks/ui/related-tasks';
 import type { Account } from '@/features/tenant/crm/accounts/types/account.types';
 import { DealFormSheet } from '@/features/tenant/crm/deals/ui/deal-form';
@@ -229,7 +230,7 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
       } else {
         const trimmed = value.trim();
         const normalized = apiField === 'website' && module === 'accounts' && trimmed && !/^https?:\/\//i.test(trimmed) ? `https://${trimmed}` : trimmed;
-        await apiClient.put(`/crm/${module}/${encodeURIComponent(id)}`, { [apiField]: apiField === 'status' && module === 'contacts' ? value.toUpperCase() : apiField === 'productInterest' || apiField === 'productInterests' ? value.split(',').map(item => item.trim()).filter(Boolean) : normalized });
+        await apiClient.put(`/crm/${module}/${encodeURIComponent(id)}`, { [apiField]: apiField === 'productInterest' || apiField === 'productInterests' ? value.split(',').map(item => item.trim()).filter(Boolean) : normalized });
       }
       refresh();
       toast.success('Field updated');
@@ -252,7 +253,7 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
   const location = [text(record.address), text(record.city), text(record.province), text(record.country)].filter(Boolean).join(', ');
   const subtitle = module === 'deals' ? `₱${Number(record.value ?? 0).toLocaleString()} · ${text(object(record.pipeline)?.name)}` : module === 'accounts' ? text(record.industry) || text(record.website) : company || text(record.jobTitle) || location;
   const rawStatus = text(module === 'deals' ? object(record.stage)?.name : module === 'accounts' ? record.customerType : record.status);
-  const status = module === 'leads' && !DEFAULT_LEAD_STATUSES.some(item => item.label.toLowerCase() === rawStatus.toLowerCase()) ? 'Warm' : rawStatus;
+  const status = module === 'leads' || module === 'contacts' ? normalizeCrmStatus(rawStatus) : rawStatus;
   const statusLabel = status === status.toUpperCase() ? status.charAt(0) + status.slice(1).toLowerCase() : status;
   const dealStages = data.pipelines.find(p => p.id === record.pipelineId)?.stages ?? [];
   const changeStage = async (stageId: string, reason?: string) => {
@@ -261,7 +262,7 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
     catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to move Deal'); }
     finally { setSaving(false); }
   };
-  const statuses = module === 'accounts' ? DEFAULT_ACCOUNT_STATUSES.map(item => item.label) : module === 'leads' ? DEFAULT_LEAD_STATUSES.map(item => item.label) : ['Hot', 'Warm', 'Cold', 'Cancelled', 'Closed'];
+  const statuses = module === 'accounts' ? DEFAULT_ACCOUNT_STATUSES.map(item => item.label) : [...CRM_STATUSES];
   const rows: [string, unknown][] = [
     ...(module === 'accounts' ? [['Account name', record.name], ['Industry', record.industry], ['Company size', record.size]] as [string, unknown][] : []),
     ...(module === 'deals' ? [['Deal title', title], ['Deal value', subtitle.split(' · ')[0]], ['Priority', record.priority], ['Associated Lead / Contact', personName(person)], ['Created', record.createdAt ? new Date(String(record.createdAt)).toLocaleDateString() : '']] as [string, unknown][] : []),
@@ -342,7 +343,7 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
           </div>
           <div className="ml-[52px] flex max-w-[calc(100%-52px)] items-center gap-1.5 @min-[400px]:ml-0 @min-[400px]:pr-9">
             {manageMenu}
-            {status && (canEdit ? <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" disabled={saving} className={cn('min-h-9 max-w-full gap-1 rounded-lg text-xs', getCRMStatusStyles(statusLabel))}>{statusLabel}<ChevronDown size={12} /></Button></DropdownMenuTrigger><DropdownMenuContent>{module === 'deals' ? dealStages.map(stage => <DropdownMenuItem key={stage.id} onSelect={() => { if (stage.id === record.stageId) return; if (stage.isLost) { setLostReason(''); setLostStage(stage.id); } else void changeStage(stage.id); }}>{stage.name}</DropdownMenuItem>) : statuses.map(option => <DropdownMenuItem key={option} onSelect={() => void save({ [module === 'accounts' ? 'customerType' : 'status']: module === 'contacts' ? option.toUpperCase() : option })}>{option}</DropdownMenuItem>)}</DropdownMenuContent></DropdownMenu> : <span className={cn('rounded-lg px-2 py-1 text-xs', getCRMStatusStyles(statusLabel))}>{statusLabel}</span>)}
+            {status && (canEdit ? <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" disabled={saving} className={cn('min-h-9 max-w-full gap-1 rounded-lg text-xs', getCRMStatusStyles(statusLabel))}>{statusLabel}<ChevronDown size={12} /></Button></DropdownMenuTrigger><DropdownMenuContent>{module === 'deals' ? dealStages.map(stage => <DropdownMenuItem key={stage.id} onSelect={() => { if (stage.id === record.stageId) return; if (stage.isLost) { setLostReason(''); setLostStage(stage.id); } else void changeStage(stage.id); }}>{stage.name}</DropdownMenuItem>) : statuses.map(option => <DropdownMenuItem key={option} onSelect={() => void save({ [module === 'accounts' ? 'customerType' : 'status']: option })}>{option}</DropdownMenuItem>)}</DropdownMenuContent></DropdownMenu> : <span className={cn('rounded-lg px-2 py-1 text-xs', getCRMStatusStyles(statusLabel))}>{statusLabel}</span>)}
             {onClose && <Button variant="ghost" size="icon" className="absolute right-0 top-0 h-9 w-9" onClick={onClose} aria-label="Close record" title="Close record"><X size={16} /></Button>}
           </div>
         </div>

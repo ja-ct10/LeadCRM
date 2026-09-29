@@ -78,12 +78,7 @@ const LEAD_STATUS_DETAILS: Record<typeof LEAD_STATUSES[number], Omit<StatusOptio
 };
 export const DEFAULT_LEAD_STATUSES: StatusOption[] = LEAD_STATUSES.map(label => ({ label, ...LEAD_STATUS_DETAILS[label] }));
 
-export const DEFAULT_CONTACT_STATUSES: StatusOption[] = [
-  { label: 'Inquiry', tone: 'info', description: 'Contact inquiry pending review' },
-  { label: 'Qualified', tone: 'info', description: 'Verified buyer persona' },
-  { label: 'Converted', tone: 'success', description: 'Active client contact' },
-  { label: 'Archived', tone: 'muted', description: 'Historical record' },
-];
+export const DEFAULT_CONTACT_STATUSES = DEFAULT_LEAD_STATUSES;
 
 export const DEFAULT_ACCOUNT_STATUSES: StatusOption[] = [
   { label: 'Prospect', tone: 'info', description: 'Prospective company account' },

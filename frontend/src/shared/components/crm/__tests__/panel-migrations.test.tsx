@@ -183,3 +183,23 @@ it('requires a lost reason before submitting the Deal transition', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(mocks.move).toHaveBeenCalledWith('one', 'lost', undefined, 'Project postponed'));
 });
+
+
+it.each(['leads', 'contacts'] as const)('%s header and inline status editors send canonical values', async module => {
+  render(<CrmRecordView module={module} id="one" />);
+  await screen.findByRole('heading', { name: module === 'leads' ? 'Lina Reyes' : 'Nora Lim' });
+  for (const status of ['Hot', 'Warm', 'Cold', 'Closed', 'Cancelled']) {
+    fireEvent.click(screen.getByRole('button', { name: 'Warm' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: status }));
+    await waitFor(() => expect(mocks.put).toHaveBeenLastCalledWith(`/crm/${module}/one`, { status }));
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Warm' }) as HTMLButtonElement).disabled).toBe(false));
+  }
+  fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  for (const status of ['Hot', 'Warm', 'Cold', 'Closed', 'Cancelled']) {
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Status' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Status' }), { target: { value: status } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(mocks.put).toHaveBeenLastCalledWith(`/crm/${module}/one`, { status }));
+    await screen.findByRole('button', { name: 'Edit Status' });
+  }
+});

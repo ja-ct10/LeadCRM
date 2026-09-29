@@ -19,8 +19,8 @@ describe('moduleConfig defaults', () => {
   });
 
   it('defines valid contact statuses', () => {
-    expect(DEFAULT_CONTACT_STATUSES.some((s) => s.label === 'Qualified')).toBe(true);
-    expect(DEFAULT_CONTACT_STATUSES.some((s) => s.label === 'Converted')).toBe(true);
+    expect(DEFAULT_CONTACT_STATUSES).toBe(DEFAULT_LEAD_STATUSES);
+    expect(DEFAULT_CONTACT_STATUSES.map(status => status.label)).toEqual(['Hot', 'Warm', 'Cold', 'Closed', 'Cancelled']);
   });
 
   it('defines valid account classifications', () => {

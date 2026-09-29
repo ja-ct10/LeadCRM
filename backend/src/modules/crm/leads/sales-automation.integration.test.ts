@@ -245,4 +245,51 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     expect((await request('/administration/product-interests/field', 'POST', {})).status).toBe(200);
     expect((await request('/administration/product-interests')).body.meta.enabled).toBe(true);
   });
+  it.each(['Hot', 'Warm', 'Cold', 'Closed', 'Cancelled'])('creates and edits Leads and Contacts using %s at the HTTP boundary', async status => {
+    const products = await Promise.all([1250.75, 550].map(dealValue => prisma.productInterest.create({ data: { tenantId, name: `Status ${status} ${dealValue}`, dealValue } })));
+    const selectedIds = products.map(product => product.id);
+    const lead = await request('/crm/leads', 'POST', { firstName: 'Manual', lastName: status, status, productInterest: selectedIds });
+    expect(lead.status).toBe(201);
+    expect(lead.body.data.status).toBe(status);
+    expect(lead.body.data.productInterestIds).toEqual(selectedIds);
+    const deals = await prisma.deal.findMany({ where: { tenantId, leadId: lead.body.data.id } });
+    expect(deals).toHaveLength(2);
+    expect(deals.map(deal => deal.value).sort()).toEqual([550, 1250.75].sort());
+    const editedLead = await request(`/crm/leads/${lead.body.data.id}`, 'PUT', { status });
+    expect(editedLead.status).toBe(200);
+    expect(editedLead.body.data.status).toBe(status);
+    const contact = await request('/crm/contacts', 'POST', { firstName: 'Manual', lastName: status, status });
+    expect(contact.status).toBe(201);
+    expect(contact.body.data.status).toBe(status);
+    const edited = await request(`/crm/contacts/${contact.body.data.id}`, 'PUT', { status: 'Cold' });
+    expect(edited.status).toBe(200);
+    expect(edited.body.data.status).toBe('Cold');
+    const restored = await request(`/crm/contacts/${contact.body.data.id}`, 'PUT', { status });
+    expect(restored.body.data.status).toBe(status);
+    const unchanged = await request(`/crm/contacts/${contact.body.data.id}`, 'PUT', { firstName: 'Renamed' });
+    expect(unchanged.body.data.status).toBe(status);
+    const detail = await request(`/crm/contacts/${contact.body.data.id}`);
+    expect(detail.body.data.status).toBe(status);
+    const statusEvents = await prisma.activity.findMany({ where: { contactId: contact.body.data.id, type: 'stage_change' } });
+    expect(statusEvents.every(event => !/\b(HOT|WARM|COLD|CLOSED|CANCELLED)\b/.test(event.title))).toBe(true);
+    await prisma.activity.create({ data: { tenantId, contactId: contact.body.data.id, createdById: adminId, type: 'stage_change', title: 'Status changed from HOT to WARM' } });
+    const relationships = await request(`/crm/contacts/${contact.body.data.id}/relationships`);
+    expect(relationships.body.data.activities.some((event: { title: string }) => event.title === 'Status changed from Hot to Warm')).toBe(true);
+    const filtered = await request(`/crm/contacts?status=${status}`);
+    expect(filtered.status).toBe(200);
+    expect(filtered.body.data.some((row: { id: string }) => row.id === contact.body.data.id)).toBe(true);
+    expect(filtered.body.data.every((row: { status: string }) => row.status === status)).toBe(true);
+  });
+
+  it('defaults Contacts to Warm and rejects noncanonical statuses on both APIs', async () => {
+    expect((await request('/crm/contacts', 'POST', { firstName: 'Default', lastName: 'Status' })).body.data.status).toBe('Warm');
+    for (const module of ['leads', 'contacts']) {
+      for (const status of ['WARM', 'HOT', 'COLD', 'CLOSED', 'CANCELLED', 'Unknown']) {
+        const response = await request(`/crm/${module}`, 'POST', { firstName: 'Invalid', lastName: 'Status', status });
+        expect(response.status).toBe(400);
+      }
+    }
+  });
+
+
 });

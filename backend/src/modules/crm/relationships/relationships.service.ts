@@ -1,3 +1,4 @@
+import { normalizeCrmStatus } from '@leadcrm/shared';
 import {taskAssociationWhere} from "../../operations/tasks/tasks.repository";
 import prisma from '../../../config/database.config';
 import { NotFoundError } from '../../../shared/errors/http-error';
@@ -122,7 +123,11 @@ export async function getContactRelationships(id: string, tenantId: string, limi
     sourceLead,
     account,
     deals: contactDeals.map((cd) => cd.deal),
-    activities,
+    activities: activities.map(activity => {
+      // Normalize historical enum labels only in system-generated status events.
+      const match = activity.type === 'stage_change' && /^Status changed from (HOT|WARM|COLD|CLOSED|CANCELLED) to (HOT|WARM|COLD|CLOSED|CANCELLED)$/.exec(activity.title);
+      return match ? { ...activity, title: `Status changed from ${normalizeCrmStatus(match[1])} to ${normalizeCrmStatus(match[2])}` } : activity;
+    }),
     tasks,
   };
 }

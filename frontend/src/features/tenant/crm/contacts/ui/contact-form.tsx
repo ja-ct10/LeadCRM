@@ -1,4 +1,5 @@
 'use client';
+import { CRM_STATUSES, normalizeCrmStatus } from '@leadcrm/shared';
 import { useProductInterests } from '@/shared/hooks/use-product-interests';
 
 import React, { useMemo, useRef, useState, useEffect } from 'react';
@@ -41,19 +42,11 @@ const SOURCES = [
   'Others',
 ];
 
-const STATUS_OPTIONS = [
-  { value: 'Inquiry', label: 'Inquiry' },
-  { value: 'Active', label: 'Active' },
-  { value: 'Inactive', label: 'Inactive' },
-  { value: 'Hot', label: 'Hot' },
-  { value: 'Warm', label: 'Warm' },
-  { value: 'Cold', label: 'Cold' },
-];
+const STATUS_OPTIONS = CRM_STATUSES.map(value => ({ value, label: value }));
 
 // ─── Props ─────────────────────────────────────────────────────────────────
 
 interface ContactFormProps {
-  statusOptions?: string[];
   initialData?: Contact;
   isOpen: boolean;
   onClose: () => void;
@@ -61,7 +54,6 @@ interface ContactFormProps {
 }
 
 interface ContactFormInnerProps {
-  statusOptions?: string[];
   initialData?: Contact;
   onSave: (data: Partial<Contact>) => void;
   onCancel: () => void;
@@ -69,7 +61,7 @@ interface ContactFormInnerProps {
 
 // ─── Form Component ────────────────────────────────────────────────────────
 
-export function ContactFormInner({ initialData, onSave, onCancel, statusOptions }: ContactFormInnerProps): React.ReactElement {
+export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormInnerProps): React.ReactElement {
   const { products: productRecords } = useProductInterests();
   const PRODUCTS = productRecords.map(p => p.name);
   const { users } = useData();
@@ -82,7 +74,7 @@ export function ContactFormInner({ initialData, onSave, onCancel, statusOptions 
     email: initialData?.email || '',
     phone: initialData?.phone || '',
     companyName: initialData?.companyName || '',
-    status: initialData?.status || 'Inquiry',
+    status: normalizeCrmStatus(initialData?.status),
     source: initialData?.leadSource || '',
     accountId: initialData?.organizationId || '',
     assignedUserId: initialData?.assignedUserId || '',
@@ -138,7 +130,7 @@ export function ContactFormInner({ initialData, onSave, onCancel, statusOptions 
       email: data.email || undefined,
       phone: phoneLocal ? toE164(phoneLocal) : undefined,
       companyName: data.companyName || undefined,
-      status: data.status || 'Inquiry',
+      status: data.status || 'Warm',
       leadSource: data.source || undefined,
       assignedUserId: data.assignedUserId || undefined,
       productInterest: data.productInterest || [],
@@ -263,7 +255,7 @@ export function ContactFormInner({ initialData, onSave, onCancel, statusOptions 
                   aria-describedby={errors.status ? `${fieldId}-status-error` : undefined}
                   className={`${selectCls} ${errors.status ? inputErrorCls : ''}`}
                 >
-                  {(statusOptions?.map(value => ({ value, label: value })) ?? STATUS_OPTIONS).map((opt) => (
+                  {STATUS_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
                       {opt.label}
                     </option>
@@ -432,7 +424,7 @@ export function ContactFormInner({ initialData, onSave, onCancel, statusOptions 
 
 // ─── Sheet Wrapper ─────────────────────────────────────────────────────────
 
-export function ContactFormSheet({ initialData, isOpen, onClose, onSave, statusOptions }: ContactFormProps): React.ReactElement {
+export function ContactFormSheet({ initialData, isOpen, onClose, onSave }: ContactFormProps): React.ReactElement {
   return (
     <SlidingDrawer
       isOpen={isOpen}
@@ -440,7 +432,7 @@ export function ContactFormSheet({ initialData, isOpen, onClose, onSave, statusO
       title={initialData ? 'Edit Contact' : 'New Contact'}
       subtitle="Complete the contact details below."
     >
-      <ContactFormInner initialData={initialData} onSave={onSave} onCancel={onClose} statusOptions={statusOptions} />
+      <ContactFormInner initialData={initialData} onSave={onSave} onCancel={onClose} />
     </SlidingDrawer>
   );
 }

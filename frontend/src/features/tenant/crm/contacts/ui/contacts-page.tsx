@@ -25,7 +25,7 @@ import { ActionableEmptyState } from '@/shared/components/actionable-empty-state
 import { PageSizeSelect } from '@/shared/components/page-size-select';
 import { useRouter } from 'next/navigation';
 import { contactsV2Api } from '@/shared/services/contacts-v2.api';
-import { compareSortValues } from '@leadcrm/shared';
+import { CRM_STATUSES, normalizeCrmStatus, compareSortValues } from '@leadcrm/shared';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
 // ── Contacts Page ─────────────────────────────────────────────────────────────
 // Shows all contacts with activity flags, customer type, account links, deals
@@ -102,6 +102,7 @@ export default function ContactsPage(): React.ReactElement {
   const [contactSelectedIds, setContactSelectedIds] = useState<Set<string>>(new Set());
 
   // Multi-select stacked criteria
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>(() => getArrayParam('status').map(normalizeCrmStatus));
   const [selectedSystemFilters, setSelectedSystemFilters] = useState<string[]>(() => getArrayParam('system'));
   const [selectedCustomerTypes, setSelectedCustomerTypes] = useState<string[]>(() => getArrayParam('types'));
   const [selectedOwners, setSelectedOwners] = useState<string[]>(() => getArrayParam('owners'));
@@ -113,6 +114,7 @@ export default function ContactsPage(): React.ReactElement {
     if (!highlightId) return;
     setSearchTerm(''); setActiveTab('all'); setActiveView('table'); setCurrentPage(1);
     setSelectedSystemFilters([]);
+    setSelectedStatuses([]);
     setSelectedCustomerTypes([]);
     setSelectedOwners([]);
     setSelectedRelated([]);
@@ -125,16 +127,18 @@ export default function ContactsPage(): React.ReactElement {
       tab: activeTab !== 'all' ? activeTab : null,
       search: debouncedSearch || null,
       view: activeView !== 'list' ? activeView : null,
+      status: selectedStatuses,
       system: selectedSystemFilters,
       types: selectedCustomerTypes,
       owners: selectedOwners,
       related: selectedRelated,
     });
-  }, [activeTab, debouncedSearch, activeView, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, highlightId, updateParams]);
+  }, [activeTab, debouncedSearch, activeView, selectedStatuses, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, highlightId, updateParams]);
 
   // ── Persist filter selections (fire-and-forget) ────────────────────────
   useEffect(() => {
     const conditions: { field: string; operator: string; value: unknown }[] = [];
+    if (selectedStatuses.length) conditions.push({ field: 'status', operator: 'in', value: selectedStatuses });
     if (selectedSystemFilters.length > 0) {
       conditions.push({ field: 'system', operator: 'in', value: selectedSystemFilters });
     }
@@ -148,7 +152,7 @@ export default function ContactsPage(): React.ReactElement {
       conditions.push({ field: 'related', operator: 'in', value: selectedRelated });
     }
     persistFilters(conditions);
-  }, [selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, persistFilters]);
+  }, [selectedStatuses, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, persistFilters]);
 
   // ── Data ─────────────────────────────────────────────────────────────
   const activeContacts = useMemo(
@@ -183,6 +187,8 @@ export default function ContactsPage(): React.ReactElement {
       );
     }
 
+    if (selectedStatuses.length) result = result.filter(c => selectedStatuses.includes(normalizeCrmStatus(c.status)));
+
     // System Filters
     if (selectedSystemFilters.includes('touched')) {
       result = result.filter((c) => c.lastUpdated || c.updateStatus);
@@ -207,7 +213,7 @@ export default function ContactsPage(): React.ReactElement {
     }
 
     return result;
-  }, [activeContacts, activeTab, user?.id, debouncedSearch, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, deals, highlightId]);
+  }, [activeContacts, activeTab, user?.id, debouncedSearch, selectedStatuses, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, deals, highlightId]);
 
   const getAccountName = useCallback((contact: Contact): string => {
     const linked = organizations.find(org => org.id === (contact.accountId ?? contact.organizationId));
@@ -221,7 +227,7 @@ export default function ContactsPage(): React.ReactElement {
   // Reset page on filter/search/tab/pageSize/sort changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, activeTab, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, pageSize, sort]);
+  }, [debouncedSearch, activeTab, selectedStatuses, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, pageSize, sort]);
 
   const paginatedContacts = useMemo(() => {
     const start = highlightId ? 0 : (currentPage - 1) * pageSize;
@@ -265,11 +271,7 @@ export default function ContactsPage(): React.ReactElement {
     return 'neutral';
   };
 
-  const getStatusVariant = (status: string): 'success' | 'info' | 'danger' | 'neutral' => {
-    if (status === 'Active') return 'success';
-    if (status === 'Inactive') return 'danger';
-    return 'neutral';
-  };
+
 
   const getContactDeals = (contactId: string): number => {
     return deals.filter((d) =>
@@ -300,6 +302,10 @@ export default function ContactsPage(): React.ReactElement {
   const untouchedCount = activeContacts.length - touchedCount;
 
   const filterGroups = useMemo(() => [
+    {
+      id: 'status', label: 'Status', isExpanded: true,
+      items: CRM_STATUSES.map(status => ({ id: status, label: status, count: activeContacts.filter(c => normalizeCrmStatus(c.status) === status).length, isChecked: selectedStatuses.includes(status) })),
+    },
     {
       id: 'system',
       label: 'System Defined Filters',
@@ -333,10 +339,12 @@ export default function ContactsPage(): React.ReactElement {
         { id: 'has_deals', label: 'Contacts with Deals', count: activeContacts.filter(c => deals.some(d => !d.isArchived && (d.contactId === c.id || (d.contactIds ?? []).includes(c.id)))).length, isChecked: selectedRelated.includes('has_deals') },
       ],
     },
-  ], [activeContacts, touchedCount, untouchedCount, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, users, deals]);
+  ], [activeContacts, touchedCount, untouchedCount, selectedStatuses, selectedSystemFilters, selectedCustomerTypes, selectedOwners, selectedRelated, users, deals]);
 
   const handleFilterToggle = useCallback((groupId: string, itemId: string) => {
-    if (groupId === 'system') {
+    if (groupId === 'status') {
+      setSelectedStatuses(prev => prev.includes(itemId) ? prev.filter(value => value !== itemId) : [...prev, itemId]);
+    } else if (groupId === 'system') {
       setSelectedSystemFilters(prev =>
         prev.includes(itemId) ? prev.filter(x => x !== itemId) : [...prev, itemId]
       );

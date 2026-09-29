@@ -25,25 +25,12 @@ import type { QuickAction, SortState, RowActionItem } from '@/shared/components/
 import type { CellRendererMap } from '@/shared/components/data-grid';
 import { LEADS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import type { ColumnConfigItem } from '@leadcrm/shared';
+import { CrmStatusIndicator } from '@/shared/components/crm/crm-status';
 import type { Lead } from '@/store/types';
 
 // ─── Status Dot Colors (Close.com style) ─────────────────────────────────────
 
-const STATUS_DOT_COLORS: Record<string, string> = {
-  Qualified: '#22c55e',
-  HOT:       '#ef4444',
-  Hot:       '#ef4444',
-  WARM:      '#f59e0b',
-  Warm:      '#f59e0b',
-  COLD:      '#3b82f6',
-  Cold:      '#3b82f6',
-  CANCELLED: '#6b7280',
-  Cancelled: '#6b7280',
-  CLOSED:    '#8b5cf6',
-  Closed:    '#8b5cf6',
-  Converted: '#8b5cf6',
-  Archived:  '#d1d5db',
-};
+
 
 // ─── Helper: Render user with avatar initials ─────────────────────────────────
 
@@ -215,15 +202,7 @@ export function LeadsDataGrid({
     ),
 
     // ── Status: Close.com dot + plain text ────────────────────────────
-    status: (_value: unknown, row: Lead) => {
-      const dotColor = STATUS_DOT_COLORS[row.status] ?? '#94a3b8';
-      return (
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
-          <span className="text-[13px] text-[#3C4858] dark:text-slate-300 truncate">{row.status}</span>
-        </div>
-      );
-    },
+    status: (_value: unknown, row: Lead) => <CrmStatusIndicator status={row.status} />,
 
     source: (_value: unknown, row: Lead) => (
       <p className="text-[12px] text-[#8899a6] dark:text-slate-400 truncate">{row.leadSource ?? row.source ?? '—'}</p>

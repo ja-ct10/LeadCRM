@@ -4,7 +4,8 @@
  */
 
 // ─── Contact Status Options ────────────────────────────────────────────────
-export const CONTACT_STATUSES = ['Hot', 'Warm', 'Cold', 'Closed', 'Cancelled'] as const;
+import { CRM_STATUSES } from '@leadcrm/shared';
+export const CONTACT_STATUSES = CRM_STATUSES;
 export type ContactStatus = typeof CONTACT_STATUSES[number];
 
 // ─── Lead Source Options ───────────────────────────────────────────────────

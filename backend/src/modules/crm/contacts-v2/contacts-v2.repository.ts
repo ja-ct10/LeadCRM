@@ -1,5 +1,6 @@
 import { validateProductSnapshots } from '../leads/product-snapshots';
 import prisma from '../../../config/database.config';
+import { CrmStatusSchema } from '@leadcrm/shared';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
 
 /**
@@ -30,7 +31,7 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
 
   // Status filter — value must be a valid ContactStatus enum member
   if (query.status) {
-    where['status'] = String(query.status);
+    where['status'] = CrmStatusSchema.parse(query.status).toUpperCase();
   }
 
   if (query.assignedUserId) {
@@ -82,7 +83,7 @@ export async function findContactById(id: string, tenantId: string) {
 export async function createContact(tenantId: string, dto: Record<string, unknown>) {
   dto.productInterests = await validateProductSnapshots(tenantId, dto.productInterests);
   return prisma.contact.create({
-    data: { ...dto, tenantId } as never,
+    data: { ...dto, tenantId, status: CrmStatusSchema.parse(dto.status).toUpperCase() } as never,
     include: CONTACT_INCLUDE,
   });
 }
@@ -93,7 +94,7 @@ export async function updateContact(id: string, tenantId: string, dto: Record<st
   try {
     return await prisma.contact.update({
       where:   { id, tenantId } as never,
-      data:    dto as never,
+      data:    { ...dto, ...(dto.status === undefined ? {} : { status: CrmStatusSchema.parse(dto.status).toUpperCase() }) } as never,
       include: CONTACT_INCLUDE,
     });
   } catch {
