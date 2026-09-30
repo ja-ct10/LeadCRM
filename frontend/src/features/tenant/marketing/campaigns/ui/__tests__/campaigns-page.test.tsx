@@ -1,0 +1,45 @@
+import React from 'react';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+const mocks = vi.hoisted(() => ({ get: vi.fn(), create: vi.fn(), archive: vi.fn(), refresh: vi.fn(), permitted: true }));
+const campaign = { id: 'campaign', name: 'Saved campaign', type: 'Email', status: 'sent', targetAudience: 'All Leads', sentCount: 4, openedCount: 2, clickedCount: 1, createdAt: '2026-09-30' };
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { tenantId: 'tenant', activeEnvironment: 'PRODUCTION' } }) }));
+vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => mocks.permitted }));
+vi.mock('../../hooks/use-campaigns-data', () => ({ useCampaignsData: () => ({ campaigns: [campaign], total: 1, templates: [], metrics: { activeCampaigns: 1, sent: 4, opened: 2, clicked: 1 }, refetch: mocks.refresh }) }));
+vi.mock('@/shared/services/campaigns.api', () => ({ campaignsApi: { get: mocks.get, create: mocks.create, archive: mocks.archive } }));
+vi.mock('../campaign-builder', () => ({ CampaignBuilder: () => <div>Campaign editor</div> }));
+vi.mock('../campaign-report-view', () => ({ CampaignReportView: () => <div>Campaign report</div> }));
+import CampaignsPage from '../campaigns-page';
+beforeEach(() => { vi.clearAllMocks(); mocks.permitted = true; mocks.archive.mockResolvedValue({ success: true }); mocks.refresh.mockResolvedValue(undefined); vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} }); });
+afterEach(cleanup);
+it('opens View and duplicates the complete saved campaign into a new draft', async () => {
+  mocks.get.mockResolvedValue({ data: { ...campaign, subject: 'Saved subject', body: '<p>Saved body</p>', audienceSource: 'LEADS' } });
+  mocks.create.mockResolvedValue({ data: { id: 'copy' } });
+  render(<CampaignsPage />);
+  fireEvent.click(screen.getByRole('button', { name: 'Row actions' }));
+  expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual(['View', 'Duplicate', 'Archive']);
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Duplicate' }));
+  await waitFor(() => expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ name: 'Saved campaign (Copy)', type: 'EMAIL', subject: 'Saved subject', body: '<p>Saved body</p>', audienceSource: 'LEADS' })));
+  expect(mocks.get).toHaveBeenCalledWith('campaign');
+  fireEvent.click(screen.getByRole('button', { name: 'Row actions' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'View' }));
+  expect(screen.getByText('Campaign report')).toBeTruthy();
+});
+it('archives only selected campaigns after confirmation and refreshes', async () => {
+  render(<CampaignsPage />);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select all records' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Archive' }));
+  expect(mocks.archive).not.toHaveBeenCalled();
+  expect(screen.getByRole('heading', { name: 'Archive 1 campaign?' })).toBeTruthy();
+  fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Archive' }));
+  await waitFor(() => expect(mocks.archive).toHaveBeenCalledWith('campaign'));
+  await waitFor(() => expect(screen.queryByText('1 selected')).toBeNull());
+  expect(mocks.refresh).toHaveBeenCalled();
+});
+it('retains View without exposing forbidden mutations', () => {
+  mocks.permitted = false;
+  render(<CampaignsPage />);
+  expect(screen.queryByRole('checkbox', { name: 'Select all records' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Row actions' }));
+  expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual(['View']);
+});

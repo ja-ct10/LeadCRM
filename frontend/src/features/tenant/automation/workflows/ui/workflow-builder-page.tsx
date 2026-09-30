@@ -126,7 +126,7 @@ export default function WorkflowBuilderPage() {
       {...loaded}
       workflowId={id}
       canActivate={canEdit}
-      readOnly={!!id && !canEdit}
+      readOnly={!!id && (!canEdit || query.get('view') === 'true')}
       onClose={() => router.push('/automation/workflows')}
       onPause={id ? () => updateWorkflow(id, { isActive: false }) : undefined}
       onSave={async (draft) => {

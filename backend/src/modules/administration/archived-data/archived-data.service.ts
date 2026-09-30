@@ -9,6 +9,7 @@ import type { PermissionKey } from '../../../shared/constants/permissions';
 
 type Actor = { userId: string; tenantId: string; role: string };
 const permissions: Record<ArchiveType | z.infer<typeof ArchiveRestoreParamsSchema>['type'], [PermissionKey, PermissionKey]> = {
+  Task: ['deals.view', 'deals.edit'],
   Lead: ['contacts.view', 'contacts.edit'], Contact: ['contacts.view', 'contacts.edit'],
   Account: ['accounts.view', 'accounts.edit'], Deal: ['deals.view', 'deals.edit'],
   Pipeline: ['deals.view', 'deals.edit'], User: ['users.view', 'users.manage'],
@@ -37,6 +38,7 @@ export async function list(actor: Actor, query: z.infer<typeof ArchiveQuerySchem
     ({ id: r.id, name: `${r.firstName} ${r.lastName}`.trim(), detail: r.email ?? '', archivedAt: r.deletedAt });
   // Explicit delegates, scoped counts and bounded page reads; no client-controlled model names.
   const sources = {
+    Task: source(() => prisma.task.count({ where }), (skip, take) => prisma.task.findMany({ where, ...pageArgs(skip, take), select: { id: true, title: true } }), r => ({ id: r.id, name: r.title })),
     Lead: source(() => prisma.lead.count({ where }), (skip, take) => prisma.lead.findMany({ where, ...pageArgs(skip, take), select: { id: true, firstName: true, lastName: true, email: true, deletedAt: true } }), person),
     Contact: source(() => prisma.contact.count({ where }), (skip, take) => prisma.contact.findMany({ where, ...pageArgs(skip, take), select: { id: true, firstName: true, lastName: true, email: true, deletedAt: true } }), person),
     Account: source(() => prisma.account.count({ where }), (skip, take) => prisma.account.findMany({ where, ...pageArgs(skip, take), select: { id: true, name: true, website: true, city: true, deletedAt: true } }), r => ({ id: r.id, name: r.name, detail: r.website || r.city || '', archivedAt: r.deletedAt })),
@@ -83,6 +85,9 @@ export async function restore(actor: Actor, params: z.infer<typeof ArchiveRestor
   const where = { ...scope(actor), id: params.id };
   let result: { count: number };
   switch (params.type) {
+    case 'Task':
+      result = await prisma.task.updateMany({ where, data: { isArchived: false } });
+      break;
     case 'Pipeline':
       result = await prisma.pipeline.updateMany({ where, data: { isArchived: false } });
       break;

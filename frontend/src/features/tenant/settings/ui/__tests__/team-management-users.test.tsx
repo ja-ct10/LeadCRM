@@ -1,14 +1,35 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-const mocks = vi.hoisted(() => ({ list: vi.fn() }));
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+const mocks = vi.hoisted(() => ({ list: vi.fn(), update: vi.fn(), archive: vi.fn() }));
+vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'admin', tenantId: 't' }, userCan: () => true }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ roles: [{ id: 'r', name: 'Sales', isArchived: false, isSystemRole: false }], refreshRoles: vi.fn() }) }));
-vi.mock('@/features/tenant/administration/users/services/users.service', () => ({ usersService: { getAll: mocks.list } }));
+vi.mock('@/features/tenant/administration/users/services/users.service', () => ({ usersService: { getAll: mocks.list, update: mocks.update, archive: mocks.archive } }));
 vi.mock('@/shared/services/invitations.api', () => ({ invitationsApi: { list: async () => ({ data: [] }) } }));
 import { UsersSubTab } from '../team-management-users';
-beforeEach(() => vi.resetAllMocks());
+beforeEach(() => { vi.resetAllMocks(); vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(cleanup);
+it('offers only the current status action and confirms bulk archive before persistence', async () => {
+  const active = { id: 'a', tenantId: 't', firstName: 'Ana', lastName: 'Sales', role: 'Sales', status: 'active', email: 'a@example.com' };
+  mocks.list.mockResolvedValue({ data: [active], meta: { hasMore: false } });
+  mocks.update.mockResolvedValue({ data: { ...active, status: 'inactive', isArchived: true } });
+  mocks.archive.mockResolvedValue(undefined);
+  render(<UsersSubTab />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Row actions' }));
+  expect(screen.getByRole('menuitem', { name: 'View' })).toBeTruthy();
+  expect(screen.getByRole('menuitem', { name: 'Edit' })).toBeTruthy();
+  expect(screen.queryByRole('menuitem', { name: 'Mark as Active' })).toBeNull();
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Mark as Inactive' }));
+  await waitFor(() => expect(mocks.update).toHaveBeenCalledWith('a', { status: 'inactive' }));
+  await screen.findByRole('button', { name: 'View Ana Sales' });
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select all records' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Archive' }));
+  expect(mocks.archive).not.toHaveBeenCalled();
+  fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Archive' }));
+  await waitFor(() => expect(mocks.archive).toHaveBeenCalledWith('a'));
+  await waitFor(() => expect(screen.queryByText('1 selected')).toBeNull());
+});
 it('renders saved avatars through the tenant endpoint and falls back on missing or broken images', async () => {
   mocks.list.mockResolvedValue({ data: [
     { id: 'photo', tenantId: 't', firstName: 'Ana', lastName: 'Photo', avatarUrl: '/api/proxy/auth/profile/avatar/saved-image', role: 'Sales' },

@@ -33,6 +33,8 @@ router.patch('/archived-data/:type/:id/restore', archivedData.restore);
 
 router.get('/organization-settings', authorize('settings.view'), organizationSettings.get);
 router.get('/product-interests', productInterests.get);
+router.get('/product-interests/:id', authorize('settings.view'), productInterests.detail);
+router.get('/product-interests/:id/closed-won', authorize('settings.view'), authorize('deals.view'), productInterests.wonDeals);
 router.post('/product-interests', authorize('settings.edit'), productInterests.create);
 router.post('/product-interests/field', authorize('settings.edit'), productInterests.enableField);
 router.delete('/product-interests', authorize('settings.edit'), productInterests.removeField);

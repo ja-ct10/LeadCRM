@@ -2,6 +2,7 @@ import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ProductInterestsSettings } from './product-interests-settings';
+import { ProductsPage } from './products-page';
 import { apiClient } from '@/lib/api/client';
 import { toast } from 'sonner';
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -11,29 +12,29 @@ vi.mock('@/lib/api/client', () => ({ apiClient: { get: vi.fn(), post: vi.fn(), p
 const product = { id: '0ff82f9c-48e9-4e1c-8c77-8a30755d704c', name: 'CCTV Surveillance System', dealValue: 25000, active: true, createdAt: '', updatedAt: '' };
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   vi.mocked(apiClient.get).mockResolvedValue({ data: [product], meta: { enabled: true } });
   vi.mocked(apiClient.post).mockResolvedValue({ data: [product], meta: { enabled: true } });
   vi.mocked(apiClient.delete).mockResolvedValue({ data: [], meta: { enabled: false } });
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
-it('shows a collapsed card and toggles the exact card and panel actions', async () => {
+it('keeps field configuration separate from product management', async () => {
   render(<ProductInterestsSettings />);
-  await screen.findByRole('button', { name: 'View Product Interest' });
-  expect(screen.queryByText(product.name)).toBeNull();
-  const trigger = screen.getByRole('button', { name: 'Product Interest actions' });
+  expect(await screen.findByRole('link', { name: 'Manage products and default Deal values in Products' })).toHaveProperty('href', expect.stringContaining('/settings?tab=products'));
+  expect(screen.queryByRole('button', { name: 'Add Product' })).toBeNull();
+});
+it('uses the shared row menu with View, Edit and Archive', async () => {
+  render(<ProductsPage />);
+  const trigger = await screen.findByRole('button', { name: 'Row actions' });
   fireEvent.click(trigger);
-  expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['View', 'Edit', 'Delete']);
+  expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['View', 'Edit', 'Archive']);
   fireEvent.click(trigger); expect(screen.queryByRole('menu')).toBeNull();
   fireEvent.click(trigger); fireEvent.mouseDown(document.body); expect(screen.queryByRole('menu')).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'View Product Interest' }));
-  expect(await screen.findByText('₱25,000.00')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Product Interest panel actions' }));
-  expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['Edit', 'Delete']);
 });
 it('validates money and persists only trimmed names and numeric amounts through the API', async () => {
-  render(<ProductInterestsSettings />);
-  fireEvent.click(await screen.findByRole('button', { name: 'View Product Interest' }));
+  render(<ProductsPage />);
+  await screen.findByRole('grid');
   fireEvent.click(screen.getByRole('button', { name: 'Add Product' }));
   fireEvent.change(screen.getByLabelText('Product Name'), { target: { value: '  Biometrics  ' } });
   fireEvent.change(screen.getByLabelText('Deal Value (PHP)'), { target: { value: '-5' } });
@@ -43,26 +44,30 @@ it('validates money and persists only trimmed names and numeric amounts through 
   fireEvent.click(screen.getByRole('button', { name: 'Save Product' }));
   await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith('/administration/product-interests', { name: 'Biometrics', dealValue: 30000.5 }));
 });
-it('requires confirmation before deleting the field', async () => {
-  render(<ProductInterestsSettings />);
-  fireEvent.click(await screen.findByRole('button', { name: 'Product Interest actions' }));
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+it('requires confirmation before archiving a product and clears bulk selection after success', async () => {
+  vi.mocked(apiClient.delete).mockResolvedValue({ data: [], meta: { enabled: true } });
+  render(<ProductsPage />);
+  await screen.findByRole('grid');
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select all records' }));
+  expect(screen.getByText('1 selected')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Archive' }));
   expect(apiClient.delete).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }));
-  await waitFor(() => expect(apiClient.delete).toHaveBeenCalledWith('/administration/product-interests'));
+  vi.mocked(apiClient.get).mockResolvedValue({ data: [], meta: { enabled: true } });
+  fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Archive' }));
+  await waitFor(() => expect(apiClient.delete).toHaveBeenCalledWith('/administration/product-interests/' + product.id));
+  await waitFor(() => expect(screen.queryByText('1 selected')).toBeNull());
 });
 
 async function editProduct() {
-  fireEvent.click(await screen.findByRole('button', { name: 'Product Interest actions' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Row actions' }));
   fireEvent.click(screen.getByRole('menuitem', { name: 'Edit' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Edit ' + product.name }));
   fireEvent.change(screen.getByLabelText('Deal Value (PHP)'), { target: { value: '7000.25' } });
 }
 it('shows a skeleton then applies the committed response and toasts only after success', async () => {
   let resolve!: (value: unknown) => void;
   vi.mocked(apiClient.patch).mockImplementation(() => new Promise(done => { resolve = done; }));
-  render(<ProductInterestsSettings />);
-  expect(screen.getByRole('status', { name: 'Loading Custom Fields' }).querySelector('.animate-pulse')).toBeTruthy();
+  render(<ProductsPage />);
+  expect(screen.getByRole('status')).toBeTruthy();
   await editProduct();
   fireEvent.click(screen.getByRole('button', { name: 'Save Product' }));
   expect((screen.getByRole('button', { name: 'Saving…' }) as HTMLButtonElement).disabled).toBe(true);
@@ -77,11 +82,24 @@ it('shows a skeleton then applies the committed response and toasts only after s
 });
 it('retains entered values and allows retry when saving fails', async () => {
   vi.mocked(apiClient.patch).mockRejectedValue(new Error('Database unavailable'));
-  render(<ProductInterestsSettings />);
+  render(<ProductsPage />);
   await editProduct();
   fireEvent.click(screen.getByRole('button', { name: 'Save Product' }));
   await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Database unavailable'));
   expect(toast.success).not.toHaveBeenCalled();
   expect((screen.getByLabelText('Deal Value (PHP)') as HTMLInputElement).value).toBe('7000.25');
   expect((screen.getByRole('button', { name: 'Save Product' }) as HTMLButtonElement).disabled).toBe(false);
+});
+
+it('loads details and the actual Closed Won lookup with skeletons', async () => {
+  render(<ProductsPage />); await screen.findByRole('grid');
+  let resolve!: (value: unknown) => void;
+  vi.mocked(apiClient.get).mockImplementation((url) => url.includes('/closed-won') ? new Promise(done => { resolve = done; }) : Promise.resolve({ data: product }));
+  fireEvent.click(screen.getByRole('button', { name: 'View' }));
+  expect(screen.getByRole('status', { name: 'Loading product and Closed Won customers' }).querySelector('.animate-pulse')).toBeTruthy();
+  resolve({ data: [{ id: 'won', title: 'Real won deal', value: 45000, currency: 'PHP', customers: ['Saved Customer'], company: 'Company', assignedAgent: 'Agent', closedAt: '2026-09-30' }], meta: { total: 1 } });
+  expect(await screen.findByText('Saved Customer')).toBeTruthy();
+  expect(screen.getByText('Real won deal')).toBeTruthy();
+  expect(screen.getByText('₱45,000.00')).toBeTruthy();
+  expect(apiClient.get).toHaveBeenCalledWith('/administration/product-interests/' + product.id + '/closed-won?page=1&limit=25', expect.anything());
 });

@@ -1,6 +1,8 @@
 "use client";
+import { toast } from "sonner";
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { SelectedRowsBar } from '@/shared/components/crm/selected-rows-bar';
+
 import {
   TASK_COLUMN_DEFINITIONS,
   TASK_STATUSES,
@@ -67,7 +69,7 @@ export default function TaskBoard() {
   const [bulkAction, setBulkAction] = useState<"assign" | "reschedule" | null>(
     null,
   );
-  const [deleteIds, setDeleteIds] = useState<string[]>([]);
+  const [archiveIds, setArchiveIds] = useState<string[]>([]);
   const [owner, setOwner] = useState(""),
     [date, setDate] = useState(""),
     [time, setTime] = useState("");
@@ -112,7 +114,7 @@ export default function TaskBoard() {
   useEffect(() => {
     setSelected([]);
     setBulkAction(null);
-    setDeleteIds([]);
+    setArchiveIds([]);
   }, [queryKey, data.identity]);
   useEffect(() => {
     if (data.loading || data.error) return;
@@ -170,22 +172,6 @@ export default function TaskBoard() {
     };
   }, [showFilters, data.canRead, data.identity, filterSearch, users]);
 
-  const bulkBarRef = useRef<HTMLElement>(null);
-  const [bulkBarHeight, setBulkBarHeight] = useState(0);
-  const hasSelection = selected.length > 0;
-  useEffect(() => {
-    if (!hasSelection || !bulkBarRef.current) {
-      setBulkBarHeight(0);
-      return;
-    }
-    const bar = bulkBarRef.current;
-    const measure = () => setBulkBarHeight(bar.getBoundingClientRect().height);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(bar);
-    return () => observer.disconnect();
-  }, [hasSelection]);
-
   const change = async (task: TaskRecord) => {
     if (mutationPending.current || !canEdit || task.isArchived) return;
     const started = identity.current;
@@ -225,7 +211,7 @@ export default function TaskBoard() {
     if (
       !ids.length ||
       mutationPending.current ||
-      (operation === "delete" ? !canDelete : !canEdit)
+      (operation === "archive" ? !canDelete : !canEdit)
     )
       return;
     if (
@@ -247,8 +233,9 @@ export default function TaskBoard() {
             : { operation, ids };
       const result = await bulkTasks(request);
       if (started !== identity.current) return;
+      if (operation === "archive" && result.succeeded.length) toast.success(`${result.succeeded.length} task(s) archived.`);
       setNotice(
-        `${result.succeeded.length} task(s) ${operation === "delete" ? "deleted" : "updated"}.`,
+        `${result.succeeded.length} task(s) ${operation === "archive" ? "archived" : "updated"}.`,
       );
       setError(
         result.failed
@@ -262,7 +249,7 @@ export default function TaskBoard() {
         previous.filter((id) => !result.succeeded.includes(id)),
       );
       setBulkAction(null);
-      setDeleteIds([]);
+      setArchiveIds([]);
     } catch (reason) {
       if (started === identity.current)
         setError(
@@ -378,7 +365,6 @@ export default function TaskBoard() {
   return (
     <div
       className="min-w-0 max-w-full"
-      style={hasSelection ? { paddingBottom: bulkBarHeight + 32 } : undefined}
     >
       <ModuleWorkspace
         moduleId="tasks"
@@ -438,13 +424,13 @@ export default function TaskBoard() {
               onSelect={setSelected}
               onOpen={(task) => setEditor({ task, readOnly: true })}
               onEdit={(task) => setEditor({ task })}
-              onDelete={(task) => setDeleteIds([task.id])}
+              onArchive={(task) => setArchiveIds([task.id])}
               onStatus={(task) => void change(task)}
               onSort={updateFilter}
               query={query}
               busy={busy}
               canEdit={canEdit}
-              canDelete={canDelete}
+              canArchive={canDelete}
               totalRecords={total}
               onManageColumns={() => setColumnsOpen(true)}
             />
@@ -467,25 +453,7 @@ export default function TaskBoard() {
           </>
         )}
       </ModuleWorkspace>
-      {hasSelection &&
-        createPortal(
-          <section
-            ref={bulkBarRef}
-            aria-label="Selected task actions"
-            className="fixed inset-x-4 bottom-4 z-40 mx-auto flex w-fit max-w-[calc(100%-2rem)] flex-wrap items-center justify-center gap-2 rounded-xl border border-border bg-background p-3 shadow-xl"
-            style={{ bottom: "max(1rem, env(safe-area-inset-bottom))" }}
-          >
-            <span aria-live="polite" className="mr-2 text-sm">
-              {selected.length} selected
-            </span>
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={busy}
-              onClick={() => setSelected([])}
-            >
-              Clear selection
-            </Button>
+      <SelectedRowsBar count={selected.length} onClear={() => setSelected([])} disabled={busy}>
             {canEdit && (
               <>
                 <Button
@@ -525,14 +493,12 @@ export default function TaskBoard() {
                 size="sm"
                 variant="outline"
                 disabled={busy || data.loading}
-                onClick={() => setDeleteIds([...selected])}
+                onClick={() => setArchiveIds([...selected])}
               >
-                Delete
+                Archive
               </Button>
             )}
-          </section>,
-          document.body,
-        )}
+      </SelectedRowsBar>
       <Dialog
         open={bulkAction !== null}
         onOpenChange={(open) => {
@@ -619,17 +585,16 @@ export default function TaskBoard() {
         </DialogContent>
       </Dialog>
       <ConfirmActionDialog
-        open={deleteIds.length > 0}
+        open={archiveIds.length > 0}
         onOpenChange={(open) => {
-          if (!open && !busy) setDeleteIds([]);
+          if (!open && !busy) setArchiveIds([]);
         }}
-        title={deleteIds.length === 1 ? "Delete task?" : "Delete tasks?"}
-        description={`Permanently delete ${deleteIds.length} task(s)?${error ? ` ${error}` : ""}`}
-        warning="This cannot be undone."
-        confirmLabel="Delete"
+        title={archiveIds.length === 1 ? "Archive task?" : "Archive tasks?"}
+        description={`Archive ${archiveIds.length} task(s)? They can be restored from Archived Data.${error ? ` ${error}` : ""}`}
+        confirmLabel="Archive"
         variant="destructive"
         isLoading={busy}
-        onConfirm={() => runBulk("delete", deleteIds)}
+        onConfirm={() => runBulk("archive", archiveIds)}
       />
       {columnPreferences.error && (
         <p role="alert" className="mt-2 text-sm text-destructive">

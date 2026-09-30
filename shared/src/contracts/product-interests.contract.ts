@@ -18,6 +18,16 @@ export interface ProductInterest {
   updatedAt: string;
 }
 export type ProductInterestConfig = ProductInterest[];
+export interface ProductWonDeal {
+  id: string;
+  title: string;
+  value: number | null;
+  currency: string;
+  customers: string[];
+  company: string | null;
+  closedAt: string | null;
+  assignedAgent: string | null;
+}
 export function withProductOptions<T extends { mapToField?: string; options?: string[] }>(fields: T[], products: ProductInterest[]): T[] {
   return fields.map(field => field.mapToField === 'productInterest' ? { ...field, options: products.map(p => p.id), optionLabels: Object.fromEntries(products.map(p => [p.id, p.name])) } : field);
 }

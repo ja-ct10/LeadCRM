@@ -1,4 +1,5 @@
 'use client';
+import { ProductsPage } from './products-page';
 import { ProductInterestsSettings } from './product-interests-settings';
 
 import React, { useState, useEffect } from "react";
@@ -50,6 +51,7 @@ type SettingsTab =
   | 'org-general'
   | 'users'
   | 'roles'
+  | 'products'
   | 'custom-fields'
   | 'archived'
   | 'account-details'
@@ -83,6 +85,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'CUSTOMIZATION',
     items: [
       { id: 'custom-fields', label: 'Custom Fields', icon: Zap },
+      { id: 'products', label: 'Products', icon: Zap },
       { id: 'archived', label: 'Archived Data', icon: Archive },
     ],
   },
@@ -408,11 +411,12 @@ export default function SettingsPage(): React.ReactElement {
     'org-general': renderOrgGeneralTab,
     'users': renderUsersTab,
     'custom-fields': renderCustomFieldsTab,
+    'products': () => <ProductsPage key={tenant?.id} />,
     'archived': renderArchivedTab,
     'account-details': renderAccountDetailsTab,
   };
 
-  const VALID_TABS: SettingsTab[] = ['profile', 'appearance', 'org-general', 'users', 'roles', 'custom-fields', 'archived', 'account-details', 'forms', 'audit'];
+  const VALID_TABS: SettingsTab[] = ['profile', 'appearance', 'org-general', 'users', 'roles', 'custom-fields', 'products', 'archived', 'account-details', 'forms', 'audit'];
   useEffect(() => {
     if (tabFromUrl && VALID_TABS.includes(tabFromUrl as SettingsTab)) {
       setActiveTab(tabFromUrl as SettingsTab);
@@ -513,6 +517,7 @@ export default function SettingsPage(): React.ReactElement {
         // Tabs that render their own title/header internally â€” suppress the page header
         const hasOwnHeader =
           activeTab === 'custom-fields' ||
+          activeTab === 'products' ||
           activeTab === 'org-general' ||
           activeTab === 'users' ||
           activeTab === 'roles' ||

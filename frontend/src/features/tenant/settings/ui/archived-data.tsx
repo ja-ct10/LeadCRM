@@ -1,4 +1,6 @@
 'use client';
+import { SelectedRowsBar } from '@/shared/components/crm/selected-rows-bar';
+
 
 import React, { useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
@@ -123,12 +125,6 @@ export function ArchivedData(): React.ReactElement {
             </button>
           ))}
         </div>
-        {selected.length > 0 && <div className="flex items-center gap-3 text-xs text-slate-600 dark:text-slate-300" role="group" aria-label="Bulk restore">
-          <span aria-live="polite">{selected.length} selected</span>
-          <button type="button" className={restoreClass} disabled={restoring || selected.some(record => !record.canRestore)} onClick={() => setPending({ records: selected, bulk: true })}>
-            <RefreshCw size={14} aria-hidden="true" />Restore All
-          </button>
-        </div>}
         {error && <div role="alert" className="text-sm text-red-600">{error} <button type="button" className="underline" onClick={() => void refetch()}>Retry</button></div>}
         {isInitialLoad ? <TableLoadingState label="Loading archived records..." /> : (
           <DataGrid<ArchivedRecord> columns={columns} data={error ? EMPTY_RECORDS : records} getRowId={rowId}
@@ -144,10 +140,13 @@ export function ArchivedData(): React.ReactElement {
             onPageChange={changePage} onPageSizeChange={size => { setPageSize(size); changePage(1); }}
             refreshing={isRefreshing} disabled={restoring || isRefreshing} />
         </div>}
+        <SelectedRowsBar count={selected.length} onClear={() => setSelectedIds(new Set())} disabled={restoring}>
+          <button type="button" className={restoreClass} disabled={restoring || selected.some(record => !record.canRestore)} onClick={() => setPending({ records: selected, bulk: true })}>Restore</button>
+        </SelectedRowsBar>
         <ConfirmActionDialog open={pending !== null} onOpenChange={open => { if (!open && !restoring) setPending(null); }}
           title={pending?.bulk ? 'Restore selected records?' : 'Restore record?'}
           description={pending?.bulk ? `This will restore ${pending.records.length} archived records to their original modules.` : 'This record will be restored to its original module.'}
-          confirmLabel={pending?.bulk ? 'Restore All' : 'Restore'} cancelLabel="Cancel" isLoading={restoring} onConfirm={confirmRestore} />
+          confirmLabel="Restore" cancelLabel="Cancel" isLoading={restoring} onConfirm={confirmRestore} />
       </div>
     </TooltipProvider>
   );

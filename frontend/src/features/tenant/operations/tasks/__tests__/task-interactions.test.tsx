@@ -8,7 +8,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-const api = vi.hoisted(() => ({ options: vi.fn(), post: vi.fn() }));
+const api = vi.hoisted(() => ({ get: vi.fn(), options: vi.fn(), post: vi.fn() }));
 vi.mock("@/lib/config", () => ({ USE_MOCK_DATA: false }));
 vi.mock("@/store/DataContext", () => {
   const data = { users: [], contacts: [], organizations: [], deals: [] };
@@ -31,6 +31,7 @@ import { normalizeTaskColumns } from "../task-columns";
 afterEach(cleanup);
 beforeEach(() => {
   vi.resetAllMocks();
+  api.get.mockResolvedValue({ data: [], meta: { enabled: true } });
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -121,6 +122,7 @@ it("preserves a failed contact draft and selects the saved response only after a
   fireEvent.change(screen.getByLabelText(/last name \*/i), {
     target: { value: "Person" },
   });
+  fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'task-contact@example.test' } });
   fireEvent.click(screen.getByRole("button", { name: /create contact/i }));
   expect((await screen.findByRole("alert")).textContent).toBe(
     "Contact save failed",
@@ -221,9 +223,9 @@ it("uses saved table order and selects only the displayed page", () => {
       query={{ sortBy: "dueDate", sortOrder: "asc" }}
       busy={false}
       canEdit
-      canDelete
+      canArchive
       onEdit={vi.fn()}
-      onDelete={vi.fn()}
+      onArchive={vi.fn()}
       totalRecords={1}
       onManageColumns={vi.fn()}
     />,
@@ -247,7 +249,7 @@ it("uses saved table order and selects only the displayed page", () => {
   fireEvent.click(trigger);
   expect(
     screen.getAllByRole("menuitem").map((item) => item.textContent),
-  ).toEqual(["View", "Edit", "Delete"]);
+  ).toEqual(["View", "Edit", "Archive"]);
   fireEvent.click(trigger);
   expect(screen.queryByRole("menu")).toBeNull();
 });

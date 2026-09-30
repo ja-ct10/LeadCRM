@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useConfirmDialog } from '@/shared/hooks/use-confirm-dialog';
+import { Button } from '@/shared/components/ui/button';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { ModuleWorkspace, ViewType, AccountPanel, StatusBadge } from '@/shared/components/crm';
@@ -338,6 +339,7 @@ export default function AccountsPage(): React.ReactElement {
       try {
         await Promise.all(ids.map((id) => handleArchive(id)));
 
+        setAccountSelectedIds(new Set());
         close();
         toast.success('Account archived');
       } catch (error) {
@@ -350,6 +352,7 @@ export default function AccountsPage(): React.ReactElement {
     <>
       <ConfirmActionDialog {...dialogProps} />
       <ModuleWorkspace
+        bulkSelection={{ count: accountSelectedIds.size, onClear: () => setAccountSelectedIds(new Set()), actions: canDelete && <Button variant="outline" onClick={() => confirmArchive([...accountSelectedIds], `${accountSelectedIds.size} accounts`)}>Archive</Button> }}
         moduleId="accounts"
         title="Accounts"
         moduleConfig={ACCOUNTS_MODULE_CONFIG}

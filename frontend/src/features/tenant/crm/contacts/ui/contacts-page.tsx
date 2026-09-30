@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useConfirmDialog } from '@/shared/hooks/use-confirm-dialog';
+import { Button } from '@/shared/components/ui/button';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useData } from '@/store/DataContext';
@@ -375,6 +376,7 @@ export default function ContactsPage(): React.ReactElement {
       try {
         await Promise.all(ids.map((id) => contactsV2Api.archive(id)));
         await fetchContacts();
+        setContactSelectedIds(new Set());
         close();
         toast.success('Contact archived');
       } catch (error) {
@@ -387,6 +389,7 @@ export default function ContactsPage(): React.ReactElement {
     <>
     <ConfirmActionDialog {...dialogProps} />
       <ModuleWorkspace
+      bulkSelection={{ count: contactSelectedIds.size, onClear: () => setContactSelectedIds(new Set()), actions: canDelete && <Button variant="outline" onClick={() => confirmArchive([...contactSelectedIds], `${contactSelectedIds.size} contacts`)}>Archive</Button> }}
       moduleId="contacts"
       title="Contacts"
       moduleConfig={CONTACTS_MODULE_CONFIG}

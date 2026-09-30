@@ -20,6 +20,10 @@ import { SideSheet } from '@/shared/components/side-sheet';
 import { CampaignReportView } from './campaign-report-view';
 import { CampaignBuilder } from './campaign-builder';
 
+import { DataGrid, type DataGridColumnDef } from '@/shared/components/data-grid';
+import { BulkSelectionBar, executeSelectedRows } from '@/shared/components/crm/bulk-selection-bar';
+import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
+import { RefreshButton } from '@/shared/components/crm/refresh-button';
 import { LeadsPagination } from '@/shared/components/crm/leads-pagination';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
 
@@ -58,6 +62,9 @@ export default function CampaignsPage() {
     type: typeFilter.map(value => value.toUpperCase().replace('-', '_')).join(','),
   } });
 
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [archiving, setArchiving] = useState<Campaign | null>(null);
+  useEffect(() => { setSelected(new Set()); setArchiving(null); }, [user?.tenantId, user?.activeEnvironment, currentPage, pageSize, searchTerm, statusFilter, typeFilter, activeTab]);
   const campaigns = serverCampaigns;
   const templates = serverTemplates;
   useEffect(() => { goToPage(1); }, [searchTerm, statusFilter, typeFilter, activeTab]);
@@ -97,9 +104,6 @@ export default function CampaignsPage() {
       await campaignsApi.create({ name: `${full.name.slice(0, 140)} (Copy)`, type: full.type === 'Email' ? 'EMAIL' : full.type === 'Sms' ? 'SMS' : 'MULTI_CHANNEL', subject: full.subject || '', body: full.body || '', targetAudienceId: full.targetAudienceId, audienceSource: full.audienceSource });
       refetchCampaigns(); toast.success('Draft copy created.');
     } catch (e) { toast.error(e instanceof Error ? e.message : 'Could not duplicate campaign.'); }
-  };
-  const deleteCampaign = async (id: string) => {
-    try { await campaignsApi.archive(id); refetchCampaigns(); } catch (e) { toast.error(e instanceof Error ? e.message : 'Could not archive campaign.'); }
   };
   const handleSaveTemplate = async () => {
     if (templateLock.current) return;
@@ -154,6 +158,21 @@ export default function CampaignsPage() {
   const smsTemplates = templates.filter(t => t.type === 'SMS');
 
   const filteredCampaigns = campaigns;
+  const viewCampaign = (campaign: Campaign) => {
+    if (campaign.status.toLowerCase() === 'draft' && canEditCampaign) { setEditingCampaign(campaign); setShowBuilder(true); }
+    else setSelectedCampaignForReport(campaign);
+  };
+  const campaignColumns: DataGridColumnDef<Campaign>[] = [
+    { id: 'name', header: 'Campaign', accessor: row => row.name, width: 260 },
+    { id: 'type', header: 'Type', accessor: row => row.type, width: 140, cell: (_, row) => <span className="flex items-center gap-2">{getTypeIcon(row.type)}{row.type}</span> },
+    { id: 'status', header: 'Status', accessor: row => row.status, width: 140, cell: (_, row) => getStatusBadge(row.status) },
+    { id: 'target', header: 'Target', accessor: row => row.targetAudience, width: 180 },
+    { id: 'submitted', header: 'Submitted', accessor: row => row.sentCount, width: 120 },
+    { id: 'opened', header: 'Opened', accessor: row => row.openedCount ?? 0, width: 110 },
+    { id: 'clicked', header: 'Clicked', accessor: row => row.clickedCount ?? 0, width: 110 },
+    { id: 'engagement', header: 'Engagement', accessor: row => `${row.sentCount ? Math.round((row.openedCount || 0) / row.sentCount * 100) : 0}%`, width: 130 },
+    { id: 'created', header: 'Created', accessor: row => row.createdAt, width: 180 },
+  ];
 
   if (showBuilder) {
     return <CampaignBuilder key={`${user?.tenantId}:${user?.activeEnvironment}`} initialCampaign={editingCampaign} initialType={builderInitialType} initialContent={builderInitialContent} initialSubject={builderSubject} canSend={canSendCampaign}
@@ -401,8 +420,8 @@ export default function CampaignsPage() {
                   <Filter size={14} aria-hidden="true" /><span className="hidden sm:inline">Filter</span>
                 </button>
               </TooltipTrigger><TooltipContent>Filter</TooltipContent></Tooltip></TooltipProvider>
+              <RefreshButton label="Refresh campaigns" disabled={isInitialLoad || isRefreshing} refreshing={isRefreshing} onClick={() => void refetchCampaigns()} />
             </div>
-
             <div className="flex min-w-0 items-start gap-3">
               <ModuleFilterRail
                 showFilters={showFilters}
@@ -435,120 +454,21 @@ export default function CampaignsPage() {
                 }}
               />
               <div className="min-w-0 flex-1">
-            <div className="bg-white dark:bg-white/2 rounded-xl border border-gray-200 dark:border-white/5 shadow-lg backdrop-blur-xl overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-white dark:bg-white/2 text-slate-500 dark:text-slate-400 border-b border-gray-200 dark:border-white/5">
-                    <tr>
-                      <th className="px-6 py-4 font-medium">Campaign</th>
-                      <th className="px-6 py-4 font-medium">Type</th>
-                      <th className="px-6 py-4 font-medium">Status</th>
-                      <th className="px-6 py-4 font-medium">Target</th>
-                      <th className="px-6 py-4 font-medium">Performance</th>
-                      <th className="px-6 py-4 font-medium">Engagement</th>
-                      <th className="px-6 py-4 font-medium text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5">
-                    {isInitialLoad ? <tr><td colSpan={7}><TableLoadingState label="Loading campaigns..." /></td></tr> : filteredCampaigns.length > 0 ? filteredCampaigns.map(camp => (
-                      <tr key={camp.id} className="hover:bg-white dark:bg-white/2 transition-colors group">
-                        <td className="px-6 py-4">
-                          <div className="font-medium text-slate-900 dark:text-white">{camp.name}</div>
-                          {camp.description && <div className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">{camp.description}</div>}
-                          <div className="text-slate-500 text-xs mt-1">Created: {camp.createdAt}</div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
-                            {getTypeIcon(camp.type)}
-                            <span>{camp.type}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          {getStatusBadge(camp.status)}
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
-                            <div className="w-5 h-5 rounded-full bg-gray-50 dark:bg-white/5 flex items-center justify-center border border-gray-200 dark:border-white/5">
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-                            </div>
-                            <span className="text-sm">{camp.targetAudience}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="space-y-1 text-xs">
-                            <div className="flex justify-between gap-4">
-                              <span className="text-slate-500">Submitted:</span>
-                              <span className="font-medium text-slate-700 dark:text-slate-300">{camp.sentCount}</span>
-                            </div>
-                            {camp.openedCount !== undefined && (
-                              <div className="flex justify-between gap-4">
-                                <span className="text-slate-500">Opened:</span>
-                                <span className="font-medium text-slate-700 dark:text-slate-300">{camp.openedCount} ({camp.sentCount ? Math.round((camp.openedCount / camp.sentCount) * 100) : 0}%)</span>
-                              </div>
-                            )}
-                            {camp.clickedCount !== undefined && (
-                              <div className="flex justify-between gap-4">
-                                <span className="text-slate-500">Clicked:</span>
-                                <span className="font-medium text-slate-700 dark:text-slate-300">{camp.clickedCount} ({camp.sentCount ? Math.round((camp.clickedCount / camp.sentCount) * 100) : 0}%)</span>
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-24 h-2 bg-gray-50 dark:bg-white/5 rounded-full overflow-hidden">
-                              <div 
-                                className="h-full bg-slate-400 rounded-full" 
-                                style={{ width: `${camp.sentCount ? Math.round((camp.openedCount || 0) / camp.sentCount * 100) : 0}%` }}
-                              ></div>
-                            </div>
-                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{camp.sentCount ? Math.round((camp.openedCount || 0) / camp.sentCount * 100) : 0}% opened</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <TooltipProvider><Tooltip><TooltipTrigger asChild><button
-                              aria-label="View Report"
-                              onClick={() => setSelectedCampaignForReport(camp)}
-                              className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-md transition-colors"
-                            >
-                              <BarChart2 size={16} />
-                            </button></TooltipTrigger><TooltipContent>View Report</TooltipContent></Tooltip></TooltipProvider>
-                            {canCreateCampaign && (
-                              <TooltipProvider><Tooltip><TooltipTrigger asChild><button onClick={() => handleDuplicate(camp)} aria-label="Duplicate" className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-md transition-colors">
-                                <Copy size={16} />
-                              </button></TooltipTrigger><TooltipContent>Duplicate</TooltipContent></Tooltip></TooltipProvider>
-                            )}
-                            {canEditCampaign && camp.status === 'Draft' && (
-                              <TooltipProvider><Tooltip><TooltipTrigger asChild><button onClick={() => {
-                                setEditingCampaign(camp);
-                                setShowBuilder(true);
-                              }} aria-label="Edit" className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-md transition-colors">
-                                <Edit2 size={16} />
-                              </button></TooltipTrigger><TooltipContent>Edit</TooltipContent></Tooltip></TooltipProvider>
-                            )}
-                            {canDeleteCampaign && (
-                              <TooltipProvider><Tooltip><TooltipTrigger asChild><button onClick={() => { if(confirm('Archive this campaign?')) deleteCampaign(camp.id); }} aria-label="Archive" className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/20 rounded-md transition-colors">
-                                <Trash2 size={16} />
-                              </button></TooltipTrigger><TooltipContent>Archive</TooltipContent></Tooltip></TooltipProvider>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )) : (
-                      <tr>
-                        <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
-                          <div className="flex flex-col items-center justify-center">
-                            <Search size={32} className="text-slate-600 mb-3" />
-                            <p>No campaigns found matching your criteria.</p>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            {isInitialLoad ? <TableLoadingState label="Loading campaigns..." /> : <DataGrid<Campaign>
+              columns={campaignColumns} data={filteredCampaigns} getRowId={row => row.id} height="auto" selectable={canDeleteCampaign} selectedIds={selected} onSelectionChange={setSelected}
+              enableColumnMenu={false} ariaLabel="Campaigns table" summaryLabel={`${totalItems} total records`} onRowClick={viewCampaign}
+              rowActions={campaign => [
+                { id: 'view', label: 'View', onClick: () => viewCampaign(campaign) },
+                ...(canCreateCampaign ? [{ id: 'duplicate', label: 'Duplicate', onClick: () => void handleDuplicate(campaign) }] : []),
+                ...(canDeleteCampaign ? [{ id: 'archive', label: 'Archive', onClick: () => setArchiving(campaign) }] : []),
+              ]} />}
+            <BulkSelectionBar selectedCount={selected.size} selectedIds={selected} onClearSelection={() => setSelected(new Set())} onRemoveIds={ids => setSelected(previous => new Set([...previous].filter(id => !ids.includes(id))))}
+              actions={canDeleteCampaign ? [{ id: 'archive', label: 'Archive', entityName: 'campaign', destructive: true, onExecute: async ids => { const result = await executeSelectedRows(ids, campaignsApi.archive); await refetchCampaigns(); return result; } }] : []} />
+            <ConfirmActionDialog open={!!archiving} onOpenChange={open => { if (!open) setArchiving(null); }} title="Archive this campaign?" description="Campaign history and status are preserved." confirmLabel="Archive" onConfirm={async () => {
+              if (!archiving) return;
+              try { await campaignsApi.archive(archiving.id); setArchiving(null); setSelected(new Set()); await refetchCampaigns(); toast.success('Campaign archived.'); }
+              catch (e) { toast.error(e instanceof Error ? e.message : 'Unable to archive campaign.'); }
+            }} />
 
             <div className="mt-4">
               <LeadsPagination

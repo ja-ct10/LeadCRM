@@ -40,7 +40,7 @@ it('uses the shared grid, actual timestamp and one scrolling filter row', async 
   expect(screen.getByRole('status').querySelector('.animate-spin')).toBeTruthy();
   expect(screen.getByText('Archived Data Recovery')).toBeTruthy();
   const filters = screen.getByRole('group', { name: 'Archived record types' });
-  expect(within(filters).getAllByRole('button').map(button => button.textContent)).toEqual(['All', 'Lead', 'Contact', 'Account', 'Deal', 'User']);
+  expect(within(filters).getAllByRole('button').map(button => button.textContent)).toEqual(['All', 'Lead', 'Contact', 'Account', 'Deal', 'User', 'Task']);
   expect(filters.className).toContain('overflow-x-auto');
   expect(filters.className).toContain('flex-nowrap');
   await screen.findByText('Saved Lead');
@@ -51,7 +51,7 @@ it('uses the shared grid, actual timestamp and one scrolling filter row', async 
 });
 
 it.each([
-  ['Lead', 'crm/leads'], ['Contact', 'crm/contacts'], ['Account', 'crm/accounts'], ['Deal', 'crm/deals'], ['User', 'administration/users'],
+  ['Lead', 'crm/leads'], ['Contact', 'crm/contacts'], ['Account', 'crm/accounts'], ['Deal', 'crm/deals'], ['User', 'administration/users'], ['Task', 'administration/archived-data/Task'],
 ])('confirms %s restoration using its configured endpoint', async (label, route) => {
   rows = [{ ...rows[0], id: label.toLowerCase() + '-id', type: label as ArchivedRecord['type'], name: 'Saved ' + label }];
   render(<ArchivedData />); await screen.findByText('Saved ' + label);
@@ -86,7 +86,7 @@ it('selects, deselects and restores all visible records only after bulk confirma
   expect(all.indeterminate).toBe(true);
   fireEvent.click(all); expect(screen.getByText('3 selected')).toBeTruthy();
   fireEvent.click(all); expect(screen.queryByRole('group', { name: 'Bulk restore' })).toBeNull();
-  fireEvent.click(all); fireEvent.click(screen.getByRole('button', { name: 'Restore All' }));
+  fireEvent.click(all); fireEvent.click(screen.getByRole('button', { name: 'Restore' }));
   expect(writes()).toHaveLength(0);
   expect(screen.getByText('This will restore 3 archived records to their original modules.')).toBeTruthy();
   confirm();
@@ -99,7 +99,7 @@ it('keeps failed records and reports partial bulk results accurately', async () 
   failIds.add('contact-id');
   render(<ArchivedData />); await screen.findByText('Saved Lead');
   fireEvent.click(screen.getByRole('checkbox', { name: 'Select all records' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Restore All' })); confirm();
+  fireEvent.click(screen.getByRole('button', { name: 'Restore' })); confirm();
   await waitFor(() => expect(state.error).toHaveBeenCalledWith('1 record could not be restored. Permission denied'));
   expect(state.success).toHaveBeenCalledWith('2 records restored');
   expect(screen.getByText('Saved Contact')).toBeTruthy();

@@ -13,7 +13,7 @@ import {
   useDataGridColumns,
   type CellRendererMap,
 } from "@/shared/components/data-grid";
-import { Eye, Edit, Trash2 } from "lucide-react";
+import { Eye, Edit, Archive } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 interface Props {
   tasks: TaskRecord[];
@@ -26,9 +26,9 @@ interface Props {
   query: TaskListQuery;
   busy: boolean;
   canEdit: boolean;
-  canDelete: boolean;
+  canArchive: boolean;
   onEdit: (task: TaskRecord) => void;
-  onDelete: (task: TaskRecord) => void;
+  onArchive: (task: TaskRecord) => void;
   totalRecords: number;
   onManageColumns: () => void;
 }
@@ -43,13 +43,13 @@ export function TaskTable({
   query,
   busy,
   canEdit,
-  canDelete,
+  canArchive,
   onEdit,
-  onDelete,
+  onArchive,
   totalRecords,
   onManageColumns,
 }: Props) {
-  const selectable = canEdit || canDelete;
+  const selectable = canEdit || canArchive;
   const relation = (text?: string | null) =>
     text ? (
       <span
@@ -245,12 +245,12 @@ export function TaskTable({
           onClick: () => onEdit(task),
         },
         {
-          id: "delete",
-          label: "Delete",
-          icon: <Trash2 size={14} />,
+          id: "archive",
+          label: "Archive",
+          icon: <Archive size={14} />,
           destructive: true,
-          disabled: busy || !canDelete,
-          onClick: () => onDelete(task),
+          disabled: busy || !canArchive || !!task.isArchived,
+          onClick: () => onArchive(task),
         },
       ]}
       onSettingsClick={onManageColumns}

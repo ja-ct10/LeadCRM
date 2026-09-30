@@ -60,8 +60,10 @@ try {
   );
   await run(path.join(root, "../node_modules/vitest/vitest.mjs"), [
     "run",
-    "src/modules/operations/tasks/__tests__/tasks.integration.test.ts",
-    "src/modules/automation/workflows/__tests__/workflow.integration.test.ts",
+    ...(process.argv.length > 2 ? process.argv.slice(2) : [
+      "src/modules/operations/tasks/__tests__/tasks.integration.test.ts",
+      "src/modules/automation/workflows/__tests__/workflow.integration.test.ts",
+    ]),
     "--maxWorkers=1",
     "--pool=threads",
   ]);

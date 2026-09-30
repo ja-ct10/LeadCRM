@@ -15,12 +15,13 @@ const makeDraft = (user?: User): Draft => ({ firstName: user?.firstName ?? '', l
 const placeholders: Partial<Record<keyof Draft, string>> = { firstName: 'e.g. Juan', lastName: 'e.g. Dela Cruz', email: 'e.g. juan.delacruz', jobTitle: 'e.g. Sales Representative', department: 'e.g. Sales' };
 const labels = { firstName: 'First Name', lastName: 'Last Name', email: 'Email', phone: 'Phone', role: 'Role', jobTitle: 'Job Title', department: 'Department', status: 'Status' };
 
-export function UserPanel({ user, roles, canEdit, onSaved, onClose }: {
+export function UserPanel({ user, roles, canEdit, onSaved, onClose, initiallyEditing = false }: {
+  initiallyEditing?: boolean;
   user?: User; roles: { id: string; name: string }[]; canEdit: boolean;
   onSaved: (user: User) => void; onClose: () => void;
 }) {
   const [saved, setSaved] = useState(user);
-  const [editing, setEditing] = useState(!user);
+  const [editing, setEditing] = useState(!user || (canEdit && initiallyEditing));
   const [draft, setDraft] = useState(() => makeDraft(user));
   const [errors, setErrors] = useState<Partial<Record<keyof Draft, string>>>({});
   const [touched, setTouched] = useState<Partial<Record<keyof Draft, boolean>>>({});

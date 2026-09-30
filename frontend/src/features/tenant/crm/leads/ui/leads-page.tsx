@@ -3,6 +3,7 @@
 import { LeadCreatedFilter, createdFilterCondition, emptyCreatedFilter, type CreatedFilterDraft } from './lead-created-filter';
 import { isCurrentLeadSource } from '@/lib/constants';
 import { useConfirmDialog } from '@/shared/hooks/use-confirm-dialog';
+import { Button } from '@/shared/components/ui/button';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { leadsService } from '../services/leads.service';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
@@ -504,12 +505,11 @@ export default function LeadsPage(): React.ReactElement {
                 onClear: () => setSelectedIds(new Set()),
                 actions: (
                   canDelete && (
-                    <button
-                      className="text-[12px] text-white/80 hover:text-white transition-colors"
+                    <Button variant="outline"
                       onClick={() => confirmArchive([...selectedIds], `${selectedIds.size} leads`)}
                     >
                       Archive
-                    </button>
+                    </Button>
                   )
                 ),
               }

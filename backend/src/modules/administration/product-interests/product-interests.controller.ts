@@ -3,6 +3,16 @@ import { ProductInterestSchema, ProductInterestPatchSchema, ProductInterestIdSch
 import { productConfiguration, salesTransaction } from '../../crm/leads/lead-automation.service';
 import { AppError } from '../../../shared/errors/app-error';
 import { writeAuditLog } from '../../../core/audit/audit.service';
+import * as service from './product-interests.service';
+
+export async function detail(req: Request, res: Response, next: NextFunction) {
+  try { res.json({ success: true, data: await service.getProduct(req.user!.tenantId, req.params.id) }); }
+  catch (error) { next(error); }
+}
+export async function wonDeals(req: Request, res: Response, next: NextFunction) {
+  try { res.json({ success: true, ...await service.getWonDeals(req.user!.tenantId, req.params.id, req.query) }); }
+  catch (error) { next(error); }
+}
 
 const fieldKey = (tenantId: string) => ({ tenantId, module: 'product-interests', key: 'enabled' });
 export async function get(req: Request, res: Response, next: NextFunction) {

@@ -1,4 +1,6 @@
 'use client';
+import { SelectedRowsBar } from '@/shared/components/crm/selected-rows-bar';
+
 
 import React, { useState, useCallback, useRef, useEffect, useMemo, ReactNode } from 'react';
 import {
@@ -607,27 +609,7 @@ export function ModuleWorkspace({
         </div>
       </div>
 
-      {/* ── Bulk Selection Bar ───────────────────────────────────────── */}
-      <AnimatePresence>
-        {bulkSelection && bulkSelection.count > 0 && (
-          <motion.div
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 20, opacity: 0 }}
-            className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-[#0F172A] dark:bg-slate-700 text-white rounded-xl px-4 py-2.5 shadow-xl flex items-center gap-3 text-[13px]"
-          >
-            <span className="font-semibold">{bulkSelection.count} selected</span>
-            <button
-              onClick={bulkSelection.onClear}
-              className="text-slate-300 hover:text-white text-[12px] underline transition-colors"
-            >
-              Clear
-            </button>
-            <div className="h-4 w-px bg-slate-600" />
-            {bulkSelection.actions}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {bulkSelection && <SelectedRowsBar count={bulkSelection.count} onClear={bulkSelection.onClear}>{bulkSelection.actions}</SelectedRowsBar>}
     </div>
   );
 }

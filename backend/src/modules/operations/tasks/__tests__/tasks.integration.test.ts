@@ -241,6 +241,20 @@ describe.skipIf(!disposable)(
         ),
       ).toBe(true);
     });
+    it("bulk archives persist and Task recovery uses Archived Data with permission checks", async () => {
+      const task = (await call('/operations/tasks', 'POST', draft('Recoverable task'))).body.data;
+      expect((await call('/operations/tasks/bulk', 'POST', { operation: 'archive', ids: [task.id] })).body.data.succeeded).toEqual([task.id]);
+      expect((await call('/operations/tasks')).body.data.some((row: any) => row.id === task.id)).toBe(false);
+      const archived = await call('/administration/archived-data?type=Task');
+      expect(archived.status, JSON.stringify(archived.body)).toBe(200);
+      expect(archived.body.data.some((row: any) => row.id === task.id && row.canRestore)).toBe(true);
+      const path = `/administration/archived-data/Task/${task.id}/restore`;
+      expect((await call(path, 'PATCH', undefined, readerToken)).status).toBe(403);
+      expect((await call(path, 'PATCH')).status).toBe(200);
+      expect((await call(`/operations/tasks/${task.id}`)).body.data).toMatchObject({ isArchived: false, title: 'Recoverable task' });
+      expect((await call(path, 'PATCH')).status).toBe(404);
+      expect((await call('/administration/archived-data/Task/invalid/restore', 'PATCH')).status).toBe(400);
+    });
     it("rejects cross-tenant, cross-environment, inactive, and invalid references", async () => {
       for (const bad of [
         { assignedUserId: outsider.id },

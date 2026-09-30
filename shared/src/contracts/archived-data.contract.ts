@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const ARCHIVE_TYPES = ['Lead', 'Contact', 'Account', 'Deal', 'User'] as const;
+export const ARCHIVE_TYPES = ['Lead', 'Contact', 'Account', 'Deal', 'User', 'Task'] as const;
 export const ArchiveTypeSchema = z.enum(ARCHIVE_TYPES);
 export type ArchiveType = z.infer<typeof ArchiveTypeSchema>;
 export const ArchiveQuerySchema = z.object({
@@ -10,7 +10,7 @@ export const ArchiveQuerySchema = z.object({
 }).strict();
 // Types with no existing restore route. Other types keep their established APIs.
 export const ArchiveRestoreParamsSchema = z.object({
-  type: z.enum(['Pipeline', 'Role', 'Workflow', 'Campaign', 'Template']),
+  type: z.enum(['Pipeline', 'Role', 'Workflow', 'Campaign', 'Template', 'Task']),
   id: z.string().uuid(),
 }).strict();
 export interface ArchivedRecord {

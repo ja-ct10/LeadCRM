@@ -12,6 +12,7 @@ import { ModuleFilterRail } from '@/shared/components/crm/module-filter-rail';
 import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { useAuth } from '@/store/AuthContext';
 import { workflowsApi, getWorkflowMetadata } from '@/shared/services/workflows.api';
+import { BulkSelectionBar, executeSelectedRows } from '@/shared/components/crm/bulk-selection-bar';
 import { Button } from '@/shared/components/ui/button';
 
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
@@ -43,6 +44,8 @@ export default function WorkflowsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [runs, setRuns] = useState<Workflow | null>(null);
   const [archiving, setArchiving] = useState<Workflow | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  useEffect(() => { setSelected(new Set()); setArchiving(null); setRuns(null); }, [tenant?.id, user?.activeEnvironment, page, pageSize, search, statuses, triggers]);
   const [busy, setBusy] = useState(false);
   const mutationLock = useRef(false);
   useEffect(() => {
@@ -70,16 +73,8 @@ export default function WorkflowsPage() {
     { id: 'lastRun', header: 'Last run', accessor: row => row.lastRunAt ? new Date(row.lastRunAt).toLocaleString() : '—', width: 190 },
     { id: 'runs', header: 'Runs', accessor: row => row.totalRuns ?? 0, width: 190,
       cell: (_, row) => <div><span>{row.totalRuns ?? 0} total</span><span className="block text-xs text-slate-500">{row.successfulRuns ?? 0} successful / {row.failedRuns ?? 0} failed</span></div> },
-    { id: 'actions', header: 'Actions', accessor: row => row.id, width: 272, minWidth: 272,
-      cell: (_, workflow) => <div className="flex items-center gap-1 whitespace-nowrap">
-        <TableIconButton touchFriendly label="Edit workflow" disabled={!metadata || busy} onClick={() => router.push(`/automation/workflows/${workflow.id}/edit`)}><Edit size={14} aria-hidden="true" /></TableIconButton>
-        {canCreate && <TableIconButton touchFriendly label="Duplicate workflow" disabled={busy} onClick={() => void mutate(() => workflowsApi.create({ ...toWorkflowDraft(workflow), name: `${workflow.name.slice(0,248)} (Copy)`, isActive: false }), 'Workflow duplicated as a draft.')}><Copy size={14} aria-hidden="true" /></TableIconButton>}
-        <TableIconButton touchFriendly label="View runs" onClick={() => setRuns(workflow)}><Activity size={14} aria-hidden="true" /></TableIconButton>
-        {canEdit && <TableIconButton touchFriendly label={workflow.isActive ? 'Pause workflow' : 'Resume workflow'} disabled={busy} onClick={() => void mutate(() => workflowsApi.toggle(workflow.id, !workflow.isActive), workflow.isActive ? 'Workflow paused.' : 'Workflow activated.')}>
-          {workflow.isActive ? <Pause size={14} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
-        </TableIconButton>}
-        {canDelete && <TableIconButton touchFriendly label="Archive workflow" disabled={busy} onClick={() => setArchiving(workflow)}><Archive size={14} aria-hidden="true" /></TableIconButton>}
-      </div> },
+    { id: 'actions', header: 'Actions', accessor: row => row.id, width: 110,
+      cell: (_, workflow) => <TableIconButton touchFriendly label="View runs" onClick={() => setRuns(workflow)}><Activity size={14} /></TableIconButton> },
   ];
   async function mutate(work: () => Promise<unknown>, message: string) {
     if (mutationLock.current) return;
@@ -107,13 +102,25 @@ export default function WorkflowsPage() {
         ]}
         onFilterToggle={(group, id) => { const setter = group === 'status' ? setStatuses : setTriggers; setter(previous => previous.includes(id) ? previous.filter(value => value !== id) : [...previous, id]); setPage(1); }} />
       <div className="min-w-0 flex-1">
-        {isInitialLoad ? <TableLoadingState label="Loading workflows..." /> : <DataGrid<Workflow> columns={columns} data={workflows} getRowId={row => row.id} height="auto" selectable={false} enableColumnMenu={false} ariaLabel="Workflows table"
+        {isInitialLoad ? <TableLoadingState label="Loading workflows..." /> : <DataGrid<Workflow> columns={columns} data={workflows} getRowId={row => row.id} height="auto" selectable={canEdit || canDelete} selectedIds={selected} onSelectionChange={setSelected}
+          rowActions={workflow => [
+            { id: 'view', label: 'View', onClick: () => router.push(`/automation/workflows/${workflow.id}/edit?view=true`) },
+            ...(canEdit ? [{ id: 'edit', label: 'Edit', disabled: busy, onClick: () => router.push(`/automation/workflows/${workflow.id}/edit`) }] : []),
+            ...(canCreate ? [{ id: 'duplicate', label: 'Duplicate', disabled: busy, onClick: () => void mutate(async () => { const full = (await workflowsApi.get(workflow.id)).data; await workflowsApi.create({ ...toWorkflowDraft(full), name: `${full.name.slice(0,248)} (Copy)`, isActive: false }); }, 'Workflow duplicated as a draft.') }] : []),
+            ...(canEdit ? [{ id: 'pause', label: workflow.isActive ? 'Pause' : 'Resume', disabled: busy, onClick: () => void mutate(() => workflowsApi.toggle(workflow.id, !workflow.isActive), workflow.isActive ? 'Workflow paused.' : 'Workflow activated.') }] : []),
+            ...(canDelete ? [{ id: 'archive', label: 'Archive', disabled: busy, onClick: () => setArchiving(workflow) }] : []),
+          ]} enableColumnMenu={false} ariaLabel="Workflows table"
           summaryLabel={`${total} total ${total === 1 ? 'record' : 'records'}`} emptyMessage={workflowsError ? 'Unable to load workflows.' : 'No workflows match. Create a workflow or adjust your filters.'} />}
         <LeadsPagination currentPage={page} totalRecords={total} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); }} loading={isInitialLoad} refreshing={isRefreshing} disabled={workflowsLoading} />
       </div>
     </div>
+    <BulkSelectionBar selectedCount={selected.size} selectedIds={selected} onClearSelection={() => setSelected(new Set())} onRemoveIds={ids => setSelected(previous => new Set([...previous].filter(id => !ids.includes(id))))}
+      actions={[
+        ...(canEdit ? [{ id: 'pause', label: 'Pause', destructive: false, onExecute: async (ids: string[]) => { const result = await executeSelectedRows(ids, async id => { const current = (await workflowsApi.get(id)).data; if (current.isActive) await workflowsApi.toggle(id, false); }); await refreshWorkflows(); return result; } }] : []),
+        ...(canDelete ? [{ id: 'archive', label: 'Archive', destructive: true, entityName: 'workflow', onExecute: async (ids: string[]) => { const result = await executeSelectedRows(ids, workflowsApi.archive); await refreshWorkflows(); return result; } }] : []),
+      ]} />
     {createOpen && <WorkflowDialog title="Create workflow" onClose={() => setCreateOpen(false)}><Button onClick={() => router.push('/automation/workflows/new')}>Start from scratch</Button><h3 className="font-semibold">Use a template</h3>{WORKFLOW_RECIPES.map((recipe,index) => <Button className="w-full justify-start" variant="outline" key={recipe.name} onClick={() => router.push(`/automation/workflows/new?template=${index}`)}>{recipe.name}</Button>)}</WorkflowDialog>}
     {runs && <WorkflowExecutionLogModal workflowId={runs.id} name={runs.name} onClose={() => setRuns(null)} />}
-    <ConfirmActionDialog open={!!archiving} onOpenChange={open => {if (!open) setArchiving(null);}} title="Archive workflow?" description="This pauses the workflow and preserves its run history." confirmLabel="Archive" variant="destructive" onConfirm={async () => { if (archiving) await mutate(async () => {await workflowsApi.archive(archiving.id);setArchiving(null);},'Workflow archived.'); }} />
+    <ConfirmActionDialog open={!!archiving} onOpenChange={open => {if (!open) setArchiving(null);}} title="Archive workflow?" description="This pauses the workflow and preserves its run history." confirmLabel="Archive" variant="destructive" onConfirm={async () => { if (archiving) await mutate(async () => {await workflowsApi.archive(archiving.id);setSelected(new Set());setArchiving(null);},'Workflow archived.'); }} />
   </div>;
 }
