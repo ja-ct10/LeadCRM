@@ -40,6 +40,7 @@ it('uses the shared grid, actual timestamp and one scrolling filter row', async 
   expect(screen.getByRole('status').querySelector('.animate-spin')).toBeTruthy();
   expect(screen.getByText('Archived Data Recovery')).toBeTruthy();
   const filters = screen.getByRole('group', { name: 'Archived record types' });
+  expect(within(filters).getAllByRole('button').map(button => button.textContent)).toEqual(['All', 'Lead', 'Contact', 'Account', 'Deal', 'User']);
   expect(filters.className).toContain('overflow-x-auto');
   expect(filters.className).toContain('flex-nowrap');
   await screen.findByText('Saved Lead');
@@ -51,7 +52,6 @@ it('uses the shared grid, actual timestamp and one scrolling filter row', async 
 
 it.each([
   ['Lead', 'crm/leads'], ['Contact', 'crm/contacts'], ['Account', 'crm/accounts'], ['Deal', 'crm/deals'], ['User', 'administration/users'],
-  ...['Pipeline', 'Role', 'Workflow', 'Campaign', 'Template'].map(type => [type, 'administration/archived-data/' + type]),
 ])('confirms %s restoration using its configured endpoint', async (label, route) => {
   rows = [{ ...rows[0], id: label.toLowerCase() + '-id', type: label as ArchivedRecord['type'], name: 'Saved ' + label }];
   render(<ArchivedData />); await screen.findByText('Saved ' + label);

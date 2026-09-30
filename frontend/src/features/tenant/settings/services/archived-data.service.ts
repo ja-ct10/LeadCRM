@@ -4,9 +4,6 @@ import type { ArchivedRecord, ArchiveType, PaginatedResponse } from '@leadcrm/sh
 const restorePaths: Record<ArchiveType, string> = {
   Lead: '/crm/leads', Contact: '/crm/contacts', Account: '/crm/accounts', Deal: '/crm/deals',
   User: '/administration/users',
-  Pipeline: '/administration/archived-data/Pipeline', Role: '/administration/archived-data/Role',
-  Workflow: '/administration/archived-data/Workflow', Campaign: '/administration/archived-data/Campaign',
-  Template: '/administration/archived-data/Template',
 };
 
 export const archivedDataService = {

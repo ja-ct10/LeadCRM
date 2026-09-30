@@ -20,9 +20,9 @@ import { ContactFormSheet } from './contact-form';
 import { ColumnsPopover } from '@/shared/components/data-grid';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { ChevronLeft, ChevronRight, Users } from 'lucide-react';
+import { Users } from 'lucide-react';
 import { ActionableEmptyState } from '@/shared/components/actionable-empty-state';
-import { PageSizeSelect } from '@/shared/components/page-size-select';
+import { LeadsPagination } from '@/shared/components/crm/leads-pagination';
 import { useRouter } from 'next/navigation';
 import { contactsV2Api } from '@/shared/services/contacts-v2.api';
 import { CRM_STATUSES, normalizeCrmStatus, compareSortValues } from '@leadcrm/shared';
@@ -483,22 +483,7 @@ export default function ContactsPage(): React.ReactElement {
 
       {/* ── Bottom Pagination + Per Page ─────────────────────── */}
       {(activeView === 'list' || activeView === 'table') && filteredContacts.length > 0 && (
-        <div className="flex items-center justify-between px-4 py-3 mt-2 bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 rounded-lg">
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-slate-500 dark:text-slate-400">Per page</label>
-            <PageSizeSelect value={pageSize} onChange={(size) => { setPageSize(size); setCurrentPage(1); }} />
-            <span className="text-xs text-slate-400 dark:text-slate-500 ml-2">{filteredContacts.length} total records</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">Page {currentPage} of {Math.ceil(filteredContacts.length / pageSize) || 1}</span>
-            <button onClick={() => setCurrentPage(Math.max(1, currentPage - 1))} disabled={currentPage <= 1} className={cn('inline-flex items-center justify-center w-7 h-7 rounded-md border transition-colors', currentPage <= 1 ? 'border-slate-200 dark:border-slate-700 text-slate-300 dark:text-slate-600 cursor-not-allowed' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700')} aria-label="Previous page">
-              <ChevronLeft size={14} />
-            </button>
-            <button onClick={() => setCurrentPage(Math.min(Math.ceil(filteredContacts.length / pageSize), currentPage + 1))} disabled={currentPage >= Math.ceil(filteredContacts.length / pageSize)} className={cn('inline-flex items-center justify-center w-7 h-7 rounded-md border transition-colors', currentPage >= Math.ceil(filteredContacts.length / pageSize) ? 'border-slate-200 dark:border-slate-700 text-slate-300 dark:text-slate-600 cursor-not-allowed' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700')} aria-label="Next page">
-              <ChevronRight size={14} />
-            </button>
-          </div>
-        </div>
+        <LeadsPagination currentPage={currentPage} totalRecords={filteredContacts.length} pageSize={pageSize} onPageChange={setCurrentPage} onPageSizeChange={size => { setPageSize(size); setCurrentPage(1); }} />
       )}
 
       {/* ── Tile View ─────────────────────────────────────────── */}

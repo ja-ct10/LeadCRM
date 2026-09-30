@@ -102,14 +102,27 @@ queries, and migration requirements, see [CRM archive verification](crm-archive-
 
 ### Accounts
 
-`POST /crm/accounts` and `PUT /crm/accounts/:id` validate optional `taxId` with the
-shared account schema. Omitted or empty strings are accepted; supplied values must
-contain exactly nine ASCII digits. Numbers, letters, whitespace, separators, and
-other lengths are rejected. An empty string clears an existing Tax ID.
+`POST /crm/accounts` and `PUT /crm/accounts/:id` no longer accept Account/Customer
+Type, Customer Since, or Tax ID as account input fields. The account schemas strip
+the retired `customerType`, `customerSince`, and `taxId` keys. Existing database
+columns remain for historical conversion data; these requests do not clear them.
 The account create/edit UI always submits `country: "Philippines"`; unrelated API
 and import country behavior is unchanged.
 
-### Deals / Pipeline (Stub)
+### Deals / Pipeline
+
+Manual `POST /crm/deals` requires one active, tenant-owned `productInterestId`.
+The server resolves its name and numeric `dealValue` in the creation transaction,
+sets the currency to PHP, and stores a price snapshot. A submitted amount cannot
+override that price. Later product price changes do not rewrite existing Deals.
+Trusted import flows keep their existing historical-value contract.
+
+Product configuration uses `GET /administration/product-interests` and
+`PATCH /administration/product-interests/:id` (under `/api/v1`). The update requires
+`settings.edit`, a valid product UUID, a trimmed name, and a non-negative numeric
+amount with at most two decimal places. It returns the updated catalog after the
+transaction commits. `ProductInterest.dealValue` remains the existing decimal
+database field; currency formatting is presentation only.
 
 | Method | Path | Description |
 |---|---|---|

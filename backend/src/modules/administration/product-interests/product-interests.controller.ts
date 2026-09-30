@@ -21,7 +21,7 @@ async function mutate(req: Request, res: Response, next: NextFunction, action: '
     const tenantId = req.user!.tenantId;
     const id = ['update', 'remove'].includes(action) ? ProductInterestIdSchema.parse(req.params.id) : undefined;
     const input = action === 'create' ? ProductInterestSchema.parse(req.body) : action === 'update' ? ProductInterestPatchSchema.parse(req.body) : undefined;
-    await salesTransaction(async tx => {
+    const result = await salesTransaction(async tx => {
       if (id && !await tx.productInterest.findFirst({ where: { id, tenantId, active: true } })) throw new AppError('Product not found.', 404);
       if (input?.name && await tx.productInterest.findFirst({ where: { tenantId, active: true, name: { equals: input.name, mode: 'insensitive' }, ...(id ? { id: { not: id } } : {}) } })) throw new AppError('Product names must be unique.', 409);
       if (action === 'create') {
@@ -36,9 +36,11 @@ async function mutate(req: Request, res: Response, next: NextFunction, action: '
         const key = fieldKey(tenantId), value = action === 'enableField';
         await tx.tenantPreference.upsert({ where: { tenantId_module_key: key }, create: { ...key, value }, update: { value } });
       }
+      return { data: await productConfiguration(tx, tenantId),
+        meta: { enabled: (await tx.tenantPreference.findUnique({ where: { tenantId_module_key: fieldKey(tenantId) } }))?.value !== false } };
     });
     await writeAuditLog({ tenantId, userId: req.user!.userId, action: 'product_interests.' + action, entityType: 'ProductInterest', entityId: id ?? tenantId, after: input });
-    return get(req, res, next);
+    res.json({ success: true, ...result });
   } catch (error) { next(error); }
 }
 export const create = (req: Request, res: Response, next: NextFunction) => mutate(req, res, next, 'create');

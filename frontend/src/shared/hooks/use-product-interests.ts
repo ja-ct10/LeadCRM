@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ProductInterest } from '@leadcrm/shared';
 import { apiClient } from '@/lib/api/client';
 import { useAuth } from '@/store/AuthContext';
@@ -13,20 +13,28 @@ export function useProductInterests() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
+  const pending = useRef<AbortController | null>(null);
   const refresh = useCallback(() => setRevision(v => v + 1), []);
   useEffect(() => {
     const controller = new AbortController();
+    pending.current = controller;
     setLoading(true); setError('');
     apiClient.get<ProductInterestResponse>(PRODUCT_INTEREST_ENDPOINT, { signal: controller.signal })
-      .then(result => { setProducts(result.data); setEnabled(result.meta?.enabled !== false); })
-      .catch(e => { if (!controller.signal.aborted) { setProducts([]); setError(e.message); } })
+      .then(result => { if (!controller.signal.aborted) { setProducts(result.data); setEnabled(result.meta?.enabled !== false); } })
+      .catch(e => { if (!controller.signal.aborted) { setError(e.message); } })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [user?.tenantId, revision]);
   useEffect(() => {
-    window.addEventListener('product-interests-changed', refresh);
+    const onChanged = (event: Event) => {
+      pending.current?.abort();
+      const result = (event as CustomEvent<ProductInterestResponse>).detail;
+      if (result) { setProducts(result.data); setEnabled(result.meta.enabled); setError(''); }
+      refresh();
+    };
+    window.addEventListener('product-interests-changed', onChanged);
     window.addEventListener('focus', refresh);
-    return () => { window.removeEventListener('product-interests-changed', refresh); window.removeEventListener('focus', refresh); };
+    return () => { window.removeEventListener('product-interests-changed', onChanged); window.removeEventListener('focus', refresh); };
   }, [refresh]);
   return { products, enabled, loading, error, refresh };
 }

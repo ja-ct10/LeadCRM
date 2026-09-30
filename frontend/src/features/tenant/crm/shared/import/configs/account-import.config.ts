@@ -4,7 +4,7 @@ import type { ImportModuleConfig } from '../types/import.types';
  * Import configuration for the Accounts module.
  *
  * Required fields: name
- * Optional fields: industry, website, address, city, province, country, size, taxId, customerType
+ * Optional fields: industry, website, address, city, province, country, size
  */
 export const accountImportConfig: ImportModuleConfig = {
   moduleKey: 'accounts',
@@ -80,21 +80,6 @@ export const accountImportConfig: ImportModuleConfig = {
       type: 'select',
       options: ['1-10', '11-50', '51-200', '200+'],
       autoMapPatterns: ['size', 'company size', 'company_size', 'employees', 'employee count', 'headcount'],
-    },
-    {
-      key: 'taxId',
-      label: 'Tax ID',
-      required: false,
-      type: 'text',
-      autoMapPatterns: ['tax id', 'tax_id', 'tin', 'vat', 'tax number', 'tax_number', 'ein'],
-    },
-    {
-      key: 'customerType',
-      label: 'Customer Type',
-      required: false,
-      type: 'select',
-      options: ['Prospect', 'Active Customer', 'Inactive Customer', 'Former Customer'],
-      autoMapPatterns: ['customer type', 'customer_type', 'account type', 'account_type', 'type'],
     },
   ],
 };

@@ -134,11 +134,6 @@ export function TaskRecordCreator({
             onSave={(data) =>
               void submit({
                 ...data,
-                customerSince:
-                  data.customerSince &&
-                  /^\d{4}-\d{2}-\d{2}$/.test(data.customerSince)
-                    ? `${data.customerSince}T00:00:00.000Z`
-                    : data.customerSince,
               })
             }
             onCancel={onCancel}

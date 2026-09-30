@@ -3,6 +3,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ProductInterestsSettings } from './product-interests-settings';
 import { apiClient } from '@/lib/api/client';
+import { toast } from 'sonner';
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { tenantId: 'one' } }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
 vi.mock('@/lib/api/client', () => ({ apiClient: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() } }));
@@ -10,8 +12,8 @@ const product = { id: '0ff82f9c-48e9-4e1c-8c77-8a30755d704c', name: 'CCTV Survei
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(apiClient.get).mockResolvedValue({ data: [product], meta: { enabled: true } });
-  vi.mocked(apiClient.post).mockResolvedValue({});
-  vi.mocked(apiClient.delete).mockResolvedValue({});
+  vi.mocked(apiClient.post).mockResolvedValue({ data: [product], meta: { enabled: true } });
+  vi.mocked(apiClient.delete).mockResolvedValue({ data: [], meta: { enabled: false } });
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -48,4 +50,38 @@ it('requires confirmation before deleting the field', async () => {
   expect(apiClient.delete).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }));
   await waitFor(() => expect(apiClient.delete).toHaveBeenCalledWith('/administration/product-interests'));
+});
+
+async function editProduct() {
+  fireEvent.click(await screen.findByRole('button', { name: 'Product Interest actions' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Edit' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Edit ' + product.name }));
+  fireEvent.change(screen.getByLabelText('Deal Value (PHP)'), { target: { value: '7000.25' } });
+}
+it('shows a skeleton then applies the committed response and toasts only after success', async () => {
+  let resolve!: (value: unknown) => void;
+  vi.mocked(apiClient.patch).mockImplementation(() => new Promise(done => { resolve = done; }));
+  render(<ProductInterestsSettings />);
+  expect(screen.getByRole('status', { name: 'Loading Custom Fields' }).querySelector('.animate-pulse')).toBeTruthy();
+  await editProduct();
+  fireEvent.click(screen.getByRole('button', { name: 'Save Product' }));
+  expect((screen.getByRole('button', { name: 'Saving…' }) as HTMLButtonElement).disabled).toBe(true);
+  expect(toast.success).not.toHaveBeenCalled();
+  expect(apiClient.patch).toHaveBeenCalledWith('/administration/product-interests/' + product.id, { name: product.name, dealValue: 7000.25 });
+  // The follow-up GET stays pending: the mutation response must be enough to update the UI.
+  vi.mocked(apiClient.get).mockImplementation(() => new Promise(() => {}));
+  resolve({ data: [{ ...product, dealValue: 7000.25 }], meta: { enabled: true } });
+  await screen.findByText('₱7,000.25');
+  expect(toast.success).toHaveBeenCalledWith('Product updated successfully.');
+  expect(screen.queryByLabelText('Deal Value (PHP)')).toBeNull();
+});
+it('retains entered values and allows retry when saving fails', async () => {
+  vi.mocked(apiClient.patch).mockRejectedValue(new Error('Database unavailable'));
+  render(<ProductInterestsSettings />);
+  await editProduct();
+  fireEvent.click(screen.getByRole('button', { name: 'Save Product' }));
+  await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Database unavailable'));
+  expect(toast.success).not.toHaveBeenCalled();
+  expect((screen.getByLabelText('Deal Value (PHP)') as HTMLInputElement).value).toBe('7000.25');
+  expect((screen.getByRole('button', { name: 'Save Product' }) as HTMLButtonElement).disabled).toBe(false);
 });

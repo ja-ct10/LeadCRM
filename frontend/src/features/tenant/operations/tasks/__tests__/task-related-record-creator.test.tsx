@@ -38,7 +38,7 @@ vi.mock("next/dynamic", () => ({
       <button
         onClick={() =>
           props.onSave
-            ? props.onSave({ name: "New Account", customerSince: "2026-09-28" })
+            ? props.onSave({ name: "New Account" })
             : props.onSubmit?.({
                 title: "New Deal",
                 leadIds: ["lead", "extra"],
@@ -168,7 +168,6 @@ it("requires Account-link confirmation and retries a failed link without creatin
   expect(api.post).toHaveBeenCalledTimes(1);
   expect(api.post).toHaveBeenCalledWith("/crm/accounts", {
     name: "New Account",
-    customerSince: "2026-09-28T00:00:00.000Z",
   });
   expect(api.put).toHaveBeenCalledTimes(2);
   expect(api.put).toHaveBeenLastCalledWith("/crm/leads/lead", {

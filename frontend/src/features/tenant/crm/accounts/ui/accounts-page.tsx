@@ -24,9 +24,9 @@ import { SideSheet } from '@/shared/components/side-sheet';
 import { ColumnsPopover } from '@/shared/components/data-grid';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { ChevronLeft, ChevronRight, Building2 } from 'lucide-react';
+import { Building2 } from 'lucide-react';
 import { ActionableEmptyState } from '@/shared/components/actionable-empty-state';
-import { PageSizeSelect } from '@/shared/components/page-size-select';
+import { LeadsPagination } from '@/shared/components/crm/leads-pagination';
 import type { Account } from '../types/account.types';
 import type { ColumnConfigItem } from '@leadcrm/shared';
 
@@ -441,24 +441,7 @@ export default function AccountsPage(): React.ReactElement {
 
         {/* ── Bottom Pagination + Per Page ─────────────────────── */}
         {(activeView === 'list' || activeView === 'table') && serverTotal > 0 && (
-          <div className="flex items-center justify-between px-4 py-3 mt-2 bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 rounded-lg">
-            <div className="flex items-center gap-2">
-              <label htmlFor="accounts-page-size" className="text-xs text-slate-500 dark:text-slate-400">Per page</label>
-              <PageSizeSelect value={pageSize} onChange={(size) => { setPageSize(size); setCurrentPage(1); }} />
-              <span className="text-xs text-slate-400 dark:text-slate-500 ml-2">
-                {serverTotal} total records
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">Page {currentPage} of {Math.ceil(serverTotal / pageSize) || 1}</span>
-              <button onClick={() => setCurrentPage(Math.max(1, currentPage - 1))} disabled={currentPage <= 1} className={cn('inline-flex items-center justify-center w-7 h-7 rounded-md border transition-colors', currentPage <= 1 ? 'border-slate-200 dark:border-slate-700 text-slate-300 dark:text-slate-600 cursor-not-allowed' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700')} aria-label="Previous page">
-                <ChevronLeft size={14} />
-              </button>
-              <button onClick={() => setCurrentPage(Math.min(Math.ceil(serverTotal / pageSize), currentPage + 1))} disabled={currentPage >= Math.ceil(serverTotal / pageSize)} className={cn('inline-flex items-center justify-center w-7 h-7 rounded-md border transition-colors', currentPage >= Math.ceil(serverTotal / pageSize) ? 'border-slate-200 dark:border-slate-700 text-slate-300 dark:text-slate-600 cursor-not-allowed' : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700')} aria-label="Next page">
-                <ChevronRight size={14} />
-              </button>
-            </div>
-          </div>
+          <LeadsPagination currentPage={currentPage} totalRecords={serverTotal} pageSize={pageSize} onPageChange={setCurrentPage} onPageSizeChange={size => { setPageSize(size); setCurrentPage(1); }} />
         )}
 
         {/* Tile View */}

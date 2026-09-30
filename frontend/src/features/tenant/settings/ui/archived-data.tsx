@@ -21,7 +21,7 @@ const restoreClass = 'inline-flex min-h-11 min-w-11 sm:min-h-8 items-center just
 
 export function ArchivedData(): React.ReactElement {
   const { user, tenant } = useAuth();
-  const { refreshRoles, refreshPipelines, refreshDeals, refreshOrganizations } = useData();
+  const { refreshDeals, refreshOrganizations } = useData();
   const identity = `${tenant?.id}:${user?.id}:${user?.activeEnvironment}`;
   const identityRef = useRef(identity);
   identityRef.current = identity;
@@ -78,8 +78,6 @@ export function ArchivedData(): React.ReactElement {
       await refetch();
       if (identityRef.current === restoreIdentity) {
         const refreshes: Promise<void>[] = [];
-        if (restoredTypes.has('Role')) refreshes.push(refreshRoles());
-        if (restoredTypes.has('Pipeline')) refreshes.push(refreshPipelines());
         if (restoredTypes.has('Deal')) refreshes.push(refreshDeals());
         if (restoredTypes.has('Account')) refreshes.push(refreshOrganizations());
         const results = await Promise.allSettled(refreshes);

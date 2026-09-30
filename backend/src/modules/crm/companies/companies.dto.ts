@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { recordText, recordName } from '../record-validation';
-import { OptionalTaxIdSchema } from '@leadcrm/shared';
 
 const id = () => z.string().min(1);
 
@@ -9,7 +8,6 @@ export const CreateCompanySchema = z.object({
   industry:       recordText().optional(),
   size:           z.enum(['1-10', '11-50', '51-200', '200+']).optional(),
   website:        z.string().url().optional().or(z.literal('')),
-  taxId:          OptionalTaxIdSchema,
   tags:           z.array(recordText(200)).max(100).default([]),
   address:        recordText().optional(),
   city:           recordText().optional(),
@@ -19,8 +17,6 @@ export const CreateCompanySchema = z.object({
   notes:          recordText().optional(),
   internalNotes:  recordText().optional(),
   productInterests: z.array(recordText(200)).max(100).optional(),
-  customerType:   z.enum(['Prospect', 'Active Customer', 'Inactive Customer', 'Former Customer']).optional(),
-  customerSince:  z.string().datetime().optional(),
   activeProducts: z.array(recordText(200)).max(100).optional(),
 });
 

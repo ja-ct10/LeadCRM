@@ -8,7 +8,7 @@ import { AppError } from '../../../shared/errors/app-error';
 import type { PermissionKey } from '../../../shared/constants/permissions';
 
 type Actor = { userId: string; tenantId: string; role: string };
-const permissions: Record<ArchiveType, [PermissionKey, PermissionKey]> = {
+const permissions: Record<ArchiveType | z.infer<typeof ArchiveRestoreParamsSchema>['type'], [PermissionKey, PermissionKey]> = {
   Lead: ['contacts.view', 'contacts.edit'], Contact: ['contacts.view', 'contacts.edit'],
   Account: ['accounts.view', 'accounts.edit'], Deal: ['deals.view', 'deals.edit'],
   Pipeline: ['deals.view', 'deals.edit'], User: ['users.view', 'users.manage'],

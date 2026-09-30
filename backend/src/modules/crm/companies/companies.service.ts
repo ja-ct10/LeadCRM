@@ -1,4 +1,3 @@
-import prisma from '../../../config/database.config';
 import * as repo from './companies.repository';
 import { writeAuditLog, buildChangeset } from '../../../core/audit/audit.service';
 import { NotFoundError } from '../../../shared/errors/http-error';
@@ -37,7 +36,6 @@ export async function updateCompany(
   const company = await repo.updateCompany(id, tenantId, dto);
   if (!company) throw new NotFoundError('Company');
 
-  if (company.customerType !== before.customerType) await prisma.activity.create({ data: { tenantId, accountId: id, createdById: userId, type: 'stage_change', title: `Status changed from ${before.customerType} to ${company.customerType}` } });
   const { before: cb, after: ca } = buildChangeset(
     before as unknown as Record<string, unknown>,
     company as unknown as Record<string, unknown>,

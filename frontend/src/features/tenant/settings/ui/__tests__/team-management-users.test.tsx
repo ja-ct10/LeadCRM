@@ -83,8 +83,9 @@ it('shows Leads pagination on a single page and pages the complete API-backed us
   fireEvent.click(screen.getByLabelText('Records per page'));
   fireEvent.click(screen.getByRole('option', { name: '50' }));
   await screen.findByText('Page 1 of 1');
-  expect(screen.getByText('27 total records')).toBeTruthy();
+  expect(screen.queryByText('27 total records')).toBeNull();
   expect((screen.getByLabelText('Next page') as HTMLButtonElement).disabled).toBe(true);
   fireEvent.change(screen.getByPlaceholderText('Search users...'), { target: { value: 'user26@' } });
-  await waitFor(() => expect(screen.getByText('1 total record')).toBeTruthy());
+  await waitFor(() => expect(screen.queryByText('Saved User 0')).toBeNull());
+  expect(screen.getByText('Saved User 26')).toBeTruthy();
 });

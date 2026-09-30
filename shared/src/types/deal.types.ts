@@ -52,6 +52,7 @@ export interface Deal {
  * Mirrors the backend `CreateDealSchema` Zod DTO.
  */
 export interface CreateDealRequest {
+  productInterestId: string;
   pipelineId: string;
   stageId: string;
   title: string;

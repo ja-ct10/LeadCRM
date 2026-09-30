@@ -1,4 +1,5 @@
 'use client';
+import type { ProductInterest } from '@leadcrm/shared';
 import { useProductInterests } from '@/shared/hooks/use-product-interests';
 
 
@@ -37,7 +38,7 @@ const CreateDealFormSchema = z.object({
   leadIds: z.array(z.string()).optional(),
   industry: z.string().optional(),
   address: z.string().optional(),
-  productInterests: z.array(z.string()).optional(),
+  productInterests: z.array(z.string().uuid()).length(1, 'Select one Product Interest.'),
 });
 
 const UpdateDealFormSchema = z.object({
@@ -108,6 +109,7 @@ export function DealForm({
   onCancel,
   isLoading = false,
 }: DealFormProps): React.ReactElement {
+  const { products, loading: productsLoading, error: productsError, refresh: refreshProducts } = useProductInterests();
   const { pipelines: allPipelines } = useData();
   const pipelines = useMemo(() => allPipelines.filter(p => p.name.trim().toLowerCase() === 'sales pipeline'), [allPipelines]);
   const canCreate = useHasPermission('deals.create');
@@ -174,6 +176,8 @@ export function DealForm({
   const fieldId = React.useId();
   const formRef = useRef<HTMLFormElement>(null);
   const selectedPipelineId = watch('pipelineId');
+  const selectedProductIds = watch('productInterests') ?? [];
+  const selectedProduct = products.find(product => product.id === selectedProductIds[0]);
 
   // Get stages for selected pipeline (only relevant in create mode)
   const stagesForPipeline = useMemo(() => {
@@ -212,6 +216,8 @@ export function DealForm({
     const cleaned = {
       ...data,
       currency: 'PHP',
+      value: isCreateMode ? undefined : data.value,
+      ...(isCreateMode ? { productInterestId: selectedProduct?.id } : {}),
       expectedCloseDate: data.expectedCloseDate
         ? data.expectedCloseDate.includes('T')
           ? data.expectedCloseDate
@@ -225,7 +231,7 @@ export function DealForm({
       leadIds: (data as any).leadIds?.length ? (data as any).leadIds : undefined,
       industry: data.industry || undefined,
       address: data.address || undefined,
-      productInterests: data.productInterests?.length ? data.productInterests : undefined,
+      productInterests: isCreateMode ? undefined : data.productInterests,
     };
     await onSubmit(cleaned as DealFormData);
   };
@@ -237,7 +243,7 @@ export function DealForm({
     'w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl pl-3.5 pr-8 py-2.5 text-sm text-slate-900 dark:text-white outline-none appearance-none cursor-pointer focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all [&>option]:bg-white dark:[&>option]:bg-slate-900';
   const errorInputCls = '!border-red-500 focus:!ring-red-500/20';
 
-  const isSubmitDisabled = !isValid || isSubmitting || isLoading || !hasPermission;
+  const isSubmitDisabled = !isValid || isSubmitting || isLoading || !hasPermission || (isCreateMode && (productsLoading || !!productsError || !selectedProduct));
 
   return (
     <form
@@ -252,7 +258,7 @@ export function DealForm({
         {isCreateMode && (
           <div className="space-y-4">
             <SectionHeader num={1} title="Pipeline & Stage" />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div><span className="block text-xs text-muted-foreground">Pipeline</span><p className="py-2 text-sm">Sales Pipeline</p><input type="hidden" {...register('pipelineId')} /></div>
               <FieldWrap label="Stage *" htmlFor={`${fieldId}-stageId`} error={errors.stageId?.message}>
                 <div className="relative">
@@ -289,10 +295,20 @@ export function DealForm({
               placeholder="Enter deal title"
             />
           </FieldWrap>
+          <FieldWrap error={errors.productInterests?.message || productsError} label="Product Interests" htmlFor={`${fieldId}-product-interest`}>
+            <Controller
+              name="productInterests"
+              control={control}
+              render={({ field }) => (
+                <ProductInterestsSelect products={products} single={isCreateMode} disabled={productsLoading || isSubmitting || isLoading} id={`${fieldId}-product-interest`} values={field.value || []} onChange={field.onChange} />
+              )}
+            />
+          </FieldWrap>
+          {productsError && <Button type="button" variant="ghost" onClick={refreshProducts}>Retry products</Button>}
           <FieldWrap label="Value" htmlFor={`${fieldId}-value`} error={errors.value?.message}>
               <div className="relative">
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-medium select-none pointer-events-none">₱</span>
-                <input
+                {isCreateMode ? <input id={`${fieldId}-value`} readOnly value={new Intl.NumberFormat('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(selectedProduct?.dealValue ?? 0)} className={cn(inputCls, 'pl-9 bg-slate-50')} aria-describedby={`${fieldId}-value-help`} /> : <input
                   type="number"
                   readOnly={!!initialData?.productInterestId}
                   step="0.01"
@@ -308,10 +324,11 @@ export function DealForm({
                       e.preventDefault();
                     }
                   }}
-                />
+                />}
               </div>
+              {isCreateMode && <p id={`${fieldId}-value-help`} className="text-xs text-muted-foreground">Uses the selected product’s configured value.</p>}
             </FieldWrap>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FieldWrap label="Priority" htmlFor={`${fieldId}-priority`} error={errors.priority?.message}>
               <div className="relative">
                 <select {...register('priority')}
@@ -401,7 +418,7 @@ export function DealForm({
         {/* Section 4: Additional Details */}
         <div className="space-y-4">
           <SectionHeader num={isCreateMode ? 4 : 3} title="Additional Details" />
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FieldWrap htmlFor={`${fieldId}-leadSource`} error={errors.leadSource?.message} label="Lead Source">
               <div className="relative">
                 <select {...register('leadSource')}
@@ -434,15 +451,7 @@ export function DealForm({
               placeholder="Enter address..."
             />
           </FieldWrap>
-          <FieldWrap label="Product Interests" htmlFor={`${fieldId}-product-interest`}>
-            <Controller
-              name="productInterests"
-              control={control}
-              render={({ field }) => (
-                <ProductInterestsSelect id={`${fieldId}-product-interest`} values={field.value || []} onChange={field.onChange} />
-              )}
-            />
-          </FieldWrap>
+
         </div>
       </div>
 
@@ -493,15 +502,17 @@ export function DealCreateForm({ onSave, onCancel }: LegacyDealCreateFormProps):
 
 interface ProductInterestsSelectProps {
   id: string;
+  products: ProductInterest[];
+  single: boolean;
+  disabled: boolean;
   values: string[];
   onChange: (values: string[]) => void;
 }
 
-function ProductInterestsSelect({ id, values, onChange }: ProductInterestsSelectProps): React.ReactElement {
-  const { products: productRecords } = useProductInterests();
-  const PRODUCT_OPTIONS = productRecords.map(p => p.name);
+function ProductInterestsSelect({ id, products, single, disabled, values, onChange }: ProductInterestsSelectProps): React.ReactElement {
+  const PRODUCT_OPTIONS = products.map(p => ({ value: single ? p.id : p.name, label: p.name }));
   const [selected, setSelected] = React.useState('');
-  const canAdd = PRODUCT_OPTIONS.includes(selected) && !values.includes(selected);
+  const canAdd = !disabled && (!single || values.length === 0) && PRODUCT_OPTIONS.some(p => p.value === selected) && !values.includes(selected);
   const addProduct = (): void => {
     if (!canAdd) return;
     onChange([...values, selected]);
@@ -512,21 +523,21 @@ function ProductInterestsSelect({ id, values, onChange }: ProductInterestsSelect
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-0 flex-[1_1_220px]">
-          <select id={id} value={selected} onChange={event => setSelected(event.target.value)} aria-describedby={`${id}-help`}
+          <select id={id} disabled={disabled || (single && values.length > 0)} value={selected} onChange={event => setSelected(event.target.value)} aria-describedby={`${id}-help`}
             className="w-full min-w-0 appearance-none rounded-xl border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 px-3.5 py-2.5 pr-8 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
             <option value="">Select a product interest...</option>
-            {PRODUCT_OPTIONS.map(product => <option key={product} value={product}>{product}</option>)}
+            {PRODUCT_OPTIONS.map(product => <option key={product.value} value={product.value}>{product.label}</option>)}
           </select>
           <ChevronDown size={13} aria-hidden="true" className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
         </div>
         <Button type="button" variant="outline" disabled={!canAdd} onClick={addProduct} className="h-10 w-20 shrink-0"><Plus />Add</Button>
       </div>
-      <p id={`${id}-help`} className="text-xs text-slate-500 dark:text-slate-400">Select an interest and add more as needed.</p>
+      <p id={`${id}-help`} className="text-xs text-slate-500 dark:text-slate-400">{single ? 'Select and add one Product Interest per Deal.' : 'Select an interest and add more as needed.'}</p>
       {values.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {values.map(product => <span key={product} className="inline-flex max-w-full items-center gap-1 rounded-lg border border-gray-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.04] pl-2.5 pr-1 py-1 text-xs text-slate-700 dark:text-slate-300">
-            <span className="min-w-0 break-words">{product}</span>
-            <button type="button" aria-label={`Remove ${product}`} onClick={() => onChange(values.filter(value => value !== product))} className="shrink-0 rounded p-1 hover:bg-slate-200 dark:hover:bg-slate-700"><X size={14} /></button>
+            <span className="min-w-0 break-words">{PRODUCT_OPTIONS.find(p => p.value === product)?.label ?? product}</span>
+            <button type="button" disabled={disabled} aria-label={`Remove ${PRODUCT_OPTIONS.find(p => p.value === product)?.label ?? product}`} onClick={() => onChange(values.filter(value => value !== product))} className="shrink-0 rounded p-1 hover:bg-slate-200 dark:hover:bg-slate-700"><X size={14} /></button>
           </span>)}
         </div>
       )}

@@ -521,7 +521,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
               industry: lead.businessType || lead.industry || "",
               size: lead.companySize || "",
               website: lead.orgWebsite || "",
-              taxId: lead.taxId || "",
               assignedUserId: lead.assignedUserId || "",
               createdAt: lead.createdAt || new Date().toISOString(),
             });

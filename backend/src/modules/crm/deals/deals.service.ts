@@ -4,7 +4,7 @@ import prisma from '../../../config/database.config';
 import * as repo from './deals.repository';
 import { writeAuditLog, buildChangeset } from '../../../core/audit/audit.service';
 import { NotFoundError, ValidationError, ConflictError } from '../../../shared/errors/http-error';
-import { CreateDealDto, UpdateDealDto, MoveDealStageDto, DealsQueryParams } from './deals.dto';
+import { CreateDealDto, UpdateDealDto, MoveDealStageDto, DealsQueryParams, ManualCreateDealSchema } from './deals.dto';
 import { paginate } from '../../../shared/helpers/pagination';
 import { fireDealCreated, fireDealStageChanged } from '../../automation/triggers/triggers.service';
 import { createNotification } from '../../notifications/notifications.service';
@@ -51,13 +51,14 @@ export async function getDealById(id: string, tenantId: string) {
 }
 
 export async function createDeal(tenantId: string, userId: string, dto: CreateDealDto) {
+  dto = ManualCreateDealSchema.parse(dto);
   if (dto.assignedUserId) await validateSalesOwner(prisma, tenantId, dto.assignedUserId);
   const stage = await prisma.stage.findFirst({ where: { id: dto.stageId, tenantId, pipelineId: dto.pipelineId } });
   if (!stage) throw new ValidationError('Stage must belong to the selected pipeline.');
 
   let deal;
   try {
-    deal = await repo.createDeal(tenantId, userId, dto);
+    deal = await prisma.$transaction(tx => repo.createDeal(tenantId, userId, dto, tx));
   } catch (error) {
     mapRepositoryError(error, 'createDeal');
   }
@@ -65,7 +66,7 @@ export async function createDeal(tenantId: string, userId: string, dto: CreateDe
   await writeAuditLog({
     tenantId, userId,
     action: 'deal.created', entityType: 'Deal', entityId: deal.id,
-    after: { title: dto.title, pipelineId: dto.pipelineId, stageId: dto.stageId, value: dto.value },
+    after: { title: dto.title, pipelineId: dto.pipelineId, stageId: dto.stageId, value: deal.value },
   });
 
   // Fire workflow trigger (non-blocking — never fails the request)

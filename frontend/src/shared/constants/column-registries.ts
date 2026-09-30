@@ -119,7 +119,6 @@ export const LEADS_COLUMN_REGISTRY: ColumnDefinition[] = [
 export const ACCOUNTS_COLUMN_REGISTRY: ColumnDefinition[] = [
   { id: 'name',            label: 'Account Name',      required: true,  defaultVisible: true,  defaultOrder: 0, group: 'Account Info',  priority: 'required' },
   { id: 'industry',        label: 'Industry',          required: false, defaultVisible: true,  defaultOrder: 1, group: 'Account Info',  priority: 'medium' },
-  { id: 'customerType',    label: 'Account Type',      required: false, defaultVisible: true,  defaultOrder: 2, group: 'Account Info',  priority: 'medium' },
   { id: 'size',            label: 'Company Size',      required: false, defaultVisible: true,  defaultOrder: 3, group: 'Account Info',  priority: 'medium' },
   { id: 'city',            label: 'City',              required: false, defaultVisible: true,  defaultOrder: 4, group: 'Location',      priority: 'low' },
   { id: 'country',         label: 'Country',           required: false, defaultVisible: false, defaultOrder: 5, group: 'Location',      priority: 'low' },

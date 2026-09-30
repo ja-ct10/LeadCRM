@@ -28,7 +28,7 @@ import { CreateLeadImportSchema } from '../../modules/crm/lead-imports/lead-impo
 import { CreateContactImportSchema } from '../../modules/crm/contact-imports/contact-imports.dto';
 import { CreateAccountImportSchema } from '../../modules/crm/account-imports/account-imports.dto';
 import { CreateCompanySchema, UpdateCompanySchema }                       from '../../modules/crm/companies/companies.dto';
-import { CreateDealSchema, UpdateDealSchema, MoveDealStageSchema }        from '../../modules/crm/deals/deals.dto';
+import { ManualCreateDealSchema, UpdateDealSchema, MoveDealStageSchema }        from '../../modules/crm/deals/deals.dto';
 import {
   CreatePipelineSchema, UpdatePipelineSchema,
   CreateStageSchema, UpdateStageSchema, ReorderStagesSchema, ReorderDealsSchema,
@@ -112,7 +112,7 @@ router.get('/deals/imports/:importId', authorize('deals.view'), dealImportContro
 router.get('/deals/imports/:importId/results', authorize('deals.view'), dealImportController.getImportResults);
 router.post('/deals/imports', authorize('deals.create'), validate(CreateDealImportSchema), dealImportController.createImport);
 router.get(   '/deals/:id',          authorize('deals.view'),   dealController.getDealById);
-router.post(  '/deals',              authorize('deals.create'), validate(CreateDealSchema),    dealController.createDeal);
+router.post(  '/deals',              authorize('deals.create'), validate(ManualCreateDealSchema),    dealController.createDeal);
 router.put(   '/deals/:id',          authorize('deals.edit'),   validate(UpdateDealSchema),    dealController.updateDeal);
 router.patch( '/deals/:id/stage',    authorize('deals.edit'),   validate(MoveDealStageSchema), dealController.moveDealStage);
 router.patch( '/deals/:id/archive',  authorize('deals.delete'), dealController.archiveDeal);

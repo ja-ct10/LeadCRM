@@ -5,7 +5,6 @@ import { RecordPanel } from './RecordPanel';
 import {
   DEFAULT_LEAD_STATUSES,
   DEFAULT_CONTACT_STATUSES,
-  DEFAULT_ACCOUNT_STATUSES,
   DEFAULT_PIPELINE,
 } from './moduleConfig';
 import { Info } from 'lucide-react';
@@ -23,10 +22,6 @@ describe('moduleConfig defaults', () => {
     expect(DEFAULT_CONTACT_STATUSES.map(status => status.label)).toEqual(['Hot', 'Warm', 'Cold', 'Closed', 'Cancelled']);
   });
 
-  it('defines valid account classifications', () => {
-    expect(DEFAULT_ACCOUNT_STATUSES.some((s) => s.label === 'Prospect')).toBe(true);
-    expect(DEFAULT_ACCOUNT_STATUSES.some((s) => s.label === 'Active Customer')).toBe(true);
-  });
 
   it('defines default sales pipeline with stages', () => {
     expect(DEFAULT_PIPELINE.name).toBe('Sales Pipeline');

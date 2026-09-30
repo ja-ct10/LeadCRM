@@ -106,7 +106,6 @@ export const CompanyProfileTabs = ({
   const [cascadeWeb, setCascadeWeb] = useState(selectedOrg.website !== 'N/A' ? selectedOrg.website : '');
   const [cascadeIndustry, setCascadeIndustry] = useState(selectedOrg.industry);
   const [cascadeSize, setCascadeSize] = useState<string | undefined>(selectedOrg.size);
-  const [cascadeTaxId, setCascadeTaxId] = useState(selectedOrg.taxId !== 'N/A' ? selectedOrg.taxId : '');
   const [cascadeAddress, setCascadeAddress] = useState(selectedOrg.address !== 'N/A' ? selectedOrg.address : '');
 
   // Predefined email templates
@@ -125,7 +124,6 @@ export const CompanyProfileTabs = ({
     setCascadeWeb(selectedOrg.website !== 'N/A' ? selectedOrg.website : '');
     setCascadeIndustry(selectedOrg.industry);
     setCascadeSize(selectedOrg.size);
-    setCascadeTaxId(selectedOrg.taxId !== 'N/A' ? selectedOrg.taxId : '');
     setCascadeAddress(selectedOrg.address !== 'N/A' ? selectedOrg.address : '');
 
   }, [selectedOrg]);
@@ -211,7 +209,6 @@ export const CompanyProfileTabs = ({
     if (cascadeWeb) { fields.orgWebsite = cascadeWeb; fields.website = cascadeWeb; }
     if (cascadeIndustry) { fields.businessType = cascadeIndustry; }
     if (cascadeSize) { fields.companySize = cascadeSize; }
-    if (cascadeTaxId) { fields.taxId = cascadeTaxId; }
     if (cascadeAddress) { fields.address = cascadeAddress; }
 
     handleSyncCompanyDetails(selectedOrg.name, fields);
@@ -387,14 +384,6 @@ export const CompanyProfileTabs = ({
                     <div>
                       <span className="text-slate-400 text-[10px] block">Account Size Bracket</span>
                       <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedOrg.size}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 text-[10px] block">Corporate Tax ID / TIN</span>
-                      <span className="font-mono font-semibold text-slate-800 dark:text-amber-400">{selectedOrg.taxId || 'N/A'}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 text-[10px] block">Customer Type</span>
-                      <span className="font-semibold text-slate-850 dark:text-blue-400">Corporate Organization</span>
                     </div>
                   </div>
                 </div>
@@ -736,16 +725,6 @@ export const CompanyProfileTabs = ({
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase select-none mb-1">Corporate Tax Identifier / TIN</label>
-                    <input 
-                      type="text" 
-                      value={cascadeTaxId}
-                      onChange={e => setCascadeTaxId(e.target.value)}
-                      placeholder="e.g. TIN-238-294-110"
-                      className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/5 rounded-lg px-3 py-2 text-xs focus:outline-none dark:text-white"
-                    />
-                  </div>
 
                   <div className="sm:col-span-2">
                     <label className="block text-[10px] font-bold text-slate-400 uppercase select-none mb-1">HQ Corporate Address details</label>

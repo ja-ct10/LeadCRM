@@ -512,6 +512,7 @@ export default function SettingsPage(): React.ReactElement {
           (activeTab === 'roles' && isRolesViewActive);
         // Tabs that render their own title/header internally â€” suppress the page header
         const hasOwnHeader =
+          activeTab === 'custom-fields' ||
           activeTab === 'org-general' ||
           activeTab === 'users' ||
           activeTab === 'roles' ||

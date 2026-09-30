@@ -1,3 +1,4 @@
+vi.mock('@/shared/hooks/use-product-interests', () => ({ useProductInterests: () => ({ products: [], loading: false, error: '' }) }));
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
@@ -163,7 +164,7 @@ describe('InlineDealForm', () => {
 
     expect(screen.getByText((_, element) => element?.tagName === 'LABEL' && element.textContent === 'Pipeline *')).toBeDefined();
     expect(screen.getByText((_, element) => element?.tagName === 'LABEL' && element.textContent === 'Stage *')).toBeDefined();
-    expect(screen.getByText('Select pipeline')).toBeDefined();
+    expect(screen.getByText('Sales Pipeline')).toBeDefined();
   });
 
   it('renders title field with required label', () => {

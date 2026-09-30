@@ -1,3 +1,4 @@
+import { resolveProducts } from '../leads/lead-automation.service';
 import { validateProductSnapshots } from '../leads/product-snapshots';
 import { salesTransaction, crmScope } from '../leads/lead-automation.service';
 import { resolveWonRelationships } from './won-conversion.service';
@@ -88,7 +89,15 @@ export async function findDealById(id: string, tenantId: string) {
 export async function createDeal(tenantId: string, ownerId: string, dto: CreateDealDto, db: Prisma.TransactionClient = prisma) {
   const { leadIds, contactIds, ...dealData } = dto as CreateDealDto & { leadIds?: string[]; contactIds?: string[] };
 
-  dealData.productInterests = await validateProductSnapshots(tenantId, dto.productInterests, [], db);
+  if (dto.productInterestId) {
+    const [product] = await resolveProducts(db, tenantId, [dto.productInterestId]);
+    dealData.productInterests = [product.name];
+    dealData.value = Number(product.dealValue);
+    dealData.currency = 'PHP';
+  } else {
+    // Trusted imports retain their independent historical value contract.
+    dealData.productInterests = await validateProductSnapshots(tenantId, dto.productInterests, [], db);
+  }
   const deal = await db.deal.create({
     data: { ...dealData, tenantId, ownerId } as never,
   });
@@ -131,7 +140,7 @@ export async function updateDeal(id: string, tenantId: string, dto: UpdateDealDt
   const { leadIds: _leadIds, contactIds: _contactIds, ...updateData } = dto as UpdateDealDto & { leadIds?: string[]; contactIds?: string[] };
   const existing = await prisma.deal.findFirst({ where: { id, tenantId } });
   updateData.productInterests = await validateProductSnapshots(tenantId, dto.productInterests, existing?.productInterests);
-  if (existing?.productInterestId && dto.value !== undefined && dto.value !== existing.value) throw new ValidationError('Automatic Deal values cannot be overridden.');
+  if (existing?.productInterestId && dto.value !== undefined && dto.value !== existing.value) throw new ValidationError('Product-linked Deal values cannot be overridden.');
   try {
     await prisma.deal.update({ where: { id, tenantId }, data: updateData as never });
   } catch (error) {

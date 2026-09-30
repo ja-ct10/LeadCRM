@@ -23,7 +23,6 @@ export function LeadsPagination({ currentPage, totalRecords, pageSize, onPageCha
       <span className="text-xs text-slate-500 dark:text-slate-400">Per page</span>
       <PageSizeSelect value={pageSize} options={LEADS_PAGE_SIZES} disabled={disabled} onChange={onPageSizeChange} />
       <span className="text-xs text-slate-400 dark:text-slate-500 ml-2" aria-live="polite">
-        {loading ? 'Loading records…' : `${totalRecords} total ${totalRecords === 1 ? 'record' : 'records'}`}
         {refreshing && <span className="ml-1.5 text-blue-400 dark:text-blue-500" aria-label="Refreshing data">↻</span>}
       </span>
     </div>

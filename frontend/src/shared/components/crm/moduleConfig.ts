@@ -80,12 +80,6 @@ export const DEFAULT_LEAD_STATUSES: StatusOption[] = LEAD_STATUSES.map(label => 
 
 export const DEFAULT_CONTACT_STATUSES = DEFAULT_LEAD_STATUSES;
 
-export const DEFAULT_ACCOUNT_STATUSES: StatusOption[] = [
-  { label: 'Prospect', tone: 'info', description: 'Prospective company account' },
-  { label: 'Active Customer', tone: 'success', description: 'Ongoing contract or active services' },
-  { label: 'Inactive Customer', tone: 'muted', description: 'Dormant account' },
-  { label: 'Former Customer', tone: 'muted', description: 'Terminated or past customer' },
-];
 
 export const DEFAULT_PIPELINE = {
   name: 'Sales Pipeline',

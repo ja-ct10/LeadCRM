@@ -25,7 +25,6 @@ import type { RecordFileMetadata } from '@leadcrm/shared';
 import { RecordFilesTab } from './record-files-tab';
 import { ConfirmActionDialog } from './confirm-action-dialog';
 import { InlineDealForm } from './inline-deal-form';
-import { DEFAULT_ACCOUNT_STATUSES } from './moduleConfig';
 import { RelatedTasks } from '@/features/tenant/operations/tasks/ui/related-tasks';
 import type { Account } from '@/features/tenant/crm/accounts/types/account.types';
 import { DealFormSheet } from '@/features/tenant/crm/deals/ui/deal-form';
@@ -252,7 +251,7 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
   const company = text(object(record.organization)?.name) || text(person?.companyName) || text(person?.company) || text(record.companyName) || text(record.company) || text(object(record.account)?.name);
   const location = [text(record.address), text(record.city), text(record.province), text(record.country)].filter(Boolean).join(', ');
   const subtitle = module === 'deals' ? `₱${Number(record.value ?? 0).toLocaleString()} · ${text(object(record.pipeline)?.name)}` : module === 'accounts' ? text(record.industry) || text(record.website) : company || text(record.jobTitle) || location;
-  const rawStatus = text(module === 'deals' ? object(record.stage)?.name : module === 'accounts' ? record.customerType : record.status);
+  const rawStatus = text(module === 'deals' ? object(record.stage)?.name : module === 'accounts' ? '' : record.status);
   const status = module === 'leads' || module === 'contacts' ? normalizeCrmStatus(rawStatus) : rawStatus;
   const statusLabel = status === status.toUpperCase() ? status.charAt(0) + status.slice(1).toLowerCase() : status;
   const dealStages = data.pipelines.find(p => p.id === record.pipelineId)?.stages ?? [];
@@ -262,7 +261,7 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
     catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to move Deal'); }
     finally { setSaving(false); }
   };
-  const statuses = module === 'accounts' ? DEFAULT_ACCOUNT_STATUSES.map(item => item.label) : [...CRM_STATUSES];
+  const statuses = [...CRM_STATUSES];
   const rows: [string, unknown][] = [
     ...(module === 'accounts' ? [['Account name', record.name], ['Industry', record.industry], ['Company size', record.size]] as [string, unknown][] : []),
     ...(module === 'deals' ? [['Deal title', title], ['Deal value', subtitle.split(' · ')[0]], ['Priority', record.priority], ['Associated Lead / Contact', personName(person)], ['Created', record.createdAt ? new Date(String(record.createdAt)).toLocaleDateString() : '']] as [string, unknown][] : []),
@@ -275,7 +274,6 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
       { label: 'Industry', value: record.industry, apiField: 'industry' },
       { label: 'Company size', value: record.size, apiField: 'size', type: 'select' as const, options: ['1-10', '11-50', '51-200', '200+'] },
       { label: 'Website', value: record.website, apiField: 'website', type: 'url' as const },
-      { label: 'Tax ID', value: record.taxId, apiField: 'taxId' },
       { label: 'City', value: record.city, apiField: 'city' },
       { label: 'Province', value: record.province, apiField: 'province' },
     ] : [
@@ -289,7 +287,7 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
     ]),
     { label: 'Address', value: record.address, apiField: 'address' },
     { label: 'Product interests', value: record.productInterest ?? record.productInterests },
-    { label: 'Status', value: statusLabel, apiField: module === 'accounts' ? 'customerType' : 'status', type: 'select', options: statuses },
+    ...(module === 'accounts' ? [] : [{ label: 'Status', value: statusLabel, apiField: 'status', type: 'select' as const, options: statuses }]),
     { label: 'Owner / Representative', value: owner },
     { label: 'Notes', value: module === 'leads' ? record.description : record.notes, apiField: module === 'leads' ? 'description' : 'notes', type: 'textarea' },
   ];
@@ -343,7 +341,7 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
           </div>
           <div className="ml-[52px] flex max-w-[calc(100%-52px)] items-center gap-1.5 @min-[400px]:ml-0 @min-[400px]:pr-9">
             {manageMenu}
-            {status && (canEdit ? <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" disabled={saving} className={cn('min-h-9 max-w-full gap-1 rounded-lg text-xs', getCRMStatusStyles(statusLabel))}>{statusLabel}<ChevronDown size={12} /></Button></DropdownMenuTrigger><DropdownMenuContent>{module === 'deals' ? dealStages.map(stage => <DropdownMenuItem key={stage.id} onSelect={() => { if (stage.id === record.stageId) return; if (stage.isLost) { setLostReason(''); setLostStage(stage.id); } else void changeStage(stage.id); }}>{stage.name}</DropdownMenuItem>) : statuses.map(option => <DropdownMenuItem key={option} onSelect={() => void save({ [module === 'accounts' ? 'customerType' : 'status']: option })}>{option}</DropdownMenuItem>)}</DropdownMenuContent></DropdownMenu> : <span className={cn('rounded-lg px-2 py-1 text-xs', getCRMStatusStyles(statusLabel))}>{statusLabel}</span>)}
+            {status && (canEdit ? <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" disabled={saving} className={cn('min-h-9 max-w-full gap-1 rounded-lg text-xs', getCRMStatusStyles(statusLabel))}>{statusLabel}<ChevronDown size={12} /></Button></DropdownMenuTrigger><DropdownMenuContent>{module === 'deals' ? dealStages.map(stage => <DropdownMenuItem key={stage.id} onSelect={() => { if (stage.id === record.stageId) return; if (stage.isLost) { setLostReason(''); setLostStage(stage.id); } else void changeStage(stage.id); }}>{stage.name}</DropdownMenuItem>) : statuses.map(option => <DropdownMenuItem key={option} onSelect={() => void save({ status: option })}>{option}</DropdownMenuItem>)}</DropdownMenuContent></DropdownMenu> : <span className={cn('rounded-lg px-2 py-1 text-xs', getCRMStatusStyles(statusLabel))}>{statusLabel}</span>)}
             {onClose && <Button variant="ghost" size="icon" className="absolute right-0 top-0 h-9 w-9" onClick={onClose} aria-label="Close record" title="Close record"><X size={16} /></Button>}
           </div>
         </div>
@@ -389,7 +387,7 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
                 <RelatedRecords records={deals} module="deals" empty={`No deals attached to this ${label.toLowerCase()}.`} />
                 {deals.length === 50 && <p className="px-3 pb-3 text-xs text-muted-foreground">Showing the latest 50 linked deals.</p>}
                 {creatingDeal && <div className="border-t border-border p-3"><InlineDealForm relatedRecord={{ type: module === 'leads' ? 'lead' : module === 'contacts' ? 'contact' : 'account', id }} onError={error => toast.error(error instanceof Error ? error.message : 'Failed to create deal')} onCancel={() => setCreatingDeal(false)} onSubmit={async values => {
-                  await apiClient.post('/crm/deals', { title: values.title, value: values.value, pipelineId: values.pipelineId, stageId: values.stageId, description: values.description, expectedCloseDate: values.expectedCloseDate ? new Date(values.expectedCloseDate).toISOString() : undefined, ...(module === 'leads' ? { leadIds: [id] } : module === 'contacts' ? { contactIds: [id] } : { accountId: id }) });
+                  await apiClient.post('/crm/deals', { title: values.title, productInterestId: values.productInterestId, pipelineId: values.pipelineId, stageId: values.stageId, description: values.description, expectedCloseDate: values.expectedCloseDate ? new Date(values.expectedCloseDate).toISOString() : undefined, ...(module === 'leads' ? { leadIds: [id] } : module === 'contacts' ? { contactIds: [id] } : { accountId: id }) });
                   setCreatingDeal(false); void relatedQuery.refetch();
                 }} /></div>}
               </RecordSection>}

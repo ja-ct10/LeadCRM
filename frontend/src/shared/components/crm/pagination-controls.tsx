@@ -30,7 +30,6 @@ export interface PaginationControlsProps {
  * PaginationControls — consistent footer pagination across all CRM modules.
  *
  * Displays:
- * - Total record count label
  * - Current page range ("1 to 25" or "26 to 30")
  * - Previous/Next navigation buttons
  * - Page indicator ("1 / 4")
@@ -94,12 +93,6 @@ export function PaginationControls({
     >
       {/* Left: Total records + page range */}
       <div className="flex items-center gap-3">
-        <span className="text-[12px] text-[#5A6B85] dark:text-slate-400">
-          <span className="font-semibold text-[#0F172A] dark:text-slate-200 tabular-nums">
-            {totalRecords}
-          </span>{' '}
-          records
-        </span>
         <span className="text-[12px] text-[#5A6B85] dark:text-slate-400">
           <span className="tabular-nums">
             {rangeStart} to {rangeEnd}

@@ -1,10 +1,12 @@
 import { z } from 'zod';
+import { ProductInterestIdSchema } from '@leadcrm/shared';
 
 // ID field helper — accepts any non-empty string (UUID, CUID, or custom).
 // Format validation is not a business rule; referential integrity is enforced by the DB.
 const id = () => z.string().min(1);
 
 export const CreateDealSchema = z.object({
+  productInterestId: ProductInterestIdSchema.optional(),
   pipelineId:        id(),
   stageId:           id(),
   title:             z.string().trim().min(1).max(255),
@@ -24,10 +26,13 @@ export const CreateDealSchema = z.object({
   productInterests:  z.array(z.string().trim().min(1).max(200)).max(100).optional(),
 });
 
+// Manual creation selects exactly one catalog product; imports keep their existing contract.
+export const ManualCreateDealSchema = CreateDealSchema.extend({ productInterestId: ProductInterestIdSchema, productInterests: z.never().optional() });
+
 // DI-2 fix: stageId is explicitly excluded from updates.
 // Stage changes MUST go through PATCH /deals/:id/stage (moveDealStage) to ensure
 // history, audit, activity, and workflow triggers fire on every transition.
-export const UpdateDealSchema = CreateDealSchema.omit({ stageId: true, pipelineId: true }).partial();
+export const UpdateDealSchema = CreateDealSchema.omit({ stageId: true, pipelineId: true, productInterestId: true }).partial();
 
 export const DealHandoffSchema = z.object({
   assignOwnerId:      id().optional(),

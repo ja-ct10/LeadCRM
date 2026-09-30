@@ -176,6 +176,47 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     for (const dealValue of [NaN, Infinity, -1, 1e15, '1', '1e2']) expect(ProductInterestConfigSchema.safeParse([{ name: 'A', dealValue }]).success).toBe(false);
     const lead = await create(); expect((await prisma.deal.findFirstOrThrow({ where: { leadId: lead.id } })).value).toBe(45.25);
   });
+  it('commits product edits and snapshots the database price for each manual Deal', async () => {
+    const product = await prisma.productInterest.create({ data: { tenantId, name: 'Manual price test', dealValue: 5000 } });
+    const { pipeline, initial } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
+    const body = { pipelineId: pipeline.id, stageId: initial.id, title: 'Manual snapshot', productInterestId: product.id, value: 1, currency: 'USD' };
+    const first = await request('/crm/deals', 'POST', body);
+    expect(first.status, JSON.stringify(first.body)).toBe(201);
+    expect(first.body.data).toMatchObject({ value: 5000, currency: 'PHP', productInterestId: product.id, productInterests: [product.name] });
+    const saved = await request('/administration/product-interests/' + product.id, 'PATCH', { name: '  Updated manual product  ', dealValue: 7000.25 });
+    expect(saved.status).toBe(200);
+    expect(saved.body.data.find((p: { id: string }) => p.id === product.id)).toMatchObject({ name: 'Updated manual product', dealValue: 7000.25 });
+    // Independent read of the actual decimal column after the HTTP request committed.
+    const persisted = await prisma.productInterest.findUniqueOrThrow({ where: { id: product.id } });
+    expect(Number(persisted.dealValue)).toBe(7000.25);
+    expect(persisted.name).toBe('Updated manual product');
+    const fresh = await request('/administration/product-interests');
+    expect(fresh.body.data.find((p: { id: string }) => p.id === product.id).dealValue).toBe(7000.25);
+    expect((await prisma.deal.findUniqueOrThrow({ where: { id: first.body.data.id } })).value).toBe(5000);
+    const next = await request('/crm/deals', 'POST', body);
+    expect(next.status).toBe(201);
+    expect(next.body.data).toMatchObject({ value: 7000.25, productInterests: ['Updated manual product'] });
+    expect((await request('/crm/deals/' + next.body.data.id, 'PUT', { value: 1 })).status).toBe(400);
+    const foreign = await prisma.productInterest.create({ data: { tenantId: otherTenant, name: 'Foreign', dealValue: 9 } });
+    for (const productInterestId of [undefined, 'invalid', randomUUID(), foreign.id]) {
+      expect((await request('/crm/deals', 'POST', { ...body, productInterestId })).status).toBe(400);
+    }
+    expect((await request('/crm/deals', 'POST', { ...body, productInterests: [product.name, 'Other'] })).status).toBe(400);
+    expect((await request('/administration/product-interests/' + foreign.id, 'PATCH', { dealValue: 1 })).status).toBe(404);
+    await prisma.productInterest.update({ where: { id: product.id }, data: { active: false } });
+    expect((await request('/crm/deals', 'POST', body)).status).toBe(400);
+  });
+  it('creates Accounts without retired fields and excludes unsupported archive types at the API boundary', async () => {
+    const created = await request('/crm/accounts', 'POST', { name: 'Clean account', taxId: 'invalid', customerType: 'invalid', customerSince: 'invalid' });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    expect((await prisma.account.findUniqueOrThrow({ where: { id: created.body.data.id } })).taxId).toBeNull();
+    await prisma.pipeline.create({ data: { tenantId, name: 'Hidden archived pipeline', type: 'Sales', isArchived: true } });
+    const all = await request('/administration/archived-data');
+    expect(all.status).toBe(200);
+    expect(all.body.data.every((r: { type: string }) => ['Lead', 'Contact', 'Account', 'Deal', 'User'].includes(r.type))).toBe(true);
+    for (const type of ['Pipeline', 'Role', 'Workflow', 'Campaign', 'Template']) expect((await request('/administration/archived-data?type=' + type)).status).toBe(400);
+    expect(await prisma.pipeline.count({ where: { tenantId, name: 'Hidden archived pipeline', isArchived: true } })).toBe(1);
+  });
   it('manual Lead HTTP retries preserve a single Lead and automatic Deal', async () => {
     const body = { requestId: randomUUID(), firstName: 'Manual', lastName: 'Lead', productInterest: [productIds['Smart Lock']] };
     const first = await request('/crm/leads', 'POST', body); expect(first.status, JSON.stringify(first.body)).toBe(201);
