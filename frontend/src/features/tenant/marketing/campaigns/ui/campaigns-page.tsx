@@ -13,8 +13,9 @@ import { FieldError } from './audience-panel';
 import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { useAuth } from '@/store/AuthContext';
 import { toast } from 'sonner';
-import { Plus, Send, X, Mail, MessageSquare, Megaphone, BarChart2, Eye, MousePointerClick, Edit2, Trash2, Play, Pause, Search, Filter, TrendingUp, TrendingDown, Copy, Calendar, ArrowLeft, SplitSquareHorizontal, ListOrdered, Monitor, Smartphone, Tags, Wand2, LayoutTemplate, Zap, Trophy, MoreVertical, Sparkles, Users, Loader2 } from 'lucide-react';
+import { Archive, Plus, Send, X, Mail, MessageSquare, Megaphone, BarChart2, Eye, MousePointerClick, Edit2, Trash2, Play, Pause, Search, Filter, TrendingUp, TrendingDown, Copy, Calendar, ArrowLeft, SplitSquareHorizontal, ListOrdered, Monitor, Smartphone, Tags, Wand2, LayoutTemplate, Zap, Trophy, MoreVertical, Sparkles, Users, Loader2 } from 'lucide-react';
 import EmptyState from '@/shared/components/empty-state';
+import { FilterButton } from '@/shared/components/crm/filter-button';
 import { ModuleFilterRail } from '@/shared/components/crm/module-filter-rail';
 import { SideSheet } from '@/shared/components/side-sheet';
 import { CampaignReportView } from './campaign-report-view';
@@ -378,7 +379,7 @@ export default function CampaignsPage() {
 
       {/* Tab Content */}
       {activeTab === 'all' && (
-        totalItems === 0 && !searchTerm && !statusFilter.length && !typeFilter.length && !isInitialLoad ? (
+        totalItems === 0 && !searchTerm && !statusFilter.length && !typeFilter.length && !isInitialLoad && !isRefreshing ? (
           <div className="py-12">
             <EmptyState
               type="campaigns"
@@ -410,16 +411,7 @@ export default function CampaignsPage() {
                   </TooltipTrigger><TooltipContent>Clear search</TooltipContent></Tooltip></TooltipProvider>
                 )}
               </div>
-              <TooltipProvider><Tooltip><TooltipTrigger asChild>
-                <button
-                  onClick={() => setShowFilters(!showFilters)}
-                  aria-label="Filter campaigns"
-                  aria-expanded={showFilters}
-                  className={`inline-flex h-9 w-9 sm:w-auto shrink-0 items-center justify-center gap-1.5 sm:px-3 rounded-lg border text-[12px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 ${showFilters ? 'border-blue-200 bg-blue-50 text-blue-600 dark:bg-blue-500/10' : 'border-[#E4E9F0] bg-white text-[#5A6B85] dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300'}`}
-                >
-                  <Filter size={14} aria-hidden="true" /><span className="hidden sm:inline">Filter</span>
-                </button>
-              </TooltipTrigger><TooltipContent>Filter</TooltipContent></Tooltip></TooltipProvider>
+              <FilterButton title="campaigns" open={showFilters} onClick={() => setShowFilters(!showFilters)} />
               <RefreshButton label="Refresh campaigns" disabled={isInitialLoad || isRefreshing} refreshing={isRefreshing} onClick={() => void refetchCampaigns()} />
             </div>
             <div className="flex min-w-0 items-start gap-3">
@@ -454,13 +446,13 @@ export default function CampaignsPage() {
                 }}
               />
               <div className="min-w-0 flex-1">
-            {isInitialLoad ? <TableLoadingState label="Loading campaigns..." /> : <DataGrid<Campaign>
+            {isInitialLoad || isRefreshing ? <TableLoadingState label="Loading campaigns..." /> : <DataGrid<Campaign>
               columns={campaignColumns} data={filteredCampaigns} getRowId={row => row.id} height="auto" selectable={canDeleteCampaign} selectedIds={selected} onSelectionChange={setSelected}
               enableColumnMenu={false} ariaLabel="Campaigns table" summaryLabel={`${totalItems} total records`} onRowClick={viewCampaign}
               rowActions={campaign => [
-                { id: 'view', label: 'View', onClick: () => viewCampaign(campaign) },
-                ...(canCreateCampaign ? [{ id: 'duplicate', label: 'Duplicate', onClick: () => void handleDuplicate(campaign) }] : []),
-                ...(canDeleteCampaign ? [{ id: 'archive', label: 'Archive', onClick: () => setArchiving(campaign) }] : []),
+                { id: 'view', label: 'View', icon: <Eye size={14} />, onClick: () => viewCampaign(campaign) },
+                ...(canCreateCampaign ? [{ id: 'duplicate', label: 'Duplicate', icon: <Copy size={14} />, onClick: () => void handleDuplicate(campaign) }] : []),
+                ...(canDeleteCampaign ? [{ id: 'archive', label: 'Archive', icon: <Archive size={14} />, separator: true, onClick: () => setArchiving(campaign) }] : []),
               ]} />}
             <BulkSelectionBar selectedCount={selected.size} selectedIds={selected} onClearSelection={() => setSelected(new Set())} onRemoveIds={ids => setSelected(previous => new Set([...previous].filter(id => !ids.includes(id))))}
               actions={canDeleteCampaign ? [{ id: 'archive', label: 'Archive', entityName: 'campaign', destructive: true, onExecute: async ids => { const result = await executeSelectedRows(ids, campaignsApi.archive); await refetchCampaigns(); return result; } }] : []} />

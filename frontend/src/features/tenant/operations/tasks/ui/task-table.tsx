@@ -248,7 +248,7 @@ export function TaskTable({
           id: "archive",
           label: "Archive",
           icon: <Archive size={14} />,
-          destructive: true,
+          separator: true,
           disabled: busy || !canArchive || !!task.isArchived,
           onClick: () => onArchive(task),
         },

@@ -255,13 +255,14 @@ describe.sequential('Settings archived-data aggregation and missing restore rout
   }
   it.each(extraTypes)('%s restores the original database row and preserves content/history', async type => {
     const row = await createExtra(type);
-    expect((await archiveRequest(`?type=${type}`)).body.data.some((item: any) => item.id === row.id && item.archivedAt === null)).toBe(true);
+    if (type === 'Campaign' || type === 'Workflow') expect((await archiveRequest(`?type=${type}`)).body.data.some((item: any) => item.id === row.id && item.archivedAt === null)).toBe(true);
+    else expect((await archiveRequest(`?type=${type}`)).status).toBe(400);
     const before = await readExtra(type, row.id);
     expect((await archiveRequest(`/${type}/${row.id}/restore`, 'PATCH')).status).toBe(200);
     const after = await readExtra(type, row.id);
     expect(after).toMatchObject({ ...before, isArchived: false, updatedAt: expect.any(Date) });
     if (type === 'Workflow') expect(after).toMatchObject({ isActive: false, status: 'PAUSED' });
-    expect((await archiveRequest(`?type=${type}`)).body.data.some((item: any) => item.id === row.id)).toBe(false);
+    if (type === 'Campaign' || type === 'Workflow') expect((await archiveRequest(`?type=${type}`)).body.data.some((item: any) => item.id === row.id)).toBe(false);
     expect((await archiveRequest(`/${type}/${row.id}/restore`, 'PATCH')).status).toBe(404);
     expect(await db.auditLog.count({ where: { entityId: row.id, action: type.toLowerCase() + '.restored' } })).toBe(1);
   });
@@ -276,14 +277,38 @@ describe.sequential('Settings archived-data aggregation and missing restore rout
     if (type !== 'Role') {
       const sandbox = await createExtra(type, tenantId, 'SANDBOX');
       expect((await archiveRequest(`/${type}/${sandbox.id}/restore`, 'PATCH')).status).toBe(404);
-      expect((await archiveRequest(`?type=${type}`)).body.data.some((item: any) => item.id === sandbox.id)).toBe(false);
+      if (type === 'Campaign' || type === 'Workflow') expect((await archiveRequest(`?type=${type}`)).body.data.some((item: any) => item.id === sandbox.id)).toBe(false);
     }
   });
   it('rejects unknown restore types and protected roles', async () => {
     expect((await archiveRequest(`/User/${randomUUID()}/restore`, 'PATCH')).status).toBe(400);
     const role = await db.roleDefinition.create({ data: { tenantId, name: 'System-Admin', isArchived: true } });
     expect((await archiveRequest(`/Role/${role.id}/restore`, 'PATCH')).status).toBe(403);
-    expect((await archiveRequest('?type=Role')).body.data.find((item: any) => item.id === role.id).canRestore).toBe(false);
+    expect((await archiveRequest('?type=Role')).status).toBe(400);
+  });
+  it('searches before pagination across allowed types and preserves tenant/environment/RBAC scope', async () => {
+    const marker = 'Search' + randomUUID();
+    const campaign = await createExtra('Campaign');
+    const workflow = await createExtra('Workflow');
+    await db.campaign.update({ where: { id: campaign.id }, data: { name: marker + ' campaign' } });
+    await db.workflow.update({ where: { id: workflow.id }, data: { name: marker + ' workflow' } });
+    for (const [tenant, environment] of [[otherTenantId, 'PRODUCTION'], [tenantId, 'SANDBOX']] as const) {
+      const foreign = await createExtra('Campaign', tenant, environment);
+      await db.campaign.update({ where: { id: foreign.id }, data: { name: marker } });
+    }
+    const first = await archiveRequest(`?search=${marker.toLowerCase()}&limit=1`);
+    const second = await archiveRequest(`?search=${marker}&limit=1&page=2`);
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    expect(first.body.meta.total).toBe(2); expect(second.body.meta.total).toBe(2);
+    expect([...first.body.data, ...second.body.data].map((r: any) => r.id)).toEqual([campaign.id, workflow.id]);
+    expect((await archiveRequest(`?search=${marker}&type=Campaign`)).body.data.map((r: any) => r.id)).toEqual([campaign.id]);
+    expect((await archiveRequest(`?search=${marker}`, 'GET', viewerCookie)).body.data).toEqual([]);
+    expect((await archiveRequest('?search=' + 'x'.repeat(201))).status).toBe(400);
+    // This legacy fixture omits newer product fields; seed only archive-search columns.
+    const lead = { id: randomUUID() };
+    await db.$executeRaw`INSERT INTO "Lead" (id,"tenantId",environment,"firstName","lastName",email,status,"isArchived","updatedAt") VALUES (${lead.id},${tenantId},'PRODUCTION',${marker},'Person','unique-search@example.test','Warm',true,NOW())`;
+    expect((await archiveRequest(`?search=${marker}%20Person&type=Lead`)).body.data.map((r: any) => r.id)).toEqual([lead.id]);
+    expect((await archiveRequest('?search=unique-search%40example.test&type=Lead')).body.data.map((r: any) => r.id)).toEqual([lead.id]);
   });
   it('uses the existing user restore route, validates UUIDs and rejects already-active/cross-tenant users', async () => {
     const user = await db.user.create({ data: { tenantId, email: 'inactive@camxian.com', firstName: 'Inactive', lastName: 'User', role: 'Sales', status: 'INACTIVE' } });

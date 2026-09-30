@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Eye, Edit, Archive } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ProductInterest, ProductWonDeal, PaginatedResponse } from '@leadcrm/shared';
 import { apiClient } from '@/lib/api/client';
@@ -9,6 +9,8 @@ import { useAuth } from '@/store/AuthContext';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { PRODUCT_INTEREST_ENDPOINT as endpoint, useProductInterests, type ProductInterestResponse } from '@/shared/hooks/use-product-interests';
 import { DataGrid, type DataGridColumnDef, type SortState } from '@/shared/components/data-grid';
+import { ModuleSearchInput } from '@/shared/components/crm/module-search-input';
+import { TableIconButton } from '@/shared/components/data-grid/table-icon-button';
 import { SelectedRowsBar } from '@/shared/components/crm/selected-rows-bar';
 import { LeadsPagination } from '@/shared/components/crm/leads-pagination';
 import { DataLoadingSkeleton } from '@/shared/components/crm/data-view-states';
@@ -115,19 +117,19 @@ export function ProductsPage() {
     { id: 'name', header: 'Product Name', accessor: row => row.name, sortable: true, width: 330 },
     { id: 'dealValue', header: 'Deal Value', accessor: row => row.dealValue, sortable: true, width: 190, cell: (_, row) => php.format(row.dealValue) },
     { id: 'status', header: 'Status', accessor: row => row.active ? 'Active' : 'Archived', width: 120 },
-    { id: 'actions', header: 'Actions', accessor: () => '', width: 110, cell: (_, row) => <Button variant="ghost" size="sm" onClick={() => setPanel({ mode: 'view', product: row })}>View</Button> },
+    { id: 'actions', header: 'Actions', accessor: () => '', width: 110, cell: (_, row) => <TableIconButton touchFriendly label="Edit product" disabled={!canEdit || busy} onClick={() => setPanel({ mode: 'edit', product: row })}><Edit size={14} /></TableIconButton> },
   ];
   return <div className="min-w-0 max-w-full space-y-4">
     <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h2 className="text-xl font-semibold">Products</h2><p className="mt-1 text-sm text-muted-foreground">Manage products and their default Deal values.</p></div>
       {canEdit && <Button aria-label="Add Product" title="Add Product" disabled={busy || !enabled} onClick={() => setPanel({ mode: 'new' })} className="shrink-0"><Plus size={16} /><span className="hidden sm:inline">Add Product</span></Button>}
     </div>
-    <div className="flex flex-wrap items-center gap-2"><input className="min-h-11 w-full min-w-0 rounded-lg border border-border bg-background px-3 text-sm sm:w-64" aria-label="Search products" placeholder="Search products..." value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} /><RefreshButton label="Refresh products" refreshing={loading} disabled={busy || loading} onClick={refresh} /></div>
+    <div className="flex flex-wrap items-center gap-2"><ModuleSearchInput label="Search products" placeholder="Search products..." value={search} onChange={value => { setSearch(value); setPage(1); }} /><RefreshButton label="Refresh products" refreshing={loading} disabled={busy || loading} onClick={refresh} /></div>
     {error && <p role="alert" className="text-destructive">{error}</p>}
     {!enabled && <p className="text-sm text-muted-foreground">Enable Product Interest in Custom Fields to add products.</p>}
     {loading && !products.length ? <TableLoadingState label="Loading products" /> : <DataGrid columns={columns} data={filtered.slice((page - 1) * pageSize, page * pageSize)} getRowId={row => row.id} height="auto" selectable={canEdit} selectedIds={selected} onSelectionChange={ids => { if (!busy) setSelected(ids); }} sort={sort} onSortChange={setSort} sortingMode="external" enableColumnMenu={false} ariaLabel="Products table" summaryLabel={`${filtered.length} products`} onRowClick={product => setPanel({ mode: 'view', product })}
-      rowActions={product => [{ id: 'view', label: 'View', onClick: () => setPanel({ mode: 'view', product }) }, ...(canEdit ? [
-        { id: 'edit', label: 'Edit', disabled: busy, onClick: () => setPanel({ mode: 'edit', product }) },
-        { id: 'archive', label: 'Archive', disabled: busy, onClick: () => setArchiveIds([product.id]) },
+      rowActions={product => [{ id: 'view', label: 'View', icon: <Eye size={14} />, onClick: () => setPanel({ mode: 'view', product }) }, ...(canEdit ? [
+        { id: 'edit', label: 'Edit', icon: <Edit size={14} />, disabled: busy, onClick: () => setPanel({ mode: 'edit', product }) },
+        { id: 'archive', label: 'Archive', icon: <Archive size={14} />, separator: true, disabled: busy, onClick: () => setArchiveIds([product.id]) },
       ] : [])]} />}
     <LeadsPagination currentPage={page} pageSize={pageSize} totalRecords={filtered.length} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); }} disabled={busy} />
     <SelectedRowsBar count={selected.size} onClear={() => setSelected(new Set())} disabled={busy}>{canEdit && <Button variant="outline" disabled={busy} onClick={() => setArchiveIds([...selected])}>Archive</Button>}</SelectedRowsBar>

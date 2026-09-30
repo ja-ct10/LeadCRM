@@ -21,7 +21,7 @@ const request = vi.fn(async (url: string, options: RequestInit) => {
     return new Response(JSON.stringify({ success: true }));
   }
   if (failFetch) return new Response(JSON.stringify({ error: 'Fetch failed' }), { status: 500 });
-  const filtered = rows.filter(row => !path.searchParams.get('type') || row.type === path.searchParams.get('type'));
+  const filtered = rows.filter(row => (!path.searchParams.get('type') || row.type === path.searchParams.get('type')) && row.name.toLowerCase().includes((path.searchParams.get('search') || '').toLowerCase()));
   const page = Number(path.searchParams.get('page')), limit = Number(path.searchParams.get('limit'));
   return new Response(JSON.stringify({ success: true, data: filtered.slice((page - 1) * limit, page * limit), meta: { total: filtered.length, page, limit, hasMore: page * limit < filtered.length } }));
 });
@@ -40,22 +40,22 @@ it('uses the shared grid, actual timestamp and one scrolling filter row', async 
   expect(screen.getByRole('status').querySelector('.animate-spin')).toBeTruthy();
   expect(screen.getByText('Archived Data Recovery')).toBeTruthy();
   const filters = screen.getByRole('group', { name: 'Archived record types' });
-  expect(within(filters).getAllByRole('button').map(button => button.textContent)).toEqual(['All', 'Lead', 'Contact', 'Account', 'Deal', 'User', 'Task']);
+  expect(within(filters).getAllByRole('button').map(button => button.textContent)).toEqual(['All', 'Lead', 'Contact', 'Account', 'Deal', 'User', 'Task', 'Campaign', 'Workflow']);
   expect(filters.className).toContain('overflow-x-auto');
   expect(filters.className).toContain('flex-nowrap');
   await screen.findByText('Saved Lead');
   expect(screen.getByRole('grid')).toBeTruthy();
   expect(screen.getAllByRole('checkbox')).toHaveLength(4);
   expect(screen.getByRole('columnheader', { name: 'Archived On' })).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Restore Saved Lead' }).querySelector('span')?.className).toBe('hidden sm:inline');
+  expect(screen.getAllByRole('button', { name: 'Restore archived record' })[0].textContent).toBe('');
 });
 
 it.each([
-  ['Lead', 'crm/leads'], ['Contact', 'crm/contacts'], ['Account', 'crm/accounts'], ['Deal', 'crm/deals'], ['User', 'administration/users'], ['Task', 'administration/archived-data/Task'],
+  ['Lead', 'crm/leads'], ['Contact', 'crm/contacts'], ['Account', 'crm/accounts'], ['Deal', 'crm/deals'], ['User', 'administration/users'], ['Task', 'administration/archived-data/Task'], ['Campaign', 'administration/archived-data/Campaign'], ['Workflow', 'administration/archived-data/Workflow'],
 ])('confirms %s restoration using its configured endpoint', async (label, route) => {
   rows = [{ ...rows[0], id: label.toLowerCase() + '-id', type: label as ArchivedRecord['type'], name: 'Saved ' + label }];
   render(<ArchivedData />); await screen.findByText('Saved ' + label);
-  fireEvent.click(screen.getByRole('button', { name: 'Restore Saved ' + label }));
+  fireEvent.click(screen.getByRole('button', { name: 'Restore archived record' }));
   expect(writes()).toHaveLength(0);
   expect(screen.getByText('This record will be restored to its original module.')).toBeTruthy();
   confirm();
@@ -66,7 +66,7 @@ it.each([
 
 it('cancel and Escape do not restore; dialog traps focus and restores it', async () => {
   render(<ArchivedData />); await screen.findByText('Saved Lead');
-  const button = screen.getByRole('button', { name: 'Restore Saved Lead' });
+  const button = screen.getAllByRole('button', { name: 'Restore archived record' })[0];
   button.focus(); fireEvent.click(button);
   const dialog = screen.getByRole('alertdialog');
   const first = within(dialog).getByRole('button', { name: 'Close' });
@@ -110,8 +110,8 @@ it('keeps failed records and reports partial bulk results accurately', async () 
 it('retains a rejected individual restore and disables forbidden actions', async () => {
   failIds.add('lead-id'); rows[1].canRestore = false;
   render(<ArchivedData />); await screen.findByText('Saved Lead');
-  expect((screen.getByRole('button', { name: 'Restore Saved Contact' }) as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.click(screen.getByRole('button', { name: 'Restore Saved Lead' })); confirm();
+  expect((screen.getAllByRole('button', { name: 'Restore archived record' })[1] as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getAllByRole('button', { name: 'Restore archived record' })[0]); confirm();
   await waitFor(() => expect(state.error).toHaveBeenCalledWith('Permission denied'));
   expect(screen.getByText('Saved Lead')).toBeTruthy();
   expect(state.success).not.toHaveBeenCalled();
@@ -137,4 +137,16 @@ it('shows a fetch error with retry and recovers', async () => {
   expect(screen.queryByText('No archived records found.')).toBeNull();
   failFetch = false; fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   await screen.findByText('Saved Lead');
+});
+
+it('searches server records beyond the visible page and resets pagination', async () => {
+  rows = Array.from({ length: 26 }, (_, i) => ({ ...rows[0], id: String(i), name: i === 25 ? 'Needle campaign' : `Lead ${i}`, type: i === 25 ? 'Campaign' : 'Lead' }));
+  render(<ArchivedData />); await screen.findByText('Lead 0');
+  expect(screen.queryByText('Needle campaign')).toBeNull();
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search archived records' }), { target: { value: 'Needle' } });
+  expect(screen.getByText('Loading archived records...').parentElement?.querySelector('.animate-spin')).toBeTruthy();
+  expect(screen.getByRole('group', { name: 'Archived record types' })).toBeTruthy();
+  await screen.findByText('Needle campaign');
+  expect(request.mock.calls.some(([url]) => url.includes('search=Needle') && url.includes('page=1'))).toBe(true);
+  expect(screen.queryByText('Lead 0')).toBeNull();
 });

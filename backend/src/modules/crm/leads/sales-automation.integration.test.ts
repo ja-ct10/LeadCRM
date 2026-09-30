@@ -214,7 +214,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     const all = await request('/administration/archived-data');
     expect(all.status).toBe(200);
     expect(all.body.data.every((r: { type: string }) => ['Lead', 'Contact', 'Account', 'Deal', 'User'].includes(r.type))).toBe(true);
-    for (const type of ['Pipeline', 'Role', 'Workflow', 'Campaign', 'Template']) expect((await request('/administration/archived-data?type=' + type)).status).toBe(400);
+    for (const type of ['Pipeline', 'Role', 'Template']) expect((await request('/administration/archived-data?type=' + type)).status).toBe(400);
     expect(await prisma.pipeline.count({ where: { tenantId, name: 'Hidden archived pipeline', isArchived: true } })).toBe(1);
   });
   it('manual Lead HTTP retries preserve a single Lead and automatic Deal', async () => {

@@ -1,10 +1,11 @@
 import { z } from 'zod';
 
-export const ARCHIVE_TYPES = ['Lead', 'Contact', 'Account', 'Deal', 'User', 'Task'] as const;
+export const ARCHIVE_TYPES = ['Lead', 'Contact', 'Account', 'Deal', 'User', 'Task', 'Campaign', 'Workflow'] as const;
 export const ArchiveTypeSchema = z.enum(ARCHIVE_TYPES);
 export type ArchiveType = z.infer<typeof ArchiveTypeSchema>;
 export const ArchiveQuerySchema = z.object({
   type: ArchiveTypeSchema.optional(),
+  search: z.string().trim().max(200).optional(),
   page: z.coerce.number().int().min(1).max(100000).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(25),
 }).strict();

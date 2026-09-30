@@ -78,7 +78,7 @@ it('shows a skeleton then applies the committed response and toasts only after s
   resolve({ data: [{ ...product, dealValue: 7000.25 }], meta: { enabled: true } });
   await screen.findByText('₱7,000.25');
   expect(toast.success).toHaveBeenCalledWith('Product updated successfully.');
-  expect(screen.queryByLabelText('Deal Value (PHP)')).toBeNull();
+  await waitFor(() => expect(screen.queryByLabelText('Deal Value (PHP)')).toBeNull());
 });
 it('retains entered values and allows retry when saving fails', async () => {
   vi.mocked(apiClient.patch).mockRejectedValue(new Error('Database unavailable'));
@@ -95,11 +95,22 @@ it('loads details and the actual Closed Won lookup with skeletons', async () => 
   render(<ProductsPage />); await screen.findByRole('grid');
   let resolve!: (value: unknown) => void;
   vi.mocked(apiClient.get).mockImplementation((url) => url.includes('/closed-won') ? new Promise(done => { resolve = done; }) : Promise.resolve({ data: product }));
-  fireEvent.click(screen.getByRole('button', { name: 'View' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Row actions' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'View' }));
   expect(screen.getByRole('status', { name: 'Loading product and Closed Won customers' }).querySelector('.animate-pulse')).toBeTruthy();
   resolve({ data: [{ id: 'won', title: 'Real won deal', value: 45000, currency: 'PHP', customers: ['Saved Customer'], company: 'Company', assignedAgent: 'Agent', closedAt: '2026-09-30' }], meta: { total: 1 } });
   expect(await screen.findByText('Saved Customer')).toBeTruthy();
   expect(screen.getByText('Real won deal')).toBeTruthy();
   expect(screen.getByText('₱45,000.00')).toBeTruthy();
   expect(apiClient.get).toHaveBeenCalledWith('/administration/product-interests/' + product.id + '/closed-won?page=1&limit=25', expect.anything());
+});
+
+it('opens the existing editor from the icon-only product quick action', async () => {
+  render(<ProductsPage />); await screen.findByRole('grid');
+  const edit = screen.getByRole('button', { name: 'Edit product' });
+  expect(edit.textContent).toBe(''); expect(edit.title).toBe('Edit product');
+  expect(screen.queryByRole('button', { name: 'View' })).toBeNull();
+  fireEvent.click(edit);
+  expect(screen.getByText('Edit Product')).toBeTruthy();
+  expect((screen.getByLabelText('Product Name') as HTMLInputElement).value).toBe(product.name);
 });

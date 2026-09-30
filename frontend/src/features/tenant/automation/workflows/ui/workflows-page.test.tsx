@@ -58,6 +58,8 @@ it('wires menus to view, edit, duplicate, pause, resume and confirmed archive', 
   await screen.findByText('Paused');
   action('Resume');
   await waitFor(() => expect(workflowsApi.toggle).toHaveBeenCalledWith('wf1', true));
+  await screen.findByRole('grid');
+  await waitFor(() => expect((screen.getByLabelText('Resume workflow') as HTMLButtonElement).disabled).toBe(false));
   action('Archive');
   expect(workflowsApi.archive).not.toHaveBeenCalled();
   fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Archive' }));
@@ -82,8 +84,25 @@ it('disables refresh and spins its icon until the in-flight request finishes', a
   const calls = vi.mocked(workflowsApi.list).mock.calls.length;
   fireEvent.click(refresh); fireEvent.click(refresh);
   expect(refresh.disabled).toBe(true);
+  expect(screen.getByText('Loading workflows...').parentElement?.querySelector('.animate-spin')).toBeTruthy();
+  expect(screen.getByLabelText('Search workflows')).toBeTruthy();
   expect(refresh.querySelector('.animate-spin')).toBeTruthy();
   expect(workflowsApi.list).toHaveBeenCalledTimes(calls + 1);
   resolve({ success: true, data: [workflow], meta: { total: 1, page: 1, limit: 10, hasMore: false } });
   await waitFor(() => expect(refresh.disabled).toBe(false));
+});
+
+it('quick icons duplicate and toggle the same workflow while showing only the supported state action', async () => {
+  render(<WorkflowsPage />); await screen.findByRole('grid');
+  expect(screen.queryByLabelText('Resume workflow')).toBeNull();
+  fireEvent.click(screen.getByLabelText('Duplicate workflow'));
+  await waitFor(() => expect(workflowsApi.create).toHaveBeenCalledWith(expect.objectContaining({ name: 'Follow up (Copy)', isActive: false })));
+  await waitFor(() => expect((screen.getByLabelText('Pause workflow') as HTMLButtonElement).disabled).toBe(false));
+  vi.mocked(workflowsApi.list).mockResolvedValue({ data: [{ ...workflow, id: 'wf1', isActive: false }], meta: { total: 1 } } as never);
+  fireEvent.click(screen.getByLabelText('Pause workflow'));
+  await waitFor(() => expect(workflowsApi.toggle).toHaveBeenCalledWith('wf1', false));
+  await waitFor(() => expect((screen.getByLabelText('Resume workflow') as HTMLButtonElement).disabled).toBe(false));
+  expect(screen.queryByLabelText('Pause workflow')).toBeNull();
+  fireEvent.click(screen.getByLabelText('Resume workflow'));
+  await waitFor(() => expect(workflowsApi.toggle).toHaveBeenCalledWith('wf1', true));
 });

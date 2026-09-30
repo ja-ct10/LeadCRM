@@ -5,7 +5,7 @@ import { SelectedRowsBar } from '@/shared/components/crm/selected-rows-bar';
 import React, { useState, useCallback, useRef, useEffect, useMemo, ReactNode } from 'react';
 import {
   List, LayoutGrid, Table2, Columns3, Grid3X3,
-  TrendingUp, Search,
+  TrendingUp,
   Settings2, ChevronDown, ChevronLeft, ChevronRight, X, Upload,
   ListOrdered, Eye, Check, FileUp, UserPlus, Plus,
 } from 'lucide-react';
@@ -17,6 +17,7 @@ import { useViewTypePreference } from '@/shared/hooks/use-view-type-preference';
 import { VIEW_OPTIONS as VIEW_RENDERERS } from './view-registry';
 import { validateModuleConfig } from './validate-module-config';
 import { ModuleFilterRail, type FilterGroup } from './module-filter-rail';
+import { ModuleSearchInput } from './module-search-input';
 import { FilterButton } from './filter-button';
 import { RefreshButton } from './refresh-button';
 import { TableLoadingState } from './table-loading-state';
@@ -345,17 +346,7 @@ export function ModuleWorkspace({
       {/* Mobile: search on row 1 (full width), all secondary controls on row 2 via flex-col */}
       <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 mb-3" role="toolbar" aria-label="Module controls">
         {/* 1. Search field — full width on mobile, fixed width on sm+ */}
-        <div className="relative w-full sm:flex-none sm:w-auto">
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => onSearch?.(e.target.value)}
-            placeholder={searchPlaceholder}
-            aria-label={searchPlaceholder}
-            className="h-8 w-full sm:w-48 lg:w-56 pl-8 pr-3 text-[12px] rounded-lg border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0F172A] dark:text-slate-200 placeholder:text-[#5A6B85] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 focus:border-[#2563EB] transition-all"
-          />
-          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#5A6B85]" aria-hidden="true" />
-        </div>
+        <ModuleSearchInput value={searchTerm} onChange={value => onSearch?.(value)} placeholder={searchPlaceholder} />
 
         {/* Row 2 on mobile / inline on sm+: all secondary controls */}
         {/* sm:contents dissolves this wrapper on sm+ so children participate directly in the parent flex */}

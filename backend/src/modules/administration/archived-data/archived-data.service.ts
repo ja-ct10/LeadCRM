@@ -32,22 +32,31 @@ function source<T>(count: () => Promise<number>, load: (skip: number, take: numb
 export async function list(actor: Actor, query: z.infer<typeof ArchiveQuerySchema>) {
   const where = scope(actor);
   const identityWhere = { tenantId: actor.tenantId, isArchived: true };
-  const usersWhere = { tenantId: actor.tenantId, status: 'INACTIVE' as const, role: { not: 'System Admin' } };
+  const searchWhere = (...fields: string[]) => query.search?.trim() ? {
+    AND: query.search.trim().split(/\s+/).map(term => ({
+      OR: fields.map(field => ({ [field]: { contains: term, mode: 'insensitive' as const } })),
+    })),
+  } : {};
+  const personWhere = { ...where, ...searchWhere('firstName', 'lastName', 'email') };
+  const titleWhere = { ...where, ...searchWhere('title') };
+  const nameWhere = { ...where, ...searchWhere('name') };
+  const accountWhere = { ...where, ...searchWhere('name', 'website', 'city') };
+  const usersWhere = { tenantId: actor.tenantId, status: 'INACTIVE' as const, role: { not: 'System Admin' }, ...searchWhere('firstName', 'lastName', 'email') };
   const pageArgs = (skip: number, take: number) => ({ skip, take, orderBy: { id: 'asc' as const } });
   const person = (r: { id: string; firstName: string; lastName: string; email: string | null; deletedAt: Date | null }) =>
     ({ id: r.id, name: `${r.firstName} ${r.lastName}`.trim(), detail: r.email ?? '', archivedAt: r.deletedAt });
   // Explicit delegates, scoped counts and bounded page reads; no client-controlled model names.
   const sources = {
-    Task: source(() => prisma.task.count({ where }), (skip, take) => prisma.task.findMany({ where, ...pageArgs(skip, take), select: { id: true, title: true } }), r => ({ id: r.id, name: r.title })),
-    Lead: source(() => prisma.lead.count({ where }), (skip, take) => prisma.lead.findMany({ where, ...pageArgs(skip, take), select: { id: true, firstName: true, lastName: true, email: true, deletedAt: true } }), person),
-    Contact: source(() => prisma.contact.count({ where }), (skip, take) => prisma.contact.findMany({ where, ...pageArgs(skip, take), select: { id: true, firstName: true, lastName: true, email: true, deletedAt: true } }), person),
-    Account: source(() => prisma.account.count({ where }), (skip, take) => prisma.account.findMany({ where, ...pageArgs(skip, take), select: { id: true, name: true, website: true, city: true, deletedAt: true } }), r => ({ id: r.id, name: r.name, detail: r.website || r.city || '', archivedAt: r.deletedAt })),
-    Deal: source(() => prisma.deal.count({ where }), (skip, take) => prisma.deal.findMany({ where, ...pageArgs(skip, take), select: { id: true, title: true, value: true, currency: true, deletedAt: true } }), r => ({ id: r.id, name: r.title, detail: r.value === null ? '' : [r.currency, String(r.value)].filter(Boolean).join(' '), archivedAt: r.deletedAt })),
+    Task: source(() => prisma.task.count({ where: titleWhere }), (skip, take) => prisma.task.findMany({ where: titleWhere, ...pageArgs(skip, take), select: { id: true, title: true } }), r => ({ id: r.id, name: r.title })),
+    Lead: source(() => prisma.lead.count({ where: personWhere }), (skip, take) => prisma.lead.findMany({ where: personWhere, ...pageArgs(skip, take), select: { id: true, firstName: true, lastName: true, email: true, deletedAt: true } }), person),
+    Contact: source(() => prisma.contact.count({ where: personWhere }), (skip, take) => prisma.contact.findMany({ where: personWhere, ...pageArgs(skip, take), select: { id: true, firstName: true, lastName: true, email: true, deletedAt: true } }), person),
+    Account: source(() => prisma.account.count({ where: accountWhere }), (skip, take) => prisma.account.findMany({ where: accountWhere, ...pageArgs(skip, take), select: { id: true, name: true, website: true, city: true, deletedAt: true } }), r => ({ id: r.id, name: r.name, detail: r.website || r.city || '', archivedAt: r.deletedAt })),
+    Deal: source(() => prisma.deal.count({ where: titleWhere }), (skip, take) => prisma.deal.findMany({ where: titleWhere, ...pageArgs(skip, take), select: { id: true, title: true, value: true, currency: true, deletedAt: true } }), r => ({ id: r.id, name: r.title, detail: r.value === null ? '' : [r.currency, String(r.value)].filter(Boolean).join(' '), archivedAt: r.deletedAt })),
     Pipeline: source(() => prisma.pipeline.count({ where }), (skip, take) => prisma.pipeline.findMany({ where, ...pageArgs(skip, take), select: { id: true, name: true } }), r => r),
     User: source(() => prisma.user.count({ where: usersWhere }), (skip, take) => prisma.user.findMany({ where: usersWhere, ...pageArgs(skip, take), select: { id: true, firstName: true, lastName: true, email: true } }), r => ({ id: r.id, name: `${r.firstName} ${r.lastName}`.trim(), detail: r.email })),
     Role: source(() => prisma.roleDefinition.count({ where: identityWhere }), (skip, take) => prisma.roleDefinition.findMany({ where: identityWhere, ...pageArgs(skip, take), select: { id: true, name: true, isSystemRole: true } }), r => ({ id: r.id, name: r.name, canRestore: !r.isSystemRole && !protectedRole(r.name) })),
-    Workflow: source(() => prisma.workflow.count({ where }), (skip, take) => prisma.workflow.findMany({ where, ...pageArgs(skip, take), select: { id: true, name: true } }), r => r),
-    Campaign: source(() => prisma.campaign.count({ where }), (skip, take) => prisma.campaign.findMany({ where, ...pageArgs(skip, take), select: { id: true, name: true } }), r => r),
+    Workflow: source(() => prisma.workflow.count({ where: nameWhere }), (skip, take) => prisma.workflow.findMany({ where: nameWhere, ...pageArgs(skip, take), select: { id: true, name: true } }), r => r),
+    Campaign: source(() => prisma.campaign.count({ where: nameWhere }), (skip, take) => prisma.campaign.findMany({ where: nameWhere, ...pageArgs(skip, take), select: { id: true, name: true } }), r => r),
     Template: source(() => prisma.template.count({ where }), (skip, take) => prisma.template.findMany({ where, ...pageArgs(skip, take), select: { id: true, name: true } }), r => r),
   };
   const permissionChecks = new Map<PermissionKey, Promise<boolean>>();

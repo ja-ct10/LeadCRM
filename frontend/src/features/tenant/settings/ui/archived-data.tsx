@@ -11,7 +11,8 @@ import { DataGrid, type DataGridColumnDef } from '@/shared/components/data-grid'
 import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { LeadsPagination } from '@/shared/components/crm/leads-pagination';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
+import { TableIconButton } from '@/shared/components/data-grid/table-icon-button';
+import { ModuleSearchInput } from '@/shared/components/crm/module-search-input';
 import { archivedDataService } from '../services/archived-data.service';
 import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
@@ -28,6 +29,7 @@ export function ArchivedData(): React.ReactElement {
   const identityRef = useRef(identity);
   identityRef.current = identity;
   const [filter, setFilter] = useState<ArchiveType | 'All'>('All');
+  const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -36,9 +38,9 @@ export function ArchivedData(): React.ReactElement {
   const busy = useRef(false);
   useEffect(() => { setSelectedIds(new Set()); setPending(null); }, [identity]);
   const { data, error, isInitialLoad, isRefreshing, refetch } = useCachedPage({
-    module: 'archived-crm', params: { filter, page, pageSize }, disabled: false,
+    module: 'archived-crm', params: { filter, page, pageSize, search }, disabled: false,
     intervalMs: 60_000, revalidateOnInvalidation: true,
-    fetchFn: signal => archivedDataService.list(filter, page, pageSize, signal),
+    fetchFn: signal => archivedDataService.list(filter, page, pageSize, signal, search),
   });
   const records = data?.data ?? EMPTY_RECORDS;
   const total = data?.meta.total ?? 0;
@@ -97,20 +99,15 @@ export function ArchivedData(): React.ReactElement {
     }] : []),
     { id: 'actions', header: 'Actions', accessor: () => '', width: 120,
       cell: (_value, record) => (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button type="button" className={restoreClass} aria-label={`Restore ${record.name}`}
-              disabled={restoring || !record.canRestore} onClick={() => setPending({ records: [record], bulk: false })}>
-              <RefreshCw size={14} aria-hidden="true" /><span className="hidden sm:inline">Restore</span>
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Restore</TooltipContent>
-        </Tooltip>
+        <TableIconButton touchFriendly label="Restore" ariaLabel="Restore archived record"
+          disabled={restoring || !record.canRestore} onClick={() => setPending({ records: [record], bulk: false })}>
+          <RefreshCw size={14} aria-hidden="true" />
+        </TableIconButton>
       ),
     },
   ];
   return (
-    <TooltipProvider>
+    <>
       <div className="min-w-0 w-full space-y-4">
         <div>
           <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Archived Data Recovery</h3>
@@ -125,8 +122,12 @@ export function ArchivedData(): React.ReactElement {
             </button>
           ))}
         </div>
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2" role="toolbar" aria-label="Archived data controls">
+          <ModuleSearchInput label="Search archived records" placeholder="Search archived records..." value={search} disabled={restoring}
+            onChange={value => { setSearch(value); changePage(1); }} />
+        </div>
         {error && <div role="alert" className="text-sm text-red-600">{error} <button type="button" className="underline" onClick={() => void refetch()}>Retry</button></div>}
-        {isInitialLoad ? <TableLoadingState label="Loading archived records..." /> : (
+        {isInitialLoad || isRefreshing ? <TableLoadingState label="Loading archived records..." /> : (
           <DataGrid<ArchivedRecord> columns={columns} data={error ? EMPTY_RECORDS : records} getRowId={rowId}
             height="auto" selectable selectedIds={selectedIds}
             onSelectionChange={ids => {
@@ -148,7 +149,7 @@ export function ArchivedData(): React.ReactElement {
           description={pending?.bulk ? `This will restore ${pending.records.length} archived records to their original modules.` : 'This record will be restored to its original module.'}
           confirmLabel="Restore" cancelLabel="Cancel" isLoading={restoring} onConfirm={confirmRestore} />
       </div>
-    </TooltipProvider>
+    </>
   );
 }
 
