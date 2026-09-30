@@ -27,3 +27,4 @@ export * from './contracts/product-interests.contract';
 export * from './contracts/record-experience';
 
 export * from './contracts/lead-created.contract';
+export * from './validation/crm-email';

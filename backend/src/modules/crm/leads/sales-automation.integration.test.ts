@@ -218,7 +218,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     expect(await prisma.pipeline.count({ where: { tenantId, name: 'Hidden archived pipeline', isArchived: true } })).toBe(1);
   });
   it('manual Lead HTTP retries preserve a single Lead and automatic Deal', async () => {
-    const body = { requestId: randomUUID(), firstName: 'Manual', lastName: 'Lead', productInterest: [productIds['Smart Lock']] };
+    const body = { requestId: randomUUID(), email: 'manual@example.test', firstName: 'Manual', lastName: 'Lead', productInterest: [productIds['Smart Lock']] };
     const first = await request('/crm/leads', 'POST', body); expect(first.status, JSON.stringify(first.body)).toBe(201);
     const retry = await request('/crm/leads', 'POST', body); expect(retry.body.data.id).toBe(first.body.data.id);
     expect(await prisma.deal.count({ where: { leadId: first.body.data.id } })).toBe(1);
@@ -236,7 +236,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     }
     expect((await request(endpoint + '/invalid', 'PATCH', { name: 'A' })).status).toBe(400);
     expect((await request(endpoint + '/' + randomUUID(), 'PATCH', { name: 'A' })).status).toBe(404);
-    const lead = (await request('/crm/leads', 'POST', { firstName: 'Snapshot', lastName: 'Test', productInterest: [product.id], value: 1, dealValue: 2 })).body.data;
+    const lead = (await request('/crm/leads', 'POST', { email: 'fixture@example.test', firstName: 'Snapshot', lastName: 'Test', productInterest: [product.id], value: 1, dealValue: 2 })).body.data;
     const deal = await prisma.deal.findFirstOrThrow({ where: { leadId: lead.id } });
     expect(deal.value).toBe(25000.50);
     expect((await request('/crm/deals/' + deal.id, 'PUT', { value: 1 })).status).toBe(400);
@@ -244,11 +244,11 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     await scope(() => salesTransaction(tx => createProductDeals(tx, tenantId, lead.id, adminId)));
     expect(await prisma.deal.count({ where: { leadId: lead.id } })).toBe(1);
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } })).value).toBe(25000.50);
-    const next = (await request('/crm/leads', 'POST', { firstName: 'Future', lastName: 'Test', productInterest: [product.id] })).body.data;
+    const next = (await request('/crm/leads', 'POST', { email: 'fixture@example.test', firstName: 'Future', lastName: 'Test', productInterest: [product.id] })).body.data;
     expect((await prisma.deal.findFirstOrThrow({ where: { leadId: next.id } })).value).toBe(55000);
     expect((await request(endpoint + '/' + product.id, 'DELETE')).status).toBe(200);
     expect((await prisma.productInterest.findUniqueOrThrow({ where: { id: product.id } })).active).toBe(false);
-    expect((await request('/crm/leads', 'POST', { firstName: 'Deleted', lastName: 'Test', productInterest: [product.id] })).status).toBe(400);
+    expect((await request('/crm/leads', 'POST', { email: 'fixture@example.test', firstName: 'Deleted', lastName: 'Test', productInterest: [product.id] })).status).toBe(400);
     expect(await prisma.deal.count({ where: { leadId: lead.id } })).toBe(1);
   });
   it('rejects public forged product IDs, product names and submitted amounts with no partial writes', async () => {
@@ -289,7 +289,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
   it.each(['Hot', 'Warm', 'Cold', 'Closed', 'Cancelled'])('creates and edits Leads and Contacts using %s at the HTTP boundary', async status => {
     const products = await Promise.all([1250.75, 550].map(dealValue => prisma.productInterest.create({ data: { tenantId, name: `Status ${status} ${dealValue}`, dealValue } })));
     const selectedIds = products.map(product => product.id);
-    const lead = await request('/crm/leads', 'POST', { firstName: 'Manual', lastName: status, status, productInterest: selectedIds });
+    const lead = await request('/crm/leads', 'POST', { email: 'manual@example.test', firstName: 'Manual', lastName: status, status, productInterest: selectedIds });
     expect(lead.status).toBe(201);
     expect(lead.body.data.status).toBe(status);
     expect(lead.body.data.productInterestIds).toEqual(selectedIds);
@@ -299,7 +299,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     const editedLead = await request(`/crm/leads/${lead.body.data.id}`, 'PUT', { status });
     expect(editedLead.status).toBe(200);
     expect(editedLead.body.data.status).toBe(status);
-    const contact = await request('/crm/contacts', 'POST', { firstName: 'Manual', lastName: status, status });
+    const contact = await request('/crm/contacts', 'POST', { email: 'manual@example.test', firstName: 'Manual', lastName: status, status });
     expect(contact.status).toBe(201);
     expect(contact.body.data.status).toBe(status);
     const edited = await request(`/crm/contacts/${contact.body.data.id}`, 'PUT', { status: 'Cold' });
@@ -323,7 +323,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
   });
 
   it('defaults Contacts to Warm and rejects noncanonical statuses on both APIs', async () => {
-    expect((await request('/crm/contacts', 'POST', { firstName: 'Default', lastName: 'Status' })).body.data.status).toBe('Warm');
+    expect((await request('/crm/contacts', 'POST', { email: 'fixture@example.test', firstName: 'Default', lastName: 'Status' })).body.data.status).toBe('Warm');
     for (const module of ['leads', 'contacts']) {
       for (const status of ['WARM', 'HOT', 'COLD', 'CLOSED', 'CANCELLED', 'Unknown']) {
         const response = await request(`/crm/${module}`, 'POST', { firstName: 'Invalid', lastName: 'Status', status });
@@ -332,5 +332,100 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     }
   });
 
+
+  it.each(['leads', 'contacts'])('%s requires a trimmed valid email on create and rejects clearing it on edit', async module => {
+    for (const email of [undefined, '', '   ', 'invalid', 'a'.repeat(250) + '@example.test']) {
+      expect((await request(`/crm/${module}`, 'POST', { firstName: 'Email', lastName: 'Validation', email })).status).toBe(400);
+    }
+    const created = await request(`/crm/${module}`, 'POST', { firstName: 'Email', lastName: 'Valid', email: '  email@example.test  ' });
+    expect(created.status).toBe(201);
+    expect(created.body.data.email).toBe('email@example.test');
+    for (const email of ['', '  ', 'invalid', null]) expect((await request(`/crm/${module}/${created.body.data.id}`, 'PUT', { email })).status).toBe(400);
+    expect((await request(`/crm/${module}/${created.body.data.id}`, 'PUT', { firstName: 'Changed' })).status).toBe(200);
+    expect((await request(`/crm/${module}/${created.body.data.id}`)).body.data.email).toBe('email@example.test');
+  });
+
+  it('persists multiple catalog IDs, deduplicates selections, derives price and preserves snapshots', async () => {
+    const { pipeline, initial } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
+    const products = await Promise.all([12.25, 9.5, 3].map(dealValue => prisma.productInterest.create({ data: { tenantId, name: randomUUID(), dealValue } })));
+    const result = await request('/crm/deals', 'POST', { title: 'Multiple products', pipelineId: pipeline.id, stageId: initial.id, productInterestIds: [products[0].id, products[1].id, products[0].id], value: 999 });
+    expect(result.status).toBe(201);
+    const id = result.body.data.id;
+    expect(result.body.data).toMatchObject({ productInterestIds: products.slice(0, 2).map(p => p.id), productInterests: products.slice(0, 2).map(p => p.name), value: 21.75, currency: 'PHP' });
+    await prisma.productInterest.update({ where: { id: products[0].id }, data: { dealValue: 500 } });
+    await request(`/crm/deals/${id}`, 'PUT', { title: 'Preserve snapshot' });
+    expect((await request(`/crm/deals/${id}`)).body.data.value).toBe(21.75);
+    const sameSelection = await request(`/crm/deals/${id}`, 'PUT', { productInterestIds: [products[1].id, products[0].id], value: 999, currency: 'USD' });
+    expect(sameSelection.status).toBe(200);
+    expect(sameSelection.body.data).toMatchObject({ productInterestIds: products.slice(0, 2).map(p => p.id), productInterests: products.slice(0, 2).map(p => p.name), value: 21.75, currency: 'PHP' });
+    expect((await request(`/crm/deals/${id}`, 'PUT', { value: 999 })).status).toBe(400);
+    expect((await request(`/crm/deals/${id}`, 'PUT', { currency: 'USD' })).status).toBe(400);
+    expect((await request(`/crm/deals/${id}`, 'PUT', { productInterestIds: [] })).status).toBe(400);
+    expect((await request(`/crm/deals/${id}`, 'PUT', { productInterestIds: [randomUUID()] })).status).toBe(400);
+    const updated = await request(`/crm/deals/${id}`, 'PUT', { productInterestIds: products.slice(1).map(p => p.id), value: 999 });
+    expect(updated.status).toBe(200);
+    expect((await request(`/crm/deals/${id}`)).body.data).toMatchObject({ productInterestIds: products.slice(1).map(p => p.id), value: 12.5 });
+    expect((await request(`/crm/deals/${id}`, 'PUT', { title: 'Denied' }, deniedToken)).status).toBe(403);
+  });
+
+  it('manages existing pipeline stages while protecting ownership, archived Deals and history', async () => {
+    const { pipeline, initial } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
+    const created = await request('/crm/stages', 'POST', { pipelineId: pipeline.id, name: '  Proposal  ', order: 100 });
+    expect(created.status).toBe(201);
+    const id = created.body.data.id;
+    expect(created.body.data.name).toBe('Proposal');
+    expect((await request(`/crm/stages/${id}`, 'PUT', { name: '  Review  ' })).body.data.name).toBe('Review');
+    const stages = (await request(`/crm/pipelines/${pipeline.id}`)).body.data.stages;
+    const ids = stages.map((stage: { id: string }) => stage.id).reverse();
+    expect((await request(`/crm/pipelines/${pipeline.id}/stages/reorder`, 'PATCH', { stageIds: ids })).status).toBe(200);
+    expect((await request(`/crm/pipelines/${pipeline.id}`)).body.data.stages.map((stage: { id: string }) => stage.id)).toEqual(ids);
+    for (const stageIds of [[...ids, ids[0]], ids.slice(1), [...ids.slice(1), randomUUID()]]) expect((await request(`/crm/pipelines/${pipeline.id}/stages/reorder`, 'PATCH', { stageIds })).status).toBe(400);
+    const foreign = await prisma.pipeline.create({ data: { tenantId: otherTenant, name: 'Foreign' } });
+    expect((await request('/crm/stages', 'POST', { pipelineId: foreign.id, name: 'Intrusion', order: 1 })).status).toBe(404);
+    expect((await request(`/crm/stages/${initial.id}`, 'DELETE')).status).toBe(400);
+    const archived = await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: id, title: 'Archived reference', isArchived: true } });
+    expect((await request(`/crm/stages/${id}`, 'DELETE')).status).toBe(400);
+    await prisma.deal.update({ where: { id: archived.id }, data: { stageId: initial.id } });
+    await prisma.dealStageHistory.create({ data: { tenantId, dealId: archived.id, previousStageId: id, newStageId: initial.id, movedById: adminId } });
+    expect((await request(`/crm/stages/${id}`, 'DELETE')).status).toBe(400);
+    const unused = await request('/crm/stages', 'POST', { pipelineId: pipeline.id, name: 'Unused', order: 101 });
+    expect((await request(`/crm/stages/${unused.body.data.id}`, 'DELETE')).status).toBe(200);
+    expect(await prisma.stage.findUnique({ where: { id: unused.body.data.id } })).toBeNull();
+    expect((await request(`/crm/stages/${id}`, 'PUT', { name: 'Denied' }, deniedToken)).status).toBe(403);
+    await request(`/crm/stages/${initial.id}`, 'PUT', { name: 'Initial renamed' });
+    const next = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
+    expect(next.initial.id).toBe(initial.id);
+  });
+
+  it('persists Deal file history through the shared file service with environment and permission checks', async () => {
+    const { createServer } = await import('node:http');
+    const objects = new Map<string, Buffer>();
+    const storage = createServer((req, res) => {
+      const key = req.url!.replace('/authenticated/', '/');
+      if (req.method === 'POST') { const chunks: Buffer[] = []; req.on('data', chunk => chunks.push(chunk)); req.on('end', () => { objects.set(key, Buffer.concat(chunks)); res.end('{}'); }); }
+      else if (objects.has(key)) res.end(objects.get(key));
+      else { res.statusCode = 404; res.end(); }
+    });
+    storage.listen(0, '127.0.0.1'); await new Promise<void>(resolve => storage.once('listening', resolve));
+    const old = [process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, process.env.SUPABASE_RECORD_FILES_BUCKET];
+    process.env.SUPABASE_URL = `http://127.0.0.1:${(storage.address() as { port: number }).port}`;
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'isolated-test'; process.env.SUPABASE_RECORD_FILES_BUCKET = 'files';
+    try {
+      const { pipeline, initial } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
+      const deal = await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: initial.id, title: 'Files' } });
+      const upload = await fetch(`${base}/crm/deals/${deal.id}/files?name=agreement.pdf&type=application%2Fpdf`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/octet-stream', 'X-CRM-Environment': 'PRODUCTION' }, body: '%PDF-1.7 file test' });
+      expect(upload.status).toBe(201);
+      const file = (await upload.json()).data;
+      expect(await prisma.recordFile.findUnique({ where: { id: file.id } })).toMatchObject({ dealId: deal.id, tenantId, name: 'agreement.pdf' });
+      expect((await request(`/crm/deals/${deal.id}/files`)).body.data.map((f: { id: string }) => f.id)).toEqual([file.id]);
+      const downloaded = await fetch(`${base}/crm/deals/${deal.id}/files/${file.id}/download`, { headers: { Authorization: `Bearer ${token}`, 'X-CRM-Environment': 'PRODUCTION' } });
+      expect(await downloaded.text()).toBe('%PDF-1.7 file test');
+      expect((await request(`/crm/deals/${deal.id}/files`, 'GET', undefined, deniedToken)).status).toBe(403);
+      expect((await request(`/crm/deals/${deal.id}/files`, 'GET', undefined, token, 'SANDBOX')).status).toBe(409);
+    } finally {
+      ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_RECORD_FILES_BUCKET'].forEach((key, i) => { if (old[i] === undefined) delete process.env[key]; else process.env[key] = old[i]; });
+      await new Promise<void>(resolve => storage.close(() => resolve()));
+    }
+  });
 
 });

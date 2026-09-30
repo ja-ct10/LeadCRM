@@ -60,7 +60,7 @@ export async function salesPipeline(tx: Tx, tenantId: string) {
     } });
     stages = await tx.stage.findMany({ where: { ...scope, pipelineId: pipeline.id }, orderBy: { order: 'asc' } });
   }
-  let initial = stages.find(stage => stage.name.toLowerCase() === 'lead' && !stage.isWon && !stage.isLost);
+  let initial = stages.find(stage => stage.isDefault && !stage.isWon && !stage.isLost) ?? stages.find(stage => stage.name.toLowerCase() === 'lead' && !stage.isWon && !stage.isLost);
   if (!initial) initial = await tx.stage.create({ data: { ...scope, pipelineId: pipeline.id, name: 'Lead', order: Math.min(...stages.map(s => s.order)) - 1, isDefault: true, requiredFields: [] } });
   return { pipeline, initial };
 }
@@ -80,7 +80,7 @@ export async function createProductDeals(tx: Tx, tenantId: string, leadId: strin
       continue;
     }
     const deal = await tx.deal.create({ data: { ...scope, automationKey, leadId: lead.id, title: `${lead.firstName} ${lead.lastName} – ${product.name}`.slice(0, 255),
-      productInterestId: product.id, productInterests: [product.name], value: Number(product.dealValue), assignedUserId: lead.assignedUserId, ownerId: lead.assignedUserId,
+      productInterestId: product.id, productInterestIds: [product.id], productInterests: [product.name], value: Number(product.dealValue), assignedUserId: lead.assignedUserId, ownerId: lead.assignedUserId,
       pipelineId: pipeline.id, stageId: initial.id, accountId: lead.accountId, leadSource: lead.source, tags: [] } });
     await tx.leadDeal.create({ data: { ...scope, leadId: lead.id, dealId: deal.id, addedById: actorId } });
     if (actorId || lead.assignedUserId) await tx.activity.create({ data: { ...scope, dealId: deal.id, createdById: (actorId ?? lead.assignedUserId)!,

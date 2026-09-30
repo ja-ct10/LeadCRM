@@ -4,8 +4,8 @@ import { listFiles, uploadFile, downloadFile } from './record-files.service';
 
 export const recordFilesRouter = Router();
 // Mounted inside authenticated CRM routes; permissions run before the binary parser.
-for (const module of ['leads', 'contacts', 'accounts'] as const) {
-  const permission = module === 'accounts' ? 'accounts' : 'contacts';
+for (const module of ['leads', 'contacts', 'accounts', 'deals'] as const) {
+  const permission = module === 'deals' ? 'deals' : module === 'accounts' ? 'accounts' : 'contacts';
   recordFilesRouter.get(`/${module}/:id/files`, authorize(`${permission}.view`), async (req, res, next) => {
     try { res.json({ success: true, data: await listFiles(module, String(req.params.id), req.user!.tenantId) }); } catch (error) { next(error); }
   });

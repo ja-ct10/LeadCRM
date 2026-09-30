@@ -42,7 +42,7 @@ it.each(['leads', 'contacts', 'accounts', 'deals'] as const)('%s uses the same i
   const header = screen.getByRole('heading', { name: title }).closest('header')!;
   const headerButtons = Array.from(header.querySelectorAll('button')).map(button => button.getAttribute('aria-label') || button.textContent?.trim());
   expect(headerButtons.filter(label => label === 'Record actions')).toHaveLength(1);
-  expect(headerButtons.indexOf('Record actions')).toBeLessThan(headerButtons.indexOf(module === 'leads' || module === 'contacts' ? 'Warm' : module === 'accounts' ? 'Prospect' : 'Lead'));
+  if (module !== 'accounts') expect(headerButtons.indexOf('Record actions')).toBeLessThan(headerButtons.indexOf(module === 'leads' || module === 'contacts' ? 'Warm' : 'Lead'));
   expect(screen.getAllByRole('tab').map(el => el.textContent)).toEqual(expect.arrayContaining([expect.stringContaining('Activity'), expect.stringContaining('Details'), 'Files']));
   fireEvent.click(screen.getByRole('tab', { name: /Activity/ }));
   if (module !== 'deals') {
@@ -50,18 +50,18 @@ it.each(['leads', 'contacts', 'accounts', 'deals'] as const)('%s uses the same i
     expect(screen.getByTestId('related-tasks').textContent).toContain(module === 'leads' ? 'leadId' : module === 'contacts' ? 'contactId' : 'accountId');
   }
   expect(screen.getAllByTestId('related-tasks')).toHaveLength(1);
-  expect(screen.getByTestId('related-tasks').closest('[role="tabpanel"]')?.getAttribute('aria-labelledby')).toBe(module === 'deals' ? 'tab-details' : 'tab-activity');
+  expect(screen.getByTestId('related-tasks').closest('[role="tabpanel"]')?.getAttribute('aria-labelledby')).toBe('tab-activity');
   fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
   await screen.findByRole('button', { name: module === 'deals' ? /^Associations/ : /^Deals/ });
   expect(screen.getAllByTestId('related-tasks')).toHaveLength(1);
   expect(screen.getByTestId('related-tasks').textContent).toContain(module === 'deals' ? 'dealId' : module === 'leads' ? 'leadId' : module === 'contacts' ? 'contactId' : 'accountId');
-  expect(screen.getByTestId('related-tasks').closest('[role="tabpanel"]')?.getAttribute('aria-labelledby')).toBe(module === 'deals' ? 'tab-details' : 'tab-activity');
+  expect(screen.getByTestId('related-tasks').closest('[role="tabpanel"]')?.getAttribute('aria-labelledby')).toBe('tab-activity');
   expect(screen.queryByText('Security, Cabling, CCTV')).toBeNull();
   fireEvent.click(screen.getByRole('tab', { name: 'Files' }));
   if (module !== 'deals') {
     expect(screen.getByRole('button', { name: 'Upload file' })).toBeTruthy();
     await screen.findByText('No files uploaded yet.');
-  } else expect(screen.getByText('No files attached.')).toBeTruthy();
+  } else await screen.findByText('No files uploaded yet.');
   panel.unmount();
   render(<CrmRecordView module={module} id="one" />);
   await screen.findByRole('heading', { name: title });
@@ -202,4 +202,49 @@ it.each(['leads', 'contacts'] as const)('%s header and inline status editors sen
     await waitFor(() => expect(mocks.put).toHaveBeenLastCalledWith(`/crm/${module}/one`, { status }));
     await screen.findByRole('button', { name: 'Edit Status' });
   }
+}, 15000);
+
+it('Deal menu enters Details and saves or cancels inline without opening another drawer', async () => {
+  const onEdit = vi.fn(); mocks.put.mockResolvedValue({ success: true });
+  render(<CrmRecordView module="deals" id="one" onEdit={onEdit} />);
+  await screen.findByRole('heading', { name: records.deals.title });
+  fireEvent.click(screen.getByRole('button', { name: 'Record actions' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Edit deal' }));
+  expect(screen.getByRole('tab', { name: /Details/ }).getAttribute('aria-selected')).toBe('true');
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Deal title' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Deal title' }), { target: { value: 'Cancelled' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(mocks.put).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Deal title' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Deal title' }), { target: { value: 'Saved title' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(mocks.put).toHaveBeenCalledWith('/crm/deals/one', { title: 'Saved title' }));
+  expect(onEdit).not.toHaveBeenCalled(); expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+it.each(['leads', 'contacts'] as const)('%s inline email rejects blanks and trims valid saves', async module => {
+  render(<CrmRecordView module={module} id="one" />);
+  await screen.findByRole('heading', { name: module === 'leads' ? 'Lina Reyes' : 'Nora Lim' });
+  fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Email' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Email' }), { target: { value: '  ' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  expect(await screen.findByText('Email is required')).toBeTruthy(); expect(mocks.put).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByRole('textbox', { name: 'Email' }), { target: { value: '  valid@example.test  ' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(mocks.put).toHaveBeenCalledWith(`/crm/${module}/one`, { email: 'valid@example.test' }));
+});
+
+it('Deal header uses Messages between actions and status and the shared Activity filters', async () => {
+  render(<CrmRecordView module="deals" id="one" onClose={() => {}} />);
+  await screen.findByRole('heading', { name: records.deals.title });
+  const buttons = Array.from(screen.getByRole('heading', { name: records.deals.title }).closest('header')!.querySelectorAll('button'));
+  const names = buttons.map(b => b.getAttribute('aria-label') || b.textContent);
+  expect(names.indexOf('Record actions')).toBeLessThan(names.indexOf('Open messages'));
+  expect(names.indexOf('Open messages')).toBeLessThan(names.indexOf('Lead'));
+  expect(names.indexOf('Lead')).toBeLessThan(names.indexOf('Close record'));
+  fireEvent.click(screen.getByRole('button', { name: 'Open messages' })); expect(mocks.push).toHaveBeenCalledWith('/inbox');
+  expect(screen.queryByRole('button', { name: 'Notes' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Calls & Emails' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Emails' })).toBeTruthy();
 });

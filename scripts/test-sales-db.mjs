@@ -10,6 +10,8 @@ const db = await PGlite.create();
 const temporary = mkdtempSync(join(tmpdir(), 'leadcrm-sales-schema-'));
 const baseline = join(temporary, 'schema.prisma');
 const before = readFileSync('backend/prisma/schema.prisma', 'utf8')
+  .replace(/model RecordFile \{[\s\S]*?\n\}/, '')
+  .replace(/^  recordFiles\s+RecordFile\[\]\r?\n/gm, '')
   .replace(/model ProductInterest \{[\s\S]*?\n\}/, '')
   .replace(/^  (?:productInterestRecords|productInterestIds|productInterestId|productInterestRecord) .*\r?\n/gm, '')
   .replace(/^  (?:creationKey|automationKey|requestKey) String\?\r?\n/gm, '')
@@ -27,7 +29,9 @@ await db.query('INSERT INTO "TenantPreference" ("id","tenantId","module","key","
   ['22222222-2222-4222-8222-222222222222', migrationTenant, 'product-interests', 'values', JSON.stringify([{ name: 'Legacy Product', value: 25000.75 }])]);
 await db.query('INSERT INTO "Lead" ("id","tenantId","firstName","lastName","productInterest","updatedAt") VALUES ($1,$2,$3,$4,$5,CURRENT_TIMESTAMP)',
   ['33333333-3333-4333-8333-333333333333', migrationTenant, 'Legacy', 'Customer', ['Legacy Product']]);
+await db.exec(readFileSync('backend/prisma/migrations/20261013000000_record_files/migration.sql', 'utf8'));
 await db.exec(readFileSync('backend/prisma/migrations/20261014000000_product_interest_records/migration.sql', 'utf8'));
+await db.exec(readFileSync('backend/prisma/migrations/20261015000000_crm_panel_products_files/migration.sql', 'utf8'));
 const migrated = await db.query('SELECT p."id",p."dealValue",l."productInterestIds" FROM "ProductInterest" p JOIN "Lead" l ON l."tenantId"=p."tenantId" WHERE p."tenantId"=$1', [migrationTenant]);
 assert.equal(Number(migrated.rows[0].dealValue), 25000.75);
 assert.deepEqual(migrated.rows[0].productInterestIds, [migrated.rows[0].id]);

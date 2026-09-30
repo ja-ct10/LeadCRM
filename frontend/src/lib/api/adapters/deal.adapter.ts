@@ -81,6 +81,7 @@ export function toBackendCreateDeal(data: Partial<any>): any {
     accountId: data.accountId || data.companyId || data.organizationId || undefined,
     productInterests: data.productInterests,
     productInterestId: data.productInterestId,
+    productInterestIds: data.productInterestIds,
     assignedUserId: data.assignedUserId || undefined,
   };
 
@@ -115,6 +116,7 @@ export function toBackendUpdateDeal(data: Partial<any>): any {
   // Strip empty strings for optional UUID fields
   const orgId = data.accountId || data.companyId || data.organizationId;
   if (orgId) updateData.accountId = orgId;
+  if (data.productInterestIds !== undefined) updateData.productInterestIds = data.productInterestIds;
   if (data.productInterests !== undefined) updateData.productInterests = data.productInterests;
 
   if (data.assignedUserId) updateData.assignedUserId = data.assignedUserId;
@@ -204,6 +206,7 @@ export function toFrontendDeal(backendDeal: any): any {
   return {
     id: backendDeal.id || '',
     productInterestId: backendDeal.productInterestId,
+    productInterestIds: backendDeal.productInterestIds?.length ? backendDeal.productInterestIds : backendDeal.productInterestId ? [backendDeal.productInterestId] : [],
     tenantId: backendDeal.tenantId || '',
     pipelineId: backendDeal.pipelineId || '',
     stageId: backendDeal.stageId || '',

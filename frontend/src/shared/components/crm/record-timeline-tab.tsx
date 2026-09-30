@@ -18,6 +18,7 @@ import {
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Button } from '@/shared/components/ui/button';
+import { DataLoadingSkeleton } from './data-view-states';
 import { Input } from '@/shared/components/ui/input';
 import { Textarea } from '@/shared/components/ui/textarea';
 import { activitiesService } from '@/features/tenant/crm/activities/services/activities.service';
@@ -31,7 +32,7 @@ import type { RecordModule } from '@/shared/hooks/use-record-detail';
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface RecordTimelineTabProps {
-  /** Compact record layout; leave the existing Deal timeline unchanged. */
+  /** Compact layout shared by the CRM record panels. */
   compact?: boolean;
   tasks?: React.ReactNode;
   /** Activities from the useRecordDetail hook */
@@ -46,7 +47,8 @@ export interface RecordTimelineTabProps {
   onActivityCreated?: () => void;
 }
 
-type FilterType = 'All' | 'Emails' | 'Notes' | 'Calls & Emails' | 'Tasks' | 'Status';
+const ACTIVITY_FILTERS = ['All', 'Emails', 'Tasks', 'Status'] as const;
+type FilterType = typeof ACTIVITY_FILTERS[number];
 type ComposerMode = 'note' | 'call' | 'email' | 'task';
 
 // ─── Activity icon/color mapping ─────────────────────────────────────────────
@@ -69,8 +71,6 @@ const ACTIVITY_ICON_MAP: Record<string, { icon: React.ComponentType<{ className?
 const FILTER_MAPPING: Record<FilterType, string[]> = {
   All: [],
   Emails: ['email'],
-  Notes: ['note'],
-  'Calls & Emails': ['call', 'email'],
   Tasks: ['task'],
   Status: ['stage_change', 'stage-change', 'status_change', 'deal_action'],
 };
@@ -247,7 +247,7 @@ export function RecordTimelineTab({
   const [visibleCount, setVisibleCount] = useState(20);
   const [composerOpen, setComposerOpen] = useState(false);
 
-  const filters: FilterType[] = module === 'deals' ? ['All', 'Notes', 'Calls & Emails', 'Tasks', 'Status'] : ['All', 'Emails', 'Tasks', 'Status'];
+  const filters = ACTIVITY_FILTERS;
 
   // Filter + search activities
   const filteredActivities = useMemo(() => {
@@ -286,7 +286,6 @@ export function RecordTimelineTab({
       {canLog && (!compact || composerOpen) ? <QuickComposer key={recordId} module={module} recordId={recordId} onCreated={() => { setComposerOpen(false); onActivityCreated?.(); }} /> : !compact && canCreate ? <p className="rounded-lg border border-border p-3 text-sm text-muted-foreground">Activity history is available below. Quick Log is currently unavailable for this record.</p> : null}
       <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Activity Timeline{!loading && !error ? ` (${activities.length})` : ''}</h3>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      {loading && <p role="status" className="text-sm text-muted-foreground">Loading activity history…</p>}
 
       {/* Filter bar */}
       <div className="flex min-w-0 flex-col gap-3">
@@ -324,6 +323,7 @@ export function RecordTimelineTab({
       </div>
 
       {tasks && (filter === 'All' || filter === 'Tasks') && tasks}
+      {loading && !activities.length && <div role="status" aria-label="Loading activity history" className="rounded-xl border border-border bg-card"><DataLoadingSkeleton rowCount={3} columnCount={1} rowHeight={104} /></div>}
       {/* Timeline list */}
       {(!loading && !error || activities.length > 0) && <div className="border border-border rounded-xl bg-card overflow-hidden divide-y divide-border/50">
         {visibleActivities.length > 0 ? (

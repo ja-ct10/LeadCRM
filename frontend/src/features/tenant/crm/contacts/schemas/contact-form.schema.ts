@@ -1,3 +1,4 @@
+import { CrmEmailSchema } from '@leadcrm/shared';
 /**
  * Contact form validation schemas — mirrors backend CreateContactSchema/UpdateContactSchema
  * from backend/src/modules/crm/contacts/contacts.dto.ts
@@ -8,7 +9,7 @@ import { CrmStatusSchema } from '@leadcrm/shared';
 export const CreateContactFormSchema = z.object({
   firstName: z.string().min(1, 'First name is required').max(100, 'First name must be 100 characters or less'),
   lastName: z.string().min(1, 'Last name is required').max(100, 'Last name must be 100 characters or less'),
-  email: z.string().email('Invalid email address').optional().or(z.literal('')),
+  email: CrmEmailSchema,
   phone: z.string().optional(),
   companyName: z.string().optional(),
   status: CrmStatusSchema.default('Warm'),
@@ -22,7 +23,7 @@ export const CreateContactFormSchema = z.object({
 export const UpdateContactFormSchema = z.object({
   firstName: z.string().min(1, 'First name is required').max(100, 'First name must be 100 characters or less').optional(),
   lastName: z.string().min(1, 'Last name is required').max(100, 'Last name must be 100 characters or less').optional(),
-  email: z.string().email('Invalid email address').optional().or(z.literal('')),
+  email: CrmEmailSchema,
   phone: z.string().optional(),
   companyName: z.string().optional(),
   status: CrmStatusSchema.optional(),

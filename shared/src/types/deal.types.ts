@@ -14,6 +14,7 @@ export type DealPriority = 'LOW' | 'MEDIUM' | 'HIGH';
  * Maps to the Prisma `Deal` model in the backend.
  */
 export interface Deal {
+  productInterestIds?: string[];
   id: string;
   tenantId: string;
   pipelineId: string;

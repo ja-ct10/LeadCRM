@@ -1,5 +1,5 @@
 'use client';
-import type { ProductInterest } from '@leadcrm/shared';
+import { ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
 import { useProductInterests } from '@/shared/hooks/use-product-interests';
 
 
@@ -38,7 +38,7 @@ const CreateDealFormSchema = z.object({
   leadIds: z.array(z.string()).optional(),
   industry: z.string().optional(),
   address: z.string().optional(),
-  productInterests: z.array(z.string().uuid()).length(1, 'Select one Product Interest.'),
+  productInterests: z.array(z.string().uuid()).min(1, 'Select at least one Product Interest.').max(100),
 });
 
 const UpdateDealFormSchema = z.object({
@@ -54,7 +54,7 @@ const UpdateDealFormSchema = z.object({
   leadIds: z.array(z.string()).optional(),
   industry: z.string().optional(),
   address: z.string().optional(),
-  productInterests: z.array(z.string()).optional(),
+  productInterests: z.array(z.string()).min(1, 'Select at least one Product Interest.').optional(),
 });
 
 export type CreateDealFormData = z.infer<typeof CreateDealFormSchema>;
@@ -122,7 +122,7 @@ export function DealForm({
     if (isCreateMode) {
       return {
         pipelineId: preselect?.pipelineId || pipelines[0]?.id || '',
-        stageId: preselect?.stageId || pipelines[0]?.stages.find(s => s.name.toLowerCase() === 'lead')?.id || '',
+        stageId: preselect?.stageId || (pipelines[0]?.stages.find(s => s.isDefault) ?? pipelines[0]?.stages.find(s => s.name.toLowerCase() === 'lead'))?.id || '',
         title: '',
         value: undefined,
         priority: 'MEDIUM' as const,
@@ -154,7 +154,7 @@ export function DealForm({
       leadIds: (initialData as any)?.leadIds || [],
       industry: initialData?.industry || '',
       address: initialData?.address || '',
-      productInterests: initialData?.productInterests || [],
+      productInterests: initialData?.productInterestIds?.length ? initialData.productInterestIds : initialData?.productInterestId ? [initialData.productInterestId] : undefined,
     };
   }, [isCreateMode, initialData, preselect]);
 
@@ -177,7 +177,10 @@ export function DealForm({
   const formRef = useRef<HTMLFormElement>(null);
   const selectedPipelineId = watch('pipelineId');
   const selectedProductIds = watch('productInterests') ?? [];
-  const selectedProduct = products.find(product => product.id === selectedProductIds[0]);
+  const originalProductIds = initialData?.productInterestIds ?? (initialData?.productInterestId ? [initialData.productInterestId] : []);
+  const productsUnchanged = selectedProductIds.length === originalProductIds.length && selectedProductIds.every(id => originalProductIds.includes(id));
+  const selectedProducts = products.filter(product => selectedProductIds.includes(product.id));
+  const productValue = selectedProducts.reduce((sum, p) => sum + Math.round(p.dealValue * 100), 0) / 100;
 
   // Get stages for selected pipeline (only relevant in create mode)
   const stagesForPipeline = useMemo(() => {
@@ -216,8 +219,8 @@ export function DealForm({
     const cleaned = {
       ...data,
       currency: 'PHP',
-      value: isCreateMode ? undefined : data.value,
-      ...(isCreateMode ? { productInterestId: selectedProduct?.id } : {}),
+      value: undefined,
+      productInterestIds: data.productInterests?.length ? data.productInterests : undefined,
       expectedCloseDate: data.expectedCloseDate
         ? data.expectedCloseDate.includes('T')
           ? data.expectedCloseDate
@@ -231,7 +234,7 @@ export function DealForm({
       leadIds: (data as any).leadIds?.length ? (data as any).leadIds : undefined,
       industry: data.industry || undefined,
       address: data.address || undefined,
-      productInterests: isCreateMode ? undefined : data.productInterests,
+      productInterests: undefined,
     };
     await onSubmit(cleaned as DealFormData);
   };
@@ -243,7 +246,7 @@ export function DealForm({
     'w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl pl-3.5 pr-8 py-2.5 text-sm text-slate-900 dark:text-white outline-none appearance-none cursor-pointer focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all [&>option]:bg-white dark:[&>option]:bg-slate-900';
   const errorInputCls = '!border-red-500 focus:!ring-red-500/20';
 
-  const isSubmitDisabled = !isValid || isSubmitting || isLoading || !hasPermission || (isCreateMode && (productsLoading || !!productsError || !selectedProduct));
+  const isSubmitDisabled = !isValid || isSubmitting || isLoading || !hasPermission || (isCreateMode && (productsLoading || !!productsError || !selectedProductIds.length));
 
   return (
     <form
@@ -300,7 +303,7 @@ export function DealForm({
               name="productInterests"
               control={control}
               render={({ field }) => (
-                <ProductInterestsSelect products={products} single={isCreateMode} disabled={productsLoading || isSubmitting || isLoading} id={`${fieldId}-product-interest`} values={field.value || []} onChange={field.onChange} />
+                <ProductInterestSelect products={products} disabled={productsLoading || isSubmitting || isLoading} id={`${fieldId}-product-interest`} values={field.value || []} onChange={field.onChange} />
               )}
             />
           </FieldWrap>
@@ -308,25 +311,9 @@ export function DealForm({
           <FieldWrap label="Value" htmlFor={`${fieldId}-value`} error={errors.value?.message}>
               <div className="relative">
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-medium select-none pointer-events-none">₱</span>
-                {isCreateMode ? <input id={`${fieldId}-value`} readOnly value={new Intl.NumberFormat('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(selectedProduct?.dealValue ?? 0)} className={cn(inputCls, 'pl-9 bg-slate-50')} aria-describedby={`${fieldId}-value-help`} /> : <input
-                  type="number"
-                  readOnly={!!initialData?.productInterestId}
-                  step="0.01"
-                  min="0"
-                  {...register('value', { valueAsNumber: true })}
-                  id={`${fieldId}-value`}
-                  aria-invalid={!!errors.value}
-                  aria-describedby={errors.value ? `${fieldId}-value-error` : undefined}
-                  className={cn(inputCls, 'pl-9', errors.value && errorInputCls)}
-                  placeholder="0.00"
-                  onKeyDown={(e) => {
-                    if (!/[0-9.]/.test(e.key) && !['Backspace', 'Tab', 'ArrowLeft', 'ArrowRight', 'Delete'].includes(e.key)) {
-                      e.preventDefault();
-                    }
-                  }}
-                />}
+                <input id={`${fieldId}-value`} readOnly value={new Intl.NumberFormat('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(!isCreateMode && productsUnchanged ? initialData?.value ?? 0 : productValue)} className={cn(inputCls, 'pl-9 bg-slate-50')} aria-describedby={`${fieldId}-value-help`} />
               </div>
-              {isCreateMode && <p id={`${fieldId}-value-help`} className="text-xs text-muted-foreground">Uses the selected product’s configured value.</p>}
+              {isCreateMode && <p id={`${fieldId}-value-help`} className="text-xs text-muted-foreground">Uses the combined configured value of the selected products.</p>}
             </FieldWrap>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FieldWrap label="Priority" htmlFor={`${fieldId}-priority`} error={errors.priority?.message}>
@@ -496,53 +483,6 @@ export function DealCreateForm({ onSave, onCancel }: LegacyDealCreateFormProps):
     onSave(data as CreateDealFormData);
   };
   return <DealForm mode="create" onSubmit={handleSubmit} onCancel={onCancel} />;
-}
-
-// ── Product Interests Multi-Select ─────────────────────────────────────────
-
-interface ProductInterestsSelectProps {
-  id: string;
-  products: ProductInterest[];
-  single: boolean;
-  disabled: boolean;
-  values: string[];
-  onChange: (values: string[]) => void;
-}
-
-function ProductInterestsSelect({ id, products, single, disabled, values, onChange }: ProductInterestsSelectProps): React.ReactElement {
-  const PRODUCT_OPTIONS = products.map(p => ({ value: single ? p.id : p.name, label: p.name }));
-  const [selected, setSelected] = React.useState('');
-  const canAdd = !disabled && (!single || values.length === 0) && PRODUCT_OPTIONS.some(p => p.value === selected) && !values.includes(selected);
-  const addProduct = (): void => {
-    if (!canAdd) return;
-    onChange([...values, selected]);
-    setSelected('');
-  };
-
-  return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-0 flex-[1_1_220px]">
-          <select id={id} disabled={disabled || (single && values.length > 0)} value={selected} onChange={event => setSelected(event.target.value)} aria-describedby={`${id}-help`}
-            className="w-full min-w-0 appearance-none rounded-xl border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 px-3.5 py-2.5 pr-8 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
-            <option value="">Select a product interest...</option>
-            {PRODUCT_OPTIONS.map(product => <option key={product.value} value={product.value}>{product.label}</option>)}
-          </select>
-          <ChevronDown size={13} aria-hidden="true" className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
-        </div>
-        <Button type="button" variant="outline" disabled={!canAdd} onClick={addProduct} className="h-10 w-20 shrink-0"><Plus />Add</Button>
-      </div>
-      <p id={`${id}-help`} className="text-xs text-slate-500 dark:text-slate-400">{single ? 'Select and add one Product Interest per Deal.' : 'Select an interest and add more as needed.'}</p>
-      {values.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {values.map(product => <span key={product} className="inline-flex max-w-full items-center gap-1 rounded-lg border border-gray-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.04] pl-2.5 pr-1 py-1 text-xs text-slate-700 dark:text-slate-300">
-            <span className="min-w-0 break-words">{PRODUCT_OPTIONS.find(p => p.value === product)?.label ?? product}</span>
-            <button type="button" disabled={disabled} aria-label={`Remove ${PRODUCT_OPTIONS.find(p => p.value === product)?.label ?? product}`} onClick={() => onChange(values.filter(value => value !== product))} className="shrink-0 rounded p-1 hover:bg-slate-200 dark:hover:bg-slate-700"><X size={14} /></button>
-          </span>)}
-        </div>
-      )}
-    </div>
-  );
 }
 
 // ── Reusable Helpers ───────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { recordName, recordText } from '../record-validation';
 import { ProductInterestIdSchema } from '@leadcrm/shared';
 
 // ID field helper — accepts any non-empty string (UUID, CUID, or custom).
@@ -6,33 +7,38 @@ import { ProductInterestIdSchema } from '@leadcrm/shared';
 const id = () => z.string().min(1);
 
 export const CreateDealSchema = z.object({
+  productInterestIds: z.array(ProductInterestIdSchema).min(1).max(100).transform(ids => [...new Set(ids)]).optional(),
   productInterestId: ProductInterestIdSchema.optional(),
   pipelineId:        id(),
   stageId:           id(),
-  title:             z.string().trim().min(1).max(255),
+  title:             recordName(255),
   value:             z.number().finite().nonnegative().max(999_999_999_999).optional(),
   currency:          z.string().default('PHP'),
   billingFrequency:  z.enum(['monthly', 'one_time', 'annual', 'quarterly']).optional(),
   priority:          z.enum(['LOW', 'MEDIUM', 'HIGH']).default('MEDIUM'),
   expectedCloseDate: z.string().datetime().optional(),
-  description:       z.string().optional(),
-  leadSource:        z.string().optional(),
+  description:       recordText(10000).optional(),
+  leadSource:        recordText(255).optional(),
   accountId:         id().optional(),
   assignedUserId:    id().optional(),
   contactIds:        z.array(id()).optional(),
   leadIds:           z.array(id()).optional(),
-  industry:          z.string().optional(),
-  address:           z.string().optional(),
+  industry:          recordText(255).optional(),
+  address:           recordText().optional(),
   productInterests:  z.array(z.string().trim().min(1).max(200)).max(100).optional(),
 });
 
-// Manual creation selects exactly one catalog product; imports keep their existing contract.
-export const ManualCreateDealSchema = CreateDealSchema.extend({ productInterestId: ProductInterestIdSchema, productInterests: z.never().optional() });
+// Manual creation accepts catalog IDs; the singular ID remains supported for existing clients.
+export const ManualCreateDealSchema = CreateDealSchema.extend({ productInterests: z.never().optional() }).refine(data => !!data.productInterestId || !!data.productInterestIds?.length, { path: ['productInterestIds'], message: 'Select at least one Product Interest.' });
 
 // DI-2 fix: stageId is explicitly excluded from updates.
 // Stage changes MUST go through PATCH /deals/:id/stage (moveDealStage) to ensure
 // history, audit, activity, and workflow triggers fire on every transition.
-export const UpdateDealSchema = CreateDealSchema.omit({ stageId: true, pipelineId: true, productInterestId: true }).partial();
+export const UpdateDealSchema = CreateDealSchema.omit({ stageId: true, pipelineId: true, productInterestId: true }).partial().extend({
+  accountId: id().nullable().optional(),
+  assignedUserId: id().nullable().optional(),
+  expectedCloseDate: z.string().datetime().nullable().optional(),
+});
 
 export const DealHandoffSchema = z.object({
   assignOwnerId:      id().optional(),

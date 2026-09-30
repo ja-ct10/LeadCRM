@@ -5,8 +5,8 @@ import prisma from '../../../config/database.config';
 import { AppError } from '../../../shared/errors/app-error';
 import { recordText } from '../record-validation';
 
-export type FileModule = 'leads' | 'contacts' | 'accounts';
-const links = { leads: 'leadId', contacts: 'contactId', accounts: 'accountId' } as const;
+export type FileModule = 'leads' | 'contacts' | 'accounts' | 'deals';
+const links = { leads: 'leadId', contacts: 'contactId', accounts: 'accountId', deals: 'dealId' } as const;
 const actor = { uploadedBy: { select: { firstName: true, lastName: true } } } as const;
 const types = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'text/plain', 'text/csv', 'application/zip', 'application/msword', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'] as const;
 export const UploadMetadataSchema = z.object({ name: recordText(255).pipe(z.string().min(1)).transform(value => value.replace(/[\\/]/g, '_')), type: z.union([z.enum(types), z.literal('application/octet-stream')]) });
@@ -18,7 +18,7 @@ function storage() {
 }
 async function requireRecord(module: FileModule, id: string, tenantId: string) {
   const where = { id, tenantId, isArchived: false };
-  const record = module === 'leads' ? await prisma.lead.findFirst({ where }) : module === 'contacts' ? await prisma.contact.findFirst({ where }) : await prisma.account.findFirst({ where });
+  const record = module === 'leads' ? await prisma.lead.findFirst({ where }) : module === 'contacts' ? await prisma.contact.findFirst({ where }) : module === 'deals' ? await prisma.deal.findFirst({ where }) : await prisma.account.findFirst({ where });
   if (!record) throw new AppError('Record not found.', 404);
   return record;
 }

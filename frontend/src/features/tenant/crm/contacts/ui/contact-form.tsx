@@ -1,4 +1,5 @@
 'use client';
+import { ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
 import { CRM_STATUSES, normalizeCrmStatus } from '@leadcrm/shared';
 import { useProductInterests } from '@/shared/hooks/use-product-interests';
 
@@ -62,8 +63,7 @@ interface ContactFormInnerProps {
 // ─── Form Component ────────────────────────────────────────────────────────
 
 export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormInnerProps): React.ReactElement {
-  const { products: productRecords } = useProductInterests();
-  const PRODUCTS = productRecords.map(p => p.name);
+  const { products: productRecords, loading: productsLoading, error: productError } = useProductInterests();
   const { users } = useData();
   const isEdit = !!initialData;
 
@@ -145,24 +145,6 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
     onSave(cleaned);
   };
 
-  // Product interest management
-  const toggleProduct = (product: string): void => {
-    const current = selectedProducts;
-    if (current.includes(product)) {
-      setValue('productInterest', current.filter((p) => p !== product), { shouldValidate: true });
-    } else {
-      setValue('productInterest', [...current, product], { shouldValidate: true });
-    }
-  };
-
-  const removeProduct = (product: string): void => {
-    setValue(
-      'productInterest',
-      selectedProducts.filter((p) => p !== product),
-      { shouldValidate: true },
-    );
-  };
-
   // Style classes
   const inputCls =
     'w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none transition-all focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500';
@@ -204,12 +186,12 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
 
           {/* Email & Phone */}
           <div className="grid grid-cols-2 gap-4">
-            <FieldWrap label="Email" htmlFor={`${fieldId}-email`} error={errors.email?.message}>
+            <FieldWrap label="Email *" htmlFor={`${fieldId}-email`} error={errors.email?.message}>
               <div className="relative">
                 <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                 <input
                   type="email"
-                  {...register('email')}
+                  {...register('email')} required aria-required="true" maxLength={254}
                   id={`${fieldId}-email`}
                   aria-invalid={!!errors.email}
                   aria-describedby={errors.email ? `${fieldId}-email-error` : undefined}
@@ -337,51 +319,9 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
 
           {/* Product Interest (multi-select chips) */}
           <FieldWrap label="Product Interest">
-            <div className="space-y-2">
-              {/* Selected chips */}
-              {selectedProducts.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {selectedProducts.map((product) => (
-                    <span
-                      key={product}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 rounded-md border border-blue-200 dark:border-blue-500/20"
-                    >
-                      {product}
-                      <button
-                        type="button"
-                        onClick={() => removeProduct(product)}
-                        className="ml-0.5 text-blue-400 hover:text-blue-600 dark:hover:text-blue-200 rounded-sm p-0.5 transition-colors"
-                        aria-label={`Remove ${product}`}
-                      >
-                        <X size={12} />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Product dropdown */}
-              <div className="relative">
-                <select
-                  className={selectCls}
-                  value=""
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      toggleProduct(e.target.value);
-                    }
-                  }}
-                >
-                  <option value="">Add a product interest...</option>
-                  {PRODUCTS.filter((p) => !selectedProducts.includes(p)).map((product) => (
-                    <option key={product} value={product}>
-                      {product}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
-              </div>
-            </div>
-          </FieldWrap>
+<ProductInterestSelect products={productRecords} valueMode="name" values={selectedProducts} onChange={values => setValue('productInterest', values, { shouldValidate: true })} disabled={productsLoading || !!productError} />
+{productError && <p role="alert" className="text-xs text-destructive">{productError}</p>}
+</FieldWrap>
 
           {/* Address */}
           <FieldWrap label="Address" htmlFor={`${fieldId}-address`} error={errors.address?.message}>

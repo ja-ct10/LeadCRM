@@ -725,6 +725,8 @@ model Stage {
 // DEAL
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Deal {
+  productInterestIds String[] @default([])
+  recordFiles RecordFile[]
   productInterestId String?
   productInterestRecord ProductInterest? @relation(fields: [productInterestId], references: [id], onDelete: SetNull)
   automationKey String?
@@ -1850,6 +1852,9 @@ model TaskAccount {
 }
 
 model RecordFile {
+  dealId String?
+  deal Deal? @relation(fields: [dealId, tenantId, environment], references: [id, tenantId, environment], onDelete: Cascade)
+  @@index([tenantId, environment, dealId])
   id String @id @default(uuid())
   tenantId String
   environment CrmEnvironment @default(PRODUCTION)

@@ -28,7 +28,7 @@ const cases = [
   { name: 'Contact', component: <ContactFormInner onSave={vi.fn()} onCancel={vi.fn()} />, labels: ['First Name *', 'Last Name *'] },
   { name: 'Account', component: <AccountFormInner onSave={vi.fn()} onCancel={vi.fn()} />, labels: ['Account Name *'] },
   { name: 'New Deal', component: <DealForm mode="create" onSubmit={vi.fn()} onCancel={vi.fn()} />, labels: ['Title *'] },
-  { name: 'Edit Deal', component: <DealEditForm deal={emptyDeal} onSave={vi.fn()} onCancel={vi.fn()} />, labels: ['Deal Title *'] },
+  { name: 'Edit Deal', component: <DealEditForm deal={emptyDeal} onSave={vi.fn()} onCancel={vi.fn()} />, labels: ['Title *'] },
 ];
 it.each(cases)('$name renders one accessible error below each required field', async ({ component, labels }) => {
   const { container } = render(component);

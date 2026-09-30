@@ -3,7 +3,7 @@
 import React, { useId, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Archive, Building, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Globe, Mail, MapPin, MoreHorizontal, Loader2, Pencil, Phone, Plus, User, UserPlus, X, type LucideIcon } from 'lucide-react';
+import { Archive, Building, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Globe, Inbox, Mail, MapPin, MoreHorizontal, Loader2, Pencil, Phone, Plus, User, UserPlus, X, type LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
 import { USE_MOCK_DATA } from '@/lib/config';
@@ -27,8 +27,9 @@ import { ConfirmActionDialog } from './confirm-action-dialog';
 import { InlineDealForm } from './inline-deal-form';
 import { RelatedTasks } from '@/features/tenant/operations/tasks/ui/related-tasks';
 import type { Account } from '@/features/tenant/crm/accounts/types/account.types';
-import { DealFormSheet } from '@/features/tenant/crm/deals/ui/deal-form';
-import { toBackendUpdateDeal, toFrontendDeal } from '@/lib/api/adapters/deal.adapter';
+import { CatalogProductInterestSelect } from './product-interest-select';
+import { EntityCombobox } from '@/shared/components/entity-combobox';
+import { CrmEmailSchema } from '@leadcrm/shared';
 import { ConvertLeadDialog } from '@/features/tenant/crm/leads/ui/convert-lead-dialog';
 
 export type CrmRecordModule = 'leads' | 'contacts' | 'accounts' | 'deals';
@@ -46,6 +47,7 @@ const labels = { leads: 'Lead', contacts: 'Contact', accounts: 'Account', deals:
 const text = (value: unknown): string => typeof value === 'string' ? value : '';
 const personName = (record?: RecordData | null) => record ? [text(record.firstName), text(record.lastName)].filter(Boolean).join(' ') : '';
 const object = (value: unknown): RecordData | undefined => value && typeof value === 'object' && !Array.isArray(value) ? value as RecordData : undefined;
+const displayText = (value: unknown): string => Array.isArray(value) ? value.join(', ') || '—' : String(value ?? '') || '—';
 const present = (value: unknown) => value !== undefined && value !== null && value !== '' && (!Array.isArray(value) || value.length > 0);
 
 export function RecordSection({ title, count, actions, children }: { title: string; count?: number; actions?: React.ReactNode; children: React.ReactNode }) {
@@ -80,26 +82,36 @@ interface InlineRowDef {
   label: string;
   value: unknown;
   apiField?: string;
-  type?: 'text' | 'email' | 'tel' | 'url' | 'select' | 'textarea';
+  type?: 'text' | 'email' | 'tel' | 'url' | 'select' | 'textarea' | 'date' | 'products' | 'users' | 'accounts' | 'contacts' | 'leads';
+  valueMode?: 'id' | 'name';
+  displayValue?: unknown;
+  productLabels?: Record<string, string>;
   options?: string[];
 }
 
 function InlineEditRows({ rows, canEdit, onSave }: {
   rows: InlineRowDef[];
   canEdit: boolean;
-  onSave: (field: string, value: string) => Promise<void>;
+  onSave: (field: string, value: string | string[]) => Promise<void>;
 }) {
   const [editingLabel, setEditingLabel] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState('');
+  const [editValue, setEditValue] = useState<string | string[]>('');
   const [isSaving, setIsSaving] = useState(false);
+  const [fieldError, setFieldError] = useState('');
 
   const startEdit = (label: string, value: unknown) => {
+    setFieldError('');
     setEditingLabel(label);
-    setEditValue(Array.isArray(value) ? value.join(', ') : String(value ?? ''));
+    setEditValue(Array.isArray(value) ? value : String(value ?? ''));
   };
   const cancelEdit = () => { setEditingLabel(null); setEditValue(''); };
   const commitEdit = async (apiField: string) => {
     if (isSaving) return;
+    setFieldError('');
+    if (rows.find(row => row.apiField === apiField)?.type === 'email') {
+      const result = CrmEmailSchema.safeParse(editValue);
+      if (!result.success) { setFieldError(result.error.issues[0].message); return; }
+    }
     setIsSaving(true);
     try { await onSave(apiField, editValue); setEditingLabel(null); }
     catch { /* error toasted by parent */ }
@@ -108,34 +120,35 @@ function InlineEditRows({ rows, canEdit, onSave }: {
 
   return (
     <dl className="divide-y divide-border/60">
-      {rows.filter(({ value, apiField, label }) => present(value) || (canEdit && !!apiField) || editingLabel === label).map(({ label, value, apiField, type, options }) => {
+      {rows.filter(({ value, displayValue, apiField, label }) => present(displayValue ?? value) || (canEdit && !!apiField) || editingLabel === label).map(({ label, value, apiField, type, options, valueMode, displayValue, productLabels }) => {
         const isEditing = editingLabel === label;
         const editable = canEdit && !!apiField;
         return (
           <div key={label} className="grid min-w-0 grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3 px-3 py-2.5 text-xs">
-            <dt className="text-muted-foreground self-start pt-0.5">{label}</dt>
+            <dt className="text-muted-foreground self-start pt-0.5">{label}{type === 'email' && editable && <span className="text-red-500"> *</span>}</dt>
             <dd className="min-w-0">
               {isEditing && apiField ? (
                 <div className="flex flex-col gap-1.5">
-                  {type === 'select' ? (
-                    <select aria-label={label} disabled={isSaving} value={editValue} onChange={e => setEditValue(e.target.value)} autoFocus className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring">
+                  {type === 'products' ? <CatalogProductInterestSelect values={Array.isArray(editValue) ? editValue : []} onChange={setEditValue} valueMode={valueMode} labels={productLabels} disabled={isSaving} /> : type === 'users' || type === 'accounts' ? <EntityCombobox entityType={type} multiple={false} disabled={isSaving} value={String(editValue) || null} onChange={value => setEditValue(value || '')} /> : type === 'contacts' || type === 'leads' ? <EntityCombobox entityType={type} multiple disabled={isSaving} values={Array.isArray(editValue) ? editValue : []} onMultiChange={setEditValue} /> : type === 'select' ? (
+                    <select aria-label={label} disabled={isSaving} value={Array.isArray(editValue) ? editValue.join(', ') : editValue} onChange={e => setEditValue(e.target.value)} autoFocus className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring">
                       {options?.map(o => <option key={o} value={o}>{o}</option>)}
                     </select>
                   ) : type === 'textarea' ? (
-                    <textarea aria-label={label} disabled={isSaving} value={editValue} onChange={e => setEditValue(e.target.value)} rows={3} autoFocus onKeyDown={e => { if (e.key === 'Escape') cancelEdit(); }} className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring resize-none" />
+                    <textarea aria-label={label} disabled={isSaving} value={Array.isArray(editValue) ? editValue.join(', ') : editValue} onChange={e => setEditValue(e.target.value)} rows={3} autoFocus onKeyDown={e => { if (e.key === 'Escape') cancelEdit(); }} className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring resize-none" />
                   ) : (
-                    <input aria-label={label} disabled={isSaving} type={type ?? 'text'} value={editValue} onChange={e => setEditValue(e.target.value)} autoFocus onKeyDown={e => { if (e.key === 'Enter') void commitEdit(apiField); if (e.key === 'Escape') cancelEdit(); }} className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring" />
+                    <input aria-label={label} disabled={isSaving} type={type ?? 'text'} required={type === 'email'} aria-required={type === 'email'} maxLength={type === 'email' ? 254 : undefined} value={Array.isArray(editValue) ? editValue.join(', ') : editValue} onChange={e => setEditValue(e.target.value)} autoFocus onKeyDown={e => { if (e.key === 'Enter') void commitEdit(apiField); if (e.key === 'Escape') cancelEdit(); }} className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring" />
                   )}
-                  <div className="flex justify-end gap-1">
+                  {fieldError && <p role="alert" className="text-xs text-destructive">{fieldError}</p>}
+                  <div className="flex flex-wrap justify-end gap-1">
                     <button type="button" onClick={() => void commitEdit(apiField)} disabled={isSaving} className="inline-flex items-center rounded-md bg-primary px-2 py-0.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">{isSaving ? <><Loader2 className="mr-1 h-3 w-3 animate-spin" />Saving…</> : 'Save'}</button>
                     <button type="button" onClick={cancelEdit} disabled={isSaving} className="inline-flex items-center rounded-md border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-accent disabled:opacity-50 transition-colors">Cancel</button>
                   </div>
                 </div>
               ) : (
                 <button type="button" disabled={!editable || isSaving} aria-label={editable ? `Edit ${label}` : undefined}
-                  className={cn('block w-full text-right [overflow-wrap:anywhere] focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default', editable && 'hover:text-primary hover:underline')}
+                  className={cn('group flex w-full items-start justify-end gap-1.5 text-right [overflow-wrap:anywhere] focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default', editable && 'hover:text-primary hover:underline')}
                   onClick={() => startEdit(label, value)}>
-                  {Array.isArray(value) ? value.join(', ') || '—' : String(value ?? '') || '—'}
+                  <span className="min-w-0">{displayText(displayValue ?? value)}</span>{editable && <Pencil aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" />}
                 </button>
               )}
             </dd>
@@ -173,7 +186,6 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
   const canReadAccounts = useHasPermission('accounts.view');
   const [tab, setTab] = useState('activity');
   const [detailsVisited, setDetailsVisited] = useState(false);
-  const [editing, setEditing] = useState(false);
   const [converting, setConverting] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [creatingDeal, setCreatingDeal] = useState(false);
@@ -193,15 +205,14 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
   const mockRecord = USE_MOCK_DATA ? mockRecords.find(item => item.id === id && item.tenantId === tenant?.id && ((item as unknown as RecordData).environment ?? 'SANDBOX') === (user?.activeEnvironment ?? 'SANDBOX')) : undefined;
   const record = USE_MOCK_DATA ? mockRecord as unknown as RecordData : recordQuery.data;
   const filesQuery = useCachedPage<RecordFileMetadata[]>({ module, params: { recordId: id, files: true }, revalidateOnInvalidation: true,
-    disabled: module === 'deals' || tab !== 'files' || !recordQuery.data || USE_MOCK_DATA,
+    disabled: tab !== 'files' || !recordQuery.data || USE_MOCK_DATA,
     fetchFn: async signal => (await apiClient.get<{ data: RecordFileMetadata[] }>(`/crm/${module}/${encodeURIComponent(id)}/files`, { signal })).data });
 
   const relationships = relatedQuery.data;
   const label = labels[module];
   const refresh = () => { void recordQuery.refetch(); if (module !== 'deals') void relatedQuery.refetch(); void timeline.refetch(); };
   const edit = () => {
-    if (module === 'deals') { if (record && onEdit) onEdit(record); else setEditing(true); }
-    else { setTab('details'); setDetailsVisited(true); }
+    setTab('details'); setDetailsVisited(true);
   };
   const save = async (payload: RecordData) => {
     if (saving) return;
@@ -212,24 +223,25 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
         else if (module === 'deals') await data.updateDeal(id, payload);
         else await data.updateContact(id, payload);
       } else await apiClient.put(`/crm/${module}/${encodeURIComponent(id)}`, payload);
-      setEditing(false);
       refresh();
       toast.success(`${label} updated`);
     } catch (error) { toast.error(error instanceof Error ? error.message : `Failed to update ${label.toLowerCase()}`); }
     finally { setSaving(false); }
   };
 
-  const saveField = async (apiField: string, value: string): Promise<void> => {
+  const saveField = async (apiField: string, value: string | string[]): Promise<void> => {
     if (savingField) return;
     setSavingField(apiField);
     try {
       if (USE_MOCK_DATA) {
         if (module === 'accounts') await data.updateOrganization(id, { [apiField]: value });
+        else if (module === 'deals') await data.updateDeal(id, { [apiField]: value });
         else await data.updateContact(id, { [apiField]: value });
       } else {
-        const trimmed = value.trim();
-        const normalized = apiField === 'website' && module === 'accounts' && trimmed && !/^https?:\/\//i.test(trimmed) ? `https://${trimmed}` : trimmed;
-        await apiClient.put(`/crm/${module}/${encodeURIComponent(id)}`, { [apiField]: apiField === 'productInterest' || apiField === 'productInterests' ? value.split(',').map(item => item.trim()).filter(Boolean) : normalized });
+        const trimmed = typeof value === 'string' ? value.trim() : value;
+        if (apiField === 'email' && (module === 'leads' || module === 'contacts')) CrmEmailSchema.parse(trimmed);
+        const normalized = apiField === 'website' && module === 'accounts' && typeof trimmed === 'string' && trimmed && !/^https?:\/\//i.test(trimmed) ? `https://${trimmed}` : trimmed;
+        await apiClient.put(`/crm/${module}/${encodeURIComponent(id)}`, { [apiField]: module === 'deals' && ['accountId', 'assignedUserId', 'expectedCloseDate'].includes(apiField) && normalized === '' ? null : apiField === 'expectedCloseDate' && normalized ? new Date(String(normalized)).toISOString() : normalized });
       }
       refresh();
       toast.success('Field updated');
@@ -268,7 +280,27 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
     ['Email', person?.email], ['Phone', person?.phone], ['Address', location], ['Company', module !== 'accounts' ? company : undefined], ['Job title', record.jobTitle], ['Website', record.website],
     ['Product interests', record.productInterest ?? record.productInterests], ['Source', module === 'deals' ? record.leadSource : source], ['Status', statusLabel], ['Owner / Representative', owner], ['Notes', record.notes ?? record.description],
   ];
-  const aboutRows: InlineRowDef[] = module === 'deals' ? rows.map(([label, value]) => ({ label, value })) : [
+  const productIds = (record.productInterestIds as string[] | undefined)?.length ? record.productInterestIds as string[] : record.productInterestId ? [text(record.productInterestId)] : [];
+  const productNames = (record.productInterest ?? record.productInterests ?? []) as string[];
+  const productRow: InlineRowDef = { label: 'Product interests', value: module === 'leads' || module === 'deals' ? productIds : productNames, displayValue: productNames, apiField: module === 'leads' ? 'productInterest' : module === 'deals' ? 'productInterestIds' : 'productInterests', type: 'products', valueMode: module === 'leads' || module === 'deals' ? 'id' : 'name', productLabels: Object.fromEntries(productIds.map((id, i) => [id, productNames[i] ?? 'Unavailable product'])) };
+  const aboutRows: InlineRowDef[] = module === 'deals' ? [
+    { label: 'Deal title', value: title, apiField: 'title' },
+    { label: 'Deal value', value: subtitle.split(' · ')[0] },
+    productRow,
+    { label: 'Priority', value: record.priority, apiField: 'priority', type: 'select', options: ['LOW', 'MEDIUM', 'HIGH'] },
+    { label: 'Expected close date', value: text(record.expectedCloseDate).slice(0, 10), apiField: 'expectedCloseDate', type: 'date' },
+    { label: 'Pipeline', value: object(record.pipeline)?.name },
+    { label: 'Stage', value: statusLabel },
+    { label: 'Assigned user', value: record.assignedUserId, displayValue: owner, apiField: 'assignedUserId', type: 'users' },
+    { label: 'Account', value: record.accountId, displayValue: company, apiField: 'accountId', type: 'accounts' },
+    { label: 'Contacts', value: (record.contactDeals as RecordData[] | undefined)?.map(link => text(object(link.contact)?.id)) ?? [], displayValue: (record.contactDeals as RecordData[] | undefined)?.map(link => personName(object(link.contact))) ?? [], apiField: 'contactIds', type: 'contacts' },
+    { label: 'Leads', value: (record.leadDeals as RecordData[] | undefined)?.map(link => text(object(link.lead)?.id)) ?? [], displayValue: (record.leadDeals as RecordData[] | undefined)?.map(link => personName(object(link.lead))) ?? [], apiField: 'leadIds', type: 'leads' },
+    { label: 'Source', value: record.leadSource, apiField: 'leadSource' },
+    { label: 'Industry', value: record.industry, apiField: 'industry' },
+    { label: 'Address', value: record.address, apiField: 'address' },
+    { label: 'Description', value: record.description, apiField: 'description', type: 'textarea' },
+    { label: 'Created', value: record.createdAt },
+  ] : [
     ...(module === 'accounts' ? [
       { label: 'Account name', value: record.name, apiField: 'name' },
       { label: 'Industry', value: record.industry, apiField: 'industry' },
@@ -286,7 +318,7 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
       { label: 'Source', value: source, apiField: 'source' },
     ]),
     { label: 'Address', value: record.address, apiField: 'address' },
-    { label: 'Product interests', value: record.productInterest ?? record.productInterests },
+    productRow,
     ...(module === 'accounts' ? [] : [{ label: 'Status', value: statusLabel, apiField: 'status', type: 'select' as const, options: statuses }]),
     { label: 'Owner / Representative', value: owner },
     { label: 'Notes', value: module === 'leads' ? record.description : record.notes, apiField: module === 'leads' ? 'description' : 'notes', type: 'textarea' },
@@ -339,9 +371,10 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
             {subtitle && <p className="mt-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">{subtitle}</p>}
             {onClose && <Link href={`/crm/${module}/${encodeURIComponent(id)}?from=${module}`} className="mt-1 inline-flex min-h-8 items-center gap-1 text-xs font-medium text-[var(--primary)]">Open full page <ExternalLink size={11} /></Link>}
           </div>
-          <div className="ml-[52px] flex max-w-[calc(100%-52px)] items-center gap-1.5 @min-[400px]:ml-0 @min-[400px]:pr-9">
+          <div className="ml-[52px] flex min-w-0 max-w-[calc(100%-52px)] items-center gap-1.5 [&>div]:min-w-0 @min-[400px]:ml-0 @min-[400px]:pr-9">
             {manageMenu}
-            {status && (canEdit ? <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" disabled={saving} className={cn('min-h-9 max-w-full gap-1 rounded-lg text-xs', getCRMStatusStyles(statusLabel))}>{statusLabel}<ChevronDown size={12} /></Button></DropdownMenuTrigger><DropdownMenuContent>{module === 'deals' ? dealStages.map(stage => <DropdownMenuItem key={stage.id} onSelect={() => { if (stage.id === record.stageId) return; if (stage.isLost) { setLostReason(''); setLostStage(stage.id); } else void changeStage(stage.id); }}>{stage.name}</DropdownMenuItem>) : statuses.map(option => <DropdownMenuItem key={option} onSelect={() => void save({ status: option })}>{option}</DropdownMenuItem>)}</DropdownMenuContent></DropdownMenu> : <span className={cn('rounded-lg px-2 py-1 text-xs', getCRMStatusStyles(statusLabel))}>{statusLabel}</span>)}
+            {module === 'deals' && <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="outline" size="icon" className="h-9 w-9 shrink-0" aria-label="Open messages" title="Open messages" onClick={() => router.push('/inbox')}><Inbox size={16} /></Button></TooltipTrigger><TooltipContent>Open messages</TooltipContent></Tooltip></TooltipProvider>}
+            {status && (canEdit ? <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" disabled={saving} className={cn('min-h-9 min-w-0 max-w-full gap-1 rounded-lg text-xs', getCRMStatusStyles(statusLabel))}><span className="min-w-0 max-w-[90px] truncate @min-[400px]:max-w-[140px]">{statusLabel}</span><ChevronDown size={12} className="shrink-0" /></Button></DropdownMenuTrigger><DropdownMenuContent>{module === 'deals' ? dealStages.map(stage => <DropdownMenuItem key={stage.id} onSelect={() => { if (stage.id === record.stageId) return; if (stage.isLost) { setLostReason(''); setLostStage(stage.id); } else void changeStage(stage.id); }}>{stage.name}</DropdownMenuItem>) : statuses.map(option => <DropdownMenuItem key={option} onSelect={() => void save({ status: option })}>{option}</DropdownMenuItem>)}</DropdownMenuContent></DropdownMenu> : <span className={cn('rounded-lg px-2 py-1 text-xs', getCRMStatusStyles(statusLabel))}>{statusLabel}</span>)}
             {onClose && <Button variant="ghost" size="icon" className="absolute right-0 top-0 h-9 w-9" onClick={onClose} aria-label="Close record" title="Close record"><X size={16} /></Button>}
           </div>
         </div>
@@ -372,11 +405,11 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
         <div className={cn('mx-auto w-full min-w-0', !onClose && 'max-w-[1440px]')}>
           <TabsContent value="activity" forceMount className="m-0">
             <RecordTimelineTab compact activities={timeline.activities} module={module} recordId={id} loading={activityLoading} error={activityError} onActivityCreated={refresh}
-              tasks={module !== 'deals' ? <RecordSection title="Tasks" count={taskCount}><RelatedTasks links={links} onCountChange={setTaskCount} /></RecordSection> : undefined} />
+              tasks={<RecordSection title="Tasks" count={taskCount}><RelatedTasks links={links} onCountChange={setTaskCount} /></RecordSection>} />
           </TabsContent>
           <TabsContent value="details" forceMount className="m-0 p-4"><div className="space-y-3">
-            <RecordSection title="About" actions={module === 'deals' && canEdit && <Button variant="ghost" size="sm" onClick={edit}>Edit details</Button>}>
-              <InlineEditRows rows={aboutRows} canEdit={module !== 'deals' && canEdit && !USE_MOCK_DATA} onSave={saveField} />
+            <RecordSection title="About">
+              <InlineEditRows rows={aboutRows} canEdit={canEdit && !USE_MOCK_DATA} onSave={saveField} />
             </RecordSection>
             {detailsVisited && relatedQuery.isInitialLoad && <p role="status" className="animate-pulse p-3 text-sm text-muted-foreground">Loading related records…</p>}
             {relatedQuery.error && <div role="alert" className="rounded-xl border border-border p-3 text-sm"><p>{relatedQuery.error}</p><Button variant="ghost" size="sm" onClick={() => void relatedQuery.refetch()}>Retry related records</Button></div>}
@@ -387,7 +420,7 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
                 <RelatedRecords records={deals} module="deals" empty={`No deals attached to this ${label.toLowerCase()}.`} />
                 {deals.length === 50 && <p className="px-3 pb-3 text-xs text-muted-foreground">Showing the latest 50 linked deals.</p>}
                 {creatingDeal && <div className="border-t border-border p-3"><InlineDealForm relatedRecord={{ type: module === 'leads' ? 'lead' : module === 'contacts' ? 'contact' : 'account', id }} onError={error => toast.error(error instanceof Error ? error.message : 'Failed to create deal')} onCancel={() => setCreatingDeal(false)} onSubmit={async values => {
-                  await apiClient.post('/crm/deals', { title: values.title, productInterestId: values.productInterestId, pipelineId: values.pipelineId, stageId: values.stageId, description: values.description, expectedCloseDate: values.expectedCloseDate ? new Date(values.expectedCloseDate).toISOString() : undefined, ...(module === 'leads' ? { leadIds: [id] } : module === 'contacts' ? { contactIds: [id] } : { accountId: id }) });
+                  await apiClient.post('/crm/deals', { title: values.title, productInterestIds: values.productInterestIds, pipelineId: values.pipelineId, stageId: values.stageId, description: values.description, expectedCloseDate: values.expectedCloseDate ? new Date(values.expectedCloseDate).toISOString() : undefined, ...(module === 'leads' ? { leadIds: [id] } : module === 'contacts' ? { contactIds: [id] } : { accountId: id }) });
                   setCreatingDeal(false); void relatedQuery.refetch();
                 }} /></div>}
               </RecordSection>}
@@ -396,21 +429,20 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
               {module === 'contacts' && relationships.sourceLead && canReadContacts && <RecordSection title="Related leads" count={1}><RelatedRecords records={[relationships.sourceLead]} module="leads" empty="" /></RecordSection>}
             </>}
 
-            {module === 'deals' && <RecordSection title="Tasks" count={taskCount}><RelatedTasks links={links} onCountChange={setTaskCount} /></RecordSection>}
             {customFields && Object.keys(customFields).length > 0 && <RecordSection title="Custom fields" count={Object.keys(customFields).length}><RecordRows rows={Object.entries(customFields)} /></RecordSection>}
           </div></TabsContent>
           <TabsContent value="files" className="m-0">
-            {module === 'deals' ? <p className="p-4 text-sm text-muted-foreground">No files attached.</p> : <RecordFilesTab files={filesQuery.data ?? []} loading={filesQuery.isInitialLoad} error={filesQuery.error} onRetry={() => void filesQuery.refetch()}
+            <RecordFilesTab files={filesQuery.data ?? []} loading={filesQuery.isInitialLoad} error={filesQuery.error} onRetry={() => void filesQuery.refetch()}
               onUpload={canEdit && !USE_MOCK_DATA ? async file => {
                 const query = new URLSearchParams({ name: file.name, type: file.type || 'application/octet-stream' });
                 await apiClient.upload(`/crm/${module}/${encodeURIComponent(id)}/files?${query}`, new Blob([file], { type: 'application/octet-stream' }));
                 await filesQuery.refetch(); refresh();
-              } : undefined} />}
+              } : undefined} />
           </TabsContent>
         </div>
       </div>
     </Tabs>
-    {editing && module === 'deals' && <DealFormSheet isOpen mode="edit" initialData={toFrontendDeal(record)} onClose={() => setEditing(false)} onSubmit={async values => { await save(toBackendUpdateDeal(values)); }} />}
+
     {lostStage && <div role="dialog" aria-modal="true" aria-label="Close Deal as lost" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"><form className="w-full max-w-sm space-y-3 rounded-xl bg-card p-4" onSubmit={e => { e.preventDefault(); void changeStage(lostStage, lostReason); }}><label className="block text-sm">Lost reason<textarea required maxLength={2000} value={lostReason} onChange={e => setLostReason(e.target.value)} className="mt-2 w-full rounded border bg-background p-2" /></label><Button disabled={saving || !lostReason.trim()}>Save</Button><Button type="button" variant="ghost" onClick={() => setLostStage(undefined)}>Cancel</Button></form></div>}
     {converting && <ConvertLeadDialog isOpen lead={formRecord as unknown as Lead} onClose={() => setConverting(false)} onSuccess={refresh} />}
     <ConfirmActionDialog open={archiving} onOpenChange={setArchiving} title={`Archive ${label}`} description={`${title} will be moved to Archived Data.`} warning="You can restore this record later from Settings → Archived Data." confirmLabel="Archive" variant="default" onConfirm={async () => {

@@ -14,6 +14,7 @@ import {
 import { toast } from 'sonner';
 import { RECORD_FILE_MAX_BYTES } from '@leadcrm/shared';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
+import { DataLoadingSkeleton } from './data-view-states';
 import { cn } from '@/lib/utils';
 import { Button } from '@/shared/components/ui/button';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
@@ -257,7 +258,7 @@ export function RecordFilesTab({
     <div className="w-full min-w-0 p-4 space-y-4">
       {/* Upload zone */}
       {onUpload && <UploadZone onUpload={onUpload} />}
-      {loading && <p role="status" className="flex items-center gap-2 text-sm"><Loader2 className="h-4 w-4 animate-spin" />Loading files…</p>}
+      {loading && !files.length && <div role="status" aria-label="Loading files"><DataLoadingSkeleton rowCount={3} columnCount={2} rowHeight={76} /></div>}
       {error && <div role="alert" className="text-sm text-destructive">{error}{onRetry && <Button variant="ghost" onClick={onRetry}>Retry files</Button>}</div>}
 
       {/* File list */}

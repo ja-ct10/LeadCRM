@@ -1,9 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { TaskListQuery, TaskRecord } from "@leadcrm/shared";
 import { TASK_STATUS_LABELS, isTaskOverdue } from "@leadcrm/shared";
 import { useHasPermission } from "@/shared/hooks/use-permissions";
 import { Button } from "@/shared/components/ui/button";
+import { RefreshButton } from "@/shared/components/crm/refresh-button";
+import { DataLoadingSkeleton } from "@/shared/components/crm/data-view-states";
 import { useTasks } from "../use-tasks";
 import { TaskEditor, type TaskLinks } from "./task-editor";
 
@@ -14,7 +16,9 @@ export function RelatedTasks({ links, onCountChange }: { links: TaskLinks; onCou
   const query = Object.fromEntries(
     Object.entries(links).filter(([, value]) => !!value),
   ) as TaskListQuery;
-  const data = useTasks({ ...query, page, limit: 10 });
+  const data = useTasks({ ...query, page, limit: 10 }, true);
+  const refreshing = useRef(false);
+  useEffect(() => { if (!data.loading) refreshing.current = false; }, [data.loading]);
   const key = JSON.stringify(links) + data.identity;
   useEffect(() => {
     onCountChange?.(data.canRead && !data.loading && !data.error ? data.summary?.total : undefined);
@@ -42,13 +46,11 @@ export function RelatedTasks({ links, onCountChange }: { links: TaskLinks; onCou
             : "Tasks"}
         </span>
         <div className="flex gap-2">
-          <Button variant="ghost" size="sm" onClick={data.refresh}>
-            Refresh
-          </Button>
+          <RefreshButton label="Refresh tasks" refreshing={data.loading} onClick={() => { if (refreshing.current || data.loading) return; refreshing.current = true; data.refresh(); }} />
           {canCreate && (
             <Button
               size="sm"
-              variant="outline"
+              variant="default"
               onClick={() => setEditor("new")}
             >
               Add task
@@ -56,11 +58,7 @@ export function RelatedTasks({ links, onCountChange }: { links: TaskLinks; onCou
           )}
         </div>
       </div>
-      {data.loading && (
-        <p role="status" className="text-sm text-muted-foreground">
-          Loading tasks…
-        </p>
-      )}
+      {data.loading && !data.tasks.length && <div role="status" aria-label="Loading tasks"><DataLoadingSkeleton rowCount={3} columnCount={1} rowHeight={64} /></div>}
       {data.error && (
         <p role="alert" className="text-sm text-destructive">
           {data.error}

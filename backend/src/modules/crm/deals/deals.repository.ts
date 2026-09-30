@@ -89,10 +89,13 @@ export async function findDealById(id: string, tenantId: string) {
 export async function createDeal(tenantId: string, ownerId: string, dto: CreateDealDto, db: Prisma.TransactionClient = prisma) {
   const { leadIds, contactIds, ...dealData } = dto as CreateDealDto & { leadIds?: string[]; contactIds?: string[] };
 
-  if (dto.productInterestId) {
-    const [product] = await resolveProducts(db, tenantId, [dto.productInterestId]);
-    dealData.productInterests = [product.name];
-    dealData.value = Number(product.dealValue);
+  if (dto.productInterestIds?.length || dto.productInterestId) {
+    const products = await resolveProducts(db, tenantId, dto.productInterestIds ?? [dto.productInterestId!]);
+    dealData.productInterestIds = products.map(p => p.id);
+    dealData.productInterestId = products[0].id;
+    dealData.productInterests = products.map(p => p.name);
+    dealData.value = products.reduce((sum, p) => sum + Math.round(Number(p.dealValue) * 100), 0) / 100;
+    if (dealData.value > 999_999_999_999) throw new ValidationError('Combined product value exceeds the maximum.');
     dealData.currency = 'PHP';
   } else {
     // Trusted imports retain their independent historical value contract.
@@ -137,12 +140,34 @@ export async function createDeal(tenantId: string, ownerId: string, dto: CreateD
 }
 
 export async function updateDeal(id: string, tenantId: string, dto: UpdateDealDto) {
-  const { leadIds: _leadIds, contactIds: _contactIds, ...updateData } = dto as UpdateDealDto & { leadIds?: string[]; contactIds?: string[] };
-  const existing = await prisma.deal.findFirst({ where: { id, tenantId } });
-  updateData.productInterests = await validateProductSnapshots(tenantId, dto.productInterests, existing?.productInterests);
-  if (existing?.productInterestId && dto.value !== undefined && dto.value !== existing.value) throw new ValidationError('Product-linked Deal values cannot be overridden.');
   try {
-    await prisma.deal.update({ where: { id, tenantId }, data: updateData as never });
+    await salesTransaction(async tx => {
+      const { leadIds: _leadIds, contactIds: _contactIds, ...updateData } = dto as UpdateDealDto & { leadIds?: string[]; contactIds?: string[] };
+      const existing = await tx.deal.findFirst({ where: { id, tenantId } });
+      if (!existing) throw new Prisma.PrismaClientKnownRequestError('Deal not found', { code: 'P2025', clientVersion: '5' });
+      const currentIds = existing.productInterestIds.length ? existing.productInterestIds : existing.productInterestId ? [existing.productInterestId] : [];
+      if (dto.productInterestIds) {
+        const ids = [...new Set(dto.productInterestIds)];
+        const changed = ids.length !== currentIds.length || ids.some(id => !currentIds.includes(id));
+        if (changed) {
+          const products = await resolveProducts(tx, tenantId, ids);
+          updateData.productInterestIds = products.map(p => p.id);
+          Object.assign(updateData, { productInterestId: products[0].id, productInterests: products.map(p => p.name), currency: 'PHP', value: products.reduce((sum, p) => sum + Math.round(Number(p.dealValue) * 100), 0) / 100 });
+          if (updateData.value! > 999_999_999_999) throw new ValidationError('Combined product value exceeds the maximum.');
+        } else {
+          delete updateData.productInterestIds;
+          delete updateData.productInterests;
+          delete updateData.value;
+          delete updateData.currency;
+        }
+      } else {
+        if (currentIds.length && dto.productInterests && JSON.stringify(dto.productInterests) !== JSON.stringify(existing.productInterests)) throw new ValidationError('Update Product Interests using catalog IDs.');
+        updateData.productInterests = await validateProductSnapshots(tenantId, dto.productInterests, existing.productInterests, tx);
+        if (currentIds.length && dto.value !== undefined && dto.value !== existing.value) throw new ValidationError('Product-linked Deal values cannot be overridden.');
+        if (currentIds.length && dto.currency !== undefined && dto.currency !== existing.currency) throw new ValidationError('Product-linked Deal currency cannot be overridden.');
+      }
+      await tx.deal.update({ where: { id, tenantId }, data: updateData as never });
+    });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
       return null;

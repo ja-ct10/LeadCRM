@@ -1,3 +1,4 @@
+import { CrmEmailSchema } from '@leadcrm/shared';
 import { z } from 'zod';
 import { LeadStatusSchema, ProductInterestIdSchema } from '@leadcrm/shared';
 import { recordText, recordName } from '../record-validation';
@@ -12,7 +13,7 @@ export const CreateContactSchema = z.object({
   requestId: z.string().uuid().optional(),
   firstName:      recordName(),
   lastName:       recordName(),
-  email:          z.string().email('Invalid email address').optional().or(z.literal('')),
+  email: CrmEmailSchema,
   phone:          recordText().optional(),
   companyName:    recordText().optional(),
   status:         LeadStatusSchema.default('Warm'),
@@ -28,7 +29,7 @@ export const CreateContactSchema = z.object({
 export const UpdateContactSchema = z.object({
   firstName:      recordName().optional(),
   lastName:       recordName().optional(),
-  email:          z.string().email().optional().or(z.literal('')),
+  email: CrmEmailSchema.optional(),
   phone:          recordText().optional(),
   companyName:    recordText().optional(),
   status:         LeadStatusSchema.optional(),

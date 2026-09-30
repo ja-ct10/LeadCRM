@@ -4,6 +4,7 @@ import React, { useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { ProductInterestSelect } from './product-interest-select';
 import { useProductInterests } from '@/shared/hooks/use-product-interests';
 import { ChevronDown, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -23,7 +24,7 @@ function getDatePlusDays(days: number): string {
 
 const InlineDealSchema = z.object({
   title: z.string().min(1, 'Title is required').max(255),
-  productInterestId: z.string().uuid('Select one Product Interest.'),
+  productInterestIds: z.array(z.string().uuid()).min(1, 'Select at least one Product Interest.'),
   pipelineId: z.string().min(1, 'Pipeline is required'),
   stageId: z.string().min(1, 'Stage is required'),
   expectedCloseDate: z.string().optional(),
@@ -43,7 +44,7 @@ interface InlineDealFormProps {
   };
   onSubmit: (data: {
     title: string;
-    productInterestId: string;
+    productInterestIds: string[];
     pipelineId: string;
     stageId: string;
     expectedCloseDate?: string;
@@ -70,21 +71,22 @@ export function InlineDealForm({
   const { pipelines: allPipelines } = useData();
   const pipelines = useMemo(() => allPipelines.filter(p => p.name.trim().toLowerCase() === 'sales pipeline'), [allPipelines]);
 
-  // Auto-select first pipeline and first stage as defaults
+  // Keep the configured starting stage even when display order changes.
   const defaultPipeline = pipelines[0];
-  const defaultStage = defaultPipeline?.stages?.[0];
+  const defaultStage = defaultPipeline?.stages?.find(stage => stage.isDefault) ?? defaultPipeline?.stages?.[0];
 
   const {
     register,
     handleSubmit,
     watch,
     reset,
+    setValue,
     formState: { errors, isValid, isSubmitting },
   } = useForm<InlineDealFormData>({
     resolver: zodResolver(InlineDealSchema),
     defaultValues: {
       title: '',
-      productInterestId: '',
+      productInterestIds: [],
       pipelineId: defaultPipeline?.id || '',
       stageId: defaultStage?.id || '',
       expectedCloseDate: getDatePlusDays(30),
@@ -95,8 +97,8 @@ export function InlineDealForm({
   });
 
   const selectedPipelineId = watch('pipelineId');
-  const selectedProductId = watch('productInterestId');
-  const selectedProduct = products.find(p => p.id === selectedProductId);
+  const selectedProductIds = watch('productInterestIds');
+  const productValue = products.filter(p => selectedProductIds.includes(p.id)).reduce((sum, p) => sum + Math.round(p.dealValue * 100), 0) / 100;
   const productFieldId = React.useId();
 
   const stagesForPipeline = useMemo(() => {
@@ -108,7 +110,7 @@ export function InlineDealForm({
   const onFormSubmit = async (formData: InlineDealFormData): Promise<void> => {
     const payload: Parameters<typeof onSubmit>[0] = {
       title: formData.title,
-      productInterestId: formData.productInterestId,
+      productInterestIds: formData.productInterestIds,
       pipelineId: formData.pipelineId,
       stageId: formData.stageId,
       expectedCloseDate: formData.expectedCloseDate || undefined,
@@ -147,7 +149,7 @@ export function InlineDealForm({
   const errorCls = '!border-destructive focus:!ring-destructive/20';
   const labelCls = 'block text-xs font-medium text-muted-foreground mb-1';
 
-  const isSubmitDisabled = !isValid || loading || !!error || !selectedProduct || isSubmitting || isLoading;
+  const isSubmitDisabled = !isValid || loading || !!error || !selectedProductIds.length || isSubmitting || isLoading;
 
   return (
     <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-3" noValidate>
@@ -166,15 +168,12 @@ export function InlineDealForm({
 
       <div>
         <label htmlFor={productFieldId} className={labelCls}>Product Interest</label>
-        <select id={productFieldId} {...register('productInterestId')} disabled={loading} className={inputCls}>
-          <option value="">Select a product interest...</option>
-          {products.map(product => <option key={product.id} value={product.id}>{product.name}</option>)}
-        </select>
+        <ProductInterestSelect id={productFieldId} products={products} values={selectedProductIds} onChange={values => setValue('productInterestIds', values, { shouldValidate: true })} disabled={loading || !!error} />
         {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
       </div>
       <div>
         <label htmlFor={`${productFieldId}-value`} className={labelCls}>Value</label>
-        <input id={`${productFieldId}-value`} readOnly className={inputCls} value={new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(selectedProduct?.dealValue ?? 0)} />
+        <input id={`${productFieldId}-value`} readOnly className={inputCls} value={new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(productValue)} />
       </div>
 
       {/* Pipeline & Stage */}

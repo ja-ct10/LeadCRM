@@ -1,4 +1,7 @@
 'use client';
+import { ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
+import { CrmEmailSchema } from '@leadcrm/shared';
+
 import { LeadStatusSchema, LEAD_STATUSES, normalizeCrmStatus } from '@leadcrm/shared';
 import { useProductInterests } from '@/shared/hooks/use-product-interests';
 
@@ -34,7 +37,7 @@ import {
 const LeadFormSchema = z.object({
   firstName: z.string().min(1, 'First name is required').max(100, 'Max 100 characters'),
   lastName: z.string().min(1, 'Last name is required').max(100, 'Max 100 characters'),
-  email: z.string().email('Invalid email address').optional().or(z.literal('')),
+  email: CrmEmailSchema,
   phone: z.string().optional(),
   companyName: z.string().optional(),
   status: LeadStatusSchema,
@@ -80,7 +83,6 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
   const isEdit = !!initialData;
   const requestId = useRef<string | undefined>(undefined);
   const { products: productRecords, error: productError, loading: productsLoading } = useProductInterests();
-  const products = productRecords.map(p => p.id);
 
   const {
     register,
@@ -237,12 +239,12 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
             </FieldWrap>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FieldWrap label="Email" htmlFor={`${fieldId}-email`} error={errors.email?.message}>
+            <FieldWrap label="Email *" htmlFor={`${fieldId}-email`} error={errors.email?.message}>
               <div className="relative">
                 <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                 <input
                   type="email"
-                  {...register('email')}
+                  {...register('email')} required aria-required="true" maxLength={254}
                   id={`${fieldId}-email`}
                   aria-invalid={!!errors.email}
                   aria-describedby={errors.email ? `${fieldId}-email-error` : undefined}
@@ -301,11 +303,9 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
               </div>
             </FieldWrap>
             <FieldWrap label="Product Interest">
-              <div className="max-h-48 space-y-1 overflow-y-auto rounded-xl border border-border p-2">
-                {[...new Set([...products, ...selectedProducts])].map(product => <label key={product} className="flex min-h-9 items-start gap-2 px-1 py-1.5 text-xs"><input type="checkbox" checked={selectedProducts.includes(product)} onChange={e => setSelectedProducts(old => e.target.checked ? [...old, product] : old.filter(p => p !== product))} className="mt-0.5" /><span>{productRecords.find(p => p.id === product)?.name ?? initialData?.productInterests?.[initialData?.productInterestIds?.indexOf(product) ?? -1] ?? 'Unavailable product'}</span></label>)}
-              </div>
-              {productError && <p role="alert" className="mt-1 text-xs text-red-600">Unable to load configured products. Retry before submitting.</p>}
-            </FieldWrap>
+<ProductInterestSelect products={productRecords} values={selectedProducts} onChange={setSelectedProducts} disabled={productsLoading || !!productError} labels={Object.fromEntries((initialData?.productInterestIds ?? []).map((id: string, i: number) => [id, initialData?.productInterests?.[i] ?? "Unavailable product"]))} />
+{productError && <p role="alert" className="text-xs text-destructive">{productError}</p>}
+</FieldWrap>
           </div>
         </div>
 

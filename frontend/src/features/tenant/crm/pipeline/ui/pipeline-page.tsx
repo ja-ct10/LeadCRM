@@ -1,7 +1,7 @@
 "use client";
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search } from 'lucide-react';
+import { Search, Settings }  from 'lucide-react';
 import { toast } from 'sonner';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
@@ -17,6 +17,10 @@ import { CreateActionDropdown } from '@/shared/components/crm/module-workspace';
 import { DealPanel } from '@/shared/components/crm';
 import { DealFormSheet } from '@/features/tenant/crm/deals/ui/deal-form';
 import { PipelineKanbanBoard } from './pipeline-kanban-board';
+import { PipelineStagesDialog } from './pipeline-stages-dialog';
+import KanbanBoardSkeleton from '@/shared/components/kanban-skeleton';
+import { Button } from '@/shared/components/ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
 import ForecastBar from './forecast-bar';
 import { getTenantCurrency } from '@/shared/utils/currency';
 import type { Deal } from '@/store/types';
@@ -30,6 +34,9 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
   const [search, setSearch] = useState(''), [myDeals, setMyDeals] = useState(false);
   const [showFilters, setShowFilters] = useState(false), [filterSearch, setFilterSearch] = useState('');
   const [filters, setFilters] = useState<Record<string, string[]>>({});
+  const [manageStages, setManageStages] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshPending = useRef(false);
   const [pipelineError, setPipelineError] = useState('');
   const [selected, setSelected] = useState<Deal | null>(null);
   const [createStage, setCreateStage] = useState<string>();
@@ -50,6 +57,11 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
     catch (error) { setPipelineError(error instanceof Error ? error.message : 'Unable to load Sales Pipeline'); }
   };
   useEffect(() => { if (!pipeline) void reloadPipelines(); }, [pipeline?.id, user?.activeEnvironment]);
+  const refresh = async () => {
+    if (refreshPending.current || query.isRefreshing || query.isInitialLoad) return;
+    refreshPending.current = true; setRefreshing(true);
+    try { await Promise.all([query.refetch(), reloadPipelines()]); } finally { refreshPending.current = false; setRefreshing(false); }
+  };
   const all = USE_MOCK_DATA ? deals.filter(d => d.pipelineId === pipeline?.id && !d.isArchived) : query.data ?? [];
   const stageStatus = (deal: Deal) => { const stage = pipeline?.stages.find(s => s.id === deal.stageId); return stage?.isWon ? 'Won' : stage?.isLost ? 'Lost' : 'Open'; };
   const visible = all.filter(deal => {
@@ -78,17 +90,18 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
     finally { setMoving(false); }
   };
   return <div className="flex min-h-0 min-w-0 flex-1 flex-col p-3 sm:p-6">
-    <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-bold">Deals</h1><p className="mt-1 text-sm text-muted-foreground">Sales Pipeline</p></div>{canCreate && pipeline && <CreateActionDropdown primaryActionLabel="New Deal" onPrimaryAction={() => setCreateStage(pipeline.stages.find(s => s.name.toLowerCase() === 'lead')?.id ?? pipeline.stages[0]?.id)} onImport={() => router.push('/crm/deals/import')} />}</div>
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-bold">Deals</h1><p className="mt-1 text-sm text-muted-foreground">Sales Pipeline</p></div>{pipeline && <div className="flex items-center gap-2">{(canCreate || canEdit || canDelete) && <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="outline" size="icon" aria-label="Manage pipeline stages" title="Manage pipeline stages" disabled={USE_MOCK_DATA} onClick={() => setManageStages(true)}><Settings size={16} /></Button></TooltipTrigger><TooltipContent>Manage pipeline stages</TooltipContent></Tooltip></TooltipProvider>}{canCreate && <CreateActionDropdown primaryActionLabel="New Deal" onPrimaryAction={() => setCreateStage((pipeline.stages.find(s => s.isDefault) ?? pipeline.stages.find(s => s.name.toLowerCase() === 'lead'))?.id ?? pipeline.stages[0]?.id)} onImport={() => router.push('/crm/deals/import')} />}</div>}</div>
     <div className="mb-3 flex gap-1 border-b border-border">{['All Deals', 'My Deals'].map((label, i) => <button key={label} onClick={() => setMyDeals(!!i)} className={`min-h-11 px-3 text-sm ${myDeals === !!i ? 'border-b-2 border-blue-600 text-blue-600' : 'text-muted-foreground'}`}>{label}</button>)}</div>
-    <div className="mb-3 flex min-w-0 items-center gap-2"><div className="relative min-w-0 flex-1 sm:max-w-64"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input aria-label="Search deals" placeholder="Search deals..." value={search} onChange={e => setSearch(e.target.value)} className="h-9 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-xs" /></div><FilterButton title="Deals" open={showFilters} onClick={() => setShowFilters(!showFilters)} /><div className="ml-auto"><RefreshButton onClick={() => { void query.refetch(); void reloadPipelines(); }} refreshing={query.isRefreshing} /></div></div>
+    <div className="mb-3 flex min-w-0 items-center gap-2"><div className="relative min-w-0 flex-1 sm:max-w-64"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input aria-label="Search deals" placeholder="Search deals..." value={search} onChange={e => setSearch(e.target.value)} className="h-9 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-xs" /></div><FilterButton title="Deals" open={showFilters} onClick={() => setShowFilters(!showFilters)} /><div className="ml-auto"><RefreshButton onClick={() => void refresh()} refreshing={refreshing || query.isRefreshing || query.isInitialLoad} /></div></div>
     <div className="flex min-h-0 min-w-0 flex-1 gap-3">
       <ModuleFilterRail showFilters={showFilters} filterGroups={groups} onToggleFilters={() => setShowFilters(false)} filterSearchTerm={filterSearch} onFilterSearch={setFilterSearch} totalRecords={all.length} onClearFilters={() => setFilters({})} onFilterToggle={(group, item) => setFilters(old => ({ ...old, [group]: old[group]?.includes(item) ? old[group].filter(id => id !== item) : [...(old[group] ?? []), item] }))} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
         <ForecastBar deals={visible} pipelines={pipeline ? [pipeline] : []} tenant={tenant} />
         {(query.error || pipelineError) && <p role="alert" className="rounded border border-red-200 p-3 text-sm text-red-600">{query.error || pipelineError}</p>}
-        {query.isInitialLoad && !USE_MOCK_DATA ? <p role="status">Loading Deals…</p> : pipeline ? <div className="flex min-h-[440px] min-w-0 flex-1 overflow-hidden"><PipelineKanbanBoard pipeline={pipeline} deals={visible} users={users} canCreate={canCreate} canEdit={canEdit && !moving} canDelete={canDelete} currencyConfig={getTenantCurrency(tenant)} onDealClick={setSelected} onDealDragEnd={move} onAddDeal={setCreateStage} onLoadMore={() => {}} loadingStages={new Set()} hasMoreByStage={{}} /></div> : <p role="status">{pipelineError ? 'Use Refresh to retry loading Sales Pipeline.' : 'Loading Sales Pipeline…'}</p>}
+        {(query.isInitialLoad || refreshing) && !USE_MOCK_DATA ? <KanbanBoardSkeleton /> : pipeline ? <div className="flex min-h-[440px] min-w-0 flex-1 overflow-hidden"><PipelineKanbanBoard pipeline={pipeline} deals={visible} users={users} canCreate={canCreate} canEdit={canEdit && !moving} canDelete={canDelete} currencyConfig={getTenantCurrency(tenant)} onDealClick={setSelected} onDealDragEnd={move} onAddDeal={setCreateStage} onLoadMore={() => {}} loadingStages={new Set()} hasMoreByStage={{}} /></div> : <p role="status">{pipelineError ? 'Use Refresh to retry loading Sales Pipeline.' : 'Loading Sales Pipeline…'}</p>}
       </div>
     </div>
+    {manageStages && pipeline && <PipelineStagesDialog pipelineId={pipeline.id} onClose={() => setManageStages(false)} onChanged={async () => { await refreshPipelines(); await query.refetch(); }} />}
     <DealPanel open={!!selected} deal={selected} onOpenChange={open => { if (!open) { setSelected(null); void query.refetch(); } }} />
     <DealFormSheet isOpen={!!createStage} mode="create" onClose={() => setCreateStage(undefined)} preselect={{ pipelineId: pipeline?.id, stageId: createStage }} onSubmit={async values => { await addDeal(values as unknown as Omit<Deal, 'id' | 'tenantId' | 'createdAt'>); setCreateStage(undefined); await query.refetch(); }} />
     {lost && <div role="dialog" aria-modal="true" aria-label="Close Deal as lost" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"><form className="w-full max-w-sm space-y-3 rounded-xl bg-card p-4" onSubmit={e => { e.preventDefault(); void move(lost.id, lost.stageId, lostReason).catch(() => {}); }}><label className="block text-sm">Lost reason<textarea required maxLength={2000} value={lostReason} onChange={e => setLostReason(e.target.value)} className="mt-2 w-full rounded border bg-background p-2" /></label><button disabled={moving || !lostReason.trim()} className="min-h-11 rounded bg-blue-600 px-4 text-white">Save</button><button type="button" className="min-h-11 px-4" onClick={() => setLost(undefined)}>Cancel</button></form></div>}

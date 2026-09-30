@@ -1,4 +1,5 @@
 'use client';
+import { ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
 import { useProductInterests } from '@/shared/hooks/use-product-interests';
 
 import React, { useMemo, useRef } from 'react';
@@ -46,7 +47,7 @@ interface AccountFormInnerProps {
 // ─── Form Component ────────────────────────────────────────────────────────
 
 export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormInnerProps): React.ReactElement {
-  const { products: productRecords } = useProductInterests();
+  const { products: productRecords, loading: productsLoading, error: productError } = useProductInterests();
   const PRODUCTS = productRecords.map(p => p.name);
   const { users } = useData();
   const isEdit = !!initialData;
@@ -108,29 +109,11 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
       assignedUserId: data.assignedUserId || undefined,
       notes: data.notes || undefined,
       internalNotes: data.internalNotes || undefined,
-      productInterests: data.productInterests && data.productInterests.length > 0 ? data.productInterests : undefined,
+      productInterests: data.productInterests ?? [],
       activeProducts: data.activeProducts && data.activeProducts.length > 0 ? data.activeProducts : undefined,
     };
 
     onSave(payload);
-  };
-
-  // Product interest management
-  const toggleProductInterest = (product: string): void => {
-    const current = selectedProducts;
-    if (current.includes(product)) {
-      setValue('productInterests', current.filter((p) => p !== product), { shouldValidate: true });
-    } else {
-      setValue('productInterests', [...current, product], { shouldValidate: true });
-    }
-  };
-
-  const removeProductInterest = (product: string): void => {
-    setValue(
-      'productInterests',
-      selectedProducts.filter((p) => p !== product),
-      { shouldValidate: true },
-    );
   };
 
   // Active products management
@@ -322,52 +305,10 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
           <SectionHeader num={4} title="Products & Interests" />
 
           {/* Product Interests (multi-select chips) */}
-          <FieldWrap label="Product Interests">
-            <div className="space-y-2">
-              {/* Selected chips */}
-              {selectedProducts.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {selectedProducts.map((product) => (
-                    <span
-                      key={product}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 rounded-md border border-amber-200 dark:border-amber-500/20"
-                    >
-                      {product}
-                      <button
-                        type="button"
-                        onClick={() => removeProductInterest(product)}
-                        className="ml-0.5 text-amber-400 hover:text-amber-600 dark:hover:text-amber-200 rounded-sm p-0.5 transition-colors"
-                        aria-label={`Remove ${product}`}
-                      >
-                        <X size={12} />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Product dropdown */}
-              <div className="relative">
-                <select
-                  className={selectCls}
-                  value=""
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      toggleProductInterest(e.target.value);
-                    }
-                  }}
-                >
-                  <option value="">Add a product interest...</option>
-                  {PRODUCTS.filter((p) => !selectedProducts.includes(p)).map((product) => (
-                    <option key={product} value={product}>
-                      {product}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
-              </div>
-            </div>
-          </FieldWrap>
+          <FieldWrap label="Product Interest">
+<ProductInterestSelect products={productRecords} valueMode="name" values={selectedProducts} onChange={values => setValue('productInterests', values, { shouldValidate: true })} disabled={productsLoading || !!productError} />
+{productError && <p role="alert" className="text-xs text-destructive">{productError}</p>}
+</FieldWrap>
 
           {/* Active Products (multi-select chips) */}
           <FieldWrap label="Active Products">

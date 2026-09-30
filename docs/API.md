@@ -111,10 +111,14 @@ and import country behavior is unchanged.
 
 ### Deals / Pipeline
 
-Manual `POST /crm/deals` requires one active, tenant-owned `productInterestId`.
-The server resolves its name and numeric `dealValue` in the creation transaction,
-sets the currency to PHP, and stores a price snapshot. A submitted amount cannot
-override that price. Later product price changes do not rewrite existing Deals.
+Manual `POST /crm/deals` accepts active, tenant-owned `productInterestIds` (one or
+more unique UUIDs); the existing singular `productInterestId` remains supported.
+The server resolves catalog names and sums their numeric `dealValue` in the
+creation transaction, sets the currency to PHP, and stores a price snapshot.
+`PUT /crm/deals/:id` accepts the same ID array when changing products and derives
+the new price on the server. Unchanged selections retain their snapshots, and
+manual amounts cannot override product-linked prices. Later catalog price changes
+do not rewrite existing Deals.
 Trusted import flows keep their existing historical-value contract.
 
 Product configuration uses `GET /administration/product-interests` and
@@ -134,7 +138,22 @@ database field; currency formatting is presentation only.
 | `POST` | `/crm/deals/:id/actions` | Perform a DealAction (ASSIGN_AGENT, SEND_EMAIL, ADD_NOTE, etc.) |
 | `GET` | `/crm/deals/:id/stage-history` | List DealStageHistory entries |
 | `GET` | `/crm/pipelines` | List pipelines |
-| `GET` | `/crm/pipelines/:id/stages` | List stages for a pipeline |
+| `GET` | `/crm/pipelines/:id` | Read pipeline including ordered stages |
+| `POST` | `/crm/stages` | Add a stage to the existing pipeline |
+| `PUT` | `/crm/stages/:id` | Rename/update a stage |
+| `DELETE` | `/crm/stages/:id` | Remove an unused, unprotected stage |
+| `PATCH` | `/crm/pipelines/:id/stages/reorder` | Reorder all stages in that pipeline |
+
+Stage removal rejects default/won/lost stages and stages referenced by any Deal
+(including archived Deals) or stage history. It does not reassign or orphan Deals.
+
+Lead and Contact create requests require a trimmed, valid email of at most 254
+characters. Updates may omit email, but cannot submit an empty or invalid email.
+Accounts retain their existing email rules.
+
+Record file history uses `GET`/`POST /crm/{module}/:id/files` and
+`GET /crm/{module}/:id/files/:fileId/download` for `leads`, `contacts`, `accounts`,
+and `deals`. These reuse the existing scoped file service and storage provider.
 
 ### Deal imports
 
