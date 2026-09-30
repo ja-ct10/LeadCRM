@@ -77,11 +77,11 @@ async function main() {
 
   // ── Organizations ──────────────────────────────────────────────────
   const orgs = await Promise.all([
-    prisma.account.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'Antigravity Solutions Inc.', industry: 'Information Technology', size: '11-50', website: 'https://antigravity.ph', address: 'BGC, Taguig, Metro Manila', country: 'Philippines', customerType: 'Active Customer' } }),
-    prisma.account.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'Nexwave Digital', industry: 'Software Development', size: '1-10', website: 'https://nexwave.ph', address: 'Ortigas, Pasig', country: 'Philippines', customerType: 'Prospect' } }),
-    prisma.account.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'CloudPH Telecom', industry: 'Telecommunications', size: '200+', address: 'Makati, Metro Manila', country: 'Philippines', customerType: 'Active Customer' } }),
-    prisma.account.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'BrightPath BPO', industry: 'Business Process Outsourcing', size: '51-200', address: 'Cebu City, Cebu', country: 'Philippines', customerType: 'Prospect' } }),
-    prisma.account.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'GreenTech Energy PH', industry: 'Renewable Energy', size: '11-50', address: 'Davao City', country: 'Philippines', customerType: 'Prospect' } }),
+    prisma.account.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'Antigravity Solutions Inc.', industry: 'Information Technology', size: '11-50', website: 'https://antigravity.ph', address: 'BGC, Taguig, Metro Manila', country: 'Philippines' } }),
+    prisma.account.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'Nexwave Digital', industry: 'Software Development', size: '1-10', website: 'https://nexwave.ph', address: 'Ortigas, Pasig', country: 'Philippines' } }),
+    prisma.account.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'CloudPH Telecom', industry: 'Telecommunications', size: '200+', address: 'Makati, Metro Manila', country: 'Philippines' } }),
+    prisma.account.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'BrightPath BPO', industry: 'Business Process Outsourcing', size: '51-200', address: 'Cebu City, Cebu', country: 'Philippines' } }),
+    prisma.account.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'GreenTech Energy PH', industry: 'Renewable Energy', size: '11-50', address: 'Davao City', country: 'Philippines' } }),
   ]);
   console.log('[Seed] Organizations created.');
 

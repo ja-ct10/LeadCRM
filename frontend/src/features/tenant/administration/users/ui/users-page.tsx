@@ -326,12 +326,6 @@ export default function UsersPage() {
         ).toISOString()
       : new Date(Date.now() - 12 * 24 * 3600 * 1000).toISOString();
 
-    const baselineMfaDate = selectedUser.lastLogin
-      ? new Date(
-          new Date(selectedUser.lastLogin).getTime() - 8 * 24 * 3600 * 1000,
-        ).toISOString()
-      : new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString();
-
     const baselineFirstLoginDate = selectedUser.lastLogin
       ? new Date(
           new Date(selectedUser.lastLogin).getTime() - 4 * 24 * 3600 * 1000,
@@ -353,23 +347,6 @@ export default function UsersPage() {
         details: `Workspace tenant resource allocation completed. Registered new user profile '${selectedUser.name}' assigned to access authorization level: '${selectedUser.role}'.`,
         timestamp: baselineCreationDate,
         ipAddress: "127.0.0.1",
-      });
-    }
-
-    // Baseline biometric/MFA config marker if absent
-    if (
-      !finalLogs.some(
-        (l) => l.action.includes("MFA") || l.action.includes("Security"),
-      )
-    ) {
-      finalLogs.push({
-        id: `sys_gen_mfa_${selectedUser.id}`,
-        userId: selectedUser.id,
-        userEmail: selectedUser.email,
-        action: "Auth MFA Update",
-        details: `Configured security access keys. Device biometric and multi-factor authentication (MFA) parameters verified successfully.`,
-        timestamp: baselineMfaDate,
-        ipAddress: "192.168.1.18",
       });
     }
 

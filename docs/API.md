@@ -42,20 +42,14 @@ All paths are relative to /api/v1. See [authentication and onboarding](authentic
 
 | Method | Path | Responsibility |
 | --- | --- | --- |
-| POST | /auth/login | Password verification; an MFA challenge cookie for enrolled users, otherwise a normal session |
-| GET | /auth/me | Current database-backed account state, including mustChangePassword |
+| POST | /auth/login | Password verification and a normal HttpOnly session cookie |
+| GET | /auth/me | Current database-backed account state, including mustChangePassword and passwordChangedAt |
 | PATCH | /auth/profile | Update only the authenticated user's firstName, lastName, phone, jobTitle, department; returns the canonical user |
 | POST | /auth/profile/avatar | Authenticated raw JPEG/PNG/WebP body, maximum 5 MB; stores a normalized 512×512 WebP in private Supabase Storage and returns the canonical user |
 | GET | /auth/profile/avatar/:avatarId | Authenticated retrieval of the current user's saved avatar; private, uncached response |
 | PATCH | /auth/environment | Persist the authenticated tenant user's Sandbox/Live preference; see [CRM environments](crm-environments.md) |
 | POST | /auth/logout | Revoke session and expire cookie |
 | POST | /auth/change-password | Use authenticated session, store strong password, clear first-login flag and revoke other sessions |
-| GET | /auth/mfa/status | Saved MFA state, remaining recovery codes, password-change timestamp |
-| POST | /auth/mfa/setup | Password reauthentication; encrypted pending setup and QR code |
-| POST | /auth/mfa/enable | Verify TOTP, enable MFA, return recovery codes once |
-| POST | /auth/mfa/verify | Consume login challenge and TOTP/recovery proof, then issue session |
-| POST | /auth/mfa/disable | Password plus TOTP/recovery proof; remove credentials |
-| POST | /auth/mfa/recovery-codes/regenerate | Password plus TOTP/recovery proof; replace all recovery codes |
 | POST | /auth/forgot-password | Request password recovery |
 | POST | /auth/reset-password | Complete password recovery and revoke sessions |
 | POST | /auth/invitations/accept | Accept an administrator-issued employee invitation |
@@ -104,8 +98,8 @@ queries, and migration requirements, see [CRM archive verification](crm-archive-
 
 `POST /crm/accounts` and `PUT /crm/accounts/:id` no longer accept Account/Customer
 Type, Customer Since, or Tax ID as account input fields. The account schemas strip
-the retired `customerType`, `customerSince`, and `taxId` keys. Existing database
-columns remain for historical conversion data; these requests do not clear them.
+unknown keys before persistence. The retired fields are absent from Prisma,
+database columns, and Account responses after the forward cleanup migration.
 The account create/edit UI always submits `country: "Philippines"`; unrelated API
 and import country behavior is unchanged.
 

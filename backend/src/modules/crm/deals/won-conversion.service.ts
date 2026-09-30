@@ -32,7 +32,7 @@ export async function resolveWonRelationships(tx: Prisma.TransactionClient, deal
       const accounts = (await tx.account.findMany({ where: { ...scope, name: { contains: name.split(' ')[0], mode: 'insensitive' } } })).filter(account => account.name.trim().replace(/\s+/g, ' ').toLowerCase() === name.toLowerCase());
       if (accounts.length > 1 || accounts[0]?.isArchived) throw conflict();
       personAccountId = accounts[0]?.id ?? (await tx.account.create({ data: { ...scope, name, assignedUserId: deal.assignedUserId,
-        tags: [], productInterests: lead.productInterest, activeProducts: [], customerType: 'Active Customer', customerSince: now } })).id;
+        tags: [], productInterests: lead.productInterest, activeProducts: [] } })).id;
     }
     if (personAccountId && !await tx.account.findFirst({ where: { ...scope, id: personAccountId, isArchived: false } })) throw conflict();
     if (!contact) contact = await tx.contact.create({ data: { ...scope, firstName: lead.firstName, lastName: lead.lastName,
@@ -70,7 +70,7 @@ export async function resolveWonRelationships(tx: Prisma.TransactionClient, deal
   if (accountId) {
     const account = await tx.account.findFirst({ where: { ...scope, id: accountId, isArchived: false } });
     if (!account) throw conflict();
-    await tx.account.update({ where: { ...scope, id: accountId }, data: { customerType: 'Active Customer', customerSince: account.customerSince ?? now,
+    await tx.account.update({ where: { ...scope, id: accountId }, data: {
       activeProducts: [...new Set([...account.activeProducts, ...deal.productInterests])] } });
     await tx.deal.update({ where: { ...scope, id: deal.id }, data: { accountId } });
   }

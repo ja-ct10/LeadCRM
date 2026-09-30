@@ -1,5 +1,4 @@
 'use client';
-import { MfaRequiredError } from '@/shared/services/auth.api';
 
 import { normalizeMockUser } from './auth-state';
 import type { AuthUser } from '@leadcrm/shared';
@@ -296,7 +295,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const generation = ++requestGeneration.current;
     const response = await authApi.login({ email, password: password ?? '' });
     if (generation !== requestGeneration.current) return false;
-    if ('mfaRequired' in response.data) throw new MfaRequiredError();
     applyAuthUser(response.data.user);
     return true;
   };

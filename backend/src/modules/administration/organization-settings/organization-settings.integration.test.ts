@@ -75,18 +75,16 @@ describe.skipIf(!disposable)('organization and account settings over authenticat
     expect((await call('/auth/profile', 'PATCH', { firstName: 'Valid', timeZone: 'Asia/Manila' })).status).toBe(400);
   });
 
-  it('rejects invalid Tax IDs on create and update without storing them; preserves leading zeros and clearing', async () => {
-    const created = await call('/crm/accounts', 'POST', { name: 'Tax account', taxId: '012345678' });
+  it('creates and updates Accounts without retired fields or response properties', async () => {
+    const created = await call('/crm/accounts', 'POST', { name: 'Account', country: 'Philippines' });
     expect(created.status).toBe(201);
     const accountId = created.body.data.id;
-    for (const taxId of ['12345678', '1234567890', '12ABC6789', '123-456-789', '123 456789', 123456789]) {
-      expect((await call('/crm/accounts', 'POST', { name: 'Invalid account', taxId })).status).toBe(400);
-      expect((await call(`/crm/accounts/${accountId}`, 'PUT', { taxId })).status).toBe(400);
+    const updated = await call(`/crm/accounts/${accountId}`, 'PUT', { name: 'Saved account', industry: 'IT' });
+    expect(updated.status).toBe(200);
+    expect(updated.body.data).toMatchObject({ name: 'Saved account', industry: 'IT', country: 'Philippines' });
+    const saved = await prisma.account.findUniqueOrThrow({ where: { id: accountId } });
+    for (const value of [created.body.data, updated.body.data, saved]) {
+      for (const field of ['taxId', 'customerType', 'customerSince']) expect(value).not.toHaveProperty(field);
     }
-    expect((await prisma.account.findUniqueOrThrow({ where: { id: accountId } })).taxId).toBe('012345678');
-    expect(await prisma.account.count({ where: { tenantId, name: 'Invalid account' } })).toBe(0);
-    expect((await call(`/crm/accounts/${accountId}`, 'PUT', { taxId: '' })).status).toBe(200);
-    expect((await prisma.account.findUniqueOrThrow({ where: { id: accountId } })).taxId).toBe('');
-    expect((await call('/crm/accounts', 'POST', { name: 'No tax ID' })).status).toBe(201);
   });
 });

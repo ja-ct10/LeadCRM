@@ -196,14 +196,6 @@ model User {
   lastName      String
   mustChangePassword Boolean @default(true)
   passwordChangedAt DateTime?
-  mfaEnabled Boolean @default(false)
-  mfaSecretEncrypted String?
-  mfaEnabledAt DateTime?
-  mfaPendingSecretEncrypted String?
-  mfaPendingExpiresAt DateTime?
-  mfaLastCounter Int?
-  mfaChallenges MfaChallenge[]
-  mfaRecoveryCodes MfaRecoveryCode[]
   passwordHash  String? // nullable � OAuth-only users have no password
   phone         String?
   jobTitle      String?
@@ -485,14 +477,11 @@ model Account {
   industry         String?
   size             String? // "1-10" | "11-50" | "51-200" | "200+"
   website          String?
-  taxId            String?
   notes            String?   @db.Text
   internalNotes    String?   @db.Text
   tags             String[]
   productInterests String[]
   activeProducts   String[]
-  customerType     String    @default("Prospect") // Prospect | Active Customer | Inactive Customer | Former Customer
-  customerSince    DateTime?
   address          String?
   city             String?
   province         String?
@@ -1775,24 +1764,6 @@ model DealImportResult {
 model CampaignEmailQuota {
   day String @id
   reserved Int @default(0)
-}
-
-model MfaChallenge {
-  id String @id @default(uuid())
-  userId String
-  tokenHash String @unique
-  expiresAt DateTime
-  attempts Int @default(0)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  @@index([userId])
-}
-
-model MfaRecoveryCode {
-  id String @id @default(uuid())
-  userId String
-  codeHash String
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  @@unique([userId, codeHash])
 }
 
 // Explicit Task links preserve tenant/environment integrity on both sides.

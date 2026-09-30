@@ -69,7 +69,6 @@ export interface Lead extends Omit<SharedContact, 'firstName' | 'lastName'> {
 
   // ── Extended org fields ────────────────────────────────────────────────
   size?: string;
-  taxId?: string;
   orgWebsite?: string;
   companySize?: string;
   businessType?: string;

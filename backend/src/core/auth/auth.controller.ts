@@ -3,7 +3,6 @@ import prisma from '../../config/database.config';
 import { hashPassword } from '../../shared/helpers/crypto';
 import { Role } from '../../shared/constants/roles';
 import { loginUser } from './auth.service';
-import { MFA_COOKIE_NAME, MFA_COOKIE_OPTIONS } from './mfa.controller';
 import { acceptInvitation as acceptInvitationService } from './registration.service';
 import { requestPasswordReset, resetPasswordWithToken } from './password-reset.service';
 import { ForgotPasswordSchema, ResetPasswordSchema } from './auth.dto';
@@ -63,13 +62,6 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
     });
 
     res.setHeader('Cache-Control', 'no-store');
-    if ('mfaRequired' in result && result.mfaRequired) {
-      res.cookie(MFA_COOKIE_NAME, result.challengeToken, MFA_COOKIE_OPTIONS);
-      const { maxAge: _, ...options } = COOKIE_OPTIONS;
-      res.clearCookie(COOKIE_NAME, options);
-      res.json({ success: true, data: { mfaRequired: true } });
-      return;
-    }
     // Token stored in HttpOnly cookie — never accessible from JS
     res.cookie(COOKIE_NAME, result.token, COOKIE_OPTIONS);
 

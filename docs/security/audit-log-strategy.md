@@ -36,7 +36,7 @@ model AuditLog {
 
 | Category | Used For |
 |---|---|
-| `auth` | Login, logout, failed login, MFA, password change, token revocation |
+| `auth` | Login, logout, failed login, password change, token revocation |
 | `crm` | Contact, Deal, Organization, Task mutations |
 | `billing` | Invoice, PaymentTransaction changes |
 | `workflow` | Workflow CRUD, execution runs, trigger events |
@@ -63,7 +63,6 @@ model AuditLog {
 | `user.login` | INFO |
 | `user.logout` | INFO |
 | `user.login_failed` | WARNING |
-| `user.mfa_updated` | WARNING |
 | `session.revoked` | WARNING |
 
 ### CRM Events (category: crm)

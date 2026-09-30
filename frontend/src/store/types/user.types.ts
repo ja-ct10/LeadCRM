@@ -41,6 +41,7 @@ export interface User {
   isArchived?: boolean;
   // Auth-response fields — populated from /auth/me and POST /auth/login
   emailVerified?: string | null;
+  passwordChangedAt?: string | null;
   tenantName?: string | null;
   tenantStatus?: string | null;
   onboardingStep?: number;

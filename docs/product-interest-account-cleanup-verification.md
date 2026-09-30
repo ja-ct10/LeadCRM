@@ -20,7 +20,7 @@ Validation retains valid UUIDs, trimmed product names, uniqueness within the ten
 - The local browser saved CCTV Surveillance System from 1250.75 to 7000.25, showed the success toast, reloaded, and still displayed 7000.25. New Deal displayed the same read-only price and creation produced a new Deal in the pipeline. See the attached verification screenshots.
 - A separate command-line read of the browser preview database could not establish a second connection. Direct row verification is from the executed integration test above, not that failed command.
 - Production Supabase row state and the originally reported deployment failure: **I cannot confirm this.** No production database access was used.
-- Existing Account taxId/customerType/customerSince database columns remain. Won conversion still uses customer classification history; those dependencies were preserved. No archived records were deleted.
+- Account database cleanup is now covered by the forward cleanup migration; the obsolete fields and their conversion dependencies have been removed. No archived records were deleted.
 
 ## Behavior delivered
 

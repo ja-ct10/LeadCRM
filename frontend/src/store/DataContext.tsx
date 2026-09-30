@@ -195,7 +195,7 @@ const MOCK_AUDIT_LO·S: AuditLog[] = [
     userEmail: "admin@democorp.com",
     action: "Auth Login",
     details:
-      "User authenticated successfully via active MFA token from Chrome browser agent.",
+      "User authenticated successfully via an active session from Chrome browser agent.",
     timestamp: new Date(Date.now() - 4 * 3600 * 1000).toISOString(),
     ipAddress: "192.168.1.15",
     tenantId: "tenant_demo",
@@ -242,17 +242,6 @@ const MOCK_AUDIT_LO·S: AuditLog[] = [
       "Triggered business workflow automation rule 'New Contact Auto-responder' for context 'Starlight Ventures'.",
     timestamp: new Date(Date.now() - 36 * 3600 * 1000).toISOString(),
     ipAddress: "127.0.0.1",
-    tenantId: "tenant_demo",
-  },
-  {
-    id: "log_seed_6",
-    userId: "user_client_admin",
-    userEmail: "admin@democorp.com",
-    action: "Auth MFA Update",
-    details:
-      "Enabled mandatory Multi-Factor Authentication (MFA) challenge for administrative workspace safety verification.",
-    timestamp: new Date(Date.now() - 48 * 3600 * 1000).toISOString(),
-    ipAddress: "192.168.1.15",
     tenantId: "tenant_demo",
   },
   {

@@ -42,7 +42,7 @@ beforeAll(async () => {
   await pg.exec(readFileSync(resolve(__dirname, '../../../../tests/security-baseline.sql'), 'utf8'));
   await pg.exec(`INSERT INTO "Tenant" (id,name,slug,"updatedAt") VALUES ('legacy-tenant','Legacy','legacy',NOW());
     INSERT INTO "Lead" (id,"tenantId","firstName","lastName",status,"updatedAt") VALUES ('${legacyId}','legacy-tenant','Legacy','Archive','Archived',NOW());`);
-  for (const migration of ['20261007000000_add_mfa', '20261008000000_remove_retired_billing_domains', '20261009000000_lead_archive_state']) {
+  for (const migration of ['20261007000000_add_mfa', '20261008000000_remove_retired_billing_domains', '20261009000000_lead_archive_state', '20261016000000_remove_two_factor_and_obsolete_account_fields']) {
     await pg.exec(readFileSync(resolve(__dirname, '../../../../../prisma/migrations', migration, 'migration.sql'), 'utf8'));
   }
   // This focused integration fixture starts from the security schema baseline,

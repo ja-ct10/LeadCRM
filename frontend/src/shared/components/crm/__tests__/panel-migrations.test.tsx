@@ -20,7 +20,7 @@ const records = {
   deals: { id: 'one', title: 'Lina Reyes – Smart Lock', pipelineId: 'sales', stageId: 'lead', stage: { name: 'Lead' }, pipeline: { name: 'Sales Pipeline' }, value: 1250.75, priority: 'MEDIUM', productInterests: ['Smart Lock'], assignedUser: { firstName: 'Sam', lastName: 'Cruz' }, leadDeals: [{ lead: { id: 'lead-one', firstName: 'Lina', lastName: 'Reyes', email: 'lina@example.test' } }], contactDeals: [] },
   leads: { id: 'one', firstName: 'Lina', lastName: 'Reyes', email: 'lina@example.test', source: 'Referral', status: 'Warm', productInterest: ['CCTV'], assignedUser: { firstName: 'Sam', lastName: 'Cruz' } },
   contacts: { id: 'one', firstName: 'Nora', lastName: 'Lim', status: 'WARM', company: 'North Company' },
-  accounts: { id: 'one', name: 'North Company', industry: 'Services', customerType: 'Prospect', website: 'example.test' },
+  accounts: { id: 'one', name: 'North Company', industry: 'Services', website: 'example.test' },
 };
 beforeEach(() => {
   clearPageCache(); vi.clearAllMocks(); mocks.permissions = ['*'];

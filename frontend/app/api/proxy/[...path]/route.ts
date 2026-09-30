@@ -56,8 +56,6 @@ async function proxyRequest(
   if (token) {
     headers['Cookie'] = `leadcrm_token=${token}`;
   }
-  const challenge = req.cookies.get('leadcrm_mfa_challenge')?.value;
-  if (challenge && /^[a-f0-9]{64}$/.test(challenge)) headers['Cookie'] = [headers['Cookie'], `leadcrm_mfa_challenge=${challenge}`].filter(Boolean).join('; ');
 
   // Forward the real client IP so the backend rate limiter sees the actual
   // user address rather than the Vercel edge node IP.

@@ -6,7 +6,7 @@ Implemented on September 28, 2026 using the supplied screenshots as layout refer
 
 The existing LeadPanel, ContactPanel and AccountPanel entry points now render one shared record view inside the existing Sheet. Their full-page routes render the same view without a Sheet. Table layouts, the Deal panel, backend services, database schema and permission middleware were not redesigned.
 
-The shared view includes an initials/company avatar, record-type and available source badges, status control, close control, open-full-page link, wrapping information chips and the existing viewport-aware portal dropdown. Empty email, phone, location and representative chips are omitted. Account classification uses `customerType`; Lead-only fields are not fabricated for Accounts.
+The shared view includes an initials/company avatar, record-type and available source badges, status control, close control, open-full-page link, wrapping information chips and the existing viewport-aware portal dropdown. Empty email, phone, location and representative chips are omitted. Accounts omit retired classification fields; Lead-only fields are not fabricated for Accounts.
 
 Activity, Details and Files use the existing segmented Tabs primitives. Arrow keys, Home and End navigate the tabs. Detail sections have keyboard-accessible collapse controls with `aria-expanded` and `aria-controls`. Icon-only controls have labels and native title tooltips.
 

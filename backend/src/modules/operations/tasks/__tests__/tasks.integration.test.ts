@@ -446,8 +446,6 @@ describe.skipIf(!disposable)(
       const createdAccount = await call("/crm/accounts", "POST", {
         name: "Task new account",
         country: "Philippines",
-        taxId: "",
-        customerSince: "2026-09-28T00:00:00.000Z",
       });
       expect(createdAccount.status).toBe(201);
       const createdLead = await call("/crm/leads", "POST", {

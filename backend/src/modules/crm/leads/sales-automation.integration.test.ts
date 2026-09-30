@@ -209,7 +209,10 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
   it('creates Accounts without retired fields and excludes unsupported archive types at the API boundary', async () => {
     const created = await request('/crm/accounts', 'POST', { name: 'Clean account', taxId: 'invalid', customerType: 'invalid', customerSince: 'invalid' });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
-    expect((await prisma.account.findUniqueOrThrow({ where: { id: created.body.data.id } })).taxId).toBeNull();
+    for (const field of ['taxId', 'customerType', 'customerSince']) {
+      expect(created.body.data).not.toHaveProperty(field);
+      expect(await prisma.account.findUniqueOrThrow({ where: { id: created.body.data.id } })).not.toHaveProperty(field);
+    }
     await prisma.pipeline.create({ data: { tenantId, name: 'Hidden archived pipeline', type: 'Sales', isArchived: true } });
     const all = await request('/administration/archived-data');
     expect(all.status).toBe(200);

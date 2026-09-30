@@ -23,6 +23,7 @@ export interface AuthUser {
   onboardingCompletedAt: string | null;
   isTenantOwner: boolean;
   hasPassword: boolean;
+  passwordChangedAt?: string | null;
   mustChangePassword?: boolean;
 }
 
@@ -31,6 +32,4 @@ export interface AuthResponse {
   data: { user: AuthUser };
 }
 
-export type LoginResponse = AuthResponse | { success: boolean; data: { mfaRequired: true } };
-export interface MfaStatus { enabled: boolean; passwordChangedAt: string | null; recoveryCodesRemaining: number }
-export interface MfaSetup { secret: string; qrCode: string; expiresAt: string }
+export type LoginResponse = AuthResponse;

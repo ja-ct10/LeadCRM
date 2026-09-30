@@ -31,27 +31,27 @@ export async function seedDemoRichData() {
     prisma.account.upsert({
       where: { id: 'seed-org-techsol' },
       update: {},
-      create: { id: 'seed-org-techsol', tenantId: tId, assignedUserId: sId, name: 'Tech Solutions Inc.', industry: 'Information Technology', size: '51-200', website: 'https://techsolutions.ph', address: 'BGC, Taguig, Metro Manila', country: 'Philippines', customerType: 'Active Customer' },
+      create: { id: 'seed-org-techsol', tenantId: tId, assignedUserId: sId, name: 'Tech Solutions Inc.', industry: 'Information Technology', size: '51-200', website: 'https://techsolutions.ph', address: 'BGC, Taguig, Metro Manila', country: 'Philippines' },
     }),
     prisma.account.upsert({
       where: { id: 'seed-org-nexus' },
       update: {},
-      create: { id: 'seed-org-nexus', tenantId: tId, assignedUserId: aId, name: 'Nexus Digital Corp', industry: 'Software Development', size: '11-50', website: 'https://nexusdigital.ph', address: 'Ortigas, Pasig, Metro Manila', country: 'Philippines', customerType: 'Prospect' },
+      create: { id: 'seed-org-nexus', tenantId: tId, assignedUserId: aId, name: 'Nexus Digital Corp', industry: 'Software Development', size: '11-50', website: 'https://nexusdigital.ph', address: 'Ortigas, Pasig, Metro Manila', country: 'Philippines' },
     }),
     prisma.account.upsert({
       where: { id: 'seed-org-skynet' },
       update: {},
-      create: { id: 'seed-org-skynet', tenantId: tId, assignedUserId: sId, name: 'Skynet Telecom', industry: 'Telecommunications', size: '200+', website: 'https://skynettelecom.ph', address: 'Makati CBD, Metro Manila', country: 'Philippines', customerType: 'Active Customer' },
+      create: { id: 'seed-org-skynet', tenantId: tId, assignedUserId: sId, name: 'Skynet Telecom', industry: 'Telecommunications', size: '200+', website: 'https://skynettelecom.ph', address: 'Makati CBD, Metro Manila', country: 'Philippines' },
     }),
     prisma.account.upsert({
       where: { id: 'seed-org-greenpeak' },
       update: {},
-      create: { id: 'seed-org-greenpeak', tenantId: tId, assignedUserId: aId, name: 'Green Peak Energy', industry: 'Renewable Energy', size: '11-50', address: 'Cebu City, Cebu', country: 'Philippines', customerType: 'Prospect' },
+      create: { id: 'seed-org-greenpeak', tenantId: tId, assignedUserId: aId, name: 'Green Peak Energy', industry: 'Renewable Energy', size: '11-50', address: 'Cebu City, Cebu', country: 'Philippines' },
     }),
     prisma.account.upsert({
       where: { id: 'seed-org-firstbpo' },
       update: {},
-      create: { id: 'seed-org-firstbpo', tenantId: tId, assignedUserId: sId, name: 'FirstBPO Services', industry: 'Business Process Outsourcing', size: '200+', website: 'https://firstbpo.com.ph', address: 'Eastwood, Quezon City', country: 'Philippines', customerType: 'Active Customer' },
+      create: { id: 'seed-org-firstbpo', tenantId: tId, assignedUserId: sId, name: 'FirstBPO Services', industry: 'Business Process Outsourcing', size: '200+', website: 'https://firstbpo.com.ph', address: 'Eastwood, Quezon City', country: 'Philippines' },
     }),
   ]);
 
