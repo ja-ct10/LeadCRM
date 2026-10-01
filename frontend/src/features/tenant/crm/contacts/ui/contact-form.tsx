@@ -82,9 +82,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
     address: initialData?.address || '',
   }), [initialData]);
 
-  // UpdateContactFormSchema makes firstName/lastName optional; the form still uses
-  // CreateContactFormValues shape for field registration. Cast is safe because both
-  // schemas share the same field keys — only required/optional differs.
+  // Create and edit both require trimmed names and a valid email.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const schema = isEdit ? UpdateContactFormSchema : CreateContactFormSchema;
 

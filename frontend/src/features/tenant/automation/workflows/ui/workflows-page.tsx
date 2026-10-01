@@ -28,7 +28,7 @@ export function toWorkflowDraft(workflow: Workflow): WorkflowDraft {
 }
 export default function WorkflowsPage() {
   const router = useRouter();
-  const { user, tenant, userCan } = useAuth();
+  const { user, tenant, userCan, isLoading: authLoading, authError } = useAuth();
   const canView = userCan('workflows', 'canView'), canCreate = userCan('workflows', 'canCreate');
   const canEdit = userCan('workflows', 'canEdit'), canDelete = userCan('workflows', 'canDelete');
   const [metadata, setMetadata] = useState<{triggers:TriggerDefinition[];actions:ActionDefinition[]} | null>(null);
@@ -49,13 +49,13 @@ export default function WorkflowsPage() {
   const [busy, setBusy] = useState(false);
   const mutationLock = useRef(false);
   useEffect(() => {
-    if (!canView || !tenant?.id) return;
+    if (authLoading || authError || !canView || !tenant?.id) return;
     let cancelled = false;
     setMetadata(null); setMetadataError('');
     const request = getWorkflowMetadata(`${tenant.id}:${user?.id}`);
     request.then(result => { if (!cancelled) setMetadata(result); }).catch(failure => { if (!cancelled) setMetadataError(failure instanceof Error ? failure.message : 'Unable to load workflow options.'); });
     return () => { cancelled = true; };
-  }, [tenant?.id, user?.id, canView, retry]);
+  }, [tenant?.id, user?.id, authLoading, authError, canView, retry]);
   const { data, isInitialLoad, isRefreshing, error: workflowsError, refetch: refreshWorkflows } = useCachedPage({
     module: 'workflows', params: { page, pageSize, search, statuses, triggers }, disabled: !canView,
     fetchFn: () => workflowsApi.list({ page, limit: pageSize, search, status: statuses.join(','), trigger: triggers.join(',') }),
@@ -94,7 +94,6 @@ export default function WorkflowsPage() {
     <div className="flex flex-wrap justify-between gap-4"><div><h1 className="text-2xl font-semibold">Workflows</h1><p className="text-sm text-[var(--muted-foreground)]">When something happens, check conditions and perform actions.</p></div>{canCreate && <Button disabled={!metadata || busy} onClick={() => setCreateOpen(true)}>Create workflow</Button>}</div>
     {metadataError && <div role="alert">{metadataError} <Button variant="outline" onClick={() => setRetry(retry + 1)}>Retry options</Button></div>}
     {workflowsError && <div role="alert">{workflowsError} <Button variant="outline" onClick={() => void refreshWorkflows()}>Retry workflows</Button></div>}
-    {!metadata && !metadataError && <p role="status">Loading workflow options…</p>}
     <div className="flex flex-wrap items-center gap-2">
       <input aria-label="Search workflows" placeholder="Search workflows..." value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} className="h-8 w-full sm:w-64 min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-xs dark:bg-slate-800 dark:border-slate-700" />
       <FilterButton title="Workflows" open={showFilters} onClick={() => setShowFilters(!showFilters)} />
@@ -126,7 +125,7 @@ export default function WorkflowsPage() {
         ...(canDelete ? [{ id: 'archive', label: 'Archive', destructive: true, entityName: 'workflow', onExecute: async (ids: string[]) => { const result = await executeSelectedRows(ids, workflowsApi.archive); await refreshWorkflows(); return result; } }] : []),
       ]} />
     {createOpen && <WorkflowDialog title="Create workflow" onClose={() => setCreateOpen(false)}><Button onClick={() => router.push('/automation/workflows/new')}>Start from scratch</Button><h3 className="font-semibold">Use a template</h3>{WORKFLOW_RECIPES.map((recipe,index) => <Button className="w-full justify-start" variant="outline" key={recipe.name} onClick={() => router.push(`/automation/workflows/new?template=${index}`)}>{recipe.name}</Button>)}</WorkflowDialog>}
-    {runs && <WorkflowExecutionLogModal workflowId={runs.id} name={runs.name} onClose={() => setRuns(null)} />}
+    {runs && <WorkflowExecutionLogModal workflowId={runs.id} name={runs.name} status={runs.status === 'DRAFT' ? 'Draft' : runs.isActive ? 'Active' : 'Paused'} onClose={() => setRuns(null)} />}
     <ConfirmActionDialog open={!!archiving} onOpenChange={open => {if (!open) setArchiving(null);}} title="Archive workflow?" description="This pauses the workflow and preserves its run history." confirmLabel="Archive" variant="destructive" onConfirm={async () => { if (archiving) await mutate(async () => {await workflowsApi.archive(archiving.id);setSelected(new Set());setArchiving(null);},'Workflow archived.'); }} />
   </div>;
 }

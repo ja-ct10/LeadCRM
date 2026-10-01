@@ -7,8 +7,8 @@ import { z } from 'zod';
 import { CrmStatusSchema } from '@leadcrm/shared';
 
 export const CreateContactFormSchema = z.object({
-  firstName: z.string().min(1, 'First name is required').max(100, 'First name must be 100 characters or less'),
-  lastName: z.string().min(1, 'Last name is required').max(100, 'Last name must be 100 characters or less'),
+  firstName: z.string().trim().min(1, 'First name is required').max(100, 'First name must be 100 characters or less'),
+  lastName: z.string().trim().min(1, 'Last name is required').max(100, 'Last name must be 100 characters or less'),
   email: CrmEmailSchema,
   phone: z.string().optional(),
   companyName: z.string().optional(),
@@ -21,8 +21,8 @@ export const CreateContactFormSchema = z.object({
 });
 
 export const UpdateContactFormSchema = z.object({
-  firstName: z.string().min(1, 'First name is required').max(100, 'First name must be 100 characters or less').optional(),
-  lastName: z.string().min(1, 'Last name is required').max(100, 'Last name must be 100 characters or less').optional(),
+  firstName: CreateContactFormSchema.shape.firstName,
+  lastName: CreateContactFormSchema.shape.lastName,
   email: CrmEmailSchema,
   phone: z.string().optional(),
   companyName: z.string().optional(),

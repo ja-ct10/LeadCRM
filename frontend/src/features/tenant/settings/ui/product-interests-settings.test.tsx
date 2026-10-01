@@ -21,7 +21,9 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 it('keeps field configuration separate from product management', async () => {
   render(<ProductInterestsSettings />);
-  expect(await screen.findByRole('link', { name: 'Manage products and default Deal values in Products' })).toHaveProperty('href', expect.stringContaining('/settings?tab=products'));
+  expect(await screen.findByText('Closed Won Requirements')).toBeTruthy();
+  expect(screen.queryByText('Product Interest')).toBeNull();
+  expect(apiClient.get).not.toHaveBeenCalledWith('/administration/product-interests', expect.anything());
   expect(screen.queryByRole('button', { name: 'Add Product' })).toBeNull();
 });
 it('uses the shared row menu with View, Edit and Archive', async () => {
@@ -31,6 +33,14 @@ it('uses the shared row menu with View, Edit and Archive', async () => {
   expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map(item => item.textContent)).toEqual(['View', 'Edit', 'Archive']);
   fireEvent.click(trigger); expect(screen.queryByRole('menu')).toBeNull();
   fireEvent.click(trigger); fireEvent.mouseDown(document.body); expect(screen.queryByRole('menu')).toBeNull();
+});
+it('can enable the existing product field from Products after removing its Custom Fields card', async () => {
+  vi.mocked(apiClient.get).mockResolvedValueOnce({ data: [], meta: { enabled: false } });
+  render(<ProductsPage />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Enable Product Interest' }));
+  await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith('/administration/product-interests/field', {}));
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Enable Product Interest' })).toBeNull());
+  await waitFor(() => expect((screen.getByRole('button', { name: 'Add Product' }) as HTMLButtonElement).disabled).toBe(false));
 });
 it('validates money and persists only trimmed names and numeric amounts through the API', async () => {
   render(<ProductsPage />);

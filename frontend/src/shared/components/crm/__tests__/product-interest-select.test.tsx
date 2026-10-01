@@ -22,6 +22,9 @@ it.each(['id', 'name'] as const)('keeps multiple %s selections checked after Esc
   fireEvent.keyDown(screen.getByRole('checkbox', { name: 'CCTV' }), { key: 'Escape' });
   expect(screen.queryByRole('checkbox')).toBeNull();
   expect(document.activeElement).toBe(trigger);
+  expect(trigger.textContent).toContain('2 selected');
+  expect(screen.queryByText('Network')).toBeNull();
+  expect(screen.queryByText('CCTV')).toBeNull();
   fireEvent.click(trigger);
   expect((screen.getByRole('checkbox', { name: 'Network' }) as HTMLInputElement).checked).toBe(true);
   expect((screen.getByRole('checkbox', { name: 'CCTV' }) as HTMLInputElement).checked).toBe(true);

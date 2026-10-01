@@ -46,7 +46,6 @@ export function ProductInterestSelect({ id, values, onChange, products, valueMod
         </div>
       </DropdownMenuContent>
     </DropdownMenu>
-    {!!selected.length && <div className="mt-2 flex flex-wrap gap-1" aria-live="polite">{selected.map(value => <span key={value} className="max-w-full rounded-md bg-primary/10 px-2 py-1 text-xs text-primary [overflow-wrap:anywhere]">{labelFor(value)}</span>)}</div>}
   </div>;
 }
 

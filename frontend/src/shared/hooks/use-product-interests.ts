@@ -7,7 +7,7 @@ import { useAuth } from '@/store/AuthContext';
 export const PRODUCT_INTEREST_ENDPOINT = '/administration/product-interests';
 export type ProductInterestResponse = { data: ProductInterest[]; meta: { enabled: boolean } };
 export function useProductInterests() {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading, authError } = useAuth();
   const [products, setProducts] = useState<ProductInterest[]>([]);
   const [enabled, setEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -16,6 +16,10 @@ export function useProductInterests() {
   const pending = useRef<AbortController | null>(null);
   const refresh = useCallback(() => setRevision(v => v + 1), []);
   useEffect(() => {
+    if (authLoading || authError || !user?.tenantId) {
+      setProducts([]); setLoading(false);
+      return;
+    }
     const controller = new AbortController();
     pending.current = controller;
     setLoading(true); setError('');
@@ -24,7 +28,7 @@ export function useProductInterests() {
       .catch(e => { if (!controller.signal.aborted) { setError(e.message); } })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [user?.tenantId, revision]);
+  }, [user?.tenantId, authLoading, authError, revision]);
   useEffect(() => {
     const onChanged = (event: Event) => {
       pending.current?.abort();

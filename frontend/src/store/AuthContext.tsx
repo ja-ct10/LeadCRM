@@ -182,7 +182,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshPermissions = useCallback(async (): Promise<void> => {
-    if (USE_MOCK_AUTH || !user?.id) return;
+    if (USE_MOCK_AUTH || isLoading || authError || !user?.id) return;
     const id = user.id;
     const generation = ++permissionGeneration.current;
     try {
@@ -196,7 +196,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsPermissionsLoaded(true);
       }
     }
-  }, [user?.id]);
+  }, [user?.id, isLoading, authError]);
 
   useEffect(() => {
     setPermissions({});

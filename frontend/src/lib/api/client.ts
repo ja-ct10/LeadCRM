@@ -9,12 +9,8 @@ export type ApiRequestError = Error & Partial<Pick<ApiError['error'], 'code' | '
 // Sends HttpOnly cookies (leadcrm_token) on every request via credentials: 'include'.
 // The backend auth middleware reads the cookie directly — no Bearer token needed.
 
-// In production cross-domain deployments, route through the Next.js API proxy
-// to avoid third-party cookie blocking. The proxy forwards the leadcrm_token cookie server-side.
-const IS_BROWSER = typeof window !== 'undefined';
-const DIRECT_API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api/v1';
-const USE_PROXY = IS_BROWSER;
-const API_URL = USE_PROXY ? '/api/proxy' : DIRECT_API_URL;
+// Only the Next.js proxy resolves API_URL and forwards the HttpOnly session.
+const API_URL = '/api/proxy';
 
 async function request<T>(
   method: string,
@@ -23,6 +19,10 @@ async function request<T>(
   params?: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<T> {
+  // Server fetch does not inherit browser cookies, even with credentials: include.
+  if (typeof window === 'undefined') {
+    throw new Error('The browser API client cannot be used during server rendering.');
+  }
   const headers: Record<string, string> = {
     'Content-Type': body instanceof Blob ? body.type : 'application/json',
   };

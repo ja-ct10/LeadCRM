@@ -93,6 +93,15 @@ export function ProductsPage() {
   });
   useEffect(() => { setPage(value => Math.min(value, Math.max(1, Math.ceil(filtered.length / pageSize)))); }, [filtered.length, pageSize]);
   const changed = (result: ProductInterestResponse) => window.dispatchEvent(new CustomEvent('product-interests-changed', { detail: result }));
+  async function enableProducts() {
+    if (!canEdit || lock.current) return;
+    lock.current = true; setBusy(true);
+    try {
+      changed(await apiClient.post<ProductInterestResponse>(endpoint + '/field', {}));
+      toast.success('Product Interest field enabled.');
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Unable to enable products.'); }
+    finally { lock.current = false; setBusy(false); }
+  }
   async function save(data: { name: string; dealValue: number }) {
     if (!canEdit || lock.current) return;
     lock.current = true; setBusy(true);
@@ -125,7 +134,7 @@ export function ProductsPage() {
     </div>
     <div className="flex flex-wrap items-center gap-2"><ModuleSearchInput label="Search products" placeholder="Search products..." value={search} onChange={value => { setSearch(value); setPage(1); }} /><RefreshButton label="Refresh products" refreshing={loading} disabled={busy || loading} onClick={refresh} /></div>
     {error && <p role="alert" className="text-destructive">{error}</p>}
-    {!enabled && <p className="text-sm text-muted-foreground">Enable Product Interest in Custom Fields to add products.</p>}
+    {!enabled && <div className="space-y-2"><p className="text-sm text-muted-foreground">Enable Product Interest to add products.</p>{canEdit && <Button variant="outline" disabled={busy} onClick={() => void enableProducts()}>Enable Product Interest</Button>}</div>}
     {loading && !products.length ? <TableLoadingState label="Loading products" /> : <DataGrid columns={columns} data={filtered.slice((page - 1) * pageSize, page * pageSize)} getRowId={row => row.id} height="auto" selectable={canEdit} selectedIds={selected} onSelectionChange={ids => { if (!busy) setSelected(ids); }} sort={sort} onSortChange={setSort} sortingMode="external" enableColumnMenu={false} ariaLabel="Products table" summaryLabel={`${filtered.length} products`} onRowClick={product => setPanel({ mode: 'view', product })}
       rowActions={product => [{ id: 'view', label: 'View', icon: <Eye size={14} />, onClick: () => setPanel({ mode: 'view', product }) }, ...(canEdit ? [
         { id: 'edit', label: 'Edit', icon: <Edit size={14} />, disabled: busy, onClick: () => setPanel({ mode: 'edit', product }) },

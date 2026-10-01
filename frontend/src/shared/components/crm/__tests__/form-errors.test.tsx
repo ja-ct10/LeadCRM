@@ -57,3 +57,17 @@ it('keeps one associated selector error when opening the account search', () => 
   expect(screen.getAllByText('Invalid account')).toHaveLength(1);
   expect(screen.getByRole('searchbox').getAttribute('aria-describedby')).toBe(error.id);
 });
+
+
+it.each([
+  { name: 'Contact', component: <ContactFormInner onSave={vi.fn()} onCancel={vi.fn()} />, labels: ['First Name *', 'Last Name *'] },
+  { name: 'Account', component: <AccountFormInner onSave={vi.fn()} onCancel={vi.fn()} />, labels: ['Account Name *'] },
+])('rejects whitespace in required $name fields', async ({ component, labels }) => {
+  render(component);
+  for (const label of labels) fireEvent.change(screen.getByLabelText(label), { target: { value: '   ' } });
+  fireEvent.submit(screen.getByLabelText(labels[0]).closest('form')!);
+  for (const label of labels) {
+    await screen.findByText(label.startsWith('First') ? 'First name is required' : label.startsWith('Last') ? 'Last name is required' : 'Account name is required');
+    expect(screen.getByLabelText(label).getAttribute('aria-invalid')).toBe('true');
+  }
+});

@@ -5,7 +5,7 @@ import { DealClosingRequirements } from './deal-closing-requirements';
 import { invalidatePageCache } from '@/shared/cache/page-cache';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Archive, Building, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Globe, Inbox, Mail, MapPin, MoreHorizontal, Loader2, Pencil, Phone, Plus, User, UserPlus, X, type LucideIcon } from 'lucide-react';
+import { Archive, Building, ChevronDown, ChevronRight, ExternalLink, Globe, Inbox, Mail, MapPin, MoreHorizontal, Loader2, Pencil, Phone, Plus, User, UserPlus, X, type LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
 import { USE_MOCK_DATA } from '@/lib/config';
@@ -32,6 +32,7 @@ import type { Account } from '@/features/tenant/crm/accounts/types/account.types
 import { CatalogProductInterestSelect } from './product-interest-select';
 import { EntityCombobox } from '@/shared/components/entity-combobox';
 import { CrmEmailSchema } from '@leadcrm/shared';
+import { RecordBackButton } from './record-back-button';
 import { ConvertLeadDialog } from '@/features/tenant/crm/leads/ui/convert-lead-dialog';
 
 export type CrmRecordModule = 'leads' | 'contacts' | 'accounts' | 'deals';
@@ -85,6 +86,7 @@ interface InlineRowDef {
   value: unknown;
   apiField?: string;
   required?: boolean;
+  maxLength?: number;
   type?: 'text' | 'email' | 'tel' | 'url' | 'select' | 'textarea' | 'date' | 'products' | 'users' | 'accounts' | 'contacts' | 'leads';
   valueMode?: 'id' | 'name';
   displayValue?: unknown;
@@ -113,7 +115,7 @@ function InlineEditRows({ rows, canEdit, onSave }: {
     setFieldError('');
     const row = rows.find(row => row.apiField === apiField);
     if (row?.required && (typeof editValue !== 'string' || !editValue.trim())) { setFieldError(`${row.label} is required`); return; }
-    if (row?.required && typeof editValue === 'string' && editValue.trim().length > 100) { setFieldError('Max 100 characters'); return; }
+    if (row?.required && typeof editValue === 'string' && editValue.trim().length > (row.maxLength ?? 100)) { setFieldError(`Max ${row.maxLength ?? 100} characters`); return; }
     if (rows.find(row => row.apiField === apiField)?.type === 'email') {
       const result = CrmEmailSchema.safeParse(editValue);
       if (!result.success) { setFieldError(result.error.issues[0].message); return; }
@@ -126,11 +128,11 @@ function InlineEditRows({ rows, canEdit, onSave }: {
 
   return (
     <dl className="divide-y divide-border/60">
-      {rows.filter(({ value, displayValue, apiField, label, required }) => required || present(displayValue ?? value) || (canEdit && !!apiField) || editingLabel === label).map(({ label, value, apiField, type, options, valueMode, displayValue, productLabels, required }) => {
+      {rows.filter(({ value, displayValue, apiField, label, required }) => required || present(displayValue ?? value) || (canEdit && !!apiField) || editingLabel === label).map(({ label, value, apiField, type, options, valueMode, displayValue, productLabels, required, maxLength }) => {
         const isEditing = editingLabel === label;
         const editable = canEdit && !!apiField;
         return (
-          <div key={label} className="grid min-w-0 grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3 px-3 py-2.5 text-xs">
+          <div key={label} className={cn('grid min-w-0 gap-3 px-3 py-2.5 text-xs', required ? 'grid-cols-[minmax(max-content,2fr)_minmax(0,3fr)]' : 'grid-cols-[minmax(0,2fr)_minmax(0,3fr)]')}>
             <dt className="text-muted-foreground self-start pt-0.5">{label}{(required || type === 'email' && editable) && <span className="text-red-500"> *</span>}</dt>
             <dd className="min-w-0">
               {isEditing && apiField ? (
@@ -142,7 +144,7 @@ function InlineEditRows({ rows, canEdit, onSave }: {
                   ) : type === 'textarea' ? (
                     <textarea aria-label={label} disabled={isSaving} value={Array.isArray(editValue) ? editValue.join(', ') : editValue} onChange={e => setEditValue(e.target.value)} rows={3} autoFocus onKeyDown={e => { if (e.key === 'Escape') cancelEdit(); }} className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring resize-none" />
                   ) : (
-                    <input aria-label={label} disabled={isSaving} type={type ?? 'text'} required={required || type === 'email'} aria-required={required || type === 'email'} aria-invalid={!!fieldError} maxLength={type === 'email' ? 254 : required ? 100 : undefined} value={Array.isArray(editValue) ? editValue.join(', ') : editValue} onChange={e => setEditValue(e.target.value)} autoFocus onKeyDown={e => { if (e.key === 'Enter') void commitEdit(apiField); if (e.key === 'Escape') cancelEdit(); }} className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring" />
+                    <input aria-label={label} disabled={isSaving} type={type ?? 'text'} required={required || type === 'email'} aria-required={required || type === 'email'} aria-invalid={!!fieldError} maxLength={type === 'email' ? 254 : required ? maxLength ?? 100 : undefined} value={Array.isArray(editValue) ? editValue.join(', ') : editValue} onChange={e => setEditValue(e.target.value)} autoFocus onKeyDown={e => { if (e.key === 'Enter') void commitEdit(apiField); if (e.key === 'Escape') cancelEdit(); }} className={cn("w-full rounded-md border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring", fieldError ? "border-red-500" : "border-input")} />
                   )}
                   {fieldError && <p role="alert" className="text-xs text-destructive">{fieldError}</p>}
                   <div className="flex flex-wrap justify-end gap-1">
@@ -322,15 +324,15 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     { label: 'Created', value: record.createdAt },
   ] : [
     ...(module === 'accounts' ? [
-      { label: 'Account name', value: record.name, apiField: 'name' },
+      { label: 'Account name', value: record.name, apiField: 'name', required: true, maxLength: 255 },
       { label: 'Industry', value: record.industry, apiField: 'industry' },
       { label: 'Company size', value: record.size, apiField: 'size', type: 'select' as const, options: ['1-10', '11-50', '51-200', '200+'] },
       { label: 'Website', value: record.website, apiField: 'website', type: 'url' as const },
       { label: 'City', value: record.city, apiField: 'city' },
       { label: 'Province', value: record.province, apiField: 'province' },
     ] : [
-      { label: 'First name', value: record.firstName, apiField: 'firstName', required: module === 'leads' },
-      { label: 'Last name', value: record.lastName, apiField: 'lastName', required: module === 'leads' },
+      { label: 'First name', value: record.firstName, apiField: 'firstName', required: true },
+      { label: 'Last name', value: record.lastName, apiField: 'lastName', required: true },
       { label: 'Email', value: record.email, apiField: 'email', type: 'email' as const },
       { label: 'Phone', value: record.phone, apiField: 'phone', type: 'tel' as const },
       { label: 'Company', value: module === 'leads' ? record.companyName : record.company, apiField: module === 'leads' ? 'companyName' : 'company' },
@@ -373,11 +375,8 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
       <header className="@container max-h-[60dvh] shrink-0 overflow-y-auto border-b border-border bg-card p-4">
         <div className={cn('mx-auto min-w-0', !onClose && 'max-w-[1440px]')}>
         {!onClose && (
-          <div className="mb-3 space-y-1">
-            <button type="button" onClick={() => { if (window.history.length > 1 && new URLSearchParams(window.location.search).get('from') === module) router.back(); else router.push(`/crm/${module}`); }} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded" aria-label="Go back">
-              <ChevronLeft size={14} />
-              Back
-            </button>
+          <div className="mb-3">
+            <RecordBackButton label={`${label}s`} onClick={() => { if (window.history.length > 1 && new URLSearchParams(window.location.search).get('from') === module) router.back(); else router.push(`/crm/${module}`); }} />
             <nav aria-label="Breadcrumb" className="flex min-w-0 flex-wrap items-center gap-1 text-xs text-muted-foreground">
               <span>CRM</span><ChevronRight size={12} /><Link className="hover:text-[var(--primary)]" href={`/crm/${module}`}>{label}s</Link><ChevronRight size={12} /><span className="min-w-0 [overflow-wrap:anywhere]" aria-current="page">{title}</span>
             </nav>

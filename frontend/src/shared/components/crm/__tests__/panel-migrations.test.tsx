@@ -1,6 +1,19 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+// Apply the final tab visibility immediately; animation timing is covered in browser checks.
+vi.mock('motion/react', async importOriginal => {
+  const actual = await importOriginal<typeof import('motion/react')>();
+  const { forwardRef, createElement } = await import('react');
+  const StaticDiv = forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement> & {
+    initial?: unknown; animate?: { display?: string }; exit?: unknown;
+    transition?: unknown; variants?: unknown;
+  }>(({ initial, animate, exit, transition, variants, style, ...props }, ref) =>
+    createElement('div', { ...props, ref, style: { ...style, ...(animate?.display ? { display: animate.display } : {}) } }));
+  return { ...actual, motion: new Proxy(actual.motion, {
+    get: (target, property) => property === 'div' ? StaticDiv : Reflect.get(target, property),
+  }), useReducedMotion: () => true };
+});
 const mocks = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), permissions: ['*'], push: vi.fn(), move: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
@@ -34,20 +47,28 @@ beforeEach(() => {
   });
 });
 
-it.each(['First name', 'Last name'])('requires and trims inline Lead %s', async label => {
+it.each((['leads', 'contacts', 'accounts'] as const).flatMap(module =>
+  (module === 'accounts' ? ['Account name'] : ['First name', 'Last name']).flatMap(label =>
+    ['panel', 'page'].map(surface => ({ module, label, surface }))))
+)('requires and trims $module $label in the $surface', async ({ module, label, surface }) => {
   mocks.put.mockResolvedValue({ success: true });
-  render(<CrmRecordView module="leads" id="one" />);
-  await screen.findByRole('heading', { name: 'Lina Reyes' });
+  render(surface === 'panel' ? <CrmRecordPanel module={module} id="one" open onOpenChange={() => {}} /> : <CrmRecordView module={module} id="one" />);
+  await screen.findByRole('heading', { level: 1 });
   fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  expect(screen.getByText(label).textContent).toContain('*');
   fireEvent.click(screen.getByRole('button', { name: `Edit ${label}` }));
-  fireEvent.change(screen.getByRole('textbox', { name: label }), { target: { value: '   ' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  const input = screen.getByRole('textbox', { name: label });
+  expect(input.getAttribute('aria-required')).toBe('true');
+  expect(input.getAttribute('maxlength')).toBe(module === 'accounts' ? '255' : '100');
+  fireEvent.change(input, { target: { value: '   ' } });
+  fireEvent.click(await screen.findByRole('button', { name: 'Save' }));
   expect(await screen.findByText(`${label} is required`)).toBeTruthy();
   expect(mocks.put).not.toHaveBeenCalled();
-  fireEvent.change(screen.getByRole('textbox', { name: label }), { target: { value: '  Trimmed  ' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-  await waitFor(() => expect(mocks.put).toHaveBeenCalledWith('/crm/leads/one', { [label === 'First name' ? 'firstName' : 'lastName']: 'Trimmed' }));
+  fireEvent.change(input, { target: { value: '  Trimmed  ' } });
+  fireEvent.click(await screen.findByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(mocks.put).toHaveBeenCalledWith(`/crm/${module}/one`, { [module === 'accounts' ? 'name' : label === 'First name' ? 'firstName' : 'lastName']: 'Trimmed' }));
 });
+
 afterEach(cleanup);
 
 it.each(['leads', 'contacts', 'accounts', 'deals'] as const)('%s uses the same identity and three tabs on both surfaces', async module => {
@@ -84,7 +105,7 @@ it.each(['leads', 'contacts', 'accounts', 'deals'] as const)('%s uses the same i
   expect(screen.getByRole('navigation', { name: 'Breadcrumb' }).textContent).toContain(title);
   expect(screen.queryByRole('link', { name: /Open full page/ })).toBeNull();
   mocks.push.mockClear();
-  fireEvent.click(screen.getByRole('button', { name: 'Go back' }));
+  fireEvent.click(screen.getByRole('button', { name: `Back to ${module[0].toUpperCase()}${module.slice(1)}` }));
   expect(mocks.push).toHaveBeenCalledWith(`/crm/${module}`);
 });
 
@@ -113,7 +134,8 @@ it('hides mutation controls without permissions', async () => {
   render(<CrmRecordView module="leads" id="one" />);
   await screen.findByRole('heading', { name: 'Lina Reyes' });
   expect(screen.queryByRole('button', { name: 'Record actions' })).toBeNull();
-  expect((screen.getByRole('button', { name: 'Warm' }) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getAllByText('Warm', { selector: 'span' }).length).toBeGreaterThan(0);
+  expect(screen.queryByRole('button', { name: 'Warm' })).toBeNull();
   fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
   expect(screen.queryByRole('button', { name: /Edit (First name|Email|Account name)/ })).toBeNull();
 });

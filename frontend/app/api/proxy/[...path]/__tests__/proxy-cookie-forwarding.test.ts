@@ -63,3 +63,23 @@ it('forwards CRM attachment bytes and download metadata through the proxy', asyn
   expect(response.headers.get('content-disposition')).toContain('agreement.pdf');
   expect(response.headers.get('x-content-type-options')).toBe('nosniff');
 });
+
+
+it.each(['crm/leads', 'crm/contacts', 'crm/accounts', 'crm/deals', 'administration/users', 'administration/users/user/permissions', 'automation/workflows'])('forwards the same session for %s', async path => {
+  const fetchMock = vi.fn().mockResolvedValue(new Response('{"data":[]}'));
+  vi.stubGlobal('fetch', fetchMock);
+  const req = new NextRequest(`https://app.example.com/api/proxy/${path}`, { headers: { Cookie: 'leadcrm_token=test-session' } });
+  expect((await GET(req, { params: Promise.resolve({ path: path.split('/') }) })).status).toBe(200);
+  expect(fetchMock).toHaveBeenCalledOnce();
+  expect(fetchMock.mock.calls[0][0]).toBe(`http://localhost:4000/api/v1/${path}`);
+  expect(fetchMock.mock.calls[0][1].headers.Cookie).toBe('leadcrm_token=test-session');
+});
+
+it('preserves the backend 401 when the incoming request has no session', async () => {
+  const fetchMock = vi.fn().mockResolvedValue(new Response('{"error":"Authentication required"}', { status: 401 }));
+  vi.stubGlobal('fetch', fetchMock);
+  const req = new NextRequest('https://app.example.com/api/proxy/crm/leads');
+  const response = await GET(req, { params: Promise.resolve({ path: ['crm', 'leads'] }) });
+  expect(response.status).toBe(401);
+  expect(fetchMock.mock.calls[0][1].headers.Cookie).toBeUndefined();
+});

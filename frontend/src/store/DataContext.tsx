@@ -279,8 +279,8 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const [closingDealId, setClosingDealId] = useState<string>();
-  const { user, tenant, userCan } = useAuth();
-  const workspaceReady = Boolean(user && (user.role === "System Admin" ||
+  const { user, tenant, userCan, isLoading: authLoading, authError } = useAuth();
+  const workspaceReady = Boolean(!authLoading && !authError && user && (user.role === "System Admin" ||
     (user.status?.toUpperCase() === "ACTIVE" && !user.mustChangePassword &&
       (user.role !== "Client Admin" || isOnboardingComplete(user)))));
 
