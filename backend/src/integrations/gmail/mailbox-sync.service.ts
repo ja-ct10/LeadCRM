@@ -12,8 +12,9 @@ import { normalizeEmail } from './engagement-rules';
 import { GmailEmail } from './gmail.types';
 import { customerDealWhere, CustomerLink } from '../../modules/crm/engagement.service';
 import { salesTransaction } from '../../modules/crm/leads/lead-automation.service';
+import { isMailboxOwner } from './mailbox-ownership';
 
-export async function mailboxPermissions(tenantId: string, userId: string): Promise<MailboxPermissions> {
+export async function mailboxPermissions(tenantId: string, userId: string, checkOwnership = true): Promise<MailboxPermissions> {
   const user = await readAuthUser(userId, tenantId);
   requireEmployeeAccount(user);
   if (user.status !== 'ACTIVE' || user.mustChangePassword || ['SUSPENDED', 'REJECTED'].includes(user.tenantStatus ?? '') || user.role === 'Client Admin' && !isOnboardingComplete(user)) throw new AppError('Mailbox access unavailable.', 403);
@@ -23,7 +24,7 @@ export async function mailboxPermissions(tenantId: string, userId: string): Prom
     try { await assertPermissions(identity, [permission]); return true; } catch (error) { if (error instanceof AppError && error.statusCode === 403) return false; throw error; }
   };
   const account = await prisma.emailAccount.findUnique({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } } });
-  if (account && normalizeEmail(account.email) !== normalizeEmail(user.email)) throw new AppError('Reconnect your own staff work email in Messages.', 403);
+  if (checkOwnership && account && !isMailboxOwner({ userId, tenantId, email: user.email }, account.email)) throw new AppError('Mailbox ownership does not match, or temporary test access expired. Reconnect your staff work email in Messages.', 403);
   return { crmEdit: await allowed('contacts.edit'), dealsEdit: await allowed('deals.edit'), dealsView: await allowed('deals.view') };
 }
 

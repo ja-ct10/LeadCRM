@@ -4,6 +4,8 @@ import { GmailEmail, GmailThread } from './gmail.types';
 import { encryptToken, decryptToken } from '../../core/encryption/crypto.service';
 import { AppError } from '../../shared/errors/app-error';
 import { normalizeEmail } from './engagement-rules';
+import { readAuthUser } from '../../core/auth/auth-user';
+import { isMailboxOwner } from './mailbox-ownership';
 
 
 
@@ -19,6 +21,11 @@ export async function getValidAccessToken(tenantId: string, userId: string): Pro
 
   if (!account || !account.isActive) {
     throw new Error('Gmail account not connected');
+  }
+
+  const user = await readAuthUser(userId, tenantId);
+  if (!isMailboxOwner({ userId, tenantId, email: user.email }, account.email)) {
+    throw new AppError('Mailbox ownership does not match, or temporary test access expired.', 403);
   }
 
   // Decrypt access token from DB (stored encrypted)
@@ -293,6 +300,11 @@ export async function getConnectionStatus(
   });
 
   if (!account || !account.isActive) {
+    return { isConnected: false, email: null, connectedAt: null, lastSyncAt: null };
+  }
+
+  const user = await readAuthUser(userId, tenantId);
+  if (!isMailboxOwner({ userId, tenantId, email: user.email }, account.email)) {
     return { isConnected: false, email: null, connectedAt: null, lastSyncAt: null };
   }
 

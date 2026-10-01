@@ -17,6 +17,7 @@ import { salesPipeline, salesTransaction } from '../../modules/crm/leads/lead-au
 import { sendEmail } from './gmail.service';
 import app from '../../app';
 import type { GmailEmail } from './gmail.types';
+import { mailConfig } from '../../config/mail.config';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = url.hostname === '127.0.0.1' && /^\/leadcrm_mailbox_test_\d+$/.test(url.pathname);
@@ -208,6 +209,25 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     vi.stubGlobal('fetch', vi.fn(async (input: string | URL) => String(input).includes('/token') ? Response.json({ access_token: 'wrong-access', expires_in: 3600, scope: 'https://www.googleapis.com/auth/gmail.modify' }) : Response.json({ email: 'personal@gmail.com' })));
     await expect(finishMailboxConnection(new URL(oauth.url).searchParams.get('state')!, 'code')).rejects.toMatchObject({ statusCode: 400 });
     expect((await prisma.emailAccount.findUniqueOrThrow({ where: { id: account.id } })).email).toBe(account.email);
+  });
+  it('uses the same temporary ownership restriction for sync permissions and HTTP status', async () => {
+    const original = mailConfig.gmail.testMailboxOverride;
+    const exception = { tenantId, userId, staffEmail: account.email, mailboxEmail: 'approved-test@gmail.com', startsAt: new Date(Date.now() - 60000).toISOString(), expiresAt: new Date(Date.now() + day).toISOString() };
+    try {
+      Object.assign(mailConfig.gmail, { testMailboxOverride: JSON.stringify(exception) });
+      await prisma.emailAccount.update({ where: { id: account.id }, data: { email: exception.mailboxEmail } });
+      expect(await scope(() => mailboxPermissions(tenantId, userId))).toEqual(permissions);
+      expect((await call('/integrations/gmail/status')).body).toMatchObject({ isConnected: true, email: exception.mailboxEmail });
+      Object.assign(mailConfig.gmail, { testMailboxOverride: JSON.stringify({ ...exception, expiresAt: new Date(Date.now() - 1).toISOString() }) });
+      await expect(scope(() => mailboxPermissions(tenantId, userId))).rejects.toMatchObject({ statusCode: 403 });
+      expect((await call('/integrations/gmail/status')).body.isConnected).toBe(false);
+      expect((await call('/integrations/gmail/emails')).status).toBe(403);
+      expect((await call('/integrations/gmail/disconnect', 'POST')).status).toBe(200);
+      expect((await prisma.emailAccount.findUniqueOrThrow({ where: { id: account.id } })).accessToken).toBe('');
+    } finally {
+      Object.assign(mailConfig.gmail, { testMailboxOverride: original });
+      await prisma.emailAccount.update({ where: { id: account.id }, data: { email: account.email, isActive: true, accessToken: account.accessToken, refreshToken: account.refreshToken } });
+    }
   });
   it('sends from the connected owner and preserves reply threading headers', async () => {
     const bodies: Record<string, unknown>[] = [];

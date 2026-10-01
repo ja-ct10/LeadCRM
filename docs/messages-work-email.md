@@ -2,13 +2,19 @@
 
 ## Delivery status
 
-Implemented in the local repository on 2026-10-01. The changes extend the existing Gmail integration, CRM status adapter, Deal transitions, activity timeline, permissions, and dialog components. No production deployment or production database migration was performed.
+Implemented on 2026-10-01. The changes extend the existing Gmail integration, CRM status adapter, Deal transitions, activity timeline, permissions, and dialog components. The Render deployment applied `20261018000000_mailbox_engagement` successfully; the frontend and backend were deployed.
 
-Live Google consent, the deployed OAuth client's registered redirect URI, and real mailbox delivery: **I cannot confirm this.** Verification used simulated Gmail responses, disposable databases, and the real frontend/backend application code.
+Google project `leadcrm-510308` has Gmail API enabled and an External/Testing web OAuth client. The production redirect URI is `https://leadcrm-backend-os8d.onrender.com/api/v1/integrations/gmail/callback`; the live authorization endpoint reached Google's account chooser without `redirect_uri_mismatch`. Completed mailbox consent, real message synchronization and delivery: **I cannot confirm this.** Automated verification used simulated Gmail responses and disposable databases.
 
 ## Mailbox connection and deployment configuration
 
-The provider is **Gmail API with Google OAuth**, including Google Workspace mailboxes. Staff connect the email address belonging to their existing LeadCRM employee account. An arbitrary personal account or another employee's mailbox is rejected. Existing application sign-in behavior was not redesigned.
+The provider is **Gmail API with Google OAuth**, including Google Workspace mailboxes. Staff connect the email address belonging to their existing LeadCRM employee account. An arbitrary personal account or another employee's mailbox is rejected. A backend-configured, temporary test exception is described below. Existing application sign-in behavior was not redesigned.
+
+### Temporary personal-mailbox testing
+
+`GMAIL_TEST_MAILBOX_OVERRIDE` is optional backend-only JSON with exactly `userId`, `tenantId`, `staffEmail`, `mailboxEmail`, `startsAt`, and `expiresAt`. IDs must identify one existing staff account; addresses must be exact emails; timestamps must be UTC ISO strings. The interval must be no longer than seven days. Leave this empty by default and keep real mappings in backend `.env` / Render environment variables.
+
+The exception applies only to that staff user in that tenant during the specified interval. Google consent, session/state/PKCE validation, employee login, RBAC, encryption and existing mailbox-history restrictions still apply. The approved mailbox becomes the Google login hint. Connection audit records identify temporary test access and its expiry. Removing the variable or reaching expiry blocks new sync/send/provider access and reports disconnected; saved CRM history is retained. Staff may disconnect to clear locally stored provider tokens. Previously imported email activity remains in the CRM and Google permission can also be revoked in the user's Google account.
 
 Backend configuration:
 

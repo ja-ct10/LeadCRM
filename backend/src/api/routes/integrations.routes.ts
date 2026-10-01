@@ -24,7 +24,9 @@ const router = Router();
 router.get('/gmail/callback', callback);
 router.use('/gmail', authMiddleware, workspaceReadyMiddleware, requirePermission('contacts.view'), async (req, res, next) => {
   res.setHeader('Cache-Control', 'no-store');
-  try { await mailboxPermissions(req.user!.tenantId, req.user!.userId); next(); } catch (error) { next(error); }
+  // Expired test access must still allow status, reconnect and token removal.
+  const checkOwnership = !['/status', '/authorize', '/disconnect'].includes(req.path);
+  try { await mailboxPermissions(req.user!.tenantId, req.user!.userId, checkOwnership); next(); } catch (error) { next(error); }
 });
 router.post('/gmail/sync', sync);
 router.get('/gmail/threads/:threadId', thread);
