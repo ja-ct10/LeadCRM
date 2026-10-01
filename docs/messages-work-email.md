@@ -4,7 +4,11 @@
 
 Implemented on 2026-10-01. The changes extend the existing Gmail integration, CRM status adapter, Deal transitions, activity timeline, permissions, and dialog components. The Render deployment applied `20261018000000_mailbox_engagement` successfully; the frontend and backend were deployed.
 
-Google project `leadcrm-510308` has Gmail API enabled and an External/Testing web OAuth client. The production redirect URI is `https://leadcrm-backend-os8d.onrender.com/api/v1/integrations/gmail/callback`; the live authorization endpoint reached Google's account chooser without `redirect_uri_mismatch`. Completed mailbox consent, real message synchronization and delivery: **I cannot confirm this.** Automated verification used simulated Gmail responses and disposable databases.
+Google project `leadcrm-510308` has Gmail API enabled and an External/Testing web OAuth client. The production redirect URI is `https://leadcrm-backend-os8d.onrender.com/api/v1/integrations/gmail/callback`. Consent completed for the explicitly approved test mailbox. Real Gmail profile, Inbox, All conversations, Sent and thread reads succeeded. Initial sync had saved 320 messages at verification and was continuing through older mail. Complete initial sync, live refresh after token expiry and sending: **I cannot confirm this.** No send test was performed.
+
+On 2026-10-01, all six Gmail-related values in local `backend/.env` were compared securely with Render and made identical, including the production callback and frontend origin. The existing encryption key was preserved. This local configuration therefore returns OAuth to the deployed frontend; use the separately registered localhost callback and local frontend origin when intentionally switching back to local development.
+
+Intermittent Google HTTP 403/400 responses were observed in production logs; their original provider reason was not retained. Read requests now use bounded retries for rate limits and transient server errors, sanitized actionable errors, and five-message batches. All conversations correctly uses the messages endpoint when its query excludes drafts. Verification after these fixes: 91 mailbox/engagement tests passed on an isolated PostgreSQL database, backend build passed, and frontend type checking passed.
 
 ## Mailbox connection and deployment configuration
 

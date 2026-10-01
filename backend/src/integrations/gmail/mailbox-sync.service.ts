@@ -13,6 +13,7 @@ import { GmailEmail } from './gmail.types';
 import { customerDealWhere, CustomerLink } from '../../modules/crm/engagement.service';
 import { salesTransaction } from '../../modules/crm/leads/lead-automation.service';
 import { isMailboxOwner } from './mailbox-ownership';
+import { readGmailJson as gmailJson } from './gmail-read';
 
 export async function mailboxPermissions(tenantId: string, userId: string, checkOwnership = true): Promise<MailboxPermissions> {
   const user = await readAuthUser(userId, tenantId);
@@ -26,12 +27,6 @@ export async function mailboxPermissions(tenantId: string, userId: string, check
   const account = await prisma.emailAccount.findUnique({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } } });
   if (checkOwnership && account && !isMailboxOwner({ userId, tenantId, email: user.email }, account.email)) throw new AppError('Mailbox ownership does not match, or temporary test access expired. Reconnect your staff work email in Messages.', 403);
   return { crmEdit: await allowed('contacts.edit'), dealsEdit: await allowed('deals.edit'), dealsView: await allowed('deals.view') };
-}
-
-async function gmailJson<T>(accessToken: string, path: string): Promise<T> {
-  const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/${path}`, { headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(20000) });
-  if (!response.ok) throw new AppError(`Gmail sync failed (${response.status}). Reconnect if access was revoked.`, response.status === 404 ? 404 : 502);
-  return response.json() as Promise<T>;
 }
 
 export async function decorateEmails(tenantId: string, userId: string, emails: GmailEmail[], permissions: MailboxPermissions) {

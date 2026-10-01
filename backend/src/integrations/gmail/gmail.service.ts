@@ -6,6 +6,7 @@ import { AppError } from '../../shared/errors/app-error';
 import { normalizeEmail } from './engagement-rules';
 import { readAuthUser } from '../../core/auth/auth-user';
 import { isMailboxOwner } from './mailbox-ownership';
+import { readGmailJson } from './gmail-read';
 
 
 
@@ -200,35 +201,25 @@ export async function fetchEmails(
   });
   if (pageToken) params.set('pageToken', pageToken);
 
-  const isDraftList = /\bin:drafts\b/.test(query);
-  const listResponse = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/${isDraftList ? 'drafts' : 'messages'}?${params.toString()}`,
-    { headers: { Authorization: `Bearer ${accessToken}` } },
-  );
-
-  if (!listResponse.ok) {
-    throw new Error(`Gmail API error: ${listResponse.status}`);
-  }
-
-  const listData = await listResponse.json() as {
+  const isDraftList = /(?:^|\s)in:drafts(?:\s|$)/i.test(query);
+  const listData = await readGmailJson<{
     messages?: { id: string; threadId: string }[];
     drafts?: { id: string; message: { id: string; threadId: string } }[];
     nextPageToken?: string;
-  };
+  }>(accessToken, `${isDraftList ? 'drafts' : 'messages'}?${params.toString()}`);
 
-  if (isDraftList) {
-    const emails = await Promise.all((listData.drafts ?? []).map(async draft => ({ ...await fetchMessageDetail(accessToken, draft.message.id), draftId: draft.id })));
-    return { emails, nextPageToken: listData.nextPageToken };
+  const items = isDraftList
+    ? (listData.drafts ?? []).map(draft => ({ id: draft.message.id, draftId: draft.id }))
+    : (listData.messages ?? []).map(message => ({ id: message.id, draftId: undefined }));
+  const emails: GmailEmail[] = [];
+  // Keep list loading bounded while the existing sync worker is reading the same mailbox.
+  for (let offset = 0; offset < items.length; offset += 5) {
+    const batch = await Promise.all(items.slice(offset, offset + 5).map(async item => {
+      try { return { ...await fetchMessageDetail(accessToken, item.id), ...(item.draftId ? { draftId: item.draftId } : {}) }; }
+      catch (error) { if (error instanceof AppError && error.statusCode === 404) return null; throw error; }
+    }));
+    for (const email of batch) if (email) emails.push(email);
   }
-
-  if (!listData.messages || listData.messages.length === 0) {
-    return { emails: [], nextPageToken: undefined };
-  }
-
-  // Fetch full message details in parallel (batch of up to maxResults)
-  const emails = await Promise.all(
-    listData.messages.map((msg) => fetchMessageDetail(accessToken, msg.id)),
-  );
 
   return { emails, nextPageToken: listData.nextPageToken };
 }
@@ -237,16 +228,7 @@ export async function fetchEmails(
  * Fetches a single message's full detail.
  */
 export async function fetchMessageDetail(accessToken: string, messageId: string): Promise<GmailEmail> {
-  const response = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`,
-    { headers: { Authorization: `Bearer ${accessToken}` } },
-  );
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch message ${messageId}: ${response.status}`);
-  }
-
-  const data = await response.json() as GmailApiMessage;
+  const data = await readGmailJson<GmailApiMessage>(accessToken, `messages/${encodeURIComponent(messageId)}?format=full`);
 
   return parseGmailMessage(data);
 }
