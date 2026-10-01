@@ -1,4 +1,6 @@
 'use client';
+import { ClosedWonDialog } from '@/shared/components/crm/closed-won-dialog';
+import type { ClosedWonConfirmation } from '@leadcrm/shared';
 import {taskAssociationIds, taskAssociationPatch} from "@leadcrm/shared";
 
 import { isOnboardingComplete, WorkflowDraftSchema, type WorkflowDraft } from "@leadcrm/shared";
@@ -276,6 +278,7 @@ const LEADS_SYSTEM_DEFAULT: ColumnConfigItem[] = [
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export function DataProvider({ children }: { children: ReactNode }) {
+  const [wonConfirmation, setWonConfirmation] = useState<{ resolve: (value: ClosedWonConfirmation | null) => void } | null>(null);
   const { user, tenant, userCan } = useAuth();
   const workspaceReady = Boolean(user && (user.role === "System Admin" ||
     (user.status?.toUpperCase() === "ACTIVE" && !user.mustChangePassword &&
@@ -1085,9 +1088,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
   };
 
   const moveDealStage = async (id: string, stageId: string, note?: string, lostReason?: string, handoff?: any): Promise<void> => {
+    const targetStage = pipelines.flatMap(pipeline => pipeline.stages).find(stage => stage.id === stageId);
+    let confirmation: ClosedWonConfirmation | undefined;
+    if (targetStage?.isWon) {
+      const answer = await new Promise<ClosedWonConfirmation | null>(resolve => setWonConfirmation({ resolve }));
+      if (!answer) return;
+      confirmation = answer;
+      note = `Staff confirmed ${answer.type.toLowerCase()}.${answer.note ? ` ${answer.note}` : ''}`;
+    }
     if (!USE_MOCK_DATA) {
       try {
-        const res = await pipelineService.moveDealStage(id, { stageId, note, lostReason, handoff });
+        const res = await pipelineService.moveDealStage(id, { stageId, note, lostReason, handoff, confirmation });
         const responseData = (res as any).data ?? res;
         const rawDeal = responseData.deal ?? responseData;
         const deal = toFrontendDeal(rawDeal) as Deal;
@@ -2000,6 +2011,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   return (
     <DataContext.Provider value={visibleIdentity === dataIdentity ? contextValue : { ...contextValue, organizations: [], contacts: [], deals: [], pipelines: [], workflows: [], campaigns: [], templates: [], tasks: [], activities: [], auditLogs: [] }}>
+      {wonConfirmation && <ClosedWonDialog onConfirm={value => { wonConfirmation.resolve(value); setWonConfirmation(null); }} onCancel={() => { wonConfirmation.resolve(null); setWonConfirmation(null); }} />}
       {children}
     </DataContext.Provider>
   );

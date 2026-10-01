@@ -512,6 +512,9 @@ model Lead {
   createdById         String?
   updatedById         String?
   lastStatusChangedAt DateTime?
+  lastMeaningfulInboundAt DateTime?
+  firstUnansweredOutboundAt DateTime?
+  engagementEvaluatedAt DateTime?
   isArchived          Boolean   @default(false)
   deletedAt           DateTime?
   deletedBy           String?
@@ -580,6 +583,10 @@ model Contact {
   source              String?
   notes               String?
   lastContactedAt     DateTime?
+  lastStatusChangedAt DateTime?
+  lastMeaningfulInboundAt DateTime?
+  firstUnansweredOutboundAt DateTime?
+  engagementEvaluatedAt DateTime?
   convertedAt         DateTime?
   doNotContact        Boolean              @default(false)
   isArchived          Boolean              @default(false)
@@ -702,6 +709,11 @@ model Deal {
   priority          Priority  @default(MEDIUM)
   expectedCloseDate DateTime?
   closedAt          DateTime? // stamped when stage.isWon or stage.isLost = true
+  wonConfirmationType String?
+  wonConfirmationNote String?
+  wonConfirmedById String?
+  wonConfirmedAt DateTime?
+  stageChangedAt DateTime?
   lostReason        String?
   description       String?
   leadSource        String?
@@ -1401,10 +1413,56 @@ model EmailAccount {
   syncCursor     String? // Gmail history ID for incremental sync
   connectedAt    DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+  syncLeaseUntil DateTime?
+  syncLeaseId String?
+  syncPageToken String?
+  syncBaselineHistoryId String?
+  syncError String?
+  messages MailboxMessage[]
 
   @@unique([tenantId, userId, provider])
   @@index([tenantId, userId])
   @@index([tenantId, isActive])
+}
+
+// One-time OAuth challenges are bound to the initiating staff session.
+model MailboxOAuthState {
+  stateHash String @id
+  tenantId String
+  userId String
+  sessionHash String
+  verifier String
+  expiresAt DateTime
+  @@index([expiresAt])
+}
+
+model MailboxMessage {
+  id String @id @default(uuid())
+  tenantId String
+  accountId String
+  providerMessageId String
+  threadId String
+  direction String
+  from String
+  recipients String[]
+  subject String
+  body String @db.Text
+  snippet String
+  labels String[]
+  sentAt DateTime
+  rfcMessageId String?
+  leadId String?
+  contactId String?
+  dealId String?
+  meaningful Boolean @default(false)
+  readyToClose Boolean @default(false)
+  needsDealAssociation Boolean @default(false)
+  createdAt DateTime @default(now())
+  account EmailAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  @@unique([accountId, providerMessageId])
+  @@index([tenantId, accountId, threadId, sentAt])
+  @@index([tenantId, leadId, sentAt])
+  @@index([tenantId, contactId, sentAt])
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��

@@ -54,12 +54,12 @@ export async function salesPipeline(tx: Tx, tenantId: string) {
   if (!pipeline) pipeline = await tx.pipeline.create({ data: { ...scope, name: 'Sales Pipeline', type: 'Sales', isDefault: true } });
   let stages = await tx.stage.findMany({ where: { ...scope, pipelineId: pipeline.id }, orderBy: { order: 'asc' } });
   if (!stages.length) {
-    for (const [order, name] of ['Lead', 'Contacted', 'Qualified', 'Won', 'Lost'].entries()) await tx.stage.create({ data: {
-      ...scope, pipelineId: pipeline.id, name, order, isDefault: order === 0, isWon: name === 'Won', isLost: name === 'Lost', probability: name === 'Won' ? 100 : 0, requiredFields: [],
+    for (const [order, name] of ['Lead', 'Contacted', 'Qualified', 'Closed Won', 'Closed Lost'].entries()) await tx.stage.create({ data: {
+      ...scope, pipelineId: pipeline.id, name, order, isDefault: order === 0, isWon: name === 'Closed Won', isLost: name === 'Closed Lost', probability: name === 'Closed Won' ? 100 : 0, requiredFields: [],
     } });
     stages = await tx.stage.findMany({ where: { ...scope, pipelineId: pipeline.id }, orderBy: { order: 'asc' } });
   }
-  let initial = stages.find(stage => stage.isDefault && !stage.isWon && !stage.isLost) ?? stages.find(stage => stage.name.toLowerCase() === 'lead' && !stage.isWon && !stage.isLost);
+  let initial = stages.find(stage => stage.name.toLowerCase() === 'lead' && !stage.isWon && !stage.isLost);
   if (!initial) initial = await tx.stage.create({ data: { ...scope, pipelineId: pipeline.id, name: 'Lead', order: Math.min(...stages.map(s => s.order)) - 1, isDefault: true, requiredFields: [] } });
   return { pipeline, initial };
 }
@@ -93,6 +93,7 @@ export async function createAssignedLead(tx: Tx, input: Prisma.LeadUncheckedCrea
     const existing = await tx.lead.findFirst({ where: { ...scope, creationKey: input.creationKey } });
     if (existing) return existing;
   }
+  if (input.status === 'Closed') throw new ValidationError('Confirm a related Deal as Closed Won before closing this customer.');
   if (input.accountId && !await tx.account.findFirst({ where: { ...scope, id: input.accountId, isArchived: false } })) throw new ValidationError('Account is unavailable in this workspace.');
   // API callers provide IDs. Trusted imports may still provide historical names; resolve them here.
   const products = input.productInterestIds

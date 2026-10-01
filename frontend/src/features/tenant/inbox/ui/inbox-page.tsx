@@ -5,19 +5,21 @@ import { Inbox, Mail, ChevronDown, Check, Filter, ArrowDownAZ, Loader2, Pencil, 
 import { motion, AnimatePresence } from 'motion/react';
 import { useReducedMotion } from 'motion/react';
 import { cn } from '@/lib/utils';
-import { getGmailStatus, fetchGmailEmails, GmailConnectionStatus, GmailEmail } from '../services/gmail.service';
+import { getGmailStatus, fetchGmailEmails, syncGmail, disconnectGmail, GmailConnectionStatus, GmailEmail } from '../services/gmail.service';
 import InboxCurrentEmpty from './inbox-current-empty';
 import InboxDoneEmpty from './inbox-done-empty';
 import InboxFutureEmpty from './inbox-future-empty';
 import InboxEmailList from './inbox-email-list';
-import EmailDetailView from './email-detail-view';
+import EmailConversationView from './email-conversation-view';
 import ComposeModal from './compose-modal';
 
-type InboxView = 'current' | 'done' | 'future' | 'drafts';
+type InboxView = 'current' | 'done' | 'future' | 'drafts' | 'sent' | 'all';
 type InboxCategory = 'primary' | 'promotions' | 'social' | 'updates';
 
 const VIEW_OPTIONS: { id: InboxView; label: string }[] = [
   { id: 'current', label: 'Current' },
+  { id: 'all', label: 'All conversations' },
+  { id: 'sent', label: 'Sent' },
   { id: 'done', label: 'Done' },
   { id: 'future', label: 'Future' },
   { id: 'drafts', label: 'Drafts' },
@@ -45,34 +47,60 @@ export default function InboxPage(): React.ReactElement {
   const filterRef = useRef<HTMLDivElement>(null);
   const sortRef = useRef<HTMLDivElement>(null);
   const shouldReduceMotion = useReducedMotion();
+  const [syncing, setSyncing] = useState(false), [syncError, setSyncError] = useState(''), [search, setSearch] = useState('');
+  const loadVersion = useRef(0);
+  const syncPending = useRef(false);
+  const [connectionError, setConnectionError] = useState('');
 
   // Fetch connection status on mount
   useEffect(() => {
+    const url = new URL(window.location.href);
+    setConnectionError(url.searchParams.get('gmail_error') ?? '');
+    if (url.searchParams.has('gmail_error') || url.searchParams.has('gmail_connected')) {
+      url.searchParams.delete('gmail_error'); url.searchParams.delete('gmail_connected'); window.history.replaceState({}, '', url);
+    }
     setIsLoadingStatus(true);
     getGmailStatus()
       .then((status) => {
         setConnectionStatus(status);
-        if (status.isConnected) {
-          loadEmails('current', 'primary');
-        }
       })
-      .catch(() => {
+      .catch((error) => {
+        setConnectionError(error instanceof Error ? error.message : 'Unable to check work email connection.');
         setConnectionStatus({ isConnected: false, email: null, connectedAt: null, lastSyncAt: null });
       })
       .finally(() => setIsLoadingStatus(false));
   }, []);
+
+  const sync = useCallback(async () => {
+    if (syncPending.current) return;
+    syncPending.current = true; setSyncing(true); setSyncError('');
+    try {
+      const result = await syncGmail();
+      setConnectionStatus(await getGmailStatus());
+      if (result.hasMore) setSyncError('Sync is continuing. Older conversations are loading in the background.');
+    } catch (error) { setSyncError(error instanceof Error ? error.message : 'Email sync failed.'); }
+    finally { syncPending.current = false; setSyncing(false); }
+  }, []);
+  useEffect(() => {
+    if (!connectionStatus?.isConnected) return;
+    void sync();
+    const timer = setInterval(() => void sync(), 60000);
+    return () => clearInterval(timer);
+  }, [connectionStatus?.isConnected, sync]);
 
   // Reload emails when view or category changes
   useEffect(() => {
     if (connectionStatus?.isConnected) {
       loadEmails(activeView, activeCategory);
     }
-  }, [activeView, activeCategory, filterQuery, connectionStatus?.isConnected]);
+  }, [activeView, activeCategory, filterQuery, search, connectionStatus?.isConnected, connectionStatus?.lastSyncAt]);
 
   const getQueryForViewAndCategory = (view: InboxView, category: InboxCategory): string => {
     let baseQuery = '';
 
-    if (view === 'done') baseQuery = 'is:read -in:inbox';
+    if (view === 'all') baseQuery = '-in:spam -in:trash -in:drafts';
+    else if (view === 'sent') baseQuery = 'in:sent';
+    else if (view === 'done') baseQuery = 'is:read -in:inbox';
     else if (view === 'future') baseQuery = 'in:snoozed OR in:scheduled';
     else if (view === 'drafts') baseQuery = 'in:drafts';
     else {
@@ -100,23 +128,25 @@ export default function InboxPage(): React.ReactElement {
       baseQuery = `${baseQuery} ${filterQuery}`;
     }
 
-    return baseQuery;
+    return `${baseQuery} ${search.trim()}`.trim();
   };
 
   const loadEmails = useCallback(async (view?: InboxView, category?: InboxCategory, pageToken?: string): Promise<void> => {
+    const version = ++loadVersion.current;
     setIsLoadingEmails(true);
     setEmailError(null);
     try {
       const query = getQueryForViewAndCategory(view ?? activeView, category ?? activeCategory);
       const result = await fetchGmailEmails({ maxResults: 30, query, pageToken });
+      if (version !== loadVersion.current) return;
       setEmails(result.emails);
       setNextPageToken(result.nextPageToken);
     } catch (err) {
-      setEmailError(err instanceof Error ? err.message : 'Failed to load emails');
+      if (version === loadVersion.current) setEmailError(err instanceof Error ? err.message : 'Failed to load emails');
     } finally {
-      setIsLoadingEmails(false);
+      if (version === loadVersion.current) setIsLoadingEmails(false);
     }
-  }, [activeView, activeCategory, filterQuery]);
+  }, [activeView, activeCategory, filterQuery, search]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -176,7 +206,7 @@ export default function InboxPage(): React.ReactElement {
         to: email.to.join(', '),
         subject: email.subject,
         body: email.body,
-        draftId: email.id,
+        draftId: email.draftId,
       });
       setIsComposeOpen(true);
     } else {
@@ -254,9 +284,9 @@ export default function InboxPage(): React.ReactElement {
   // If an email is selected, show the detail view
   if (selectedEmail) {
     return (
-      <motion.div {...contentAnimation} className="flex flex-col h-full -m-4 lg:-m-6">
+      <motion.div {...contentAnimation} className="flex min-w-0 flex-col h-full -m-3 sm:-m-4 lg:-m-6">
         <div className="flex-1 overflow-hidden rounded-2xl border border-gray-200 dark:border-white/[0.05] bg-white dark:bg-white/[0.02] mx-6 mt-6">
-          <EmailDetailView
+          <EmailConversationView
             email={selectedEmail}
             onBack={() => setSelectedEmail(null)}
             onEmailsChanged={() => { loadEmails(); setSelectedEmail(null); }}
@@ -267,11 +297,11 @@ export default function InboxPage(): React.ReactElement {
   }
 
   return (
-    <motion.div {...contentAnimation} className="flex flex-col h-full -m-4 lg:-m-6">
+    <motion.div {...contentAnimation} className="flex min-w-0 flex-col h-full -m-3 sm:-m-4 lg:-m-6">
       {/* Page Header */}
       <div className="px-6 pt-6 pb-0 shrink-0">
         {/* Title row */}
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-3">
             <h1 className="font-display text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
               Inbox
@@ -447,7 +477,7 @@ export default function InboxPage(): React.ReactElement {
 
         {/* Category chips — LeadCRM style */}
         {isConnected && activeView === 'current' && (
-          <div className="flex items-center gap-2 mt-3">
+          <div className="flex flex-wrap items-center gap-2 mt-3">
             {[
               { id: 'primary' as const, label: 'Primary', icon: Inbox, color: 'blue' },
               { id: 'promotions' as const, label: 'Promotions', icon: Tag, color: 'emerald' },
@@ -479,8 +509,18 @@ export default function InboxPage(): React.ReactElement {
         )}
       </div>
 
+      {connectionError && <p role="alert" className="mx-3 my-2 break-words text-sm text-red-600 sm:mx-6">{connectionError}</p>}
+      {isConnected && <div className="mx-3 my-3 min-w-0 space-y-2 sm:mx-6">
+        <div className="flex flex-wrap items-center gap-2 text-xs"><span className="min-w-0 break-all">Work email: {connectionStatus?.email}</span>
+          <button disabled={syncing} onClick={() => void sync().then(() => loadEmails())} className="min-h-9 rounded border px-3">{syncing ? 'Syncing…' : 'Sync now'}</button>
+          <button onClick={() => { void disconnectGmail().then(() => { setConnectionStatus(null); setEmails([]); }).catch(error => setSyncError(error.message)); }} className="min-h-9 rounded border px-3">Disconnect</button>
+        </div>
+        <input aria-label="Search email" value={search} onChange={event => { setCurrentPage(1); setSearch(event.target.value); }} placeholder="Search email…" className="min-h-10 w-full min-w-0 rounded-lg border bg-background px-3 text-sm" />
+        {syncError && <p role="status" className="text-xs text-muted-foreground">{syncError}</p>}
+      </div>}
+
       {/* Content area */}
-      <div className="flex-1 overflow-y-auto rounded-t-2xl border border-gray-200 dark:border-white/[0.05] bg-white dark:bg-white/[0.02] mx-6">
+      <div className="min-w-0 flex-1 overflow-y-auto rounded-t-2xl border border-gray-200 dark:border-white/[0.05] bg-white dark:bg-white/[0.02] mx-3 sm:mx-6">
         {renderContent()}
       </div>
 

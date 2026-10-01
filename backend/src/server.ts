@@ -1,5 +1,6 @@
 ﻿import 'dotenv/config';
 import app from './app';
+import { startMailboxScheduler } from './integrations/gmail/mailbox-sync.service';
 import { startCampaignScheduler } from './core/scheduler/campaign-scheduler.service';
 import { purgeExpiredSessions } from './core/auth/session.service';
 import { seedDemoAccounts } from './database/seeders/demo.seed';
@@ -85,6 +86,7 @@ app.listen(PORT, () => {
 
   // Start background services
   startCampaignScheduler();
+  startMailboxScheduler();
   startSessionPurgeScheduler();
 
 

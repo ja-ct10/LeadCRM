@@ -7,3 +7,4 @@ export const tenantChildren: Record<string, { relation: string; model: string }>
  DealImportResult: { relation: "import", model: "DealImport" },
  ContactImportResult: { relation: "import", model: "ContactImport" },
 };
+tenantModels.add('MailboxMessage');

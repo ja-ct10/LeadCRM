@@ -35,10 +35,9 @@ export async function updateContact(id: string, tenantId: string, dto: Record<st
   await validateLinks(tenantId, dto);
   const before = await repo.findContactById(id, tenantId);
   if (!before) throw new NotFoundError('Contact');
-  const contact = await repo.updateContact(id, tenantId, dto);
+  const contact = await repo.updateContact(id, tenantId, dto, actorId);
   if (!contact) throw new NotFoundError('Contact');
   if (actorId) {
-    if (contact.status !== before.status) await prisma.activity.create({ data: { tenantId, contactId: id, createdById: actorId, type: 'stage_change', title: `Status changed from ${normalizeCrmStatus(before.status)} to ${normalizeCrmStatus(contact.status)}` } });
     await writeAuditLog({ tenantId, userId: actorId, action: 'contact.updated', entityType: 'Contact', entityId: id });
     if (contact.status !== before.status) await fireContactStatusChanged({ tenantId, actorId, contact, prevStatus: before.status });
     if (contact.assignedUserId && contact.assignedUserId !== before.assignedUserId && contact.assignedUserId !== actorId) {

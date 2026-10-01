@@ -60,11 +60,18 @@ export async function createStage(tenantId: string, dto: CreateStageDto) {
 }
 
 export async function updateStage(id: string, tenantId: string, dto: UpdateStageDto) {
-  try {
-    return await prisma.stage.update({ where: { id, tenantId }, data: dto });
-  } catch {
-    return null;
-  }
+  return salesTransaction(async tx => {
+    const stage = await tx.stage.findFirst({ where: { id, tenantId } });
+    if (!stage) return null;
+    if (stage.isDefault && stage.name.toLowerCase() === 'lead' && (dto.name !== undefined && dto.name.toLowerCase() !== 'lead' || dto.isWon || dto.isLost)) {
+      throw new ValidationError('Keep the starting Lead stage so new opportunities begin at Lead.');
+    }
+    const changesTerminalMeaning = dto.isWon !== undefined && dto.isWon !== stage.isWon || dto.isLost !== undefined && dto.isLost !== stage.isLost;
+    if (changesTerminalMeaning && (await tx.deal.count({ where: { tenantId, stageId: id } }) || await tx.dealStageHistory.count({ where: { tenantId, OR: [{ previousStageId: id }, { newStageId: id }] } }))) {
+      throw new ValidationError('A stage referenced by Deals or history cannot change its Won/Lost meaning. Confirm each Deal through its stage action.');
+    }
+    return tx.stage.update({ where: { id, tenantId }, data: dto });
+  });
 }
 
 export async function deleteStage(id: string, tenantId: string) {

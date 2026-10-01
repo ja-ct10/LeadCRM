@@ -2,6 +2,8 @@ import { resolveProducts } from '../leads/lead-automation.service';
 import { validateProductSnapshots } from '../leads/product-snapshots';
 import { salesTransaction, crmScope } from '../leads/lead-automation.service';
 import { resolveWonRelationships } from './won-conversion.service';
+import { ClosedWonConfirmation, ClosedWonConfirmationSchema } from '@leadcrm/shared';
+import { changeCustomerStatus } from '../engagement.service';
 import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
 import { CreateDealDto, UpdateDealDto, DealsQueryParams } from './deals.dto';
@@ -87,6 +89,8 @@ export async function findDealById(id: string, tenantId: string) {
 }
 
 export async function createDeal(tenantId: string, ownerId: string, dto: CreateDealDto, db: Prisma.TransactionClient = prisma) {
+  const stage = await db.stage.findFirst({ where: { id: dto.stageId, tenantId, pipelineId: dto.pipelineId } });
+  if (!stage || stage.isWon) throw new ValidationError('New Deals require an available open stage. Confirm Closed Won through the stage action.');
   const { leadIds, contactIds, ...dealData } = dto as CreateDealDto & { leadIds?: string[]; contactIds?: string[] };
 
   if (dto.productInterestIds?.length || dto.productInterestId) {
@@ -201,6 +205,7 @@ export async function moveDealStage(
   note?: string,
   handoff?: { assignOwnerId?: string; kickoffDate?: string; notes?: string },
   lostReason?: string,
+  confirmation?: ClosedWonConfirmation,
 ) {
   return salesTransaction(async tx => {
     const scope = crmScope(tenantId);
@@ -210,6 +215,13 @@ export async function moveDealStage(
     if (!newStage) throw new ValidationError("Stage must belong to this Deal’s pipeline.");
     let stageHistory = null;
     if (deal.stageId !== newStageId) {
+      if (deal.stage.isWon || deal.stage.isLost) throw new ValidationError('This Deal is closed. Create a new Deal for a new opportunity.');
+      if (newStage.isWon) {
+        const parsed = ClosedWonConfirmationSchema.safeParse(confirmation);
+        if (!parsed.success) throw new ValidationError('Closed Won requires a confirmation type, date, and an explanation when Other is selected.');
+        confirmation = parsed.data;
+        note = `Staff confirmed ${confirmation.type.toLowerCase()}.${confirmation.note ? ` ${confirmation.note}` : ''}`;
+      }
       if (newStage.isLost && !lostReason?.trim()) throw new ValidationError('Lost reason is required.');
       const missing = newStage.requiredFields.filter(field => {
         const value = (deal as Record<string, unknown>)[field];
@@ -219,12 +231,20 @@ export async function moveDealStage(
       const now = new Date();
       const previous = await tx.dealStageHistory.findFirst({ where: { ...scope, dealId: id }, orderBy: { movedAt: 'desc' } });
       await tx.deal.update({ where: { id, ...scope }, data: { stageId: newStageId,
-        closedAt: newStage.isWon || newStage.isLost ? now : null, lostReason: newStage.isLost ? lostReason : null } });
-      if (newStage.isWon) await resolveWonRelationships(tx, deal, movedById);
+        stageChangedAt: now,
+        closedAt: newStage.isWon ? new Date(`${confirmation!.date}T00:00:00.000Z`) : newStage.isLost ? now : null, lostReason: newStage.isLost ? lostReason : null,
+        ...(newStage.isWon ? { wonConfirmationType: confirmation!.type, wonConfirmationNote: confirmation!.note ?? null, wonConfirmedById: movedById, wonConfirmedAt: now } : {}) } });
+      if (newStage.isWon) {
+        await resolveWonRelationships(tx, deal, movedById);
+        const leads = await tx.leadDeal.findMany({ where: { tenantId, dealId: id } });
+        const contacts = await tx.contactDeal.findMany({ where: { tenantId, dealId: id } });
+        for (const leadId of new Set([deal.leadId, ...leads.map(link => link.leadId)].filter((value): value is string => !!value))) await changeCustomerStatus(tx, tenantId, movedById, { leadId }, 'Closed', note!, now);
+        for (const contactId of new Set([deal.contactId, ...contacts.map(link => link.contactId)].filter((value): value is string => !!value))) await changeCustomerStatus(tx, tenantId, movedById, { contactId }, 'Closed', note!, now);
+      }
       stageHistory = await tx.dealStageHistory.create({ data: { ...scope, dealId: id, previousStageId: deal.stageId, newStageId, movedById,
         movedAt: now, note, timeInPrevStage: Math.floor((now.getTime() - (previous?.movedAt ?? deal.createdAt).getTime()) / 60000) } });
       await tx.activity.create({ data: { ...scope, dealId: id, createdById: movedById, type: 'stage_change',
-        title: `Deal moved from "${deal.stage.name}" to "${newStage.name}"` } });
+        title: `Deal moved from "${deal.stage.name}" to "${newStage.name}"`, description: note ?? lostReason ?? 'Staff changed the Deal stage.' } });
     }
     const fullDeal = await tx.deal.findFirstOrThrow({ where: { id, ...scope }, include: {
       stage: true, pipeline: true, organization: true, assignedUser: { select: { id: true, firstName: true, lastName: true } },

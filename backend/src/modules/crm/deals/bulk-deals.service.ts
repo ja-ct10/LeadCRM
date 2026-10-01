@@ -133,6 +133,7 @@ export async function bulkStageChange(
   if (!targetStage) {
     throw new ValidationError('Target stage not found in tenant');
   }
+  if (targetStage.isWon) throw new ValidationError('Confirm each Closed Won Deal individually with its supporting evidence.');
 
   // Lost stage requires lostReason
   if (targetStage.isLost && !dto.lostReason) {

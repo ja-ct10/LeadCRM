@@ -1,4 +1,5 @@
 import { validateSalesOwner } from '../leads/lead-automation.service';
+import { ClosedWonConfirmationSchema } from '@leadcrm/shared';
 import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
 import * as repo from './deals.repository';
@@ -55,6 +56,9 @@ export async function createDeal(tenantId: string, userId: string, dto: CreateDe
   if (dto.assignedUserId) await validateSalesOwner(prisma, tenantId, dto.assignedUserId);
   const stage = await prisma.stage.findFirst({ where: { id: dto.stageId, tenantId, pipelineId: dto.pipelineId } });
   if (!stage) throw new ValidationError('Stage must belong to the selected pipeline.');
+  const initial = await prisma.stage.findMany({ where: { tenantId, pipelineId: dto.pipelineId, name: { equals: 'Lead', mode: 'insensitive' }, isWon: false, isLost: false } });
+  if (initial.length !== 1) throw new ValidationError('Configure one Lead starting stage in this pipeline.');
+  dto = { ...dto, stageId: initial[0].id };
 
   let deal;
   try {
@@ -149,6 +153,7 @@ export async function validateDealStageMove(id: string, tenantId: string, dto: M
     where: { id: dto.stageId, tenantId },
   });
   if (!newStage) throw new NotFoundError('Stage');
+  if (newStage.isWon && !ClosedWonConfirmationSchema.safeParse(dto.confirmation).success) throw new ValidationError('Use the Closed Won confirmation dialog to confirm this sale.');
 
   if (newStage.isLost && !dto.lostReason) {
     throw new ValidationError('Lost reason is required when closing a deal as lost');
@@ -180,7 +185,7 @@ export async function moveDealStage(id: string, tenantId: string, userId: string
   const newStage = await validateDealStageMove(id, tenantId, dto);
   let result;
   try {
-    result = await repo.moveDealStage(id, tenantId, dto.stageId, userId, dto.note, dto.handoff, dto.lostReason);
+    result = await repo.moveDealStage(id, tenantId, dto.stageId, userId, dto.note, dto.handoff, dto.lostReason, dto.confirmation);
   } catch (error) {
     mapRepositoryError(error, 'moveDealStage');
   }
@@ -277,6 +282,8 @@ export async function duplicateDeal(id: string, tenantId: string, userId: string
 
   const source = await repo.findDealById(id, tenantId);
   if (!source) throw new NotFoundError('Deal');
+  const initialStage = await prisma.stage.findFirst({ where: { tenantId, pipelineId: source.pipelineId, name: { equals: 'Lead', mode: 'insensitive' }, isWon: false, isLost: false } });
+  if (!initialStage) throw new ValidationError('Configure a Lead stage before duplicating an opportunity.');
 
   // Destructure to exclude fields that shouldn't be copied
   const {
@@ -300,6 +307,9 @@ export async function duplicateDeal(id: string, tenantId: string, userId: string
         isArchived: false,
         closedAt: null,
         lostReason: null,
+        stageId: initialStage.id,
+        stageChangedAt: new Date(),
+        wonConfirmationType: null, wonConfirmationNote: null, wonConfirmedById: null, wonConfirmedAt: null,
       } as never,
     });
 

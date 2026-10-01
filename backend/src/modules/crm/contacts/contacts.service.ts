@@ -260,7 +260,8 @@ export async function convertContact(
         throw new ValidationError('No pipeline with stages available for deal creation');
       }
 
-      const entryStage = pipeline.stages.find((s: { isDefault: boolean }) => s.isDefault) || pipeline.stages[0];
+      const entryStage = pipeline.stages.find(stage => stage.name.toLowerCase() === 'lead' && !stage.isWon && !stage.isLost);
+      if (!entryStage) throw new ValidationError('Configure a Lead starting stage in this pipeline.');
 
       deal = await tx.deal.create({
         data: {
@@ -303,7 +304,7 @@ export async function convertContact(
     const convertedLead = await tx.lead.update({
       where: { id } as never,
       data: {
-        status: 'Closed',
+        status: lead.status,
         accountId: accountId,
         contactId: contactId,
         convertedAt: now,

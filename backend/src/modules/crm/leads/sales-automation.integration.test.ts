@@ -91,14 +91,14 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     const lead = await create(['Smart Lock', 'Biometrics'], { companyName: 'Example Company' });
     const deals = await prisma.deal.findMany({ where: { leadId: lead.id } });
     const won = await prisma.stage.findFirstOrThrow({ where: { tenantId, pipelineId: deals[0].pipelineId, isWon: true } });
-    const first = await scope(() => moveDealStage(deals[0].id, tenantId, won.id, adminId));
+    const first = await scope(() => moveDealStage(deals[0].id, tenantId, won.id, adminId, undefined, undefined, undefined, { type: 'Approved Quotation', date: new Date().toISOString().slice(0, 10) }));
     expect(first?.stageHistory).not.toBeNull();
-    const repeat = await scope(() => moveDealStage(deals[0].id, tenantId, won.id, adminId));
+    const repeat = await scope(() => moveDealStage(deals[0].id, tenantId, won.id, adminId, undefined, undefined, undefined, { type: 'Approved Quotation', date: new Date().toISOString().slice(0, 10) }));
     expect(repeat?.stageHistory).toBeNull();
     const updatedLead = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
     expect(updatedLead.assignedUserId).toBe(lead.assignedUserId); expect(updatedLead.contactId).toBeTruthy(); expect(updatedLead.accountId).toBeTruthy();
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[1].id } })).stageId).toBe(deals[1].stageId);
-    await scope(() => moveDealStage(deals[1].id, tenantId, won.id, adminId));
+    await scope(() => moveDealStage(deals[1].id, tenantId, won.id, adminId, undefined, undefined, undefined, { type: 'Approved Quotation', date: new Date().toISOString().slice(0, 10) }));
     expect(await prisma.contact.count({ where: { tenantId, email: lead.email } })).toBe(1);
     expect(await prisma.account.count({ where: { tenantId, name: 'Example Company' } })).toBe(1);
     expect(await prisma.contactDeal.count({ where: { tenantId, contactId: updatedLead.contactId! } })).toBe(2);
@@ -111,13 +111,13 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     const lead = await create(['Smart Lock'], { email, phone: '+639123456789' });
     const deal = await prisma.deal.findFirstOrThrow({ where: { leadId: lead.id } });
     const won = await prisma.stage.findFirstOrThrow({ where: { tenantId, pipelineId: deal.pipelineId, isWon: true } });
-    await scope(() => moveDealStage(deal.id, tenantId, won.id, adminId));
+    await scope(() => moveDealStage(deal.id, tenantId, won.id, adminId, undefined, undefined, undefined, { type: 'Approved Quotation', date: new Date().toISOString().slice(0, 10) }));
     expect((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).contactId).toBe(contact.id);
     expect((await prisma.contact.findUniqueOrThrow({ where: { id: contact.id } })).notes).toBe('Keep history');
     const second = await create(['Smart Lock'], { email });
     await prisma.contact.create({ data: { tenantId, firstName: 'Conflicting', lastName: 'Identity', email, activeProducts: [], productInterests: [] } });
     const secondDeal = await prisma.deal.findFirstOrThrow({ where: { leadId: second.id } });
-    await expect(scope(() => moveDealStage(secondDeal.id, tenantId, won.id, adminId))).rejects.toThrow('matching records');
+    await expect(scope(() => moveDealStage(secondDeal.id, tenantId, won.id, adminId, undefined, undefined, undefined, { type: 'Approved Quotation', date: new Date().toISOString().slice(0, 10) }))).rejects.toThrow('matching records');
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: secondDeal.id } })).stageId).toBe(secondDeal.stageId);
     expect(await prisma.dealStageHistory.count({ where: { dealId: secondDeal.id } })).toBe(0);
   });
@@ -128,7 +128,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     const lead = await create(['Smart Lock'], { email: null, phone: '09275551234', companyName: company.trim().replace(/\s+/g, ' ') });
     const deal = await prisma.deal.findFirstOrThrow({ where: { leadId: lead.id } });
     const won = await prisma.stage.findFirstOrThrow({ where: { pipelineId: deal.pipelineId, isWon: true } });
-    await scope(() => moveDealStage(deal.id, tenantId, won.id, adminId));
+    await scope(() => moveDealStage(deal.id, tenantId, won.id, adminId, undefined, undefined, undefined, { type: 'Approved Quotation', date: new Date().toISOString().slice(0, 10) }));
     const result = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
     expect(result.contactId).toBe(contact.id); expect(result.accountId).toBe(account.id);
   });
@@ -307,7 +307,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     expect((await request('/administration/product-interests/field', 'POST', {})).status).toBe(200);
     expect((await request('/administration/product-interests')).body.meta.enabled).toBe(true);
   });
-  it.each(['Hot', 'Warm', 'Cold', 'Closed', 'Cancelled'])('creates and edits Leads and Contacts using %s at the HTTP boundary', async status => {
+  it.each(['Hot', 'Warm', 'Cold', 'Cancelled'])('creates and edits Leads and Contacts using %s at the HTTP boundary', async status => {
     const products = await Promise.all([1250.75, 550].map(dealValue => prisma.productInterest.create({ data: { tenantId, name: `Status ${status} ${dealValue}`, dealValue } })));
     const selectedIds = products.map(product => product.id);
     const lead = await request('/crm/leads', 'POST', { email: 'manual@example.test', firstName: 'Manual', lastName: status, status, productInterest: selectedIds });
@@ -413,7 +413,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     expect((await request(`/crm/stages/${unused.body.data.id}`, 'DELETE')).status).toBe(200);
     expect(await prisma.stage.findUnique({ where: { id: unused.body.data.id } })).toBeNull();
     expect((await request(`/crm/stages/${id}`, 'PUT', { name: 'Denied' }, deniedToken)).status).toBe(403);
-    await request(`/crm/stages/${initial.id}`, 'PUT', { name: 'Initial renamed' });
+    expect((await request(`/crm/stages/${initial.id}`, 'PUT', { name: 'Initial renamed' })).status).toBe(400);
     const next = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
     expect(next.initial.id).toBe(initial.id);
   });

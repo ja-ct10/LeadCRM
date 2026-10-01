@@ -1,4 +1,6 @@
 import { parseLeadCreatedFilter } from '../leads/lead-created-filter';
+import { assertClosedStatus, cancelOpenDeals } from '../engagement.service';
+import { ValidationError } from '../../../shared/errors/http-error';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import prisma from '../../../config/database.config';
 import { resolveProducts, createAssignedLead, salesTransaction, createProductDeals, validateSalesOwner } from '../leads/lead-automation.service';
@@ -82,6 +84,7 @@ export async function createContact(
   createdById?: string,
 ) {
   const { requestId, productInterest, ...fields } = dto;
+  if (dto.status === 'Closed') throw new ValidationError('Confirm a related Deal as Closed Won before setting Closed.');
   return salesTransaction(tx => createAssignedLead(tx, { ...fields, productInterestIds: productInterest ?? [], tenantId, creationKey: requestId,
     ...(createdById ? { createdById, updatedById: createdById } : {}) }, createdById));
 }
@@ -101,6 +104,11 @@ export async function updateContact(
       data.lastStatusChangedAt = new Date();
     }
     return await salesTransaction(async tx => {
+      const current = await tx.lead.findFirstOrThrow({ where: { id, tenantId } });
+      if (dto.status) {
+        data.lastStatusChangedAt = new Date();
+        if (dto.status === 'Closed' && current.status !== 'Closed') await assertClosedStatus(tx, tenantId, { leadId: id });
+      }
       if (dto.productInterest) {
         const previous = await tx.lead.findFirstOrThrow({ where: { id, tenantId } });
         const retained = previous.productInterestIds.filter(id => dto.productInterest!.includes(id));
@@ -123,9 +131,10 @@ export async function updateContact(
         updatedBy:    { select: { id: true, firstName: true, lastName: true } },
       },
     });
-      if (updatedById && dto.status && dto.status !== prevStatus) await tx.activity.create({ data: {
-        tenantId, createdById: updatedById, leadId: id, type: 'stage_change', title: `Status changed from ${prevStatus} to ${dto.status}`,
+      if (updatedById && dto.status && dto.status !== current.status) await tx.activity.create({ data: {
+        tenantId, createdById: updatedById, leadId: id, type: 'stage_change', title: `Status changed from ${current.status} to ${dto.status}`, description: 'Staff changed the CRM status.',
       } });
+      if (updatedById && dto.status === 'Cancelled' && current.status !== 'Cancelled') await cancelOpenDeals(tx, tenantId, updatedById, { leadId: id }, 'Staff explicitly cancelled the opportunity.');
       if (dto.assignedUserId || dto.productInterest) await createProductDeals(tx, tenantId, id, updatedById);
       return updated;
     });

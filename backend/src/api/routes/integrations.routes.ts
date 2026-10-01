@@ -11,11 +11,24 @@ import {
   archive,
   saveDraftHandler,
   deleteDraftHandler,
+  sync,
+  thread,
+  associateDeal,
 } from '../../integrations/gmail/gmail.controller';
 
 import { workspaceReadyMiddleware } from '../middleware/tenant.middleware';
+import { authorize as requirePermission } from '../middleware/rbac.middleware';
+import { mailboxPermissions } from '../../integrations/gmail/mailbox-sync.service';
 
 const router = Router();
+router.get('/gmail/callback', callback);
+router.use('/gmail', authMiddleware, workspaceReadyMiddleware, requirePermission('contacts.view'), async (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try { await mailboxPermissions(req.user!.tenantId, req.user!.userId); next(); } catch (error) { next(error); }
+});
+router.post('/gmail/sync', sync);
+router.get('/gmail/threads/:threadId', thread);
+router.patch('/gmail/threads/:threadId/deal', requirePermission('deals.edit'), associateDeal);
 
 // ── Gmail Integration ─────────────────────────────────
 // GET  /integrations/gmail/authorize   — get OAuth URL (authenticated)
@@ -25,15 +38,14 @@ const router = Router();
 // POST /integrations/gmail/send        — send email (authenticated)
 // POST /integrations/gmail/disconnect  — disconnect account (authenticated)
 
-router.get('/gmail/authorize', authMiddleware, workspaceReadyMiddleware, authorize);
-router.get('/gmail/callback', callback); // No auth — Google redirects here directly
-router.get('/gmail/status', authMiddleware, workspaceReadyMiddleware, status);
-router.get('/gmail/emails', authMiddleware, workspaceReadyMiddleware, listEmails);
-router.post('/gmail/send', authMiddleware, workspaceReadyMiddleware, send);
-router.post('/gmail/disconnect', authMiddleware, workspaceReadyMiddleware, disconnect);
-router.post('/gmail/trash', authMiddleware, workspaceReadyMiddleware, trash);
-router.post('/gmail/archive', authMiddleware, workspaceReadyMiddleware, archive);
-router.post('/gmail/drafts', authMiddleware, workspaceReadyMiddleware, saveDraftHandler);
-router.delete('/gmail/drafts/:draftId', authMiddleware, workspaceReadyMiddleware, deleteDraftHandler);
+router.get('/gmail/authorize', authorize);
+router.get('/gmail/status', status);
+router.get('/gmail/emails', listEmails);
+router.post('/gmail/send', send);
+router.post('/gmail/disconnect', disconnect);
+router.post('/gmail/trash', trash);
+router.post('/gmail/archive', archive);
+router.post('/gmail/drafts', saveDraftHandler);
+router.delete('/gmail/drafts/:draftId', deleteDraftHandler);
 
 export default router;

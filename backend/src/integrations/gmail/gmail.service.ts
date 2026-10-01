@@ -2,6 +2,8 @@ import prisma from '../../config/database.config';
 import { refreshAccessToken, getUserInfo } from './gmail.oauth';
 import { GmailEmail, GmailThread } from './gmail.types';
 import { encryptToken, decryptToken } from '../../core/encryption/crypto.service';
+import { AppError } from '../../shared/errors/app-error';
+import { normalizeEmail } from './engagement-rules';
 
 
 
@@ -50,14 +52,16 @@ export async function getValidAccessToken(tenantId: string, userId: string): Pro
     ? encryptToken(tokens.refresh_token)
     : undefined;
 
-  await prisma.emailAccount.update({
-    where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } },
+  const refreshed = await prisma.emailAccount.updateMany({
+    where: { id: account.id, tenantId, userId, isActive: true, refreshToken: account.refreshToken },
     data: {
       accessToken: newEncryptedAccessToken,
       tokenExpiresAt: expiresAt,
       ...(newEncryptedRefreshToken ? { refreshToken: newEncryptedRefreshToken } : {}),
     },
   });
+
+  if (!refreshed.count) throw new AppError('Mailbox connection changed. Retry after reconnecting.', 409);
 
   return tokens.access_token;
 }
@@ -181,7 +185,7 @@ export async function fetchEmails(
   options: { maxResults?: number; query?: string; pageToken?: string } = {},
 ): Promise<{ emails: GmailEmail[]; nextPageToken?: string }> {
   const accessToken = await getValidAccessToken(tenantId, userId);
-  const { maxResults = 20, query = 'in:inbox', pageToken } = options;
+  const { maxResults = 20, query = '-in:spam -in:trash -in:drafts', pageToken } = options;
 
   const params = new URLSearchParams({
     maxResults: maxResults.toString(),
@@ -189,8 +193,9 @@ export async function fetchEmails(
   });
   if (pageToken) params.set('pageToken', pageToken);
 
+  const isDraftList = /\bin:drafts\b/.test(query);
   const listResponse = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/messages?${params.toString()}`,
+    `https://gmail.googleapis.com/gmail/v1/users/me/${isDraftList ? 'drafts' : 'messages'}?${params.toString()}`,
     { headers: { Authorization: `Bearer ${accessToken}` } },
   );
 
@@ -200,8 +205,14 @@ export async function fetchEmails(
 
   const listData = await listResponse.json() as {
     messages?: { id: string; threadId: string }[];
+    drafts?: { id: string; message: { id: string; threadId: string } }[];
     nextPageToken?: string;
   };
+
+  if (isDraftList) {
+    const emails = await Promise.all((listData.drafts ?? []).map(async draft => ({ ...await fetchMessageDetail(accessToken, draft.message.id), draftId: draft.id })));
+    return { emails, nextPageToken: listData.nextPageToken };
+  }
 
   if (!listData.messages || listData.messages.length === 0) {
     return { emails: [], nextPageToken: undefined };
@@ -218,7 +229,7 @@ export async function fetchEmails(
 /**
  * Fetches a single message's full detail.
  */
-async function fetchMessageDetail(accessToken: string, messageId: string): Promise<GmailEmail> {
+export async function fetchMessageDetail(accessToken: string, messageId: string): Promise<GmailEmail> {
   const response = await fetch(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`,
     { headers: { Authorization: `Bearer ${accessToken}` } },
@@ -242,11 +253,13 @@ export async function sendEmail(
   to: string | string[],
   subject: string,
   body: string,
+  replyToMessageId?: string,
 ): Promise<{ messageId: string; threadId: string }> {
   const accessToken = await getValidAccessToken(tenantId, userId);
-
+  const account = await prisma.emailAccount.findUniqueOrThrow({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } } });
+  const reply = replyToMessageId ? await fetchMessageDetail(accessToken, replyToMessageId) : undefined;
   const recipients = Array.isArray(to) ? to.join(', ') : to;
-  const rawMessage = createRawMessage(recipients, subject, body);
+  const rawMessage = createRawMessage(recipients, subject, body, account.email, reply?.rfcMessageId);
 
   const response = await fetch(
     'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
@@ -256,13 +269,12 @@ export async function sendEmail(
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ raw: rawMessage }),
+      body: JSON.stringify({ raw: rawMessage, ...(reply ? { threadId: reply.threadId } : {}) }),
     },
   );
 
   if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`Failed to send email: ${response.status} — ${errorBody}`);
+    throw new AppError(`Gmail could not send this message (${response.status}).`, 502);
   }
 
   const result = await response.json() as { id: string; threadId: string };
@@ -298,7 +310,7 @@ export async function getConnectionStatus(
 export async function disconnectAccount(tenantId: string, userId: string): Promise<void> {
   await prisma.emailAccount.update({
     where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } },
-    data: { isActive: false, accessToken: '', refreshToken: null },
+    data: { isActive: false, accessToken: '', refreshToken: null, syncLeaseId: null, syncLeaseUntil: null },
   });
 }
 
@@ -314,7 +326,8 @@ export async function saveDraft(
   draftId?: string,
 ): Promise<{ draftId: string; messageId: string }> {
   const accessToken = await getValidAccessToken(tenantId, userId);
-  const rawMessage = createRawMessage(to, subject, body);
+  const account = await prisma.emailAccount.findUniqueOrThrow({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } } });
+  const rawMessage = createRawMessage(to, subject, body, account.email);
 
   const requestBody = { message: { raw: rawMessage } };
 
@@ -349,8 +362,7 @@ export async function saveDraft(
   }
 
   if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`Failed to save draft: ${response.status} — ${errorBody}`);
+    throw new AppError(`Gmail could not save the draft (${response.status}).`, 502);
   }
 
   const result = await response.json() as { id: string; message: { id: string } };
@@ -367,13 +379,14 @@ export async function deleteDraft(
 ): Promise<void> {
   const accessToken = await getValidAccessToken(tenantId, userId);
 
-  await fetch(
+  const response = await fetch(
     `https://gmail.googleapis.com/gmail/v1/users/me/drafts/${draftId}`,
     {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${accessToken}` },
     },
   );
+  if (!response.ok) throw new AppError(`Gmail could not delete the draft (${response.status}).`, 502);
 }
 
 /**
@@ -386,7 +399,7 @@ export async function trashEmails(
 ): Promise<{ success: boolean; count: number }> {
   const accessToken = await getValidAccessToken(tenantId, userId);
 
-  await Promise.all(
+  const responses = await Promise.all(
     messageIds.map((id) =>
       fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}/trash`, {
         method: 'POST',
@@ -394,7 +407,7 @@ export async function trashEmails(
       }),
     ),
   );
-
+  if (responses.some(response => !response.ok)) throw new AppError('Some messages could not be moved to trash. Refresh before retrying.', 502);
   return { success: true, count: messageIds.length };
 }
 
@@ -408,7 +421,7 @@ export async function archiveEmails(
 ): Promise<{ success: boolean; count: number }> {
   const accessToken = await getValidAccessToken(tenantId, userId);
 
-  await Promise.all(
+  const responses = await Promise.all(
     messageIds.map((id) =>
       fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}/modify`, {
         method: 'POST',
@@ -420,13 +433,14 @@ export async function archiveEmails(
       }),
     ),
   );
-
+  if (responses.some(response => !response.ok)) throw new AppError('Some messages could not be archived. Refresh before retrying.', 502);
   return { success: true, count: messageIds.length };
 }
 
 // ─── Internal Helpers ───────────────────────────────────
 
-interface GmailApiMessage {
+interface GmailPart { mimeType?: string; body?: { data?: string }; parts?: GmailPart[] }
+export interface GmailApiMessage {
   id: string;
   threadId: string;
   labelIds: string[];
@@ -434,34 +448,47 @@ interface GmailApiMessage {
   payload: {
     headers: { name: string; value: string }[];
     body?: { data?: string };
-    parts?: { mimeType: string; body?: { data?: string } }[];
+    mimeType?: string;
+    parts?: GmailPart[];
   };
   internalDate: string;
 }
 
-function parseGmailMessage(data: GmailApiMessage): GmailEmail {
+function parseAddressList(value: string): string[] {
+  const addresses: string[] = [];
+  let current = '', quoted = false, escaped = false, angle = false;
+  for (const character of value) {
+    if (character === ',' && !quoted && !angle) { if (current.trim()) addresses.push(current.trim()); current = ''; continue; }
+    current += character;
+    if (escaped) { escaped = false; continue; }
+    if (character === '\\' && quoted) escaped = true;
+    else if (character === '"') quoted = !quoted;
+    else if (!quoted && character === '<') angle = true;
+    else if (!quoted && character === '>') angle = false;
+  }
+  if (current.trim()) addresses.push(current.trim());
+  return addresses;
+}
+
+export function parseGmailMessage(data: GmailApiMessage): GmailEmail {
   const headers = data.payload.headers;
   const getHeader = (name: string): string =>
     headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? '';
 
   const from = getHeader('From');
-  const to = getHeader('To').split(',').map((s) => s.trim()).filter(Boolean);
+  const to = parseAddressList(getHeader('To'));
   const subject = getHeader('Subject');
-  const date = getHeader('Date');
-  const isRead = !data.labelIds.includes('UNREAD');
+  const isRead = !(data.labelIds ?? []).includes('UNREAD');
 
   // Extract body from parts or direct body
-  let body = '';
-  if (data.payload.parts) {
-    const htmlPart = data.payload.parts.find((p) => p.mimeType === 'text/html');
-    const textPart = data.payload.parts.find((p) => p.mimeType === 'text/plain');
-    const part = htmlPart ?? textPart;
-    if (part?.body?.data) {
-      body = Buffer.from(part.body.data, 'base64url').toString('utf-8');
-    }
-  } else if (data.payload.body?.data) {
-    body = Buffer.from(data.payload.body.data, 'base64url').toString('utf-8');
-  }
+  const parts: GmailPart[] = [];
+  const visit = (part: GmailPart) => { if (part.body?.data) parts.push(part); part.parts?.forEach(visit); };
+  visit(data.payload);
+  const decode = (part?: GmailPart) => part?.body?.data ? Buffer.from(part.body.data, 'base64url').toString('utf-8') : '';
+  const plainText = decode(parts.find(part => part.mimeType === 'text/plain'));
+  const html = decode(parts.find(part => part.mimeType === 'text/html'));
+  const escape = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const body = html || `<pre>${escape(plainText || decode(parts[0]))}</pre>`;
 
   return {
     id: data.id,
@@ -471,13 +498,17 @@ function parseGmailMessage(data: GmailApiMessage): GmailEmail {
     subject,
     snippet: data.snippet,
     body,
-    date: date || new Date(parseInt(data.internalDate, 10)).toISOString(),
+    date: new Date(Number(data.internalDate)).toISOString(),
     isRead,
-    labels: data.labelIds,
+    labels: data.labelIds ?? [],
+    cc: parseAddressList(getHeader('Cc')),
+    plainText: plainText || undefined,
+    rfcMessageId: getHeader('Message-ID'),
+    automated: (!!getHeader('Auto-Submitted') && getHeader('Auto-Submitted').toLowerCase() !== 'no') || !!getHeader('List-Id') || /bulk|list|junk/i.test(getHeader('Precedence')),
   };
 }
 
-function createRawMessage(to: string, subject: string, body: string, from?: string): string {
+function createRawMessage(to: string, subject: string, body: string, from?: string, inReplyTo?: string): string {
   // Gmail API requires a valid RFC 2822 From header — without it the API
   // returns 400 and the message is never delivered.
   // Fall back to the system sender Gmail address if no explicit from is provided.
@@ -486,11 +517,13 @@ function createRawMessage(to: string, subject: string, body: string, from?: stri
     ?? (process.env.GMAIL_SYSTEM_SENDER_GMAIL_EMAIL
         ? `LeadCRM <${process.env.GMAIL_SYSTEM_SENDER_GMAIL_EMAIL}>`
         : 'LeadCRM <noreply@leadcrm.io>');
+  if ([to, subject, fromAddress, inReplyTo ?? ''].some(value => /[\r\n]/.test(value))) throw new AppError('Invalid email header.', 400);
 
   const message = [
     `From: ${fromAddress}`,
     `To: ${to}`,
-    `Subject: ${subject}`,
+    `Subject: =?UTF-8?B?${Buffer.from(subject).toString('base64')}?=`,
+    ...(inReplyTo ? [`In-Reply-To: ${inReplyTo}`, `References: ${inReplyTo}`] : []),
     'MIME-Version: 1.0',
     'Content-Type: text/html; charset=utf-8',
     '',

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { recordName, recordText } from '../record-validation';
-import { ProductInterestIdSchema } from '@leadcrm/shared';
+import { ProductInterestIdSchema, ClosedWonConfirmationSchema } from '@leadcrm/shared';
 
 // ID field helper — accepts any non-empty string (UUID, CUID, or custom).
 // Format validation is not a business rule; referential integrity is enforced by the DB.
@@ -47,6 +47,7 @@ export const DealHandoffSchema = z.object({
 });
 
 export const MoveDealStageSchema = z.object({
+  confirmation: ClosedWonConfirmationSchema.optional(),
   stageId:    id(),
   note:       z.string().optional(),
   lostReason: z.string().trim().max(2000).optional(),
