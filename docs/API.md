@@ -47,7 +47,6 @@ All paths are relative to /api/v1. See [authentication and onboarding](authentic
 | PATCH | /auth/profile | Update only the authenticated user's firstName, lastName, phone, jobTitle, department; returns the canonical user |
 | POST | /auth/profile/avatar | Authenticated raw JPEG/PNG/WebP body, maximum 5 MB; stores a normalized 512×512 WebP in private Supabase Storage and returns the canonical user |
 | GET | /auth/profile/avatar/:avatarId | Authenticated retrieval of the current user's saved avatar; private, uncached response |
-| PATCH | /auth/environment | Persist the authenticated tenant user's Sandbox/Live preference; see [CRM environments](crm-environments.md) |
 | POST | /auth/logout | Revoke session and expire cookie |
 | POST | /auth/change-password | Use authenticated session, store strong password, clear first-login flag and revoke other sessions |
 | POST | /auth/forgot-password | Request password recovery |
@@ -167,7 +166,7 @@ Execution accepts `{ fileName, rows }`, with 1–5000 rows, each containing a un
 Optional fields: `value`, `priority`, `expectedCloseDate`, `account`, `contact`,
 `assignedUser`, `description`. Pipelines/stages/accounts resolve by exact name or
 ID; contacts/assignees resolve by email or ID. Ambiguous matches fail the row.
-Relationships must belong to the authenticated tenant and applicable CRM environment.
+Relationships must belong to the authenticated tenant.
 Valid rows write `Deal` and optional `ContactDeal`; all rows receive a saved
 `DealImportResult` under `DealImport`. See [verification report](settings-team-deal-import-verification.md).
 

@@ -1,6 +1,5 @@
 import type { ColumnDefinition } from "../types/preferences";
 import { z } from "zod";
-import type { CrmEnvironment } from "./environment.contract";
 
 export const TASK_STATUSES = [
   "pending",
@@ -152,7 +151,6 @@ export interface TaskPerson {
 export interface TaskRecord extends TaskAssociations {
   id: string;
   tenantId: string;
-  environment?: CrmEnvironment;
   title: string;
   description: string;
   status: TaskStatus;

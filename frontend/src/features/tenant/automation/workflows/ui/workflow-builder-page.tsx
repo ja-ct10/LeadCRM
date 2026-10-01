@@ -47,7 +47,7 @@ export default function WorkflowBuilderPage() {
     createdId.current = undefined;
     Promise.all([
       getWorkflowMetadata(
-        `${tenant.id}:${user?.id}:${user?.activeEnvironment}`,
+        `${tenant.id}:${user?.id}`,
       ),
       workflowsApi.options(),
       id ? workflowsApi.get(id) : Promise.resolve(null),
@@ -96,7 +96,6 @@ export default function WorkflowBuilderPage() {
   }, [
     tenant?.id,
     user?.id,
-    user?.activeEnvironment,
     id,
     recipe,
     canView,
@@ -122,7 +121,7 @@ export default function WorkflowBuilderPage() {
     );
   return (
     <WorkflowBuilder
-      key={`${tenant?.id}:${user?.activeEnvironment}:${id ?? 'new'}:${retry}`}
+      key={`${tenant?.id}:${id ?? 'new'}:${retry}`}
       {...loaded}
       workflowId={id}
       canActivate={canEdit}

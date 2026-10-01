@@ -5,7 +5,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const base = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const output = process.env.TEST_OUTPUT_DIR;
-const user = { id: 'test-user', tenantId: 'test-tenant', role: 'Client Admin', firstName: 'Test', lastName: 'User', email: 'test@example.com', status: 'ACTIVE', tenantStatus: 'ACTIVE', tenantName: 'Test CRM', activeEnvironment: 'SANDBOX', onboardingCompletedAt: '2026-01-01' };
+const user = { id: 'test-user', tenantId: 'test-tenant', role: 'Client Admin', firstName: 'Test', lastName: 'User', email: 'test@example.com', status: 'ACTIVE', tenantStatus: 'ACTIVE', tenantName: 'Test CRM', onboardingCompletedAt: '2026-01-01' };
 const organization = { id: user.tenantId, name: 'Test CRM', industry: 'Software', email: 'test@example.com', phone: '+63281233488', domain: 'example.com', address: 'Manila' };
 const forms = ['published', 'draft'].map((status, i) => ({ id: `form-${i}`, tenantId: user.tenantId, name: i ? 'Draft form' : 'Contact Us', status, fields: [], design: {}, settings: {}, revision: 1, publishedVersion: i ? 0 : 1, createdAt: '2026-01-01', updatedAt: '2026-01-01' }));
 async function fixtures(page) {

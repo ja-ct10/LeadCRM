@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { FormDefinitionSchema, PublicSubmissionSchema, validateFormValues, withProductOptions } from '@leadcrm/shared';
 import type { PublicFormDefinition } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
-import { environmentContext } from '../../../core/environment/environment-context';
+import { tenantContext } from '../../../core/tenant/tenant-context';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 import { sendMail } from '../../../shared/services/email.service';
 import { normalizePhone } from '../../crm/duplicate-detection/duplicate-detection.service';
@@ -25,10 +25,10 @@ export async function submitPublicForm(publicId: string, body: unknown) {
   if (input.website) throw new ValidationError('Unable to accept submission.');
   const form = await prisma.marketingForm.findFirst({ where: publicWhere(publicId) });
   if (!form) throw new NotFoundError('Form');
-  const scope = { tenantId: form.tenantId, environment: form.environment };
+  const scope = { tenantId: form.tenantId };
   // Serializable predicate reads prevent simultaneous inquiries creating duplicate people,
   // including submissions arriving through different forms in this dataset.
-  return environmentContext.run(scope, async () => {
+  return tenantContext.run(scope, async () => {
     for (let attempt = 0; attempt < 4; attempt++) {
       try {
         const accepted = await prisma.$transaction(async tx => {

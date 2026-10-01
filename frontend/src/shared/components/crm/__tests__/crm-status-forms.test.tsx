@@ -26,12 +26,15 @@ it.each(CRM_STATUSES)('submits the New Lead side panel with %s and both selected
   render(<LeadFormSheet isOpen onClose={() => {}} onSave={data => submitted(toBackendCreateContact(data))} />);
   fireEvent.change(screen.getByLabelText(/First Name/), { target: { value: 'Testing' } });
   fireEvent.change(screen.getByLabelText(/Last Name/), { target: { value: 'Test' } });
+  fireEvent.change(screen.getByLabelText(/Email/), { target: { value: 'lead@example.test' } });
   const select = screen.getByLabelText('Status') as HTMLSelectElement;
   expect(select.value).toBe('Warm');
   expect(Array.from(select.options).map(option => option.value)).toEqual(CRM_STATUSES);
   fireEvent.change(select, { target: { value: status } });
+  fireEvent.click(screen.getByRole('button', { name: 'Product Interest' }));
   fireEvent.click(screen.getByRole('checkbox', { name: 'Smart Lock' }));
   fireEvent.click(screen.getByRole('checkbox', { name: 'Biometrics' }));
+  fireEvent.keyDown(screen.getByRole('group', { name: 'Product interests' }), { key: 'Escape' });
   fireEvent.click(screen.getByRole('button', { name: 'Create Lead' }));
   await waitFor(() => expect(submitted).toHaveBeenCalledOnce());
   expect(submitted.mock.calls[0][0]).toMatchObject({ status, productInterest: ids });
@@ -43,6 +46,7 @@ it.each(CRM_STATUSES)('creates and edits Contacts with canonical %s', async stat
   const created = render(<ContactFormSheet isOpen onClose={() => {}} onSave={data => { void contactsV2Api.create(data); }} />);
   fireEvent.change(screen.getByLabelText(/First Name/), { target: { value: 'Testing' } });
   fireEvent.change(screen.getByLabelText(/Last Name/), { target: { value: 'Contact' } });
+  fireEvent.change(screen.getByLabelText(/Email/), { target: { value: 'contact@example.test' } });
   const select = screen.getByLabelText('Status') as HTMLSelectElement;
   expect(select.value).toBe('Warm');
   expect(Array.from(select.options).map(option => option.value)).toEqual(CRM_STATUSES);
@@ -50,7 +54,7 @@ it.each(CRM_STATUSES)('creates and edits Contacts with canonical %s', async stat
   fireEvent.click(screen.getByRole('button', { name: 'Create Contact' }));
   await waitFor(() => expect(transport.post).toHaveBeenCalledWith('/crm/contacts', expect.objectContaining({ status })));
   created.unmount();
-  render(<ContactFormSheet isOpen initialData={{ id: 'contact', tenantId: 'tenant', createdAt: '2026-09-30T00:00:00Z', firstName: 'Testing', lastName: 'Contact', status: status.toUpperCase() }} onClose={() => {}} onSave={data => { void contactsV2Api.update('contact', data); }} />);
+  render(<ContactFormSheet isOpen initialData={{ id: 'contact', tenantId: 'tenant', createdAt: '2026-09-30T00:00:00Z', firstName: 'Testing', lastName: 'Contact', email: 'contact@example.test', status: status.toUpperCase() }} onClose={() => {}} onSave={data => { void contactsV2Api.update('contact', data); }} />);
   expect((screen.getByLabelText('Status') as HTMLSelectElement).value).toBe(status);
   fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
   await waitFor(() => expect(transport.put).toHaveBeenCalledWith('/crm/contacts/contact', expect.objectContaining({ status })));

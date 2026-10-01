@@ -9,7 +9,7 @@ import { clearPageCache } from '@/shared/cache/page-cache';
 const push = vi.fn();
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { id: 'user', activeEnvironment: 'PRODUCTION' }, userCan: () => true }) }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { id: 'user', }, userCan: () => true }) }));
 vi.mock('./workflow-execution-log-modal', () => ({ WorkflowExecutionLogModal: () => <div>Run history</div> }));
 vi.mock('@/shared/services/workflows.api', () => ({
   getWorkflowMetadata: async () => ({ triggers: WORKFLOW_TRIGGERS, actions: [] }),

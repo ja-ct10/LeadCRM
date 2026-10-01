@@ -16,22 +16,6 @@ export {
   saveOnboardingWorkspace, completeOAuthProfile,
 } from './onboarding.controller';
 
-/**
- * GET /api/v1/auth/sandbox-info
- * Returns sandbox configuration for development/testing.
- * Public endpoint — no authentication required.
- */
-export async function getSandboxInfo(req: Request, res: Response): Promise<void> {
-  // Sandbox mode was Resend-specific — Gmail API sends to any address without restrictions.
-  res.json({
-    success: true,
-    data: {
-      isSandboxMode: false,
-      allowedEmails: [],
-      isDevelopment: process.env.NODE_ENV !== 'production',
-    },
-  });
-}
 
 /**
  * GET /api/v1/auth/check-email?email=...

@@ -37,7 +37,7 @@ export function getAvailableActions(): ActionDefinition[] {
       dueDaysFromNow: { type: 'number', label: 'Due in days', required: false },
       priority: { type: 'select', label: 'Priority', required: false, options: ['Low', 'Medium', 'High'] },
     } },
-    { type: 'send_email', label: 'Send email', description: 'Send a template through a connected Gmail account. External sending is blocked in Sandbox.', entities: ['lead', 'contact'], configSchema: {
+    { type: 'send_email', label: 'Send email', description: 'Send a template through a connected Gmail account.', entities: ['lead', 'contact'], configSchema: {
       templateId: { type: 'template', label: 'Email template (optional with subject and message)', required: false },
       subject: { type: 'string', label: 'Subject (overrides template)', required: false }, body: { type: 'string', label: 'Message (overrides template)', required: false }, senderUserId: { type: 'user', label: 'Connected Gmail sender', required: true },
     } },

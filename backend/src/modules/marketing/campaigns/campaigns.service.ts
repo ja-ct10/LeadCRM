@@ -83,7 +83,7 @@ async function prepareCampaign(id: string, tenantId: string) {
     const definition = await audienceDefinition(tenantId, campaign.targetAudienceId, campaign.audienceSource, tx);
     const resolved = await resolveAudience(tenantId, definition, tx);
     const eligible = resolved.records.filter(r => !r.reason);
-    if (!eligible.length) throw new AppError('No eligible recipients. Check audience exclusions and the Sandbox email allowlist.', 400);
+    if (!eligible.length) throw new AppError('No eligible recipients. Check audience exclusions.', 400);
     const limit = Number(process.env.BREVO_DAILY_EMAIL_LIMIT || 300);
     if (!Number.isSafeInteger(limit) || limit < 1) throw new AppError('Campaign daily limit is not configured correctly.', 503);
     const day = new Date().toISOString().slice(0, 10);

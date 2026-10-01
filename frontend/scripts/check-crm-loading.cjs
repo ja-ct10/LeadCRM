@@ -9,7 +9,7 @@ const path = require('node:path');
 const base = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const output = process.env.TEST_OUTPUT_DIR;
 const widths = [320, 375, 768, 1440];
-const user = { id: 'test-user', tenantId: 'test-tenant', role: 'Client Admin', firstName: 'Test', lastName: 'User', email: 'test@example.com', status: 'ACTIVE', tenantStatus: 'ACTIVE', tenantName: 'Test CRM', activeEnvironment: 'SANDBOX', onboardingCompletedAt: '2026-01-01' };
+const user = { id: 'test-user', tenantId: 'test-tenant', role: 'Client Admin', firstName: 'Test', lastName: 'User', email: 'test@example.com', status: 'ACTIVE', tenantStatus: 'ACTIVE', tenantName: 'Test CRM', onboardingCompletedAt: '2026-01-01' };
 const rows = module => [{ id: 'test-row', tenantId: user.tenantId, name: 'Fixture Account', firstName: 'Fixture', lastName: 'Person', leadPerson: 'Fixture Person', contactPerson: 'Fixture Person', displayName: 'Fixture Person', status: 'WARM', email: 'fixture@example.com', createdAt: '2026-01-01', isArchived: false }];
 const list = data => ({ success: true, data, meta: { total: data.length, page: 1, pageSize: 25, limit: 100, totalPages: 1, hasMore: false } });
 const campaigns = ['SENT', 'FAILED', 'DRAFT'].map((status, i) => ({ id: `campaign-${i}`, name: `Fixture ${status}`, status, type: i === 1 ? 'SMS' : 'EMAIL', audienceSource: 'LEADS', createdAt: '2026-01-01', sentCount: 2, openedCount: 1, clickedCount: 0, isArchived: false }));

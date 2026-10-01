@@ -6,7 +6,7 @@ import { issueAuthSession } from '../auth-session';
 import app from '../../../app';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
-const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_environment_test_\d+$/.test(url.pathname);
+const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_account_test_\d+$/.test(url.pathname);
 describe.skipIf(!disposable)('profile and sorting persistence through authenticated HTTP', () => {
   let server: Server, storage: Server, base: string, tenantId: string, userId: string, token: string;
   const objects = new Map<string, Buffer>();
@@ -95,11 +95,10 @@ describe.skipIf(!disposable)('profile and sorting persistence through authentica
     expect((await response.json()).error).toContain('5 MB');
     expect(objects.size).toBe(1);
   });
-  it('sorts all seven lead columns across server pages with filters, search and environment isolation', async () => {
+  it('sorts all seven lead columns across server pages with filters, search without a dataset selection', async () => {
     for (const [index, name] of ['zulu', 'Alpha', 'beta'].entries()) {
-      await prisma.lead.create({ data: { tenantId, firstName: name, lastName: 'Sort', email: `${name}@test.example`, phone: String([300, 100, 200][index]), companyName: name, status: ['WARM', 'COLD', 'HOT'][index], source: name, createdAt: new Date(`2026-0${[3, 1, 2][index]}-01`), environment: 'SANDBOX' } });
+      await prisma.lead.create({ data: { tenantId, firstName: name, lastName: 'Sort', email: `${name}@test.example`, phone: String([300, 100, 200][index]), companyName: name, status: ['WARM', 'COLD', 'HOT'][index], source: name, createdAt: new Date(`2026-0${[3, 1, 2][index]}-01`), } });
     }
-    await prisma.lead.create({ data: { tenantId, firstName: 'AAA Live', lastName: 'Sort', environment: 'PRODUCTION' } });
     for (const field of ['firstName', 'email', 'phone', 'companyName', 'status', 'createdAt', 'source']) {
       for (const [direction, expected] of [['asc', ['Alpha', 'beta', 'zulu']], ['desc', ['zulu', 'beta', 'Alpha']]] as const) {
         const rows: string[] = [];
@@ -113,12 +112,9 @@ describe.skipIf(!disposable)('profile and sorting persistence through authentica
     }
     const filtered = await request('/crm/leads?sort=firstName:asc&filter[source]=equals:beta');
     expect(filtered.body.data.map((row: any) => row.firstName)).toEqual(['beta']);
-    expect((await request('/auth/environment', 'PATCH', { environment: 'PRODUCTION' })).status).toBe(200);
-    expect((await request('/auth/me')).body.data.user.activeEnvironment).toBe('PRODUCTION');
-    expect((await request('/crm/leads?sort=firstName:asc')).body.data.map((row: any) => row.firstName)).toEqual(['AAA Live']);
   }, 30000);
   it('sorts Accounts on the server before pagination', async () => {
-    for (const name of ['zulu', 'Alpha', 'beta']) await prisma.account.create({ data: { tenantId, name, environment: 'PRODUCTION' } });
+    for (const name of ['zulu', 'Alpha', 'beta']) await prisma.account.create({ data: { tenantId, name, } });
     for (const [direction, expected] of [['asc', ['Alpha', 'beta', 'zulu']], ['desc', ['zulu', 'beta', 'Alpha']]] as const) {
       const names: string[] = [];
       for (const page of [1, 2, 3]) {

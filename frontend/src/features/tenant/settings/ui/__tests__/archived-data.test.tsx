@@ -6,7 +6,7 @@ import { clearPageCache } from '@/shared/cache/page-cache';
 import type { ArchivedRecord } from '@leadcrm/shared';
 
 const state = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant-a' }, user: { id: 'user-a', role: 'Client Admin', activeEnvironment: 'PRODUCTION' } }) }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant-a' }, user: { id: 'user-a', role: 'Client Admin', } }) }));
 vi.mock('sonner', () => ({ toast: { success: state.success, error: state.error } }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ refreshRoles: vi.fn(), refreshPipelines: vi.fn(), refreshDeals: vi.fn(), refreshOrganizations: vi.fn() }) }));
 let rows: ArchivedRecord[];

@@ -124,7 +124,6 @@ export default function ClientManagement(): React.ReactElement {
         size: tenant.companySize ?? '',
         status: String(tenant.status ?? 'ACTIVE').toLowerCase(),
         approvalStep: 'completed',
-        environment: 'production',
         createdAt: new Date(String(tenant.createdAt)).toISOString(),
       })) as Tenant[];
       setServerTenants(apiTenants);
@@ -628,7 +627,6 @@ function AddClientModal({ isOpen, onClose, onCreated }: AddClientModalProps): Re
           email: formData.adminEmail,
           status: String(created.tenant.status ?? 'ACTIVE').toLowerCase(),
           approvalStep: 'completed',
-          environment: 'production',
         } as Tenant);
       }
 

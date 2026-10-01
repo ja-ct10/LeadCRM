@@ -65,7 +65,7 @@ export default function CampaignsPage() {
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [archiving, setArchiving] = useState<Campaign | null>(null);
-  useEffect(() => { setSelected(new Set()); setArchiving(null); }, [user?.tenantId, user?.activeEnvironment, currentPage, pageSize, searchTerm, statusFilter, typeFilter, activeTab]);
+  useEffect(() => { setSelected(new Set()); setArchiving(null); }, [user?.tenantId, currentPage, pageSize, searchTerm, statusFilter, typeFilter, activeTab]);
   const campaigns = serverCampaigns;
   const templates = serverTemplates;
   useEffect(() => { goToPage(1); }, [searchTerm, statusFilter, typeFilter, activeTab]);
@@ -85,7 +85,7 @@ export default function CampaignsPage() {
   const [showVarDropdown, setShowVarDropdown] = useState(false);
 
 
-  useEffect(() => { setShowBuilder(false); setEditingCampaign(undefined); setSelectedCampaignForReport(null); setIsTemplateModalOpen(false); setPreviewTemplate(null); setNewTemplate({ name: '', subject: '', content: '', category: 'Marketing' }); }, [user?.tenantId, user?.activeEnvironment]);
+  useEffect(() => { setShowBuilder(false); setEditingCampaign(undefined); setSelectedCampaignForReport(null); setIsTemplateModalOpen(false); setPreviewTemplate(null); setNewTemplate({ name: '', subject: '', content: '', category: 'Marketing' }); }, [user?.tenantId]);
 
   const getPreviewText = (text: string) => renderEmailVariables(text, { first_name: 'John', last_name: 'Doe', company_name: 'Example Company', sender_name: 'Configured sender', sender_email: 'sender@example.com', contact_number: '+639123456789', status: 'HOT' });
   // ── KPI computations (real data, no hardcoded numbers) ─────────────────────
@@ -176,7 +176,7 @@ export default function CampaignsPage() {
   ];
 
   if (showBuilder) {
-    return <CampaignBuilder key={`${user?.tenantId}:${user?.activeEnvironment}`} initialCampaign={editingCampaign} initialType={builderInitialType} initialContent={builderInitialContent} initialSubject={builderSubject} canSend={canSendCampaign}
+    return <CampaignBuilder key={`${user?.tenantId}`} initialCampaign={editingCampaign} initialType={builderInitialType} initialContent={builderInitialContent} initialSubject={builderSubject} canSend={canSendCampaign}
       onBack={() => { setShowBuilder(false); setEditingCampaign(undefined); setBuilderInitialContent(undefined); setBuilderSubject(''); refetchCampaigns(); }} />;
   }
 

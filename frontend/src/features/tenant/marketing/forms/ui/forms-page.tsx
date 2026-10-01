@@ -20,7 +20,7 @@ export default function FormsPage({ onBuilderActiveChange }: { onBuilderActiveCh
   const [busy, setBusy] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<FormRecord | null>(null);
   const mutationLock = useRef(false);
-  const identity = `${tenant?.id}:${user?.activeEnvironment}`;
+  const identity = `${tenant?.id}`;
   const currentIdentity = useRef(identity);
   currentIdentity.current = identity;
   const [retry, setRetry] = useState(0);
@@ -31,7 +31,7 @@ export default function FormsPage({ onBuilderActiveChange }: { onBuilderActiveCh
       .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to load forms.'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [tenant?.id, user?.activeEnvironment, retry]);
+  }, [tenant?.id, retry]);
   useEffect(() => { onBuilderActiveChange?.(!!active); return () => onBuilderActiveChange?.(false); }, [!!active, onBuilderActiveChange]);
   const mutate = async (work: () => Promise<void>) => {
     if (mutationLock.current) return; mutationLock.current = true; setBusy(true);

@@ -7,7 +7,7 @@ import { readAuthUser } from '../../core/auth/auth-user';
 import { appConfig } from '../../config/app.config';
 import { AppError } from '../../shared/errors/app-error';
 import { validateSession } from '../../core/auth/session.service';
-import { environmentContext } from '../../core/environment/environment-context';
+import { tenantContext } from '../../core/tenant/tenant-context';
 
 export interface AuthenticatedUser {
   userId:   string;
@@ -68,12 +68,7 @@ export async function authMiddleware(req: Request, _res: Response, next: NextFun
     req.authUser = user;
     req.user = { ...payload, role: user.role, email: user.email };
     if (user.role === 'System Admin') return next();
-    const environment = user.activeEnvironment ?? 'SANDBOX';
-    const expected = req.headers['x-crm-environment'];
-    if (expected && expected !== environment && !authPath) {
-      throw new AppError('Your environment changed. Refresh your workspace before continuing.', 409, 'ENVIRONMENT_CHANGED');
-    }
-    environmentContext.run({ tenantId: user.tenantId, environment }, next);
+    tenantContext.run({ tenantId: user.tenantId }, next);
   } catch (err) {
     if (err instanceof jwt.JsonWebTokenError || err instanceof jwt.NotBeforeError) {
       return next(new AppError('Invalid or expired token', 401));

@@ -1,20 +1,18 @@
 import { Prisma, PrismaClient } from '@prisma/client';
-import { environmentContext } from './environment-context';
-import { environmentModels, environmentChildren } from './environment-models';
+import { tenantContext } from './tenant-context';
+import { tenantModels, tenantChildren } from './tenant-models';
 import { AppError } from '../../shared/errors/app-error';
 
 type Args = Record<string, any>;
 const models = new Map(Prisma.dmmf.datamodel.models.map(model => [model.name, model]));
 
 export function scopeWhere(model: string, where: Args = {}): Args {
-  const scope = environmentContext.getStore();
+  const scope = tenantContext.getStore();
   if (!scope) return where;
-  if (environmentModels.has(model)) return { ...where, ...scope };
-  const child = environmentChildren[model];
+  if (tenantModels.has(model)) return { ...where, ...scope };
+  const child = tenantChildren[model];
   if (child) return { ...where, AND: [where.AND ?? {}, { [child.relation]: scope }] };
-  // Security/account events remain visible; new CRM events follow their dataset.
-  if (model === 'AuditLog') return { ...where, tenantId: scope.tenantId,
-    AND: [where.AND ?? {}, { OR: [{ environment: null }, { environment: scope.environment }] }] };
+  if (model === 'AuditLog') return { ...where, tenantId: scope.tenantId };
   return where;
 }
 
@@ -44,16 +42,14 @@ function scopeSelection(model: string, args: Args): void {
 }
 
 function scopeData(model: string, data: Args, create: boolean): void {
-  const scope = environmentContext.getStore()!;
-  if (environmentModels.has(model)) {
-    if (create) data.environment = scope.environment;
-    else if ('environment' in data || 'tenantId' in data || 'tenant' in data) {
-      throw new AppError('Record environment and tenant cannot be changed.', 400);
+  const scope = tenantContext.getStore()!;
+  if (tenantModels.has(model)) {
+    if (!create && ('tenantId' in data || 'tenant' in data)) {
+      throw new AppError('Record tenant cannot be changed.', 400);
     }
     if (create && !data.tenant) data.tenantId = scope.tenantId;
     if (create && data.tenant) data.tenant = { connect: { id: scope.tenantId } };
   }
-  if (model === 'AuditLog' && create) data.environment = ['auth', 'admin', 'system'].includes(data.category) ? null : scope.environment;
   for (const field of models.get(model)?.fields ?? []) {
     const nested = data[field.name];
     if (field.kind !== 'object' || !nested) continue;
@@ -64,7 +60,7 @@ function scopeData(model: string, data: Args, create: boolean): void {
         : scopeWhere(field.type, nested[operation]);
     }
     // Shared identity parents must not be used to mutate operational collections.
-    if (!environmentModels.has(model) && (environmentModels.has(field.type) || environmentChildren[field.type])) {
+    if (!tenantModels.has(model) && (tenantModels.has(field.type) || tenantChildren[field.type])) {
       throw new AppError('Change CRM records through their CRM endpoints.', 400);
     }
     for (const action of ['create', 'update', 'upsert', 'connectOrCreate', 'createMany', 'updateMany']) {
@@ -86,9 +82,9 @@ function scopeData(model: string, data: Args, create: boolean): void {
   }
 }
 
-export function installEnvironmentScoping(prisma: PrismaClient): void {
+export function installTenantScoping(prisma: PrismaClient): void {
   prisma.$use(async (params, next) => {
-    if (!environmentContext.getStore()) return next(params); // platform operations / explicit background discovery
+    if (!tenantContext.getStore()) return next(params); // platform operations / explicit background discovery
     if (!params.model) throw new AppError('Raw database operations are not allowed in CRM requests.', 403);
     const model = params.model;
     params.args ??= {};
@@ -105,7 +101,7 @@ export function installEnvironmentScoping(prisma: PrismaClient): void {
       scopeData(model, args.update, false);
     }
     // Child-only tables inherit scope from their parent, without redundant columns.
-    const child = environmentChildren[model];
+    const child = tenantChildren[model];
     if (child && (args.data || args.create || args.update)) {
       const relation = models.get(model)!.fields.find(f => f.name === child.relation)!;
       const fk = relation.relationFromFields![0];

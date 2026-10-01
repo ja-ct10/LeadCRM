@@ -12,9 +12,6 @@ import { MOCK_USERS, MOCK_TENANTS } from './mockData';
 import { authApi } from '@/shared/services/auth.api';
 import { rolesApi } from '@/shared/services/roles.api';
 import { clearPageCache }         from '@/shared/cache/page-cache';
-import { beginEnvironmentSwitch, endEnvironmentSwitch, setTransportEnvironment, environmentSnapshot } from '@/lib/api/environment-transport';
-import type { CrmEnvironment } from '@leadcrm/shared';
-import { USE_MOCK_DATA } from '@/lib/config';
 
 // When true, auth calls hit the mock localStorage data instead of the backend.
 // Set NEXT_PUBLIC_USE_MOCK_AUTH=false in .env.local to use the real API.
@@ -80,8 +77,6 @@ export function buildTenantFromApiUser(apiUser: Record<string, unknown>): Tenant
 // ─── Context interface ────────────────────────────────────────────────────────
 
 interface AuthContextType {
-  switchEnvironment: (environment: CrmEnvironment) => Promise<void>;
-  isSwitchingEnvironment: boolean;
   user: User | null;
   tenant: Tenant | null;
   isLoading: boolean;
@@ -90,7 +85,7 @@ interface AuthContextType {
   retryAuthInit: () => Promise<void>;
   refreshUser: () => Promise<void>;
   applyOrganizationSettings: (settings: import('@leadcrm/shared').OrganizationSettings) => void;
-  applyAuthUser: (user: AuthUser, expectedUserId?: string, preserveEnvironment?: boolean) => void;
+  applyAuthUser: (user: AuthUser, expectedUserId?: string) => void;
   login: (email: string, password?: string) => Promise<boolean>;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
@@ -113,8 +108,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [tenant, setTenant]   = useState<Tenant | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [isSwitchingEnvironment, setIsSwitchingEnvironment] = useState(false);
-  const switchingEnvironment = useRef(false);
   const [permissions, setPermissions]           = useState<ResolvedPermissions>({});
   const [isPermissionsLoaded, setIsPermissionsLoaded] = useState(false);
 
@@ -131,14 +124,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(current => current?.tenantId === settings.id ? { ...current, tenantName: settings.name, industry: settings.industry } : current);
   }, []);
 
-  const applyAuthUser = useCallback((apiUser: AuthUser, expectedUserId?: string, preserveEnvironment = false) => {
+  const applyAuthUser = useCallback((apiUser: AuthUser, expectedUserId?: string) => {
     if (expectedUserId && activeUserId.current !== expectedUserId) return;
-    // Profile responses cannot undo a concurrent, confirmed environment switch.
-    if (preserveEnvironment) apiUser = { ...apiUser, activeEnvironment: environmentSnapshot().environment };
     requestGeneration.current += 1;
-    const environment = apiUser.role === 'System Admin' ? null : apiUser.activeEnvironment ?? 'SANDBOX';
-    if (environmentSnapshot().environment !== environment) clearPageCache();
-    setTransportEnvironment(environment);
     activeUserId.current = apiUser.id;
     setUser({
       ...apiUser,
@@ -152,42 +140,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthError(null);
     setIsLoading(false);
   }, []);
-
-  const switchEnvironment = async (environment: CrmEnvironment): Promise<void> => {
-    if (switchingEnvironment.current || !user || user.role === 'System Admin' || environment === user.activeEnvironment) return;
-    // Demo stores contain a single legacy dataset; never label it as isolated Live data.
-    if (USE_MOCK_AUTH || USE_MOCK_DATA) throw new Error('Environment switching requires the connected CRM backend. Disable mock mode.');
-    switchingEnvironment.current = true;
-    setIsSwitchingEnvironment(true);
-    const expectedUser = user.id;
-    const commit = (value: CrmEnvironment) => {
-      if (activeUserId.current !== expectedUser) return;
-      requestGeneration.current += 1;
-      clearPageCache();
-      setTransportEnvironment(value);
-      setUser(current => current?.id === expectedUser ? { ...current, activeEnvironment: value } : current);
-    };
-    try {
-      await beginEnvironmentSwitch();
-      const response = await authApi.changeEnvironment(environment);
-      commit(response.data.environment);
-    } catch (error) {
-      // A lost response may follow a committed update. Reconcile only ambiguous failures.
-      const status = (error as { status?: number })?.status;
-      if (!status || status >= 500) {
-        const restored = await authApi.me().catch(() => null);
-        if (restored?.data.user.id === expectedUser && restored.data.user.activeEnvironment === environment) {
-          commit(environment);
-          return;
-        }
-      }
-      throw error;
-    } finally {
-      endEnvironmentSwitch();
-      switchingEnvironment.current = false;
-      setIsSwitchingEnvironment(false);
-    }
-  };
 
   const restoreSession = async (): Promise<void> => {
     const generation = ++requestGeneration.current;
@@ -354,7 +306,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setUser(null);
     setTenant(null);
-    setTransportEnvironment(null);
     setAuthError(null);
     activeUserId.current = null;
     permissionGeneration.current += 1;
@@ -439,13 +390,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (USE_MOCK_AUTH) throw new Error('Profile editing requires the connected backend.');
     const expectedUserId = user.id;
     const response = await authApi.updateProfile(profileData);
-    applyAuthUser(response.data.user, expectedUserId, true);
+    applyAuthUser(response.data.user, expectedUserId);
   };
 
   return (
     <AuthContext.Provider value={{
       user, tenant, isLoading, authError, retryAuthInit, refreshUser, applyAuthUser, applyOrganizationSettings,
-      switchEnvironment, isSwitchingEnvironment,
       login, loginWithGoogle, logout, requestPasswordReset, confirmPasswordReset,
       switchRole, updateProfile, switchDemoAccount, permissions, isPermissionsLoaded,
       userCan, refreshPermissions, restoreSession,

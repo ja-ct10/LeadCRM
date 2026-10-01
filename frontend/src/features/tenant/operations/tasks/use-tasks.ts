@@ -14,7 +14,7 @@ export function useTasks(query: TaskListQuery = {}, preserveOnRefresh = false) {
     refreshTasks();
   }, [refreshTasks]);
   const queryKey = JSON.stringify(query);
-  const identity = `${tenant?.id}:${user?.id}:${user?.activeEnvironment}:${canRead}`;
+  const identity = `${tenant?.id}:${user?.id}:${canRead}`;
   const key = `${identity}:${queryKey}:${tasksRevision}`;
   const [result, setResult] = useState<{
     key: string;

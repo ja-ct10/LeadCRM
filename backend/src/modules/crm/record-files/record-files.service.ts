@@ -31,7 +31,7 @@ export async function listFiles(module: FileModule, id: string, tenantId: string
   return files.map(file => metadata(file, module, id));
 }
 export async function uploadFile(module: FileModule, id: string, tenantId: string, userId: string, input: unknown, bytes: Buffer) {
-  const record = await requireRecord(module, id, tenantId);
+  await requireRecord(module, id, tenantId);
   const submitted = UploadMetadataSchema.parse(input);
   const extension = submitted.name.split('.').pop()?.toLowerCase();
   const inferred: Record<string, string> = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', txt: 'text/plain', csv: 'text/csv', zip: 'application/zip', doc: 'application/msword', xls: 'application/vnd.ms-excel', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
@@ -50,12 +50,12 @@ export async function uploadFile(module: FileModule, id: string, tenantId: strin
   if (!valid) throw new AppError('File contents do not match the selected file type.', 400);
   const config = storage();
   const fileId = randomUUID();
-  const key = `${encodeURIComponent(tenantId)}/${record.environment}/${module}/${encodeURIComponent(id)}/${fileId}`;
+  const key = `${encodeURIComponent(tenantId)}/${module}/${encodeURIComponent(id)}/${fileId}`;
   const response = await fetch(`${config.base}/${config.bucket}/${key}`, { method: 'POST', headers: { ...config.headers, 'Content-Type': data.type, 'x-upsert': 'false' }, body: new Uint8Array(bytes), signal: AbortSignal.timeout(30000) });
   if (!response.ok) throw new AppError('Unable to upload file. Please try again.', 502);
   try {
     const file = await prisma.$transaction(async tx => {
-      const saved = await tx.recordFile.create({ data: { id: fileId, tenantId, environment: record.environment, [links[module]]: id, uploadedById: userId, name: data.name, size: bytes.length, type: data.type, objectKey: key }, include: actor });
+      const saved = await tx.recordFile.create({ data: { id: fileId, tenantId, [links[module]]: id, uploadedById: userId, name: data.name, size: bytes.length, type: data.type, objectKey: key }, include: actor });
       await tx.activity.create({ data: { tenantId, createdById: userId, [links[module]]: id, type: 'file_upload', title: `Uploaded ${data.name}`, metadata: { fileId } } });
       return saved;
     });

@@ -1,6 +1,5 @@
-import { ChangeEnvironmentSchema, UpdateSelfProfileSchema, AVATAR_MAX_BYTES } from '@leadcrm/shared';
-import { tenantMiddleware, workspaceReadyMiddleware } from '../middleware/tenant.middleware';
-import { updateEnvironment } from '../../core/environment/environment.controller';
+import { UpdateSelfProfileSchema, AVATAR_MAX_BYTES } from '@leadcrm/shared';
+import { tenantMiddleware } from '../middleware/tenant.middleware';
 import { patchProfile, uploadAvatar, getAvatar } from '../../core/auth/profile.controller';
 import { Router, raw } from 'express';
 import { AppError } from '../../shared/errors/app-error';
@@ -22,7 +21,6 @@ router.post('/profile/avatar', authMiddleware, tenantMiddleware, (req, res, next
     : error));
 }, uploadAvatar);
 router.get('/profile/avatar/:avatarId', authMiddleware, tenantMiddleware, getAvatar);
-router.patch('/environment', authMiddleware, tenantMiddleware, workspaceReadyMiddleware, validate(ChangeEnvironmentSchema), updateEnvironment);
 router.post('/invitations/accept', authRateLimiter, validate(InvitationAcceptSchema), authController.acceptInvitation);
 router.post('/login', authRateLimiter, validate(LoginSchema), authController.login);
 router.post('/logout', authController.logout);

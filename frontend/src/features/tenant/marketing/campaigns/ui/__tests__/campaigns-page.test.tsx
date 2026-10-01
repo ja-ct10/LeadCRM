@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 const mocks = vi.hoisted(() => ({ get: vi.fn(), create: vi.fn(), archive: vi.fn(), refresh: vi.fn(), permitted: true, initial: false, refreshing: false }));
 const campaign = { id: 'campaign', name: 'Saved campaign', type: 'Email', status: 'sent', targetAudience: 'All Leads', sentCount: 4, openedCount: 2, clickedCount: 1, createdAt: '2026-09-30' };
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { tenantId: 'tenant', activeEnvironment: 'PRODUCTION' } }) }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { tenantId: 'tenant', } }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => mocks.permitted }));
 vi.mock('../../hooks/use-campaigns-data', () => ({ useCampaignsData: () => ({ campaigns: [campaign], total: 1, templates: [], metrics: { activeCampaigns: 1, sent: 4, opened: 2, clicked: 1 }, isInitialLoad: mocks.initial, isRefreshing: mocks.refreshing, refetch: mocks.refresh }) }));
 vi.mock('@/shared/services/campaigns.api', () => ({ campaignsApi: { get: mocks.get, create: mocks.create, archive: mocks.archive } }));

@@ -22,7 +22,6 @@ describe('Forms authoritative validation', () => {
   it('whitelists envelope and UTM keys with bounded lengths', () => {
     const body = { version: 1, values: valid };
     expect(PublicSubmissionSchema.safeParse({ ...body, tenantId: 'evil' }).success).toBe(false);
-    expect(PublicSubmissionSchema.safeParse({ ...body, environment: 'PRODUCTION' }).success).toBe(false);
     expect(PublicSubmissionSchema.safeParse({ ...body, tracking: { arbitrary: 'x' } }).success).toBe(false);
     expect(PublicSubmissionSchema.safeParse({ ...body, tracking: { utm_source: 'x'.repeat(201) } }).success).toBe(false);
   });

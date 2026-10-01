@@ -1,5 +1,4 @@
 import { EmailSubjectSchema, type WorkflowAction } from '@leadcrm/shared';
-import { environmentContext } from '../../../core/environment/environment-context';
 import { AppError } from '../../../shared/errors/app-error';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { sendEmail } from '../../../integrations/gmail/gmail.service';
@@ -68,7 +67,6 @@ function render(content: string, context: Record<string, unknown>, entity: strin
   return content.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_, key: string) => (html ? String(values[key] ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]!)) : String(values[key] ?? '').replace(/[\x00-\x1f\x7f]/g, ' ')));
 }
 async function deliverEmail(action: WorkflowAction, context: Record<string, unknown>, tenantId: string): Promise<Record<string, unknown>> {
-  if (environmentContext.getStore()?.environment !== 'PRODUCTION') throw new ValidationError('External workflow email is disabled in Sandbox. Use Test workflow to validate safely.');
   const entity = actionEntity(context);
   const senderId = String(action.config.senderUserId);
   const [template, sender] = await Promise.all([action.config.templateId ? repo.findTemplate(String(action.config.templateId), tenantId) : Promise.resolve(null), repo.findSender(senderId, tenantId)]);

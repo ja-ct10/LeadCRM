@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 vi.mock('../../../shared/services/email.service', () => ({ sendMail: vi.fn().mockRejectedValue(new Error('provider unavailable')) }));
 import prisma from '../../../config/database.config';
-import { environmentContext } from '../../../core/environment/environment-context';
+import { tenantContext } from '../../../core/tenant/tenant-context';
 import { issueAuthSession } from '../../../core/auth/auth-session';
 import * as service from './forms.service';
 import { getPublicForm, submitPublicForm } from './public-forms.service';
@@ -14,14 +14,14 @@ const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/lead
 describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
   let tenantId: string, otherTenant: string, userId: string, token: string, denied: string, base: string, server: Server;
   let rejectSubmissionEmail = '';
-  const scoped = <T>(work: () => T, environment: 'SANDBOX' | 'PRODUCTION' = 'PRODUCTION') => environmentContext.run({ tenantId, environment }, work);
+  const scoped = <T>(work: () => T) => tenantContext.run({ tenantId }, work);
   const draft = () => scoped(() => service.createForm(tenantId, userId, { name: 'Contact Us' }));
   const publish = (id: string) => scoped(() => service.publishForm(id, tenantId, userId));
   const productIds: Record<string, string> = {};
   const values = (email = `${randomUUID()}@example.com`) => ({ firstName: 'Test', lastName: 'Visitor', email, productInterest: productIds['Smart Lock'], address: 'Makati' });
   const submit = (publicId: string, data = values(), version = 1) => submitPublicForm(publicId, { version, values: data });
   async function request(path: string, method = 'GET', body?: unknown, auth = token) {
-    const r = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: 'Bearer ' + auth, 'X-CRM-Environment': 'PRODUCTION' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    const r = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: 'Bearer ' + auth } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
     return { status: r.status, body: await r.json() };
   }
   beforeAll(async () => {
@@ -34,9 +34,9 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
       const product = await prisma.productInterest.create({ data: { tenantId, name, dealValue: 0 } }); productIds[name] = product.id;
     }
     otherTenant = (await prisma.tenant.create({ data: { name: 'Other', slug: randomUUID() } })).id;
-    const user = await prisma.user.create({ data: { tenantId, firstName: 'Admin', lastName: 'Test', email: 'forms-admin@camxian.com', role: 'Client Admin', mustChangePassword: false, emailVerified: new Date(), activeEnvironment: 'PRODUCTION' } });
+    const user = await prisma.user.create({ data: { tenantId, firstName: 'Admin', lastName: 'Test', email: 'forms-admin@camxian.com', role: 'Client Admin', mustChangePassword: false, emailVerified: new Date(), } });
     userId = user.id; token = (await issueAuthSession(user)).token;
-    const staff = await prisma.user.create({ data: { tenantId, firstName: 'Staff', lastName: 'Test', email: 'forms-staff@camxian.com', role: 'Sales', mustChangePassword: false, emailVerified: new Date(), activeEnvironment: 'PRODUCTION' } });
+    const staff = await prisma.user.create({ data: { tenantId, firstName: 'Staff', lastName: 'Test', email: 'forms-staff@camxian.com', role: 'Sales', mustChangePassword: false, emailVerified: new Date(), } });
     denied = (await issueAuthSession(staff)).token;
     server = app.listen(0); await new Promise<void>(r => server.once('listening', r)); base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1`;
   });
@@ -46,9 +46,6 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     expect((await request('/marketing/forms/' + form.id, 'DELETE', undefined, '')).status).toBe(401);
     expect((await request('/marketing/forms/' + form.id, 'DELETE', undefined, denied)).status).toBe(403);
     await expect(service.deleteForm(form.id, otherTenant, userId)).rejects.toMatchObject({ statusCode: 404 });
-    const sandbox = await scoped(() => service.createForm(tenantId, userId, { name: 'Sandbox' }), 'SANDBOX');
-    expect((await request('/marketing/forms/' + sandbox.id, 'DELETE')).status).toBe(404);
-    expect(await prisma.marketingForm.findUnique({ where: { id: sandbox.id } })).not.toBeNull();
     expect((await request('/marketing/forms/' + form.id, 'DELETE')).status).toBe(200);
     expect(await prisma.marketingForm.findUnique({ where: { id: form.id } })).toBeNull();
     expect((await request('/marketing/forms/' + form.id, 'DELETE')).status).toBe(404);
@@ -159,15 +156,15 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     await prisma.tenant.update({ where: { id: tenantId }, data: { status: 'SUSPENDED' } });
     try { await expect(submit(f.publicId)).rejects.toMatchObject({ statusCode: 404 }); } finally { await prisma.tenant.update({ where: { id: tenantId }, data: { status: 'ACTIVE' } }); }
   });
-  it('isolates tenant and Sandbox identity lookups/writes', async () => {
+  it('isolates tenant identity lookups/writes', async () => {
     const v = values();
     await prisma.lead.create({ data: { tenantId: otherTenant, firstName: 'Other', lastName: 'Person', email: v.email, productInterest: [] } });
-    await prisma.lead.create({ data: { tenantId, environment: 'PRODUCTION', firstName: 'Live', lastName: 'Person', email: v.email, productInterest: [] } });
-    const f = await scoped(() => service.createForm(tenantId, userId, { name: 'Sandbox' }), 'SANDBOX');
-    await scoped(() => service.publishForm(f.id, tenantId, userId), 'SANDBOX'); await submit(f.publicId, v);
-    expect(await prisma.lead.count({ where: { tenantId, environment: 'SANDBOX', email: v.email } })).toBe(1);
-    expect(await prisma.formSubmission.findFirst({ where: { formId: f.id } })).toMatchObject({ tenantId, environment: 'SANDBOX' });
-    await expect(scoped(() => service.getFormById(f.id, tenantId))).rejects.toMatchObject({ statusCode: 404 });
+    await prisma.lead.create({ data: { tenantId, firstName: 'Existing', lastName: 'Person', email: v.email, productInterest: [] } });
+    const f = await scoped(() => service.createForm(tenantId, userId, { name: 'Contact us' }));
+    await scoped(() => service.publishForm(f.id, tenantId, userId)); await submit(f.publicId, v);
+    expect(await prisma.lead.count({ where: { tenantId, email: v.email } })).toBe(1);
+    expect(await prisma.formSubmission.findFirst({ where: { formId: f.id } })).toMatchObject({ tenantId, });
+    expect((await scoped(() => service.getFormById(f.id, tenantId))).id).toBe(f.id);
     await expect(service.getFormById(f.id, otherTenant)).rejects.toMatchObject({ statusCode: 404 });
   });
   it('retains submissions after unpublish and blocks new submissions', async () => {

@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { WorkflowDraftSchema, type WorkflowDraft } from '@leadcrm/shared';
-import { environmentContext } from '../../../core/environment/environment-context';
+import { tenantContext } from '../../../core/tenant/tenant-context';
 import { ValidationError, NotFoundError } from '../../../shared/errors/http-error';
 import * as repo from './workflows.repository';
 import { findTrigger } from '../triggers/trigger-catalog';
@@ -16,8 +16,8 @@ export interface WorkflowFireParams {
   actorId?: string; eventId?: string; context: Record<string, unknown>;
 }
 export async function fireWorkflowTrigger(params: WorkflowFireParams): Promise<void> {
-  const scope = environmentContext.getStore();
-  if (!scope || scope.tenantId !== params.tenantId) throw new ValidationError('A matching CRM environment is required for automation.');
+  const scope = tenantContext.getStore();
+  if (!scope || scope.tenantId !== params.tenantId) throw new ValidationError('A matching CRM tenant context is required for automation.');
   const trigger = findTrigger(params.triggerType);
   if (!trigger) throw new ValidationError('Unsupported workflow trigger.');
   const context = await repo.entityContext(trigger.entity, params.entityId, params.tenantId);

@@ -19,8 +19,7 @@ const user = {
   id: "owner",
   firstName: "Test",
   lastName: "Owner",
-  activeEnvironment: "SANDBOX",
-};
+  };
 const data = {
   ...mocks,
   users: [],

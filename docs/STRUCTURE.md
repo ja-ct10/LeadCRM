@@ -58,7 +58,6 @@ frontend/
 │       └── admin/
 │           ├── dashboard/page.tsx
 │           ├── clients/page.tsx
-│           └── environments/page.tsx
 │
 ├── src/
 │   ├── features/                 ← ALL business feature code

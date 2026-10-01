@@ -7,7 +7,7 @@ import PublicFormPage from './public-form-page';
 import FormsPage from './forms-page';
 import * as service from '../services/forms.service';
 vi.mock('../services/forms.service', () => ({ updateForm: vi.fn(), publishForm: vi.fn(), getFormsByTenant: vi.fn(), createForm: vi.fn(), deleteForm: vi.fn(), unpublishForm: vi.fn(), duplicateForm: vi.fn(), getShareLink: () => 'https://example.com/forms/public', getEmbedCode: () => '<iframe />' }));
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { activeEnvironment: 'PRODUCTION' }, userCan: () => true }) }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { }, userCan: () => true }) }));
 const products = [{ id: '0ff82f9c-48e9-4e1c-8c77-8a30755d704c', name: 'Smart Lock', dealValue: 5000, active: true, createdAt: '', updatedAt: '' }];
 vi.mock('@/shared/hooks/use-product-interests', () => ({ useProductInterests: () => ({ products: [], loading: false, error: '' }) }));
 const form = { ...defaultContactForm(), fields: withProductOptions(defaultContactForm().fields, products), id: 'form', tenantId: 'tenant', publicId: 'public', revision: 0, publishedRevision: null, publishedVersion: 0, status: 'draft' as const, createdAt: '', updatedAt: '' };

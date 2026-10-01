@@ -3,7 +3,7 @@ import { cleanup, renderHook, waitFor } from '@testing-library/react';
 import { useCampaignsData } from '../use-campaigns-data';
 import { campaignsApi } from '@/shared/services/campaigns.api';
 import { clearPageCache } from '@/shared/cache/page-cache';
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { id: 'user', activeEnvironment: 'PRODUCTION' } }) }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { id: 'user', } }) }));
 vi.mock('@/shared/services/campaigns.api', () => ({ campaignsApi: { list: vi.fn(), metrics: async () => ({ data: {} }) } }));
 vi.mock('@/shared/services/templates.api', () => ({ templatesApi: { list: async () => ({ data: [] }) } }));
 beforeEach(() => { clearPageCache(); vi.clearAllMocks(); });

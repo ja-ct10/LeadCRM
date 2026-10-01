@@ -44,7 +44,7 @@ function ProductView({ id }: { id: string }) {
       .catch(e => { if (!controller.signal.aborted) setError(e.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [id, page, pageSize, canViewDeals, user?.tenantId, user?.activeEnvironment]);
+  }, [id, page, pageSize, canViewDeals, user?.tenantId]);
   if (loading) return <div role="status" aria-label="Loading product and Closed Won customers"><DataLoadingSkeleton rowCount={8} columnCount={2} /></div>;
   if (error) return <p role="alert" className="text-destructive">{error}</p>;
   return <div className="space-y-6">
@@ -84,7 +84,7 @@ export function ProductsPage() {
   const [sort, setSort] = useState<SortState | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  useEffect(() => { setSelected(new Set()); setPanel(null); setArchiveIds([]); }, [user?.tenantId, user?.activeEnvironment]);
+  useEffect(() => { setSelected(new Set()); setPanel(null); setArchiveIds([]); }, [user?.tenantId]);
   useEffect(() => { setSelected(new Set()); }, [page, pageSize, search]);
   const filtered = products.filter(product => product.name.toLowerCase().includes(search.toLowerCase())).sort((a, b) => {
     if (!sort) return 0;

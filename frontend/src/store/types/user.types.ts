@@ -22,7 +22,6 @@ export interface RoleDefinition {
 }
 
 export interface User {
-  activeEnvironment?: import('@leadcrm/shared').CrmEnvironment | null;
   id: string;
   tenantId: string;
   firstName: string;
@@ -66,8 +65,6 @@ export interface Tenant {
   address: string;
   status: 'active' | 'pending' | 'suspended' | 'rejected';
   approvalStep: 'basic' | 'requirements' | 'completed';
-  /** Platform resource-monitoring metadata only; CRM selection is User.activeEnvironment. */
-  environment?: 'none' | 'sandbox' | 'production' | 'both';
   createdAt: string;
   timezone?: string;
   currency?: string;

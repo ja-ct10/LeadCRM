@@ -16,7 +16,7 @@ vi.mock("@/store/DataContext", () => {
 });
 vi.mock("@/store/AuthContext", () => ({
   useAuth: () => ({
-    user: { id: "owner", activeEnvironment: "SANDBOX" },
+    user: { id: "owner", },
     tenant: { id: "tenant" },
   }),
 }));

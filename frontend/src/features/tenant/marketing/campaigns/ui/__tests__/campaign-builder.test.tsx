@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 vi.mock('@/shared/services/campaigns.api', () => ({ campaignsApi: { create: vi.fn(), update: vi.fn(), send: vi.fn(), get: vi.fn() } }));
 vi.mock('@/shared/services/audiences.api', () => ({ audiencesApi: { list: vi.fn(), preview: vi.fn(), create: vi.fn() } }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() } }));
-const counts = { matched: 2, eligible: 2, missingEmail: 0, invalidEmail: 0, duplicateEmail: 0, staffEmail: 0, unsubscribed: 0, blocked: 0, inactive: 0, sandboxBlocked: 0 };
+const counts = { matched: 2, eligible: 2, missingEmail: 0, invalidEmail: 0, duplicateEmail: 0, staffEmail: 0, unsubscribed: 0, blocked: 0, inactive: 0, recipientNotAllowed: 0 };
 const audience = { id: 'ac9a6eb7-c05a-4756-8f6b-9d678f62c559', name: 'Customers', source: 'ALL' as const, conditions: [] };
 beforeEach(() => {
   vi.clearAllMocks(); vi.mocked(audiencesApi.list).mockResolvedValue({ success: true, data: [audience] });

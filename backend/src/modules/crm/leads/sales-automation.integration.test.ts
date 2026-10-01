@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 vi.mock('../../../shared/services/email.service', () => ({ sendMail: vi.fn().mockResolvedValue({ submitted: true }) }));
 import prisma from '../../../config/database.config';
-import { environmentContext } from '../../../core/environment/environment-context';
+import { tenantContext } from '../../../core/tenant/tenant-context';
 import { createAssignedLead, createProductDeals, salesTransaction, productConfiguration, salesPipeline } from './lead-automation.service';
 import { moveDealStage } from '../deals/deals.repository';
 import { updateContact } from '../contacts/contacts.repository';
@@ -13,22 +13,22 @@ import { issueAuthSession } from '../../../core/auth/auth-session';
 import app from '../../../app';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
-const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && url.pathname === '/leadcrm_forms_test_2';
+const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && (url.pathname === '/leadcrm_forms_test_2' || /^\/leadcrm_sales_test_\d+$/.test(url.pathname));
 describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
   let tenantId: string, otherTenant: string, adminId: string, agentIds: string[], inactiveId: string, deniedId: string, token: string, deniedToken: string, base: string, server: Server;
-  const scope = <T>(work: () => T, environment: 'SANDBOX' | 'PRODUCTION' = 'PRODUCTION') => environmentContext.run({ tenantId, environment }, work);
+  const scope = <T>(work: () => T) => tenantContext.run({ tenantId }, work);
   const productIds: Record<string, string> = {};
   const create = (products = ['Smart Lock'], extra: Record<string, unknown> = {}) => scope(() => salesTransaction(tx => createAssignedLead(tx, {
     tenantId, firstName: 'Sales', lastName: 'Customer', email: `${randomUUID()}@example.test`, productInterest: products, ...extra,
   }, adminId)));
-  async function request(path: string, method = 'GET', body?: unknown, auth = token, environment = 'PRODUCTION') {
-    const response = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth}`, 'X-CRM-Environment': environment }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+  async function request(path: string, method = 'GET', body?: unknown, auth = token) {
+    const response = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth}` }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
     return { status: response.status, body: await response.json() };
   }
   beforeAll(async () => {
     tenantId = (await prisma.tenant.create({ data: { name: 'Sales automation test', slug: randomUUID(), onboardingCompletedAt: new Date(), onboardingStep: 3 } })).id;
     otherTenant = (await prisma.tenant.create({ data: { name: 'Other sales tenant', slug: randomUUID() } })).id;
-    const admin = await prisma.user.create({ data: { tenantId, firstName: 'Admin', lastName: 'Test', email: 'admin@camxian.com', role: 'Client Admin', activeEnvironment: 'PRODUCTION', mustChangePassword: false } });
+    const admin = await prisma.user.create({ data: { tenantId, firstName: 'Admin', lastName: 'Test', email: 'admin@camxian.com', role: 'Client Admin', mustChangePassword: false } });
     adminId = admin.id; token = (await issueAuthSession(admin)).token;
     const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Eligible custom sales role' } });
     await prisma.rolePermission.createMany({ data: ['contacts', 'deals'].map(module => ({ tenantId, roleId: role.id, module, canView: true, canEdit: true, canCreate: true })) });
@@ -39,7 +39,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
       if (index === 2) inactiveId = agent.id; else agentIds.push(agent.id);
     }
     agentIds.sort();
-    const denied = await prisma.user.create({ data: { tenantId, firstName: 'No', lastName: 'Permissions', email: 'denied@camxian.com', role: 'Viewer', activeEnvironment: 'PRODUCTION', mustChangePassword: false } });
+    const denied = await prisma.user.create({ data: { tenantId, firstName: 'No', lastName: 'Permissions', email: 'denied@camxian.com', role: 'Viewer', mustChangePassword: false } });
     deniedId = denied.id; deniedToken = (await issueAuthSession(denied)).token;
     await prisma.user.create({ data: { tenantId: otherTenant, firstName: 'Foreign', lastName: 'Agent', email: 'foreign@camxian.com', role: 'Client Admin' } });
     for (const name of FORM_PRODUCT_INTERESTS) {
@@ -62,7 +62,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
       expect(deals.find(d => d.productInterests[0] === 'Smart Lock')?.value).toBe(1250.75);
       expect(await prisma.activity.count({ where: { tenantId, leadId: lead.id, type: 'assignment' } })).toBe(1);
     }
-    expect(await prisma.pipeline.count({ where: { tenantId, environment: 'PRODUCTION', name: 'Sales Pipeline' } })).toBe(1);
+    expect(await prisma.pipeline.count({ where: { tenantId, name: 'Sales Pipeline' } })).toBe(1);
   });
   it('deduplicates creation retries and repeated/concurrent product processing', async () => {
     const creationKey = randomUUID();
@@ -120,18 +120,6 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     await expect(scope(() => moveDealStage(secondDeal.id, tenantId, won.id, adminId))).rejects.toThrow('matching records');
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: secondDeal.id } })).stageId).toBe(secondDeal.stageId);
     expect(await prisma.dealStageHistory.count({ where: { dealId: secondDeal.id } })).toBe(0);
-  });
-  it('isolates environment pipelines, contacts and accounts', async () => {
-    const sandbox = await scope(() => salesTransaction(tx => createAssignedLead(tx, { tenantId, firstName: 'Sandbox', lastName: 'Lead', productInterest: ['Smart Lock'], companyName: 'Example Company' }, adminId)), 'SANDBOX');
-    const deal = await prisma.deal.findFirstOrThrow({ where: { leadId: sandbox.id } });
-    expect(deal.environment).toBe('SANDBOX');
-    const won = await prisma.stage.findFirstOrThrow({ where: { pipelineId: deal.pipelineId, isWon: true } });
-    await scope(() => moveDealStage(deal.id, tenantId, won.id, adminId), 'SANDBOX');
-    expect(await prisma.account.count({ where: { tenantId, name: 'Example Company' } })).toBe(2);
-    expect((await request('/crm/deals/' + deal.id)).status).toBe(404);
-    await prisma.user.update({ where: { id: adminId }, data: { activeEnvironment: 'SANDBOX' } });
-    expect((await request('/crm/deals/' + deal.id, 'GET', undefined, token, 'SANDBOX')).status).toBe(200);
-    await prisma.user.update({ where: { id: adminId }, data: { activeEnvironment: 'PRODUCTION' } });
   });
   it('matches formatted phones and company whitespace without duplicating historical records', async () => {
     const company = `  Legacy   Company ${randomUUID()}  `;
@@ -279,7 +267,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     expect((await request('/crm/leads?search=DateBoundary')).body.meta.total).toBe(4);
     for (const filter of ['equals:2026-09-25', 'lte:2026-02-30', 'gte:not-a-date', 'between:2026-09-26,2026-09-25', 'between:2026-09-25', 'gte:', '']) expect((await list(filter)).status).toBe(400);
   });
-  it('looks up Closed Won deals by product IDs and winning stage, with tenant/environment isolation and pagination', async () => {
+  it('looks up Closed Won deals by product IDs and winning stage, with tenant isolation and pagination', async () => {
     const product = await prisma.productInterest.create({ data: { tenantId, name: 'Won lookup product', dealValue: 99.5 } });
     const { pipeline, initial: open } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
     const won = await prisma.stage.findFirstOrThrow({ where: { pipelineId: pipeline.id, isWon: true } });
@@ -289,9 +277,6 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     const plural = await prisma.deal.create({ data: { ...baseDeal, productInterestIds: [product.id], isArchived: true } });
     await prisma.deal.create({ data: { ...baseDeal, stageId: open.id, productInterestIds: [product.id] } });
     await prisma.deal.create({ data: { ...baseDeal, productInterestIds: [], productInterests: [product.name] } });
-    const { pipeline: sandboxPipeline } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)), 'SANDBOX');
-    const sandboxWon = await prisma.stage.findFirstOrThrow({ where: { pipelineId: sandboxPipeline.id, isWon: true } });
-    await prisma.deal.create({ data: { tenantId, environment: 'SANDBOX', pipelineId: sandboxPipeline.id, stageId: sandboxWon.id, title: 'Other environment', productInterestIds: [product.id] } });
     const path = '/administration/product-interests/' + product.id;
     expect((await request(path)).body.data).toMatchObject({ id: product.id, dealValue: 99.5, active: true });
     const response = await request(path + '/closed-won');
@@ -433,7 +418,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     expect(next.initial.id).toBe(initial.id);
   });
 
-  it('persists Deal file history through the shared file service with environment and permission checks', async () => {
+  it('persists Deal file history through the shared file service with tenant and permission checks', async () => {
     const { createServer } = await import('node:http');
     const objects = new Map<string, Buffer>();
     const storage = createServer((req, res) => {
@@ -449,15 +434,14 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     try {
       const { pipeline, initial } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
       const deal = await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: initial.id, title: 'Files' } });
-      const upload = await fetch(`${base}/crm/deals/${deal.id}/files?name=agreement.pdf&type=application%2Fpdf`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/octet-stream', 'X-CRM-Environment': 'PRODUCTION' }, body: '%PDF-1.7 file test' });
+      const upload = await fetch(`${base}/crm/deals/${deal.id}/files?name=agreement.pdf&type=application%2Fpdf`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/octet-stream' }, body: '%PDF-1.7 file test' });
       expect(upload.status).toBe(201);
       const file = (await upload.json()).data;
       expect(await prisma.recordFile.findUnique({ where: { id: file.id } })).toMatchObject({ dealId: deal.id, tenantId, name: 'agreement.pdf' });
       expect((await request(`/crm/deals/${deal.id}/files`)).body.data.map((f: { id: string }) => f.id)).toEqual([file.id]);
-      const downloaded = await fetch(`${base}/crm/deals/${deal.id}/files/${file.id}/download`, { headers: { Authorization: `Bearer ${token}`, 'X-CRM-Environment': 'PRODUCTION' } });
+      const downloaded = await fetch(`${base}/crm/deals/${deal.id}/files/${file.id}/download`, { headers: { Authorization: `Bearer ${token}` } });
       expect(await downloaded.text()).toBe('%PDF-1.7 file test');
       expect((await request(`/crm/deals/${deal.id}/files`, 'GET', undefined, deniedToken)).status).toBe(403);
-      expect((await request(`/crm/deals/${deal.id}/files`, 'GET', undefined, token, 'SANDBOX')).status).toBe(409);
     } finally {
       ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_RECORD_FILES_BUCKET'].forEach((key, i) => { if (old[i] === undefined) delete process.env[key]; else process.env[key] = old[i]; });
       await new Promise<void>(resolve => storage.close(() => resolve()));

@@ -2,16 +2,15 @@ import { beforeAll, afterAll, describe, expect, it, vi } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 import { PrismaClient } from '@prisma/client';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
+import { replayCrmMigrations } from '../../../../tests/replay-crm-migrations';
 
 // Always use an isolated in-memory PostgreSQL database, never DATABASE_URL.
 vi.mock('../../../../config/database.config', async () => {
-  const { installEnvironmentScoping } = await import('../../../../core/environment/environment-prisma');
+  const { installTenantScoping } = await import('../../../../core/tenant/tenant-prisma');
   const client = new PrismaClient({ datasources: { db: { url: process.env.CRM_ARCHIVE_TEST_DATABASE_URL! } } });
-  installEnvironmentScoping(client);
+  installTenantScoping(client);
   return { default: client };
 });
 
@@ -30,25 +29,20 @@ async function call(path: string, method = 'GET', cookie = adminCookie, body?: u
   });
   return { status: response.status, body: await response.json() };
 }
-async function create(module: Module, tenant = tenantId, environment: 'PRODUCTION' | 'SANDBOX' = 'PRODUCTION') {
-  if (module === 'leads') return db.lead.create({ data: { tenantId: tenant, environment, firstName: 'Archived', lastName: 'Lead', status: 'Qualified', productInterest: [] } });
-  if (module === 'contacts') return db.contact.create({ data: { tenantId: tenant, environment, firstName: 'Archived', lastName: 'Contact', status: 'HOT', activeProducts: [], productInterests: [] } });
-  return db.account.create({ data: { tenantId: tenant, environment, name: 'Archived Account', tags: [], productInterests: [], activeProducts: [] } });
+async function create(module: Module, tenant = tenantId) {
+  if (module === 'leads') return db.lead.create({ data: { tenantId: tenant, firstName: 'Archived', lastName: 'Lead', status: 'Qualified', productInterest: [] } });
+  if (module === 'contacts') return db.contact.create({ data: { tenantId: tenant, firstName: 'Archived', lastName: 'Contact', status: 'HOT', activeProducts: [], productInterests: [] } });
+  return db.account.create({ data: { tenantId: tenant, name: 'Archived Account', tags: [], productInterests: [], activeProducts: [] } });
 }
 
 beforeAll(async () => {
   process.env.JWT_SECRET = 'isolated-crm-archive-test-signing-key';
   pg = await PGlite.create();
-  await pg.exec(readFileSync(resolve(__dirname, '../../../../tests/security-baseline.sql'), 'utf8'));
+  const archiveMigration = '20261009000000_lead_archive_state';
+  await replayCrmMigrations(pg, archiveMigration);
   await pg.exec(`INSERT INTO "Tenant" (id,name,slug,"updatedAt") VALUES ('legacy-tenant','Legacy','legacy',NOW());
-    INSERT INTO "Lead" (id,"tenantId","firstName","lastName",status,"updatedAt") VALUES ('${legacyId}','legacy-tenant','Legacy','Archive','Archived',NOW());`);
-  for (const migration of ['20261007000000_add_mfa', '20261008000000_remove_retired_billing_domains', '20261009000000_lead_archive_state', '20261016000000_remove_two_factor_and_obsolete_account_fields']) {
-    await pg.exec(readFileSync(resolve(__dirname, '../../../../../prisma/migrations', migration, 'migration.sql'), 'utf8'));
-  }
-  // This focused integration fixture starts from the security schema baseline,
-  // which intentionally omits the application-history migration tables.
-  await pg.exec('ALTER TABLE \"Lead\" ADD COLUMN \"creationKey\" TEXT; CREATE UNIQUE INDEX \"Lead_tenantId_environment_creationKey_key\" ON \"Lead\" (\"tenantId\", \"environment\", \"creationKey\"); ALTER TABLE \"Deal\" ADD COLUMN \"automationKey\" TEXT; CREATE UNIQUE INDEX \"Deal_tenantId_environment_automationKey_key\" ON \"Deal\" (\"tenantId\", \"environment\", \"automationKey\"); CREATE UNIQUE INDEX \"Lead_test_record_parent_key\" ON \"Lead\" (id, \"tenantId\", environment); CREATE UNIQUE INDEX \"Contact_test_record_parent_key\" ON \"Contact\" (id, \"tenantId\", environment); CREATE UNIQUE INDEX \"Account_test_record_parent_key\" ON \"Account\" (id, \"tenantId\", environment);');
-  await pg.exec(readFileSync(resolve(__dirname, '../../../../../prisma/migrations/20261013000000_record_files/migration.sql'), 'utf8'));
+    INSERT INTO "Lead" (id,"tenantId","firstName","lastName",status,environment,"updatedAt") VALUES ('${legacyId}','legacy-tenant','Legacy','Archive','Archived','PRODUCTION',NOW());`);
+  await replayCrmMigrations(pg, undefined, archiveMigration);
   socket = new PGLiteSocketServer({ db: pg, host: '127.0.0.1', port: 0 });
   await socket.start();
   process.env.CRM_ARCHIVE_TEST_DATABASE_URL = `postgresql://postgres:postgres@${socket.getServerConn()}/postgres?connection_limit=1`;
@@ -68,8 +62,8 @@ beforeAll(async () => {
   const tenant = await db.tenant.create({ data: { name: 'Archive test', slug: 'archive-test', status: 'ACTIVE', onboardingStep: 3, onboardingCompletedAt: new Date() } });
   tenantId = tenant.id;
   otherTenantId = (await db.tenant.create({ data: { name: 'Other tenant', slug: 'other-archive-test' } })).id;
-  const admin = await db.user.create({ data: { tenantId, email: 'archive@camxian.com', firstName: 'Archive', lastName: 'Admin', role: 'Client Admin', activeEnvironment: 'PRODUCTION', mustChangePassword: false } });
-  const viewer = await db.user.create({ data: { tenantId, email: 'viewer@camxian.com', firstName: 'Read', lastName: 'Only', role: 'Archive Viewer', activeEnvironment: 'PRODUCTION', mustChangePassword: false } });
+  const admin = await db.user.create({ data: { tenantId, email: 'archive@camxian.com', firstName: 'Archive', lastName: 'Admin', role: 'Client Admin', mustChangePassword: false } });
+  const viewer = await db.user.create({ data: { tenantId, email: 'viewer@camxian.com', firstName: 'Read', lastName: 'Only', role: 'Archive Viewer', mustChangePassword: false } });
   const role = await db.roleDefinition.create({ data: { tenantId, name: 'Archive Viewer', permissions: { create: ['contacts', 'organizations'].map(module => ({ tenantId, module, canView: true, canEdit: false, canDelete: false })) } } });
   await db.userRole.create({ data: { tenantId, userId: viewer.id, roleId: role.id } });
   const { issueAuthSession } = await import('../../../../core/auth/auth-session');
@@ -116,8 +110,8 @@ describe.sequential('CRM archive and restore through authenticated HTTP and Post
     expect((await call(`${module}/${row.id}/restore`, 'PATCH')).status).toBe(404);
     expect(await db.auditLog.count({ where: { entityId: row.id } })).toBe(2);
   });
-  it.each(modules)('%s rejects cross-tenant and cross-environment archive and restore', async module => {
-    for (const row of [await create(module, otherTenantId), await create(module, tenantId, 'SANDBOX')]) {
+  it.each(modules)('%s rejects cross-tenant archive and restore', async module => {
+    for (const row of [await create(module, otherTenantId)]) {
       expect((await call(`${module}/${row.id}/archive`, 'PATCH')).status).toBe(404);
       await (delegate(module) as any).update({ where: { id: row.id }, data: { isArchived: true } });
       expect((await call(`${module}/${row.id}/restore`, 'PATCH')).status).toBe(404);
@@ -207,7 +201,7 @@ describe.sequential('Settings archived-data aggregation and missing restore rout
     expect((await archiveRequest('?type=Deal')).body.data.some((row: any) => row.id === deal.id)).toBe(false);
     expect((await call(`deals/${deal.id}/restore`, 'PATCH')).status).toBe(400);
   });
-  it('paginates real archive identities and timestamps, excludes other tenants/environments and validates queries', async () => {
+  it('paginates real archive identities and timestamps, excludes other tenants and validates queries', async () => {
     const lead = await create('leads');
     await call(`leads/${lead.id}/archive`, 'PATCH');
     const first = await archiveRequest('?type=Lead&limit=1&page=1');
@@ -221,7 +215,7 @@ describe.sequential('Settings archived-data aggregation and missing restore rout
     }
     expect(ids).toContain(lead.id);
     expect(new Set(ids).size).toBe(ids.length);
-    const scopedCount = await db.lead.count({ where: { tenantId, environment: 'PRODUCTION', isArchived: true } });
+    const scopedCount = await db.lead.count({ where: { tenantId, isArchived: true } });
     expect(first.body.meta.total).toBe(scopedCount);
     for (const query of ['?type=unknown', '?type=__proto__', '?page=0', '?limit=51', '?tenantId=other']) {
       expect((await archiveRequest(query)).status).toBe(400);
@@ -234,8 +228,8 @@ describe.sequential('Settings archived-data aggregation and missing restore rout
   });
 
   const extraTypes = ['Pipeline', 'Workflow', 'Campaign', 'Template', 'Role'] as const;
-  async function createExtra(type: typeof extraTypes[number], tenant = tenantId, environment: 'PRODUCTION' | 'SANDBOX' = 'PRODUCTION') {
-    const data = { tenantId: tenant, environment, name: 'Archive ' + randomUUID(), isArchived: true };
+  async function createExtra(type: typeof extraTypes[number], tenant = tenantId) {
+    const data = { tenantId: tenant, name: 'Archive ' + randomUUID(), isArchived: true };
     switch (type) {
       case 'Pipeline': return db.pipeline.create({ data });
       case 'Workflow': return db.workflow.create({ data: { ...data, trigger: 'deal.created', actions: [], isActive: false, status: 'PAUSED' } });
@@ -274,11 +268,6 @@ describe.sequential('Settings archived-data aggregation and missing restore rout
     const other = await createExtra(type, otherTenantId);
     expect((await archiveRequest(`/${type}/${other.id}/restore`, 'PATCH')).status).toBe(404);
     expect(await readExtra(type, other.id)).toHaveProperty('isArchived', true);
-    if (type !== 'Role') {
-      const sandbox = await createExtra(type, tenantId, 'SANDBOX');
-      expect((await archiveRequest(`/${type}/${sandbox.id}/restore`, 'PATCH')).status).toBe(404);
-      if (type === 'Campaign' || type === 'Workflow') expect((await archiveRequest(`?type=${type}`)).body.data.some((item: any) => item.id === sandbox.id)).toBe(false);
-    }
   });
   it('rejects unknown restore types and protected roles', async () => {
     expect((await archiveRequest(`/User/${randomUUID()}/restore`, 'PATCH')).status).toBe(400);
@@ -286,14 +275,14 @@ describe.sequential('Settings archived-data aggregation and missing restore rout
     expect((await archiveRequest(`/Role/${role.id}/restore`, 'PATCH')).status).toBe(403);
     expect((await archiveRequest('?type=Role')).status).toBe(400);
   });
-  it('searches before pagination across allowed types and preserves tenant/environment/RBAC scope', async () => {
+  it('searches before pagination across allowed types and preserves tenant/RBAC scope', async () => {
     const marker = 'Search' + randomUUID();
     const campaign = await createExtra('Campaign');
     const workflow = await createExtra('Workflow');
     await db.campaign.update({ where: { id: campaign.id }, data: { name: marker + ' campaign' } });
     await db.workflow.update({ where: { id: workflow.id }, data: { name: marker + ' workflow' } });
-    for (const [tenant, environment] of [[otherTenantId, 'PRODUCTION'], [tenantId, 'SANDBOX']] as const) {
-      const foreign = await createExtra('Campaign', tenant, environment);
+    for (const tenant of [otherTenantId]) {
+      const foreign = await createExtra('Campaign', tenant);
       await db.campaign.update({ where: { id: foreign.id }, data: { name: marker } });
     }
     const first = await archiveRequest(`?search=${marker.toLowerCase()}&limit=1`);
@@ -306,7 +295,7 @@ describe.sequential('Settings archived-data aggregation and missing restore rout
     expect((await archiveRequest('?search=' + 'x'.repeat(201))).status).toBe(400);
     // This legacy fixture omits newer product fields; seed only archive-search columns.
     const lead = { id: randomUUID() };
-    await db.$executeRaw`INSERT INTO "Lead" (id,"tenantId",environment,"firstName","lastName",email,status,"isArchived","updatedAt") VALUES (${lead.id},${tenantId},'PRODUCTION',${marker},'Person','unique-search@example.test','Warm',true,NOW())`;
+    await db.$executeRaw`INSERT INTO "Lead" (id,"tenantId","firstName","lastName",email,status,"isArchived","updatedAt") VALUES (${lead.id},${tenantId},${marker},'Person','unique-search@example.test','Warm',true,NOW())`;
     expect((await archiveRequest(`?search=${marker}%20Person&type=Lead`)).body.data.map((r: any) => r.id)).toEqual([lead.id]);
     expect((await archiveRequest('?search=unique-search%40example.test&type=Lead')).body.data.map((r: any) => r.id)).toEqual([lead.id]);
   });

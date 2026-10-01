@@ -45,17 +45,17 @@ export default function WorkflowsPage() {
   const [runs, setRuns] = useState<Workflow | null>(null);
   const [archiving, setArchiving] = useState<Workflow | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  useEffect(() => { setSelected(new Set()); setArchiving(null); setRuns(null); }, [tenant?.id, user?.activeEnvironment, page, pageSize, search, statuses, triggers]);
+  useEffect(() => { setSelected(new Set()); setArchiving(null); setRuns(null); }, [tenant?.id, page, pageSize, search, statuses, triggers]);
   const [busy, setBusy] = useState(false);
   const mutationLock = useRef(false);
   useEffect(() => {
     if (!canView || !tenant?.id) return;
     let cancelled = false;
     setMetadata(null); setMetadataError('');
-    const request = getWorkflowMetadata(`${tenant.id}:${user?.id}:${user?.activeEnvironment}`);
+    const request = getWorkflowMetadata(`${tenant.id}:${user?.id}`);
     request.then(result => { if (!cancelled) setMetadata(result); }).catch(failure => { if (!cancelled) setMetadataError(failure instanceof Error ? failure.message : 'Unable to load workflow options.'); });
     return () => { cancelled = true; };
-  }, [tenant?.id, user?.id, user?.activeEnvironment, canView, retry]);
+  }, [tenant?.id, user?.id, canView, retry]);
   const { data, isInitialLoad, isRefreshing, error: workflowsError, refetch: refreshWorkflows } = useCachedPage({
     module: 'workflows', params: { page, pageSize, search, statuses, triggers }, disabled: !canView,
     fetchFn: () => workflowsApi.list({ page, limit: pageSize, search, status: statuses.join(','), trigger: triggers.join(',') }),

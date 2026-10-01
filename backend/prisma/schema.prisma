@@ -163,7 +163,6 @@ model Tenant {
   auditLogs          AuditLog[]
   emailDeliveryLogs  EmailDeliveryLog[]
   documents          TenantDocument[] @ignore
-  environments       Environment[]
   SMSQueue           SMSQueue[]
   EmailEvent         EmailEvent[]
   AutomationRule     AutomationRule[]
@@ -181,14 +180,8 @@ model Tenant {
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // USER
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
-enum CrmEnvironment {
-  SANDBOX
-  PRODUCTION
-}
-
 model User {
   recordFiles        RecordFile[]
-  activeEnvironment CrmEnvironment @default(SANDBOX)
   id            String     @id @default(uuid())
   tenantId      String
   email         String
@@ -442,34 +435,11 @@ model TenantDocument {
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
-// ENVIRONMENT (tenant environment monitoring)
-// Tracks resource usage per tenant environment
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
-model Environment {
-  id            String    @id @default(uuid())
-  tenantId      String
-  envCode       String // e.g. "prod" | "staging" | "sandbox"
-  type          String // "production" | "staging" | "sandbox"
-  cpuUsage      Float? // percentage
-  ramUsage      Float? // percentage
-  storageUsage  Float? // percentage
-  uptimePct     Float? // percentage
-  isDefault     Boolean   @default(false)
-  lastCheckedAt DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-
-  @@unique([tenantId, envCode])
-  @@index([tenantId])
-}
-
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // ORGANIZATION
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Account {
-  environment CrmEnvironment @default(PRODUCTION)
   id               String    @id @default(uuid())
   tenantId         String
   assignedUserId   String?
@@ -504,10 +474,10 @@ model Account {
   @@index([tenantId, name])
   @@index([tenantId, createdAt])
   @@index([tenantId, assignedUserId])
-  @@index([tenantId, environment])
+  @@index([tenantId])
   taskLinks TaskAccount[]
 
-  @@unique([id, tenantId, environment])
+  @@unique([id, tenantId])
 
 }
 
@@ -519,9 +489,8 @@ model Account {
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Lead {
   creationKey String?
-  @@unique([tenantId, environment, creationKey])
+  @@unique([tenantId, creationKey])
   formSubmissions FormSubmission[]
-  environment CrmEnvironment @default(PRODUCTION)
   id                  String    @id @default(uuid())
   tenantId            String
   createdAt           DateTime  @default(now())
@@ -575,10 +544,10 @@ model Lead {
   @@index([tenantId, accountId])
   @@index([tenantId, createdById])
   @@index([tenantId, contactId])
-  @@index([tenantId, environment])
+  @@index([tenantId])
   taskLinks TaskLead[]
 
-  @@unique([id, tenantId, environment])
+  @@unique([id, tenantId])
 
 }
 
@@ -593,7 +562,6 @@ model Lead {
 // -----------------------------------------------------
 model Contact {
   formSubmissions FormSubmission[]
-  environment CrmEnvironment @default(PRODUCTION)
   id                  String               @id @default(uuid())
   tenantId            String
   // Canonical company link (ADR-001) — Contact.accountId → Account
@@ -651,10 +619,10 @@ model Contact {
   @@index([tenantId, createdAt])
   @@index([tenantId, accountId])
   @@map("Contact")
-  @@index([tenantId, environment])
+  @@index([tenantId])
   taskLinks TaskContact[]
 
-  @@unique([id, tenantId, environment])
+  @@unique([id, tenantId])
 
 }
 
@@ -662,7 +630,6 @@ model Contact {
 // PIPELINE & STAGE
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Pipeline {
-  environment CrmEnvironment @default(PRODUCTION)
   id          String   @id @default(uuid())
   tenantId    String
   name        String
@@ -679,11 +646,10 @@ model Pipeline {
   deals  Deal[]
 
   @@index([tenantId, isArchived])
-  @@index([tenantId, environment])
+  @@index([tenantId])
 }
 
 model Stage {
-  environment CrmEnvironment @default(PRODUCTION)
   id              String   @id @default(uuid())
   pipelineId      String
   tenantId        String // defence-in-depth: derived from Pipeline.tenantId at creation, never independently editable
@@ -707,7 +673,7 @@ model Stage {
 
   @@index([pipelineId, order])
   @@index([tenantId, pipelineId])
-  @@index([tenantId, environment])
+  @@index([tenantId])
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -719,8 +685,7 @@ model Deal {
   productInterestId String?
   productInterestRecord ProductInterest? @relation(fields: [productInterestId], references: [id], onDelete: SetNull)
   automationKey String?
-  @@unique([tenantId, environment, automationKey])
-  environment CrmEnvironment @default(PRODUCTION)
+  @@unique([tenantId, automationKey])
   id                String    @id @default(uuid())
   tenantId          String
   pipelineId        String
@@ -771,10 +736,10 @@ model Deal {
   @@index([tenantId, assignedUserId])
   @@index([tenantId, createdAt])
   @@index([tenantId, isArchived])
-  @@index([tenantId, environment])
+  @@index([tenantId])
   taskLinks TaskDeal[]
 
-  @@unique([id, tenantId, environment])
+  @@unique([id, tenantId])
 
 }
 
@@ -782,7 +747,6 @@ model Deal {
 // CONTACT-DEAL JUNCTION (multi-contact deals)
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model LeadDeal {
-  environment CrmEnvironment @default(PRODUCTION)
   id        String   @id @default(uuid())
   leadId    String
   dealId    String
@@ -799,11 +763,10 @@ model LeadDeal {
   @@unique([leadId, dealId])
   @@index([dealId, tenantId])
   @@index([leadId, tenantId])
-  @@index([tenantId, environment])
+  @@index([tenantId])
 }
 
 model ContactDeal {
-  environment CrmEnvironment @default(PRODUCTION)
   id        String   @id @default(uuid())
   contactId String
   dealId    String
@@ -821,14 +784,13 @@ model ContactDeal {
   @@index([dealId, tenantId])
   @@index([contactId, tenantId])
   @@map("ContactDeal")
-  @@index([tenantId, environment])
+  @@index([tenantId])
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // DEAL STAGE HISTORY
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model DealStageHistory {
-  environment CrmEnvironment @default(PRODUCTION)
   id              String   @id @default(uuid())
   tenantId        String
   dealId          String
@@ -847,7 +809,7 @@ model DealStageHistory {
 
   @@index([dealId, tenantId])
   @@index([tenantId, movedAt])
-  @@index([tenantId, environment])
+  @@index([tenantId])
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -857,7 +819,6 @@ model DealStageHistory {
 // Every DealAction also triggers an Activity entry for the timeline.
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model DealAction {
-  environment CrmEnvironment @default(PRODUCTION)
   id            String         @id @default(uuid())
   tenantId      String
   dealId        String
@@ -874,14 +835,13 @@ model DealAction {
   @@index([dealId, tenantId])
   @@index([tenantId, actionType])
   @@index([tenantId, performedAt])
-  @@index([tenantId, environment])
+  @@index([tenantId])
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // TASK
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Task {
-  environment CrmEnvironment @default(PRODUCTION)
   id             String    @id @default(uuid())
   tenantId       String
   dealId         String?
@@ -914,13 +874,13 @@ model Task {
   @@index([tenantId, assignedUserId, status])
   @@index([tenantId, dueDate])
   @@index([tenantId, dealId])
-  @@index([tenantId, environment])
+  @@index([tenantId])
   leadLinks TaskLead[]
   contactLinks TaskContact[]
   dealLinks TaskDeal[]
   accountLinks TaskAccount[]
 
-  @@unique([id, tenantId, environment])
+  @@unique([id, tenantId])
 
 }
 
@@ -928,7 +888,6 @@ model Task {
 // ACTIVITY (unified timeline G�� typed FKs, no polymorphic)
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Activity {
-  environment CrmEnvironment @default(PRODUCTION)
   id          String   @id @default(uuid())
   tenantId    String
   createdById String
@@ -956,14 +915,13 @@ model Activity {
   @@index([tenantId, contactId, createdAt])
   @@index([tenantId, dealId, createdAt])
   @@index([tenantId, createdAt])
-  @@index([tenantId, environment])
+  @@index([tenantId])
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // NOTIFICATION
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Notification {
-  environment CrmEnvironment @default(PRODUCTION)
   id         String    @id @default(uuid())
   tenantId   String
   userId     String
@@ -981,7 +939,7 @@ model Notification {
 
   @@index([userId, tenantId, isRead])
   @@index([tenantId, createdAt])
-  @@index([tenantId, environment])
+  @@index([tenantId])
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -991,7 +949,6 @@ model Notification {
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model TargetAudience {
   source String @default("CONTACTS")
-  environment CrmEnvironment @default(PRODUCTION)
   id          String   @id @default(uuid())
   tenantId    String
   name        String
@@ -1005,7 +962,7 @@ model TargetAudience {
   campaigns  Campaign[]
 
   @@index([tenantId, isActive])
-  @@index([tenantId, environment])
+  @@index([tenantId])
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -1035,7 +992,6 @@ model Campaign {
   createdById String?
   recipientCount Int @default(0)
   failedCount Int @default(0)
-  environment CrmEnvironment @default(PRODUCTION)
   id               String         @id @default(uuid())
   tenantId         String
   targetAudienceId String? // FK to TargetAudience G�� replaces old targetAudience String?
@@ -1067,7 +1023,7 @@ model Campaign {
 
   @@index([tenantId, status])
   @@index([tenantId, isArchived])
-  @@index([tenantId, environment])
+  @@index([tenantId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1083,7 +1039,6 @@ model MarketingForm {
   publishedVersion Int @default(0)
   publishedConfig Json?
   submissions FormSubmission[]
-  environment CrmEnvironment @default(PRODUCTION)
   id          String    @id @default(uuid())
   tenantId    String
   createdById String
@@ -1102,7 +1057,7 @@ model MarketingForm {
 
   @@index([tenantId, isArchived, createdAt])
   @@index([tenantId, status])
-  @@index([tenantId, environment])
+  @@index([tenantId])
 }
 
 model FormSubmission {
@@ -1110,7 +1065,6 @@ model FormSubmission {
   @@unique([formId, requestKey])
   id String @id @default(uuid())
   tenantId String
-  environment CrmEnvironment
   formId String
   publishedVersion Int
   publishedConfig Json
@@ -1125,7 +1079,7 @@ model FormSubmission {
   form MarketingForm @relation(fields: [formId], references: [id], onDelete: Restrict)
   lead Lead? @relation(fields: [leadId], references: [id], onDelete: Restrict)
   contact Contact? @relation(fields: [contactId], references: [id], onDelete: Restrict)
-  @@index([tenantId, environment, formId, submittedAt])
+  @@index([tenantId, formId, submittedAt])
   @@index([leadId])
   @@index([contactId])
 }
@@ -1134,7 +1088,6 @@ model FormSubmission {
 // CAMPAIGN METRICS (historical snapshots — separate from inline totals on Campaign)
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model CampaignMetrics {
-  environment CrmEnvironment @default(PRODUCTION)
   id             String   @id @default(uuid())
   tenantId       String
   campaignId     String
@@ -1156,7 +1109,7 @@ model CampaignMetrics {
 
   @@index([campaignId, tenantId])
   @@index([tenantId, snapshotAt])
-  @@index([tenantId, environment])
+  @@index([tenantId])
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -1167,7 +1120,6 @@ model CampaignContact {
   personalization Json?
   messageId String? @unique
   failureReason String?
-  environment CrmEnvironment @default(PRODUCTION)
   id           String    @id @default(uuid())
   tenantId     String
   campaignId   String
@@ -1189,7 +1141,7 @@ model CampaignContact {
   @@unique([campaignId, leadId])
   @@unique([campaignId, contactId])
   @@index([campaignId, tenantId, status])
-  @@index([tenantId, environment])
+  @@index([tenantId])
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -1197,7 +1149,6 @@ model CampaignContact {
 // Campaign links to this via emailTemplateId or smsTemplateId
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Template {
-  environment CrmEnvironment @default(PRODUCTION)
   id         String   @id @default(uuid())
   tenantId   String
   name       String
@@ -1214,7 +1165,7 @@ model Template {
   campaignsAsSms   Campaign[] @relation("CampaignSmsTemplate")
 
   @@index([tenantId, type, isArchived])
-  @@index([tenantId, environment])
+  @@index([tenantId])
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -1224,7 +1175,6 @@ model Template {
 model Workflow {
   status      String   @default("DRAFT")
   activatedById String?
-  environment CrmEnvironment @default(PRODUCTION)
   id          String   @id @default(uuid())
   tenantId    String
   name        String
@@ -1241,12 +1191,11 @@ model Workflow {
   triggerRecords WorkflowTriggerRecord[]
 
   @@index([tenantId, isActive])
-  @@index([tenantId, environment])
+  @@index([tenantId])
 }
 
 model WorkflowTriggerRecord {
   eventId     String?
-  environment CrmEnvironment @default(PRODUCTION)
   id          String   @id @default(uuid())
   tenantId    String
   workflowId  String
@@ -1260,14 +1209,13 @@ model WorkflowTriggerRecord {
   workflow Workflow               @relation(fields: [workflowId], references: [id])
   runs     WorkflowExecutionRun[]
 
-  @@unique([tenantId, environment, workflowId, eventId], map: "workflow_event_once")
+  @@unique([tenantId, workflowId, eventId], map: "workflow_event_once")
   @@index([tenantId, workflowId])
   @@index([tenantId, triggeredAt])
-  @@index([tenantId, environment])
+  @@index([tenantId])
 }
 
 model WorkflowExecutionRun {
-  environment CrmEnvironment @default(PRODUCTION)
   id           String    @id @default(uuid())
   tenantId     String
   workflowId   String
@@ -1285,11 +1233,10 @@ model WorkflowExecutionRun {
 
   @@index([tenantId, workflowId, status])
   @@index([tenantId, startedAt])
-  @@index([tenantId, environment])
+  @@index([tenantId])
 }
 
 model WorkflowExecutionStep {
-  environment CrmEnvironment @default(PRODUCTION)
   id          String   @id @default(uuid())
   tenantId    String
   executionId String
@@ -1304,7 +1251,7 @@ model WorkflowExecutionStep {
   execution WorkflowExecutionRun @relation(fields: [executionId], references: [id], onDelete: Cascade)
 
   @@index([executionId])
-  @@index([tenantId, environment])
+  @@index([tenantId])
 }
 
 // -----------------------------------------------------
@@ -1314,7 +1261,6 @@ model WorkflowExecutionStep {
 // category: auth | crm | workflow | admin | system
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model AuditLog {
-  environment CrmEnvironment?
   id         String   @id @default(uuid())
   tenantId   String
   userId     String
@@ -1345,7 +1291,6 @@ model AuditLog {
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model EmailDeliveryLog {
   brevoMessageId String? @unique
-  environment CrmEnvironment @default(PRODUCTION)
   id             String    @id @default(uuid())
   tenantId       String
   campaignId     String?
@@ -1374,7 +1319,7 @@ model EmailDeliveryLog {
   @@index([tenantId, contactId])
   @@index([tenantId, campaignId])
   @@index([gmailMessageId])
-  @@index([tenantId, environment])
+  @@index([tenantId])
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -1466,7 +1411,6 @@ model EmailAccount {
 // SMS QUEUE (Local Android Gateway)
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model SMSQueue {
-  environment CrmEnvironment @default(PRODUCTION)
   id           String    @id @default(uuid())
   tenantId     String
   campaignId   String?
@@ -1489,7 +1433,7 @@ model SMSQueue {
 
   @@index([tenantId, status])
   @@index([tenantId, scheduledFor])
-  @@index([tenantId, environment])
+  @@index([tenantId])
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -1497,7 +1441,6 @@ model SMSQueue {
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model EmailEvent {
   providerEventKey String? @unique
-  environment CrmEnvironment @default(PRODUCTION)
   id            String   @id @default(uuid())
   tenantId      String
   deliveryLogId String
@@ -1512,14 +1455,13 @@ model EmailEvent {
 
   @@index([tenantId, eventType])
   @@index([deliveryLogId])
-  @@index([tenantId, environment])
+  @@index([tenantId])
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // AUTOMATION RULE (Trigger-based background jobs)
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model AutomationRule {
-  environment CrmEnvironment @default(PRODUCTION)
   id          String   @id @default(uuid())
   tenantId    String
   name        String
@@ -1535,7 +1477,7 @@ model AutomationRule {
 
   @@index([tenantId, isActive])
   @@index([tenantId, triggerType])
-  @@index([tenantId, environment])
+  @@index([tenantId])
 }
 
 // -----------------------------------------------------
@@ -1582,7 +1524,6 @@ model TenantPreference {
 // LEAD IMPORT (CSV batch import tracking)
 // -----------------------------------------------------
 model LeadImport {
-  environment CrmEnvironment @default(PRODUCTION)
   id                String    @id @default(uuid())
   tenantId          String
   fileName          String
@@ -1600,7 +1541,7 @@ model LeadImport {
 
   @@index([tenantId, status])
   @@index([tenantId, createdAt])
-  @@index([tenantId, environment])
+  @@index([tenantId])
 }
 
 // -----------------------------------------------------
@@ -1631,7 +1572,6 @@ model LeadImportResult {
 // ACCOUNT IMPORT (CSV batch import tracking)
 // -----------------------------------------------------
 model AccountImport {
-  environment CrmEnvironment @default(PRODUCTION)
   id                String    @id @default(uuid())
   tenantId          String
   fileName          String
@@ -1649,7 +1589,7 @@ model AccountImport {
 
   @@index([tenantId, status])
   @@index([tenantId, createdAt])
-  @@index([tenantId, environment])
+  @@index([tenantId])
 }
 
 // -----------------------------------------------------
@@ -1681,7 +1621,6 @@ model AccountImportResult {
 // CONTACT IMPORT (CSV batch import tracking)
 // -----------------------------------------------------
 model ContactImport {
-  environment CrmEnvironment @default(PRODUCTION)
   id                String    @id @default(uuid())
   tenantId          String
   fileName          String
@@ -1699,7 +1638,7 @@ model ContactImport {
 
   @@index([tenantId, status])
   @@index([tenantId, createdAt])
-  @@index([tenantId, environment])
+  @@index([tenantId])
 }
 
 // -----------------------------------------------------
@@ -1730,7 +1669,6 @@ model ContactImportResult {
 model DealImport {
   id                String @id @default(uuid())
   tenantId          String
-  environment       CrmEnvironment @default(PRODUCTION)
   fileName          String
   totalRecords      Int @default(0)
   successfulRecords Int @default(0)
@@ -1742,7 +1680,7 @@ model DealImport {
   tenant            Tenant @relation(fields: [tenantId], references: [id])
   createdBy         User @relation(fields: [createdById], references: [id])
   results           DealImportResult[]
-  @@index([tenantId, environment])
+  @@index([tenantId])
   @@index([tenantId, createdAt])
 }
 
@@ -1760,75 +1698,70 @@ model DealImportResult {
   @@index([importId, status])
 }
 
-// Account-wide campaign reservations, independent of CRM tenant/environment.
+// Account-wide campaign reservations, independent of CRM tenant.
 model CampaignEmailQuota {
   day String @id
   reserved Int @default(0)
 }
 
-// Explicit Task links preserve tenant/environment integrity on both sides.
+// Explicit Task links preserve tenant integrity on both sides.
 model TaskLead {
   taskId String
   leadId String
   tenantId String
-  environment CrmEnvironment
   position Int @default(0)
-  task Task @relation(fields: [taskId, tenantId, environment], references: [id, tenantId, environment], onDelete: Cascade)
-  lead Lead @relation(fields: [leadId, tenantId, environment], references: [id, tenantId, environment], onDelete: Cascade)
+  task Task @relation(fields: [taskId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  lead Lead @relation(fields: [leadId, tenantId], references: [id, tenantId], onDelete: Cascade)
 
   @@id([taskId, leadId])
-  @@index([tenantId, environment, leadId])
+  @@index([tenantId, leadId])
 }
 
-// Explicit Task links preserve tenant/environment integrity on both sides.
+// Explicit Task links preserve tenant integrity on both sides.
 model TaskContact {
   taskId String
   contactId String
   tenantId String
-  environment CrmEnvironment
   position Int @default(0)
-  task Task @relation(fields: [taskId, tenantId, environment], references: [id, tenantId, environment], onDelete: Cascade)
-  contact Contact @relation(fields: [contactId, tenantId, environment], references: [id, tenantId, environment], onDelete: Cascade)
+  task Task @relation(fields: [taskId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  contact Contact @relation(fields: [contactId, tenantId], references: [id, tenantId], onDelete: Cascade)
 
   @@id([taskId, contactId])
-  @@index([tenantId, environment, contactId])
+  @@index([tenantId, contactId])
 }
 
-// Explicit Task links preserve tenant/environment integrity on both sides.
+// Explicit Task links preserve tenant integrity on both sides.
 model TaskDeal {
   taskId String
   dealId String
   tenantId String
-  environment CrmEnvironment
   position Int @default(0)
-  task Task @relation(fields: [taskId, tenantId, environment], references: [id, tenantId, environment], onDelete: Cascade)
-  deal Deal @relation(fields: [dealId, tenantId, environment], references: [id, tenantId, environment], onDelete: Cascade)
+  task Task @relation(fields: [taskId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  deal Deal @relation(fields: [dealId, tenantId], references: [id, tenantId], onDelete: Cascade)
 
   @@id([taskId, dealId])
-  @@index([tenantId, environment, dealId])
+  @@index([tenantId, dealId])
 }
 
-// Explicit Task links preserve tenant/environment integrity on both sides.
+// Explicit Task links preserve tenant integrity on both sides.
 model TaskAccount {
   taskId String
   accountId String
   tenantId String
-  environment CrmEnvironment
   position Int @default(0)
-  task Task @relation(fields: [taskId, tenantId, environment], references: [id, tenantId, environment], onDelete: Cascade)
-  account Account @relation(fields: [accountId, tenantId, environment], references: [id, tenantId, environment], onDelete: Cascade)
+  task Task @relation(fields: [taskId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  account Account @relation(fields: [accountId, tenantId], references: [id, tenantId], onDelete: Cascade)
 
   @@id([taskId, accountId])
-  @@index([tenantId, environment, accountId])
+  @@index([tenantId, accountId])
 }
 
 model RecordFile {
   dealId String?
-  deal Deal? @relation(fields: [dealId, tenantId, environment], references: [id, tenantId, environment], onDelete: Cascade)
-  @@index([tenantId, environment, dealId])
+  deal Deal? @relation(fields: [dealId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  @@index([tenantId, dealId])
   id String @id @default(uuid())
   tenantId String
-  environment CrmEnvironment @default(PRODUCTION)
   leadId String?
   contactId String?
   accountId String?
@@ -1840,14 +1773,14 @@ model RecordFile {
   uploadedAt DateTime @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  lead Lead? @relation(fields: [leadId, tenantId, environment], references: [id, tenantId, environment], onDelete: Cascade)
-  contact Contact? @relation(fields: [contactId, tenantId, environment], references: [id, tenantId, environment], onDelete: Cascade)
-  account Account? @relation(fields: [accountId, tenantId, environment], references: [id, tenantId, environment], onDelete: Cascade)
+  lead Lead? @relation(fields: [leadId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  contact Contact? @relation(fields: [contactId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  account Account? @relation(fields: [accountId, tenantId], references: [id, tenantId], onDelete: Cascade)
   uploadedBy User @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
 
-  @@index([tenantId, environment, leadId])
-  @@index([tenantId, environment, contactId])
-  @@index([tenantId, environment, accountId])
+  @@index([tenantId, leadId])
+  @@index([tenantId, contactId])
+  @@index([tenantId, accountId])
 }
 
 // Organization-wide product defaults; Deals retain their original monetary snapshot.

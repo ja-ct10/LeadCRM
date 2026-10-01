@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { ZodError } from 'zod';
+import { ZodError, type ZodIssue } from 'zod';
 import { Prisma } from '@prisma/client';
 import { AppError } from '../../shared/errors/app-error';
 
@@ -37,12 +37,19 @@ export function errorMiddleware(
     return;
   }
 
-  // Zod validation errors → 400 Bad Request
-  if (err instanceof ZodError) {
+  // Shared CommonJS contracts and ESM consumers can load distinct Zod classes.
+  // Recognize their validated issue shape as well as the local constructor.
+  const issues = errAsUnknown.issues;
+  const validationError = err instanceof ZodError ? err :
+    err.name === 'ZodError' && Array.isArray(issues) && issues.every(issue =>
+      issue && typeof issue.code === 'string' && typeof issue.message === 'string' &&
+      Array.isArray(issue.path) && issue.path.every((part: unknown) => typeof part === 'string' || typeof part === 'number'))
+      ? new ZodError(issues as ZodIssue[]) : null;
+  if (validationError) {
     res.status(400).json({
       success: false,
-      error: err.errors[0]?.message ?? 'Validation failed',
-      fieldErrors: err.flatten().fieldErrors,
+      error: validationError.issues[0]?.message ?? 'Validation failed',
+      fieldErrors: validationError.flatten().fieldErrors,
     });
     return;
   }

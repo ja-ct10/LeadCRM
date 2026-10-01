@@ -97,7 +97,7 @@ export function ProfileForm() {
       if (!user) throw new Error('Authentication required');
       const expectedUserId = user.id;
       const response = await authApi.uploadAvatar(blob);
-      applyAuthUser(response.data.user, expectedUserId, true);
+      applyAuthUser(response.data.user, expectedUserId);
       toast.success('Profile picture updated.');
     }} />}
   </div>;

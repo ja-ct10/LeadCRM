@@ -6,7 +6,7 @@ import { issueAuthSession } from '../../../core/auth/auth-session';
 import app from '../../../app';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
-const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_environment_test_\d+$/.test(url.pathname);
+const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_account_test_\d+$/.test(url.pathname);
 describe.skipIf(!disposable)('organization and account settings over authenticated HTTP', () => {
   let server: Server, base: string, tenantId: string, otherTenantId: string, token: string, readerToken: string;
   async function call(path: string, method = 'GET', body?: unknown, bearer = token) {

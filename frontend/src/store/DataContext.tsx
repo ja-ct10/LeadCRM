@@ -281,7 +281,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     (user.status?.toUpperCase() === "ACTIVE" && !user.mustChangePassword &&
       (user.role !== "Client Admin" || isOnboardingComplete(user)))));
 
-  const dataIdentity = `${user?.id ?? ''}:${tenant?.id ?? ''}:${workspaceReady}:${user?.activeEnvironment ?? ''}`;
+  const dataIdentity = `${user?.id ?? ''}:${tenant?.id ?? ''}:${workspaceReady}`;
   const dataIdentityRef = useRef(dataIdentity);
   dataIdentityRef.current = dataIdentity;
 
@@ -549,7 +549,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const tpl: Template[] = [];
     const u = safeParse("leadcrm_users", MOCK_USERS);
     const t = safeParse("leadcrm_tenants", MOCK_TENANTS).map((tenant: Tenant) => {
-      if (tenant.environment !== "none" && !tenant.healthMetrics) {
+      if (!tenant.healthMetrics) {
         const cpuUsage = Math.floor(Math.random() * 90) + 5;
         const memoryUsage = Math.floor(Math.random() * 90) + 10;
         const storageUsage = Math.floor(Math.random() * 80) + 20;
@@ -654,7 +654,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!USE_MOCK_DATA && !workspaceReady) return;
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, tenant?.id, workspaceReady, user?.activeEnvironment]);
+  }, [user?.id, tenant?.id, workspaceReady]);
 
   const saveAndSet = (key: string, data: any[], setter: any) => {
     const allData = JSON.parse(localStorage.getItem(key) || "[]");
@@ -1798,7 +1798,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     const newActivity: Activity = {
       ...activityData,
-      environment: user?.activeEnvironment ?? 'SANDBOX',
       id: uuid(),
       tenantId: currentTenantId,
       createdAt: new Date().toISOString(),
@@ -1824,23 +1823,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
         if (t.approvalStep === "basic") {
           addAuditLog(
             "Approve Tenant Step 1",
-            `Approved basic details for ${t.name}. Sandbox environment provisioned.`,
+            `Approved basic details for ${t.name}.`,
           );
           return {
             ...t,
             approvalStep: "requirements",
-            environment: "sandbox",
             status: "pending",
           };
         } else if (t.approvalStep === "requirements") {
           addAuditLog(
             "Approve Tenant Final",
-            `Approved business requirements for ${t.name}. Production environment provisioned.`,
+            `Approved business requirements for ${t.name}.`,
           );
           return {
             ...t,
             approvalStep: "completed",
-            environment: "production",
             status: "active",
           };
         }
@@ -1848,7 +1845,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
           ...t,
           status: "active",
           approvalStep: "completed",
-          environment: "production",
         };
       }
       return t;

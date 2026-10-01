@@ -16,7 +16,6 @@ import { ModuleSearchInput } from '@/shared/components/crm/module-search-input';
 import { archivedDataService } from '../services/archived-data.service';
 import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
-import { environmentSnapshot } from '@/lib/api/environment-transport';
 
 const EMPTY_RECORDS: ArchivedRecord[] = [];
 const rowId = (record: ArchivedRecord) => `${record.type}-${record.id}`;
@@ -25,7 +24,7 @@ const restoreClass = 'inline-flex min-h-11 min-w-11 sm:min-h-8 items-center just
 export function ArchivedData(): React.ReactElement {
   const { user, tenant } = useAuth();
   const { refreshDeals, refreshOrganizations } = useData();
-  const identity = `${tenant?.id}:${user?.id}:${user?.activeEnvironment}`;
+  const identity = `${tenant?.id}:${user?.id}`;
   const identityRef = useRef(identity);
   identityRef.current = identity;
   const [filter, setFilter] = useState<ArchiveType | 'All'>('All');
@@ -64,11 +63,10 @@ export function ArchivedData(): React.ReactElement {
     const failures: string[] = [];
     const restoredTypes = new Set<ArchiveType>();
     const restoreIdentity = identity;
-    const generation = environmentSnapshot().generation;
     try {
       // At most 50 visible rows; every restore independently validates ID, tenant and RBAC.
       for (const [index, record] of pending.records.entries()) {
-        if (identityRef.current !== restoreIdentity || environmentSnapshot().generation !== generation || environmentSnapshot().switching) {
+        if (identityRef.current !== restoreIdentity) {
           failures.push(...Array<string>(pending.records.length - index).fill('Workspace changed. Reload archived records before continuing.'));
           break;
         }

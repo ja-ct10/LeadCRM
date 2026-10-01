@@ -13,7 +13,7 @@ import { troubleshootingArticles } from './troubleshooting';
 const frontend = 'frontend/src/features/tenant/';
 const backend = 'backend/src/modules/';
 export const helpCategories: HelpCategory[] = [
-  { id: 'getting-started', title: 'Getting Started', description: 'Your workspace, navigation, search, and first steps.', sources: [`${frontend}layout/topbar.tsx`, 'frontend/src/shared/components/global-omnibox.tsx', `${frontend}layout/environment-switcher.tsx`, 'backend/src/core/environment/environment-models.ts'] },
+  { id: 'getting-started', title: 'Getting Started', description: 'Your workspace, navigation, search, and first steps.', sources: [`${frontend}layout/topbar.tsx`, 'frontend/src/shared/components/global-omnibox.tsx'] },
   { id: 'leads', title: 'Leads', description: 'Capture prospects, qualify interest, and convert leads.', sources: [`${frontend}crm/leads/ui/lead-form.tsx`, `${frontend}crm/leads/ui/leads-page.tsx`, `${frontend}crm/leads/ui/convert-lead-dialog.tsx`, `${frontend}crm/shared/import/configs/lead-import.config.ts`, `${backend}crm/contacts/contacts.service.ts`] },
   { id: 'contacts', title: 'Contacts', description: 'Maintain customer details and company relationships.', sources: [`${frontend}crm/contacts/ui/contact-form.tsx`, `${frontend}crm/contacts/ui/contacts-page.tsx`, `${backend}crm/contacts-v2/contacts-v2.repository.ts`] },
   { id: 'accounts', title: 'Accounts', description: 'Organize companies, addresses, and linked records.', sources: [`${frontend}crm/accounts/ui/account-form.tsx`, `${frontend}crm/accounts/schemas/account.schema.ts`, `${backend}crm/companies/companies.repository.ts`] },
@@ -35,7 +35,7 @@ export const helpArticles = [
   ...dashboardArticles, ...teamArticles, ...roleArticles, ...settingsArticles,
   ...securityArticles, ...troubleshootingArticles,
 ];
-export const popularArticleIds = ['welcome', 'crm-records', 'creating-leads', 'pipeline-stages', 'creating-campaigns', 'creating-workflows', 'creating-roles', 'environments'];
+export const popularArticleIds = ['welcome', 'crm-records', 'creating-leads', 'pipeline-stages', 'creating-campaigns', 'creating-workflows', 'creating-roles'];
 export const getArticle = (slug: string) => helpArticles.find(article => article.slug === slug);
 export const getCategory = (id: string) => helpCategories.find(category => category.id === id);
 export const getCategoryArticles = (id: string) => helpArticles.filter(article => article.category === id);

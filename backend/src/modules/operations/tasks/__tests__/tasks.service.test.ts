@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { environmentContext } from "../../../../core/environment/environment-context";
+import { tenantContext } from "../../../../core/tenant/tenant-context";
 
 const db = vi.hoisted(() => {
   const model = () => ({
@@ -41,7 +41,6 @@ const original = {
   ...input,
   id: "task-id",
   tenantId,
-  environment: "SANDBOX",
   description: null,
   reminderAt: null,
   leadId: null,
@@ -56,7 +55,7 @@ const original = {
   updatedAt: new Date(),
 };
 const scoped = <T>(work: () => T) =>
-  environmentContext.run({ tenantId, environment: "SANDBOX" }, work);
+  tenantContext.run({ tenantId, }, work);
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -93,7 +92,7 @@ describe("Task service authority", () => {
     expect(db.task.create).not.toHaveBeenCalled();
   });
 
-  it("requires a matching environment context before writing", async () => {
+  it("requires a matching tenant context before writing", async () => {
     await expect(
       service.createTask(tenantId, actorId, input),
     ).rejects.toThrow();
@@ -223,7 +222,7 @@ describe("Task service authority", () => {
     expect(writeAuditLog).not.toHaveBeenCalled();
   });
 
-  it("deletes within the tenant/environment and audits the removed task", async () => {
+  it("deletes within the tenant and audits the removed task", async () => {
     db.task.deleteMany.mockResolvedValue({ count: 1 });
     const result = await scoped(() =>
       service.bulkTasks(tenantId, actorId, {
@@ -233,7 +232,7 @@ describe("Task service authority", () => {
     );
     expect(result).toEqual({ succeeded: [original.id], failed: [] });
     expect(db.task.deleteMany).toHaveBeenCalledExactlyOnceWith({
-      where: { id: original.id, tenantId, environment: "SANDBOX" },
+      where: { id: original.id, tenantId, },
     });
     expect(writeAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -243,11 +242,8 @@ describe("Task service authority", () => {
     );
   });
 
-  it("never deletes a task from another environment or an unavailable actor", async () => {
-    db.task.findFirst.mockResolvedValueOnce({
-      ...original,
-      environment: "PRODUCTION",
-    });
+  it("never deletes a missing task or uses an unavailable actor", async () => {
+    db.task.findFirst.mockResolvedValueOnce(null);
     expect(
       (
         await scoped(() =>

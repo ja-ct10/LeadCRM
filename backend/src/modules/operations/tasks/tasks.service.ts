@@ -17,7 +17,7 @@ import {
 } from "@leadcrm/shared";
 import * as repo from "./tasks.repository";
 import { writeAuditLog } from "../../../core/audit/audit.service";
-import { environmentContext } from "../../../core/environment/environment-context";
+import { tenantContext } from "../../../core/tenant/tenant-context";
 import {
   NotFoundError,
   ValidationError,
@@ -37,9 +37,9 @@ function parseInput<T>(
   return result.data;
 }
 function requireScope(tenantId: string) {
-  if (environmentContext.getStore()?.tenantId !== tenantId)
+  if (tenantContext.getStore()?.tenantId !== tenantId)
     throw new ValidationError(
-      "A matching CRM environment is required for tasks.",
+      "A matching CRM tenant context is required for tasks.",
     );
 }
 function storedLinks(task: repo.TaskRow): TaskAssociations {
@@ -88,12 +88,11 @@ export function serializeTask(task: repo.TaskRow): TaskRecord {
       ? { id: value.id, firstName: value.firstName, lastName: value.lastName }
       : null;
   const linkedPerson = (value: typeof task.lead) =>
-    value?.environment === task.environment ? person(value) : null;
+    person(value);
   return {
     id: task.id,
     ...storedLinks(task),
     tenantId: task.tenantId,
-    environment: task.environment,
     title: task.title,
     description: task.description ?? "",
     status: TaskStatusSchema.parse(task.status),
@@ -131,15 +130,13 @@ export function serializeTask(task: repo.TaskRow): TaskRecord {
     )
       .filter(
         (row) =>
-          row.tenantId === task.tenantId &&
-          row.environment === task.environment,
+          row.tenantId === task.tenantId,
       )
       .map(({ id, title }) => ({ id, title })),
     accounts: (task.accountLinks ?? [])
       .filter(
         (row) =>
-          row.account.tenantId === task.tenantId &&
-          row.account.environment === task.environment,
+          row.account.tenantId === task.tenantId,
       )
       .map(({ account: { id, name } }) => ({ id, name })),
     account:
@@ -151,8 +148,7 @@ export function serializeTask(task: repo.TaskRow): TaskRecord {
     lead: linkedPerson(task.lead),
     contact: linkedPerson(task.contact),
     deal:
-      task.deal?.tenantId === task.tenantId &&
-      task.deal.environment === task.environment
+      task.deal?.tenantId === task.tenantId
         ? { id: task.deal.id, title: task.deal.title }
         : null,
   };
@@ -359,11 +355,7 @@ export async function deleteTask(id: string, tenantId: string, userId: string) {
   requireScope(tenantId);
   const before = await repo.withTaskTransaction(async (client) => {
     const task = await repo.findTaskById(id, tenantId, client);
-    if (
-      !task ||
-      task.environment !== environmentContext.getStore()!.environment
-    )
-      throw new NotFoundError("Task");
+    if (!task) throw new NotFoundError("Task");
     await validateReferences(tenantId, userId, {}, client);
     await repo.deleteTask(id, tenantId, client);
     return task;

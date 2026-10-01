@@ -56,7 +56,7 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
     try { await refreshPipelines(); }
     catch (error) { setPipelineError(error instanceof Error ? error.message : 'Unable to load Sales Pipeline'); }
   };
-  useEffect(() => { if (!pipeline) void reloadPipelines(); }, [pipeline?.id, user?.activeEnvironment]);
+  useEffect(() => { if (!pipeline) void reloadPipelines(); }, [pipeline?.id]);
   const refresh = async () => {
     if (refreshPending.current || query.isRefreshing || query.isInitialLoad) return;
     refreshPending.current = true; setRefreshing(true);

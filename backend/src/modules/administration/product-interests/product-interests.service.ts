@@ -1,6 +1,6 @@
 import { ProductInterestIdSchema, type ProductInterest, type ProductWonDeal } from '@leadcrm/shared';
 import { z } from 'zod';
-import { environmentContext } from '../../../core/environment/environment-context';
+import { tenantContext } from '../../../core/tenant/tenant-context';
 import { AppError } from '../../../shared/errors/app-error';
 import * as repository from './product-interests.repository';
 
@@ -13,11 +13,11 @@ export async function getProduct(tenantId: string, input: unknown): Promise<Prod
 const querySchema = z.object({ page: z.coerce.number().int().min(1).max(100000).default(1), limit: z.coerce.number().int().min(1).max(100).default(25) }).strict();
 export async function getWonDeals(tenantId: string, input: unknown, query: unknown) {
   const product = await getProduct(tenantId, input);
-  const context = environmentContext.getStore();
+  const context = tenantContext.getStore();
   if (!context || context.tenantId !== tenantId) throw new AppError('Workspace context required.', 403);
   const { page, limit } = querySchema.parse(query);
-  const [deals, total] = await repository.findWonDeals(tenantId, context.environment, product.id, (page - 1) * limit, limit);
-  const sameScope = (row: { tenantId: string; environment: string } | null) => row?.tenantId === tenantId && row.environment === context.environment;
+  const [deals, total] = await repository.findWonDeals(tenantId, product.id, (page - 1) * limit, limit);
+  const sameScope = (row: { tenantId: string } | null) => row?.tenantId === tenantId;
   const name = (row: { firstName: string; lastName: string }) => `${row.firstName} ${row.lastName}`.trim();
   const data: ProductWonDeal[] = deals.map(deal => ({
     id: deal.id, title: deal.title, value: deal.value, currency: deal.currency ?? 'PHP', closedAt: deal.closedAt?.toISOString() ?? null,

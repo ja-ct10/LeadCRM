@@ -143,7 +143,6 @@ export function TaskSelector(props: TaskSelectorProps) {
     retry,
     leadKey,
     tenant?.id,
-    user?.activeEnvironment,
     users,
     contacts,
     deals,

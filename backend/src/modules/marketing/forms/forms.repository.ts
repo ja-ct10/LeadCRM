@@ -47,8 +47,8 @@ export async function remove(id: string, tenantId: string) {
     });
     if (!locked.count) throw new ConflictError('This form changed. Reload it and unpublish it before deleting.');
     // Submission snapshots belong to the form. CRM leads/contacts are independent and remain intact.
-    const submissions = await tx.formSubmission.deleteMany({ where: { formId: id, tenantId, environment: current.environment } });
-    await tx.marketingForm.deleteMany({ where: { id, tenantId, environment: current.environment } });
+    const submissions = await tx.formSubmission.deleteMany({ where: { formId: id, tenantId } });
+    await tx.marketingForm.deleteMany({ where: { id, tenantId } });
     return { name: current.name, deletedSubmissions: submissions.count };
   });
 }

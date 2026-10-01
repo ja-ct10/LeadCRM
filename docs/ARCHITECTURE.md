@@ -205,7 +205,7 @@ Set `NEXT_PUBLIC_USE_MOCK_DATA=false` in `.env.local` to switch from localStorag
 Each module migrates independently — only `DataContext` internals change, all components remain untouched.
 This is the Dependency Inversion Principle applied to the data layer.
 
-The Prisma schema includes active CRM and account-security models. Retired billing and configurable team-domain structures are removed by forward migrations. See [security cleanup](security-cleanup-mfa.md) and [CRM environments](crm-environments.md).
+The Prisma schema includes active CRM and account-security models. Retired billing, configurable team-domain structures, and the Sandbox/Live feature are removed by forward migrations. CRM operations use a single dataset with tenant isolation. See [security cleanup](security-cleanup-mfa.md) and [single CRM workspace](crm-environments.md).
 
 ---
 

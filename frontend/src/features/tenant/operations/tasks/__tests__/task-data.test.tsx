@@ -107,7 +107,7 @@ describe("Task query owner", () => {
     api.list.mockResolvedValue({ data: [task], meta: { total: 1 } });
     const { result, rerender } = renderHook(
       ({ identity }) => useTaskQueries(identity, [], false),
-      { initialProps: { identity: "tenant:SANDBOX" } },
+      { initialProps: { identity: "tenant-a:user" } },
     );
     const first = result.current.queryTasks({});
     expect(result.current.queryTasks({})).toBe(first);
@@ -116,7 +116,7 @@ describe("Task query owner", () => {
     act(() => result.current.refreshTasks());
     await result.current.queryTasks({});
     expect(api.list).toHaveBeenCalledTimes(2);
-    rerender({ identity: "tenant:PRODUCTION" });
+    rerender({ identity: "tenant-b:user" });
     await result.current.queryTasks({});
     expect(api.list).toHaveBeenCalledTimes(3);
   });
@@ -125,7 +125,7 @@ describe("Task query owner", () => {
       .mockRejectedValueOnce(new Error("Unavailable"))
       .mockResolvedValueOnce({ data: [], meta: { total: 0 } });
     const { result } = renderHook(() =>
-      useTaskQueries("tenant:SANDBOX", [], false),
+      useTaskQueries("tenant-a:user", [], false),
     );
     await expect(result.current.queryTasks()).rejects.toThrow("Unavailable");
     await expect(result.current.queryTasks()).resolves.toMatchObject({

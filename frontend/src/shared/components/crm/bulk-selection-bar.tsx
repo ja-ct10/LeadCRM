@@ -4,7 +4,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { PermissionKey } from '@leadcrm/shared';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
-import { environmentSnapshot } from '@/lib/api/environment-transport';
 import { ConfirmActionDialog } from './confirm-action-dialog';
 import { SelectedRowsBar } from './selected-rows-bar';
 import { Button } from '@/shared/components/ui/button';
@@ -36,17 +35,15 @@ function ActionButton({ action, disabled, onClick }: { action: BulkAction; disab
 
 /** Shared presentation and confirmation; module callbacks retain backend rules. */
 export function BulkSelectionBar({ selectedCount, selectedIds, onClearSelection, actions, onRemoveIds }: BulkSelectionBarProps) {
-  const [pending, setPending] = useState<{ action: BulkAction; ids: string[]; generation: number } | null>(null);
+  const [pending, setPending] = useState<{ action: BulkAction; ids: string[] } | null>(null);
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
   useEffect(() => { if (!selectedCount) setPending(null); }, [selectedCount]);
-  async function execute(action: BulkAction, ids: string[], generation: number) {
+  async function execute(action: BulkAction, ids: string[]) {
     if (lock.current) return;
-    if (generation !== environmentSnapshot().generation || environmentSnapshot().switching) { setPending(null); return; }
     lock.current = true; setBusy(true);
     try {
       const result = await action.onExecute(ids);
-      if (generation !== environmentSnapshot().generation) return;
       onRemoveIds?.(result.succeeded);
       if (!result.failed.length) toast.success(`${result.succeeded.length} ${action.entityName ?? 'record'}${result.succeeded.length === 1 ? '' : 's'} ${action.id === 'archive' ? 'archived' : action.id === 'pause' ? 'paused' : 'processed successfully'}.`);
       else if (!result.succeeded.length) toast.error(`Failed to process ${result.failed.length} record(s).`);
@@ -58,25 +55,22 @@ export function BulkSelectionBar({ selectedCount, selectedIds, onClearSelection,
   return <>
     <SelectedRowsBar count={selectedCount} onClear={onClearSelection} disabled={busy}>
       {actions.map(action => <ActionButton key={action.id} action={action} disabled={busy} onClick={() => {
-        const ids = [...selectedIds], generation = environmentSnapshot().generation;
-        if (action.destructive) setPending({ action, ids, generation });
-        else void execute(action, ids, generation);
+        const ids = [...selectedIds];
+        if (action.destructive) setPending({ action, ids });
+        else void execute(action, ids);
       }} />)}
     </SelectedRowsBar>
     <ConfirmActionDialog open={!!pending && selectedCount > 0} onOpenChange={open => { if (!open && !busy) setPending(null); }}
       title={pending ? `${pending.action.label} ${pending.ids.length} ${pending.action.entityName ?? 'record'}${pending.ids.length === 1 ? '' : 's'}?` : ''}
       description="Archived records and their history are preserved." confirmLabel={pending?.action.label} isLoading={busy}
-      onConfirm={async () => { if (pending) await execute(pending.action, pending.ids, pending.generation); }} />
+      onConfirm={async () => { if (pending) await execute(pending.action, pending.ids); }} />
   </>;
 }
 
-/** Continue on individual failures without crossing a workspace switch. */
+/** Continue on individual failures and report each outcome. */
 export async function executeSelectedRows(ids: string[], execute: (id: string) => Promise<unknown>): Promise<BulkActionResult> {
   const result: BulkActionResult = { succeeded: [], failed: [] };
-  const generation = environmentSnapshot().generation;
   for (const id of ids) {
-    const current = environmentSnapshot();
-    if (current.switching || current.generation !== generation) { result.failed.push(id); continue; }
     try { await execute(id); result.succeeded.push(id); } catch { result.failed.push(id); }
   }
   return result;

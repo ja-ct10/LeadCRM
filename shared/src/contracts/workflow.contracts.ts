@@ -39,7 +39,7 @@ export interface WorkflowOptions {
   campaigns: Array<{id:string;name:string}>;
 }
 export interface Workflow extends WorkflowDraft {
-  id: string; tenantId: string; environment?: 'SANDBOX' | 'PRODUCTION';
+  id: string; tenantId: string;
   isArchived: boolean; createdAt: string; updatedAt: string; lastRunAt?: string | null;
   status?: 'DRAFT' | 'ACTIVE' | 'PAUSED'; totalRuns?: number; successfulRuns?: number; failedRuns?: number;
 }

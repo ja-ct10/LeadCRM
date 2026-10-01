@@ -1,15 +1,14 @@
 // Disposable real-database preview for manual/browser verification. Never reads .env.
 import { PGlite } from '@electric-sql/pglite';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
-import { readFileSync, readdirSync } from 'node:fs';
+import { replayCrmMigrations } from '../../scripts/replay-crm-migrations.mjs';
 import { resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const root = resolve(import.meta.dirname, '../..');
 const pg = await PGlite.create();
-await pg.exec(readFileSync(resolve(root, 'src/tests/security-baseline.sql'), 'utf8'));
-for (const name of readdirSync(resolve(root, 'prisma/migrations')).filter(name => name >= '20261007000000' && /^\d/.test(name)).sort()) await pg.exec(readFileSync(resolve(root, 'prisma/migrations', name, 'migration.sql'), 'utf8'));
+await replayCrmMigrations(pg);
 const socket = new PGLiteSocketServer({ db: pg, host: '127.0.0.1', port: 0 });
 await socket.start();
 process.env.DATABASE_URL = `postgresql://postgres:postgres@${socket.getServerConn()}/postgres?connection_limit=1`;

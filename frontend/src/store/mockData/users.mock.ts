@@ -13,7 +13,6 @@ export const MOCK_TENANTS: Tenant[] = [
     address: '123 Tech Lane, Silicon Valley, CA',
     status: 'active',
     approvalStep: 'completed',
-    environment: 'production',
     createdAt: '2025-01-15T08:00:00.000Z',
   },
   {
@@ -26,7 +25,6 @@ export const MOCK_TENANTS: Tenant[] = [
     address: '456 Freight Blvd, Chicago, IL',
     status: 'active',
     approvalStep: 'completed',
-    environment: 'both',
     createdAt: '2025-02-20T10:30:00.000Z',
   },
   {
@@ -39,7 +37,6 @@ export const MOCK_TENANTS: Tenant[] = [
     address: '789 Medical Parkway, Boston, MA',
     status: 'pending',
     approvalStep: 'basic',
-    environment: 'none',
     createdAt: '2026-03-28T14:15:00.000Z',
   },
   {
@@ -52,7 +49,6 @@ export const MOCK_TENANTS: Tenant[] = [
     address: '321 Creative Studio, Austin, TX',
     status: 'suspended',
     approvalStep: 'completed',
-    environment: 'production',
     createdAt: '2025-06-10T09:45:00.000Z',
   },
 ];

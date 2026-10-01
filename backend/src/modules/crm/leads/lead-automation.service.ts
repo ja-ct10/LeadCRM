@@ -1,11 +1,10 @@
 import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
-import { environmentContext } from '../../../core/environment/environment-context';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { ProductInterestIdSchema } from '@leadcrm/shared';
 
 type Tx = Prisma.TransactionClient;
-export const crmScope = (tenantId: string) => ({ tenantId, environment: environmentContext.getStore()?.environment ?? 'PRODUCTION' as const });
+export const crmScope = (tenantId: string) => ({ tenantId });
 
 /** Retry database serialization conflicts, including first-use preference races. */
 export async function salesTransaction<T>(work: (tx: Tx) => Promise<T>): Promise<T> {
@@ -104,7 +103,7 @@ export async function createAssignedLead(tx: Tx, input: Prisma.LeadUncheckedCrea
   const agents = await eligibleAgents(tx, scope.tenantId);
   let agent = input.assignedUserId ? await validateSalesOwner(tx, scope.tenantId, input.assignedUserId) : undefined;
   if (!agent && agents.length) {
-    const key = { tenantId: scope.tenantId, module: 'lead-assignment', key: scope.environment };
+    const key = { tenantId: scope.tenantId, module: 'lead-assignment', key: 'default' };
     const cursor = await tx.tenantPreference.findUnique({ where: { tenantId_module_key: key } });
     const lastId = typeof cursor?.value === 'string' ? cursor.value : '';
     agent = agents[(agents.findIndex(user => user.id === lastId) + 1) % agents.length];

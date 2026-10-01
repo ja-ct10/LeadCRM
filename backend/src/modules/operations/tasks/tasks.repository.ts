@@ -5,7 +5,6 @@ import {
   TaskAssociations,
   TaskLinkKind,
 } from "@leadcrm/shared";
-import { environmentContext } from "../../../core/environment/environment-context";
 import { NotFoundError } from "../../../shared/errors/http-error";
 import prisma from "../../../config/database.config";
 import { ConflictError } from "../../../shared/errors/http-error";
@@ -32,17 +31,17 @@ const person = {
 export const taskInclude = {
   leadLinks: {
     orderBy: [{ position: "asc" }, { leadId: "asc" }],
-    include: { lead: { select: { ...person, environment: true } } },
+    include: { lead: { select: { ...person } } },
   },
   contactLinks: {
     orderBy: [{ position: "asc" }, { contactId: "asc" }],
-    include: { contact: { select: { ...person, environment: true } } },
+    include: { contact: { select: { ...person } } },
   },
   dealLinks: {
     orderBy: [{ position: "asc" }, { dealId: "asc" }],
     include: {
       deal: {
-        select: { id: true, title: true, tenantId: true, environment: true },
+        select: { id: true, title: true, tenantId: true },
       },
     },
   },
@@ -50,17 +49,17 @@ export const taskInclude = {
     orderBy: [{ position: "asc" }, { accountId: "asc" }],
     include: {
       account: {
-        select: { id: true, name: true, tenantId: true, environment: true },
+        select: { id: true, name: true, tenantId: true },
       },
     },
   },
   assignedUser: { select: person },
   assignedBy: { select: person },
   completedBy: { select: person },
-  lead: { select: { ...person, environment: true } },
-  contact: { select: { ...person, environment: true } },
+  lead: { select: { ...person } },
+  contact: { select: { ...person } },
   deal: {
-    select: { id: true, title: true, tenantId: true, environment: true },
+    select: { id: true, title: true, tenantId: true },
   },
 } satisfies Prisma.TaskInclude;
 export type TaskRow = Prisma.TaskGetPayload<{ include: typeof taskInclude }>;
@@ -170,7 +169,6 @@ export async function deleteTask(
     where: {
       id,
       tenantId,
-      environment: environmentContext.getStore()!.environment,
     },
   });
   if (result.count !== 1) throw new NotFoundError("Task");
@@ -346,7 +344,6 @@ export function taskAssociationWhere(
           some: {
             [`${kind}Id`]: id,
             tenantId,
-            environment: environmentContext.getStore()?.environment,
           },
         },
       },
@@ -354,14 +351,13 @@ export function taskAssociationWhere(
   };
 }
 export async function replaceTaskLinks(
-  task: { id: string; tenantId: string; environment: "PRODUCTION" | "SANDBOX" },
+  task: { id: string; tenantId: string },
   links: TaskAssociations,
   client: TaskClient,
 ) {
   const where = {
     taskId: task.id,
     tenantId: task.tenantId,
-    environment: task.environment,
   };
   if (links.leadIds !== undefined) {
     await client.taskLead.deleteMany({ where });
@@ -418,7 +414,6 @@ export async function findTaskLinkIds(
   const related = await relatedOptionFilters(tenantId, leadIds, client);
   const where = {
     tenantId,
-    environment: environmentContext.getStore()!.environment,
     isArchived: false,
     id: { in: ids },
   };
@@ -453,9 +448,8 @@ async function relatedOptionFilters(
   deal: Prisma.DealWhereInput;
 }> {
   if (!leadIds.length) return { contact: {}, account: {}, deal: {} };
-  const environment = environmentContext.getStore()!.environment;
   const leads = await client.lead.findMany({
-    where: { tenantId, environment, isArchived: false, id: { in: leadIds } },
+    where: { tenantId, isArchived: false, id: { in: leadIds } },
     select: { id: true, contactId: true, accountId: true },
   });
   if (leads.length !== leadIds.length)
@@ -476,7 +470,7 @@ async function relatedOptionFilters(
         { leadId: { in: leadIds } },
         {
           leadDeals: {
-            some: { tenantId, environment, leadId: { in: leadIds } },
+            some: { tenantId, leadId: { in: leadIds } },
           },
         },
       ],

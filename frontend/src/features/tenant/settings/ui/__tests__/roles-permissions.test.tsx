@@ -4,9 +4,9 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { PERMISSION_MODULES } from '@leadcrm/shared';
 import { DataProvider } from '@/store/DataContext';
 import { RolesPermissions } from '../roles-permissions';
-const mocks = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), environment: 'SANDBOX' }));
+const mocks = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({
-  tenant: { id: 'tenant-a' }, user: { id: 'admin', role: 'Client Admin', status: 'ACTIVE', onboardingCompletedAt: '2026-01-01', activeEnvironment: mocks.environment }, userCan: () => true,
+  tenant: { id: 'tenant-a' }, user: { id: 'admin', role: 'Client Admin', status: 'ACTIVE', onboardingCompletedAt: '2026-01-01' }, userCan: () => true,
 }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('sonner', () => ({ toast: mocks }));
@@ -31,7 +31,7 @@ const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
   }
   return { ok: true, json: async () => ({ data: [], meta: { total: 0, totalPages: 0 } }) };
 });
-beforeEach(() => { localStorage.clear(); savedRoles.length = 0; failure = ''; pending = undefined; holdCrm = false; mocks.environment = 'SANDBOX'; fetcher.mockClear(); vi.clearAllMocks(); vi.stubGlobal('fetch', fetcher); });
+beforeEach(() => { localStorage.clear(); savedRoles.length = 0; failure = ''; pending = undefined; holdCrm = false; fetcher.mockClear(); vi.clearAllMocks(); vi.stubGlobal('fetch', fetcher); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const mount = () => render(<DataProvider><RolesPermissions /></DataProvider>);
 async function open() { const view = mount(); fireEvent.click(await screen.findByRole('button', { name: 'Create Custom Role' })); return view; }
@@ -78,15 +78,6 @@ it('keeps values and permissions on server failure and allows a zero-permission 
   expect(JSON.parse(String(posts()[1][1]?.body)).permissions).toEqual([]);
 });
 
-it('keeps tenant-wide permissions when environment switches while CRM startup is still pending', async () => {
-  holdCrm = true;
-  const view = await open();
-  fireEvent.click(screen.getByRole('switch', { name: 'Contacts & Accounts' }));
-  mocks.environment = 'PRODUCTION';
-  view.rerender(<DataProvider><RolesPermissions /></DataProvider>);
-  expect(screen.getByText('8/8')).toBeTruthy();
-  expect(screen.queryByText('0/0')).toBeNull();
-});
 
 it('keeps protected actions visible and disabled without navigation or requests', async () => {
   savedRoles.push({ id: 'admin-role', name: 'Client Admin', tenantId: 'tenant-a', isSystemRole: true, isArchived: false, permissions: [] });

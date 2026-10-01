@@ -19,8 +19,8 @@ export interface SendMailOptions {
   requireDelivery?: boolean;
 }
 
-/** Returns sandbox allowlist from BREVO_SANDBOX_EMAILS, or null when unset. */
-function getSandboxAllowlist(): Set<string> | null {
+/** Deployment email allowlist for non-production NODE_ENV; unrelated to CRM data scope. */
+function getDevelopmentAllowlist(): Set<string> | null {
   const raw = process.env.BREVO_SANDBOX_EMAILS;
   if (!raw || raw.trim() === '') return null;
   const allowed = raw.split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
@@ -54,7 +54,7 @@ export function assertBrevoConfigured(): void {
 export async function sendMail(options: SendMailOptions): Promise<SendMailResult> {
   if (/[\r\n]/.test(options.subject)) throw new AppError('Invalid email subject.', 400);
   if (process.env.NODE_ENV !== 'production') {
-    const allowlist = getSandboxAllowlist();
+    const allowlist = getDevelopmentAllowlist();
     if (allowlist !== null && !allowlist.has(options.to.trim().toLowerCase())) {
       return { messageId: null, submitted: false };
     }

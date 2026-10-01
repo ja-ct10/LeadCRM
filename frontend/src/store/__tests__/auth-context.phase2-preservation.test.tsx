@@ -398,7 +398,7 @@ describe(
       window.localStorage.setItem('leadcrm_user', JSON.stringify(mockUser));
       window.localStorage.setItem(
         'leadcrm_tenant',
-        JSON.stringify({ id: 'mock-t1', name: 'MockCorp', status: 'active', environment: 'production' }),
+        JSON.stringify({ id: 'mock-t1', name: 'MockCorp', status: 'active' }),
       );
 
       render(
@@ -460,7 +460,7 @@ describe(
         tenantId: 'mock-t2',
         status: 'active',
       };
-      const mockTenant = { id: 'mock-t2', name: 'Demo Corp', status: 'active', environment: 'production' };
+      const mockTenant = { id: 'mock-t2', name: 'Demo Corp', status: 'active' };
       window.localStorage.setItem('leadcrm_users', JSON.stringify([mockUser]));
       window.localStorage.setItem('leadcrm_tenants', JSON.stringify([mockTenant]));
 

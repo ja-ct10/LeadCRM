@@ -1,4 +1,4 @@
-import { environmentContext } from '../../../core/environment/environment-context';
+import { tenantContext } from '../../../core/tenant/tenant-context';
 import { WorkflowDraftSchema, type WorkflowDraft, type WorkflowTestResult } from '@leadcrm/shared';
 import { assertWorkflowPermissions } from '../actions/action-permissions';
 import { writeAuditLog } from '../../../core/audit/audit.service';
@@ -22,8 +22,8 @@ function sanitizeDraft(draft: WorkflowDraft): WorkflowDraft {
 }
 
 function requireScope(tenantId: string) {
-  const scope = environmentContext.getStore();
-  if (!scope || scope.tenantId !== tenantId) throw new ValidationError('A matching CRM environment is required for automation.');
+  const scope = tenantContext.getStore();
+  if (!scope || scope.tenantId !== tenantId) throw new ValidationError('A matching CRM tenant context is required for automation.');
 }
 
 export async function getOptions(tenantId: string, userId: string) {

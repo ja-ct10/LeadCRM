@@ -2,7 +2,7 @@ import { beforeAll, afterAll, describe, it } from "vitest";
 import { expect } from "vitest";
 import type { Server } from "node:http";
 import prisma from "../../../../config/database.config";
-import { environmentContext } from "../../../../core/environment/environment-context";
+import { tenantContext } from "../../../../core/tenant/tenant-context";
 import { issueAuthSession } from "../../../../core/auth/auth-session";
 import app from "../../../../app";
 const url = new URL(process.env.DATABASE_URL ?? "postgresql://invalid/");
@@ -22,7 +22,8 @@ describe.skipIf(!disposable)(
       contact: any,
       deal: any,
       account: any,
-      sandboxLead: any;
+      product: any,
+      foreignLead: any;
     let token: string,
       readerToken: string,
       contactsToken: string,
@@ -30,8 +31,8 @@ describe.skipIf(!disposable)(
       server: Server;
     const scope = <T>(
       work: () => T,
-      environment: "PRODUCTION" | "SANDBOX" = "PRODUCTION",
-    ) => environmentContext.run({ tenantId, environment }, work);
+      scopedTenant = tenantId,
+    ) => tenantContext.run({ tenantId: scopedTenant }, work);
     async function call(
       path: string,
       method = "GET",
@@ -80,7 +81,6 @@ describe.skipIf(!disposable)(
             email: `tasks-${name}-${stamp}@camxian.com`,
             firstName: name,
             lastName: "Test",
-            activeEnvironment: "PRODUCTION",
             mustChangePassword: false,
             emailVerified: new Date(),
           },
@@ -109,6 +109,7 @@ describe.skipIf(!disposable)(
         else contactsToken = session;
       }
       await scope(async () => {
+        product = await prisma.productInterest.create({ data: { tenantId, name: 'CCTV', dealValue: 5000 } });
         lead = await prisma.lead.create({
           data: {
             tenantId,
@@ -152,17 +153,17 @@ describe.skipIf(!disposable)(
           },
         });
       });
-      sandboxLead = await scope(
+      foreignLead = await scope(
         async () =>
           await prisma.lead.create({
             data: {
               tenantId,
-              firstName: "Sandbox",
+              firstName: "Foreign",
               lastName: "Task",
               productInterest: [],
             },
           }),
-        "SANDBOX",
+        otherTenantId,
       );
       server = app.listen(0);
       await new Promise<void>((resolve) => server.once("listening", resolve));
@@ -255,10 +256,10 @@ describe.skipIf(!disposable)(
       expect((await call(path, 'PATCH')).status).toBe(404);
       expect((await call('/administration/archived-data/Task/invalid/restore', 'PATCH')).status).toBe(400);
     });
-    it("rejects cross-tenant, cross-environment, inactive, and invalid references", async () => {
+    it("rejects cross-tenant, inactive, and invalid references", async () => {
       for (const bad of [
         { assignedUserId: outsider.id },
-        { leadId: sandboxLead.id },
+        { leadId: foreignLead.id },
         { contactId: "missing" },
         { dealId: "missing" },
         { accountId: "missing" },
@@ -451,13 +452,15 @@ describe.skipIf(!disposable)(
       const createdLead = await call("/crm/leads", "POST", {
         firstName: "Task",
         lastName: "Lead",
-        status: "Inquiry",
+        status: "Warm",
+        email: "task-lead@example.test",
         accountId: createdAccount.body.data.id,
-        productInterest: ["CCTV"],
+        productInterest: [product.id],
       });
       expect(createdLead.status).toBe(201);
       const createdDeal = await call("/crm/deals", "POST", {
         title: "Task new deal",
+        productInterestIds: [product.id],
         pipelineId: deal.pipelineId,
         stageId: deal.stageId,
         priority: "MEDIUM",
@@ -483,25 +486,25 @@ describe.skipIf(!disposable)(
       const task = (
         await call("/operations/tasks", "POST", draft("Bulk local"))
       ).body.data;
-      const sandbox = await scope(
+      const foreignTask = await scope(
         async () =>
           await prisma.task.create({
-            data: { ...draft("Sandbox task"), tenantId },
+            data: { ...draft("Foreign task"), tenantId },
           }),
-        "SANDBOX",
+        otherTenantId,
       );
       const response = await call("/operations/tasks/bulk", "POST", {
         operation: "complete",
-        ids: [task.id, sandbox.id, task.id, "missing"],
+        ids: [task.id, foreignTask.id, task.id, "missing"],
       });
       expect(response.status).toBe(200);
       expect(response.body.data.succeeded).toEqual([task.id]);
       expect(response.body.data.failed).toHaveLength(2);
       expect(
-        (await prisma.task.findUniqueOrThrow({ where: { id: sandbox.id } }))
+        (await prisma.task.findUniqueOrThrow({ where: { id: foreignTask.id } }))
           .status,
       ).toBe("pending");
-      expect((await call(`/operations/tasks/${sandbox.id}`)).status).toBe(404);
+      expect((await call(`/operations/tasks/${foreignTask.id}`)).status).toBe(404);
       expect(
         (
           await call("/operations/tasks/bulk", "POST", {
@@ -551,7 +554,7 @@ describe.skipIf(!disposable)(
       });
       expect(unchanged.body.data.leadIds).toEqual([lead.id, second.id]);
       const rejected = await call(`/operations/tasks/${id}`, "PUT", {
-        leadIds: [lead.id, sandboxLead.id],
+        leadIds: [lead.id, foreignLead.id],
       });
       expect(rejected.status).toBe(404);
       expect((await call(`/operations/tasks/${id}`)).body.data.leadIds).toEqual(
@@ -599,7 +602,7 @@ describe.skipIf(!disposable)(
       expect(
         (
           await call(
-            `/operations/tasks/options?kind=deal&leadIds=${sandboxLead.id}`,
+            `/operations/tasks/options?kind=deal&leadIds=${foreignLead.id}`,
           )
         ).status,
       ).toBe(404);
@@ -635,7 +638,8 @@ describe.skipIf(!disposable)(
       const createdLead = await call("/crm/leads", "POST", {
         firstName: "Create",
         lastName: "Related",
-        status: "Inquiry",
+        status: "Warm",
+        email: "related-lead@example.test",
       });
       expect(createdLead.status).toBe(201);
       const leadId = createdLead.body.data.id;
@@ -655,10 +659,11 @@ describe.skipIf(!disposable)(
       expect(converted.status).toBe(200);
       const contactId = converted.body.data.contact.id;
       expect((await call(`/crm/leads/${leadId}`)).body.data.status).toBe(
-        "Converted",
+        "Closed",
       );
       const newDeal = await call("/crm/deals", "POST", {
         title: "Related create deal",
+        productInterestIds: [product.id],
         pipelineId: deal.pipelineId,
         stageId: deal.stageId,
         leadIds: [leadId, lead.id],
@@ -731,19 +736,19 @@ describe.skipIf(!disposable)(
           leadIds: [lead.id],
         })
       ).body.data;
-      const sandbox = await scope(
+      const foreignTask = await scope(
         async () =>
           await prisma.task.create({
             data: {
-              ...draft("Protected sandbox"),
+              ...draft("Protected foreignTask"),
               dueDate: new Date(draft().dueDate),
               tenantId,
             },
           }),
-        "SANDBOX",
+        otherTenantId,
       );
-      const foreign = await environmentContext.run(
-        { tenantId: otherTenantId, environment: "PRODUCTION" },
+      const foreign = await tenantContext.run(
+        { tenantId: otherTenantId, },
         async () =>
           await prisma.task.create({
             data: {
@@ -778,13 +783,13 @@ describe.skipIf(!disposable)(
       ).toBe(400);
       const deleted = await call("/operations/tasks/bulk", "POST", {
         operation: "delete",
-        ids: [saved.id, sandbox.id, foreign.id],
+        ids: [saved.id, foreignTask.id, foreign.id],
       });
       expect(deleted.status).toBe(200);
       expect(deleted.body.data.succeeded).toEqual([saved.id]);
       expect(
         deleted.body.data.failed.map((item: { id: string }) => item.id),
-      ).toEqual([sandbox.id, foreign.id]);
+      ).toEqual([foreignTask.id, foreign.id]);
       expect((await call(`/operations/tasks/${saved.id}`)).status).toBe(404);
       expect(
         await scope(
@@ -797,13 +802,13 @@ describe.skipIf(!disposable)(
       );
       expect(
         await scope(
-          async () => await prisma.task.count({ where: { id: sandbox.id } }),
-          "SANDBOX",
+          async () => await prisma.task.count({ where: { id: foreignTask.id } }),
+          otherTenantId,
         ),
       ).toBe(1);
       expect(
-        await environmentContext.run(
-          { tenantId: otherTenantId, environment: "PRODUCTION" },
+        await tenantContext.run(
+          { tenantId: otherTenantId, },
           async () => await prisma.task.count({ where: { id: foreign.id } }),
         ),
       ).toBe(1);

@@ -202,7 +202,7 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
     fetchFn: async signal => (await apiClient.get<{ data: Relationships }>(`/crm/${module}/${encodeURIComponent(id)}/relationships?limit=50`, { signal })).data });
   const timeline = useRecordActivities(module, id, !!recordQuery.data && !recordQuery.error || USE_MOCK_DATA, module === 'contacts' ? relatedQuery.data?.activities ?? [] : undefined);
   const mockRecords = module === 'deals' ? data.deals : module === 'accounts' ? data.organizations : data.contacts;
-  const mockRecord = USE_MOCK_DATA ? mockRecords.find(item => item.id === id && item.tenantId === tenant?.id && ((item as unknown as RecordData).environment ?? 'SANDBOX') === (user?.activeEnvironment ?? 'SANDBOX')) : undefined;
+  const mockRecord = USE_MOCK_DATA ? mockRecords.find(item => item.id === id && item.tenantId === tenant?.id) : undefined;
   const record = USE_MOCK_DATA ? mockRecord as unknown as RecordData : recordQuery.data;
   const filesQuery = useCachedPage<RecordFileMetadata[]>({ module, params: { recordId: id, files: true }, revalidateOnInvalidation: true,
     disabled: tab !== 'files' || !recordQuery.data || USE_MOCK_DATA,
@@ -455,6 +455,6 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
 export function CrmRecordPanel({ module, id, open, onOpenChange, onEdit }: { module: CrmRecordModule; id?: string; open: boolean; onOpenChange: (open: boolean) => void; onEdit?: (record: RecordData) => void }) {
   const { user } = useAuth();
   return <Sheet open={open} onOpenChange={onOpenChange}><SheetContent showClose={false} aria-label={`${labels[module]} details`} className="w-full max-w-full sm:max-w-[480px]">
-    {open && id && <CrmRecordView key={`${module}:${id}:${user?.id}:${user?.activeEnvironment}`} module={module} id={id} onClose={() => onOpenChange(false)} onEdit={onEdit} />}
+    {open && id && <CrmRecordView key={`${module}:${id}:${user?.id}`} module={module} id={id} onClose={() => onOpenChange(false)} onEdit={onEdit} />}
   </SheetContent></Sheet>;
 }

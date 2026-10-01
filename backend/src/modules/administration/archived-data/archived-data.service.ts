@@ -1,7 +1,7 @@
 import { ArchiveQuerySchema, ArchiveRestoreParamsSchema, ARCHIVE_TYPES, type ArchivedRecord, type ArchiveType } from '@leadcrm/shared';
 import type { z } from 'zod';
 import prisma from '../../../config/database.config';
-import { environmentContext } from '../../../core/environment/environment-context';
+import { tenantContext } from '../../../core/tenant/tenant-context';
 import { assertPermissions } from '../../../core/permissions/permission.service';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { AppError } from '../../../shared/errors/app-error';
@@ -19,9 +19,9 @@ const permissions: Record<ArchiveType | z.infer<typeof ArchiveRestoreParamsSchem
 const protectedRole = (name: string) => ['guest', 'clientadmin', 'systemadmin'].includes(name.toLowerCase().replace(/[\s_-]/g, ''));
 
 function scope(actor: Actor) {
-  const context = environmentContext.getStore();
+  const context = tenantContext.getStore();
   if (!context || context.tenantId !== actor.tenantId) throw new AppError('Workspace context required', 403);
-  return { tenantId: actor.tenantId, environment: context.environment, isArchived: true };
+  return { tenantId: actor.tenantId, isArchived: true };
 }
 
 type Identity = { id: string; name: string; detail?: string; archivedAt?: Date | null; canRestore?: boolean };
