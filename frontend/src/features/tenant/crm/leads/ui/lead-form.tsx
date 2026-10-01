@@ -35,8 +35,8 @@ import {
 // sends populated values (pre-filled from initialData), so using the Create schema
 // for validation is correct for both modes.
 const LeadFormSchema = z.object({
-  firstName: z.string().min(1, 'First name is required').max(100, 'Max 100 characters'),
-  lastName: z.string().min(1, 'Last name is required').max(100, 'Max 100 characters'),
+  firstName: z.string().trim().min(1, 'First name is required').max(100, 'Max 100 characters'),
+  lastName: z.string().trim().min(1, 'Last name is required').max(100, 'Max 100 characters'),
   email: CrmEmailSchema,
   phone: z.string().optional(),
   companyName: z.string().optional(),

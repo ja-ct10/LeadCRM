@@ -21,7 +21,8 @@ import { BulkSelectionBar, executeSelectedRows } from '@/shared/components/crm/b
 import { RefreshButton } from '@/shared/components/crm/refresh-button';
 import { UserPanel } from './user-panel';
 import { UserAvatar as ProfileAvatar } from '@/shared/components/user-avatar';
-import { DataLoadingSpinner, DataErrorState } from '@/shared/components/crm/data-view-states';
+import { DataErrorState } from '@/shared/components/crm/data-view-states';
+import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { cn } from '@/lib/utils';
 import { USE_MOCK_DATA } from '@/lib/config';
 import type { User } from '@/store/types';
@@ -389,7 +390,7 @@ export function UsersSubTab({ onUsersLoaded }: { onUsersLoaded?: (users: User[])
           <div className="shrink-0 border-t border-[#E4E9F0] dark:border-slate-700 px-4 py-2.5 text-xs text-slate-500">{filtered.length} users in this module</div>
         </motion.aside>}
         <div className="min-w-0 flex-1 space-y-4">
-      {loading ? <DataLoadingSpinner label="Loading users..." /> : loadError ? <DataErrorState message={loadError} onRetry={() => setReload(value => value + 1)} /> :
+      {loading ? <TableLoadingState label="Loading users..." /> : loadError ? <DataErrorState message={loadError} onRetry={() => setReload(value => value + 1)} /> :
         <DataGrid<User> columns={columns} data={paginated} getRowId={row => row.id} height="auto" selectable={canManageUsers} selectedIds={selected} onSelectionChange={setSelected} enableColumnMenu={false} ariaLabel="Team Management table" emptyMessage="No users found"
           onRowClick={u => openUser(u)} rowActions={u => [
             { id: 'view', label: 'View', onClick: () => openUser(u) },

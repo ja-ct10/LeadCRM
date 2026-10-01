@@ -1,6 +1,8 @@
 import { apiClient } from '@/lib/api/client';
 export type { MailboxEmail as GmailEmail } from '@leadcrm/shared';
-import type { MailboxEmail as GmailEmail } from '@leadcrm/shared';
+import type { MailboxEmail as GmailEmail, MailboxUnreadCount } from '@leadcrm/shared';
+
+export const fetchGmailUnreadCount = () => apiClient.get<MailboxUnreadCount>('/integrations/gmail/unread-count');
 
 export interface GmailConnectionStatus {
   isConnected: boolean;

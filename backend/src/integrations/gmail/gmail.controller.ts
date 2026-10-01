@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { SendMailboxEmailSchema } from '@leadcrm/shared';
-import { fetchEmails, sendEmail, getConnectionStatus, disconnectAccount, trashEmails, archiveEmails, saveDraft, deleteDraft } from './gmail.service';
+import { fetchEmails, fetchUnreadCount, sendEmail, getConnectionStatus, disconnectAccount, trashEmails, archiveEmails, saveDraft, deleteDraft } from './gmail.service';
 import { beginMailboxConnection, finishMailboxConnection } from './mailbox-auth.service';
 import { syncMailbox, readMailboxThread, decorateEmails, mailboxPermissions, associateMailboxDeal } from './mailbox-sync.service';
 import { AppError } from '../../shared/errors/app-error';
@@ -40,6 +40,9 @@ export async function listEmails(req: Request, res: Response, next: NextFunction
     const result = await fetchEmails(tenantId, userId, listSchema.parse(req.query));
     res.json({ ...result, emails: await decorateEmails(tenantId, userId, result.emails, await mailboxPermissions(tenantId, userId)) });
   } catch (error) { next(error); }
+}
+export async function unreadCount(req: Request, res: Response, next: NextFunction) {
+  try { res.json(await fetchUnreadCount(req.user!.tenantId, req.user!.userId)); } catch (error) { next(error); }
 }
 export async function sync(req: Request, res: Response, next: NextFunction) {
   try { res.json(await syncMailbox(req.user!.tenantId, req.user!.userId)); } catch (error) { next(error); }

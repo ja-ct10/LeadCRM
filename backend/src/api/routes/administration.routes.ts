@@ -1,6 +1,7 @@
 import { CreateUsersSchema, UpdateUsersSchema } from '../../modules/administration/users/users.dto';
 import { passwordResetRateLimiter } from '../middleware/rate-limit.middleware';
 import { Router } from 'express';
+import * as closingRequirements from '../../modules/crm/closing-requirements/closing-requirements.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { tenantMiddleware, workspaceReadyMiddleware } from '../middleware/tenant.middleware';
 import { authorize } from '../middleware/rbac.middleware';
@@ -26,6 +27,9 @@ router.get('/users/:id/permissions', (req, res, next) => {
   return workspaceReadyMiddleware(req, res, next);
 }, roleController.getUserPermissions);
 router.use(workspaceReadyMiddleware);
+router.get('/closing-requirements', authorize('settings.view'), closingRequirements.list);
+router.post('/closing-requirements', authorize('settings.edit'), closingRequirements.create);
+router.patch('/closing-requirements/:id', authorize('settings.edit'), closingRequirements.edit);
 
 // Per-type RBAC is enforced by the archive service before querying or restoring.
 router.get('/archived-data', archivedData.list);

@@ -75,7 +75,19 @@ export async function findAllActivities(
     prisma.activity.count({ where }),
   ]);
 
-  return { data, total, page, limit };
+  return { data: await withEmailContent(tenantId, data), total, page, limit };
+}
+
+/** Resolve provider content on read, including older email activities, without copying bodies into history. */
+export async function withEmailContent<T extends { type: string; metadata?: Prisma.JsonValue; leadId?: string | null; contactId?: string | null }>(tenantId: string, activities: T[]) {
+  const ids = activities.filter(a => a.type === 'email').map(a => (a.metadata as { mailboxMessageId?: string } | null)?.mailboxMessageId).filter((id): id is string => typeof id === 'string');
+  if (!ids.length) return activities;
+  const messages = await prisma.mailboxMessage.findMany({ where: { tenantId, id: { in: ids } } });
+  return activities.map(activity => {
+    const metadata = activity.metadata as Record<string, Prisma.JsonValue> | null;
+    const message = messages.find(m => m.id === metadata?.mailboxMessageId && (activity.leadId && m.leadId === activity.leadId || activity.contactId && m.contactId === activity.contactId));
+    return message ? { ...activity, metadata: { ...metadata, email: { id: message.id, providerMessageId: message.providerMessageId, threadId: message.threadId, accountId: message.accountId, direction: message.direction, from: message.from, to: message.recipients, subject: message.subject, sentAt: message.sentAt.toISOString(), body: message.body } } } : activity;
+  });
 }
 
 export async function findActivityById(id: string, tenantId: string) {

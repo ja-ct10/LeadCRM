@@ -18,6 +18,8 @@ import { sendEmail } from './gmail.service';
 import app from '../../app';
 import type { GmailEmail } from './gmail.types';
 import { mailConfig } from '../../config/mail.config';
+import { resolveRow as resolveImportRow } from '../../modules/crm/deal-imports/deal-imports.service';
+import { ImportDealRowSchema } from '@leadcrm/shared';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = url.hostname === '127.0.0.1' && /^\/leadcrm_mailbox_test_\d+$/.test(url.pathname);
@@ -136,18 +138,23 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     await ingest([message(c.thread, c.email, 'outbound', 'Product information', 9), message(c.thread, c.email, 'inbound', 'How does the product work?', 8)]);
     expect((await read(c.lead.id)).status).toBe('Cold'); expect(await stageOf(c.deals[0].id)).toBe('Qualified');
   });
-  it('requires a confirmed sale over HTTP, stores evidence, and closes related records without changing value/products/owner', async () => {
+  it('validates configured requirements, closes after the final save, and preserves related sales data', async () => {
     const c = await customer();
     expect((await call(`/crm/deals/${c.deals[0].id}/stage`, 'PATCH', { stageId: stages['Closed Won'] })).status).toBe(400);
     const confirmation = { type: 'Approved Quotation', date: before(1).toISOString().slice(0, 10), note: 'Quote Q-123 approved; sale verified.' };
-    expect((await call(`/crm/deals/${c.deals[0].id}/stage`, 'PATCH', { stageId: stages['Closed Won'], confirmation })).status).toBe(200);
+    expect((await call(`/crm/deals/${c.deals[0].id}/stage`, 'PATCH', { stageId: stages['Closed Won'], confirmation })).status).toBe(400);
+    expect((await call(`/crm/deals/${c.deals[0].id}/stage`, 'PATCH', { stageId: stages.Qualified })).status).toBe(200);
+    expect((await call(`/crm/deals/${c.deals[0].id}/closing-requirements`, 'PATCH', { values: { 'confirmation-type': confirmation.type, 'closing-notes': confirmation.note } })).status).toBe(200);
+    expect(await stageOf(c.deals[0].id)).toBe('Qualified');
+    expect((await call(`/crm/deals/${c.deals[0].id}/closing-requirements`, 'PATCH', { values: { 'confirmation-date': confirmation.date } })).status).toBe(200);
     const deal = await prisma.deal.findUniqueOrThrow({ where: { id: c.deals[0].id } });
-    expect(deal).toMatchObject({ value: 3250, assignedUserId: userId, productInterests: ['Product'], wonConfirmationType: confirmation.type, wonConfirmationNote: confirmation.note, wonConfirmedById: userId });
-    expect(deal.closedAt!.toISOString().slice(0, 10)).toBe(confirmation.date); expect(deal.wonConfirmedAt).not.toBeNull();
+    expect(deal).toMatchObject({ value: 3250, assignedUserId: userId, productInterests: ['Product'], wonConfirmedById: userId });
+    expect(deal.closingSnapshot).toMatchObject({ values: { 'confirmation-type': confirmation.type, 'confirmation-date': confirmation.date, 'closing-notes': confirmation.note } });
+    expect(deal.closedAt).not.toBeNull(); expect(deal.wonConfirmedAt).not.toBeNull();
     const lead = await read(c.lead.id); expect(lead.status).toBe('Closed');
     expect((await prisma.contact.findUniqueOrThrow({ where: { id: lead.contactId! } })).status).toBe('CLOSED');
     expect((await call(`/crm/deals/${c.deals[0].id}/stage`, 'PATCH', { stageId: stages['Closed Won'], confirmation })).status).toBe(200);
-    expect(await prisma.dealStageHistory.count({ where: { dealId: deal.id } })).toBe(1);
+    expect(await prisma.dealStageHistory.count({ where: { dealId: deal.id } })).toBe(2);
     expect((await call(`/crm/deals/${deal.id}/stage`, 'PATCH', { stageId: stages.Qualified })).status).toBe(400);
   });
   it('manual cancellation closes all open related Deals and writes Contact history atomically', async () => {
@@ -222,6 +229,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
       await expect(scope(() => mailboxPermissions(tenantId, userId))).rejects.toMatchObject({ statusCode: 403 });
       expect((await call('/integrations/gmail/status')).body.isConnected).toBe(false);
       expect((await call('/integrations/gmail/emails')).status).toBe(403);
+      expect((await call('/integrations/gmail/unread-count')).status).toBe(403);
       expect((await call('/integrations/gmail/disconnect', 'POST')).status).toBe(200);
       expect((await prisma.emailAccount.findUniqueOrThrow({ where: { id: account.id } })).accessToken).toBe('');
     } finally {
@@ -258,5 +266,101 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     await scope(() => syncMailbox(tenantId, userId)); expect((await prisma.emailAccount.findUniqueOrThrow({ where: { id: account.id } })).syncCursor).toBe('102');
     expire = true; await scope(() => syncMailbox(tenantId, userId)); expect((await prisma.emailAccount.findUniqueOrThrow({ where: { id: account.id } })).syncCursor).toBeNull();
     expect(await prisma.mailboxMessage.count({ where: { providerMessageId: inbound.id } })).toBe(1);
+  });
+
+  it('re-evaluates previously stored quotation requests without duplicating history or changing another Deal', async () => {
+    const c = await customer(), unrelated = await customer();
+    const request = message(c.thread, c.email, 'inbound', 'Please send me the formal quotation and let me know the next steps if we decide to proceed.', 5);
+    await ingest([request]);
+    await prisma.deal.update({ where: { id: c.deals[0].id }, data: { stageId: stages.Contacted, stageChangedAt: before(6) } });
+    await prisma.lead.update({ where: { id: c.lead.id }, data: { engagementEvaluatedAt: before(2), status: 'Warm' } });
+    await prisma.mailboxMessage.update({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: request.id } }, data: { engagementRuleVersion: 0, meaningful: true } });
+    await ingest([request]); await ingest([request]);
+    expect(await stageOf(c.deals[0].id)).toBe('Qualified');
+    expect(await stageOf(unrelated.deals[0].id)).toBe('Lead');
+    expect((await read(c.lead.id)).status).toBe('Warm');
+    expect(await prisma.activity.count({ where: { leadId: c.lead.id, type: 'email' } })).toBe(1);
+    const history = await call(`/crm/activities?leadId=${c.lead.id}`);
+    expect(history.body.data.find((a: { type: string }) => a.type === 'email').metadata.email).toMatchObject({ body: request.body, from: request.from, to: request.to, subject: request.subject, sentAt: request.date });
+  });
+
+  it('keeps outgoing quotation and reviewing customer Warm, but explicit approval Hot and Qualified', async () => {
+    const c = await customer();
+    await ingest([message(c.thread, c.email, 'outbound', 'We approve the quotation. Please proceed with the order.', 8)]);
+    expect((await read(c.lead.id)).status).toBe('Warm'); expect(await stageOf(c.deals[0].id)).toBe('Lead');
+    await ingest([message(c.thread, c.email, 'inbound', 'Could you please send me the available options and a quotation?', 7)]);
+    expect((await read(c.lead.id)).status).toBe('Warm'); expect(await stageOf(c.deals[0].id)).toBe('Qualified');
+    await ingest([message(c.thread, c.email, 'inbound', 'I am still deciding on the service.', 6)]);
+    expect((await read(c.lead.id)).status).toBe('Warm');
+    await ingest([message(c.thread, c.email, 'inbound', 'The quotation is acceptable.', 5)]);
+    expect((await read(c.lead.id)).status).toBe('Hot'); expect(await stageOf(c.deals[0].id)).toBe('Qualified');
+  });
+
+  it('enforces required names, trims valid edits and preserves create email validation over HTTP', async () => {
+    const c = await customer();
+    for (const key of ['firstName', 'lastName']) {
+      expect((await call(`/crm/leads/${c.lead.id}`, 'PUT', { [key]: '   ' })).status).toBe(400);
+      expect((await call('/crm/leads', 'POST', { firstName: 'New', lastName: 'Person', email: 'new@example.test', [key]: '   ' })).status).toBe(400);
+      expect((await call(`/crm/leads/${c.lead.id}`, 'PUT', { [key]: '  Trimmed  ' })).status).toBe(200);
+      expect((await read(c.lead.id))[key as 'firstName' | 'lastName']).toBe('Trimmed');
+    }
+    expect((await call('/crm/leads', 'POST', { firstName: 'New', lastName: 'Person', email: '' })).status).toBe(400);
+  });
+
+  it('persists field definitions, guards permissions/types/tenant access, and requires uploaded Deal evidence', async () => {
+    const initial = (await call('/administration/closing-requirements')).body.data;
+    const fieldKey = { tenantId, module: 'closing-requirements', key: 'fields' };
+    const foreignUser = await prisma.user.create({ data: { tenantId: otherTenant, email: `${randomUUID()}@camxian.com`, firstName: 'Other', lastName: 'Admin', role: 'Client Admin', mustChangePassword: false } });
+    await prisma.tenant.update({ where: { id: otherTenant }, data: { onboardingStep: 3, onboardingCompletedAt: new Date() } });
+    const foreignToken = (await issueAuthSession(foreignUser)).token;
+    const c = await customer(2), dealId = c.deals[0].id;
+    const endpoint = `/crm/deals/${dealId}/closing-requirements`;
+    try {
+      expect((await call('/administration/closing-requirements', 'GET', undefined, denied)).status).toBe(403);
+      expect((await call(endpoint, 'PATCH', { values: { 'confirmation-type': 'Approved Quotation' } }, denied)).status).toBe(403);
+      expect((await call(endpoint, 'GET', undefined, foreignToken)).status).toBe(404);
+      const document = { ...initial.find((f: { id: string }) => f.id === 'required-document') }; delete document.id; delete document.version; document.required = true;
+      expect((await call('/administration/closing-requirements/required-document', 'PATCH', document)).status).toBe(200);
+      expect((await call('/administration/closing-requirements/required-document', 'PATCH', { ...document, type: 'Text' })).status).toBe(400);
+      expect((await call('/administration/closing-requirements', 'POST', { name: 'Count', type: 'Number', appliesTo: 'Closed Won Requirements', required: false })).status).toBe(200);
+      const saved = (await call('/administration/closing-requirements')).body.data;
+      expect(saved.some((f: { name: string }) => f.name === 'Count')).toBe(true);
+      const optionalInput = { name: 'Delivery option', type: 'Dropdown', appliesTo: 'Closed Won Requirements', required: false, options: ['Old', 'New'] };
+      const optionalFields = (await call('/administration/closing-requirements', 'POST', optionalInput)).body.data;
+      const optionalId = optionalFields.find((f: { name: string }) => f.name === 'Delivery option').id;
+      expect((await call(endpoint, 'PATCH', { values: { [optionalId]: 'Old' } })).status).toBe(200);
+      expect((await call(`/administration/closing-requirements/${optionalId}`, 'PATCH', { ...optionalInput, options: ['New'] })).status).toBe(200);
+      expect((await call('/administration/closing-requirements', 'POST', { name: 'Invalid', type: 'Dropdown', appliesTo: 'Closed Won Requirements', required: false, options: ['Same', 'same'] })).status).toBe(400);
+      expect((await call(endpoint, 'PATCH', { values: { 'confirmation-date': '2026-02-30' } })).status).toBe(400);
+      expect((await call(endpoint, 'PATCH', { values: { 'confirmation-type': 'Fake' } })).status).toBe(400);
+      expect((await call(endpoint, 'PATCH', { values: { 'required-document': 'blob:local-file' } })).status).toBe(400);
+      expect((await call(endpoint, 'PATCH', { values: { 'required-document': randomUUID() } })).status).toBe(400);
+      await call(endpoint, 'PATCH', { values: { 'confirmation-type': 'Approved Quotation', 'confirmation-date': '2026-10-01' } });
+      expect(await stageOf(dealId)).toBe('Lead');
+      expect((await call(`/crm/deals/${dealId}/stage`, 'PATCH', { stageId: stages['Closed Won'] })).status).toBe(400);
+      await call(`/crm/deals/${dealId}/stage`, 'PATCH', { stageId: stages.Qualified });
+      expect((await call(`/crm/deals/${dealId}/stage`, 'PATCH', { stageId: stages['Closed Won'] })).status).toBe(400);
+      expect((await call('/crm/deals/bulk/stage', 'POST', { dealIds: [dealId], stageId: stages['Closed Won'] })).status).toBe(400);
+      await expect(scope(() => resolveImportRow(tenantId, ImportDealRowSchema.parse({ title: 'Cannot import Won', pipeline: pipelineId, stage: stages['Closed Won'] })))).rejects.toThrow('Import into an open stage');
+      expect(await prisma.deal.count({ where: { tenantId, title: 'Cannot import Won' } })).toBe(0);
+      const foreignFile = await prisma.recordFile.create({ data: { tenantId, dealId: c.deals[1].id, name: 'other.pdf', type: 'application/pdf', size: 10, objectKey: randomUUID(), uploadedById: userId } });
+      expect((await call(endpoint, 'PATCH', { values: { 'required-document': foreignFile.id } })).status).toBe(400);
+      vi.stubEnv('SUPABASE_URL', 'https://storage.example.test'); vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'test'); vi.stubEnv('SUPABASE_RECORD_FILES_BUCKET', 'files');
+      let uploadFails = true;
+      vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: uploadFails ? 503 : 200 })));
+      const upload = () => realFetch(`${base}/crm/deals/${dealId}/files?name=approved.pdf&type=application%2Fpdf`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/octet-stream' }, body: '%PDF-1.4\nTest document' });
+      expect((await upload()).status).toBe(502);
+      expect(await prisma.recordFile.count({ where: { tenantId, dealId } })).toBe(0);
+      uploadFails = false;
+      const response = await upload(); expect(response.status).toBe(201); const file = (await response.json()).data;
+      const close = await call(endpoint, 'PATCH', { values: { 'required-document': file.id } });
+      expect(close.status).toBe(200); expect(close.body.data.locked).toBe(true);
+      expect(await stageOf(dealId)).toBe('Closed Won'); expect(await stageOf(c.deals[1].id)).toBe('Lead');
+      const snapshot = (await prisma.deal.findUniqueOrThrow({ where: { id: dealId } })).closingSnapshot;
+      expect(snapshot).toMatchObject({ values: { 'required-document': file.id }, files: [{ name: 'approved.pdf' }] });
+      await call('/administration/closing-requirements/required-document', 'PATCH', { ...document, name: 'New document label', required: false });
+      expect((await prisma.deal.findUniqueOrThrow({ where: { id: dealId } })).closingSnapshot).toEqual(snapshot);
+      expect((await call(endpoint, 'PATCH', { values: { 'closing-notes': 'rewrite' } })).status).toBe(400);
+    } finally { vi.unstubAllEnvs(); await prisma.tenantPreference.update({ where: { tenantId_module_key: fieldKey }, data: { value: initial } }); }
   });
 });

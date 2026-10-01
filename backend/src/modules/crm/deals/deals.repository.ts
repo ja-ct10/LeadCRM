@@ -2,7 +2,8 @@ import { resolveProducts } from '../leads/lead-automation.service';
 import { validateProductSnapshots } from '../leads/product-snapshots';
 import { salesTransaction, crmScope } from '../leads/lead-automation.service';
 import { resolveWonRelationships } from './won-conversion.service';
-import { ClosedWonConfirmation, ClosedWonConfirmationSchema } from '@leadcrm/shared';
+import type { ClosedWonConfirmation } from '@leadcrm/shared';
+import { closingEvidence } from '../closing-requirements/closing-requirements.repository';
 import { changeCustomerStatus } from '../engagement.service';
 import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
@@ -206,8 +207,9 @@ export async function moveDealStage(
   handoff?: { assignOwnerId?: string; kickoffDate?: string; notes?: string },
   lostReason?: string,
   confirmation?: ClosedWonConfirmation,
+  transaction?: Prisma.TransactionClient,
 ) {
-  return salesTransaction(async tx => {
+  const transition = async (tx: Prisma.TransactionClient) => {
     const scope = crmScope(tenantId);
     const deal = await tx.deal.findFirst({ where: { id, ...scope }, include: { stage: true } });
     if (!deal) return null;
@@ -216,12 +218,8 @@ export async function moveDealStage(
     let stageHistory = null;
     if (deal.stageId !== newStageId) {
       if (deal.stage.isWon || deal.stage.isLost) throw new ValidationError('This Deal is closed. Create a new Deal for a new opportunity.');
-      if (newStage.isWon) {
-        const parsed = ClosedWonConfirmationSchema.safeParse(confirmation);
-        if (!parsed.success) throw new ValidationError('Closed Won requires a confirmation type, date, and an explanation when Other is selected.');
-        confirmation = parsed.data;
-        note = `Staff confirmed ${confirmation.type.toLowerCase()}.${confirmation.note ? ` ${confirmation.note}` : ''}`;
-      }
+      const snapshot = newStage.isWon ? await closingEvidence(tx, tenantId, deal, movedById) : undefined;
+      if (newStage.isWon) note = 'All configured Closed Won requirements completed and validated.';
       if (newStage.isLost && !lostReason?.trim()) throw new ValidationError('Lost reason is required.');
       const missing = newStage.requiredFields.filter(field => {
         const value = (deal as Record<string, unknown>)[field];
@@ -232,8 +230,8 @@ export async function moveDealStage(
       const previous = await tx.dealStageHistory.findFirst({ where: { ...scope, dealId: id }, orderBy: { movedAt: 'desc' } });
       await tx.deal.update({ where: { id, ...scope }, data: { stageId: newStageId,
         stageChangedAt: now,
-        closedAt: newStage.isWon ? new Date(`${confirmation!.date}T00:00:00.000Z`) : newStage.isLost ? now : null, lostReason: newStage.isLost ? lostReason : null,
-        ...(newStage.isWon ? { wonConfirmationType: confirmation!.type, wonConfirmationNote: confirmation!.note ?? null, wonConfirmedById: movedById, wonConfirmedAt: now } : {}) } });
+        closedAt: newStage.isWon || newStage.isLost ? now : null, lostReason: newStage.isLost ? lostReason : null,
+        ...(newStage.isWon ? { closingSnapshot: snapshot, wonConfirmedById: movedById, wonConfirmedAt: now } : {}) } });
       if (newStage.isWon) {
         await resolveWonRelationships(tx, deal, movedById);
         const leads = await tx.leadDeal.findMany({ where: { tenantId, dealId: id } });
@@ -255,7 +253,8 @@ export async function moveDealStage(
       } },
     } });
     return { deal: fullDeal, stageHistory };
-  });
+  };
+  return transaction ? transition(transaction) : salesTransaction(transition);
 }
 
 export async function archiveDeal(id: string, tenantId: string, archiveReason?: string) {

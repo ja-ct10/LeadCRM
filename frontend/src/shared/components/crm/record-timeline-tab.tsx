@@ -28,6 +28,7 @@ import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
 import { USE_MOCK_DATA } from '@/lib/config';
 import type { RecordModule } from '@/shared/hooks/use-record-detail';
+import { activityEmail, EmailActivity, EmailConversations } from './email-activity';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -199,8 +200,10 @@ interface TimelineEntryProps {
 }
 
 function TimelineEntry({ activity }: TimelineEntryProps): React.ReactElement {
+  const email = activityEmail(activity);
   const config = ACTIVITY_ICON_MAP[activity.type] ?? ACTIVITY_ICON_MAP.note;
   const Icon = config.icon;
+  if (email) return <EmailActivity email={email} />;
 
   return (
     <div className="grid grid-cols-[2rem_minmax(0,1fr)] items-start gap-3 p-4 hover:bg-accent/30 transition-colors group">
@@ -265,6 +268,7 @@ export function RecordTimelineTab({
       result = result.filter(
         (a) =>
           a.title.toLowerCase().includes(query) ||
+          (activityEmail(a)?.body.toLowerCase().includes(query) ?? false) ||
           (a.description?.toLowerCase().includes(query) ?? false) ||
           ([a.createdBy?.firstName, a.createdBy?.lastName].filter(Boolean).join(' ').toLowerCase().includes(query))
       );
@@ -325,7 +329,7 @@ export function RecordTimelineTab({
       {tasks && (filter === 'All' || filter === 'Tasks') && tasks}
       {loading && !activities.length && <div role="status" aria-label="Loading activity history" className="rounded-xl border border-border bg-card"><DataLoadingSkeleton rowCount={3} columnCount={1} rowHeight={104} /></div>}
       {/* Timeline list */}
-      {(!loading && !error || activities.length > 0) && <div className="border border-border rounded-xl bg-card overflow-hidden divide-y divide-border/50">
+      {filter === 'Emails' && filteredActivities.length > 0 ? <EmailConversations activities={filteredActivities} /> : (!loading && !error || activities.length > 0) && <div className="border border-border rounded-xl bg-card overflow-hidden divide-y divide-border/50">
         {visibleActivities.length > 0 ? (
           <>
             {visibleActivities.map((activity) => (

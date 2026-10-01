@@ -1,5 +1,4 @@
 import { validateSalesOwner } from '../leads/lead-automation.service';
-import { ClosedWonConfirmationSchema } from '@leadcrm/shared';
 import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
 import * as repo from './deals.repository';
@@ -153,7 +152,6 @@ export async function validateDealStageMove(id: string, tenantId: string, dto: M
     where: { id: dto.stageId, tenantId },
   });
   if (!newStage) throw new NotFoundError('Stage');
-  if (newStage.isWon && !ClosedWonConfirmationSchema.safeParse(dto.confirmation).success) throw new ValidationError('Use the Closed Won confirmation dialog to confirm this sale.');
 
   if (newStage.isLost && !dto.lostReason) {
     throw new ValidationError('Lost reason is required when closing a deal as lost');
@@ -310,6 +308,7 @@ export async function duplicateDeal(id: string, tenantId: string, userId: string
         stageId: initialStage.id,
         stageChangedAt: new Date(),
         wonConfirmationType: null, wonConfirmationNote: null, wonConfirmedById: null, wonConfirmedAt: null,
+        closingValues: {}, closingSnapshot: Prisma.DbNull,
       } as never,
     });
 

@@ -39,3 +39,5 @@ export interface MailboxEmail {
   needsDealAssociation?: boolean;
   readyToClose?: boolean;
 }
+
+export interface MailboxUnreadCount { unreadCount: number }

@@ -5,6 +5,7 @@ import {
   callback,
   status,
   listEmails,
+  unreadCount,
   send,
   disconnect,
   trash,
@@ -43,6 +44,7 @@ router.patch('/gmail/threads/:threadId/deal', requirePermission('deals.edit'), a
 router.get('/gmail/authorize', authorize);
 router.get('/gmail/status', status);
 router.get('/gmail/emails', listEmails);
+router.get('/gmail/unread-count', unreadCount);
 router.post('/gmail/send', send);
 router.post('/gmail/disconnect', disconnect);
 router.post('/gmail/trash', trash);

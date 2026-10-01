@@ -2,6 +2,7 @@ import { recordFilesRouter } from '../../modules/crm/record-files/record-files.r
 import * as dealImportController from '../../modules/crm/deal-imports/deal-imports.controller';
 import { CreateDealImportSchema } from '@leadcrm/shared';
 import { Router } from 'express';
+import * as closingRequirements from '../../modules/crm/closing-requirements/closing-requirements.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { tenantMiddleware, workspaceReadyMiddleware } from '../middleware/tenant.middleware';
 import { authorize } from '../middleware/rbac.middleware';
@@ -112,6 +113,8 @@ router.get('/deals/imports/:importId', authorize('deals.view'), dealImportContro
 router.get('/deals/imports/:importId/results', authorize('deals.view'), dealImportController.getImportResults);
 router.post('/deals/imports', authorize('deals.create'), validate(CreateDealImportSchema), dealImportController.createImport);
 router.get(   '/deals/:id',          authorize('deals.view'),   dealController.getDealById);
+router.get('/deals/:id/closing-requirements', authorize('deals.view'), closingRequirements.readValues);
+router.patch('/deals/:id/closing-requirements', authorize('deals.edit'), closingRequirements.saveValues);
 router.post(  '/deals',              authorize('deals.create'), validate(ManualCreateDealSchema),    dealController.createDeal);
 router.put(   '/deals/:id',          authorize('deals.edit'),   validate(UpdateDealSchema),    dealController.updateDeal);
 router.patch( '/deals/:id/stage',    authorize('deals.edit'),   validate(MoveDealStageSchema), dealController.moveDealStage);

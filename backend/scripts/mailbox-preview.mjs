@@ -33,10 +33,14 @@ const emails = [
 await ingestMailboxMessages(account, emails, { crmEdit: true, dealsEdit: true, dealsView: true });
 const apiMessage = email => ({ id: email.id, threadId: email.threadId, internalDate: String(new Date(email.date).getTime()), labelIds: email.labels, snippet: email.snippet, payload: { mimeType: 'text/html', headers: [{ name: 'From', value: email.from }, { name: 'To', value: email.to.join(', ') }, { name: 'Subject', value: email.subject }, { name: 'Message-ID', value: email.rfcMessageId }], body: { data: Buffer.from(email.body).toString('base64url') } } });
 const originalFetch = globalThis.fetch;
+let inboxReads = 0;
 globalThis.fetch = async (input, init) => {
   const url = String(input);
   if (!url.startsWith('https://gmail.googleapis.com/')) return originalFetch(input, init);
   if (init?.method && init.method !== 'GET') return Response.json({ error: 'Preview does not send real mail.' }, { status: 503 });
+  if (url.includes('/labels/INBOX')) return Response.json({ messagesUnread: emails.filter(email => email.labels.includes('INBOX') && !email.isRead).length });
+  // Opt-in, disposable reproduction of a limit after the inbox has loaded once.
+  if (url.includes('/messages?') && ++inboxReads === 2 && process.env.PREVIEW_GMAIL_THROTTLE_ONCE === 'true') return Response.json({ error: { errors: [{ reason: 'userRateLimitExceeded' }] } }, { status: 429, headers: { 'Retry-After': '60' } });
   if (url.includes('/history?')) return Response.json({ historyId: '100', history: [] });
   if (url.endsWith('/profile')) return Response.json({ historyId: '100' });
   if (url.includes('/threads/')) return Response.json({ messages: emails.map(apiMessage) });

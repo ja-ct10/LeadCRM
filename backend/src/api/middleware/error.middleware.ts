@@ -30,9 +30,10 @@ export function errorMiddleware(
   });
 
   if (err instanceof AppError) {
+    if (err.retryAt) res.setHeader('Retry-After', String(Math.max(1, Math.ceil((Date.parse(err.retryAt) - Date.now()) / 1000))));
     res.status(err.statusCode).json({
       success: false,
-      error: err.code ? { code: err.code, message: err.message } : err.message,
+      error: err.code ? { code: err.code, message: err.message, ...(err.retryAt ? { retryAt: err.retryAt } : {}) } : err.message,
     });
     return;
   }

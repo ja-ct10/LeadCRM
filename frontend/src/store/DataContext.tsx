@@ -1,6 +1,6 @@
 'use client';
-import { ClosedWonDialog } from '@/shared/components/crm/closed-won-dialog';
-import type { ClosedWonConfirmation } from '@leadcrm/shared';
+import dynamic from 'next/dynamic';
+const ClosingRecordPanel = dynamic(() => import('@/shared/components/crm/crm-record-view').then(module => module.CrmRecordPanel), { ssr: false });
 import {taskAssociationIds, taskAssociationPatch} from "@leadcrm/shared";
 
 import { isOnboardingComplete, WorkflowDraftSchema, type WorkflowDraft } from "@leadcrm/shared";
@@ -278,7 +278,7 @@ const LEADS_SYSTEM_DEFAULT: ColumnConfigItem[] = [
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const [wonConfirmation, setWonConfirmation] = useState<{ resolve: (value: ClosedWonConfirmation | null) => void } | null>(null);
+  const [closingDealId, setClosingDealId] = useState<string>();
   const { user, tenant, userCan } = useAuth();
   const workspaceReady = Boolean(user && (user.role === "System Admin" ||
     (user.status?.toUpperCase() === "ACTIVE" && !user.mustChangePassword &&
@@ -1089,16 +1089,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const moveDealStage = async (id: string, stageId: string, note?: string, lostReason?: string, handoff?: any): Promise<void> => {
     const targetStage = pipelines.flatMap(pipeline => pipeline.stages).find(stage => stage.id === stageId);
-    let confirmation: ClosedWonConfirmation | undefined;
-    if (targetStage?.isWon) {
-      const answer = await new Promise<ClosedWonConfirmation | null>(resolve => setWonConfirmation({ resolve }));
-      if (!answer) return;
-      confirmation = answer;
-      note = `Staff confirmed ${answer.type.toLowerCase()}.${answer.note ? ` ${answer.note}` : ''}`;
-    }
     if (!USE_MOCK_DATA) {
       try {
-        const res = await pipelineService.moveDealStage(id, { stageId, note, lostReason, handoff, confirmation });
+        const res = await pipelineService.moveDealStage(id, { stageId, note, lostReason, handoff });
         const responseData = (res as any).data ?? res;
         const rawDeal = responseData.deal ?? responseData;
         const deal = toFrontendDeal(rawDeal) as Deal;
@@ -1110,6 +1103,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
       } catch (err) {
         console.error("Failed to move deal stage", err);
+        if (targetStage?.isWon && (err as { status?: number }).status === 400) {
+          const event = new CustomEvent('deal-closing-required', { detail: id, cancelable: true });
+          window.dispatchEvent(event);
+          if (!event.defaultPrevented) setClosingDealId(id);
+        }
         throw err;
       }
     } else {
@@ -2011,7 +2009,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   return (
     <DataContext.Provider value={visibleIdentity === dataIdentity ? contextValue : { ...contextValue, organizations: [], contacts: [], deals: [], pipelines: [], workflows: [], campaigns: [], templates: [], tasks: [], activities: [], auditLogs: [] }}>
-      {wonConfirmation && <ClosedWonDialog onConfirm={value => { wonConfirmation.resolve(value); setWonConfirmation(null); }} onCancel={() => { wonConfirmation.resolve(null); setWonConfirmation(null); }} />}
+      {closingDealId && <ClosingRecordPanel module="deals" id={closingDealId} open focusClosing onOpenChange={open => { if (!open) setClosingDealId(undefined); }} />}
       {children}
     </DataContext.Provider>
   );

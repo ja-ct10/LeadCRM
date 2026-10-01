@@ -2,6 +2,7 @@ import { normalizeCrmStatus } from '@leadcrm/shared';
 import {taskAssociationWhere} from "../../operations/tasks/tasks.repository";
 import prisma from '../../../config/database.config';
 import { NotFoundError } from '../../../shared/errors/http-error';
+import { withEmailContent } from '../activities/activities.repository';
 
 const DEFAULT_LIMIT = 10;
 
@@ -46,7 +47,7 @@ export async function getLeadRelationships(id: string, tenantId: string, limit =
       where: { leadId: id, tenantId },
       take: limit,
       orderBy: { createdAt: 'desc' },
-      select: { id: true, type: true, title: true, createdAt: true },
+        select: { id: true, type: true, title: true, createdAt: true, metadata: true, description: true, leadId: true, contactId: true },
     }),
     // Tasks
     includeTasks ? prisma.task.findMany({
@@ -108,7 +109,7 @@ export async function getContactRelationships(id: string, tenantId: string, limi
       where: { contactId: id, tenantId },
       take: limit,
       orderBy: { createdAt: 'desc' },
-      select: { id: true, type: true, title: true, createdAt: true },
+      select: { id: true, type: true, title: true, createdAt: true, metadata: true, description: true, leadId: true, contactId: true },
     }),
     // Tasks
     includeTasks ? prisma.task.findMany({
@@ -123,7 +124,7 @@ export async function getContactRelationships(id: string, tenantId: string, limi
     sourceLead,
     account,
     deals: contactDeals.map((cd) => cd.deal),
-    activities: activities.map(activity => {
+    activities: (await withEmailContent(tenantId, activities)).map(activity => {
       // Normalize historical enum labels only in system-generated status events.
       const match = activity.type === 'stage_change' && /^Status changed from (HOT|WARM|COLD|CLOSED|CANCELLED) to (HOT|WARM|COLD|CLOSED|CANCELLED)$/.exec(activity.title);
       return match ? { ...activity, title: `Status changed from ${normalizeCrmStatus(match[1])} to ${normalizeCrmStatus(match[2])}` } : activity;

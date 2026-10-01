@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Menu, Bell, Mail, Search } from 'lucide-react';
 import { useNotifications } from '@/features/tenant/notifications/hooks/use-notifications';
-import { getGmailStatus, fetchGmailEmails } from '@/features/tenant/inbox/services/gmail.service';
+import { getGmailStatus, fetchGmailUnreadCount } from '@/features/tenant/inbox/services/gmail.service';
 import { useLayout, NAV_ITEMS } from './use-layout';
 import { useAuth } from '@/store/AuthContext';
 import { usePathname } from 'next/navigation';
@@ -41,13 +41,13 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
     getGmailStatus()
       .then((status) => {
         if (status.isConnected) {
-          return fetchGmailEmails({ maxResults: 30, query: 'in:inbox is:unread' });
+          return fetchGmailUnreadCount();
         }
         return null;
       })
       .then((result) => {
         if (isMounted && result) {
-          setInboxCount(result.emails.length);
+          setInboxCount(result.unreadCount);
         }
       })
       .catch(() => { /* silently ignore � Gmail may not be connected */ });

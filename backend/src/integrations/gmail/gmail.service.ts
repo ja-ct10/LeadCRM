@@ -7,6 +7,7 @@ import { normalizeEmail } from './engagement-rules';
 import { readAuthUser } from '../../core/auth/auth-user';
 import { isMailboxOwner } from './mailbox-ownership';
 import { readGmailJson } from './gmail-read';
+import type { MailboxUnreadCount } from '@leadcrm/shared';
 
 
 
@@ -187,6 +188,12 @@ export async function sendEmailWithToken(
 /**
  * Fetches emails from the user's Gmail inbox.
  */
+export async function fetchUnreadCount(tenantId: string, userId: string): Promise<MailboxUnreadCount> {
+  const accessToken = await getValidAccessToken(tenantId, userId);
+  const inbox = await readGmailJson<{ messagesUnread?: number }>(accessToken, 'labels/INBOX?fields=messagesUnread');
+  return { unreadCount: inbox.messagesUnread ?? 0 };
+}
+
 export async function fetchEmails(
   tenantId: string,
   userId: string,

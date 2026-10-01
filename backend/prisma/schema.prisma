@@ -713,6 +713,8 @@ model Deal {
   wonConfirmationNote String?
   wonConfirmedById String?
   wonConfirmedAt DateTime?
+  closingValues Json @default("{}")
+  closingSnapshot Json?
   stageChangedAt DateTime?
   lostReason        String?
   description       String?
@@ -1456,6 +1458,7 @@ model MailboxMessage {
   dealId String?
   meaningful Boolean @default(false)
   readyToClose Boolean @default(false)
+  engagementRuleVersion Int @default(0)
   needsDealAssociation Boolean @default(false)
   createdAt DateTime @default(now())
   account EmailAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)

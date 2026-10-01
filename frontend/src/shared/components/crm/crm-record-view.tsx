@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useId, useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
+import { DealClosingRequirements } from './deal-closing-requirements';
+import { invalidatePageCache } from '@/shared/cache/page-cache';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Archive, Building, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Globe, Inbox, Mail, MapPin, MoreHorizontal, Loader2, Pencil, Phone, Plus, User, UserPlus, X, type LucideIcon } from 'lucide-react';
@@ -82,6 +84,7 @@ interface InlineRowDef {
   label: string;
   value: unknown;
   apiField?: string;
+  required?: boolean;
   type?: 'text' | 'email' | 'tel' | 'url' | 'select' | 'textarea' | 'date' | 'products' | 'users' | 'accounts' | 'contacts' | 'leads';
   valueMode?: 'id' | 'name';
   displayValue?: unknown;
@@ -108,24 +111,27 @@ function InlineEditRows({ rows, canEdit, onSave }: {
   const commitEdit = async (apiField: string) => {
     if (isSaving) return;
     setFieldError('');
+    const row = rows.find(row => row.apiField === apiField);
+    if (row?.required && (typeof editValue !== 'string' || !editValue.trim())) { setFieldError(`${row.label} is required`); return; }
+    if (row?.required && typeof editValue === 'string' && editValue.trim().length > 100) { setFieldError('Max 100 characters'); return; }
     if (rows.find(row => row.apiField === apiField)?.type === 'email') {
       const result = CrmEmailSchema.safeParse(editValue);
       if (!result.success) { setFieldError(result.error.issues[0].message); return; }
     }
     setIsSaving(true);
-    try { await onSave(apiField, editValue); setEditingLabel(null); }
-    catch { /* error toasted by parent */ }
+    try { await onSave(apiField, typeof editValue === 'string' ? editValue.trim() : editValue); setEditingLabel(null); }
+    catch (error) { setFieldError(error instanceof Error ? error.message : 'Unable to save field'); }
     finally { setIsSaving(false); }
   };
 
   return (
     <dl className="divide-y divide-border/60">
-      {rows.filter(({ value, displayValue, apiField, label }) => present(displayValue ?? value) || (canEdit && !!apiField) || editingLabel === label).map(({ label, value, apiField, type, options, valueMode, displayValue, productLabels }) => {
+      {rows.filter(({ value, displayValue, apiField, label, required }) => required || present(displayValue ?? value) || (canEdit && !!apiField) || editingLabel === label).map(({ label, value, apiField, type, options, valueMode, displayValue, productLabels, required }) => {
         const isEditing = editingLabel === label;
         const editable = canEdit && !!apiField;
         return (
           <div key={label} className="grid min-w-0 grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3 px-3 py-2.5 text-xs">
-            <dt className="text-muted-foreground self-start pt-0.5">{label}{type === 'email' && editable && <span className="text-red-500"> *</span>}</dt>
+            <dt className="text-muted-foreground self-start pt-0.5">{label}{(required || type === 'email' && editable) && <span className="text-red-500"> *</span>}</dt>
             <dd className="min-w-0">
               {isEditing && apiField ? (
                 <div className="flex flex-col gap-1.5">
@@ -136,7 +142,7 @@ function InlineEditRows({ rows, canEdit, onSave }: {
                   ) : type === 'textarea' ? (
                     <textarea aria-label={label} disabled={isSaving} value={Array.isArray(editValue) ? editValue.join(', ') : editValue} onChange={e => setEditValue(e.target.value)} rows={3} autoFocus onKeyDown={e => { if (e.key === 'Escape') cancelEdit(); }} className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring resize-none" />
                   ) : (
-                    <input aria-label={label} disabled={isSaving} type={type ?? 'text'} required={type === 'email'} aria-required={type === 'email'} maxLength={type === 'email' ? 254 : undefined} value={Array.isArray(editValue) ? editValue.join(', ') : editValue} onChange={e => setEditValue(e.target.value)} autoFocus onKeyDown={e => { if (e.key === 'Enter') void commitEdit(apiField); if (e.key === 'Escape') cancelEdit(); }} className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring" />
+                    <input aria-label={label} disabled={isSaving} type={type ?? 'text'} required={required || type === 'email'} aria-required={required || type === 'email'} aria-invalid={!!fieldError} maxLength={type === 'email' ? 254 : required ? 100 : undefined} value={Array.isArray(editValue) ? editValue.join(', ') : editValue} onChange={e => setEditValue(e.target.value)} autoFocus onKeyDown={e => { if (e.key === 'Enter') void commitEdit(apiField); if (e.key === 'Escape') cancelEdit(); }} className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring" />
                   )}
                   {fieldError && <p role="alert" className="text-xs text-destructive">{fieldError}</p>}
                   <div className="flex flex-wrap justify-end gap-1">
@@ -173,7 +179,7 @@ function RelatedRecords({ records, module, empty }: { records: RecordData[]; mod
 }
 
 /** The drawer and route render this same record reader, actions and content. */
-export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmRecordModule; id: string; onClose?: () => void; onEdit?: (record: RecordData) => void }) {
+export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = false }: { module: CrmRecordModule; id: string; onClose?: () => void; onEdit?: (record: RecordData) => void; focusClosing?: boolean }) {
   const router = useRouter();
   const { user, tenant } = useAuth();
   const data = useData();
@@ -184,7 +190,8 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
   const canReadDeals = useHasPermission('deals.view');
   const canReadContacts = useHasPermission('contacts.view');
   const canReadAccounts = useHasPermission('accounts.view');
-  const [tab, setTab] = useState('activity');
+  const [tab, setTab] = useState(focusClosing ? 'details' : 'activity');
+  const [closingAttention, setClosingAttention] = useState(focusClosing);
   const [detailsVisited, setDetailsVisited] = useState(false);
   const [converting, setConverting] = useState(false);
   const [archiving, setArchiving] = useState(false);
@@ -204,6 +211,19 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
   const mockRecords = module === 'deals' ? data.deals : module === 'accounts' ? data.organizations : data.contacts;
   const mockRecord = USE_MOCK_DATA ? mockRecords.find(item => item.id === id && item.tenantId === tenant?.id) : undefined;
   const record = USE_MOCK_DATA ? mockRecord as unknown as RecordData : recordQuery.data;
+  useEffect(() => {
+    const focus = (event: Event) => {
+      if (module !== 'deals' || (event as CustomEvent<string>).detail !== id) return;
+      event.preventDefault(); setTab('details'); setDetailsVisited(true); setClosingAttention(true);
+    };
+    window.addEventListener('deal-closing-required', focus);
+    return () => window.removeEventListener('deal-closing-required', focus);
+  }, [module, id]);
+  useEffect(() => {
+    if (!closingAttention || !record || tab !== 'details') return;
+    const frame = requestAnimationFrame(() => { const section = document.getElementById(`closing-requirements-${id}`); section?.scrollIntoView({ block: 'start' }); section?.focus(); setClosingAttention(false); });
+    return () => cancelAnimationFrame(frame);
+  }, [closingAttention, record, tab, id]);
   const filesQuery = useCachedPage<RecordFileMetadata[]>({ module, params: { recordId: id, files: true }, revalidateOnInvalidation: true,
     disabled: tab !== 'files' || !recordQuery.data || USE_MOCK_DATA,
     fetchFn: async signal => (await apiClient.get<{ data: RecordFileMetadata[] }>(`/crm/${module}/${encodeURIComponent(id)}/files`, { signal })).data });
@@ -309,8 +329,8 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
       { label: 'City', value: record.city, apiField: 'city' },
       { label: 'Province', value: record.province, apiField: 'province' },
     ] : [
-      { label: 'First name', value: record.firstName, apiField: 'firstName' },
-      { label: 'Last name', value: record.lastName, apiField: 'lastName' },
+      { label: 'First name', value: record.firstName, apiField: 'firstName', required: module === 'leads' },
+      { label: 'Last name', value: record.lastName, apiField: 'lastName', required: module === 'leads' },
       { label: 'Email', value: record.email, apiField: 'email', type: 'email' as const },
       { label: 'Phone', value: record.phone, apiField: 'phone', type: 'tel' as const },
       { label: 'Company', value: module === 'leads' ? record.companyName : record.company, apiField: module === 'leads' ? 'companyName' : 'company' },
@@ -408,6 +428,7 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
               tasks={<RecordSection title="Tasks" count={taskCount}><RelatedTasks links={links} onCountChange={setTaskCount} /></RecordSection>} />
           </TabsContent>
           <TabsContent value="details" forceMount className="m-0 p-4"><div className="space-y-3">
+            {module === 'deals' && !USE_MOCK_DATA && <DealClosingRequirements dealId={id} canEdit={canEdit} onSaved={() => { for (const key of ['deals', 'leads', 'contacts', 'accounts', 'activities']) invalidatePageCache(key, tenant?.id || user?.tenantId || ''); refresh(); }} />}
             <RecordSection title="About">
               <InlineEditRows rows={aboutRows} canEdit={canEdit && !USE_MOCK_DATA} onSave={saveField} />
             </RecordSection>
@@ -452,9 +473,9 @@ export function CrmRecordView({ module, id, onClose, onEdit }: { module: CrmReco
   </div>;
 }
 
-export function CrmRecordPanel({ module, id, open, onOpenChange, onEdit }: { module: CrmRecordModule; id?: string; open: boolean; onOpenChange: (open: boolean) => void; onEdit?: (record: RecordData) => void }) {
+export function CrmRecordPanel({ module, id, open, onOpenChange, onEdit, focusClosing }: { module: CrmRecordModule; id?: string; open: boolean; onOpenChange: (open: boolean) => void; onEdit?: (record: RecordData) => void; focusClosing?: boolean }) {
   const { user } = useAuth();
   return <Sheet open={open} onOpenChange={onOpenChange}><SheetContent showClose={false} aria-label={`${labels[module]} details`} className="w-full max-w-full sm:max-w-[480px]">
-    {open && id && <CrmRecordView key={`${module}:${id}:${user?.id}`} module={module} id={id} onClose={() => onOpenChange(false)} onEdit={onEdit} />}
+    {open && id && <CrmRecordView key={`${module}:${id}:${user?.id}`} module={module} id={id} onClose={() => onOpenChange(false)} onEdit={onEdit} focusClosing={focusClosing} />}
   </SheetContent></Sheet>;
 }

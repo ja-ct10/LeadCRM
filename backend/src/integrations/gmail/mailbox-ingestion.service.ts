@@ -32,11 +32,14 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
       // All writes for one provider message, including history, commit together.
       const key = { accountId: account.id, providerMessageId: email.id };
       const existing = await tx.mailboxMessage.findUnique({ where: { accountId_providerMessageId: key } });
-      if (existing) { await tx.mailboxMessage.update({ where: { id: existing.id }, data: { labels: email.labels } }); return; }
+      if (existing && existing.engagementRuleVersion >= 1) {
+        await tx.mailboxMessage.update({ where: { id: existing.id }, data: { labels: email.labels, engagementRuleVersion: 1 } }); return;
+      }
       const from = normalizeEmail(email.from), recipients = [...email.to, ...(email.cc ?? [])].map(normalizeEmail);
       const direction = from === normalizeEmail(account.email) ? 'outbound' : recipients.includes(normalizeEmail(account.email)) && !internalEmails.has(from) ? 'inbound' : 'unknown';
       const externals = [...new Set([from, ...recipients].filter(address => address.includes('@') && !internalEmails.has(address)))];
-      const link = direction !== 'unknown' && externals.length === 1 ? await matchCustomer(tx, account.tenantId, externals[0]) : undefined;
+      const matched = direction !== 'unknown' && externals.length === 1 ? await matchCustomer(tx, account.tenantId, externals[0]) : undefined;
+      const link: CustomerLink | undefined = existing?.leadId ? { leadId: existing.leadId } : existing?.contactId ? { contactId: existing.contactId } : matched;
       const sentAt = new Date(email.date);
       if (!Number.isFinite(sentAt.getTime())) return;
       const prior = link ? await tx.mailboxMessage.findMany({ where: { tenantId: account.tenantId, accountId: account.id, threadId: email.threadId, ...link, sentAt: { lt: sentAt } }, orderBy: { sentAt: 'desc' }, take: 100 }) : [];
@@ -46,12 +49,14 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
       // Existing thread linkage outranks the single-open-Deal fallback. A terminal link never falls through to a new opportunity.
       const association = await tx.tenantPreference.findUnique({ where: { tenantId_module_key: { tenantId: account.tenantId, module: 'mailbox-thread', key: `${account.id}:${email.threadId}` } } });
       const associationValue = association?.value as { dealId?: string; linkedAt?: string } | null;
-      const explicitIds = associationValue?.dealId ? [associationValue.dealId] : [...new Set(prior.map(message => message.dealId).filter((id): id is string => !!id))];
+      const explicitIds = associationValue?.dealId ? [associationValue.dealId] : existing?.dealId ? [existing.dealId] : [...new Set(prior.map(message => message.dealId).filter((id): id is string => !!id))];
       const deal = explicitIds.length ? (explicitIds.length === 1 ? deals.find(row => row.id === explicitIds[0]) : undefined) : deals.length === 1 ? deals[0] : undefined;
-      const stored = await tx.mailboxMessage.create({ data: { ...key, tenantId: account.tenantId, threadId: email.threadId, direction,
+      const messageData = { ...key, tenantId: account.tenantId, threadId: email.threadId, direction,
         from: email.from, recipients: email.to, subject: email.subject, body: email.body, snippet: email.snippet, labels: email.labels, sentAt,
         rfcMessageId: email.rfcMessageId, ...link, dealId: deal?.id ?? explicitIds[0], meaningful: signal !== 'none',
-        readyToClose: signal === 'proceed', needsDealAssociation: !!link && !deal && deals.length > 1 } });
+        readyToClose: signal === 'proceed', needsDealAssociation: !!link && !deal && deals.length > 1, engagementRuleVersion: 1 };
+      const { tenantId: _tenantId, ...messageUpdate } = messageData;
+      const stored = existing ? await tx.mailboxMessage.update({ where: { id: existing.id }, data: messageUpdate }) : await tx.mailboxMessage.create({ data: messageData });
       if (!link) return;
       const eventKey = createHash('sha256').update([account.tenantId, link.leadId ?? link.contactId, email.rfcMessageId || `${account.id}:${email.id}`, direction].join(':')).digest('hex');
       const activityId = `${eventKey.slice(0, 8)}-${eventKey.slice(8, 12)}-${eventKey.slice(12, 16)}-${eventKey.slice(16, 20)}-${eventKey.slice(20, 32)}`;
@@ -59,26 +64,27 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
         title: `${direction === 'inbound' ? 'Received' : 'Sent'} email: ${email.subject}`.slice(0, 500), createdAt: sentAt,
         metadata: { mailboxMessageId: stored.id, providerMessageId: email.id, threadId: email.threadId, mailboxOwnerId: account.userId, direction } } });
       if (!permissions.crmEdit) return;
-      const customer = link.leadId ? await tx.lead.findFirst({ where: { tenantId: account.tenantId, id: link.leadId } }) : await tx.contact.findFirst({ where: { tenantId: account.tenantId, id: link.contactId } });
+      const customer = link.leadId ? await tx.lead.findFirst({ where: { tenantId: account.tenantId, id: link.leadId, isArchived: false, deletedAt: null } }) : await tx.contact.findFirst({ where: { tenantId: account.tenantId, id: link.contactId, isArchived: false, deletedAt: null } });
       if (!customer) return;
       const updateEngagement = async (data: { lastMeaningfulInboundAt?: Date; firstUnansweredOutboundAt?: Date | null; engagementEvaluatedAt?: Date }) => {
         if (link.leadId) await tx.lead.update({ where: { tenantId: account.tenantId, id: link.leadId }, data });
         else await tx.contact.update({ where: { tenantId: account.tenantId, id: link.contactId }, data });
       };
-      const isNew = sentAt > account.connectedAt && sentAt >= customer.createdAt && sentAt <= new Date()
-        && (!customer.lastStatusChangedAt || sentAt > customer.lastStatusChangedAt) && (!customer.engagementEvaluatedAt || sentAt > customer.engagementEvaluatedAt);
-      if (!isNew) return;
+      const eligible = sentAt > account.connectedAt && sentAt >= customer.createdAt && sentAt <= new Date()
+        && (!customer.lastStatusChangedAt || sentAt > customer.lastStatusChangedAt);
+      if (!eligible) return;
+      const isNew = !customer.engagementEvaluatedAt || sentAt > customer.engagementEvaluatedAt || !!existing && +sentAt === +customer.engagementEvaluatedAt;
       if (direction === 'outbound') {
-        if (customer.lastMeaningfulInboundAt && sentAt > customer.lastMeaningfulInboundAt && !customer.firstUnansweredOutboundAt && hasBusinessContext(newMessageText(email.plainText ?? email.body))) await updateEngagement({ firstUnansweredOutboundAt: sentAt });
+        if (isNew && customer.lastMeaningfulInboundAt && sentAt > customer.lastMeaningfulInboundAt && !customer.firstUnansweredOutboundAt && hasBusinessContext(newMessageText(email.plainText ?? email.body))) await updateEngagement({ firstUnansweredOutboundAt: sentAt });
         return;
       }
       if (signal === 'none' || ['Closed', 'Cancelled'].includes(normalizeCrmStatus(customer.status))) return;
-      await updateEngagement({ lastMeaningfulInboundAt: sentAt, firstUnansweredOutboundAt: null, engagementEvaluatedAt: sentAt });
+      if (isNew) await updateEngagement({ lastMeaningfulInboundAt: sentAt, firstUnansweredOutboundAt: null, engagementEvaluatedAt: sentAt });
       const nextStatus = engagementStatus(customer.status, signal);
       const reason = ENGAGEMENT_REASONS[signal];
-      if (nextStatus) await changeCustomerStatus(tx, account.tenantId, account.userId, link, nextStatus, reason, sentAt);
+      if (isNew && nextStatus) await changeCustomerStatus(tx, account.tenantId, account.userId, link, nextStatus, reason, sentAt);
       if (!deal || !permissions.dealsEdit || sentAt <= (deal.stageChangedAt ?? deal.createdAt) || associationValue?.linkedAt && sentAt <= new Date(associationValue.linkedAt)) return;
-      if (signal === 'cancel') { await cancelOpenDeals(tx, account.tenantId, account.userId, link, reason, deal.id, sentAt); return; }
+      if (signal === 'cancel') { if (isNew) await cancelOpenDeals(tx, account.tenantId, account.userId, link, reason, deal.id, sentAt); return; }
       const twoWay = prior.some(message => message.direction === 'outbound' && hasBusinessContext(newMessageText(message.body)));
       const targetName = signal === 'quotation' || signal === 'proceed' ? 'Qualified' : twoWay ? 'Contacted' : undefined;
       const rank = ['lead', 'contacted', 'qualified'];

@@ -114,6 +114,10 @@ export async function syncMailbox(tenantId: string, userId: string) {
       const list = await gmailJson<{ messages?: { id: string }[]; nextPageToken?: string }>(accessToken, `messages?${params}`);
       ids = (list.messages ?? []).map(item => item.id); pageToken = list.nextPageToken; historyId = account.syncBaselineHistoryId!;
     }
+    // Replay a bounded batch after a rule upgrade, retaining provider idempotency and
+    // the status/stage timestamp barriers that protect subsequent manual changes.
+    const pendingRules = await prisma.mailboxMessage.findMany({ where: { tenantId, accountId: account.id, direction: 'inbound', engagementRuleVersion: { lt: 1 } }, orderBy: { sentAt: 'desc' }, take: 20, select: { providerMessageId: true } });
+    ids = [...new Set([...ids, ...pendingRules.map(message => message.providerMessageId)])];
     const messages: GmailEmail[] = [];
     for (let offset = 0; offset < ids.length; offset += 5) {
       const batch = await Promise.all(ids.slice(offset, offset + 5).map(async id => {

@@ -25,12 +25,28 @@ const records = {
 beforeEach(() => {
   clearPageCache(); vi.clearAllMocks(); mocks.permissions = ['*'];
   mocks.get.mockImplementation(async (path: string) => {
+    if (path.includes('/closing-requirements')) return { data: { fields: [], values: {}, errors: {}, files: [], locked: false } };
     if (path.includes('/relationships')) return { data: { account: null, contact: null, sourceLead: null, deals: [], contacts: [], activities: [] } };
     if (path.includes('/activities')) return { data: [] };
     if (path.includes('/files')) return { data: [] };
     const module = path.split('/')[2] as CrmRecordModule;
     return { data: records[module] };
   });
+});
+
+it.each(['First name', 'Last name'])('requires and trims inline Lead %s', async label => {
+  mocks.put.mockResolvedValue({ success: true });
+  render(<CrmRecordView module="leads" id="one" />);
+  await screen.findByRole('heading', { name: 'Lina Reyes' });
+  fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  fireEvent.click(screen.getByRole('button', { name: `Edit ${label}` }));
+  fireEvent.change(screen.getByRole('textbox', { name: label }), { target: { value: '   ' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  expect(await screen.findByText(`${label} is required`)).toBeTruthy();
+  expect(mocks.put).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByRole('textbox', { name: label }), { target: { value: '  Trimmed  ' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(mocks.put).toHaveBeenCalledWith('/crm/leads/one', { [label === 'First name' ? 'firstName' : 'lastName']: 'Trimmed' }));
 });
 afterEach(cleanup);
 

@@ -7,7 +7,8 @@ import { trashGmailEmails, archiveGmailEmails, GmailEmail } from '../services/gm
 
 interface InboxEmailListProps {
   emails: GmailEmail[];
-  onEmailsChanged: () => void;
+  onEmailsChanged: () => void | Promise<void>;
+  refreshDisabled?: boolean;
   totalCount: number;
   onEmailClick: (email: GmailEmail) => void;
   currentPage?: number;
@@ -39,7 +40,7 @@ function extractName(from: string): string {
   return match ? match[1].trim() : from.split('@')[0];
 }
 
-export default function InboxEmailList({ emails, onEmailsChanged, totalCount, onEmailClick, currentPage = 1, hasNextPage = false, onNextPage, onPrevPage }: InboxEmailListProps): React.ReactElement {
+export default function InboxEmailList({ emails, onEmailsChanged, refreshDisabled = false, totalCount, onEmailClick, currentPage = 1, hasNextPage = false, onNextPage, onPrevPage }: InboxEmailListProps): React.ReactElement {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
   const [isArchiving, setIsArchiving] = useState(false);
@@ -101,9 +102,9 @@ export default function InboxEmailList({ emails, onEmailsChanged, totalCount, on
   const handleRefresh = async (): Promise<void> => {
     setIsRefreshing(true);
     try {
-      onEmailsChanged();
+      await onEmailsChanged();
     } finally {
-      setTimeout(() => setIsRefreshing(false), 800);
+      setIsRefreshing(false);
     }
   };
 
@@ -146,6 +147,7 @@ export default function InboxEmailList({ emails, onEmailsChanged, totalCount, on
           {/* Refresh — always visible */}
           <button
             onClick={handleRefresh}
+            disabled={refreshDisabled || isRefreshing}
             className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             aria-label="Refresh"
             title="Refresh"
@@ -192,7 +194,7 @@ export default function InboxEmailList({ emails, onEmailsChanged, totalCount, on
           </span>
           <button
             onClick={onPrevPage}
-            disabled={currentPage <= 1}
+            disabled={currentPage <= 1 || refreshDisabled}
             className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
             aria-label="Previous page"
           >
@@ -200,7 +202,7 @@ export default function InboxEmailList({ emails, onEmailsChanged, totalCount, on
           </button>
           <button
             onClick={onNextPage}
-            disabled={!hasNextPage}
+            disabled={!hasNextPage || refreshDisabled}
             className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
             aria-label="Next page"
           >

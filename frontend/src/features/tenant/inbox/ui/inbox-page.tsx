@@ -12,6 +12,7 @@ import InboxFutureEmpty from './inbox-future-empty';
 import InboxEmailList from './inbox-email-list';
 import EmailConversationView from './email-conversation-view';
 import ComposeModal from './compose-modal';
+import type { ApiRequestError } from '@/lib/api/client';
 
 type InboxView = 'current' | 'done' | 'future' | 'drafts' | 'sent' | 'all';
 type InboxCategory = 'primary' | 'promotions' | 'social' | 'updates';
@@ -51,6 +52,28 @@ export default function InboxPage(): React.ReactElement {
   const loadVersion = useRef(0);
   const syncPending = useRef(false);
   const [connectionError, setConnectionError] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [retryAt, setRetryAt] = useState(0);
+  const [clock, setClock] = useState(Date.now());
+  const cooldownUntil = useRef(0);
+  const displayedQuery = useRef('');
+  const pageTokenRef = useRef<string | undefined>(undefined);
+  const pageRef = useRef(1);
+  const applyCooldown = useCallback((error: unknown) => {
+    if ((error as ApiRequestError)?.code !== 'GMAIL_RATE_LIMITED') return false;
+    const provided = Date.parse((error as ApiRequestError).retryAt ?? '');
+    const until = Number.isFinite(provided) && provided > Date.now() ? provided : Date.now() + 60000;
+    cooldownUntil.current = Math.max(cooldownUntil.current, until);
+    setClock(Date.now()); setRetryAt(cooldownUntil.current);
+    return true;
+  }, []);
+  const paused = retryAt > 0;
+  const retrySeconds = Math.max(1, Math.ceil((retryAt - clock) / 1000));
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 400);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   // Fetch connection status on mount
   useEffect(() => {
@@ -72,28 +95,16 @@ export default function InboxPage(): React.ReactElement {
   }, []);
 
   const sync = useCallback(async () => {
-    if (syncPending.current) return;
+    if (syncPending.current || cooldownUntil.current > Date.now()) return false;
     syncPending.current = true; setSyncing(true); setSyncError('');
     try {
       const result = await syncGmail();
       setConnectionStatus(await getGmailStatus());
       if (result.hasMore) setSyncError('Sync is continuing. Older conversations are loading in the background.');
-    } catch (error) { setSyncError(error instanceof Error ? error.message : 'Email sync failed.'); }
+      return result;
+    } catch (error) { if (!applyCooldown(error)) setSyncError(error instanceof Error ? error.message : 'Email sync failed.'); return false; }
     finally { syncPending.current = false; setSyncing(false); }
-  }, []);
-  useEffect(() => {
-    if (!connectionStatus?.isConnected) return;
-    void sync();
-    const timer = setInterval(() => void sync(), 60000);
-    return () => clearInterval(timer);
-  }, [connectionStatus?.isConnected, sync]);
-
-  // Reload emails when view or category changes
-  useEffect(() => {
-    if (connectionStatus?.isConnected) {
-      loadEmails(activeView, activeCategory);
-    }
-  }, [activeView, activeCategory, filterQuery, search, connectionStatus?.isConnected, connectionStatus?.lastSyncAt]);
+  }, [applyCooldown]);
 
   const getQueryForViewAndCategory = (view: InboxView, category: InboxCategory): string => {
     let baseQuery = '';
@@ -128,25 +139,64 @@ export default function InboxPage(): React.ReactElement {
       baseQuery = `${baseQuery} ${filterQuery}`;
     }
 
-    return `${baseQuery} ${search.trim()}`.trim();
+    return `${baseQuery} ${debouncedSearch.trim()}`.trim();
   };
 
-  const loadEmails = useCallback(async (view?: InboxView, category?: InboxCategory, pageToken?: string): Promise<void> => {
+  const loadEmails = useCallback(async (view?: InboxView, category?: InboxCategory, pageToken?: string, page = 1): Promise<void> => {
+    const query = getQueryForViewAndCategory(view ?? activeView, category ?? activeCategory);
+    if (displayedQuery.current !== query) {
+      displayedQuery.current = query;
+      setEmails([]); setNextPageToken(undefined); setCurrentPage(1);
+      pageTokenRef.current = undefined; pageRef.current = 1;
+    }
     const version = ++loadVersion.current;
+    if (cooldownUntil.current > Date.now()) { setIsLoadingEmails(false); return; }
     setIsLoadingEmails(true);
     setEmailError(null);
     try {
-      const query = getQueryForViewAndCategory(view ?? activeView, category ?? activeCategory);
       const result = await fetchGmailEmails({ maxResults: 30, query, pageToken });
       if (version !== loadVersion.current) return;
       setEmails(result.emails);
       setNextPageToken(result.nextPageToken);
+      pageTokenRef.current = pageToken; pageRef.current = page; setCurrentPage(page);
     } catch (err) {
-      if (version === loadVersion.current) setEmailError(err instanceof Error ? err.message : 'Failed to load emails');
+      if (version === loadVersion.current && !applyCooldown(err)) {
+        setEmailError(err instanceof Error ? err.message : 'Failed to load emails');
+        if ([401, 403].includes((err as ApiRequestError).status ?? 0)) setEmails([]);
+      }
     } finally {
       if (version === loadVersion.current) setIsLoadingEmails(false);
     }
-  }, [activeView, activeCategory, filterQuery, search]);
+  }, [activeView, activeCategory, filterQuery, debouncedSearch, applyCooldown]);
+
+  useEffect(() => {
+    if (!connectionStatus?.isConnected) return;
+    let active = true;
+    const run = async () => {
+      if (document.visibilityState !== 'visible') return;
+      const result = await sync();
+      if (active && result && (result.processed ?? 0) > 0) void loadEmails(undefined, undefined, pageTokenRef.current, pageRef.current);
+    };
+    // Let the visible inbox finish before starting background work.
+    const initial = setTimeout(() => void run(), 15000);
+    const timer = setInterval(() => void run(), 5 * 60000);
+    return () => { active = false; clearTimeout(initial); clearInterval(timer); };
+  }, [connectionStatus?.isConnected, sync, loadEmails]);
+
+  useEffect(() => {
+    if (connectionStatus?.isConnected) void loadEmails();
+    return () => { loadVersion.current++; };
+  }, [connectionStatus?.isConnected, loadEmails]);
+
+  useEffect(() => {
+    if (!retryAt || !connectionStatus?.isConnected) return;
+    const ticker = setInterval(() => setClock(Date.now()), 1000);
+    const timer = setTimeout(() => {
+      cooldownUntil.current = 0; setRetryAt(0); setSyncError('');
+      void loadEmails(undefined, undefined, pageTokenRef.current, pageRef.current);
+    }, Math.max(0, retryAt - Date.now()) + 250);
+    return () => { clearInterval(ticker); clearTimeout(timer); };
+  }, [retryAt, connectionStatus?.isConnected, loadEmails]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -187,14 +237,12 @@ export default function InboxPage(): React.ReactElement {
 
   const handleNextPage = (): void => {
     if (nextPageToken) {
-      setCurrentPage((p) => p + 1);
-      loadEmails(undefined, undefined, nextPageToken);
+      void loadEmails(undefined, undefined, nextPageToken, currentPage + 1);
     }
   };
 
   const handlePrevPage = (): void => {
     if (currentPage > 1) {
-      setCurrentPage(1);
       loadEmails();
     }
   };
@@ -230,7 +278,7 @@ export default function InboxPage(): React.ReactElement {
     // Not connected — show connect empty state
     if (!isConnected) return <InboxCurrentEmpty />;
 
-    if (isLoadingEmails) {
+    if (isLoadingEmails && emails.length === 0) {
       return (
         <div className="flex flex-col items-center justify-center h-96 gap-3">
           <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
@@ -239,7 +287,16 @@ export default function InboxPage(): React.ReactElement {
       );
     }
 
-    if (emailError) {
+    if (paused && emails.length === 0) {
+      return <div className="flex min-h-72 flex-col items-center justify-center gap-3 px-6 py-12 text-center">
+        <div className="rounded-2xl bg-blue-50 p-4 text-blue-600 dark:bg-blue-950/40"><Mail className="h-7 w-7" /></div>
+        <h2 className="text-base font-semibold">Waiting for Gmail</h2>
+        <p className="max-w-sm text-sm text-muted-foreground">Google has temporarily paused mailbox requests. Your connection is still active.</p>
+        <p className="text-xs text-muted-foreground">Updates will resume automatically.</p>
+      </div>;
+    }
+
+    if (emailError && emails.length === 0) {
       return (
         <div className="flex flex-col items-center justify-center h-96 px-6 text-center">
           <p className="text-sm text-red-500 dark:text-red-400 mb-3">{emailError}</p>
@@ -278,7 +335,7 @@ export default function InboxPage(): React.ReactElement {
       }
     }
 
-    return <InboxEmailList emails={sortedEmails} onEmailsChanged={() => loadEmails()} totalCount={emailCount} onEmailClick={handleEmailClick} currentPage={currentPage} hasNextPage={!!nextPageToken} onNextPage={handleNextPage} onPrevPage={handlePrevPage} />;
+    return <InboxEmailList emails={sortedEmails} refreshDisabled={paused || isLoadingEmails} onEmailsChanged={() => loadEmails(undefined, undefined, pageTokenRef.current, pageRef.current)} totalCount={emailCount} onEmailClick={handleEmailClick} currentPage={currentPage} hasNextPage={!!nextPageToken} onNextPage={handleNextPage} onPrevPage={handlePrevPage} />;
   };
 
   // If an email is selected, show the detail view
@@ -403,7 +460,6 @@ export default function InboxPage(): React.ReactElement {
                         onClick={() => {
                           setFilterQuery(option.query);
                           setIsFilterOpen(false);
-                          loadEmails();
                         }}
                         className={cn(
                           'w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors cursor-pointer',
@@ -512,10 +568,12 @@ export default function InboxPage(): React.ReactElement {
       {connectionError && <p role="alert" className="mx-3 my-2 break-words text-sm text-red-600 sm:mx-6">{connectionError}</p>}
       {isConnected && <div className="mx-3 my-3 min-w-0 space-y-2 sm:mx-6">
         <div className="flex flex-wrap items-center gap-2 text-xs"><span className="min-w-0 break-all">Work email: {connectionStatus?.email}</span>
-          <button disabled={syncing} onClick={() => void sync().then(() => loadEmails())} className="min-h-9 rounded border px-3">{syncing ? 'Syncing…' : 'Sync now'}</button>
-          <button onClick={() => { void disconnectGmail().then(() => { setConnectionStatus(null); setEmails([]); }).catch(error => setSyncError(error.message)); }} className="min-h-9 rounded border px-3">Disconnect</button>
+          <button disabled={syncing || paused || isLoadingEmails} onClick={() => void sync().then(ok => { if (ok) void loadEmails(); })} className="min-h-9 rounded border px-3 disabled:opacity-50">{syncing ? 'Syncing…' : 'Sync now'}</button>
+          <button onClick={() => { void disconnectGmail().then(() => { loadVersion.current++; cooldownUntil.current = 0; setRetryAt(0); setConnectionStatus(null); setEmails([]); }).catch(error => setSyncError(error.message)); }} className="min-h-9 rounded border px-3">Disconnect</button>
         </div>
-        <input aria-label="Search email" value={search} onChange={event => { setCurrentPage(1); setSearch(event.target.value); }} placeholder="Search email…" className="min-h-10 w-full min-w-0 rounded-lg border bg-background px-3 text-sm" />
+        <input aria-label="Search email" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search email…" className="min-h-10 w-full min-w-0 rounded-lg border bg-background px-3 text-sm" />
+        {paused && <div role="status" className="flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200"><Info className="mt-0.5 h-4 w-4 shrink-0" /><span>Gmail updates are paused. {emails.length > 0 && 'Your loaded emails are still available. '}Retrying automatically in {retrySeconds}s.</span></div>}
+        {emailError && emails.length > 0 && <p role="alert" className="text-xs text-red-600">Could not refresh emails. {emailError}</p>}
         {syncError && <p role="status" className="text-xs text-muted-foreground">{syncError}</p>}
       </div>}
 
