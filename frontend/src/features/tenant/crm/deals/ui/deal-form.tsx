@@ -30,7 +30,6 @@ const CreateDealFormSchema = z.object({
   value: z.number().finite().nonnegative('Must be zero or greater').max(999_999_999_999, 'Value exceeds maximum').optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH']),
   expectedCloseDate: z.string().optional(),
-  description: z.string().optional(),
   leadSource: z.string().optional(),
   organizationId: z.string().optional(),
   assignedUserId: z.string().optional(),
@@ -46,7 +45,6 @@ const UpdateDealFormSchema = z.object({
   value: z.number().finite().nonnegative('Must be zero or greater').max(999_999_999_999, 'Value exceeds maximum').optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH']).optional(),
   expectedCloseDate: z.string().optional(),
-  description: z.string().optional(),
   leadSource: z.string().optional(),
   organizationId: z.string().optional(),
   assignedUserId: z.string().optional(),
@@ -127,7 +125,6 @@ export function DealForm({
         value: undefined,
         priority: 'MEDIUM' as const,
         expectedCloseDate: '',
-        description: '',
         leadSource: '',
         organizationId: '',
         assignedUserId: '',
@@ -146,7 +143,6 @@ export function DealForm({
       expectedCloseDate: initialData?.expectedCloseDate
         ? initialData.expectedCloseDate.split('T')[0]
         : '',
-      description: initialData?.description || '',
       leadSource: initialData?.leadSource || '',
       organizationId: initialData?.organizationId || '',
       assignedUserId: initialData?.assignedUserId || '',
@@ -226,7 +222,6 @@ export function DealForm({
           ? data.expectedCloseDate
           : `${data.expectedCloseDate}T00:00:00.000Z`
         : undefined,
-      description: data.description || undefined,
       leadSource: data.leadSource || undefined,
       organizationId: data.organizationId || undefined,
       assignedUserId: data.assignedUserId || undefined,
@@ -336,17 +331,6 @@ export function DealForm({
                 aria-describedby={errors.expectedCloseDate ? `${fieldId}-expectedCloseDate-error` : undefined} className={inputCls} />
             </FieldWrap>
           </div>
-          <FieldWrap htmlFor={`${fieldId}-description`} error={errors.description?.message} label="Description">
-            <textarea
-              {...register('description')}
-              id={`${fieldId}-description`}
-              aria-invalid={!!errors.description}
-              aria-describedby={errors.description ? `${fieldId}-description-error` : undefined}
-              rows={3}
-              className={cn(inputCls, 'resize-none')}
-              placeholder="Add deal description..."
-            />
-          </FieldWrap>
         </div>
 
         {/* Section 3: Relationships */}

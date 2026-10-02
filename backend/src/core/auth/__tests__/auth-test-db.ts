@@ -18,7 +18,7 @@ const model = () => ({
 export const db = {
   user: model(), tenant: model(), roleDefinition: model(), rolePermission: model(),
   userRole: model(), pipeline: model(), account: { ...model(), count: vi.fn() },
-  oAuthAccount: model(), tenantInvitation: model(), registrationOtpToken: model(),
+  oAuthAccount: model(), registrationOtpToken: model(),
   passwordResetToken: model(), emailVerificationToken: model(), auditLog: model(), session: model(), $transaction: vi.fn(),
 };
 

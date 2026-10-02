@@ -31,7 +31,6 @@ Tenant (root)
   │         └──(n) RolePermission  (module, canView/canCreate/canEdit/canDelete)
   │
   ├──(n) Session
-  ├──(n) TenantInvitation
   │
   ├──(n) Organization
   │         └──(n) Contact ──────────────────────────────────────────┐
@@ -269,20 +268,6 @@ expiresAt    DateTime
 revokedAt    DateTime?
 lastActiveAt DateTime
 createdAt    DateTime
-```
-
-### TenantInvitation `[DB]`
-```
-id          String    cuid PK
-tenantId    String    FK→Tenant
-email       String
-roleId      String    FK→RoleDefinition
-token       String    unique
-invitedById String    FK→User
-expiresAt   DateTime
-acceptedAt  DateTime?
-revokedAt   DateTime?
-createdAt   DateTime
 ```
 
 ---
@@ -808,7 +793,6 @@ createdAt  DateTime
 | Tenant | User | 1:N | `User.tenantId` |
 | Tenant | RoleDefinition | 1:N | `RoleDefinition.tenantId` |
 | Tenant | Session | 1:N | `Session.tenantId` |
-| Tenant | TenantInvitation | 1:N | `TenantInvitation.tenantId` |
 | Tenant | Organization | 1:N | `Organization.tenantId` |
 | Tenant | Contact | 1:N | `Contact.tenantId` |
 | Tenant | Pipeline | 1:N | `Pipeline.tenantId` |

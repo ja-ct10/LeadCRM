@@ -26,6 +26,8 @@ import { CRM_STATUSES, normalizeCrmStatus } from '@leadcrm/shared';
 import type { RecordFileMetadata } from '@leadcrm/shared';
 import { RecordFilesTab } from './record-files-tab';
 import { ConfirmActionDialog } from './confirm-action-dialog';
+import { RecordSection } from './record-section';
+export { RecordSection } from './record-section';
 import { InlineDealForm } from './inline-deal-form';
 import { RelatedTasks } from '@/features/tenant/operations/tasks/ui/related-tasks';
 import type { Account } from '@/features/tenant/crm/accounts/types/account.types';
@@ -53,27 +55,12 @@ const object = (value: unknown): RecordData | undefined => value && typeof value
 const displayText = (value: unknown): string => Array.isArray(value) ? value.join(', ') || '—' : String(value ?? '') || '—';
 const present = (value: unknown) => value !== undefined && value !== null && value !== '' && (!Array.isArray(value) || value.length > 0);
 
-export function RecordSection({ title, count, actions, children }: { title: string; count?: number; actions?: React.ReactNode; children: React.ReactNode }) {
-  const [open, setOpen] = useState(true);
-  const id = useId();
-  return <section className="min-w-0 overflow-hidden rounded-xl border border-border bg-card">
-    <div className="flex flex-wrap items-center gap-x-2 border-b border-border/60 px-3 py-1">
-      <button type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)} className="flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring">
-        <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 transition-transform', !open && '-rotate-90')} />
-        <span className="break-words">{title}</span>
-        {count !== undefined && <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] tabular-nums">{count}</span>}
-      </button>
-      {actions}
-    </div>
-    <div id={id} hidden={!open}>{children}</div>
-  </section>;
-}
 
 function RecordQuickInfo({ items, actions }: { items: { value: string; icon: LucideIcon; href?: string; label?: string }[]; actions?: React.ReactNode }) {
-  return <div className="mt-4 flex min-w-0 flex-wrap items-center gap-1.5">
+  return <div className="mt-3 flex min-w-0 flex-wrap items-center gap-1 sm:mt-4 sm:gap-1.5">
     {items.filter(item => item.value).map(({ value, icon: Icon, href, label }) => {
-      const content = <><Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /><span className="min-w-0 [overflow-wrap:anywhere]">{label}{value}</span></>;
-      const cls = 'inline-flex min-h-9 max-w-full items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-foreground';
+      const content = <><Icon className="h-3 w-3 shrink-0 text-muted-foreground sm:h-3.5 sm:w-3.5" /><span className="min-w-0 [overflow-wrap:anywhere]">{label}{value}</span></>;
+      const cls = 'inline-flex min-h-8 max-w-full items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11px] text-foreground sm:min-h-9 sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-xs';
       return href ? <a key={label || value} href={href} className={cn(cls, 'hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring')}>{content}</a> : <span key={label || value} className={cls}>{content}</span>;
     })}
     {actions}
@@ -300,7 +287,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     ...(module === 'accounts' ? [['Account name', record.name], ['Industry', record.industry], ['Company size', record.size]] as [string, unknown][] : []),
     ...(module === 'deals' ? [['Deal title', title], ['Deal value', subtitle.split(' · ')[0]], ['Priority', record.priority], ['Associated Lead / Contact', personName(person)], ['Created', record.createdAt ? new Date(String(record.createdAt)).toLocaleDateString() : '']] as [string, unknown][] : []),
     ['Email', person?.email], ['Phone', person?.phone], ['Address', location], ['Company', module !== 'accounts' ? company : undefined], ['Job title', record.jobTitle], ['Website', record.website],
-    ['Product interests', record.productInterest ?? record.productInterests], ['Source', module === 'deals' ? record.leadSource : source], ['Status', statusLabel], ['Owner / Representative', owner], ['Notes', record.notes ?? record.description],
+    ['Product interests', record.productInterest ?? record.productInterests], ['Source', module === 'deals' ? record.leadSource : source], ['Status', statusLabel], ['Owner / Representative', owner], ['Notes', module === 'deals' ? undefined : record.notes ?? record.description],
   ];
   const productIds = (record.productInterestIds as string[] | undefined)?.length ? record.productInterestIds as string[] : record.productInterestId ? [text(record.productInterestId)] : [];
   const productNames = (record.productInterest ?? record.productInterests ?? []) as string[];
@@ -320,7 +307,6 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     { label: 'Source', value: record.leadSource, apiField: 'leadSource' },
     { label: 'Industry', value: record.industry, apiField: 'industry' },
     { label: 'Address', value: record.address, apiField: 'address' },
-    { label: 'Description', value: record.description, apiField: 'description', type: 'textarea' },
     { label: 'Created', value: record.createdAt },
   ] : [
     ...(module === 'accounts' ? [
@@ -372,7 +358,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
 
   return <div className="flex h-full min-h-0 min-w-0 flex-col bg-background [--panel-gutter:1rem]">
     <Tabs defaultValue="activity" value={tab} onValueChange={value => { setTab(value); if (value === 'details') setDetailsVisited(true); }} className="flex min-h-0 flex-1 flex-col">
-      <header className="@container max-h-[60dvh] shrink-0 overflow-y-auto border-b border-border bg-card p-4">
+      <header className="@container max-h-[60dvh] shrink-0 overflow-y-auto border-b border-border bg-card p-3 sm:p-4">
         <div className={cn('mx-auto min-w-0', !onClose && 'max-w-[1440px]')}>
         {!onClose && (
           <div className="mb-3">
@@ -386,7 +372,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--primary)] text-sm font-semibold text-[var(--primary-foreground)]">{module === 'accounts' ? <Building size={20} /> : module === 'deals' ? title.split(/\s+/).slice(0, 2).map(word => word[0]).join('').toUpperCase() : `${text(record.firstName)[0] || ''}${text(record.lastName)[0] || ''}`}</div>
           <div className="min-w-0 flex-1 basis-[calc(100%-64px)] pr-9 @min-[400px]:basis-0 @min-[400px]:pr-0">
             <div className="mb-1 flex flex-wrap gap-1"><span className="rounded bg-[var(--primary)]/10 px-1.5 py-0.5 text-[9px] font-semibold tracking-wide text-[var(--primary)]">{label.toUpperCase()}</span>{source && <span className="max-w-full rounded border border-border px-1.5 py-0.5 text-[9px] text-muted-foreground [overflow-wrap:anywhere]">{source}</span>}</div>
-            <h1 className="text-lg font-semibold leading-tight tracking-tight [overflow-wrap:anywhere]">{title}</h1>
+            <h1 className="text-base font-semibold leading-tight tracking-tight [overflow-wrap:anywhere] sm:text-lg">{title}</h1>
             {subtitle && <p className="mt-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">{subtitle}</p>}
             {onClose && <Link href={`/crm/${module}/${encodeURIComponent(id)}?from=${module}`} className="mt-1 inline-flex min-h-8 items-center gap-1 text-xs font-medium text-[var(--primary)]">Open full page <ExternalLink size={11} /></Link>}
           </div>
@@ -440,7 +426,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
                 <RelatedRecords records={deals} module="deals" empty={`No deals attached to this ${label.toLowerCase()}.`} />
                 {deals.length === 50 && <p className="px-3 pb-3 text-xs text-muted-foreground">Showing the latest 50 linked deals.</p>}
                 {creatingDeal && <div className="border-t border-border p-3"><InlineDealForm relatedRecord={{ type: module === 'leads' ? 'lead' : module === 'contacts' ? 'contact' : 'account', id }} onError={error => toast.error(error instanceof Error ? error.message : 'Failed to create deal')} onCancel={() => setCreatingDeal(false)} onSubmit={async values => {
-                  await apiClient.post('/crm/deals', { title: values.title, productInterestIds: values.productInterestIds, pipelineId: values.pipelineId, stageId: values.stageId, description: values.description, expectedCloseDate: values.expectedCloseDate ? new Date(values.expectedCloseDate).toISOString() : undefined, ...(module === 'leads' ? { leadIds: [id] } : module === 'contacts' ? { contactIds: [id] } : { accountId: id }) });
+                  await apiClient.post('/crm/deals', { title: values.title, productInterestIds: values.productInterestIds, pipelineId: values.pipelineId, stageId: values.stageId, priority: values.priority, expectedCloseDate: values.expectedCloseDate ? new Date(values.expectedCloseDate).toISOString() : undefined, ...(module === 'leads' ? { leadIds: [id] } : module === 'contacts' ? { contactIds: [id] } : { accountId: id }) });
                   setCreatingDeal(false); void relatedQuery.refetch();
                 }} /></div>}
               </RecordSection>}

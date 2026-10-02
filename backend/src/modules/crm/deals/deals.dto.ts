@@ -17,7 +17,6 @@ export const CreateDealSchema = z.object({
   billingFrequency:  z.enum(['monthly', 'one_time', 'annual', 'quarterly']).optional(),
   priority:          z.enum(['LOW', 'MEDIUM', 'HIGH']).default('MEDIUM'),
   expectedCloseDate: z.string().datetime().optional(),
-  description:       recordText(10000).optional(),
   leadSource:        recordText(255).optional(),
   accountId:         id().optional(),
   assignedUserId:    id().optional(),
@@ -26,7 +25,7 @@ export const CreateDealSchema = z.object({
   industry:          recordText(255).optional(),
   address:           recordText().optional(),
   productInterests:  z.array(z.string().trim().min(1).max(200)).max(100).optional(),
-});
+}).strict();
 
 // Manual creation accepts catalog IDs; the singular ID remains supported for existing clients.
 export const ManualCreateDealSchema = CreateDealSchema.extend({ productInterests: z.never().optional() }).refine(data => !!data.productInterestId || !!data.productInterestIds?.length, { path: ['productInterestIds'], message: 'Select at least one Product Interest.' });

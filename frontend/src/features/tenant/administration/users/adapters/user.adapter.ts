@@ -15,7 +15,7 @@ export interface UserDTO {
   lastLoginAt?: string | null;
   createdAt: string;
   updatedAt: string;
-  invitationSent?: boolean;
+  setupEmailSent?: boolean;
 }
 
 export interface CreateUserDTO {

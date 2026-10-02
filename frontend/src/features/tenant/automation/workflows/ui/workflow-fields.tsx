@@ -263,12 +263,11 @@ export function ActionFields({
             options.pipelines.find((entry) => entry.id === selectedPipeline)
               ?.stages ?? [];
         if (action.type === 'update_field' && key === 'field')
-          choices = [
-            {
-              id: entity === 'contact' ? 'notes' : 'description',
-              name: entity === 'contact' ? 'Notes' : 'Description',
-            },
-          ];
+          choices = entity === 'lead'
+            ? [{ id: 'description', name: 'Description' }]
+            : entity === 'contact'
+              ? [{ id: 'notes', name: 'Notes' }]
+              : [];
         const change = (value: unknown) =>
           onChange({ ...action.config, [key]: value });
         const value = String(action.config[key] ?? '');

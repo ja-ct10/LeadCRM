@@ -34,10 +34,9 @@ export const dealDetailConfig: RecordDetailConfig = {
       title: 'Deal Information',
       fields: [
         { key: 'title', label: 'Deal Title', value: record.title, type: 'text', editable: true, icon: Trophy, onSave: (v) => onSave('title', v) },
-        { key: 'value', label: 'Value', value: record.value, type: 'number', editable: true, prefix: '₱', onSave: (v) => onSave('value', v) },
+        { key: 'value', label: 'Value', value: record.value, type: 'number', editable: false, prefix: '₱' },
         { key: 'priority', label: 'Priority', value: record.priority, type: 'select', editable: true, options: [{ value: 'Low', label: 'Low' }, { value: 'Medium', label: 'Medium' }, { value: 'High', label: 'High' }], onSave: (v) => onSave('priority', v) },
         { key: 'expectedCloseDate', label: 'Close Date', value: record.expectedCloseDate, type: 'date', editable: true, onSave: (v) => onSave('expectedCloseDate', v) },
-        { key: 'description', label: 'Description', value: record.description, type: 'textarea', editable: true, onSave: (v) => onSave('description', v) },
       ],
     },
     {

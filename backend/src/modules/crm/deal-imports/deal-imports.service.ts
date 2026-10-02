@@ -21,7 +21,7 @@ export async function resolveRow(tenantId: string, row: ImportDealRow) {
     title: row.title, pipelineId: pipeline.id, stageId: stage.id,
     value: row.value ? Number(row.value) : undefined, priority: row.priority,
     expectedCloseDate: row.expectedCloseDate ? `${row.expectedCloseDate}T00:00:00.000Z` : undefined,
-    description: row.description || undefined, accountId: account?.id,
+    accountId: account?.id,
     contactIds: contact ? [contact.id] : undefined, assignedUserId: assignee?.id,
   });
 }

@@ -39,8 +39,11 @@ export async function validateAction(action: WorkflowAction, entity: WorkflowEnt
     if (field.type === 'template' && !await repo.findTemplate(String(value), tenantId)) throw new NotFoundError('Email template');
     if (field.type === 'campaign' && !await repo.findCampaign(String(value), tenantId)) throw new NotFoundError('Campaign');
   }
-  if (action.type === 'update_field' && ((!incomplete && action.enabled !== false) || action.config.field) && action.config.field !== (entity === 'contact' ? 'notes' : 'description')) {
-    throw new ValidationError('Relationship Status and other protected fields cannot be automated. Choose notes for Client Profiles or description for Leads/Deals.');
+  if (action.type === 'update_field' && ((!incomplete && action.enabled !== false) || action.config.field)) {
+    const supportedField = entity === 'lead' ? 'description' : entity === 'contact' ? 'notes' : undefined;
+    if (!supportedField || action.config.field !== supportedField) {
+      throw new ValidationError('Update-field actions are available for Lead descriptions and Client Profile notes only.');
+    }
   }
   // Disabled steps retain safe configuration and scoped references, but need no delivery readiness.
   if (action.enabled === false) return;

@@ -7,7 +7,6 @@ import { authTenantSelect, buildAuthUserResponse } from './auth-user';
 import { authTransaction } from './auth-transaction';
 export { buildAuthUserResponse } from './auth-user';
 export type { AuthUserSource, AuthUserResponse } from './auth-user';
-export { acceptInvitation } from './registration.service';
 export { sendRegistrationOtp, verifyRegistrationOtp } from './verification.service';
 export { requestPasswordReset, resetPasswordWithToken } from './password-reset.service';
 

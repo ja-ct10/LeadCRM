@@ -90,10 +90,10 @@ export async function create(tenantId: string, actorId: string, dto: {
     return created;
   });
   await writeAuditLog({ tenantId, userId: actorId, action: 'user.created', entityType: 'User', entityId: user.id, after: { email: dto.email, role: user.role } });
-  let invitationSent = true;
+  let setupEmailSent = true;
   try { await requestPasswordReset({ email: user.email }, { userId: user.id, tenantId }); }
-  catch { invitationSent = false; }
-  return { ...user, invitationSent };
+  catch { setupEmailSent = false; }
+  return { ...user, setupEmailSent };
 }
 
 export async function update(id: string, tenantId: string, actorId: string, dto: {

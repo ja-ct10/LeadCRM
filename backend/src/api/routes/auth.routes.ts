@@ -3,7 +3,6 @@ import { tenantMiddleware } from '../middleware/tenant.middleware';
 import { patchProfile, uploadAvatar, getAvatar } from '../../core/auth/profile.controller';
 import { Router, raw } from 'express';
 import { AppError } from '../../shared/errors/app-error';
-import { InvitationAcceptSchema } from '../../core/auth/auth.dto';
 import { authRateLimiter, passwordResetRateLimiter } from '../middleware/rate-limit.middleware';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { validate } from '../middleware/validate.middleware';
@@ -21,7 +20,6 @@ router.post('/profile/avatar', authMiddleware, tenantMiddleware, (req, res, next
     : error));
 }, uploadAvatar);
 router.get('/profile/avatar/:avatarId', authMiddleware, tenantMiddleware, getAvatar);
-router.post('/invitations/accept', authRateLimiter, validate(InvitationAcceptSchema), authController.acceptInvitation);
 router.post('/login', authRateLimiter, validate(LoginSchema), authController.login);
 router.post('/logout', authController.logout);
 router.get('/me', authMiddleware, authController.me);

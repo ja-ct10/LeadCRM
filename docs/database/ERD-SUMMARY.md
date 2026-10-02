@@ -42,7 +42,6 @@
 | `RoleDefinition` | Role names per tenant — permissions moved to RolePermission |
 | `RolePermission` | Per-module CRUD flags: canView / canCreate / canEdit / canDelete |
 | `Session` | JWT token revocation via SHA-256 hash |
-| `TenantInvitation` | Email invite tokens for onboarding new users |
 
 ### CRM
 | Entity | Purpose |

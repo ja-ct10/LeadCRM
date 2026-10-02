@@ -76,7 +76,6 @@ export function toBackendCreateDeal(data: Partial<any>): any {
     billingFrequency: data.billingFrequency || undefined,
     priority: toBackendPriority(data.priority),
     expectedCloseDate: toISODatetime(data.expectedCloseDate),
-    description: data.description || undefined,
     leadSource: data.leadSource || undefined,
     accountId: data.accountId || data.companyId || data.organizationId || undefined,
     productInterests: data.productInterests,
@@ -109,7 +108,6 @@ export function toBackendUpdateDeal(data: Partial<any>): any {
   if (data.value !== undefined) updateData.value = data.value;
   if (data.priority !== undefined) updateData.priority = toBackendPriority(data.priority);
   if (data.expectedCloseDate !== undefined) updateData.expectedCloseDate = toISODatetime(data.expectedCloseDate);
-  if (data.description !== undefined) updateData.description = data.description;
   if (data.leadSource !== undefined) updateData.leadSource = data.leadSource;
   if (data.billingFrequency !== undefined) updateData.billingFrequency = data.billingFrequency;
 
@@ -224,7 +222,6 @@ export function toFrontendDeal(backendDeal: any): any {
     value: typeof backendDeal.value === 'number' ? backendDeal.value : 0,
     priority: toFrontendPriority(backendDeal.priority),
     expectedCloseDate: backendDeal.expectedCloseDate || '',
-    description: backendDeal.description || '',
     assignedUserId: backendDeal.assignedUserId || backendDeal.ownerId || '',
     billingFrequency: backendDeal.billingFrequency || undefined,
     lostReason: backendDeal.lostReason || undefined,

@@ -262,22 +262,6 @@ CREATE TABLE "OAuthAccount" (
 );
 
 -- CreateTable
-CREATE TABLE "TenantInvitation" (
-    "id" TEXT NOT NULL,
-    "tenantId" TEXT NOT NULL,
-    "email" TEXT NOT NULL,
-    "roleId" TEXT NOT NULL,
-    "tokenHash" TEXT NOT NULL,
-    "invitedById" TEXT NOT NULL,
-    "expiresAt" TIMESTAMP(3) NOT NULL,
-    "acceptedAt" TIMESTAMP(3),
-    "revokedAt" TIMESTAMP(3),
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "TenantInvitation_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "TenantGroup" (
     "id" TEXT NOT NULL,
     "tenantId" TEXT NOT NULL,
@@ -521,7 +505,6 @@ CREATE TABLE "Deal" (
     "expectedCloseDate" TIMESTAMP(3),
     "closedAt" TIMESTAMP(3),
     "lostReason" TEXT,
-    "description" TEXT,
     "leadSource" TEXT,
     "industry" TEXT,
     "productInterests" TEXT[],
@@ -1375,15 +1358,6 @@ CREATE INDEX "OAuthAccount_userId_tenantId_idx" ON "OAuthAccount"("userId", "ten
 CREATE UNIQUE INDEX "OAuthAccount_provider_providerAccountId_key" ON "OAuthAccount"("provider", "providerAccountId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "TenantInvitation_tokenHash_key" ON "TenantInvitation"("tokenHash");
-
--- CreateIndex
-CREATE INDEX "TenantInvitation_tokenHash_idx" ON "TenantInvitation"("tokenHash");
-
--- CreateIndex
-CREATE INDEX "TenantInvitation_email_tenantId_idx" ON "TenantInvitation"("email", "tenantId");
-
--- CreateIndex
 CREATE INDEX "TenantGroup_tenantId_idx" ON "TenantGroup"("tenantId");
 
 -- CreateIndex
@@ -1937,15 +1911,6 @@ ALTER TABLE "Session" ADD CONSTRAINT "Session_tenantId_fkey" FOREIGN KEY ("tenan
 
 -- AddForeignKey
 ALTER TABLE "OAuthAccount" ADD CONSTRAINT "OAuthAccount_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TenantInvitation" ADD CONSTRAINT "TenantInvitation_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TenantInvitation" ADD CONSTRAINT "TenantInvitation_invitedById_fkey" FOREIGN KEY ("invitedById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TenantInvitation" ADD CONSTRAINT "TenantInvitation_roleId_fkey" FOREIGN KEY ("roleId") REFERENCES "RoleDefinition"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "TenantGroup" ADD CONSTRAINT "TenantGroup_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

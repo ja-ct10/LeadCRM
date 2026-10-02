@@ -6,7 +6,6 @@ vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true 
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'admin', tenantId: 't' }, userCan: () => true }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ roles: [{ id: 'r', name: 'Sales', isArchived: false, isSystemRole: false }], refreshRoles: vi.fn() }) }));
 vi.mock('@/features/tenant/administration/users/services/users.service', () => ({ usersService: { getAll: mocks.list, update: mocks.update, archive: mocks.archive } }));
-vi.mock('@/shared/services/invitations.api', () => ({ invitationsApi: { list: async () => ({ data: [] }) } }));
 import { UsersSubTab } from '../team-management-users';
 beforeEach(() => { vi.resetAllMocks(); vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(cleanup);
@@ -95,7 +94,7 @@ it('uses a responsive filter rail with persisted departments and roles and combi
 });
 
 it('shows Leads pagination on a single page and pages the complete API-backed user set', async () => {
-  const users = Array.from({ length: 27 }, (_, index) => ({ id: String(index), tenantId: 't', firstName: 'Saved', lastName: `User ${index}`, email: `user${index}@example.com`, role: 'Sales', status: 'active' }));
+  const users = Array.from({ length: 27 }, (_, index) => ({ id: String(index), tenantId: 't', firstName: 'Saved', lastName: `User ${index}`, email: `user${index}@example.com`, role: 'Sales', status: 'active', createdAt: new Date((26 - index) * 86_400_000).toISOString() }));
   mocks.list.mockResolvedValue({ data: users, meta: { total: 27, page: 1, limit: 100, hasMore: false } });
   render(<UsersSubTab />); await screen.findByText('Page 1 of 2');
   fireEvent.click(screen.getByRole('button', { name: 'Next page' }));

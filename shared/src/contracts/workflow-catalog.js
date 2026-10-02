@@ -47,8 +47,8 @@ function getAvailableActions() {
         { type: 'assign_owner', label: 'Assign owner', description: 'Assign the related record to a workspace user.', entities: ['lead', 'contact', 'deal'], configSchema: {
                 userId: { type: 'user', label: 'New owner', required: true },
             } },
-        { type: 'update_field', label: 'Update safe field', description: 'Update notes or description. Relationship Status is protected.', entities: ['lead', 'contact', 'deal'], configSchema: {
-                field: { type: 'select', label: 'Field (notes for Client Profiles; description for Leads or Deals)', required: true, options: ['description', 'notes'] },
+        { type: 'update_field', label: 'Update safe field', description: 'Update a Lead description or Client Profile notes. Relationship Status is protected.', entities: ['lead', 'contact'], configSchema: {
+                field: { type: 'select', label: 'Field (description for Leads; notes for Client Profiles)', required: true, options: ['description', 'notes'] },
                 value: { type: 'string', label: 'New value', required: true },
             } },
         { type: 'move_deal_stage', label: 'Move deal stage', description: 'Use the governed pipeline transition.', entities: ['deal'], configSchema: {

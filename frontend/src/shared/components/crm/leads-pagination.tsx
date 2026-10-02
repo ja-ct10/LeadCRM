@@ -18,16 +18,16 @@ export function LeadsPagination({ currentPage, totalRecords, pageSize, onPageCha
   loading?: boolean;
 }) {
   const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
-  return <nav aria-label="Pagination" className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 mt-2 bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 rounded-lg">
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="text-xs text-slate-500 dark:text-slate-400">Per page</span>
+  return <nav aria-label="Pagination" className="flex min-w-0 flex-wrap items-center justify-between gap-1 px-2 py-2 sm:gap-3 sm:px-4 sm:py-3 mt-2 bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 rounded-lg">
+    <div className="flex min-w-0 items-center gap-1 sm:gap-2">
+      <span className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400">Per page</span>
       <PageSizeSelect value={pageSize} options={LEADS_PAGE_SIZES} disabled={disabled} onChange={onPageSizeChange} />
-      <span className="text-xs text-slate-400 dark:text-slate-500 ml-2" aria-live="polite">
+      <span className="text-[10px] sm:text-xs text-slate-400 dark:text-slate-500 " aria-live="polite">
         {refreshing && <span className="ml-1.5 text-blue-400 dark:text-blue-500" aria-label="Refreshing data">↻</span>}
       </span>
     </div>
-    <div className="flex items-center gap-2">
-      <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">Page {currentPage} of {loading ? '…' : totalPages}</span>
+    <div className="flex min-w-0 items-center gap-1 sm:gap-2">
+      <span className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap tabular-nums">Page {currentPage} of {loading ? '…' : totalPages}</span>
       {[{ label: 'Previous page', page: currentPage - 1, unavailable: currentPage <= 1, Icon: ChevronLeft },
         { label: 'Next page', page: currentPage + 1, unavailable: currentPage >= totalPages, Icon: ChevronRight }].map(({ label, page, unavailable, Icon }) =>
         <button key={label} type="button" onClick={() => onPageChange(page)} disabled={disabled || unavailable} aria-label={label}

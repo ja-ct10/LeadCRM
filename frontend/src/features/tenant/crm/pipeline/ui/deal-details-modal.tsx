@@ -28,7 +28,6 @@ interface EditFields {
   value: number;
   priority: string;
   expectedCloseDate: string;
-  description: string;
   assignedUserId: string;
   stageId: string;
   leadSource: string;
@@ -93,7 +92,6 @@ function buildEditFields(deal: Deal): EditFields {
     value: deal.value || 0,
     priority: deal.priority || 'Medium',
     expectedCloseDate: deal.expectedCloseDate || '',
-    description: deal.description || '',
     assignedUserId: deal.assignedUserId || '',
     stageId: deal.stageId || '',
     leadSource: deal.leadSource || '',
@@ -413,11 +411,6 @@ export function DealDetailsModal({
                       className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Description</label>
-                    <textarea rows={3} value={editFields.description} onChange={e => setEditFields({ ...editFields, description: e.target.value })}
-                      className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl p-3 text-slate-900 dark:text-white text-sm focus:outline-none resize-none" />
-                  </div>
 
                   <div className="flex gap-2 justify-end pt-1">
                     <button type="button" onClick={() => setIsEditing(false)}
@@ -472,12 +465,6 @@ export function DealDetailsModal({
                         </div>
                       </div>
                     )}
-                  </div>
-                  <div className="space-y-2 pt-1">
-                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Description</h4>
-                    <div className="bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] p-4 rounded-2xl text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
-                      {deal.description || 'No description provided.'}
-                    </div>
                   </div>
                 </div>
               )}

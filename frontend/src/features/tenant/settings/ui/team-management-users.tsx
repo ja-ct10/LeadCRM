@@ -13,7 +13,6 @@ import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
 import { usePagination } from '@/shared/hooks/use-pagination';
 import { LeadsPagination, LEADS_PAGE_SIZES } from '@/shared/components/crm/leads-pagination';
-import { invitationsApi } from '@/shared/services/invitations.api';
 import { auditApi } from '@/shared/services/audit.api';
 import { FilterGroupSection } from '@/shared/components/crm/module-workspace';
 import { usersService } from '@/features/tenant/administration/users/services/users.service';
@@ -27,7 +26,6 @@ import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { cn } from '@/lib/utils';
 import { USE_MOCK_DATA } from '@/lib/config';
 import type { User } from '@/store/types';
-import type { PendingInvitation } from '@/store/types/invitation.types';
 
 // ── Avatar ─────────────────────────────────────────────────────────────────
 
@@ -276,38 +274,6 @@ export function UsersSubTab({ onUsersLoaded }: { onUsersLoaded?: (users: User[])
   const [timelineUser, setTimelineUser] = useState<User | null>(null);
   const [confirmArchive, setConfirmArchive] = useState<User | null>(null);
 
-  // Pending invitations (real API mode only)
-  const [pendingInvitations, setPendingInvitations] = useState<PendingInvitation[]>([]);
-  const [isInvitationsLoading, setIsInvitationsLoading] = useState(false);
-
-  useEffect(() => {
-    if (USE_MOCK_DATA) return;
-    loadInvitations();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const loadInvitations = async (): Promise<void> => {
-    setIsInvitationsLoading(true);
-    try {
-      const res = await invitationsApi.list();
-      setPendingInvitations(res?.data ?? []);
-    } catch {
-      // non-critical
-    } finally {
-      setIsInvitationsLoading(false);
-    }
-  };
-
-  const handleRevokeInvitation = async (id: string, email: string): Promise<void> => {
-    try {
-      await invitationsApi.revoke(id);
-      toast.success(`Invitation revoked for ${email}`);
-      setPendingInvitations((prev) => prev.filter((inv) => inv.id !== id));
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Failed to revoke invitation');
-    }
-  };
-
   const filtered = useMemo(() => {
     return tenantUsers.filter((u) => {
       // The user API represents archived users with INACTIVE status. Include
@@ -421,31 +387,6 @@ export function UsersSubTab({ onUsersLoaded }: { onUsersLoaded?: (users: User[])
 
         </div>
       </div>
-
-      {/* Pending Invitations */}
-      {!USE_MOCK_DATA && pendingInvitations.length > 0 && (
-        <div className="bg-white dark:bg-slate-900/60 border border-gray-200 dark:border-white/[0.07] rounded-xl overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-gray-100 dark:border-white/[0.05]">
-            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-              Pending Invitations ({isInvitationsLoading ? '…' : pendingInvitations.length})
-            </p>
-          </div>
-          {pendingInvitations.map((inv) => (
-            <div key={inv.id} className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-white/[0.04] last:border-0 hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors">
-              <div>
-                <p className="text-xs font-semibold text-slate-900 dark:text-white">{inv.email}</p>
-                <p className="text-[10px] text-slate-400">Expires {new Date(inv.expiresAt).toLocaleDateString()}</p>
-              </div>
-              {canManageUsers && (
-                <button onClick={() => handleRevokeInvitation(inv.id, inv.email)}
-                  className="px-3 py-1.5 text-[10px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 rounded-lg cursor-pointer transition-colors">
-                  Revoke
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* Modals */}
       <AnimatePresence>

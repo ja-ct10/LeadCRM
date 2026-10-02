@@ -16,7 +16,7 @@ http://localhost:4000/api/v1
 
 Protected endpoints accept the HttpOnly `leadcrm_token` cookie or a persisted
 session's Bearer token. Browser clients use the same-origin /api/proxy transport.
-Login and password recovery do not require a session. Account creation requires an administrator-issued invitation. See [Authentication and onboarding](authentication.md).
+Login and password recovery do not require a session. There is no public account-creation or tenant-invitation endpoint; administrators provision tenant accounts through user management. See [Authentication and onboarding](authentication.md).
 
 Signed identity is verified against the session store and current database
 user/role. Tenant context comes from the authenticated session. CRM endpoints
@@ -51,7 +51,6 @@ All paths are relative to /api/v1. See [authentication and onboarding](authentic
 | POST | /auth/change-password | Use authenticated session, store strong password, clear first-login flag and revoke other sessions |
 | POST | /auth/forgot-password | Request password recovery |
 | POST | /auth/reset-password | Complete password recovery and revoke sessions |
-| POST | /auth/invitations/accept | Accept an administrator-issued employee invitation |
 | GET | /auth/onboarding/status | Canonical account state |
 | POST | /auth/onboarding/complete | Client Admin informational acknowledgment; empty body |
 
@@ -164,7 +163,7 @@ row on the server. There is no separate upload or preview endpoint.
 Execution accepts `{ fileName, rows }`, with 1–5000 rows, each containing a unique
 `rowNumber` and string fields. Required fields: `title`, `pipeline`, `stage`.
 Optional fields: `value`, `priority`, `expectedCloseDate`, `account`, `contact`,
-`assignedUser`, `description`. Pipelines/stages/accounts resolve by exact name or
+`assignedUser`. Pipelines/stages/accounts resolve by exact name or
 ID; contacts/assignees resolve by email or ID. Ambiguous matches fail the row.
 Relationships must belong to the authenticated tenant.
 Valid rows write `Deal` and optional `ContactDeal`; all rows receive a saved
@@ -259,7 +258,6 @@ metadata and does not change the fixed employee-email policy.
 | `PATCH` | `/administration/users/:id/archive` | Deactivate user and revoke sessions | `users.canEdit` (`users.manage`) |
 | `PATCH` | `/administration/users/:id/restore` | Activate user | `users.canEdit` (`users.manage`) |
 | `POST` | `/administration/users/:id/password-reset` | Send recovery email to the selected database user; HTTP 202 | `users.canEdit` (`users.manage`) |
-| `POST` | `/invitations` | Send TenantInvitation | `users.canEdit` (`users.manage`) |
 
 There is no registered `/administration/users/:id/status` or
 `/administration/users/invite` route. Status can also be changed through the

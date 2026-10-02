@@ -25,7 +25,6 @@ export interface Deal {
   billingFrequency?: 'monthly' | 'one_time' | 'annual' | 'quarterly';
   priority: DealPriority;
   expectedCloseDate?: string;
-  description?: string;
   leadSource?: string;
   organizationId?: string;
   assignedUserId?: string;
@@ -61,7 +60,6 @@ export interface CreateDealRequest {
   currency?: string;
   priority?: DealPriority;
   expectedCloseDate?: string;
-  description?: string;
   leadSource?: string;
   organizationId?: string;
   assignedUserId?: string;
@@ -82,7 +80,6 @@ export interface UpdateDealRequest {
   currency?: string;
   priority?: DealPriority;
   expectedCloseDate?: string;
-  description?: string;
   leadSource?: string;
   organizationId?: string;
   assignedUserId?: string;

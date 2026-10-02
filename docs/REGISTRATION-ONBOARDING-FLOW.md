@@ -1,4 +1,4 @@
-> Historical design: superseded by [the current authentication and role model](authentication.md). The registration/subscription flows below are not active.
+> Historical design only: the registration, onboarding, and tenant-invitation flows below are retired and are not active API behavior. Current authentication and user management are documented in [the current authentication and role model](authentication.md).
 
 # Registration & Onboarding Flow
 

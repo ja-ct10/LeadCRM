@@ -12,8 +12,6 @@ export const RefreshSchema = z.object({
 
 export type LoginDto = z.infer<typeof LoginSchema>;
 
-export { RegisterSchema as InvitationAcceptSchema } from '@leadcrm/shared';
-export type { RegisterInput as InvitationAcceptDto } from '@leadcrm/shared';
 
 export const ForgotPasswordSchema = z.object({
   email: z.string().email('Valid email required'),

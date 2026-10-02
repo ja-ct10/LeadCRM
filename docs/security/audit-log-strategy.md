@@ -40,7 +40,7 @@ model AuditLog {
 | `crm` | Contact, Deal, Organization, Task mutations |
 | `billing` | Invoice, PaymentTransaction changes |
 | `workflow` | Workflow CRUD, execution runs, trigger events |
-| `admin` | User, Role, RolePermission, TenantInvitation changes |
+| `admin` | User, Role, and RolePermission changes |
 | `system` | Tenant provisioning, plan changes, SystemAdmin actions |
 
 ---

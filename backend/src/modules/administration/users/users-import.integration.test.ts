@@ -50,7 +50,7 @@ describe.skipIf(!disposable)('user administration and deal imports over authenti
     const created = await call('/administration/users', 'POST', valid);
     expect(created.status).toBe(201);
     userId = created.body.data.id;
-    expect(created.body.data).toMatchObject({ firstName: 'Juan', lastName: 'Dela Cruz', email: 'juan@camxian.com', phone: '+639171234567', jobTitle: 'Sales', department: 'Manila', invitationSent: true });
+    expect(created.body.data).toMatchObject({ firstName: 'Juan', lastName: 'Dela Cruz', email: 'juan@camxian.com', phone: '+639171234567', jobTitle: 'Sales', department: 'Manila', setupEmailSent: true });
     expect(created.body.data).not.toHaveProperty('passwordHash');
     expect(await prisma.userRole.count({ where: { userId, tenantId } })).toBe(1);
     expect((await call('/administration/users', 'POST', valid)).status).toBe(409);

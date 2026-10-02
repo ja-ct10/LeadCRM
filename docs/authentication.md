@@ -31,9 +31,9 @@ The existing Tenant.onboardingCompletedAt and onboardingStep fields are reused. 
 
 Completion is workspace-wide, matching the existing data model. Additional Client Admins in an already acknowledged workspace do not repeat it. Existing completion timestamps are preserved; unfinished legacy steps all display the information page. System Admins cannot submit Client Admin onboarding. Custom-role users are not required to perform Client Admin onboarding.
 
-## Invitations and recovery
+## Recovery and account provisioning
 
-Administrator-issued invitations remain supported through POST /auth/invitations/accept. A valid, unexpired, single-use invitation bound to the employee email and tenant is required. System Admin roles cannot be invited through the client portal. Invitees choose their own strong password, so they enter active with mustChangePassword=false and no OTP step. Invitation creation still requires the existing users.manage permission.
+Tenant user accounts are provisioned by administrators through Team Management. The tenant-invitation flow and its token-based acceptance endpoint have been retired. Provisioned passwords are temporary when required, and users can establish their password through authenticated password change or password recovery.
 
 Public signup, Google account sign-in, OTP, email-verification sessions, company setup, and old onboarding progress endpoints are disabled. NextAuth and magic-link bridge routes return 404. Gmail OAuth remains a separate CRM email integration.
 
@@ -41,6 +41,6 @@ Public signup, Google account sign-in, OTP, email-verification sessions, company
 
 Apply migration 20260919000000_internal_accounts before starting the new backend. It adds User.mustChangePassword with default true, exempts existing System Admins, and changes the default new-user role to User. Existing non-System Admin accounts will be asked to change their password once. Passwordless legacy Google accounts need password recovery or administrator provisioning.
 
-The final role migration disables historical Guest accounts, revokes their sessions and pending invitations, and archives their role definitions without deleting identities, CRM data, assignments, or permissions. Only Client Admin is seeded as a predefined tenant role. There is no automatic User role: an administrator must select an existing custom role. Existing User definitions become editable custom roles with unchanged permissions. See [migration and verification](plans/final-role-model.md).
+The final role migration disables historical Guest accounts, revokes their sessions and any legacy pending invitations, and archives their role definitions without deleting identities, CRM data, assignments, or permissions. Only Client Admin is seeded as a predefined tenant role. There is no automatic User role: an administrator must select an existing custom role. Existing User definitions become editable custom roles with unchanged permissions. See [migration and verification](plans/final-role-model.md).
 
 See [implementation and retirement inventory](plans/internal-camxian-crm.md) for affected files, preserved dependencies, and verification.

@@ -3,7 +3,6 @@ import prisma from '../../config/database.config';
 import { hashPassword } from '../../shared/helpers/crypto';
 import { Role } from '../../shared/constants/roles';
 import { loginUser } from './auth.service';
-import { acceptInvitation as acceptInvitationService } from './registration.service';
 import { requestPasswordReset, resetPasswordWithToken } from './password-reset.service';
 import { ForgotPasswordSchema, ResetPasswordSchema } from './auth.dto';
 import { revokeSession } from './session.service';
@@ -114,18 +113,6 @@ export async function seedDemo(_req: Request, res: Response, next: NextFunction)
     // Never return credentials in an API response — the operator set the
     // password via DEMO_USER_PASSWORD and already knows it.
     res.json({ success: true, message: 'Demo user successfully seeded.', email: DEMO_EMAIL });
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function acceptInvitation(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const result = await acceptInvitationService(req.body);
-    res.status(201).json({
-      success: true,
-      data: { user: result },
-    });
   } catch (err) {
     next(err);
   }

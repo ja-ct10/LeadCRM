@@ -94,7 +94,6 @@ export const LEADS_COLUMN_REGISTRY: ColumnDefinition[] = [
   { id: 'primaryOppCloseDate',     label: 'Primary opp. close date',       required: false, defaultVisible: false, defaultOrder: 61, group: 'Opportunities', priority: 'low' },
   { id: 'primaryOppCreated',       label: 'Primary opp. created',          required: false, defaultVisible: false, defaultOrder: 62, group: 'Opportunities', priority: 'low' },
   { id: 'primaryOppUpdated',       label: 'Primary opp. updated',          required: false, defaultVisible: false, defaultOrder: 63, group: 'Opportunities', priority: 'low' },
-  { id: 'primaryOppConfidence',    label: 'Primary opp. confidence %',     required: false, defaultVisible: false, defaultOrder: 64, group: 'Opportunities', priority: 'low' },
   { id: 'primaryOppValue',         label: 'Primary opp. value',            required: false, defaultVisible: false, defaultOrder: 65, group: 'Opportunities', priority: 'low' },
   { id: 'primaryOppUser',          label: 'Primary opp. user',             required: false, defaultVisible: false, defaultOrder: 66, group: 'Opportunities', priority: 'low' },
   { id: 'lastOppStatusChangeDate', label: 'Last opp. status change date',  required: false, defaultVisible: false, defaultOrder: 67, group: 'Opportunities', priority: 'low' },

@@ -197,7 +197,6 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     actions: [
       { type: 'create_notification', config: { title: 'Major Enterprise Deal created over $250k' } },
       { type: 'create_task', config: { title: 'Assign executive sponsor and review proposal', dueDaysFromNow: 2, priority: 'High', description: 'High-impact enterprise deal requires executive oversight and strategic pricing review.' } },
-      { type: 'update_field', config: { field: 'description', value: 'Tier 1 Enterprise Deal. Requires executive sponsor review.' } },
     ],
   },
   {
@@ -256,7 +255,6 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     actions: [
       { type: 'create_notification', config: { title: 'Major deal closed won ($50k+)! Congratulations!' } },
       { type: 'create_task', config: { title: 'Schedule contact implementation kickoff', dueDaysFromNow: 2, priority: 'High', description: 'High-value implementation kickoff meeting and stakeholder introduction.' } },
-      { type: 'update_field', config: { field: 'description', value: 'Closed Won. Kickoff and implementation scheduled.' } },
     ],
   },
   {
@@ -267,7 +265,6 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     actions: [
       { type: 'create_notification', config: { title: 'Deal closed lost: Win/loss analysis required' } },
       { type: 'create_task', config: { title: 'Log lost reason and review competitor insights', dueDaysFromNow: 3, priority: 'Low', description: 'Document key objections, pricing factors, and feedback for product marketing.' } },
-      { type: 'update_field', config: { field: 'description', value: 'Deal closed lost. Reason documented for review.' } },
     ],
   },
   {

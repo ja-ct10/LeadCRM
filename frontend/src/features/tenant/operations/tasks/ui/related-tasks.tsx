@@ -38,7 +38,7 @@ export function RelatedTasks({ links, onCountChange }: { links: TaskLinks; onCou
       </p>
     );
   return (
-    <div className="space-y-3 p-4">
+    <div className={onCountChange ? "space-y-3 p-3 sm:p-4" : "space-y-3 p-4"}>
       <div className={onCountChange ? "flex flex-wrap items-center justify-between gap-2" : "flex items-center justify-between gap-2"}>
         <span className="text-xs text-muted-foreground">
           {data.summary
@@ -76,8 +76,8 @@ export function RelatedTasks({ links, onCountChange }: { links: TaskLinks; onCou
             onClick={() => setEditor(task)}
             className="block w-full rounded py-3 text-left hover:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <span className={onCountChange ? "block text-sm font-medium [overflow-wrap:anywhere]" : "block text-sm font-medium"}>{task.title}</span>
-            <span className="block text-xs text-muted-foreground">
+            <span className={onCountChange ? "block text-[13px] font-medium [overflow-wrap:anywhere] sm:text-sm" : "block text-sm font-medium"}>{task.title}</span>
+            <span className={onCountChange ? "block text-[11px] text-muted-foreground sm:text-xs" : "block text-xs text-muted-foreground"}>
               {TASK_STATUS_LABELS[task.status]} ·{" "}
               {new Date(task.dueDate).toLocaleString()}
             </span>

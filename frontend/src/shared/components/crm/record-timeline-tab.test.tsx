@@ -63,7 +63,7 @@ it('filters the activity timeline by email, task, and status rather than changin
   render(<RecordTimelineTab activities={activities} module="leads" recordId="record-1" />);
   expect(screen.getByText('Internal note')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Emails' }));
-  expect(screen.getByText('Sent welcome email')).toBeTruthy();
+  expect(screen.getAllByText('Sent welcome email').length).toBeGreaterThan(0);
   expect(screen.queryByText('Called prospect')).toBeNull();
   expect(screen.queryByText('Internal note')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Tasks' }));
@@ -72,4 +72,10 @@ it('filters the activity timeline by email, task, and status rather than changin
   fireEvent.click(screen.getByRole('button', { name: 'Status' }));
   expect(screen.getByText('Status changed to Hot')).toBeTruthy();
   expect(screen.queryByText('Follow up task activity')).toBeNull();
+});
+
+it.each(['leads', 'contacts', 'accounts', 'deals'] as const)('removes the %s Call quick action while preserving historical calls', module => {
+  render(<RecordTimelineTab activities={[{ id: 'call', type: 'call', title: 'Historical call', createdAt: '2026-10-01T10:00:00Z' }]} module={module} recordId="record" />);
+  expect(screen.queryByRole('button', { name: /^Call$/ })).toBeNull();
+  expect(screen.getByText('Historical call')).toBeTruthy();
 });

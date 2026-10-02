@@ -137,7 +137,6 @@ model Tenant {
   userRoles          UserRole[]
   roleDefinitions    RoleDefinition[]
   sessions           Session[]
-  invitations        TenantInvitation[]
   organizations      Account[]
   leads              Lead[]
   contacts           Contact[]
@@ -207,7 +206,6 @@ model User {
   tenant             Tenant             @relation(fields: [tenantId], references: [id])
   userRoles          UserRole[]
   sessions           Session[]
-  invitationsSent    TenantInvitation[] @relation("InvitedByUser")
   organizationsOwned Account[]
   assignedLeads      Lead[]             @relation("AssignedLeads")
   createdLeads       Lead[]             @relation("CreatedLeads")
@@ -258,7 +256,6 @@ model RoleDefinition {
 
   tenant      Tenant             @relation(fields: [tenantId], references: [id])
   userRoles   UserRole[]
-  invitations TenantInvitation[]
   permissions RolePermission[]
 
   @@unique([tenantId, name])
@@ -354,27 +351,6 @@ model OAuthAccount {
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
-// TENANT INVITATION
-// G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
-model TenantInvitation {
-  id          String    @id @default(uuid())
-  tenantId    String
-  email       String
-  roleId      String
-  tokenHash   String    @unique
-  invitedById String
-  expiresAt   DateTime
-  acceptedAt  DateTime?
-  revokedAt   DateTime?
-  createdAt   DateTime  @default(now())
-
-  tenant    Tenant         @relation(fields: [tenantId], references: [id])
-  invitedBy User           @relation("InvitedByUser", fields: [invitedById], references: [id])
-  role      RoleDefinition @relation(fields: [roleId], references: [id])
-
-  @@index([tokenHash])
-  @@index([email, tenantId])
-}
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // TENANT GROUP
@@ -719,7 +695,6 @@ model Deal {
   closingSnapshot Json?
   stageChangedAt DateTime?
   lostReason        String?
-  description       String?
   leadSource        String?
   industry          String?
   productInterests  String[]
@@ -1400,7 +1375,7 @@ model EmailVerificationToken {
   userId    String?   // nullable — may be generated before user exists (e.g. pre-registration)
   email     String
   tokenHash String    @unique // SHA-256 hex digest of plaintext token
-  type      String    @default("EMAIL_VERIFICATION") // "EMAIL_VERIFICATION" | "INVITATION"
+  type      String    @default("EMAIL_VERIFICATION")
   expiresAt DateTime
   usedAt    DateTime?
   createdAt DateTime  @default(now())

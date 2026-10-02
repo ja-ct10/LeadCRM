@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { ProductInterestSelect } from './product-interest-select';
 import { useProductInterests } from '@/shared/hooks/use-product-interests';
-import { ChevronDown, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/shared/components/ui/button';
 import { useData } from '@/store/DataContext';
@@ -28,8 +28,7 @@ const InlineDealSchema = z.object({
   pipelineId: z.string().min(1, 'Pipeline is required'),
   stageId: z.string().min(1, 'Stage is required'),
   expectedCloseDate: z.string().optional(),
-  confidence: z.number().min(0).max(100),
-  description: z.string().optional(),
+  priority: z.enum(['LOW', 'MEDIUM', 'HIGH']),
 });
 
 type InlineDealFormData = z.infer<typeof InlineDealSchema>;
@@ -47,8 +46,8 @@ interface InlineDealFormProps {
     productInterestIds: string[];
     pipelineId: string;
     stageId: string;
+    priority: 'LOW' | 'MEDIUM' | 'HIGH';
     expectedCloseDate?: string;
-    description?: string;
     leadId?: string;
     contactId?: string;
     organizationId?: string;
@@ -90,11 +89,15 @@ export function InlineDealForm({
       pipelineId: defaultPipeline?.id || '',
       stageId: defaultStage?.id || '',
       expectedCloseDate: getDatePlusDays(30),
-      confidence: 50,
-      description: '',
+      priority: 'MEDIUM',
     },
     mode: 'onChange',
   });
+
+  React.useEffect(() => {
+    if (defaultPipeline) setValue('pipelineId', defaultPipeline.id, { shouldValidate: true });
+    if (defaultStage) setValue('stageId', defaultStage.id, { shouldValidate: true });
+  }, [defaultPipeline?.id, defaultStage?.id, setValue]);
 
   const selectedPipelineId = watch('pipelineId');
   const selectedProductIds = watch('productInterestIds');
@@ -113,8 +116,8 @@ export function InlineDealForm({
       productInterestIds: formData.productInterestIds,
       pipelineId: formData.pipelineId,
       stageId: formData.stageId,
+      priority: formData.priority,
       expectedCloseDate: formData.expectedCloseDate || undefined,
-      description: formData.description || undefined,
     };
 
     // Auto-link from relatedRecord
@@ -176,71 +179,28 @@ export function InlineDealForm({
         <input id={`${productFieldId}-value`} readOnly className={inputCls} value={new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(productValue)} />
       </div>
 
-      {/* Pipeline & Stage */}
-      <div className="grid grid-cols-2 gap-2">
+      <input type="hidden" {...register('pipelineId')} />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
-          <label className={labelCls}>Pipeline <span className="text-red-500">*</span></label>
-          <p className="py-2 text-sm">Sales Pipeline</p><input type="hidden" {...register('pipelineId')} />
-          {errors.pipelineId && (
-            <p className="text-xs text-destructive mt-0.5">{errors.pipelineId.message}</p>
-          )}
+          <label htmlFor={`${productFieldId}-priority`} className={labelCls}>Priority</label>
+          <select id={`${productFieldId}-priority`} {...register('priority')} className={selectCls}>
+            <option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option>
+          </select>
         </div>
         <div>
-          <label className={labelCls}>Stage <span className="text-red-500">*</span></label>
-          <div className="relative">
-            <select
-              {...register('stageId')}
-              className={cn(selectCls, errors.stageId && errorCls)}
-              disabled={!selectedPipelineId}
-            >
-              <option value="">{selectedPipelineId ? 'Select stage' : 'Select pipeline first'}</option>
-              {stagesForPipeline.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
-            <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
-          </div>
-          {errors.stageId && (
-            <p className="text-xs text-destructive mt-0.5">{errors.stageId.message}</p>
-          )}
+          <label htmlFor={`${productFieldId}-stage`} className={labelCls}>Stage <span className="text-red-500">*</span></label>
+          <select id={`${productFieldId}-stage`} {...register('stageId')} className={cn(selectCls, errors.stageId && errorCls)} disabled={!selectedPipelineId}>
+            <option value="">Select stage</option>
+            {stagesForPipeline.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          {errors.stageId && <p className="text-xs text-destructive">{errors.stageId.message}</p>}
         </div>
       </div>
-
-      {/* Expected Close Date & Confidence */}
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className={labelCls}>Expected Close</label>
-          <input
-            type="date"
-            {...register('expectedCloseDate')}
-            className={inputCls}
-          />
-        </div>
-        <div>
-          <label className={labelCls}>Confidence (%)</label>
-          <input
-            type="number"
-            min="0"
-            max="100"
-            {...register('confidence', { valueAsNumber: true })}
-            className={cn(inputCls, errors.confidence && errorCls)}
-            placeholder="50"
-          />
-          {errors.confidence && (
-            <p className="text-xs text-destructive mt-0.5">{errors.confidence.message}</p>
-          )}
-        </div>
-      </div>
-
-      {/* Description */}
       <div>
-        <label className={labelCls}>Description</label>
-        <textarea
-          {...register('description')}
-          className={cn(inputCls, 'resize-none h-16')}
-          placeholder="Brief description..."
-        />
+        <label htmlFor={`${productFieldId}-close`} className={labelCls}>Expected Close Date</label>
+        <input id={`${productFieldId}-close`} type="date" {...register('expectedCloseDate')} className={cn(inputCls, 'min-w-0')} />
       </div>
+      {!defaultPipeline && <p role="alert" className="text-xs text-destructive">Sales Pipeline is unavailable.</p>}
 
       {/* Actions */}
       <div className="flex items-center gap-2 pt-1">

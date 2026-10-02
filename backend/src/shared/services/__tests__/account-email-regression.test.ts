@@ -3,7 +3,6 @@ vi.mock('../../../config/database.config', async () => ({ default: (await import
 import { db, resetDb, user } from '../../../core/auth/__tests__/auth-test-db';
 import { requestPasswordReset } from '../../../core/auth/password-reset.service';
 import { deliverVerification, sendRegistrationOtp } from '../../../core/auth/verification.service';
-import { createInvitations } from '../../../modules/administration/invitations/invitations.service';
 const fetchMock = vi.fn();
 beforeEach(() => {
   resetDb(); vi.stubGlobal('fetch', fetchMock); fetchMock.mockReset();
@@ -27,15 +26,5 @@ describe('account flows using the existing Brevo transport', () => {
     expect(db.passwordResetToken.create).toHaveBeenCalled();
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).subject).toBe('Reset your LeadCRM password');
     if (targeted) expect(db.user.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { email: user.email, id: user.id, tenantId: user.tenantId } }));
-  });
-  it('sends a team invitation after persisting its hashed token', async () => {
-    db.roleDefinition.findFirst.mockResolvedValue({ id: 'sales-role', name: 'Sales' });
-    db.user.findFirst.mockResolvedValueOnce(user).mockResolvedValue(null);
-    db.tenant.findFirst.mockResolvedValue({ name: 'Workspace' });
-    db.tenantInvitation.findFirst.mockResolvedValue(null);
-    const result = await createInvitations(user.tenantId, user.id, ['invitee@camxian.com'], 'sales-role');
-    expect(result.sent).toEqual(['invitee@camxian.com']);
-    expect(db.tenantInvitation.create).toHaveBeenCalled();
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body).to).toEqual([{ email: 'invitee@camxian.com' }]);
   });
 });

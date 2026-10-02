@@ -332,9 +332,9 @@ export function actionIssues(
   if (
     action.type === 'update_field' &&
     action.config.field &&
-    action.config.field !== (entity === 'contact' ? 'notes' : 'description')
+    action.config.field !== (entity === 'contact' ? 'notes' : entity === 'lead' ? 'description' : undefined)
   )
-    issues.push('Choose the safe field available for this record type.');
+    issues.push('Update-field actions are available for Leads and Client Profiles only.');
   return issues;
 }
 export function editorIssues(
