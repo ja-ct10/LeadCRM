@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { compareSortValues } from '@leadcrm/shared';
 import {
   Search, Plus, X, Trash2, Filter,
   ShieldAlert, CheckCircle2,
@@ -16,7 +17,7 @@ import { invitationsApi } from '@/shared/services/invitations.api';
 import { auditApi } from '@/shared/services/audit.api';
 import { FilterGroupSection } from '@/shared/components/crm/module-workspace';
 import { usersService } from '@/features/tenant/administration/users/services/users.service';
-import { DataGrid, type DataGridColumnDef } from '@/shared/components/data-grid';
+import { DataGrid, type DataGridColumnDef, type SortState } from '@/shared/components/data-grid';
 import { BulkSelectionBar, executeSelectedRows } from '@/shared/components/crm/bulk-selection-bar';
 import { RefreshButton } from '@/shared/components/crm/refresh-button';
 import { UserPanel } from './user-panel';
@@ -263,6 +264,7 @@ export function UsersSubTab({ onUsersLoaded }: { onUsersLoaded?: (users: User[])
   const [roleFilter, setRoleFilter] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [departmentFilter, setDepartmentFilter] = useState<string[]>([]);
+  const [sort, setSort] = useState<SortState>({ field: 'createdAt', direction: 'desc' });
   const [showFilters, setShowFilters] = useState(false);
   const departments = useMemo(() => [...new Set(tenantUsers.map(u => u.department).filter((value): value is string => !!value?.trim()))].sort(), [tenantUsers]);
 
@@ -315,14 +317,17 @@ export function UsersSubTab({ onUsersLoaded }: { onUsersLoaded?: (users: User[])
       const matchRole = roleFilter.length === 0 || roleFilter.includes(u.role);
       const matchStatus = statusFilter.length === 0 || statusFilter.some((s) => s.toLowerCase() === (u.status ?? '').toLowerCase());
       return matchSearch && matchRole && matchStatus && (departmentFilter.length === 0 || departmentFilter.includes(u.department ?? ''));
+    }).sort((a, b) => {
+      const value = (u: User) => sort.field === 'name' ? `${u.firstName} ${u.lastName}` : sort.field === 'createdAt' ? u.createdAt ? new Date(u.createdAt) : null : u[sort.field as keyof User];
+      return compareSortValues(value(a), value(b), sort.direction) || a.id.localeCompare(b.id);
     });
-  }, [tenantUsers, search, roleFilter, statusFilter, departmentFilter]);
+  }, [tenantUsers, search, roleFilter, statusFilter, departmentFilter, sort]);
 
   const { currentPage, pageSize, totalItems, paginateItems, goToPage, setPageSize } = usePagination({
     totalItems: filtered.length,
     initialPageSize: 25,
     pageSizeOptions: LEADS_PAGE_SIZES,
-    resetDeps: [search, roleFilter, statusFilter, departmentFilter],
+    resetDeps: [search, roleFilter, statusFilter, departmentFilter, sort],
   });
   const paginated = paginateItems(filtered);
   useEffect(() => { setSelected(new Set()); }, [tenantId, currentPage, pageSize, search, roleFilter, statusFilter, departmentFilter]);
@@ -346,11 +351,11 @@ export function UsersSubTab({ onUsersLoaded }: { onUsersLoaded?: (users: User[])
 
   const canManageUsers = userCan('users', 'canEdit');
   const columns: DataGridColumnDef<User>[] = [
-    { id: 'name', header: 'User', accessor: u => `${u.firstName} ${u.lastName}`, width: 240, cell: (_, u) => <button aria-label={`View ${u.firstName} ${u.lastName}`} onClick={() => openUser(u)} className="flex items-center gap-2 text-left"><UserAvatar user={u} /><span>{u.firstName} {u.lastName}</span></button> },
-    { id: 'role', header: 'Role', accessor: u => u.role, width: 180, cell: (_, u) => <span className={cn('rounded-full border px-2 py-0.5 text-xs', roleColor(u.role))}>{u.role}</span> },
-    { id: 'email', header: 'Contact', accessor: u => u.email, width: 250, cell: (_, u) => <div><p>{u.email}</p><p className="text-xs text-muted-foreground">{u.phone}</p></div> },
-    { id: 'status', header: 'Status', accessor: u => u.status ?? 'active', width: 110, cell: (_, u) => <span className={cn('rounded-full px-2 py-1 text-xs', u.status === 'active' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-slate-500/10 text-slate-500')}>{u.status ?? 'active'}</span> },
-    { id: 'department', header: 'Department', accessor: u => u.department || '—', width: 150 },
+    { id: 'name', sortable: true, header: 'User', accessor: u => `${u.firstName} ${u.lastName}`, width: 240, cell: (_, u) => <button aria-label={`View ${u.firstName} ${u.lastName}`} onClick={() => openUser(u)} className="flex items-center gap-2 text-left"><UserAvatar user={u} /><span>{u.firstName} {u.lastName}</span></button> },
+    { id: 'role', sortable: true, header: 'Role', accessor: u => u.role, width: 180, cell: (_, u) => <span className={cn('rounded-full border px-2 py-0.5 text-xs', roleColor(u.role))}>{u.role}</span> },
+    { id: 'email', sortable: true, header: 'Contact', accessor: u => u.email, width: 250, cell: (_, u) => <div><p>{u.email}</p><p className="text-xs text-muted-foreground">{u.phone}</p></div> },
+    { id: 'status', sortable: true, header: 'Status', accessor: u => u.status ?? 'active', width: 110, cell: (_, u) => <span className={cn('rounded-full px-2 py-1 text-xs', u.status === 'active' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-slate-500/10 text-slate-500')}>{u.status ?? 'active'}</span> },
+    { id: 'department', sortable: true, header: 'Department', accessor: u => u.department || '—', width: 150 },
     { id: 'activity', header: 'Actions', accessor: () => '', width: 90, cell: (_, u) => <button aria-label="View Activity" title="View Activity" className="min-h-11 min-w-11" onClick={() => setTimelineUser(u)}><Clock size={14} /></button> },
   ];
 
@@ -391,7 +396,7 @@ export function UsersSubTab({ onUsersLoaded }: { onUsersLoaded?: (users: User[])
         </motion.aside>}
         <div className="min-w-0 flex-1 space-y-4">
       {loading ? <TableLoadingState label="Loading users..." /> : loadError ? <DataErrorState message={loadError} onRetry={() => setReload(value => value + 1)} /> :
-        <DataGrid<User> columns={columns} data={paginated} getRowId={row => row.id} height="auto" selectable={canManageUsers} selectedIds={selected} onSelectionChange={setSelected} enableColumnMenu={false} ariaLabel="Team Management table" emptyMessage="No users found"
+        <DataGrid<User> sort={sort} sortingMode="external" onSortChange={next => setSort(next ?? { field: 'createdAt', direction: 'desc' })} columns={columns} data={paginated} getRowId={row => row.id} height="auto" selectable={canManageUsers} selectedIds={selected} onSelectionChange={setSelected} enableColumnMenu={false} ariaLabel="Team Management table" emptyMessage="No users found"
           onRowClick={u => openUser(u)} rowActions={u => [
             { id: 'view', label: 'View', onClick: () => openUser(u) },
             ...(canManageUsers ? [

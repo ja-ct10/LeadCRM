@@ -171,12 +171,12 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
               ? 'bg-[#3B82F6]/10 text-[#3B82F6]'
               : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)]',
           )}
-          aria-label="Notifications"
+          aria-label={`Notifications, ${notificationCount} unread`}
           aria-expanded={isNotificationsOpen}
         >
           <Bell size={16} />
           {notificationCount > 0 && (
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#3B82F6]" />
+            <span className="absolute -top-1 -right-1 min-w-4 rounded-full bg-blue-600 px-1 text-center text-[9px] font-bold leading-4 text-white">{notificationCount > 99 ? '99+' : notificationCount}</span>
           )}
         </button>
 

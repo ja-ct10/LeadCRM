@@ -22,6 +22,7 @@ export interface RoleDefinition {
 }
 
 export interface User {
+  createdAt?: string;
   id: string;
   tenantId: string;
   firstName: string;

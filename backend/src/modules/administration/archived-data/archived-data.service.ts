@@ -1,4 +1,4 @@
-import { ArchiveQuerySchema, ArchiveRestoreParamsSchema, ARCHIVE_TYPES, type ArchivedRecord, type ArchiveType } from '@leadcrm/shared';
+import { compareSortValues, ArchiveQuerySchema, ArchiveRestoreParamsSchema, ARCHIVE_TYPES, type ArchivedRecord, type ArchiveType } from '@leadcrm/shared';
 import type { z } from 'zod';
 import prisma from '../../../config/database.config';
 import { tenantContext } from '../../../core/tenant/tenant-context';
@@ -72,20 +72,29 @@ export async function list(actor: Actor, query: z.infer<typeof ArchiveQuerySchem
   if (query.type && !visible.length) throw new AppError('Access denied', 403);
   const counts = await Promise.all(visible.map(type => sources[type].count()));
   const total = counts.reduce((sum, count) => sum + count, 0);
-  let skip = (query.page - 1) * query.limit;
-  const data: ArchivedRecord[] = [];
+  // Merge archive identities before pagination so All types has a global ordering.
+  const all: ArchivedRecord[] = [];
   for (const [index, type] of visible.entries()) {
-    if (skip >= counts[index]) { skip -= counts[index]; continue; }
-    const rows = await sources[type].load(skip, query.limit - data.length);
     const canRestore = await allowed(permissions[type][1]);
-    data.push(...rows.map(row => ({
-      type, id: row.id, name: row.name, detail: row.detail ?? '',
-      archivedAt: row.archivedAt?.toISOString() ?? null,
-      canRestore: canRestore && row.canRestore !== false,
-    })));
-    skip = 0;
-    if (data.length === query.limit) break;
+    for (let offset = 0; offset < counts[index]; offset += 500) {
+      const rows = await sources[type].load(offset, 500);
+      const audits = await prisma.auditLog.findMany({ where: { tenantId: actor.tenantId, entityType: type,
+        entityId: { in: rows.map(row => row.id) }, OR: [{ action: { endsWith: '.archived' } }, ...(type === 'User' ? [{ action: 'user.updated' }] : [])] },
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], select: { entityId: true, createdAt: true, changeset: true, action: true } });
+      const dates = new Map<string, Date>();
+      for (const audit of audits) {
+        if (audit.action === 'user.updated' && (audit.changeset as { after?: { status?: string } } | null)?.after?.status !== 'INACTIVE') continue;
+        if (audit.entityId && !dates.has(audit.entityId)) dates.set(audit.entityId, audit.createdAt);
+      }
+      all.push(...rows.map(row => ({ type, id: row.id, name: row.name, detail: row.detail ?? '',
+        archivedAt: (row.archivedAt ?? dates.get(row.id))?.toISOString() ?? null, canRestore: canRestore && row.canRestore !== false })));
+    }
   }
+  const field = query.sortBy ?? 'archivedAt', direction = query.sortOrder ?? 'desc';
+  all.sort((a, b) => compareSortValues(field === 'archivedAt' ? a.archivedAt ? new Date(a.archivedAt) : null : a[field],
+    field === 'archivedAt' ? b.archivedAt ? new Date(b.archivedAt) : null : b[field], direction) || a.type.localeCompare(b.type) || a.id.localeCompare(b.id));
+  const skip = (query.page - 1) * query.limit;
+  const data = all.slice(skip, skip + query.limit);
   return { data, meta: { total, page: query.page, limit: query.limit, hasMore: query.page * query.limit < total } };
 }
 

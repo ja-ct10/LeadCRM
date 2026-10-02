@@ -160,6 +160,7 @@ model Tenant {
   wfExecutionRuns    WorkflowExecutionRun[]
   wfExecutionSteps   WorkflowExecutionStep[]
   notifications      Notification[]
+  closingFieldDefinitions ClosingFieldDefinition[]
   auditLogs          AuditLog[]
   emailDeliveryLogs  EmailDeliveryLog[]
   documents          TenantDocument[] @ignore
@@ -522,6 +523,7 @@ model Lead {
   contactId           String?
   convertedAt         DateTime?
   convertedById       String?
+  @@index([tenantId, convertedAt, isArchived])
 
   tenant           Tenant   @relation(fields: [tenantId], references: [id])
   account          Account? @relation(fields: [accountId], references: [id])
@@ -944,6 +946,7 @@ model Notification {
   body       String?
   entityType String?
   entityId   String?
+  eventKey   String?
   isRead     Boolean   @default(false)
   readAt     DateTime?
   createdAt  DateTime  @default(now())
@@ -954,6 +957,18 @@ model Notification {
   @@index([userId, tenantId, isRead])
   @@index([tenantId, createdAt])
   @@index([tenantId])
+  @@unique([tenantId, userId, eventKey])
+}
+
+model ClosingFieldDefinition {
+  tenantId   String
+  id         String
+  definition Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  tenant     Tenant @relation(fields: [tenantId], references: [id])
+
+  @@id([tenantId, id])
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��

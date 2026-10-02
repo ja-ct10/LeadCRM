@@ -6,6 +6,8 @@ export type ArchiveType = z.infer<typeof ArchiveTypeSchema>;
 export const ArchiveQuerySchema = z.object({
   type: ArchiveTypeSchema.optional(),
   search: z.string().trim().max(200).optional(),
+  sortBy: z.enum(['archivedAt', 'name', 'type', 'detail']).optional(),
+  sortOrder: z.enum(['asc', 'desc']).optional(),
   page: z.coerce.number().int().min(1).max(100000).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(25),
 }).strict();

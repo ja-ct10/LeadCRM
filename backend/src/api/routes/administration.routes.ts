@@ -1,6 +1,7 @@
 import { CreateUsersSchema, UpdateUsersSchema } from '../../modules/administration/users/users.dto';
 import { passwordResetRateLimiter } from '../middleware/rate-limit.middleware';
 import { Router } from 'express';
+import * as dealStageAutomation from '../../modules/crm/deal-stage-automation.controller';
 import * as closingRequirements from '../../modules/crm/closing-requirements/closing-requirements.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { tenantMiddleware, workspaceReadyMiddleware } from '../middleware/tenant.middleware';
@@ -27,6 +28,8 @@ router.get('/users/:id/permissions', (req, res, next) => {
   return workspaceReadyMiddleware(req, res, next);
 }, roleController.getUserPermissions);
 router.use(workspaceReadyMiddleware);
+router.get('/deal-stage-automation', authorize('settings.view'), dealStageAutomation.get);
+router.patch('/deal-stage-automation', authorize('settings.edit'), dealStageAutomation.update);
 router.get('/closing-requirements', authorize('settings.view'), closingRequirements.list);
 router.post('/closing-requirements', authorize('settings.edit'), closingRequirements.create);
 router.patch('/closing-requirements/:id', authorize('settings.edit'), closingRequirements.edit);

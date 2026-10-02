@@ -1,6 +1,7 @@
 import { ContactStatus, Prisma } from '@prisma/client';
 import { CrmStatus, normalizeCrmStatus } from '@leadcrm/shared';
 import { ValidationError } from '../../shared/errors/http-error';
+import { convertClosedLead } from './leads/lead-conversion.service';
 
 export type CustomerLink = { leadId: string; contactId?: never } | { contactId: string; leadId?: never };
 type Tx = Prisma.TransactionClient;
@@ -13,12 +14,17 @@ export const customerDealWhere = (tenantId: string, link: CustomerLink): Prisma.
 
 export async function changeCustomerStatus(tx: Tx, tenantId: string, actorId: string, link: CustomerLink, status: CrmStatus, reason: string, changedAt: Date) {
   const current = link.leadId ? await tx.lead.findFirst({ where: { tenantId, id: link.leadId } }) : await tx.contact.findFirst({ where: { tenantId, id: link.contactId } });
-  if (!current || normalizeCrmStatus(current.status) === status) return;
+  if (!current) return;
+  if (normalizeCrmStatus(current.status) === status) {
+    if (link.leadId && status === 'Closed') await convertClosedLead(tx, tenantId, link.leadId, actorId);
+    return;
+  }
   if (link.leadId) await tx.lead.update({ where: { tenantId, id: link.leadId }, data: { status, lastStatusChangedAt: changedAt } });
   else await tx.contact.update({ where: { tenantId, id: link.contactId }, data: { status: contactStatuses[status], lastStatusChangedAt: changedAt } });
   await tx.activity.create({ data: { tenantId, createdById: actorId, ...link, type: 'stage_change',
     title: `Status changed from ${normalizeCrmStatus(current.status)} to ${status}`, description: reason,
     metadata: { source: 'customer_engagement', occurredAt: changedAt.toISOString() } } });
+  if (link.leadId && status === 'Closed') await convertClosedLead(tx, tenantId, link.leadId, actorId);
 }
 
 /** Shared cancellation transition; never touches historical terminal Deals. */

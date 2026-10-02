@@ -60,9 +60,6 @@ export const ConvertContactSchema = z.object({
   dealPipelineId:  z.string().min(1).optional(),
   dealPriority:    z.enum(['LOW', 'MEDIUM', 'HIGH']).default('MEDIUM'),
   dealId:          z.string().min(1).optional(), // link to existing deal instead of creating
-}).refine(
-  (data) => data.accountId || data.accountName,
-  { message: 'Either accountId or accountName is required', path: ['accountId'] },
-);
+});
 
 export type ConvertContactDto = z.infer<typeof ConvertContactSchema>;

@@ -1,6 +1,7 @@
 "use client";
 import { toast } from "sonner";
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from 'next/navigation';
 import { SelectedRowsBar } from '@/shared/components/crm/selected-rows-bar';
 
 import {
@@ -48,6 +49,7 @@ const periods = [
 ];
 
 export default function TaskBoard() {
+  const requestedTaskId = useSearchParams().get('taskId');
   const { updateTask, bulkTasks, users } = useData();
   const canCreate = useHasPermission("deals.create"),
     canEdit = useHasPermission("deals.edit"),
@@ -62,6 +64,13 @@ export default function TaskBoard() {
     task?: TaskRecord;
     readOnly?: boolean;
   } | null>(null);
+  useEffect(() => {
+    if (!requestedTaskId || USE_MOCK_DATA) return;
+    let active = true;
+    tasksApi.get(requestedTaskId).then(response => { if (active) setEditor({ task: response.data, readOnly: true }); })
+      .catch(() => { if (active) toast.error('Unable to open this Task.'); });
+    return () => { active = false; };
+  }, [requestedTaskId]);
   const [selected, setSelected] = useState<string[]>([]),
     [busy, setBusy] = useState(false);
   const [error, setError] = useState(""),

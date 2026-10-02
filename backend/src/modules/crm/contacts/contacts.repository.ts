@@ -1,4 +1,5 @@
 import { parseLeadCreatedFilter } from '../leads/lead-created-filter';
+import { convertClosedLead } from '../leads/lead-conversion.service';
 import { assertClosedStatus, cancelOpenDeals } from '../engagement.service';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
@@ -31,6 +32,7 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
     ...(createdAt ? { createdAt } : {}),
     tenantId,
     isArchived: query.archived === 'true',
+    ...(query.archived === 'true' ? {} : { convertedAt: null }),
     // accountId direct param (still used by relationship lookups)
     ...(query.accountId ? { accountId: String(query.accountId) } : {}),
     ...(query.search
@@ -47,7 +49,7 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
     ...(filterClauses.length > 0 ? { AND: filterClauses } : {}),
   };
 
-  const ids = await sortedPageIds(query.sort, ["firstName","email","phone","companyName","status","source","createdAt","updatedAt"], skip, limit,
+  const ids = await sortedPageIds(query.sort === 'createdAt:desc' ? undefined : query.sort, ["firstName","email","phone","companyName","status","source","createdAt","updatedAt"], skip, limit,
     () => prisma.lead.findMany({ where, select: { id: true, firstName: true, lastName: true, email: true, phone: true, companyName: true, status: true, source: true, createdAt: true, updatedAt: true } }));
   const [data, total] = await Promise.all([
     prisma.lead.findMany({
@@ -105,9 +107,10 @@ export async function updateContact(
     }
     return await salesTransaction(async tx => {
       const current = await tx.lead.findFirstOrThrow({ where: { id, tenantId } });
+      if (current.convertedAt) throw new ValidationError('This Lead has been converted. Update the linked Contact instead.');
       if (dto.status) {
         data.lastStatusChangedAt = new Date();
-        if (dto.status === 'Closed' && current.status !== 'Closed') await assertClosedStatus(tx, tenantId, { leadId: id });
+        if (dto.status === 'Closed') await assertClosedStatus(tx, tenantId, { leadId: id });
       }
       if (dto.productInterest) {
         const previous = await tx.lead.findFirstOrThrow({ where: { id, tenantId } });
@@ -134,8 +137,19 @@ export async function updateContact(
       if (updatedById && dto.status && dto.status !== current.status) await tx.activity.create({ data: {
         tenantId, createdById: updatedById, leadId: id, type: 'stage_change', title: `Status changed from ${current.status} to ${dto.status}`, description: 'Staff changed the CRM status.',
       } });
+      if (updatedById && dto.assignedUserId && dto.assignedUserId !== current.assignedUserId) await tx.activity.create({ data: {
+        tenantId, createdById: updatedById, leadId: id, type: 'assignment', title: 'Lead reassigned',
+        metadata: { assignedUserId: dto.assignedUserId, previousUserId: current.assignedUserId },
+      } });
       if (updatedById && dto.status === 'Cancelled' && current.status !== 'Cancelled') await cancelOpenDeals(tx, tenantId, updatedById, { leadId: id }, 'Staff explicitly cancelled the opportunity.');
       if (dto.assignedUserId || dto.productInterest) await createProductDeals(tx, tenantId, id, updatedById);
+      if (updated.status === 'Closed' && updatedById) {
+        await convertClosedLead(tx, tenantId, id, updatedById);
+        return tx.lead.findFirstOrThrow({ where: { id, tenantId }, include: {
+          assignedUser: { select: { id: true, firstName: true, lastName: true } }, account: { select: { id: true, name: true } },
+          createdBy: { select: { id: true, firstName: true, lastName: true } }, updatedBy: { select: { id: true, firstName: true, lastName: true } },
+        } });
+      }
       return updated;
     });
   } catch (error) {

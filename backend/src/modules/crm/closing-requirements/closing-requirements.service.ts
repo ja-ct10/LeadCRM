@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { ClosingFieldInputSchema, ClosingValuesPatchSchema, type ClosingField, type ClosingValues, type ClosingRequirementsState } from '@leadcrm/shared';
 import { salesTransaction } from '../leads/lead-automation.service';
-import { configurationKey, readFields, validateValues } from './closing-requirements.repository';
+import { readFields, validateValues } from './closing-requirements.repository';
 import { moveDealStage } from '../deals/deals.repository';
 import { NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 import { fireDealStageChanged } from '../../automation/triggers/triggers.service';
@@ -19,10 +19,11 @@ export async function saveField(tenantId: string, actorId: string, input: unknow
     // Keep IDs and types stable so existing values cannot change meaning after an edit.
     if (previous && previous.type !== field.type) throw new ValidationError('Field type cannot be changed. Add a new field instead.');
     const saved: ClosingField = { ...field, id: id ?? randomUUID(), version: (previous?.version ?? 0) + 1 };
-    const next = previous ? fields.map(f => f.id === id ? saved : f) : [...fields, saved];
-    await tx.tenantPreference.update({ where: { tenantId_module_key: configurationKey(tenantId) }, data: { value: next as unknown as Prisma.InputJsonValue } });
+    const definition = saved as unknown as Prisma.InputJsonValue;
+    if (previous) await tx.closingFieldDefinition.update({ where: { tenantId_id: { tenantId, id: saved.id } }, data: { definition } });
+    else await tx.closingFieldDefinition.create({ data: { tenantId, id: saved.id, definition } });
     await tx.auditLog.create({ data: { tenantId, userId: actorId, action: previous ? 'closing_field.updated' : 'closing_field.created', entityType: 'ClosingField', entityId: saved.id, changeset: { before: previous ?? null, after: saved } as unknown as Prisma.InputJsonValue } });
-    return next;
+    return saved;
   });
 }
 

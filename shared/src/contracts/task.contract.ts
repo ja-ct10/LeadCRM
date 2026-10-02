@@ -101,8 +101,8 @@ export const TaskQuerySchema = z
     dueTo: instant.optional(),
     sortBy: z
       .enum(["dueDate", "title", "createdAt", "updatedAt"])
-      .default("dueDate"),
-    sortOrder: z.enum(["asc", "desc"]).default("asc"),
+      .default("createdAt"),
+    sortOrder: z.enum(["asc", "desc"]).default("desc"),
   })
   .strict()
   .refine(

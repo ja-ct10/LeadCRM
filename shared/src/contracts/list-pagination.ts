@@ -1,5 +1,6 @@
 /** List filters are applied before paging; multi-select values are comma-separated. */
 export interface CampaignListQuery {
+  sort?: string;
   page?: number;
   limit?: number;
   search?: string;
@@ -8,6 +9,7 @@ export interface CampaignListQuery {
 }
 
 export interface WorkflowListQuery {
+  sort?: string;
   page?: number;
   limit?: number;
   search?: string;

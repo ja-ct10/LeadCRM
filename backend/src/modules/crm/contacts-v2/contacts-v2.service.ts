@@ -6,7 +6,6 @@ import { NotFoundError } from '../../../shared/errors/http-error';
 import { paginate } from '../../../shared/helpers/pagination';
 import { fireContactCreated, fireContactStatusChanged } from '../../automation/triggers/triggers.service';
 import { writeAuditLog } from '../../../core/audit/audit.service';
-import { createNotification } from '../../notifications/notifications.service';
 
 export async function getContacts(tenantId: string, query: Record<string, unknown>) {
   const result = await repo.findAllContacts(tenantId, query);
@@ -40,9 +39,7 @@ export async function updateContact(id: string, tenantId: string, dto: Record<st
   if (actorId) {
     await writeAuditLog({ tenantId, userId: actorId, action: 'contact.updated', entityType: 'Contact', entityId: id });
     if (contact.status !== before.status) await fireContactStatusChanged({ tenantId, actorId, contact, prevStatus: before.status });
-    if (contact.assignedUserId && contact.assignedUserId !== before.assignedUserId && contact.assignedUserId !== actorId) {
-      await createNotification({ tenantId, userId: contact.assignedUserId, type: 'contact_assigned', title: 'Client Profile assigned to you', entityType: 'Contact', entityId: id });
-    }
+
   }
   return { ...contact, status: normalizeCrmStatus(contact.status) };
 }

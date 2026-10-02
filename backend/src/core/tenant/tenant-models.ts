@@ -8,3 +8,4 @@ export const tenantChildren: Record<string, { relation: string; model: string }>
  ContactImportResult: { relation: "import", model: "ContactImport" },
 };
 tenantModels.add('MailboxMessage');
+tenantModels.add('ClosingFieldDefinition');

@@ -1,4 +1,5 @@
 import { validateProductSnapshots } from '../leads/product-snapshots';
+import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import prisma from '../../../config/database.config';
 import { CrmStatusSchema, normalizeCrmStatus } from '@leadcrm/shared';
 import { salesTransaction } from '../leads/lead-automation.service';
@@ -62,18 +63,20 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
     ];
   }
 
+  const ids = await sortedPageIds(query.sort === 'createdAt:desc' ? undefined : query.sort, ['firstName', 'email', 'company', 'createdAt'], skip, limit,
+    () => prisma.contact.findMany({ where, select: { id: true, firstName: true, lastName: true, email: true, company: true, createdAt: true } }));
   const [data, total] = await Promise.all([
     prisma.contact.findMany({
-      where: where as never,
-      skip,
+      where: ids ? { ...where, id: { in: ids } } : where,
+      skip: ids ? 0 : skip,
       take: limit,
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
       include: CONTACT_INCLUDE,
     }),
     prisma.contact.count({ where: where as never }),
   ]);
 
-  return { data, total, page, limit };
+  return { data: orderPage(data, ids), total, page, limit };
 }
 
 export async function findContactById(id: string, tenantId: string) {
@@ -108,6 +111,10 @@ export async function updateContact(id: string, tenantId: string, dto: Record<st
       await tx.activity.create({ data: { tenantId, contactId: id, createdById: actorId, type: 'stage_change', title: `Status changed from ${normalizeCrmStatus(current.status)} to ${status}`, description: 'Staff changed the CRM status.' } });
       if (status === 'Cancelled') await cancelOpenDeals(tx, tenantId, actorId, { contactId: id }, 'Staff explicitly cancelled the opportunity.');
     }
+    if (actorId && contact.assignedUserId && contact.assignedUserId !== current.assignedUserId) await tx.activity.create({ data: {
+      tenantId, createdById: actorId, contactId: id, type: 'assignment', title: 'Contact reassigned',
+      metadata: { assignedUserId: contact.assignedUserId, previousUserId: current.assignedUserId },
+    } });
     return contact;
   });
 }

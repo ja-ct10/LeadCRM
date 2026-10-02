@@ -1,4 +1,7 @@
 import { Prisma } from '@prisma/client';
+import { createHash } from 'node:crypto';
+import { convertClosedLead } from '../../crm/leads/lead-conversion.service';
+import { changeCustomerStatus } from '../../crm/engagement.service';
 import { FormDefinitionSchema, PublicSubmissionSchema, validateFormValues, withProductOptions } from '@leadcrm/shared';
 import type { PublicFormDefinition } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
@@ -77,26 +80,25 @@ export async function submitPublicForm(publicId: string, body: unknown) {
           }
           if (lead?.isArchived || contact?.isArchived) throw conflict();
           let leadId: string | null = lead?.id ?? null, contactId: string | null = contact?.id ?? null;
-          if (lead && !contact) {
-            const won = await tx.deal.findFirst({ where: { ...scope,
-              AND: [ { OR: [{ leadId: lead.id }, { leadDeals: { some: { ...scope, leadId: lead.id } } }] },
-                { OR: [{ stage: { ...scope, isWon: true } }, { stageHistories: { some: { ...scope, newStage: { ...scope, isWon: true } } } }] } ],
+          if (lead && !lead.convertedAt) {
+            const won = await tx.deal.findFirst({ where: { ...scope, AND: [
+              { OR: [{ leadId: lead.id }, { leadDeals: { some: { ...scope, leadId: lead.id } } }] },
+              { OR: [{ stage: { isWon: true } }, { stageHistories: { some: { ...scope, newStage: { isWon: true } } } }] },
+            ],
             } });
             if (won) {
-              const linkedPeople = await tx.contactDeal.findMany({ where: { ...scope, dealId: won.id }, select: { contactId: true } });
-              const linkedIds = [...new Set([won.contactId, ...linkedPeople.map(p => p.contactId)].filter((id): id is string => !!id))];
-              if (linkedIds.length > 1) throw conflict();
-              if (linkedIds.length === 1) {
-                const linked = await tx.contact.findFirst({ where: { ...scope, id: linkedIds[0] } });
-                if (!linked || linked.isArchived) throw conflict();
-                contact = linked;
+              // Existing historical sales links may identify a customer whose email has changed.
+              if (!contactId) {
+                const links = await tx.contactDeal.findMany({ where: { ...scope, dealId: won.id }, select: { contactId: true } });
+                const ids = [...new Set([won.contactId, ...links.map(row => row.contactId)].filter((id): id is string => !!id))];
+                if (ids.length > 1) throw conflict();
+                contactId = ids[0] ?? null;
               }
-              // Preserve the original lead, deal, owner, and product history. Repair only conversion linkage.
-              contact ??= await tx.contact.create({ data: { ...scope, firstName: lead.firstName, lastName: lead.lastName, email: lead.email, phone: lead.phone,
-                company: lead.companyName, address: lead.address, accountId: lead.accountId, assignedUserId: lead.assignedUserId,
-                productInterests: lead.productInterest, source: lead.source, lifecycleStage: 'CUSTOMER', customerType: 'Customer', customerSince: won.closedAt ?? new Date(), convertedAt: new Date() } });
+              if (contactId) await tx.lead.update({ where: { ...scope, id: lead.id }, data: { contactId } });
+              await changeCustomerStatus(tx, scope.tenantId, live.createdById, { leadId: lead.id }, 'Closed', 'Completed sales conversion resolved during a returning inquiry.', new Date());
+              const converted = await convertClosedLead(tx, scope.tenantId, lead.id, live.createdById);
+              contact = converted.contact;
               contactId = contact.id;
-              await tx.lead.update({ where: { id: lead.id, ...scope }, data: { contactId, convertedAt: lead.convertedAt ?? new Date() } });
             }
           }
           if (contactId) leadId = null;
@@ -132,7 +134,14 @@ export async function submitPublicForm(publicId: string, body: unknown) {
       } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && ['P2034', 'P2002'].includes(error.code)) {
           if (attempt < 3) continue;
-          throw new ConflictError('Another inquiry is being processed. Please try again.');
+          error = new ConflictError('Another inquiry is being processed. Please try again.');
+        }
+        if (!(error instanceof ValidationError) && !(error instanceof NotFoundError)) {
+          const hash = createHash('sha256').update(`form-failure:${form.id}:${input.requestId ?? JSON.stringify(input.values)}`).digest('hex');
+          const id = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-${hash.slice(12, 16)}-${hash.slice(16, 20)}-${hash.slice(20, 32)}`;
+          try { await prisma.auditLog.upsert({ where: { id }, update: {}, create: { id, tenantId: form.tenantId, userId: form.createdById,
+            action: 'form.processing_failed', entityType: 'Form', entityId: form.id, severity: 'WARNING' } }); }
+          catch { console.warn('[Forms] Unable to record submission processing failure', { formId: form.id }); }
         }
         throw error;
       }

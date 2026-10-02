@@ -14,6 +14,7 @@ import { moveDealStage } from '../../modules/crm/deals/deals.repository';
 import { updateContact as updateLead } from '../../modules/crm/contacts/contacts.repository';
 import { updateContact } from '../../modules/crm/contacts-v2/contacts-v2.repository';
 import { salesPipeline, salesTransaction } from '../../modules/crm/leads/lead-automation.service';
+import { convertClosedLead } from '../../modules/crm/leads/lead-conversion.service';
 import { sendEmail } from './gmail.service';
 import app from '../../app';
 import type { GmailEmail } from './gmail.types';
@@ -51,6 +52,8 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
   };
   beforeAll(async () => {
     tenantId = (await prisma.tenant.create({ data: { name: 'Mailbox tests', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } })).id;
+    // These pre-existing automation scenarios explicitly opt in; new tenants default to manual stages.
+    await prisma.tenantPreference.create({ data: { tenantId, module: 'deal-stage-automation', key: 'default', value: { enabled: true } } });
     otherTenant = (await prisma.tenant.create({ data: { name: 'Other', slug: randomUUID() } })).id;
     const user = await prisma.user.create({ data: { tenantId, email: 'mailbox-admin@camxian.com', firstName: 'Mail', lastName: 'Owner', role: 'Client Admin', mustChangePassword: false } });
     userId = user.id; token = (await issueAuthSession(user)).token;
@@ -86,6 +89,26 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     await ingest([message(c.thread, c.email, 'inbound', 'We approve the quotation and will proceed.', 5)]);
     expect((await read(c.lead.id)).status).toBe('Hot'); expect(await stageOf(c.deals[0].id)).toBe('Qualified');
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: c.deals[0].id } })).closedAt).toBeNull();
+  });
+  it('retains converted Lead email aliases and original thread Deal context for the Contact', async () => {
+    const c = await customer(2);
+    const outbound = message(c.thread, c.email, 'outbound', 'Here is product information.', 9);
+    await ingest([outbound]);
+    await prisma.mailboxMessage.update({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: outbound.id } }, data: { dealId: c.deals[1].id } });
+    const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Existing', lastName: 'Customer', email: `${randomUUID()}@example.test`, createdAt: before(180) } });
+    await scope(() => salesTransaction(async tx => {
+      await tx.lead.update({ where: { id: c.lead.id }, data: { status: 'Closed', contactId: contact.id } });
+      await convertClosedLead(tx, tenantId, c.lead.id, userId);
+    }));
+    const reply = message(c.thread, c.email, 'inbound', 'Please send a quotation.', 5);
+    await ingest([reply]);
+    const stored = await prisma.mailboxMessage.findUniqueOrThrow({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: reply.id } } });
+    expect(stored).toMatchObject({ contactId: contact.id, leadId: null, dealId: c.deals[1].id });
+    expect((await prisma.mailboxMessage.findUniqueOrThrow({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: outbound.id } } })).leadId).toBe(c.lead.id);
+    expect((await prisma.contact.findUniqueOrThrow({ where: { id: contact.id } })).status).toBe('CLOSED');
+    expect(await prisma.activity.count({ where: { contactId: contact.id, type: 'email' } })).toBe(1);
+    expect(await stageOf(c.deals[0].id)).toBe('Lead');
+    expect(await stageOf(c.deals[1].id)).toBe('Lead');
   });
   it('abstains from duplicate CRM matches and multi-customer threads', async () => {
     const c = await customer();
@@ -309,7 +332,6 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
 
   it('persists field definitions, guards permissions/types/tenant access, and requires uploaded Deal evidence', async () => {
     const initial = (await call('/administration/closing-requirements')).body.data;
-    const fieldKey = { tenantId, module: 'closing-requirements', key: 'fields' };
     const foreignUser = await prisma.user.create({ data: { tenantId: otherTenant, email: `${randomUUID()}@camxian.com`, firstName: 'Other', lastName: 'Admin', role: 'Client Admin', mustChangePassword: false } });
     await prisma.tenant.update({ where: { id: otherTenant }, data: { onboardingStep: 3, onboardingCompletedAt: new Date() } });
     const foreignToken = (await issueAuthSession(foreignUser)).token;
@@ -327,7 +349,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
       expect(saved.some((f: { name: string }) => f.name === 'Count')).toBe(true);
       const optionalInput = { name: 'Delivery option', type: 'Dropdown', appliesTo: 'Closed Won Requirements', required: false, options: ['Old', 'New'] };
       const optionalFields = (await call('/administration/closing-requirements', 'POST', optionalInput)).body.data;
-      const optionalId = optionalFields.find((f: { name: string }) => f.name === 'Delivery option').id;
+      const optionalId = optionalFields.id;
       expect((await call(endpoint, 'PATCH', { values: { [optionalId]: 'Old' } })).status).toBe(200);
       expect((await call(`/administration/closing-requirements/${optionalId}`, 'PATCH', { ...optionalInput, options: ['New'] })).status).toBe(200);
       expect((await call('/administration/closing-requirements', 'POST', { name: 'Invalid', type: 'Dropdown', appliesTo: 'Closed Won Requirements', required: false, options: ['Same', 'same'] })).status).toBe(400);
@@ -361,6 +383,6 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
       await call('/administration/closing-requirements/required-document', 'PATCH', { ...document, name: 'New document label', required: false });
       expect((await prisma.deal.findUniqueOrThrow({ where: { id: dealId } })).closingSnapshot).toEqual(snapshot);
       expect((await call(endpoint, 'PATCH', { values: { 'closing-notes': 'rewrite' } })).status).toBe(400);
-    } finally { vi.unstubAllEnvs(); await prisma.tenantPreference.update({ where: { tenantId_module_key: fieldKey }, data: { value: initial } }); }
+    } finally { vi.unstubAllEnvs(); await prisma.closingFieldDefinition.deleteMany({ where: { tenantId } }); await prisma.closingFieldDefinition.createMany({ data: initial.map((field: { id: string }) => ({ tenantId, id: field.id, definition: field })) }); }
   });
 });

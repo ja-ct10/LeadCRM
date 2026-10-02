@@ -7,7 +7,7 @@ import { RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { ARCHIVE_TYPES, type ArchivedRecord, type ArchiveType } from '@leadcrm/shared';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
-import { DataGrid, type DataGridColumnDef } from '@/shared/components/data-grid';
+import { DataGrid, type DataGridColumnDef, type SortState } from '@/shared/components/data-grid';
 import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { LeadsPagination } from '@/shared/components/crm/leads-pagination';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
@@ -31,15 +31,16 @@ export function ArchivedData(): React.ReactElement {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [sort, setSort] = useState<SortState>({ field: 'archivedAt', direction: 'desc' });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [pending, setPending] = useState<{ records: ArchivedRecord[]; bulk: boolean } | null>(null);
   const [restoring, setRestoring] = useState(false);
   const busy = useRef(false);
   useEffect(() => { setSelectedIds(new Set()); setPending(null); }, [identity]);
   const { data, error, isInitialLoad, isRefreshing, refetch } = useCachedPage({
-    module: 'archived-crm', params: { filter, page, pageSize, search }, disabled: false,
+    module: 'archived-crm', params: { filter, page, pageSize, search, sort }, disabled: false,
     intervalMs: 60_000, revalidateOnInvalidation: true,
-    fetchFn: signal => archivedDataService.list(filter, page, pageSize, signal, search),
+    fetchFn: signal => archivedDataService.list(filter, page, pageSize, signal, search, sort),
   });
   const records = data?.data ?? EMPTY_RECORDS;
   const total = data?.meta.total ?? 0;
@@ -90,10 +91,10 @@ export function ArchivedData(): React.ReactElement {
 
   const columns: DataGridColumnDef<ArchivedRecord>[] = [
     { id: 'type', header: 'Type', accessor: row => row.type, width: 110 },
-    { id: 'name', header: 'Name', accessor: row => row.name, width: 230 },
+    { id: 'name', header: 'Name', accessor: row => row.name, width: 230, sortable: true },
     { id: 'detail', header: 'Details', accessor: row => row.detail || '—', width: 260 },
     ...(records.some(row => row.archivedAt) ? [{
-      id: 'archivedAt', header: 'Archived On', accessor: (row: ArchivedRecord) => row.archivedAt ? new Date(row.archivedAt).toLocaleString() : '—', width: 190,
+      id: 'archivedAt', header: 'Archived On', accessor: (row: ArchivedRecord) => row.archivedAt ? new Date(row.archivedAt).toLocaleString() : '—', width: 190, sortable: true,
     }] : []),
     { id: 'actions', header: 'Actions', accessor: () => '', width: 120,
       cell: (_value, record) => (
@@ -126,7 +127,7 @@ export function ArchivedData(): React.ReactElement {
         </div>
         {error && <div role="alert" className="text-sm text-red-600">{error} <button type="button" className="underline" onClick={() => void refetch()}>Retry</button></div>}
         {isInitialLoad || isRefreshing ? <TableLoadingState label="Loading archived records..." /> : (
-          <DataGrid<ArchivedRecord> columns={columns} data={error ? EMPTY_RECORDS : records} getRowId={rowId}
+          <DataGrid<ArchivedRecord> columns={columns} data={error ? EMPTY_RECORDS : records} getRowId={rowId} sort={sort} sortingMode="external" onSortChange={next => { setSort(next ?? { field: 'archivedAt', direction: 'desc' }); setPage(1); }}
             height="auto" selectable selectedIds={selectedIds}
             onSelectionChange={ids => {
               if (!restoring) setSelectedIds(ids);

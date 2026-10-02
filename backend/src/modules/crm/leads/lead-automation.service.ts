@@ -68,7 +68,7 @@ export async function createProductDeals(tx: Tx, tenantId: string, leadId: strin
   const scope = crmScope(tenantId);
   const lead = await tx.lead.findFirstOrThrow({ where: { id: leadId, ...scope } });
   const selected = await tx.productInterest.findMany({ where: { tenantId, active: true, id: { in: lead.productInterestIds } } });
-  if (!selected.length || lead.isArchived) return;
+  if (!selected.length || lead.isArchived || lead.convertedAt) return;
   const agent = lead.assignedUserId ? await validateSalesOwner(tx, tenantId, lead.assignedUserId) : undefined;
   const { pipeline, initial } = await salesPipeline(tx, tenantId);
   for (const product of selected) {

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import { Prisma, CampaignStatus, CampaignType } from '@prisma/client';
 import { z } from 'zod';
 import { CampaignDraftSchema, CampaignSendSchema, type CampaignSendResult } from '@leadcrm/shared';
@@ -15,12 +16,14 @@ export async function getCampaigns(tenantId: string, query: Record<string, unkno
   const where: Prisma.CampaignWhereInput = { ...campaignScope(tenantId), isArchived: query.archived === 'true',
     ...(query.status ? { status: { in: z.array(z.nativeEnum(CampaignStatus)).parse(String(query.status).split(',')) } } : {}),
     ...(query.type ? { type: { in: z.array(z.nativeEnum(CampaignType)).parse(String(query.type).split(',')) } } : {}),
-    ...(query.search ? { OR: ['name', 'description'].map(field => ({ [field]: { contains: String(query.search).slice(0, 150), mode: 'insensitive' as const } })) } : {}) };
+    ...(query.search ? { OR: ['name', 'subject'].map(field => ({ [field]: { contains: String(query.search).slice(0, 150), mode: 'insensitive' as const } })) } : {}) };
+  const ids = await sortedPageIds(query.sort === 'createdAt:desc' ? undefined : query.sort, ['name', 'type', 'status', 'createdAt'], (page - 1) * limit, limit,
+    () => prisma.campaign.findMany({ where, select: { id: true, name: true, type: true, status: true, createdAt: true } }));
   const [data, total] = await Promise.all([
-    prisma.campaign.findMany({ where, skip: (page - 1) * limit, take: limit, orderBy: { createdAt: 'desc' }, include: { targetAudience: { select: { name: true } } } }),
+    prisma.campaign.findMany({ where: ids ? { ...where, id: { in: ids } } : where, skip: ids ? 0 : (page - 1) * limit, take: limit, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], include: { targetAudience: { select: { name: true } } } }),
     prisma.campaign.count({ where }),
   ]);
-  return paginate(data, total, { page, limit });
+  return paginate(orderPage(data, ids), total, { page, limit });
 }
 export async function getCampaignById(id: string, tenantId: string) {
   const c = await prisma.campaign.findFirst({ where: { id, ...campaignScope(tenantId) } });

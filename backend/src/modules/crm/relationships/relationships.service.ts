@@ -106,7 +106,7 @@ export async function getContactRelationships(id: string, tenantId: string, limi
     }),
     // Recent activities
     prisma.activity.findMany({
-      where: { contactId: id, tenantId },
+      where: { tenantId, OR: [{ contactId: id }, { lead: { tenantId, contactId: id, convertedAt: { not: null } } }] },
       take: limit,
       orderBy: { createdAt: 'desc' },
       select: { id: true, type: true, title: true, createdAt: true, metadata: true, description: true, leadId: true, contactId: true },

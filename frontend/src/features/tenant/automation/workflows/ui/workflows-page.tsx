@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { type Workflow, type WorkflowDraft, type TriggerDefinition, type ActionDefinition } from '@leadcrm/shared';
 import { Eye, Edit, Copy, Activity, Pause, Play, Archive } from 'lucide-react';
-import { DataGrid, type DataGridColumnDef } from '@/shared/components/data-grid';
+import { DataGrid, type DataGridColumnDef, type SortState } from '@/shared/components/data-grid';
 import { TableIconButton } from '@/shared/components/data-grid/table-icon-button';
 import { FilterButton } from '@/shared/components/crm/filter-button';
 import { RefreshButton } from '@/shared/components/crm/refresh-button';
@@ -36,6 +36,7 @@ export default function WorkflowsPage() {
   const [retry, setRetry] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
   const [filterSearch, setFilterSearch] = useState('');
+  const [sort, setSort] = useState<SortState>({ field: 'createdAt', direction: 'desc' });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [search, setSearch] = useState('');
@@ -57,8 +58,8 @@ export default function WorkflowsPage() {
     return () => { cancelled = true; };
   }, [tenant?.id, user?.id, authLoading, authError, canView, retry]);
   const { data, isInitialLoad, isRefreshing, error: workflowsError, refetch: refreshWorkflows } = useCachedPage({
-    module: 'workflows', params: { page, pageSize, search, statuses, triggers }, disabled: !canView,
-    fetchFn: () => workflowsApi.list({ page, limit: pageSize, search, status: statuses.join(','), trigger: triggers.join(',') }),
+    module: 'workflows', params: { page, pageSize, search, statuses, triggers, sort }, disabled: !canView,
+    fetchFn: () => workflowsApi.list({ sort: `${sort.field}:${sort.direction}`, page, limit: pageSize, search, status: statuses.join(','), trigger: triggers.join(',') }),
   });
   const workflows = data?.data ?? [];
   const total = data?.meta.total ?? 0;
@@ -67,7 +68,7 @@ export default function WorkflowsPage() {
   const triggerLabel = (type: string) => (metadata?.triggers.find(trigger => trigger.type === type)?.label ?? type).replace(/Client Profile/gi, 'Contact');
   const clearFilters = () => { setSearch(''); setStatuses([]); setTriggers([]); setPage(1); };
   const columns: DataGridColumnDef<Workflow>[] = [
-    { id: 'name', header: 'Name', accessor: row => row.name, width: 240 },
+    { id: 'name', sortable: true, header: 'Name', accessor: row => row.name, width: 240 },
     { id: 'trigger', header: 'Trigger', accessor: row => triggerLabel(row.trigger), width: 210 },
     { id: 'status', header: 'Status', accessor: row => row.status === 'DRAFT' ? 'Draft' : row.isActive ? 'Active' : 'Paused', width: 110 },
     { id: 'lastRun', header: 'Last run', accessor: row => row.lastRunAt ? new Date(row.lastRunAt).toLocaleString() : '—', width: 190 },
@@ -107,7 +108,7 @@ export default function WorkflowsPage() {
         ]}
         onFilterToggle={(group, id) => { const setter = group === 'status' ? setStatuses : setTriggers; setter(previous => previous.includes(id) ? previous.filter(value => value !== id) : [...previous, id]); setPage(1); }} />
       <div className="min-w-0 flex-1">
-        {workflowsLoading ? <TableLoadingState label="Loading workflows..." /> : <DataGrid<Workflow> columns={columns} data={workflows} getRowId={row => row.id} height="auto" selectable={canEdit || canDelete} selectedIds={selected} onSelectionChange={setSelected}
+        {workflowsLoading ? <TableLoadingState label="Loading workflows..." /> : <DataGrid<Workflow> sort={sort} sortingMode="external" onSortChange={next => { setSort(next ?? { field: 'createdAt', direction: 'desc' }); setPage(1); }} columns={columns} data={workflows} getRowId={row => row.id} height="auto" selectable={canEdit || canDelete} selectedIds={selected} onSelectionChange={setSelected}
           rowActions={workflow => [
             { id: 'view', label: 'View', icon: <Eye size={14} />, onClick: () => router.push(`/automation/workflows/${workflow.id}/edit?view=true`) },
             ...(canEdit ? [{ id: 'edit', label: 'Edit', icon: <Edit size={14} />, disabled: busy, onClick: () => router.push(`/automation/workflows/${workflow.id}/edit`) }] : []),

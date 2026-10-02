@@ -28,13 +28,13 @@ export function invalidateApiPageCache(path: string): void {
     modules.add('reports');
     if (resource === 'leads' || resource === 'contacts') {
       // Conversion can update all three entity lists.
-      ['leads', 'contacts', 'accounts'].forEach((module) => modules.add(module));
+      ['leads', 'contacts', 'accounts', 'counts-leads', 'counts-contacts', 'counts-accounts'].forEach((module) => modules.add(module));
     }
     if (resource === 'leads') { modules.add('deals'); modules.add('counts-deals'); }
     if (resource === 'deals') {
       modules.add('deals');
-      if (path.split('?')[0].endsWith('/stage')) {
-        ['leads', 'contacts', 'accounts', 'counts-contacts', 'counts-accounts'].forEach(module => modules.add(module));
+      if (/\/(stage|closing-requirements)$/.test(path.split('?')[0])) {
+        ['leads', 'contacts', 'accounts', 'counts-leads', 'counts-contacts', 'counts-accounts'].forEach(module => modules.add(module));
       }
     }
     if (resource === 'accounts' || resource === 'organizations') modules.add('accounts');

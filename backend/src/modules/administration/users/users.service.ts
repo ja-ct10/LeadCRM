@@ -1,4 +1,5 @@
 import { requestPasswordReset } from '../../../core/auth/password-reset.service';
+import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import { readSelfAvatar } from '../../../core/auth/profile.service';
 import { replaceUserRole } from '../roles/roles.repository';
 import { CreateUsersSchema, UpdateUsersSchema } from './users.dto';
@@ -39,11 +40,13 @@ export async function getAll(tenantId: string, query: Record<string, unknown>) {
       ],
     } : {}),
   };
+  const ids = await sortedPageIds(query.sort === 'createdAt:desc' ? undefined : query.sort, ['firstName', 'email', 'role', 'status', 'createdAt'], skip, limit,
+    () => prisma.user.findMany({ where, select: { id: true, firstName: true, lastName: true, email: true, role: true, status: true, createdAt: true } }));
   const [data, total] = await Promise.all([
-    prisma.user.findMany({ where, skip, take: limit, orderBy: { createdAt: 'desc' }, select: SAFE_USER_SELECT }),
+    prisma.user.findMany({ where: ids ? { ...where, id: { in: ids } } : where, skip: ids ? 0 : skip, take: limit, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], select: SAFE_USER_SELECT }),
     prisma.user.count({ where }),
   ]);
-  return paginate(data, total, { page, limit });
+  return paginate(orderPage(data, ids), total, { page, limit });
 }
 
 export async function getById(id: string, tenantId: string) {
@@ -121,7 +124,7 @@ export async function update(id: string, tenantId: string, actorId: string, dto:
     return tx.user.update({ where: { id }, data: updateData, select: SAFE_USER_SELECT });
   });
   if (dto.status === 'INACTIVE') await revokeAllUserSessions(id);
-  await writeAuditLog({ tenantId, userId: actorId, action: 'user.updated', entityType: 'User', entityId: id, after: dto as Record<string, unknown> });
+  await writeAuditLog({ tenantId, userId: actorId, action: 'user.updated', entityType: 'User', entityId: id, before: { status: existing.status }, after: dto as Record<string, unknown> });
   return user;
 }
 

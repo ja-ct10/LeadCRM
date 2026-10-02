@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import prisma from '../../../config/database.config';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
 import type { WorkflowDraft, WorkflowEntity } from '@leadcrm/shared';
@@ -23,13 +24,15 @@ export async function listWorkflows(tenantId: string, query: Record<string, unkn
     ...(query.trigger ? { trigger: { in: String(query.trigger).split(',') } } : {}),
     ...(query.isActive !== undefined ? { isActive: query.isActive === 'true' } : {}),
     ...(query.search ? { name: { contains: String(query.search), mode: 'insensitive' } } : {}) };
+  const ids = await sortedPageIds(query.sort === 'createdAt:desc' ? undefined : query.sort, ['name', 'status', 'createdAt'], (page - 1) * limit, limit,
+    () => prisma.workflow.findMany({ where, select: { id: true, name: true, status: true, createdAt: true } }));
   const [rows, total] = await Promise.all([
-    prisma.workflow.findMany({ where, skip: (page - 1) * limit, take: limit, orderBy: { createdAt: 'desc' } }),
+    prisma.workflow.findMany({ where: ids ? { ...where, id: { in: ids } } : where, skip: ids ? 0 : (page - 1) * limit, take: limit, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }] }),
     prisma.workflow.count({ where }),
   ]);
   const runs = await prisma.workflowExecutionRun.groupBy({ by: ['workflowId', 'status'],
     where: { tenantId, workflowId: { in: rows.map(row => row.id) } }, _max: { startedAt: true }, _count: { _all: true } });
-  return { rows: rows.map(row => {
+  return { rows: orderPage(rows, ids).map(row => {
     const history = runs.filter(run => run.workflowId === row.id);
     return { ...row, lastRunAt: history.reduce<Date | null>((latest, run) => !latest || (run._max.startedAt && run._max.startedAt > latest) ? run._max.startedAt : latest, null),
       totalRuns: history.reduce((sum, run) => sum + run._count._all, 0),

@@ -77,8 +77,8 @@ exports.TaskQuerySchema = zod_1.z
     dueTo: instant.optional(),
     sortBy: zod_1.z
         .enum(["dueDate", "title", "createdAt", "updatedAt"])
-        .default("dueDate"),
-    sortOrder: zod_1.z.enum(["asc", "desc"]).default("asc"),
+        .default("createdAt"),
+    sortOrder: zod_1.z.enum(["asc", "desc"]).default("desc"),
 })
     .strict()
     .refine((query) => !query.dueFrom ||

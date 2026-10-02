@@ -5,9 +5,13 @@ import { ValidationError } from '../../../shared/errors/http-error';
 type Tx = Prisma.TransactionClient;
 export const configurationKey = (tenantId: string) => ({ tenantId, module: 'closing-requirements', key: 'fields' });
 export async function readFields(tx: Tx, tenantId: string): Promise<ClosingField[]> {
-  const key = configurationKey(tenantId);
-  const row = await tx.tenantPreference.upsert({ where: { tenantId_module_key: key }, create: { ...key, value: DEFAULT_CLOSING_FIELDS as unknown as Prisma.InputJsonValue }, update: {} });
-  return row.value as unknown as ClosingField[];
+  let rows = await tx.closingFieldDefinition.findMany({ where: { tenantId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
+  if (!rows.length) {
+    const now = Date.now();
+    await tx.closingFieldDefinition.createMany({ data: DEFAULT_CLOSING_FIELDS.map((field, index) => ({ tenantId, id: field.id, definition: field as unknown as Prisma.InputJsonValue, createdAt: new Date(now - DEFAULT_CLOSING_FIELDS.length + index) })), skipDuplicates: true });
+    rows = await tx.closingFieldDefinition.findMany({ where: { tenantId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
+  }
+  return rows.map(row => row.definition as unknown as ClosingField);
 }
 export async function validateValues(tx: Tx, tenantId: string, dealId: string, fields: ClosingField[], values: ClosingValues) {
   const errors: Record<string, string> = {};

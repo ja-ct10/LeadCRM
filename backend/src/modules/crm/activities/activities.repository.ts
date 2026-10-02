@@ -41,7 +41,10 @@ export async function findAllActivities(
   // ── Entity filters ──────────────────────────────────────────────────────────
   // Note: the Activity model uses leadId (not contactId) for the Lead FK.
   if (query.leadId)    where.leadId    = String(query.leadId);
-  if (query.contactId) where.contactId = String(query.contactId);
+  if (query.contactId) where.OR = [
+    { contactId: String(query.contactId) },
+    { lead: { tenantId, contactId: String(query.contactId), convertedAt: { not: null } } },
+  ];
   if (query.dealId)    where.dealId    = String(query.dealId);
   if (query.accountId) where.accountId = String(query.accountId);
   if (query.taskId)    where.taskId    = String(query.taskId);

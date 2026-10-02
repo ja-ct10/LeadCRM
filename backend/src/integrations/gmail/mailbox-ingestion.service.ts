@@ -6,6 +6,7 @@ import { salesTransaction } from '../../modules/crm/leads/lead-automation.servic
 import { CustomerLink, changeCustomerStatus, customerDealWhere, cancelOpenDeals } from '../../modules/crm/engagement.service';
 import { classifyEngagement, engagementStatus, ENGAGEMENT_REASONS, hasBusinessContext, newMessageText, normalizeEmail, eligibleForCold } from './engagement-rules';
 import { GmailEmail } from './gmail.types';
+import { readDealStageAutomation } from '../../modules/crm/deal-stage-automation.service';
 
 export interface MailboxPermissions { crmEdit: boolean; dealsEdit: boolean; dealsView: boolean }
 type Tx = Prisma.TransactionClient;
@@ -15,7 +16,10 @@ async function matchCustomer(tx: Tx, tenantId: string, email: string): Promise<C
   const where = { tenantId, isArchived: false, deletedAt: null, email: { contains: email, mode: 'insensitive' as const } };
   const leads = (await tx.lead.findMany({ where })).filter(row => normalizeEmail(row.email ?? '') === email);
   const contacts = (await tx.contact.findMany({ where })).filter(row => normalizeEmail(row.email ?? '') === email);
-  const activeLeads = leads.filter(lead => !lead.contactId || !contacts.some(contact => contact.id === lead.contactId));
+  const convertedContacts = await tx.contact.findMany({ where: { tenantId, isArchived: false, deletedAt: null,
+    id: { in: leads.filter(lead => lead.convertedAt && lead.contactId).map(lead => lead.contactId!) } } });
+  for (const contact of convertedContacts) if (!contacts.some(row => row.id === contact.id)) contacts.push(contact);
+  const activeLeads = leads.filter(lead => !lead.convertedAt && (!lead.contactId || !contacts.some(contact => contact.id === lead.contactId)));
   if (activeLeads.length + contacts.length !== 1) return;
   return activeLeads[0] ? { leadId: activeLeads[0].id } : { contactId: contacts[0].id };
 }
@@ -42,7 +46,12 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
       const link: CustomerLink | undefined = existing?.leadId ? { leadId: existing.leadId } : existing?.contactId ? { contactId: existing.contactId } : matched;
       const sentAt = new Date(email.date);
       if (!Number.isFinite(sentAt.getTime())) return;
-      const prior = link ? await tx.mailboxMessage.findMany({ where: { tenantId: account.tenantId, accountId: account.id, threadId: email.threadId, ...link, sentAt: { lt: sentAt } }, orderBy: { sentAt: 'desc' }, take: 100 }) : [];
+      const sourceLeadIds = link?.contactId ? (await tx.lead.findMany({
+        where: { tenantId: account.tenantId, contactId: link.contactId, convertedAt: { not: null } }, select: { id: true },
+      })).map(lead => lead.id) : [];
+      const prior = link ? await tx.mailboxMessage.findMany({ where: { tenantId: account.tenantId, accountId: account.id, threadId: email.threadId,
+        ...(link.contactId ? { OR: [{ contactId: link.contactId }, { leadId: { in: sourceLeadIds } }] } : link),
+        sentAt: { lt: sentAt } }, orderBy: { sentAt: 'desc' }, take: 100 }) : [];
       const businessThread = hasBusinessContext(email.subject) || prior.some(message => hasBusinessContext(newMessageText(message.body)));
       const signal = direction === 'inbound' ? classifyEngagement(email.plainText ?? email.body, businessThread, email.automated) : 'none';
       const deals = link && permissions.dealsView ? await tx.deal.findMany({ where: { ...customerDealWhere(account.tenantId, link), stage: { isWon: false, isLost: false } }, include: { stage: true } }) : [];
@@ -50,7 +59,13 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
       const association = await tx.tenantPreference.findUnique({ where: { tenantId_module_key: { tenantId: account.tenantId, module: 'mailbox-thread', key: `${account.id}:${email.threadId}` } } });
       const associationValue = association?.value as { dealId?: string; linkedAt?: string } | null;
       const explicitIds = associationValue?.dealId ? [associationValue.dealId] : existing?.dealId ? [existing.dealId] : [...new Set(prior.map(message => message.dealId).filter((id): id is string => !!id))];
-      const deal = explicitIds.length ? (explicitIds.length === 1 ? deals.find(row => row.id === explicitIds[0]) : undefined) : deals.length === 1 ? deals[0] : undefined;
+      const context = `${email.subject}\n${newMessageText(email.plainText ?? email.body)}`.toLowerCase();
+      const productMatches = deals.filter(row => row.productInterests.some(product => product.trim().length >= 3 && context.includes(product.trim().toLowerCase())));
+      const references = deals.filter(row => Object.entries((row.closingValues ?? {}) as Record<string, unknown>)
+        .some(([key, value]) => key === 'reference-number' && typeof value === 'string' && value.trim().length >= 3 && context.includes(value.trim().toLowerCase())));
+      const deal = explicitIds.length ? (explicitIds.length === 1 ? deals.find(row => row.id === explicitIds[0]) : undefined)
+        : productMatches.length ? (productMatches.length === 1 ? productMatches[0] : undefined)
+        : references.length ? (references.length === 1 ? references[0] : undefined) : deals.length === 1 ? deals[0] : undefined;
       const messageData = { ...key, tenantId: account.tenantId, threadId: email.threadId, direction,
         from: email.from, recipients: email.to, subject: email.subject, body: email.body, snippet: email.snippet, labels: email.labels, sentAt,
         rfcMessageId: email.rfcMessageId, ...link, dealId: deal?.id ?? explicitIds[0], meaningful: signal !== 'none',
@@ -83,6 +98,7 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
       const nextStatus = engagementStatus(customer.status, signal);
       const reason = ENGAGEMENT_REASONS[signal];
       if (isNew && nextStatus) await changeCustomerStatus(tx, account.tenantId, account.userId, link, nextStatus, reason, sentAt);
+      if (!(await readDealStageAutomation(tx, account.tenantId)).enabled) return;
       if (!deal || !permissions.dealsEdit || sentAt <= (deal.stageChangedAt ?? deal.createdAt) || associationValue?.linkedAt && sentAt <= new Date(associationValue.linkedAt)) return;
       if (signal === 'cancel') { if (isNew) await cancelOpenDeals(tx, account.tenantId, account.userId, link, reason, deal.id, sentAt); return; }
       const twoWay = prior.some(message => message.direction === 'outbound' && hasBusinessContext(newMessageText(message.body)));

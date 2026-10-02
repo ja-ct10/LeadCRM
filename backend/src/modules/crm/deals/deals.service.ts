@@ -209,31 +209,6 @@ export async function moveDealStage(id: string, tenantId: string, userId: string
     prevStageId:  result.stageHistory.previousStageId ?? undefined,
   });
 
-  // Notify the deal owner when a deal is closed won or closed lost.
-  // Skip if no assigned user, or if the actor IS the assigned user (they already know).
-  if (result.deal.assignedUserId && result.deal.assignedUserId !== userId) {
-    if (newStage.isWon) {
-      createNotification({
-        tenantId,
-        userId:     result.deal.assignedUserId,
-        type:       'deal_won',
-        title:      `Deal closed — Won 🎉`,
-        body:       `"${result.deal.title}" was moved to "${newStage.name}".`,
-        entityType: 'Deal',
-        entityId:   id,
-      }).catch(() => {});
-    } else if (newStage.isLost) {
-      createNotification({
-        tenantId,
-        userId:     result.deal.assignedUserId,
-        type:       'deal_lost',
-        title:      `Deal closed — Lost`,
-        body:       `"${result.deal.title}" was moved to "${newStage.name}".`,
-        entityType: 'Deal',
-        entityId:   id,
-      }).catch(() => {});
-    }
-  }
 
   return result;
 }

@@ -221,13 +221,13 @@ export function TaskTable({
       onRowClick={onOpen}
       sortingMode="external"
       sort={{
-        field: query.sortBy ?? "dueDate",
-        direction: query.sortOrder ?? "asc",
+        field: query.sortBy ?? "createdAt",
+        direction: query.sortOrder ?? "desc",
       }}
       onSortChange={(sort) =>
         onSort({
-          sortBy: (sort?.field ?? "dueDate") as TaskListQuery["sortBy"],
-          sortOrder: sort?.direction ?? "asc",
+          sortBy: (sort?.field ?? "createdAt") as TaskListQuery["sortBy"],
+          sortOrder: sort?.direction ?? "desc",
         })
       }
       rowActions={(task) => [

@@ -21,7 +21,7 @@ import { SideSheet } from '@/shared/components/side-sheet';
 import { CampaignReportView } from './campaign-report-view';
 import { CampaignBuilder } from './campaign-builder';
 
-import { DataGrid, type DataGridColumnDef } from '@/shared/components/data-grid';
+import { DataGrid, type DataGridColumnDef, type SortState } from '@/shared/components/data-grid';
 import { BulkSelectionBar, executeSelectedRows } from '@/shared/components/crm/bulk-selection-bar';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { RefreshButton } from '@/shared/components/crm/refresh-button';
@@ -32,6 +32,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shar
 export default function CampaignsPage() {
 
 
+  const [sort, setSort] = useState<SortState>({ field: 'createdAt', direction: 'desc' });
   const [editingCampaign, setEditingCampaign] = useState<Campaign | undefined>();
   const [builderSubject, setBuilderSubject] = useState('');
   const [templateErrors, setTemplateErrors] = useState<Record<string, string>>({});
@@ -58,7 +59,7 @@ export default function CampaignsPage() {
     isRefreshing,
     error: campaignsError,
     refetch: refetchCampaigns,
-  } = useCampaignsData({ query: { page: currentPage, limit: pageSize, search: searchTerm,
+  } = useCampaignsData({ query: { sort: `${sort.field}:${sort.direction}`, page: currentPage, limit: pageSize, search: searchTerm,
     status: statusFilter.map(value => value.toUpperCase()).join(','),
     type: typeFilter.map(value => value.toUpperCase().replace('-', '_')).join(','),
   } });
@@ -164,7 +165,7 @@ export default function CampaignsPage() {
     else setSelectedCampaignForReport(campaign);
   };
   const campaignColumns: DataGridColumnDef<Campaign>[] = [
-    { id: 'name', header: 'Campaign', accessor: row => row.name, width: 260 },
+    { id: 'name', sortable: true, header: 'Campaign', accessor: row => row.name, width: 260 },
     { id: 'type', header: 'Type', accessor: row => row.type, width: 140, cell: (_, row) => <span className="flex items-center gap-2">{getTypeIcon(row.type)}{row.type}</span> },
     { id: 'status', header: 'Status', accessor: row => row.status, width: 140, cell: (_, row) => getStatusBadge(row.status) },
     { id: 'target', header: 'Target', accessor: row => row.targetAudience, width: 180 },
@@ -172,7 +173,7 @@ export default function CampaignsPage() {
     { id: 'opened', header: 'Opened', accessor: row => row.openedCount ?? 0, width: 110 },
     { id: 'clicked', header: 'Clicked', accessor: row => row.clickedCount ?? 0, width: 110 },
     { id: 'engagement', header: 'Engagement', accessor: row => `${row.sentCount ? Math.round((row.openedCount || 0) / row.sentCount * 100) : 0}%`, width: 130 },
-    { id: 'created', header: 'Created', accessor: row => row.createdAt, width: 180 },
+    { id: 'createdAt', sortable: true, header: 'Created', accessor: row => row.createdAt, width: 180 },
   ];
 
   if (showBuilder) {
@@ -446,7 +447,7 @@ export default function CampaignsPage() {
                 }}
               />
               <div className="min-w-0 flex-1">
-            {isInitialLoad || isRefreshing ? <TableLoadingState label="Loading campaigns..." /> : <DataGrid<Campaign>
+            {isInitialLoad || isRefreshing ? <TableLoadingState label="Loading campaigns..." /> : <DataGrid<Campaign> sort={sort} sortingMode="external" onSortChange={next => { setSort(next ?? { field: 'createdAt', direction: 'desc' }); goToPage(1); }}
               columns={campaignColumns} data={filteredCampaigns} getRowId={row => row.id} height="auto" selectable={canDeleteCampaign} selectedIds={selected} onSelectionChange={setSelected}
               enableColumnMenu={false} ariaLabel="Campaigns table" summaryLabel={`${totalItems} total records`} onRowClick={viewCampaign}
               rowActions={campaign => [

@@ -105,8 +105,11 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     const stage = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Won', order: 1, isWon: true, requiredFields: [] } });
     const deal = await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: stage.id, leadId: l.id, title: 'Historic sale', productInterests: ['CCTV'], tags: [] } });
     await submit(form.publicId, v); await submit(form.publicId, v);
-    expect(await prisma.deal.findUnique({ where: { id: deal.id } })).toEqual(deal);
     const repaired = await prisma.lead.findUniqueOrThrow({ where: { id: l.id } }); expect(repaired.contactId).toBeTruthy();
+    expect(repaired.status).toBe('Closed');
+    expect(await prisma.deal.findUnique({ where: { id: deal.id } })).toMatchObject({
+      id: deal.id, stageId: deal.stageId, value: deal.value, productInterests: deal.productInterests, contactId: repaired.contactId,
+    });
     expect(await prisma.contact.count({ where: { tenantId, email: v.email } })).toBe(1);
     expect(await prisma.formSubmission.count({ where: { formId: form.id, contactId: repaired.contactId } })).toBe(2);
   });
@@ -130,7 +133,8 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     await prisma.dealStageHistory.create({ data: { tenantId, dealId: deal.id, newStageId: won.id, movedById: userId } });
     await submit(f.publicId, v);
     expect(await prisma.formSubmission.findFirst({ where: { formId: f.id } })).toMatchObject({ contactId: contact.id, leadId: null });
-    expect(await prisma.deal.findUnique({ where: { id: deal.id } })).toEqual(deal);
+    expect(await prisma.deal.findUnique({ where: { id: deal.id } })).toMatchObject({ id: deal.id, stageId: deal.stageId, value: deal.value, productInterests: deal.productInterests, contactId: contact.id });
+    expect(await prisma.lead.findUnique({ where: { id: lead.id } })).toMatchObject({ status: 'Closed', contactId: contact.id });
   });
   it('matches legacy formatted phones and whitespace-normalized email', async () => {
     const f = await publish((await draft()).id), v = values();
