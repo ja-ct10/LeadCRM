@@ -79,7 +79,7 @@ describe('visual workflow editor', () => {
     fireEvent.change(screen.getByLabelText('Condition 1 value'), {
       target: { value: '25000' },
     });
-    expect(screen.getByText('Deal value is greater than 25000')).toBeTruthy();
+    expect(screen.getByText('Deal Value is greater than 25000')).toBeTruthy();
     fireEvent.click(button('Save and activate'));
     await waitFor(() =>
       expect(save).toHaveBeenCalledWith(
@@ -106,7 +106,7 @@ describe('visual workflow editor', () => {
       },
     });
     fireEvent.click(button('Add step at position 2'));
-    fireEvent.click(button('Add Create task'));
+    fireEvent.click(button('Add Create Task'));
     fireEvent.change(screen.getByLabelText('Task title'), {
       target: { value: 'Prepare proposal' },
     });
@@ -131,8 +131,8 @@ describe('visual workflow editor', () => {
   });
   it('supports click-to-place and excludes incompatible actions', () => {
     setup();
-    expect(screen.queryByRole('button', { name: 'Add Send email' })).toBeNull();
-    fireEvent.click(button('Add Create task'));
+    expect(screen.queryByRole('button', { name: 'Add Send Email' })).toBeNull();
+    fireEvent.click(button('Add Create Task'));
     expect(button('Insert at position 1')).toBeTruthy();
     fireEvent.click(button('Insert at position 1'));
     expect(screen.getByLabelText('Task title')).toBeTruthy();
@@ -182,7 +182,7 @@ describe('visual workflow editor', () => {
   });
   it('previews entity changes, lets users cancel, and preserves compatible actions', () => {
     setup();
-    fireEvent.click(button(/Configure trigger: Deal created/));
+    fireEvent.click(button(/Configure trigger: Deal Created/));
     fireEvent.change(screen.getByLabelText('Start when'), {
       target: { value: 'lead.created' },
     });
@@ -190,7 +190,7 @@ describe('visual workflow editor', () => {
       screen.getByRole('dialog', { name: 'Change workflow record type?' }),
     ).toBeTruthy();
     fireEvent.click(button('Keep current trigger'));
-    expect(screen.getByText('Deal value is greater than 1000')).toBeTruthy();
+    expect(screen.getByText('Deal Value is greater than 1000')).toBeTruthy();
   });
   it('keeps edits after a server error and validates without saving', async () => {
     const { save, close } = setup({
@@ -223,7 +223,7 @@ describe('visual workflow editor', () => {
   });
   it('guards dirty exits and leaves saved changes in the editor', async () => {
     const { save, close } = setup();
-    fireEvent.click(button(/Configure action: 1. Create task/));
+    fireEvent.click(button(/Configure action: 1. Create Task/));
     fireEvent.change(screen.getByLabelText('Task title'), {
       target: { value: 'New title' },
     });
@@ -239,7 +239,7 @@ describe('visual workflow editor', () => {
   it('keeps read-only configuration inspectable and omits mutations', () => {
     setup({ readOnly: true });
     expect(screen.queryByRole('button', { name: 'Save draft' })).toBeNull();
-    fireEvent.click(button(/Configure action: 1. Create task/));
+    fireEvent.click(button(/Configure action: 1. Create Task/));
     expect(
       screen.getByLabelText('Task title').closest('fieldset')?.disabled,
     ).toBe(true);
@@ -251,7 +251,7 @@ describe('visual workflow editor', () => {
     const navigate = vi.fn();
     render(<nav><button onClick={navigate}>Sidebar destination</button></nav>);
     setup();
-    fireEvent.click(button(/Configure action: 1. Create task/));
+    fireEvent.click(button(/Configure action: 1. Create Task/));
     fireEvent.change(screen.getByLabelText('Task title'), {
       target: { value: 'Unsaved task' },
     });
@@ -271,7 +271,7 @@ describe('visual workflow editor', () => {
     });
     try {
       setup();
-      fireEvent.click(button(/Configure action: 1. Create task/));
+      fireEvent.click(button(/Configure action: 1. Create Task/));
       fireEvent.change(screen.getByLabelText('Task title'), {
         target: { value: 'Unsaved task' },
       });
@@ -296,11 +296,11 @@ describe('visual workflow editor', () => {
     const { save } = setup({
       initial: {
         ...initial,
-        actions: [{ type: 'send_sms', message: 'Legacy' }],
+        actions: [{ type: 'obsolete_action', message: 'Legacy' }],
       } as unknown as WorkflowDraft,
     });
     expect(screen.getByText(/This older action is unsupported/)).toBeTruthy();
-    expect(screen.queryByText('send_sms')).toBeNull();
+    expect(screen.queryByText('obsolete_action')).toBeNull();
     expect(save).not.toHaveBeenCalled();
   });
 });

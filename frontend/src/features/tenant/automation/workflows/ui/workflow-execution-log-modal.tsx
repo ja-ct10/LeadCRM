@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
 import type { WorkflowExecutionRun } from '@leadcrm/shared';
+import { WORKFLOW_TRIGGERS } from '@leadcrm/shared';
+import { workflowActionLabel } from '../services/workflow-editor';
 import { workflowsApi } from '@/shared/services/workflows.api';
 import { Button } from '@/shared/components/ui/button';
 import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
@@ -94,7 +96,7 @@ export function WorkflowRuns({ workflowId }: { workflowId: string }) {
             <p className="mt-2 text-sm text-[var(--muted-foreground)]">
               Record: {run.trigger.payload?.recordName || run.entityType}
               <br />
-              Trigger: {run.trigger.triggerType.replaceAll('_', ' ')}
+              Trigger: {WORKFLOW_TRIGGERS.find(trigger => trigger.type === run.trigger.triggerType)?.label ?? run.trigger.triggerType.replaceAll('_', ' ')}
               <br />
               Finished:{' '}
               {run.completedAt
@@ -105,7 +107,7 @@ export function WorkflowRuns({ workflowId }: { workflowId: string }) {
             <ol className="mt-3 space-y-2">
               {run.steps.map((step) => (
                 <li key={step.id} className="rounded border border-[var(--border)] p-2">
-                  {step.stepIndex + 1}. {step.actionType.replaceAll('_', ' ')} —{' '}
+                  {step.stepIndex + 1}. {workflowActionLabel(step.actionType)} —{' '}
                   {step.status}
                   {step.output?.reason === 'Action disabled' && (
                     <p className="text-sm text-[var(--muted-foreground)]">

@@ -1,4 +1,4 @@
-import { validateProductSnapshots } from '../leads/product-snapshots';
+import { validateProductSnapshots, normalizeProductOther } from '../leads/product-snapshots';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import prisma from '../../../config/database.config';
 import { CrmStatusSchema, normalizeCrmStatus } from '@leadcrm/shared';
@@ -89,6 +89,7 @@ export async function findContactById(id: string, tenantId: string) {
 export async function createContact(tenantId: string, dto: Record<string, unknown>) {
   if (dto.status === 'Closed') throw new ValidationError('Confirm a related Deal as Closed Won before setting Closed.');
   dto.productInterests = await validateProductSnapshots(tenantId, dto.productInterests);
+  normalizeProductOther(dto, (dto.productInterests as string[] | undefined) ?? []);
   return prisma.contact.create({
     data: { ...dto, tenantId, status: CrmStatusSchema.parse(dto.status).toUpperCase() } as never,
     include: CONTACT_INCLUDE,
@@ -98,13 +99,14 @@ export async function createContact(tenantId: string, dto: Record<string, unknow
 export async function updateContact(id: string, tenantId: string, dto: Record<string, unknown>, actorId?: string) {
   const previous = await prisma.contact.findFirst({ where: { id, tenantId } });
   dto.productInterests = await validateProductSnapshots(tenantId, dto.productInterests, previous?.productInterests);
+  normalizeProductOther(dto, (dto.productInterests as string[] | undefined) ?? previous?.productInterests ?? [], previous?.productInterestOther);
   return salesTransaction(async tx => {
     const current = await tx.contact.findFirstOrThrow({ where: { id, tenantId } });
     const status = dto.status === undefined ? undefined : CrmStatusSchema.parse(dto.status);
     if (status === 'Closed' && normalizeCrmStatus(current.status) !== 'Closed') await assertClosedStatus(tx, tenantId, { contactId: id });
     const contact = await tx.contact.update({
       where:   { id, tenantId } as never,
-      data: { ...dto, ...(status ? { status: contactStatusValue(status), lastStatusChangedAt: new Date() } : {}) } as never,
+      data: { ...dto, ...(status ? { status: contactStatusValue(status), ...(status !== normalizeCrmStatus(current.status) ? { lastStatusChangedAt: new Date() } : {}) } : {}) } as never,
       include: CONTACT_INCLUDE,
     });
     if (status && actorId && status !== normalizeCrmStatus(current.status)) {

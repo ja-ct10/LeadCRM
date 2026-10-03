@@ -13,3 +13,10 @@ export async function validateProductSnapshots(tenantId: string, input: unknown,
   if (products.length !== added.length) throw new ValidationError('Select available Product Interests from the product catalog.');
   return [...new Set(names)];
 }
+
+/** Clearing or replacing Others also clears its dependent free-text explanation. */
+export function normalizeProductOther(data: Record<string, unknown>, names: string[], previous: string | null = null) {
+  const others = names.some(name => name.trim().toLowerCase() === 'others');
+  if (!others && data.productInterestOther) throw new ValidationError('Select Others before specifying another product interest.');
+  data.productInterestOther = others ? (data.productInterestOther === undefined ? previous : data.productInterestOther) : null;
+}

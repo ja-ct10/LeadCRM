@@ -1,3 +1,4 @@
+import { normalizeProductOther } from '../leads/product-snapshots';
 import { parseLeadCreatedFilter } from '../leads/lead-created-filter';
 import { convertClosedLead } from '../leads/lead-conversion.service';
 import { assertClosedStatus, cancelOpenDeals } from '../engagement.service';
@@ -109,7 +110,8 @@ export async function updateContact(
       const current = await tx.lead.findFirstOrThrow({ where: { id, tenantId } });
       if (current.convertedAt) throw new ValidationError('This Lead has been converted. Update the linked Contact instead.');
       if (dto.status) {
-        data.lastStatusChangedAt = new Date();
+        if (dto.status !== current.status) data.lastStatusChangedAt = new Date();
+        else delete data.lastStatusChangedAt;
         if (dto.status === 'Closed') await assertClosedStatus(tx, tenantId, { leadId: id });
       }
       if (dto.productInterest) {
@@ -118,11 +120,12 @@ export async function updateContact(
         const added = dto.productInterest.filter(id => !retained.includes(id));
         const products = await resolveProducts(tx, tenantId, added);
         const existing = await tx.productInterest.findMany({ where: { tenantId, id: { in: retained } } });
-        // Keep legacy snapshots that predate catalog IDs when adding a first configured product.
-        const historicalNames = previous.productInterestIds.length ? [] : previous.productInterest;
+        // An explicit selection replaces the list, including an explicit empty selection.
         data.productInterestIds = [...retained, ...products.map(p => p.id)];
-        data.productInterest = [...historicalNames, ...existing.map(p => p.name), ...products.map(p => p.name)];
+        data.productInterest = [...existing.map(p => p.name), ...products.map(p => p.name)];
       }
+      normalizeProductOther(data, (data.productInterest as string[] | undefined) ?? current.productInterest, current.productInterestOther);
+      if (dto.accountId && !await tx.account.findFirst({ where: { id: dto.accountId, tenantId, isArchived: false } })) throw new ValidationError('Account is unavailable in this workspace.');
       if (dto.assignedUserId) await validateSalesOwner(tx, tenantId, dto.assignedUserId);
       const updated = await tx.lead.update({
       where: { id, tenantId },

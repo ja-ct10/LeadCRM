@@ -1,10 +1,21 @@
-import type { WorkflowDraft } from '@leadcrm/shared';
+import type { WorkflowDraft, WorkflowOptions } from '@leadcrm/shared';
+
+export const QUALIFIED_FOLLOW_UP_NAME = 'Qualified Deal Follow-up';
+
+/** Resolve only an unambiguous stage; otherwise the existing condition editor asks for it. */
+export function prepareWorkflowRecipe(recipe: WorkflowDraft, options: WorkflowOptions): WorkflowDraft {
+  const draft = structuredClone(recipe);
+  if (draft.name !== QUALIFIED_FOLLOW_UP_NAME) return draft;
+  const qualified = options.pipelines.flatMap((pipeline) => pipeline.stages).filter((stage) => stage.name.trim().toLowerCase() === 'qualified');
+  if (qualified.length === 1) draft.conditions!.conditions[0].value = qualified[0].id;
+  return draft;
+}
 
 export const WORKFLOW_RECIPES: WorkflowDraft[] = [
   // 1. Lead Management & Qualification
   {
     name: 'New Lead Follow-up',
-    description: 'Assign an owner and create a follow-up task.',
+    description: 'Assign an agent and create a follow-up task.',
     trigger: 'lead.created',
     isActive: false,
     actions: [
@@ -14,7 +25,7 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
   },
   {
     name: 'Hot Lead Urgent Response',
-    description: 'Alert the team and schedule an urgent call when a lead becomes Hot.',
+    description: 'Schedule an urgent call when a lead becomes Hot.',
     trigger: 'lead.status_changed',
     isActive: false,
     conditions: {
@@ -22,13 +33,12 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
       conditions: [{ field: 'lead.status', operator: 'equals', value: 'Hot' }],
     },
     actions: [
-      { type: 'create_notification', config: { title: 'Hot lead alert: {{first_name}}', body: 'Lead marked as Hot requires immediate response.' } },
       { type: 'create_task', config: { title: 'Urgent: Call hot lead {{first_name}}', dueDaysFromNow: 0, priority: 'High', description: 'Immediate outreach for high-intent prospect.' } },
     ],
   },
   {
     name: 'Website Inbound Lead Triage',
-    description: 'Create a qualification task and notification for leads submitted via website.',
+    description: 'Create a qualification task for leads submitted via website.',
     trigger: 'lead.created',
     isActive: false,
     conditions: {
@@ -37,7 +47,6 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     },
     actions: [
       { type: 'create_task', config: { title: 'Qualify inbound website lead: {{first_name}}', dueDaysFromNow: 1, priority: 'Medium', description: 'Review web form inquiry and verify contact details.' } },
-      { type: 'create_notification', config: { title: 'New website lead received: {{first_name}}' } },
     ],
   },
   {
@@ -52,7 +61,6 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     actions: [
       { type: 'create_task', config: { title: 'Schedule discovery call for {{company}}', dueDaysFromNow: 2, priority: 'High', description: 'Prepare presentation deck and schedule qualification call.' } },
       { type: 'update_field', config: { field: 'description', value: 'Lead qualified by marketing. Ready for sales discovery call.' } },
-      { type: 'create_notification', config: { title: 'Lead qualified for sales: {{first_name}}' } },
     ],
   },
   {
@@ -71,7 +79,7 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
   },
   {
     name: 'Converted Lead Milestone',
-    description: 'Notify the team and log milestone notes when a lead is converted.',
+    description: 'Log milestone notes when a lead is converted.',
     trigger: 'lead.status_changed',
     isActive: false,
     conditions: {
@@ -79,18 +87,16 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
       conditions: [{ field: 'lead.status', operator: 'equals', value: 'Converted' }],
     },
     actions: [
-      { type: 'create_notification', config: { title: 'Lead converted to opportunity: {{first_name}} {{last_name}}', body: 'Great work! Check new Contact and Deals created.' } },
       { type: 'update_field', config: { field: 'description', value: 'Successfully converted to contact and opportunity.' } },
     ],
   },
   {
     name: 'Lead Re-assignment & Greeting',
-    description: 'Assign owner, alert the agent, and schedule an introductory call.',
+    description: 'Assign an agent and schedule an introductory call.',
     trigger: 'lead.created',
     isActive: false,
     actions: [
       { type: 'assign_owner', config: { userId: '' } },
-      { type: 'create_notification', config: { title: 'New lead assigned to your queue: {{first_name}}' } },
       { type: 'create_task', config: { title: 'Conduct introductory call with {{first_name}}', dueDaysFromNow: 2, priority: 'Medium' } },
     ],
   },
@@ -108,18 +114,17 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
   // 2. Contact Management
   {
     name: 'Contact Onboarding Handoff',
-    description: 'Create an onboarding task, update notes, and alert the team when a contact is created.',
+    description: 'Create an onboarding task and update notes when a contact is created.',
     trigger: 'contact.created',
     isActive: false,
     actions: [
       { type: 'create_task', config: { title: 'Welcome and onboarding setup for {{first_name}}', dueDaysFromNow: 3, priority: 'High', description: 'Send welcome packet and schedule onboarding session.' } },
-      { type: 'create_notification', config: { title: 'New contact created: {{first_name}} {{last_name}}' } },
       { type: 'update_field', config: { field: 'notes', value: 'New contact created. Initiating standard onboarding checklist.' } },
     ],
   },
   {
-    name: 'VIP Contact Review Alert',
-    description: 'Alert account manager and schedule review when contact status changes to HOT.',
+    name: 'VIP Contact Review',
+    description: 'Schedule an account review when contact status changes to HOT.',
     trigger: 'contact.status_changed',
     isActive: false,
     conditions: {
@@ -127,13 +132,12 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
       conditions: [{ field: 'contact.status', operator: 'equals', value: 'HOT' }],
     },
     actions: [
-      { type: 'create_notification', config: { title: 'Contact active & hot: {{first_name}} at {{company}}' } },
       { type: 'create_task', config: { title: 'Executive relationship review for {{company}}', dueDaysFromNow: 2, priority: 'High', description: 'Key contact marked HOT. Conduct satisfaction check-in.' } },
     ],
   },
   {
     name: 'At-Risk Contact Follow-up',
-    description: 'Trigger urgent task and notify manager when contact status changes to COLD.',
+    description: 'Create an urgent follow-up task when contact status changes to COLD.',
     trigger: 'contact.status_changed',
     isActive: false,
     conditions: {
@@ -141,7 +145,6 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
       conditions: [{ field: 'contact.status', operator: 'equals', value: 'COLD' }],
     },
     actions: [
-      { type: 'create_notification', config: { title: 'Attention needed: Contact status cold for {{first_name}}' } },
       { type: 'create_task', config: { title: 'Re-engagement outreach for {{company}}', dueDaysFromNow: 1, priority: 'High', description: 'Contact engagement dropped. Reach out to address concerns and offer support.' } },
       { type: 'update_field', config: { field: 'notes', value: 'Contact marked COLD. Outreach initiated.' } },
     ],
@@ -157,7 +160,6 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     },
     actions: [
       { type: 'create_task', config: { title: 'Complete account wrap-up and archive files for {{company}}', dueDaysFromNow: 7, priority: 'Low', description: 'Finalize wrap-up and record contact status closure reason.' } },
-      { type: 'create_notification', config: { title: 'Contact status closed: {{first_name}} {{last_name}}' } },
     ],
   },
   {
@@ -173,8 +175,8 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
 
   // 3. Deal Pipeline & Sales Operations
   {
-    name: 'High-value Deal Alert',
-    description: 'Notify the owner about a high-value opportunity.',
+    name: 'High-value Deal Review',
+    description: 'Create a review task for a high-value opportunity.',
     trigger: 'deal.created',
     isActive: false,
     conditions: {
@@ -182,12 +184,12 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
       conditions: [{ field: 'deal.value', operator: 'greater_than', value: 100000 }],
     },
     actions: [
-      { type: 'create_notification', config: { title: 'High-value deal created' } },
+      { type: 'create_task', config: { title: 'Review high-value opportunity', dueDaysFromNow: 1, priority: 'High' } },
     ],
   },
   {
     name: 'Enterprise Deal Executive Sponsor',
-    description: 'Alert leadership and assign an executive sponsor for deals $250,000 and above.',
+    description: 'Schedule an executive sponsor review for deals valued at 250,000 and above.',
     trigger: 'deal.created',
     isActive: false,
     conditions: {
@@ -195,13 +197,12 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
       conditions: [{ field: 'deal.value', operator: 'greater_than_or_equal', value: 250000 }],
     },
     actions: [
-      { type: 'create_notification', config: { title: 'Major Enterprise Deal created over $250k' } },
       { type: 'create_task', config: { title: 'Assign executive sponsor and review proposal', dueDaysFromNow: 2, priority: 'High', description: 'High-impact enterprise deal requires executive oversight and strategic pricing review.' } },
     ],
   },
   {
     name: 'High-Priority Deal Accelerator',
-    description: 'Notify owner and create a priority task for deals marked HIGH priority.',
+    description: 'Create a priority task for deals marked HIGH priority.',
     trigger: 'deal.created',
     isActive: false,
     conditions: {
@@ -210,16 +211,14 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     },
     actions: [
       { type: 'create_task', config: { title: 'Fast-track proposal preparation', dueDaysFromNow: 1, priority: 'High', description: 'High-priority opportunity. Coordinate sales engineering support.' } },
-      { type: 'create_notification', config: { title: 'High-priority deal flagged for fast-tracking' } },
     ],
   },
   {
-    name: 'Deal Stage Advance Notification',
-    description: 'Notify owner and create milestone tasks whenever a deal changes stage.',
+    name: 'Deal Stage Follow-up',
+    description: 'Create milestone tasks whenever a deal changes stage.',
     trigger: 'deal.stage_changed',
     isActive: false,
     actions: [
-      { type: 'create_notification', config: { title: 'Deal stage updated to next milestone' } },
       { type: 'create_task', config: { title: 'Complete deliverables for new deal stage', dueDaysFromNow: 3, priority: 'Medium', description: 'Verify stage exit criteria and update next steps.' } },
     ],
   },
@@ -235,12 +234,11 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
   },
   {
     name: 'Won Deal Handoff',
-    description: 'Create a handoff task and notify the owner.',
+    description: 'Create a handoff task for the assigned agent.',
     trigger: 'deal.closed_won',
     isActive: false,
     actions: [
       { type: 'create_task', config: { title: 'Arrange contact handoff', dueDaysFromNow: 1, priority: 'Medium' } },
-      { type: 'create_notification', config: { title: 'Won deal ready for handoff' } },
     ],
   },
   {
@@ -253,7 +251,6 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
       conditions: [{ field: 'deal.value', operator: 'greater_than_or_equal', value: 50000 }],
     },
     actions: [
-      { type: 'create_notification', config: { title: 'Major deal closed won ($50k+)! Congratulations!' } },
       { type: 'create_task', config: { title: 'Schedule contact implementation kickoff', dueDaysFromNow: 2, priority: 'High', description: 'High-value implementation kickoff meeting and stakeholder introduction.' } },
     ],
   },
@@ -263,13 +260,12 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     trigger: 'deal.closed_lost',
     isActive: false,
     actions: [
-      { type: 'create_notification', config: { title: 'Deal closed lost: Win/loss analysis required' } },
       { type: 'create_task', config: { title: 'Log lost reason and review competitor insights', dueDaysFromNow: 3, priority: 'Low', description: 'Document key objections, pricing factors, and feedback for product marketing.' } },
     ],
   },
   {
     name: 'High-Value Lost Deal Review',
-    description: 'Alert management and schedule a strategic post-mortem when a major deal is lost.',
+    description: 'Schedule a strategic review when a major deal is lost.',
     trigger: 'deal.closed_lost',
     isActive: false,
     conditions: {
@@ -277,8 +273,19 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
       conditions: [{ field: 'deal.value', operator: 'greater_than_or_equal', value: 50000 }],
     },
     actions: [
-      { type: 'create_notification', config: { title: 'High-value deal lost ($50k+): Leadership review requested' } },
       { type: 'create_task', config: { title: 'Conduct executive post-mortem on lost deal', dueDaysFromNow: 5, priority: 'High', description: 'Analyze why this major deal was lost and evaluate future re-engagement timing.' } },
     ],
+  },
+  {
+    name: QUALIFIED_FOLLOW_UP_NAME,
+    description: 'Create a follow-up once for each move into Qualified if this deal has never reached Won. Choose the Qualified stage before activating. Edits while Qualified and creation directly in Qualified do not trigger this workflow. Create a new deal for a repeat purchase.',
+    trigger: 'deal.stage_changed',
+    isActive: false,
+    conditions: { operator: 'AND', conditions: [
+      { field: 'event.newStageId', operator: 'equals', value: '' },
+      { field: 'deal.hasEverBeenWon', operator: 'equals', value: false },
+      { field: 'deal.wonHistoryVerified', operator: 'equals', value: true },
+    ] },
+    actions: [{ type: 'create_task', config: { title: 'Follow up on qualified deal', dueDaysFromNow: 1, priority: 'Medium' } }],
   },
 ];

@@ -27,6 +27,7 @@ export const CreateContactSchema = z.object({
 });
 
 export const UpdateContactSchema = z.object({
+  productInterestOther: recordText(1000).nullable().optional(),
   firstName:      recordName().optional(),
   lastName:       recordName().optional(),
   email: CrmEmailSchema.optional(),
@@ -34,8 +35,8 @@ export const UpdateContactSchema = z.object({
   companyName:    recordText().optional(),
   status:         LeadStatusSchema.optional(),
   source:         recordText().optional(),
-  accountId:      id().optional(),
-  assignedUserId: id().optional(),
+  accountId:      id().nullable().optional(),
+  assignedUserId: id().nullable().optional(),
   productInterest: z.array(ProductInterestIdSchema).max(100).optional(),
   address:        recordText().optional(),
   description:    recordText().optional(),

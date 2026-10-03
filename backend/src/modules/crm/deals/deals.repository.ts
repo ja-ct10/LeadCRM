@@ -1,5 +1,5 @@
 import { resolveProducts } from '../leads/lead-automation.service';
-import { validateProductSnapshots } from '../leads/product-snapshots';
+import { validateProductSnapshots, normalizeProductOther } from '../leads/product-snapshots';
 import { salesTransaction, crmScope } from '../leads/lead-automation.service';
 import { resolveWonRelationships } from './won-conversion.service';
 import type { ClosedWonConfirmation } from '@leadcrm/shared';
@@ -9,6 +9,7 @@ import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
 import { CreateDealDto, UpdateDealDto, DealsQueryParams } from './deals.dto';
 import { ValidationError } from '../../../shared/errors/http-error';
+import { assertDealStageTransition, dealHasEverBeenWon } from './deal-lifecycle';
 
 // All queries are scoped to tenantId — cross-tenant access is impossible by design
 
@@ -171,6 +172,7 @@ export async function updateDeal(id: string, tenantId: string, dto: UpdateDealDt
         if (currentIds.length && dto.value !== undefined && dto.value !== existing.value) throw new ValidationError('Product-linked Deal values cannot be overridden.');
         if (currentIds.length && dto.currency !== undefined && dto.currency !== existing.currency) throw new ValidationError('Product-linked Deal currency cannot be overridden.');
       }
+      normalizeProductOther(updateData, updateData.productInterests ?? existing.productInterests, existing.productInterestOther);
       await tx.deal.update({ where: { id, tenantId }, data: updateData as never });
     });
   } catch (error) {
@@ -217,7 +219,8 @@ export async function moveDealStage(
     if (!newStage) throw new ValidationError("Stage must belong to this Deal’s pipeline.");
     let stageHistory = null;
     if (deal.stageId !== newStageId) {
-      if (deal.stage.isWon || deal.stage.isLost) throw new ValidationError('This Deal is closed. Create a new Deal for a new opportunity.');
+      const hasEverBeenWon = await dealHasEverBeenWon(tx, tenantId, deal);
+      assertDealStageTransition(deal, newStage, hasEverBeenWon);
       const snapshot = newStage.isWon ? await closingEvidence(tx, tenantId, deal, movedById) : undefined;
       if (newStage.isWon) note = 'All configured Closed Won requirements completed and validated.';
       if (newStage.isLost && !lostReason?.trim()) throw new ValidationError('Lost reason is required.');
@@ -229,6 +232,8 @@ export async function moveDealStage(
       const now = new Date();
       const previous = await tx.dealStageHistory.findFirst({ where: { ...scope, dealId: id }, orderBy: { movedAt: 'desc' } });
       await tx.deal.update({ where: { id, ...scope }, data: { stageId: newStageId,
+        hasEverBeenWon: hasEverBeenWon || newStage.isWon,
+        ...(hasEverBeenWon || newStage.isWon ? { wonHistoryVerified: true } : {}),
         stageChangedAt: now,
         closedAt: newStage.isWon || newStage.isLost ? now : null, lostReason: newStage.isLost ? lostReason : null,
         ...(newStage.isWon ? { closingSnapshot: snapshot, wonConfirmedById: movedById, wonConfirmedAt: now } : {}) } });
@@ -252,7 +257,7 @@ export async function moveDealStage(
         movedBy: { select: { id: true, firstName: true, lastName: true } },
       } },
     } });
-    return { deal: fullDeal, stageHistory };
+    return { deal: fullDeal, stageHistory, previousDeal: deal };
   };
   return transaction ? transition(transaction) : salesTransaction(transition);
 }

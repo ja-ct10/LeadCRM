@@ -6,8 +6,10 @@ import { writeAuditLog, buildChangeset } from '../../../core/audit/audit.service
 import { NotFoundError, ValidationError, ConflictError } from '../../../shared/errors/http-error';
 import { CreateDealDto, UpdateDealDto, MoveDealStageDto, DealsQueryParams, ManualCreateDealSchema } from './deals.dto';
 import { paginate } from '../../../shared/helpers/pagination';
-import { fireDealCreated, fireDealStageChanged } from '../../automation/triggers/triggers.service';
+import { fireDealCreated, fireDealStageChanged, fireDealUpdated } from '../../automation/triggers/triggers.service';
 import { createNotification } from '../../notifications/notifications.service';
+import { recordChanges } from '../record-updates';
+import { assertDealStageTransition, dealHasEverBeenWon } from './deal-lifecycle';
 
 /**
  * Maps known Prisma constraint/infrastructure errors to appropriate HTTP errors.
@@ -113,6 +115,8 @@ export async function updateDeal(id: string, tenantId: string, userId: string, d
   if (dto.leadIds) {
     await repo.syncLeadAssociations(id, tenantId, dto.leadIds, userId);
   }
+  if (dto.contactIds || dto.leadIds) deal = await repo.findDealById(id, tenantId);
+  if (!deal) throw new NotFoundError('Deal');
 
   const { before: changedBefore, after: changedAfter } = buildChangeset(
     before as unknown as Record<string, unknown>,
@@ -124,6 +128,8 @@ export async function updateDeal(id: string, tenantId: string, userId: string, d
     action: 'deal.updated', entityType: 'Deal', entityId: id,
     before: changedBefore, after: changedAfter,
   });
+  const changes = recordChanges(before, deal);
+  if (changes.changedFields.length) await fireDealUpdated({ tenantId, actorId: userId, record: deal, changedFields: changes.changedFields, changes });
 
   // Notify the newly assigned user when the deal is reassigned to someone else.
   // Before: dto.assignedUserId differs from the previous owner AND is not the actor.
@@ -153,15 +159,18 @@ export async function validateDealStageMove(id: string, tenantId: string, dto: M
   });
   if (!newStage) throw new NotFoundError('Stage');
 
+  const deal = await prisma.deal.findFirst({ where: { id, tenantId }, include: { stage: true } });
+  if (!deal) throw new NotFoundError('Deal');
+  if (deal.pipelineId !== newStage.pipelineId) throw new ValidationError('Stage must belong to this Deal’s pipeline.');
+  if (deal.stageId === newStage.id) return newStage;
+  assertDealStageTransition(deal, newStage, await dealHasEverBeenWon(prisma, tenantId, deal));
+
   if (newStage.isLost && !dto.lostReason) {
     throw new ValidationError('Lost reason is required when closing a deal as lost');
   }
 
   // BW-5 / REQ089: Enforce stage entry requirements before allowing transition
   if (newStage.requiredFields && newStage.requiredFields.length > 0) {
-    const deal = await prisma.deal.findFirst({ where: { id, tenantId } });
-    if (!deal) throw new NotFoundError('Deal');
-
     const missingFields: string[] = [];
     for (const field of newStage.requiredFields) {
       const value = (deal as Record<string, unknown>)[field];
@@ -188,7 +197,7 @@ export async function moveDealStage(id: string, tenantId: string, userId: string
     mapRepositoryError(error, 'moveDealStage');
   }
   if (!result) throw new NotFoundError('Deal');
-  if (!result.stageHistory) return result;
+  if (!result.stageHistory) return { deal: result.deal, stageHistory: result.stageHistory };
 
   await writeAuditLog({
     tenantId, userId,
@@ -208,9 +217,11 @@ export async function moveDealStage(id: string, tenantId: string, userId: string
     isLost:       newStage.isLost,
     prevStageId:  result.stageHistory.previousStageId ?? undefined,
   });
+  const changes = recordChanges(result.previousDeal, result.deal);
+  if (changes.changedFields.length) await fireDealUpdated({ tenantId, actorId: userId, eventId: result.stageHistory.id,
+    record: result.deal, changedFields: changes.changedFields, changes });
 
-
-  return result;
+  return { deal: result.deal, stageHistory: result.stageHistory };
 }
 
 export async function archiveDeal(id: string, tenantId: string, userId: string, archiveReason?: string) {
@@ -274,6 +285,8 @@ export async function duplicateDeal(id: string, tenantId: string, userId: string
       data: {
         ...copyData,
         automationKey: null,
+        hasEverBeenWon: false,
+        wonHistoryVerified: true,
         title: `${source.title} (Copy)`,
         tenantId,
         ownerId: userId,

@@ -11,6 +11,7 @@ import {
 } from '@dnd-kit/core';
 import {
   WorkflowDraftSchema,
+  workflowOperators,
   type Workflow,
   type WorkflowDraft,
   type ActionDefinition,
@@ -48,6 +49,8 @@ import {
   insertAction,
   moveAction,
   toDraft,
+  workflowNameIssue,
+  retiredActionLabels,
   type DragItem,
   type EditorDocument,
   type LibraryItem,
@@ -62,6 +65,8 @@ interface Props {
   triggers: TriggerDefinition[];
   actions: ActionDefinition[];
   options?: WorkflowOptions;
+  existingWorkflows?: Array<{ id: string; name: string }>;
+  onCheckName?: (name: string, excludeId?: string) => Promise<boolean>;
   canActivate: boolean;
   readOnly?: boolean;
   onSave: (draft: WorkflowDraft) => Promise<Workflow | void>;
@@ -80,6 +85,8 @@ export default function WorkflowBuilder({
   triggers,
   actions: definitions,
   options = emptyOptions,
+  existingWorkflows = [],
+  onCheckName,
   canActivate,
   readOnly,
   onSave,
@@ -96,6 +103,7 @@ export default function WorkflowBuilder({
   const [savedStatus, setSavedStatus] = useState(
     initialStatus ?? (initial.isActive ? 'ACTIVE' : 'DRAFT'),
   );
+  const [nameCheck, setNameCheck] = useState<{ name: string; available?: boolean; failed?: boolean } | null>(null);
   const [selected, setSelected] = useState<StepSelection | null>(
     initial.name ? null : 'details',
   );
@@ -127,13 +135,31 @@ export default function WorkflowBuilder({
   const trigger = triggers.find((entry) => entry.type === draft.trigger);
   const dirty = JSON.stringify(toDraft(draft)) !== JSON.stringify(saved);
   const locked = !!readOnly || busy;
-  const issues = editorIssues(document, triggers, definitions, options);
+  const nameIssue = workflowNameIssue(draft.name, existingWorkflows, savedId) ||
+    (nameCheck?.name === draft.name && nameCheck.available === false ? 'A workflow with this name already exists. Choose another name.' : '');
+  const issues = [
+    ...editorIssues(document, triggers, definitions, options),
+    ...(nameIssue && draft.name.trim() ? [{ step: 'details' as const, message: nameIssue }] : []),
+  ];
   const actionIndex = selected?.startsWith('action:')
     ? document.actionIds.indexOf(selected.slice(7))
     : -1;
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   );
+
+  useEffect(() => {
+    if (!onCheckName || !draft.name.trim() || readOnly) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      onCheckName(draft.name, savedId).then((available) => {
+        if (!cancelled) setNameCheck({ name: draft.name, available });
+      }).catch(() => {
+        if (!cancelled) setNameCheck({ name: draft.name, failed: true });
+      });
+    }, 350);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [draft.name, savedId, onCheckName, readOnly]);
 
   useEffect(() => {
     const media = window.matchMedia('(min-width: 1280px)');
@@ -337,7 +363,7 @@ export default function WorkflowBuilder({
             ...(draft.conditions?.conditions ?? []),
             {
               field: field?.field ?? '',
-              operator: 'equals',
+              operator: workflowOperators(field?.type ?? 'string')[0],
               value:
                 field?.type === 'number'
                   ? 0
@@ -387,6 +413,11 @@ export default function WorkflowBuilder({
     if (operation.current || readOnly || (activate && !canActivate)) return;
     setError('');
     setMessage('');
+    if (nameIssue) {
+      select('details');
+      setError(nameIssue);
+      return;
+    }
     const local = editorIssues(
       document,
       triggers,
@@ -480,7 +511,7 @@ export default function WorkflowBuilder({
                 ? 'Conditions'
                 : (definitions.find(
                     (def) => def.type === draft.actions[actionIndex]?.type,
-                  )?.label ?? 'Select a step')}
+                  )?.label ?? retiredActionLabels[draft.actions[actionIndex]?.type] ?? 'Unavailable action')}
         </h2>
         <Button
           size="sm"
@@ -499,9 +530,9 @@ export default function WorkflowBuilder({
               <Input
                 aria-label="Workflow name"
                 aria-required="true"
-                aria-invalid={!draft.name.trim()}
+                aria-invalid={!!nameIssue}
                 aria-describedby={
-                  !draft.name.trim() ? 'workflow-name-error' : undefined
+                  nameIssue ? 'workflow-name-error' : undefined
                 }
                 maxLength={255}
                 value={draft.name}
@@ -509,14 +540,15 @@ export default function WorkflowBuilder({
                   updateDraft({ ...draft, name: event.target.value })
                 }
               />
-              {!draft.name.trim() && (
+              {nameIssue && (
                 <span
                   id="workflow-name-error"
                   className="text-xs text-amber-700 dark:text-amber-300"
                 >
-                  Workflow name is required.
+                  {nameIssue}
                 </span>
               )}
+              {nameCheck?.name === draft.name && nameCheck.failed && !nameIssue && <span className="block text-xs text-[var(--muted-foreground)]">Name availability will be checked when you save.</span>}
             </label>
             <label className="block space-y-2 text-sm">
               Description

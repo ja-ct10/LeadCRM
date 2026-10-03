@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { CrmStatusSchema } from '@leadcrm/shared';
 import { recordText, recordName } from '../record-validation';
 export const CreateClientContactSchema = z.object({
+  productInterestOther: recordText(1000).nullable().optional(),
   firstName: recordName(), lastName: recordName(),
   email: CrmEmailSchema,
   phone: recordText(100).optional(), company: recordText().optional(),

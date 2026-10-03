@@ -3,6 +3,8 @@ import { writeAuditLog } from '../../../core/audit/audit.service';
 import { moveDealStage } from './deals.service';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { BulkArchiveDto, BulkReassignDto, BulkStageChangeDto } from './deals.dto';
+import { fireDealUpdated } from '../../automation/triggers/triggers.service';
+import { recordChanges } from '../record-updates';
 
 export interface BulkOperationResult {
   succeeded: number;
@@ -87,8 +89,12 @@ export async function bulkReassign(
       }
 
       const previousAssignee = deal.assignedUserId;
+      if (previousAssignee === dto.assignedUserId) {
+        result.succeeded += 1;
+        continue;
+      }
       // SEC: tenantId in where clause closes the TOCTOU gap between findFirst and update
-      await prisma.deal.update({
+      const updated = await prisma.deal.update({
         where: { id: dealId, tenantId },
         data: { assignedUserId: dto.assignedUserId },
       });
@@ -102,6 +108,8 @@ export async function bulkReassign(
         before: { assignedUserId: previousAssignee },
         after: { assignedUserId: dto.assignedUserId, bulk: true },
       });
+      const changes = recordChanges(deal, updated);
+      if (changes.changedFields.length) await fireDealUpdated({ tenantId, actorId: userId, record: updated, changedFields: changes.changedFields, changes });
 
       result.succeeded += 1;
     } catch {

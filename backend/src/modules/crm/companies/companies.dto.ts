@@ -4,6 +4,7 @@ import { recordText, recordName } from '../record-validation';
 const id = () => z.string().min(1);
 
 export const CreateCompanySchema = z.object({
+  productInterestOther: recordText(1000).nullable().optional(),
   name:           recordName(255),
   industry:       recordText().optional(),
   size:           z.enum(['1-10', '11-50', '51-200', '200+']).optional(),
@@ -20,7 +21,7 @@ export const CreateCompanySchema = z.object({
   activeProducts: z.array(recordText(200)).max(100).optional(),
 });
 
-export const UpdateCompanySchema = CreateCompanySchema.partial();
+export const UpdateCompanySchema = CreateCompanySchema.partial().extend({ assignedUserId: id().nullable().optional() });
 
 export type CreateCompanyDto = z.infer<typeof CreateCompanySchema>;
 export type UpdateCompanyDto = z.infer<typeof UpdateCompanySchema>;

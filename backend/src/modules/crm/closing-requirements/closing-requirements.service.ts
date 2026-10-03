@@ -5,7 +5,9 @@ import { salesTransaction } from '../leads/lead-automation.service';
 import { readFields, validateValues } from './closing-requirements.repository';
 import { moveDealStage } from '../deals/deals.repository';
 import { NotFoundError, ValidationError } from '../../../shared/errors/http-error';
-import { fireDealStageChanged } from '../../automation/triggers/triggers.service';
+import { fireDealStageChanged, fireDealUpdated } from '../../automation/triggers/triggers.service';
+import { recordChanges } from '../record-updates';
+import { isDeepStrictEqual } from 'node:util';
 
 export const listFields = (tenantId: string) => salesTransaction(tx => readFields(tx, tenantId));
 export async function saveField(tenantId: string, actorId: string, input: unknown, id?: string) {
@@ -47,14 +49,16 @@ export async function saveValues(tenantId: string, actorId: string, dealId: stri
     if (!deal) throw new NotFoundError('Deal');
     if (deal.stage.isWon || deal.stage.isLost || deal.closingSnapshot) throw new ValidationError('Closed Deal evidence is preserved and cannot be edited.');
     const fields = await readFields(tx, tenantId);
-    const changed = Object.keys(patch.values);
-    if (changed.some(id => !fields.some(f => f.id === id && f.active))) throw new ValidationError('Choose an active closing field.');
+    if (Object.keys(patch.values).some(id => !fields.some(f => f.id === id && f.active))) throw new ValidationError('Choose an active closing field.');
     const normalized = Object.fromEntries(Object.entries(patch.values).map(([id, value]) => [id, typeof value === 'string' ? value.trim() : value]));
+    const previousValues = deal.closingValues as ClosingValues;
+    const changed = Object.keys(normalized).filter(id => !isDeepStrictEqual(previousValues[id], normalized[id]));
+    if (!changed.length) return { state: await readState(tx, tenantId, dealId), transition: null, before: deal, updated: deal };
     const values: ClosingValues = { ...deal.closingValues as ClosingValues, ...normalized };
     const errors = await validateValues(tx, tenantId, dealId, fields, values);
     const invalid = changed.filter(id => errors[id]);
     if (invalid.length) throw new ValidationError(invalid.map(id => errors[id]).join(' '));
-    await tx.deal.update({ where: { id: dealId, tenantId }, data: { closingValues: values } });
+    const updated = await tx.deal.update({ where: { id: dealId, tenantId }, data: { closingValues: values } });
     await tx.activity.create({ data: { tenantId, dealId, createdById: actorId, type: 'note', title: 'Closed Won requirements updated', description: fields.filter(f => changed.includes(f.id)).map(f => f.name).join(', '), metadata: { source: 'closing_requirements', fieldIds: changed } } });
     let transition: Awaited<ReturnType<typeof moveDealStage>> = null;
     const missingRequired = fields.some(field => field.active && field.required && errors[field.id]);
@@ -64,11 +68,14 @@ export async function saveValues(tenantId: string, actorId: string, dealId: stri
       transition = await moveDealStage(dealId, tenantId, wonStages[0].id, actorId, undefined, undefined, undefined, undefined, tx);
       if (transition?.stageHistory) await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'deal.stage_changed', entityType: 'Deal', entityId: dealId, changeset: { before: { stageId: deal.stageId }, after: { stageId: wonStages[0].id } }, metadata: { source: 'closing_requirements' } } });
     }
-    return { state: await readState(tx, tenantId, dealId), transition };
+    return { state: await readState(tx, tenantId, dealId), transition, before: deal, updated: transition?.deal ?? updated };
   });
   if (result.transition?.stageHistory) {
     const { deal, stageHistory } = result.transition;
     await fireDealStageChanged({ tenantId, actorId, eventId: stageHistory.id, deal, newStageId: deal.stageId, newStageName: deal.stage.name, isWon: true, isLost: false, prevStageId: stageHistory.previousStageId ?? undefined });
   }
+  const changes = recordChanges(result.before, result.updated);
+  if (changes.changedFields.length) await fireDealUpdated({ tenantId, actorId, record: result.updated,
+    eventId: result.transition?.stageHistory?.id, changedFields: changes.changedFields, changes });
   return result.state;
 }

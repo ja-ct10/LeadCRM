@@ -3,12 +3,14 @@ import { writeAuditLog } from '../../../core/audit/audit.service';
 import { NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 import { CreateContactDto, UpdateContactDto, ConvertContactDto } from './contacts.dto';
 import { paginate } from '../../../shared/helpers/pagination';
-import { fireLeadCreated, fireLeadStatusChanged } from '../../automation/triggers/triggers.service';
+import { fireLeadCreated, fireLeadStatusChanged, fireContactCreated, fireContactStatusChanged, fireContactUpdated, fireDealUpdated } from '../../automation/triggers/triggers.service';
 import { createNotification } from '../../notifications/notifications.service';
 import { salesTransaction } from '../leads/lead-automation.service';
 import { convertClosedLead } from '../leads/lead-conversion.service';
 import { assertClosedStatus, changeCustomerStatus } from '../engagement.service';
 import { normalizeCrmStatus } from '@leadcrm/shared';
+import { fireLeadUpdated } from '../../automation/triggers/triggers.service';
+import { recordChanges } from '../record-updates';
 
 export async function getContacts(tenantId: string, query: Record<string, unknown>) {
   const result = await repo.findAllContacts(tenantId, query);
@@ -82,7 +84,10 @@ export async function updateContact(
     entityId:   id,
   });
 
-  // This service owns Leads; Client Profile events belong to contacts-v2.
+  const changes = recordChanges(before, contact);
+  if (changes.changedFields.length) await fireLeadUpdated({ tenantId, actorId: userId, record: contact, changedFields: changes.changedFields, changes });
+
+  // This service owns Leads; Contact events belong to contacts-v2.
   if (dto.status && dto.status !== before.status) {
     await fireLeadStatusChanged({
       tenantId,
@@ -117,7 +122,7 @@ export async function restoreContact(id: string, tenantId: string, userId: strin
 
 /** The legacy endpoint uses the same successful-sales conversion transaction. */
 export async function convertContact(id: string, tenantId: string, userId: string, dto: ConvertContactDto) {
-  return salesTransaction(async tx => {
+  const committed = await salesTransaction(async tx => {
     const lead = await tx.lead.findFirst({ where: { tenantId, id } });
     if (!lead) throw new NotFoundError('Lead');
     if (dto.createContact === false) throw new ValidationError('Closed Lead conversion requires a Contact.');
@@ -125,6 +130,12 @@ export async function convertContact(id: string, tenantId: string, userId: strin
     if (dto.dealId && !await tx.deal.findFirst({ where: { tenantId, id: dto.dealId,
       OR: [{ leadId: id }, { leadDeals: { some: { tenantId, leadId: id } } }] } })) throw new ValidationError('Choose a Deal already associated with this Lead.');
     await assertClosedStatus(tx, tenantId, { leadId: id });
+    // Capture the records this conversion may link before any transaction writes.
+    const previousContacts = await tx.contact.findMany({ where: { tenantId, OR: [
+      { id: dto.contactId ?? lead.contactId ?? '' },
+      ...(lead.email?.trim() ? [{ email: { contains: lead.email.trim(), mode: 'insensitive' as const } }] : []),
+    ] } });
+    const previousDeals = await tx.deal.findMany({ where: { tenantId, OR: [{ leadId: id }, { leadDeals: { some: { tenantId, leadId: id } } }] } });
     // Never replace the identity of a previously converted customer on a retry.
     if (!lead.convertedAt) await tx.lead.update({ where: { tenantId, id }, data: {
       ...(dto.contactId ? { contactId: dto.contactId } : {}), ...(dto.accountId ? { accountId: dto.accountId } : {}),
@@ -134,6 +145,25 @@ export async function convertContact(id: string, tenantId: string, userId: strin
     const converted = await convertClosedLead(tx, tenantId, id, userId);
     const account = converted.accountId ? await tx.account.findFirst({ where: { tenantId, id: converted.accountId } }) : null;
     const deal = dto.dealId ? await tx.deal.findFirst({ where: { tenantId, id: dto.dealId } }) : null;
-    return { lead: converted.lead, contact: { ...converted.contact, status: normalizeCrmStatus(converted.contact.status) }, account, deal };
+    const updatedDeals = await tx.deal.findMany({ where: { tenantId, id: { in: previousDeals.map(record => record.id) } } });
+    return { lead: converted.lead, contact: converted.contact, account, deal, previousLead: lead,
+      previousContact: previousContacts.find(record => record.id === converted.contact.id), previousDeals, updatedDeals };
   });
+  // Workflow side effects run only after a successful commit, never on a retry/rollback.
+  const { lead, contact, account, deal, previousLead, previousContact, previousDeals, updatedDeals } = committed;
+  const leadChanges = recordChanges(previousLead, lead);
+  if (leadChanges.changedFields.length) await fireLeadUpdated({ tenantId, actorId: userId, record: lead, changedFields: leadChanges.changedFields, changes: leadChanges });
+  await fireLeadStatusChanged({ tenantId, actorId: userId, lead, prevStatus: previousLead.status });
+  if (!previousContact) await fireContactCreated({ tenantId, actorId: userId, contact });
+  else {
+    const changes = recordChanges(previousContact, contact);
+    if (changes.changedFields.length) await fireContactUpdated({ tenantId, actorId: userId, record: contact, changedFields: changes.changedFields, changes });
+    await fireContactStatusChanged({ tenantId, actorId: userId, contact, prevStatus: previousContact.status });
+  }
+  for (const record of updatedDeals) {
+    const previous = previousDeals.find(before => before.id === record.id)!;
+    const changes = recordChanges(previous, record);
+    if (changes.changedFields.length) await fireDealUpdated({ tenantId, actorId: userId, record, changedFields: changes.changedFields, changes });
+  }
+  return { lead, contact: { ...contact, status: normalizeCrmStatus(contact.status) }, account, deal };
 }

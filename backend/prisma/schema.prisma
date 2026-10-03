@@ -417,6 +417,7 @@ model TenantDocument {
 // ORGANIZATION
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Account {
+  productInterestOther String?
   id               String    @id @default(uuid())
   tenantId         String
   assignedUserId   String?
@@ -465,6 +466,7 @@ model Account {
 // LEAD
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Lead {
+  productInterestOther String?
   creationKey String?
   @@unique([tenantId, creationKey])
   formSubmissions FormSubmission[]
@@ -542,6 +544,7 @@ model Lead {
 
 // -----------------------------------------------------
 model Contact {
+  productInterestOther String?
   formSubmissions FormSubmission[]
   id                  String               @id @default(uuid())
   tenantId            String
@@ -665,6 +668,9 @@ model Stage {
 // DEAL
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Deal {
+  productInterestOther String?
+  hasEverBeenWon Boolean @default(false)
+  wonHistoryVerified Boolean @default(true)
   productInterestIds String[] @default([])
   recordFiles RecordFile[]
   productInterestId String?

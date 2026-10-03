@@ -18,7 +18,7 @@ it('keeps runs, action order, refresh and pagination in the record Sheet', async
   const details = dialog.querySelector('details')!;
   fireEvent.click(details.querySelector('summary')!);
   expect(details.textContent).toContain('Ada Lovelace');
-  expect(details.textContent).toContain('1. create task — completed');
+  expect(details.textContent).toContain('1. Create Task — completed');
   fireEvent.click(screen.getByRole('button', { name: 'Next' }));
   await waitFor(() => expect(workflowsApi.getExecutions).toHaveBeenLastCalledWith('wf', 2));
   await waitFor(() => expect((screen.getByRole('button', { name: 'Refresh activity' }) as HTMLButtonElement).disabled).toBe(false));

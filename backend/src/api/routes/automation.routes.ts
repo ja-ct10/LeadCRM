@@ -16,6 +16,7 @@ router.use(workspaceReadyMiddleware);
 
 // ── Workflows ─────────────────────────────────────────
 router.get('/workflow-options', authorize('workflows.view'), workflowController.getOptions);
+router.get('/workflow-name-availability', authorize('workflows.view'), workflowController.getWorkflowNameAvailability);
 router.get(   '/workflows',                   authorize('workflows.view'),     workflowController.getWorkflows);
 router.get(   '/workflows/:id',               authorize('workflows.view'),     workflowController.getWorkflowById);
 router.post(  '/workflows',                   authorize('workflows.create'),   validate(CreateWorkflowSchema), (req, res, next) => req.body.isActive ? authorize('workflows.activate')(req, res, next) : next(), workflowController.createWorkflow);

@@ -17,7 +17,7 @@ import {
 } from '@/shared/services/workflows.api';
 import { Button } from '@/shared/components/ui/button';
 import WorkflowBuilder from './visual-workflow-builder';
-import { WORKFLOW_RECIPES } from '../services/workflow-recipes';
+import { WORKFLOW_RECIPES, prepareWorkflowRecipe } from '../services/workflow-recipes';
 export default function WorkflowBuilderPage() {
   const router = useRouter(),
     params = useParams<{ id?: string }>(),
@@ -67,7 +67,7 @@ export default function WorkflowBuilderPage() {
               isActive: saved.isActive,
             }
           : selected
-            ? structuredClone(selected)
+            ? prepareWorkflowRecipe(selected, options.data)
             : {
                 name: '',
                 description: '',
@@ -124,6 +124,7 @@ export default function WorkflowBuilderPage() {
       key={`${tenant?.id}:${id ?? 'new'}:${retry}`}
       {...loaded}
       workflowId={id}
+      onCheckName={async (name, excludeId) => (await workflowsApi.nameAvailability(name, excludeId)).data.available}
       canActivate={canEdit}
       readOnly={!!id && (!canEdit || query.get('view') === 'true')}
       onClose={() => router.push('/automation/workflows')}

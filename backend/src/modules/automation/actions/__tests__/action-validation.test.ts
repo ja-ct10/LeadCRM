@@ -8,5 +8,5 @@ it('rejects update-field actions for Deals after Deal descriptions are retired',
     'tenant',
     undefined,
     true,
-  )).rejects.toThrow('Action update_field is not supported for deal.');
+  )).rejects.toThrow('Choose an editable field for this record.');
 });

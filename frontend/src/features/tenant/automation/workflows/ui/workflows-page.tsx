@@ -88,7 +88,12 @@ export default function WorkflowsPage() {
     catch (failure) { toast.error(failure instanceof Error ? failure.message : 'Unable to complete this action.'); }
     finally { mutationLock.current = false; setBusy(false); }
   }
-  const duplicateWorkflow = (workflow: Workflow) => void mutate(async () => { const full = (await workflowsApi.get(workflow.id)).data; await workflowsApi.create({ ...toWorkflowDraft(full), name: `${full.name.slice(0,248)} (Copy)`, isActive: false }); }, 'Workflow duplicated as a draft.');
+  const duplicateWorkflow = (workflow: Workflow) => void mutate(async () => {
+    const full = (await workflowsApi.get(workflow.id)).data;
+    const { data: availability } = await workflowsApi.nameAvailability(full.name);
+    if (!availability.suggestedName) throw new Error('Unable to suggest a duplicate name. Refresh and try again.');
+    await workflowsApi.create({ ...toWorkflowDraft(full), name: availability.suggestedName, isActive: false });
+  }, 'Workflow duplicated as a draft.');
   const toggleWorkflow = (workflow: Workflow) => void mutate(() => workflowsApi.toggle(workflow.id, !workflow.isActive), workflow.isActive ? 'Workflow paused.' : 'Workflow activated.');
   if (!canView) return <p className="p-6 text-[var(--text-primary)]">You do not have permission to view workflows.</p>;
   return <div className="p-4 sm:p-6 space-y-6 text-[var(--text-primary)]">

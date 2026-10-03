@@ -1,5 +1,9 @@
 ﻿import { Request, Response, NextFunction } from 'express';
 import * as service from './workflows.service';
+export async function getWorkflowNameAvailability(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try { res.json({ success: true, data: await service.getWorkflowNameAvailability(req.user!.tenantId, req.query.name, req.query.excludeId) }); }
+  catch (err) { next(err); }
+}
 export async function getOptions(req: Request, res: Response, next: NextFunction): Promise<void> {
   try { res.json({ success: true, data: await service.getOptions(req.user!.tenantId, req.user!.userId) }); }
   catch (err) { next(err); }

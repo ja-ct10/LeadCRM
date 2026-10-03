@@ -7,6 +7,7 @@ import { ProductInterestIdSchema, ClosedWonConfirmationSchema } from '@leadcrm/s
 const id = () => z.string().min(1);
 
 export const CreateDealSchema = z.object({
+  productInterestOther: recordText(1000).nullable().optional(),
   productInterestIds: z.array(ProductInterestIdSchema).min(1).max(100).transform(ids => [...new Set(ids)]).optional(),
   productInterestId: ProductInterestIdSchema.optional(),
   pipelineId:        id(),

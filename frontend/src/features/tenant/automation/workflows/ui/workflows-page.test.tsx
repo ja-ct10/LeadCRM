@@ -13,11 +13,12 @@ vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant'
 vi.mock('./workflow-execution-log-modal', () => ({ WorkflowExecutionLogModal: () => <div>Run history</div> }));
 vi.mock('@/shared/services/workflows.api', () => ({
   getWorkflowMetadata: async () => ({ triggers: WORKFLOW_TRIGGERS, actions: [] }),
-  workflowsApi: { get: vi.fn(), list: vi.fn(), create: vi.fn(), toggle: vi.fn(), archive: vi.fn() },
+  workflowsApi: { get: vi.fn(), list: vi.fn(), create: vi.fn(), toggle: vi.fn(), archive: vi.fn(), nameAvailability: vi.fn() },
 }));
 const workflow = { id: 'wf', name: 'Follow up', trigger: 'lead.created', status: 'ACTIVE', isActive: true, conditions: null, actions: [] };
 beforeEach(() => {
   clearPageCache(); vi.clearAllMocks();
+  vi.mocked(workflowsApi.nameAvailability).mockResolvedValue({ success: true, data: { available: false, suggestedName: 'Follow up (Copy)' } });
   vi.mocked(workflowsApi.get).mockResolvedValue({ data: workflow } as never);
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));

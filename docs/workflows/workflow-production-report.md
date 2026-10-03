@@ -1,5 +1,7 @@
 # Workflow production implementation report
 
+Current polish behavior and migration notes: [2026-10-03 workflow polish](workflow-polish-2026-10-03.md). This older report retains the earlier implementation history.
+
 Date: 2026-09-25. Implementation and verification are local. No production migration, deployment or live provider delivery was performed.
 
 ## A. Workflow architecture
