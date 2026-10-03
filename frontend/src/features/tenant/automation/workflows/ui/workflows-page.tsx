@@ -20,8 +20,7 @@ import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dial
 import { LeadsPagination } from '@/shared/components/crm/leads-pagination';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
 import { WorkflowExecutionLogModal } from './workflow-execution-log-modal';
-import { WorkflowDialog } from './workflow-dialog';
-import { WORKFLOW_RECIPES } from '../services/workflow-recipes';
+import { WorkflowCreateDialog } from './workflow-create-dialog';
 export function toWorkflowDraft(workflow: Workflow): WorkflowDraft {
   return { name: workflow.name, description: workflow.description, trigger: workflow.trigger, conditions: workflow.conditions,
     actions: workflow.actions, isActive: workflow.isActive };
@@ -130,7 +129,7 @@ export default function WorkflowsPage() {
         ...(canEdit ? [{ id: 'pause', label: 'Pause', destructive: false, onExecute: async (ids: string[]) => { const result = await executeSelectedRows(ids, async id => { const current = (await workflowsApi.get(id)).data; if (current.isActive) await workflowsApi.toggle(id, false); }); await refreshWorkflows(); return result; } }] : []),
         ...(canDelete ? [{ id: 'archive', label: 'Archive', destructive: true, entityName: 'workflow', onExecute: async (ids: string[]) => { const result = await executeSelectedRows(ids, workflowsApi.archive); await refreshWorkflows(); return result; } }] : []),
       ]} />
-    {createOpen && <WorkflowDialog title="Create workflow" onClose={() => setCreateOpen(false)}><Button onClick={() => router.push('/automation/workflows/new')}>Start from scratch</Button><h3 className="font-semibold">Use a template</h3>{WORKFLOW_RECIPES.map((recipe,index) => <Button className="w-full justify-start" variant="outline" key={recipe.name} onClick={() => router.push(`/automation/workflows/new?template=${index}`)}>{recipe.name}</Button>)}</WorkflowDialog>}
+    {createOpen && canCreate && metadata && <WorkflowCreateDialog key={`${tenant?.id}:${user?.id}`} triggers={metadata.triggers} actions={metadata.actions} onClose={() => setCreateOpen(false)} onChoose={index => { router.push(index === undefined ? '/automation/workflows/new' : `/automation/workflows/new?template=${index}`); setCreateOpen(false); }} />}
     {runs && <WorkflowExecutionLogModal workflowId={runs.id} name={runs.name} status={runs.status === 'DRAFT' ? 'Draft' : runs.isActive ? 'Active' : 'Paused'} onClose={() => setRuns(null)} />}
     <ConfirmActionDialog open={!!archiving} onOpenChange={open => {if (!open) setArchiving(null);}} title="Archive workflow?" description="This pauses the workflow and preserves its run history." confirmLabel="Archive" variant="destructive" onConfirm={async () => { if (archiving) await mutate(async () => {await workflowsApi.archive(archiving.id);setSelected(new Set());setArchiving(null);},'Workflow archived.'); }} />
   </div>;

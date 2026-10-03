@@ -50,17 +50,17 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     ],
   },
   {
-    name: 'Qualified Lead Discovery Preparation',
-    description: 'Schedule discovery task and update notes when a lead is marked Qualified.',
+    name: 'Warm Lead Discovery Preparation',
+    description: 'Schedule a discovery task and update notes when a lead becomes Warm.',
     trigger: 'lead.status_changed',
     isActive: false,
     conditions: {
       operator: 'AND',
-      conditions: [{ field: 'lead.status', operator: 'equals', value: 'Qualified' }],
+      conditions: [{ field: 'lead.status', operator: 'equals', value: 'Warm' }],
     },
     actions: [
-      { type: 'create_task', config: { title: 'Schedule discovery call for {{company}}', dueDaysFromNow: 2, priority: 'High', description: 'Prepare presentation deck and schedule qualification call.' } },
-      { type: 'update_field', config: { field: 'description', value: 'Lead qualified by marketing. Ready for sales discovery call.' } },
+      { type: 'create_task', config: { title: 'Schedule discovery call with {{first_name}}', dueDaysFromNow: 2, priority: 'High', description: 'Prepare presentation deck and schedule qualification call.' } },
+      { type: 'update_field', config: { field: 'description', value: 'Lead became warm. Prepare a sales discovery call.' } },
     ],
   },
   {
@@ -78,16 +78,16 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     ],
   },
   {
-    name: 'Converted Lead Milestone',
-    description: 'Log milestone notes when a lead is converted.',
+    name: 'Closed Lead Milestone',
+    description: 'Update milestone notes when a lead becomes Closed, including after conversion.',
     trigger: 'lead.status_changed',
     isActive: false,
     conditions: {
       operator: 'AND',
-      conditions: [{ field: 'lead.status', operator: 'equals', value: 'Converted' }],
+      conditions: [{ field: 'lead.status', operator: 'equals', value: 'Closed' }],
     },
     actions: [
-      { type: 'update_field', config: { field: 'description', value: 'Successfully converted to contact and opportunity.' } },
+      { type: 'update_field', config: { field: 'description', value: 'Lead closed. Review the record history and complete any remaining handoff.' } },
     ],
   },
   {
@@ -106,7 +106,7 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     trigger: 'lead.created',
     isActive: false,
     actions: [
-      { type: 'send_email', config: { senderUserId: '', subject: 'Thank you for connecting, {{first_name}}', body: '<p>Hi {{first_name}},</p><p>Thank you for reaching out to us at {{company}}. We received your details and an account representative will be in touch shortly.</p>' } },
+      { type: 'send_email', config: { senderUserId: '', subject: 'Thank you for connecting, {{first_name}}', body: '<p>Hi {{first_name}},</p><p>Thank you for reaching out to our team. We received your details and an account representative will be in touch shortly.</p>' } },
       { type: 'create_task', config: { title: 'Confirm welcome email receipt with {{first_name}}', dueDaysFromNow: 2, priority: 'Low' } },
     ],
   },

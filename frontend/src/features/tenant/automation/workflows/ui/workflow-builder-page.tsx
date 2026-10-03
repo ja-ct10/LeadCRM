@@ -1,7 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { toast } from 'sonner';
 import type {
   WorkflowDraft,
   WorkflowOptions,
@@ -55,6 +54,9 @@ export default function WorkflowBuilderPage() {
       .then(([metadata, options, response]) => {
         if (cancelled) return;
         const saved = response?.data;
+        if (!saved && recipe !== null && (!/^(0|[1-9]\d*)$/.test(recipe) || !WORKFLOW_RECIPES[Number(recipe)])) {
+          throw new Error('This workflow template is unavailable. Return to workflows and choose another template.');
+        }
         const selected =
           recipe === null ? undefined : WORKFLOW_RECIPES[Number(recipe)];
         const initial: WorkflowDraft = saved
@@ -111,6 +113,7 @@ export default function WorkflowBuilderPage() {
       <div role="alert" className="p-6 space-y-3">
         <p>{error}</p>
         <Button onClick={() => setRetry(retry + 1)}>Retry</Button>
+        <Button variant="outline" onClick={() => router.push('/automation/workflows')}>Back to workflows</Button>
       </div>
     );
   if (!loaded)
@@ -135,9 +138,6 @@ export default function WorkflowBuilderPage() {
           ? await updateWorkflow(targetId, draft)
           : await addWorkflow(draft);
         createdId.current = saved.id;
-        toast.success(
-          draft.isActive ? 'Workflow saved and activated.' : 'Draft saved.',
-        );
         if (!id) router.replace(`/automation/workflows/${saved.id}/edit`);
         return saved;
       }}

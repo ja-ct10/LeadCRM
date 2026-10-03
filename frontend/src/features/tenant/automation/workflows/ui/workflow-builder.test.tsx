@@ -14,6 +14,8 @@ import {
   type WorkflowDraft,
 } from '@leadcrm/shared';
 import WorkflowBuilder from './visual-workflow-builder';
+import { toast } from 'sonner';
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 import { workflowsApi } from '@/shared/services/workflows.api';
 vi.mock('@/shared/services/workflows.api', () => ({
   workflowsApi: { validate: vi.fn() },
@@ -73,6 +75,37 @@ function setup(
 }
 const button = (name: string | RegExp) => screen.getByRole('button', { name });
 describe('visual workflow editor', () => {
+  it('cancels activation without saving and submits only once with one success toast', async () => {
+    let resolve!: () => void;
+    const save = vi.fn().mockImplementation(() => new Promise<void>(done => { resolve = done; }));
+    setup({ save });
+    fireEvent.click(button('Save and activate'));
+    fireEvent.click(button('Keep editing'));
+    expect(save).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
+    fireEvent.click(button('Save and activate'));
+    fireEvent.click(button('Confirm activation'));
+    fireEvent.click(button('Working…'));
+    expect(save).toHaveBeenCalledOnce();
+    await act(async () => resolve());
+    expect(toast.success).toHaveBeenCalledExactlyOnceWith('Workflow saved and activated.');
+  });
+  it('reports a rejected validation without saving or announcing success', async () => {
+    const { save } = setup();
+    vi.mocked(workflowsApi.validate).mockResolvedValue({ success: true, data: { valid: false, message: 'Reconnect the selected Gmail sender.' } });
+    fireEvent.click(button('Validate'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledExactlyOnceWith('Reconnect the selected Gmail sender.'));
+    expect(save).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert').textContent).toContain('Reconnect');
+  });
+  it('describes saving an active workflow as paused rather than a new draft', async () => {
+    const { save } = setup({ initial: { ...initial, isActive: true } });
+    fireEvent.click(button('Save and pause'));
+    await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ isActive: false })));
+    expect(toast.success).toHaveBeenCalledExactlyOnceWith('Workflow saved and paused.');
+    expect(screen.getByText('Changes saved. This workflow is paused.')).toBeTruthy();
+  });
   it('updates condition summaries immediately and serializes numeric ALL rules', async () => {
     const { save } = setup();
     fireEvent.click(button(/ALL conditions match/));
@@ -81,6 +114,8 @@ describe('visual workflow editor', () => {
     });
     expect(screen.getByText('Deal Value is greater than 25000')).toBeTruthy();
     fireEvent.click(button('Save and activate'));
+    expect(save).not.toHaveBeenCalled();
+    fireEvent.click(button('Confirm activation'));
     await waitFor(() =>
       expect(save).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -148,6 +183,7 @@ describe('visual workflow editor', () => {
       screen.getByText('Disabled · skipped during execution'),
     ).toBeTruthy();
     fireEvent.click(button('Save and activate'));
+    fireEvent.click(button('Confirm activation'));
     await waitFor(() =>
       expect(save).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -199,11 +235,13 @@ describe('visual workflow editor', () => {
         .mockRejectedValue(new Error('Choose an active workspace user.')),
     });
     fireEvent.click(button('Save and activate'));
+    fireEvent.click(button('Confirm activation'));
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toContain(
         'Choose an active workspace user.',
       ),
     );
+    expect(toast.error).toHaveBeenCalledWith('Choose an active workspace user.');
     expect(close).not.toHaveBeenCalled();
     vi.mocked(workflowsApi.validate).mockResolvedValue({
       success: true,
@@ -220,6 +258,7 @@ describe('visual workflow editor', () => {
       ).toContain('No actions executed'),
     );
     expect(save).toHaveBeenCalledOnce();
+    expect(toast.success).toHaveBeenCalledWith('Configuration valid. No actions executed.');
   });
   it('guards dirty exits and leaves saved changes in the editor', async () => {
     const { save, close } = setup();

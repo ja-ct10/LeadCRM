@@ -1,7 +1,7 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { WORKFLOW_TRIGGERS } from '@leadcrm/shared';
+import { getAvailableActions, WORKFLOW_TRIGGERS } from '@leadcrm/shared';
 import WorkflowsPage from './workflows-page';
 import { workflowsApi } from '@/shared/services/workflows.api';
 import { clearPageCache } from '@/shared/cache/page-cache';
@@ -12,7 +12,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { id: 'user', }, userCan: () => true }) }));
 vi.mock('./workflow-execution-log-modal', () => ({ WorkflowExecutionLogModal: () => <div>Run history</div> }));
 vi.mock('@/shared/services/workflows.api', () => ({
-  getWorkflowMetadata: async () => ({ triggers: WORKFLOW_TRIGGERS, actions: [] }),
+  getWorkflowMetadata: async () => ({ triggers: WORKFLOW_TRIGGERS, actions: getAvailableActions() }),
   workflowsApi: { get: vi.fn(), list: vi.fn(), create: vi.fn(), toggle: vi.fn(), archive: vi.fn(), nameAvailability: vi.fn() },
 }));
 const workflow = { id: 'wf', name: 'Follow up', trigger: 'lead.created', status: 'ACTIVE', isActive: true, conditions: null, actions: [] };
@@ -25,6 +25,21 @@ beforeEach(() => {
   vi.mocked(workflowsApi.list).mockImplementation(async query => ({ success: true, data: [{ ...workflow, id: `wf${query?.page}` }], meta: { total: query?.status ? 1 : 31, page: query?.page ?? 1, limit: query?.limit ?? 10, hasMore: true } }) as never);
 });
 afterEach(() => { cleanup(); clearPageCache(); vi.unstubAllGlobals(); });
+
+it('opens the chosen template at its original catalog index and supports starting from scratch', async () => {
+  Element.prototype.scrollTo = vi.fn();
+  render(<WorkflowsPage />); await screen.findByRole('grid');
+  fireEvent.click(screen.getByRole('button', { name: /Create workflow/i }));
+  fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Contact Welcome & Check-in Email' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Preview Contact Welcome & Check-in Email' }));
+  expect(push).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Use this template' }));
+  expect(push).toHaveBeenCalledExactlyOnceWith('/automation/workflows/new?template=12');
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  fireEvent.click(screen.getByRole('button', { name: /Create workflow/i }));
+  fireEvent.click(screen.getByRole('button', { name: 'Start from scratch' }));
+  expect(push).toHaveBeenLastCalledWith('/automation/workflows/new');
+});
 
 it('requests server pages and sizes, uses real totals, and resets filtered pagination', async () => {
   render(<WorkflowsPage />);

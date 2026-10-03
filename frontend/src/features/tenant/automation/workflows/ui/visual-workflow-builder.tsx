@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import {
   DndContext,
   DragOverlay,
@@ -119,6 +120,7 @@ export default function WorkflowBuilder({
     [busy, setBusy] = useState(false);
   const [changeTrigger, setChangeTrigger] = useState<string | null>(null),
     [exit, setExit] = useState<(() => void) | null>(null);
+  const [confirmActivation, setConfirmActivation] = useState(false);
   const operation = useRef(false),
     focusOrigin = useRef<HTMLElement | null>(null),
     leaving = useRef(false);
@@ -409,13 +411,17 @@ export default function WorkflowBuilder({
     setDragging(null);
     if (item && target) place(item, target);
   }
-  async function submit(activate: boolean, validateOnly = false) {
+  function reportError(message: string) {
+    setError(message);
+    toast.error(message);
+  }
+  async function submit(activate: boolean, validateOnly = false, confirmed = false) {
     if (operation.current || readOnly || (activate && !canActivate)) return;
     setError('');
     setMessage('');
     if (nameIssue) {
       select('details');
-      setError(nameIssue);
+      reportError(nameIssue);
       return;
     }
     const local = editorIssues(
@@ -427,7 +433,7 @@ export default function WorkflowBuilder({
     );
     if (local.length) {
       select(local[0].step);
-      setError(local[0].message);
+      reportError(local[0].message);
       return;
     }
     const parsed = WorkflowDraftSchema.safeParse({
@@ -435,19 +441,29 @@ export default function WorkflowBuilder({
       isActive: activate,
     });
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? 'Review the workflow.');
+      reportError(parsed.error.issues[0]?.message ?? 'Review the workflow.');
+      return;
+    }
+    if (activate && !confirmed) {
+      closeInspector();
+      setConfirmActivation(true);
       return;
     }
     operation.current = true;
     setBusy(true);
     try {
-      if (validateOnly)
-        setMessage((await workflowsApi.validate(parsed.data)).data.message);
+      if (validateOnly) {
+        const result = (await workflowsApi.validate(parsed.data)).data;
+        if (!result.valid) throw new Error(result.message || 'Review the workflow configuration.');
+        setMessage(result.message);
+        toast.success(result.message);
+      }
       else {
         const result = await onSave(parsed.data),
           persisted = result ? toDraft(result) : parsed.data;
+        const paused = !persisted.isActive && (result?.status === 'PAUSED' || saved.isActive || savedStatus === 'PAUSED');
         setSaved(persisted);
-        setSavedStatus(result?.status ?? (activate ? 'ACTIVE' : 'DRAFT'));
+        setSavedStatus(result?.status ?? (persisted.isActive ? 'ACTIVE' : paused ? 'PAUSED' : 'DRAFT'));
         if (result) setSavedId(result.id);
         setHistory({
           present: { ...document, draft: persisted },
@@ -455,13 +471,14 @@ export default function WorkflowBuilder({
           future: [],
         });
         setMessage(
-          activate
+          persisted.isActive
             ? 'Saved and active. Matching CRM events will run this workflow.'
-            : 'Draft saved. This workflow is inactive.',
+            : paused ? 'Changes saved. This workflow is paused.' : 'Draft saved. This workflow is inactive.',
         );
+        toast.success(persisted.isActive ? 'Workflow saved and activated.' : paused ? 'Workflow saved and paused.' : 'Draft saved.');
       }
     } catch (failure) {
-      setError(
+      reportError(
         failure instanceof Error ? failure.message : 'Unable to save workflow.',
       );
     } finally {
@@ -474,6 +491,7 @@ export default function WorkflowBuilder({
     operation.current = true;
     setBusy(true);
     setError('');
+    setMessage('');
     try {
       const result = await onPause();
       setSaved(toDraft(result));
@@ -488,8 +506,9 @@ export default function WorkflowBuilder({
       setMessage(
         'Workflow paused. Remaining actions will be skipped; an already dispatched action cannot be recalled.',
       );
+      toast.success('Workflow paused.');
     } catch (failure) {
-      setError(
+      reportError(
         failure instanceof Error
           ? failure.message
           : 'Unable to pause workflow.',
@@ -1024,6 +1043,16 @@ export default function WorkflowBuilder({
           <Button onClick={() => applyTrigger(changeTrigger)}>
             Change trigger
           </Button>
+        </WorkflowDialog>
+      )}
+      {confirmActivation && (
+        <WorkflowDialog title={saved.isActive ? 'Save changes to active workflow?' : 'Activate workflow?'} onClose={() => { if (!busy) setConfirmActivation(false); }}>
+          <p className="text-sm leading-relaxed">{draft.name} will run when {trigger?.label ?? 'its trigger'} occurs and its conditions match. {draft.actions.filter(action => action.enabled !== false).length} enabled action(s) may create tasks, update records, or send messages.</p>
+          <p className="text-sm text-[var(--muted-foreground)]">Review recipients, assigned agents, and field changes before activating. Already dispatched actions cannot be recalled.</p>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="outline" disabled={busy} onClick={() => setConfirmActivation(false)}>Keep editing</Button>
+            <Button disabled={busy} onClick={() => { setConfirmActivation(false); void submit(true, false, true); }}>Confirm activation</Button>
+          </div>
         </WorkflowDialog>
       )}
       {exit && (

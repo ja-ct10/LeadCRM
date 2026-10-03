@@ -11,6 +11,8 @@ import { sendEmail } from '../../../../integrations/gmail/gmail.service';
 import app from '../../../../app';
 import { sendMail } from '../../../../shared/services/email.service';
 import { createCampaign } from '../../../marketing/campaigns/campaigns.service';
+import { dispatchTenantNotifications } from '../../../notifications/notification-events.service';
+import { prepareWorkflowRecipe, WORKFLOW_RECIPES } from '../../../../../../frontend/src/features/tenant/automation/workflows/services/workflow-recipes';
 
 vi.mock('../../../../shared/services/email.service', async importOriginal => ({
   ...await importOriginal<typeof import('../../../../shared/services/email.service')>(),
@@ -107,6 +109,59 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     expect(history[0].steps.map(step => step.status)).toEqual(['success', 'success', 'success']);
     expect(await prisma.activity.count({ where: { leadId: record.id, title: `Workflow: ${workflow.name}`, createdById: actor.id } })).toBe(1);
     expect((await call(`/automation/workflows/${workflow.id}/executions`)).body.data[0].id).toBe(history[0].id);
+    // Workflow tasks use the existing CRM notification path, including its retry deduplication.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await scope(() => dispatchTenantNotifications(tenantId));
+      const notifications = await prisma.notification.findMany({ where: { tenantId, type: 'task_assigned', entityId: task.id } });
+      expect(notifications).toHaveLength(1);
+      expect(notifications[0].userId).toBe(owner.id);
+    }
+  });
+  it.each(WORKFLOW_RECIPES)('executes configured catalog template: $name', async recipe => {
+    const draft = prepareWorkflowRecipe(recipe, { users: [{ id: owner.id, name: 'Assigned agent' }], templates: [], campaigns: [],
+      pipelines: [{ id: deal.pipelineId, name: 'Sales', stages: [{ id: required.id, name: 'Qualified' }] }] });
+    for (const action of draft.actions) {
+      if (action.type === 'assign_owner') action.config.userId = owner.id;
+      if (action.type === 'send_email') action.config.senderUserId = actor.id;
+      if (action.type === 'move_deal_stage') action.config.stageId = contacted.id;
+    }
+    const entity = draft.trigger.split('.')[0];
+    const status = draft.conditions?.conditions.find(rule => rule.field === `${entity}.status`)?.value;
+    const stageId = draft.trigger === 'deal.closed_won' ? won.id : draft.trigger === 'deal.closed_lost' ? lost.id
+      : draft.trigger === 'deal.stage_changed' ? required.id : deal.stageId;
+    const record = await scope(async () => {
+      const customer = { tenantId, firstName: 'Recipe', lastName: 'Recipient', email: 'recipe@example.test', assignedUserId: actor.id };
+      if (entity === 'lead') return prisma.lead.create({ data: { ...customer, source: 'Website', status: String(status ?? 'Warm'), productInterest: [] } });
+      if (entity === 'contact') return prisma.contact.create({ data: { ...customer, company: 'Example', status: String(status ?? 'WARM') as 'HOT', activeProducts: [], productInterests: [] } });
+      return prisma.deal.create({ data: { tenantId, title: 'Catalog opportunity', pipelineId: deal.pipelineId, stageId,
+        assignedUserId: actor.id, value: 300000, priority: 'HIGH', tags: [], productInterests: [], wonHistoryVerified: true } });
+    });
+    const workflow = await create(draft.actions, { ...draft, name: `${draft.name} ${randomUUID()}`, isActive: true });
+    vi.mocked(sendEmail).mockImplementation(async () => ({ messageId: randomUUID(), threadId: randomUUID() }));
+    const context = entity === 'deal' && draft.trigger !== 'deal.created'
+      ? { 'event.previousStageId': deal.stageId, 'event.newStageId': stageId } : {};
+    const event = { tenantId, actorId: actor.id, eventId: randomUUID(), entityType: entity, entityId: record.id, triggerType: draft.trigger, context };
+    await scope(() => fireWorkflowTrigger(event));
+    // Delivery retries cannot duplicate tasks or emails from the same event.
+    await scope(() => fireWorkflowTrigger(event));
+    const history = await runs(workflow.id);
+    expect(history).toHaveLength(1);
+    expect(history[0].status, JSON.stringify(history[0])).toBe('completed');
+    expect(history[0].steps.map(step => step.status)).toEqual(draft.actions.map(() => 'success'));
+    const tasks = await prisma.task.findMany({ where: { tenantId, ...(entity === 'lead' ? { leadId: record.id } : entity === 'contact' ? { contactId: record.id } : { dealId: record.id }) } });
+    expect(tasks).toHaveLength(draft.actions.filter(action => action.type === 'create_task').length);
+    for (const task of tasks) {
+      expect(task.title).not.toContain('{{');
+      expect(task.assignedUserId).toBe(draft.actions.some(action => action.type === 'assign_owner') ? owner.id : actor.id);
+    }
+    expect(vi.mocked(sendEmail)).toHaveBeenCalledTimes(draft.actions.filter(action => action.type === 'send_email').length);
+    for (const action of draft.actions) {
+      if (action.type === 'update_field') {
+        const updated = entity === 'lead' ? await prisma.lead.findUniqueOrThrow({ where: { id: record.id } }) : await prisma.contact.findUniqueOrThrow({ where: { id: record.id } });
+        expect(updated[action.config.field as keyof typeof updated]).toBe(action.config.value);
+      }
+      if (action.type === 'move_deal_stage') expect((await prisma.deal.findUniqueOrThrow({ where: { id: record.id } })).stageId).toBe(contacted.id);
+    }
   });
   it('persists disabled steps, skips their side effects, and validates them again when enabled', async () => {
     const workflow = await create([
