@@ -27,7 +27,7 @@ const disposable = url.hostname === '127.0.0.1' && /^\/leadcrm_mailbox_test_\d+$
 describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
   let tenantId: string, otherTenant: string, userId: string, token: string, denied: string, otherStaff: string, account: EmailAccount, base: string, server: Server;
   let stages: Record<string, string>, pipelineId: string;
-  const permissions = { crmEdit: true, dealsEdit: true, dealsView: true };
+  const permissions = { leadsView: true, contactsView: true, leadsEdit: true, contactsEdit: true, dealsEdit: true, dealsView: true };
   const now = new Date(), day = 86400000, before = (days: number) => new Date(+now - days * day);
   const scope = <T>(work: () => T) => tenantContext.run({ tenantId }, work);
   const realFetch = globalThis.fetch;
@@ -208,7 +208,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     expect((await call('/integrations/gmail/status', 'GET', undefined, denied)).status).toBe(403);
     expect((await call('/integrations/gmail/status', 'GET', undefined, otherStaff)).body.isConnected).toBe(false);
     expect((await call('/integrations/gmail/status')).body).not.toHaveProperty('accessToken');
-    const c = await customer(); await ingest([message(c.thread, c.email, 'inbound', 'We want to proceed.')], { ...permissions, crmEdit: false });
+    const c = await customer(); await ingest([message(c.thread, c.email, 'inbound', 'We want to proceed.')], { ...permissions, leadsEdit: false, contactsEdit: false });
     expect((await read(c.lead.id)).status).toBe('Warm'); expect(await stageOf(c.deals[0].id)).toBe('Lead');
   });
   it('blocks closing through record creation, CSV imports, or stage reconfiguration', async () => {

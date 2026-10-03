@@ -37,7 +37,7 @@ function SortableStage({ stage, index, name, busy, canEdit, canDelete, onName, o
 }
 
 export function PipelineStagesDialog({ pipelineId, onClose, onChanged }: { pipelineId: string; onClose: () => void; onChanged: () => Promise<void> }) {
-  const canEdit = useHasPermission('deals.edit'), canCreate = useHasPermission('deals.create'), canDelete = useHasPermission('deals.delete');
+  const canEdit = useHasPermission('deals.manage_stages'), canCreate = useHasPermission('deals.manage_stages'), canDelete = useHasPermission('deals.manage_stages');
   const [stages, setStages] = useState<Stage[]>([]), [names, setNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [name, setName] = useState(''), [removing, setRemoving] = useState<Stage>();

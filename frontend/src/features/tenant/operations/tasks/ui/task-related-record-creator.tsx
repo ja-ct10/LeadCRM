@@ -40,7 +40,7 @@ export function TaskRelatedRecordCreator({
   onCancel: () => void;
   onBusy: (busy: boolean) => void;
 }) {
-  const canEditLeads = useHasPermission("contacts.edit");
+  const canEditLeads = useHasPermission("leads.edit");
   const canCreateContacts = useHasPermission("contacts.create");
   const canCreateAccounts = useHasPermission("accounts.create");
   const canViewAccounts = useHasPermission("accounts.view");

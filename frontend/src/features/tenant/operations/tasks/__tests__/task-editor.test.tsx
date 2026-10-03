@@ -33,9 +33,9 @@ vi.mock("@/store/AuthContext", () => ({
 }));
 vi.mock("@/shared/hooks/use-permissions", () => ({
   useHasPermission: (permission: string) =>
-    permission === "contacts.edit"
+    permission === "leads.edit"
       ? mocks.canEditLeads
-      : permission !== "deals.edit" || mocks.canEdit,
+      : permission !== "tasks.edit" || mocks.canEdit,
 }));
 vi.mock("@/lib/config", () => ({ USE_MOCK_DATA: false }));
 vi.mock("@/shared/services/tasks.api", () => ({

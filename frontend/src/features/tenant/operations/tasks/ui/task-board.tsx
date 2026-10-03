@@ -51,9 +51,10 @@ const periods = [
 export default function TaskBoard() {
   const requestedTaskId = useSearchParams().get('taskId');
   const { updateTask, bulkTasks, users } = useData();
-  const canCreate = useHasPermission("deals.create"),
-    canEdit = useHasPermission("deals.edit"),
-    canDelete = useHasPermission("deals.delete");
+  const canCreate = useHasPermission("tasks.create"),
+    canEdit = useHasPermission("tasks.edit"),
+    canDelete = useHasPermission("tasks.archive");
+  const canComplete = useHasPermission("tasks.complete"), canAssign = useHasPermission("tasks.assign");
   const [period, setPeriod] = useState<Period>("all");
   const [search, setSearch] = useState(""),
     [debounced, setDebounced] = useState("");
@@ -182,7 +183,7 @@ export default function TaskBoard() {
   }, [showFilters, data.canRead, data.identity, filterSearch, users]);
 
   const change = async (task: TaskRecord) => {
-    if (mutationPending.current || !canEdit || task.isArchived) return;
+    if (mutationPending.current || !(task.status === "completed" ? canEdit : canComplete) || task.isArchived) return;
     const started = identity.current;
     mutationPending.current = true;
     setBusy(true);
@@ -220,7 +221,7 @@ export default function TaskBoard() {
     if (
       !ids.length ||
       mutationPending.current ||
-      (operation === "archive" ? !canDelete : !canEdit)
+      (operation === "archive" ? !canDelete : operation === "complete" ? !canComplete : operation === "assign" ? !canAssign : !canEdit)
     )
       return;
     if (
@@ -439,6 +440,8 @@ export default function TaskBoard() {
               query={query}
               busy={busy}
               canEdit={canEdit}
+              canComplete={canComplete}
+              canAssign={canAssign}
               canArchive={canDelete}
               totalRecords={total}
               onManageColumns={() => setColumnsOpen(true)}
@@ -463,8 +466,7 @@ export default function TaskBoard() {
         )}
       </ModuleWorkspace>
       <SelectedRowsBar count={selected.length} onClear={() => setSelected([])} disabled={busy}>
-            {canEdit && (
-              <>
+            {canComplete && (
                 <Button
                   size="sm"
                   disabled={busy || data.loading || !!filters.archived}
@@ -472,6 +474,8 @@ export default function TaskBoard() {
                 >
                   Mark as done
                 </Button>
+            )}
+            {canAssign && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -483,6 +487,8 @@ export default function TaskBoard() {
                 >
                   Assign
                 </Button>
+            )}
+            {canEdit && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -495,7 +501,6 @@ export default function TaskBoard() {
                 >
                   Reschedule
                 </Button>
-              </>
             )}
             {canDelete && (
               <Button

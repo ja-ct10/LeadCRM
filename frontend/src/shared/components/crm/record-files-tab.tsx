@@ -252,7 +252,7 @@ export function RecordFilesTab({
   onUpload,
   onDelete,
 }: RecordFilesTabProps): React.ReactElement {
-  const canDelete = useHasPermission(deletePermission ?? 'contacts.delete' as PermissionKey);
+  const canDelete = useHasPermission(deletePermission ?? 'contacts.archive' as PermissionKey);
 
   return (
     <div className="w-full min-w-0 p-4 space-y-4">

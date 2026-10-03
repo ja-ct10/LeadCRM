@@ -26,7 +26,7 @@ const php = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' 
 
 function ProductView({ id }: { id: string }) {
   const { user } = useAuth();
-  const canViewDeals = useHasPermission('deals.view');
+  const canViewDeals = useHasPermission('products.view_closed_won');
   const [product, setProduct] = useState<ProductInterest | null>(null);
   const [deals, setDeals] = useState<ProductWonDeal[]>([]);
   const [page, setPage] = useState(1);
@@ -73,7 +73,7 @@ function ProductView({ id }: { id: string }) {
 
 export function ProductsPage() {
   const { products, loading, error, refresh, enabled } = useProductInterests();
-  const canEdit = useHasPermission('settings.edit');
+  const canEdit = useHasPermission('products.edit'), canCreate = useHasPermission('products.create'), canArchive = useHasPermission('products.archive');
   const { user } = useAuth();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [panel, setPanel] = useState<{ mode: 'view' | 'edit' | 'new'; product?: ProductInterest } | null>(null);
@@ -94,7 +94,7 @@ export function ProductsPage() {
   useEffect(() => { setPage(value => Math.min(value, Math.max(1, Math.ceil(filtered.length / pageSize)))); }, [filtered.length, pageSize]);
   const changed = (result: ProductInterestResponse) => window.dispatchEvent(new CustomEvent('product-interests-changed', { detail: result }));
   async function enableProducts() {
-    if (!canEdit || lock.current) return;
+    if (!canCreate || lock.current) return;
     lock.current = true; setBusy(true);
     try {
       changed(await apiClient.post<ProductInterestResponse>(endpoint + '/field', {}));
@@ -103,7 +103,7 @@ export function ProductsPage() {
     finally { lock.current = false; setBusy(false); }
   }
   async function save(data: { name: string; dealValue: number }) {
-    if (!canEdit || lock.current) return;
+    if (!(panel?.mode === 'edit' ? canEdit : canCreate) || lock.current) return;
     lock.current = true; setBusy(true);
     try {
       const result = panel?.mode === 'edit' ? await apiClient.patch<ProductInterestResponse>(`${endpoint}/${panel.product!.id}`, data) : await apiClient.post<ProductInterestResponse>(endpoint, data);
@@ -112,7 +112,7 @@ export function ProductsPage() {
     finally { lock.current = false; setBusy(false); }
   }
   async function archive() {
-    if (!canEdit || lock.current) return;
+    if (!canArchive || lock.current) return;
     lock.current = true; setBusy(true);
     try {
       const { succeeded, failed } = await executeSelectedRows(archiveIds, async id => changed(await apiClient.delete<ProductInterestResponse>(`${endpoint}/${id}`)));
@@ -130,18 +130,18 @@ export function ProductsPage() {
   ];
   return <div className="min-w-0 max-w-full space-y-4">
     <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h2 className="text-xl font-semibold">Products</h2><p className="mt-1 text-sm text-muted-foreground">Manage products and their default Deal values.</p></div>
-      {canEdit && <Button aria-label="Add Product" title="Add Product" disabled={busy || !enabled} onClick={() => setPanel({ mode: 'new' })} className="shrink-0"><Plus size={16} /><span className="hidden sm:inline">Add Product</span></Button>}
+      {canCreate && <Button aria-label="Add Product" title="Add Product" disabled={busy || !enabled} onClick={() => setPanel({ mode: 'new' })} className="shrink-0"><Plus size={16} /><span className="hidden sm:inline">Add Product</span></Button>}
     </div>
     <div className="flex flex-wrap items-center gap-2"><ModuleSearchInput label="Search products" placeholder="Search products..." value={search} onChange={value => { setSearch(value); setPage(1); }} /><RefreshButton label="Refresh products" refreshing={loading} disabled={busy || loading} onClick={refresh} /></div>
     {error && <p role="alert" className="text-destructive">{error}</p>}
-    {!enabled && <div className="space-y-2"><p className="text-sm text-muted-foreground">Enable Product Interest to add products.</p>{canEdit && <Button variant="outline" disabled={busy} onClick={() => void enableProducts()}>Enable Product Interest</Button>}</div>}
-    {loading && !products.length ? <TableLoadingState label="Loading products" /> : <DataGrid columns={columns} data={filtered.slice((page - 1) * pageSize, page * pageSize)} getRowId={row => row.id} height="auto" selectable={canEdit} selectedIds={selected} onSelectionChange={ids => { if (!busy) setSelected(ids); }} sort={sort} onSortChange={setSort} sortingMode="external" enableColumnMenu={false} ariaLabel="Products table" summaryLabel={`${filtered.length} products`} onRowClick={product => setPanel({ mode: 'view', product })}
-      rowActions={product => [{ id: 'view', label: 'View', icon: <Eye size={14} />, onClick: () => setPanel({ mode: 'view', product }) }, ...(canEdit ? [
-        { id: 'edit', label: 'Edit', icon: <Edit size={14} />, disabled: busy, onClick: () => setPanel({ mode: 'edit', product }) },
-        { id: 'archive', label: 'Archive', icon: <Archive size={14} />, separator: true, disabled: busy, onClick: () => setArchiveIds([product.id]) },
+    {!enabled && <div className="space-y-2"><p className="text-sm text-muted-foreground">Enable Product Interest to add products.</p>{canCreate && <Button variant="outline" disabled={busy} onClick={() => void enableProducts()}>Enable Product Interest</Button>}</div>}
+    {loading && !products.length ? <TableLoadingState label="Loading products" /> : <DataGrid columns={columns} data={filtered.slice((page - 1) * pageSize, page * pageSize)} getRowId={row => row.id} height="auto" selectable={canArchive} selectedIds={selected} onSelectionChange={ids => { if (!busy) setSelected(ids); }} sort={sort} onSortChange={setSort} sortingMode="external" enableColumnMenu={false} ariaLabel="Products table" summaryLabel={`${filtered.length} products`} onRowClick={product => setPanel({ mode: 'view', product })}
+      rowActions={product => [{ id: 'view', label: 'View', icon: <Eye size={14} />, onClick: () => setPanel({ mode: 'view', product }) }, ...((canEdit || canArchive) ? [
+        { id: 'edit', label: 'Edit', icon: <Edit size={14} />, disabled: busy || !canEdit, onClick: () => setPanel({ mode: 'edit', product }) },
+        { id: 'archive', label: 'Archive', icon: <Archive size={14} />, separator: true, disabled: busy || !canArchive, onClick: () => setArchiveIds([product.id]) },
       ] : [])]} />}
     <LeadsPagination currentPage={page} pageSize={pageSize} totalRecords={filtered.length} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); }} disabled={busy} />
-    <SelectedRowsBar count={selected.size} onClear={() => setSelected(new Set())} disabled={busy}>{canEdit && <Button variant="outline" disabled={busy} onClick={() => setArchiveIds([...selected])}>Archive</Button>}</SelectedRowsBar>
+    <SelectedRowsBar count={selected.size} onClear={() => setSelected(new Set())} disabled={busy}>{canArchive && <Button variant="outline" disabled={busy} onClick={() => setArchiveIds([...selected])}>Archive</Button>}</SelectedRowsBar>
     <SlidingDrawer isOpen={!!panel} onClose={() => { if (!busy) setPanel(null); }} title={panel?.mode === 'new' ? 'New Product' : panel?.mode === 'edit' ? 'Edit Product' : 'Product details'}>
       <div className="min-w-0 p-4 sm:p-6">{panel?.mode === 'view' ? <ProductView key={panel.product!.id} id={panel.product!.id} /> : panel && <ProductEditor key={panel.product?.id ?? 'new'} product={panel.product} busy={busy} onSave={save} onCancel={() => setPanel(null)} />}</div>
     </SlidingDrawer>

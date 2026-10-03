@@ -20,13 +20,14 @@ export async function mailboxPermissions(tenantId: string, userId: string, check
   requireEmployeeAccount(user);
   if (user.status !== 'ACTIVE' || user.mustChangePassword || ['SUSPENDED', 'REJECTED'].includes(user.tenantStatus ?? '') || user.role === 'Client Admin' && !isOnboardingComplete(user)) throw new AppError('Mailbox access unavailable.', 403);
   const identity = { userId, tenantId, role: user.role };
-  await assertPermissions(identity, ['contacts.view']);
-  const allowed = async (permission: 'contacts.edit' | 'deals.edit' | 'deals.view') => {
+  const allowed = async (permission: 'leads.view' | 'contacts.view' | 'leads.edit' | 'contacts.edit' | 'deals.edit' | 'deals.view') => {
     try { await assertPermissions(identity, [permission]); return true; } catch (error) { if (error instanceof AppError && error.statusCode === 403) return false; throw error; }
   };
+  const leadsView = await allowed('leads.view'), contactsView = await allowed('contacts.view');
+  if (!leadsView && !contactsView) throw new AppError('CRM View permission is required.', 403);
   const account = await prisma.emailAccount.findUnique({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } } });
   if (checkOwnership && account && !isMailboxOwner({ userId, tenantId, email: user.email }, account.email)) throw new AppError('Mailbox ownership does not match, or temporary test access expired. Reconnect your staff work email in Messages.', 403);
-  return { crmEdit: await allowed('contacts.edit'), dealsEdit: await allowed('deals.edit'), dealsView: await allowed('deals.view') };
+  return { leadsView, contactsView, leadsEdit: await allowed('leads.edit'), contactsEdit: await allowed('contacts.edit'), dealsEdit: await allowed('deals.edit'), dealsView: await allowed('deals.view') };
 }
 
 export async function decorateEmails(tenantId: string, userId: string, emails: GmailEmail[], permissions: MailboxPermissions) {
@@ -36,7 +37,7 @@ export async function decorateEmails(tenantId: string, userId: string, emails: G
   const openDeals = permissions.dealsView ? await prisma.deal.findMany({ where: { tenantId, id: { in: saved.map(row => row.dealId).filter((id): id is string => !!id) }, isArchived: false, stage: { isWon: false, isLost: false } }, select: { id: true } }) : [];
   return emails.map(email => { const row = saved.find(item => item.providerMessageId === email.id); return {
     ...email, direction: row?.direction ?? (normalizeEmail(email.from) === normalizeEmail(account.email) ? 'outbound' : [...email.to, ...(email.cc ?? [])].some(address => normalizeEmail(address) === normalizeEmail(account.email)) ? 'inbound' : 'unknown'),
-    leadId: row?.leadId, contactId: row?.contactId, dealId: permissions.dealsView ? row?.dealId : undefined,
+    leadId: permissions.leadsView ? row?.leadId : undefined, contactId: permissions.contactsView ? row?.contactId : undefined, dealId: permissions.dealsView ? row?.dealId : undefined,
     needsDealAssociation: permissions.dealsView ? row?.needsDealAssociation : false, readyToClose: !!row?.readyToClose && openDeals.some(deal => deal.id === row.dealId),
   }; });
 }
@@ -65,6 +66,7 @@ export async function associateMailboxDeal(tenantId: string, userId: string, thr
     const links = messages.filter(message => message.leadId || message.contactId);
     if (links.length !== 1) throw new AppError('This thread must have one unambiguous CRM email match.', 409);
     const link: CustomerLink = links[0].leadId ? { leadId: links[0].leadId } : { contactId: links[0].contactId! };
+    if (!(link.leadId ? permissions.leadsView : permissions.contactsView)) throw new AppError('Access denied', 403);
     const deal = await tx.deal.findFirst({ where: { ...customerDealWhere(tenantId, link), id: dealId, stage: { isWon: false, isLost: false } } });
     if (!deal) throw new AppError('Select an open Deal belonging to the linked CRM record.', 400);
     const key = { tenantId, module: 'mailbox-thread', key: `${account.id}:${threadId}` };

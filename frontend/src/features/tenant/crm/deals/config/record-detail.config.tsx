@@ -16,7 +16,7 @@ export const dealDetailConfig: RecordDetailConfig = {
   module: 'deals',
   permissionModule: 'deals',
   editPermission: 'deals.edit',
-  deletePermission: 'deals.delete',
+  deletePermission: 'deals.archive',
   statuses: DEAL_STATUSES,
   activityFilterKey: 'dealId',
   headerExtra: 'pipeline-progress',
@@ -24,8 +24,8 @@ export const dealDetailConfig: RecordDetailConfig = {
   actionTemplates: [
     { id: 'edit', label: 'Edit', icon: Pencil, primary: true, permission: 'deals.edit' },
     { id: 'duplicate', label: 'Duplicate', icon: Copy, permission: 'deals.create' },
-    { id: 'archive', label: 'Archive', icon: Archive, permission: 'deals.delete' },
-    { id: 'delete', label: 'Delete', icon: Trash2, variant: 'destructive', permission: 'deals.delete' },
+    { id: 'archive', label: 'Archive', icon: Archive, permission: 'deals.archive' },
+    { id: 'delete', label: 'Delete', icon: Trash2, variant: 'destructive', permission: 'deals.archive' },
   ],
 
   buildFieldSections: (record, onSave): FieldSection[] => [

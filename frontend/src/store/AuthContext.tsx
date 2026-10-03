@@ -7,6 +7,7 @@ import React, {
   useCallback, useRef, ReactNode,
 } from 'react';
 import { User, Tenant } from './types';
+import { hasModulePermission, isApplicablePermission } from '@leadcrm/shared';
 import type { ResolvedPermissions, PermissionAction } from './types/roles.types';
 import { MOCK_USERS, MOCK_TENANTS } from './mockData';
 import { authApi } from '@/shared/services/auth.api';
@@ -191,6 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch {
       if (activeUserId.current === id && permissionGeneration.current === generation) {
+        setPermissions({});
         setIsPermissionsLoaded(true);
       }
     }
@@ -209,8 +211,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const userCan = useCallback((module: string, action: PermissionAction): boolean => {
     if (!user) return false;
     const norm = user.role?.toLowerCase().trim() ?? '';
-    if (SUPER_ROLE_NAMES.some((r) => r.toLowerCase() === norm)) return true;
-    return permissions[module]?.[action] === true;
+    if (!isApplicablePermission(module, action)) return false;
+    if (user.role === 'Client Admin') return true;
+    return hasModulePermission(permissions, module, action);
   }, [user, permissions]);
 
   // ── Retry auth initialization after a transport failure ───────────

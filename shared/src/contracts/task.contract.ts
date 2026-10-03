@@ -122,7 +122,6 @@ const bulkIds = z
 export const TaskBulkSchema = z.discriminatedUnion("operation", [
   z.object({ operation: z.literal("complete"), ids: bulkIds }).strict(),
   z.object({ operation: z.literal("archive"), ids: bulkIds }).strict(),
-  z.object({ operation: z.literal("delete"), ids: bulkIds }).strict(),
   z
     .object({
       operation: z.literal("assign"),

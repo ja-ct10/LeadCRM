@@ -11,7 +11,7 @@ import { CustomFieldCard } from './custom-field-card';
 
 const endpoint = '/administration/deal-stage-automation';
 export function DealStageAutomationSettings() {
-  const canEdit = useHasPermission('settings.edit');
+  const canEdit = useHasPermission('custom_fields.edit');
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const query = useCachedPage<DealStageAutomation>({ module: 'settings', params: { dealStageAutomation: true },

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter, usePathname } from 'next/navigation';
-import { usePermissions, PERMISSION_BRIDGE } from '@/shared/hooks/use-permissions';
+import { usePermissions } from '@/shared/hooks/use-permissions';
 import { resolveModulePath, PATH_TO_PATHNAME } from '@/lib/route-map';
 import {
   LayoutDashboard, Briefcase, Workflow, Mail, Settings,
@@ -10,21 +10,21 @@ import {
 } from 'lucide-react';
 
 export const NAV_ITEMS = [
-  { name: 'Dashboard',         path: 'dashboard',         icon: LayoutDashboard, permission: null,             roles: null,          group: null },
+  { name: 'Dashboard',         path: 'dashboard',         icon: LayoutDashboard, permission: 'dashboard.view',             roles: null,          group: null },
   // ── CRM ─────────────────────────────────────────────
-  { name: 'Leads',             path: 'leads',             icon: Target,          permission: 'contacts.view',  roles: null,          group: 'CRM' },
+  { name: 'Leads',             path: 'leads',             icon: Target,          permission: 'leads.view',  roles: null,          group: 'CRM' },
   { name: 'Contacts',          path: 'contacts',          icon: UserCheck,       permission: 'contacts.view',  roles: null,          group: 'CRM' },
   { name: 'Accounts',          path: 'accounts',          icon: Building,        permission: 'accounts.view',  roles: null,          group: 'CRM' },
   { name: 'Deals',             path: 'pipeline',          icon: Briefcase,       permission: 'deals.view',     roles: null,          group: 'CRM' },
   // ── Operations ──────────────────────────────────────
-  { name: 'Tasks',             path: 'tasks',             icon: ListTodo,        permission: 'contacts.view',  roles: null,          group: 'Operations' },
+  { name: 'Tasks',             path: 'tasks',             icon: ListTodo,        permission: 'tasks.view',  roles: null,          group: 'Operations' },
   // ── Marketing ───────────────────────────────────────
   { name: 'Campaigns',         path: 'campaigns',         icon: Mail,            permission: 'campaigns.view', roles: null,          group: 'Marketing' },
   // ── Automation ──────────────────────────────────────
   { name: 'Workflows',         path: 'workflows',         icon: Workflow,        permission: 'workflows.view', roles: null,          group: 'Automation' },
   // ── Settings ────────────────────────────────────────
   // Single entry point for all configuration including Roles & Permissions.
-  { name: 'Settings',          path: 'settings',          icon: Settings,        permission: 'settings.view',  roles: null,          group: 'Settings' },
+  { name: 'Settings',          path: 'settings',          icon: Settings,        permission: null,  roles: null,          group: 'Settings' },
 ] as const;
 
 type NavItem = (typeof NAV_ITEMS)[number];
@@ -47,8 +47,7 @@ export function useLayout() {
 
     if (isSuper) return true;
     if (!item.permission) return true;
-    const legacyIds = (PERMISSION_BRIDGE as Record<string, string[]>)[item.permission] ?? [];
-    return userPermissions.includes(item.permission) || legacyIds.some(id => userPermissions.includes(id));
+    return userPermissions.includes(item.permission);
   };
 
   const filteredNav = NAV_ITEMS.filter(hasAccess);

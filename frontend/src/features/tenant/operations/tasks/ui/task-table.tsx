@@ -26,6 +26,8 @@ interface Props {
   query: TaskListQuery;
   busy: boolean;
   canEdit: boolean;
+  canComplete?: boolean;
+  canAssign?: boolean;
   canArchive: boolean;
   onEdit: (task: TaskRecord) => void;
   onArchive: (task: TaskRecord) => void;
@@ -42,14 +44,14 @@ export function TaskTable({
   onSort,
   query,
   busy,
-  canEdit,
+  canEdit, canComplete = false, canAssign = false,
   canArchive,
   onEdit,
   onArchive,
   totalRecords,
   onManageColumns,
 }: Props) {
-  const selectable = canEdit || canArchive;
+  const selectable = canEdit || canArchive || canComplete || canAssign;
   const relation = (text?: string | null) =>
     text ? (
       <span
@@ -85,7 +87,7 @@ export function TaskTable({
   const cell = (task: TaskRecord, id: string): ReactNode => {
     switch (id) {
       case "action":
-        return canEdit && !task.isArchived ? (
+        return (task.status === "completed" ? canEdit : canComplete) && !task.isArchived ? (
           <Button
             size="sm"
             variant="outline"

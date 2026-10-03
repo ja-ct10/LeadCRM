@@ -12,7 +12,7 @@ import { TaskEditor, type TaskLinks } from "./task-editor";
 export function RelatedTasks({ links, onCountChange }: { links: TaskLinks; onCountChange?: (count: number | undefined) => void }) {
   const [page, setPage] = useState(1),
     [editor, setEditor] = useState<TaskRecord | "new" | null>(null);
-  const canCreate = useHasPermission("deals.create");
+  const canCreate = useHasPermission("tasks.create");
   const query = Object.fromEntries(
     Object.entries(links).filter(([, value]) => !!value),
   ) as TaskListQuery;

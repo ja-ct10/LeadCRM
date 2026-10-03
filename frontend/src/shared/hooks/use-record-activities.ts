@@ -16,7 +16,7 @@ export const activityReadKey = { leads: 'leadId', accounts: 'accountId', deals: 
 export function useRecordActivities(module: ActivityModule, id: string | undefined, enabled = true, providedActivities?: TimelineActivity[]) {
   const { activities, users } = useData();
   const { user } = useAuth();
-  const canViewActivities = useHasPermission('contacts.view');
+  const canViewActivities = useHasPermission(`${module}.view`);
   const result = useCachedPage<TimelineActivity[]>({
     module: 'activities',
     params: { recordModule: module, id },

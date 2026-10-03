@@ -102,11 +102,13 @@ const NAV_GROUPS: NavGroup[] = [
 ];
 
 export default function SettingsPage(): React.ReactElement {
-  const { user, tenant } = useAuth();
+  const { user, tenant, userCan } = useAuth();
 
   const isClientAdmin = user?.role === "Client Admin";
 
-  const visibleNavGroups = NAV_GROUPS;
+  const tabModules: Partial<Record<SettingsTab, string>> = { 'org-general': 'settings', users: 'users', roles: 'roles', products: 'products', 'custom-fields': 'custom_fields', archived: 'archived_data', forms: 'forms' };
+  const canAccessTab = (tab: SettingsTab) => tab === 'users' ? userCan('users', 'canView') || userCan('groups', 'canView') : !tabModules[tab] || userCan(tabModules[tab]!, 'canView');
+  const visibleNavGroups = NAV_GROUPS.map(group => ({ ...group, items: group.items.filter(item => canAccessTab(item.id)) })).filter(group => group.items.length);
 
   const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
   const [isFormBuilderActive, setIsFormBuilderActive] = useState(false);
@@ -513,7 +515,7 @@ export default function SettingsPage(): React.ReactElement {
                 <h1 className="text-xl font-bold text-slate-900 dark:text-white">{activeItem?.label ?? 'Settings'}</h1>
               </div>
             )}
-            {activeTab === 'forms'
+            {!canAccessTab(activeTab) ? <p role="alert">You do not have permission to access this settings section.</p> : activeTab === 'forms'
               ? <FormsTab onBuilderActiveChange={setIsFormBuilderActive} />
               : activeTab === 'roles'
               ? <RolesPermissions onViewActiveChange={setIsRolesViewActive} />

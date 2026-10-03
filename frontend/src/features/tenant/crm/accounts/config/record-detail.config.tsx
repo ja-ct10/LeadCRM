@@ -11,13 +11,13 @@ export const accountDetailConfig: RecordDetailConfig = {
   module: 'accounts',
   permissionModule: 'accounts',
   editPermission: 'accounts.edit',
-  deletePermission: 'accounts.delete',
+  deletePermission: 'accounts.archive',
   statuses: [],
   activityFilterKey: 'organizationId',
 
   actionTemplates: [
     { id: 'edit', label: 'Edit', icon: Pencil, primary: true, permission: 'accounts.edit' },
-    { id: 'archive', label: 'Archive', icon: Archive, permission: 'accounts.delete' },
+    { id: 'archive', label: 'Archive', icon: Archive, permission: 'accounts.archive' },
   ],
 
   buildFieldSections: (record, onSave): FieldSection[] => [

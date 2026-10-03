@@ -37,8 +37,9 @@ export default function AccountsPage(): React.ReactElement {
   const router = useRouter();
   const { dialogProps, confirm, close } = useConfirmDialog();
   const canCreate = useHasPermission('accounts.create');
+  const canImport = useHasPermission('accounts.import');
   const canEdit = useHasPermission('accounts.edit');
-  const canDelete = useHasPermission('accounts.delete');
+  const canDelete = useHasPermission('accounts.archive');
 
   const { deals, users } = useData();
   const { getParam, getArrayParam, updateParams } = useFilterUrlSync('accounts');
@@ -358,7 +359,7 @@ export default function AccountsPage(): React.ReactElement {
         moduleConfig={ACCOUNTS_MODULE_CONFIG}
         primaryActionLabel="Add Account"
         onPrimaryAction={handleOpenCreate}
-        onImport={() => router.push('/crm/accounts/import')}
+        onImport={canImport ? () => router.push('/crm/accounts/import') : undefined}
         canCreate={canCreate}
         availableViews={['table']}
         activeView={'table' as ViewType}

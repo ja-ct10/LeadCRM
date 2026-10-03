@@ -186,3 +186,8 @@ export async function archiveCampaign(id: string, tenantId: string, userId: stri
   if (!result.count) throw new AppError('A sending campaign cannot be archived.', 409);
   await writeAuditLog({ tenantId, userId, action: 'campaign.archived', entityType: 'Campaign', entityId: id });
 }
+
+export async function duplicateCampaign(id: string, tenantId: string, userId: string) {
+  const original = await getCampaignById(id, tenantId);
+  return createCampaign(tenantId, userId, { name: original.name.slice(0, 140) + ' (Copy)', type: original.type, subject: original.subject ?? '', body: original.body ?? '', targetAudienceId: original.targetAudienceId, audienceSource: original.audienceSource, emailTemplateId: original.emailTemplateId, smsTemplateId: original.smsTemplateId });
+}

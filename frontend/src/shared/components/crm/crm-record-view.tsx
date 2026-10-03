@@ -175,8 +175,8 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const router = useRouter();
   const { user, tenant } = useAuth();
   const data = useData();
-  const canEdit = useHasPermission(module === 'deals' ? 'deals.edit' : module === 'accounts' ? 'accounts.edit' : 'contacts.edit');
-  const hasArchivePermission = useHasPermission(module === 'deals' ? 'deals.delete' : module === 'accounts' ? 'accounts.delete' : 'contacts.delete');
+  const canEdit = useHasPermission(module === 'deals' ? 'deals.edit' : module === 'accounts' ? 'accounts.edit' : module === 'leads' ? 'leads.edit' : 'contacts.edit');
+  const hasArchivePermission = useHasPermission(module === 'deals' ? 'deals.archive' : module === 'accounts' ? 'accounts.archive' : module === 'leads' ? 'leads.archive' : 'contacts.archive');
   const canArchive = hasArchivePermission && !USE_MOCK_DATA;
   const canCreateDeal = useHasPermission('deals.create');
   const canReadDeals = useHasPermission('deals.view');

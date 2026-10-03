@@ -9,16 +9,16 @@ import { CRM_DETAIL_STATUSES } from '@/shared/components/crm/crm-status';
 
 export const leadDetailConfig: RecordDetailConfig = {
   module: 'leads',
-  permissionModule: 'contacts',
-  editPermission: 'contacts.edit',
-  deletePermission: 'contacts.delete',
+  permissionModule: 'leads',
+  editPermission: 'leads.edit',
+  deletePermission: 'leads.archive',
   statuses: CRM_DETAIL_STATUSES,
   activityFilterKey: 'contactId',
 
   actionTemplates: [
-    { id: 'edit', label: 'Edit', icon: Pencil, primary: true, permission: 'contacts.edit' },
+    { id: 'edit', label: 'Edit', icon: Pencil, primary: true, permission: 'leads.edit' },
     { id: 'convert', label: 'Convert to Contact', icon: UserPlus, permission: 'contacts.create' },
-    { id: 'archive', label: 'Archive', icon: Archive, permission: 'contacts.delete' },
+    { id: 'archive', label: 'Archive', icon: Archive, permission: 'leads.archive' },
   ],
 
   buildFieldSections: (record, onSave): FieldSection[] => [
@@ -100,7 +100,7 @@ export const leadDetailConfig: RecordDetailConfig = {
       ],
       canAdd: true,
       addLabel: 'Add Task',
-      addPermission: 'contacts.create',
+      addPermission: 'tasks.create',
       emptyMessage: 'No tasks for this lead.',
     });
 

@@ -241,9 +241,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const roleIdentity = `${user?.id ?? ''}:${tenant?.id ?? ''}:${workspaceReady}`;
   const roleIdentityRef = useRef(roleIdentity);
   roleIdentityRef.current = roleIdentity;
+  const canReadRoles = userCan('roles', 'canView');
   const refreshRoles = useCallback(async () => {
     const identity = roleIdentityRef.current;
-    if (!workspaceReady || !tenant?.id) { setRolesLoading(false); return; }
+    if (!workspaceReady || !tenant?.id || !canReadRoles) { setRoles([]); setPermissions([]); setRolesLoading(false); return; }
     setRolesLoading(true); setRolesError('');
     try {
       const [rows, registry] = await Promise.all([rolesService.getAll(), rolesApi.getPermissionModules()]);
@@ -254,7 +255,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     } finally {
       if (identity === roleIdentityRef.current) setRolesLoading(false);
     }
-  }, [workspaceReady, tenant?.id, user?.id]);
+  }, [workspaceReady, tenant?.id, user?.id, canReadRoles]);
   useLayoutEffect(() => {
     setRoles([]); setPermissions([]);
     // Discard obsolete browser-only security data; the API is authoritative in every mode.
@@ -490,7 +491,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setAuditLogs(
         logs.filter((log: any) => !log.tenantId || log.tenantId === tenant.id),
       );
-      const canViewAllLeads = userCan('contacts', 'canView');
+      const canViewAllLeads = userCan('leads', 'canView');
       const canViewAllDeals = userCan('deals', 'canView');
 
       let filteredLeads = l.filter((x: any) => x.tenantId === tenant.id);
@@ -1301,10 +1302,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       try {
         if (!tasks.some(task => task.id === id && !task.isArchived)) throw new Error('Task not found.');
         if (dto.operation === 'archive') await deleteTask(id);
-        else if (dto.operation === 'delete') {
-          setTasks(previous => previous.filter(task => task.id !== id));
-          taskQueries.refreshTasks();
-        }
         else await updateTask(id, dto.operation === 'complete' ? { status: 'completed' } : dto.operation === 'assign' ? { assignedUserId: dto.assignedUserId } : { dueDate: dto.dueDate });
         result.succeeded.push(id);
       } catch (error) { result.failed.push({ id, error: error instanceof Error ? error.message : 'Task update failed.' }); }

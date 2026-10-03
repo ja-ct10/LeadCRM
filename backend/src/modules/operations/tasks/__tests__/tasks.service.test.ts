@@ -222,49 +222,8 @@ describe("Task service authority", () => {
     expect(writeAuditLog).not.toHaveBeenCalled();
   });
 
-  it("deletes within the tenant and audits the removed task", async () => {
-    db.task.deleteMany.mockResolvedValue({ count: 1 });
-    const result = await scoped(() =>
-      service.bulkTasks(tenantId, actorId, {
-        operation: "delete",
-        ids: [original.id, original.id],
-      }),
-    );
-    expect(result).toEqual({ succeeded: [original.id], failed: [] });
-    expect(db.task.deleteMany).toHaveBeenCalledExactlyOnceWith({
-      where: { id: original.id, tenantId, },
-    });
-    expect(writeAuditLog).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: "task.deleted",
-        entityId: original.id,
-      }),
-    );
-  });
-
-  it("never deletes a missing task or uses an unavailable actor", async () => {
-    db.task.findFirst.mockResolvedValueOnce(null);
-    expect(
-      (
-        await scoped(() =>
-          service.bulkTasks(tenantId, actorId, {
-            operation: "delete",
-            ids: [original.id],
-          }),
-        )
-      ).failed,
-    ).toHaveLength(1);
-    db.user.findFirst.mockResolvedValueOnce(null);
-    expect(
-      (
-        await scoped(() =>
-          service.bulkTasks(tenantId, actorId, {
-            operation: "delete",
-            ids: [original.id],
-          }),
-        )
-      ).failed,
-    ).toHaveLength(1);
+  it("rejects permanent deletion without touching storage", async () => {
+    await expect(scoped(() => service.bulkTasks(tenantId, actorId, { operation: "delete", ids: [original.id] }))).rejects.toThrow();
     expect(db.task.deleteMany).not.toHaveBeenCalled();
   });
 

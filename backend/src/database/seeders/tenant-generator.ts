@@ -61,7 +61,7 @@ export async function generateTenants(count: number = 10) {
     ];
 
     const roleEntities: Record<string, { id: string }> = {};
-    const modules = ['contacts', 'deals', 'organizations', 'campaigns', 'tasks', 'users', 'reports'];
+    const modules = ['leads', 'contacts', 'accounts', 'deals', 'campaigns', 'tasks', 'users'];
 
     for (const rd of rolesData) {
       const roleDef = await prisma.roleDefinition.upsert({

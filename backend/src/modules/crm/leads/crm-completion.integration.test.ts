@@ -42,7 +42,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     const agent = await user('sales', 'Sales Rep'); agentId = agent.id; agentToken = (await issueAuthSession(agent)).token;
     const other = await user('other', 'Sales Rep'); otherAgentId = other.id; otherToken = (await issueAuthSession(other)).token;
     const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Sales Rep' } });
-    await prisma.rolePermission.createMany({ data: ['contacts', 'deals', 'tasks'].map(module => ({ tenantId, roleId: role.id, module, canView: true, canCreate: true, canEdit: true })) });
+    await prisma.rolePermission.createMany({ data: ['leads', 'contacts', 'deals', 'tasks'].map(module => ({ tenantId, roleId: role.id, module, canView: true, canCreate: true, canEdit: true })) });
     await prisma.userRole.createMany({ data: [agentId, otherAgentId].map(userId => ({ tenantId, roleId: role.id, userId })) });
     const foreign = await prisma.tenant.create({ data: { name: 'Foreign', slug: randomUUID() } });
     foreignId = (await user('foreign', 'Client Admin', foreign.id)).id;
@@ -136,7 +136,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     const account = await prisma.emailAccount.create({ data: { tenantId, userId: agentId, email: 'sales@camxian.com', accessToken: 'test-only', scopes: [], connectedAt: before } });
     const message = (subject: string) => ({ id: randomUUID(), threadId: randomUUID(), rfcMessageId: randomUUID(), from: lead.email!, to: [account.email], subject,
       body: 'We want to proceed with the product purchase.', snippet: 'Purchase request', date: new Date().toISOString(), isRead: false, labels: ['INBOX'] });
-    const rights = { crmEdit: true, dealsEdit: true, dealsView: true };
+    const rights = { leadsView: true, contactsView: true, leadsEdit: true, contactsEdit: true, dealsEdit: true, dealsView: true };
     await scope(() => ingestMailboxMessages(account, [message('Camera quotation')], rights));
     expect((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).status).toBe('Hot');
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[0].id } })).stageId).toBe(stages.Lead);

@@ -50,9 +50,10 @@ export default function LeadsPage(): React.ReactElement {
   } = useData();
   const { user } = useAuth();
   const { dialogProps, confirm, close } = useConfirmDialog();
-  const canCreate = useHasPermission('contacts.create');
-  const canEdit = useHasPermission('contacts.edit');
-  const canDelete = useHasPermission('contacts.delete');
+  const canCreate = useHasPermission('leads.create');
+  const canImport = useHasPermission('leads.import');
+  const canEdit = useHasPermission('leads.edit');
+  const canDelete = useHasPermission('leads.archive');
   const { getParam, getArrayParam, updateParams } = useFilterUrlSync('leads');
 
   // ── Column Preferences ────────────────────────────────────────────────
@@ -462,7 +463,7 @@ export default function LeadsPage(): React.ReactElement {
         moduleConfig={LEADS_MODULE_CONFIG}
         primaryActionLabel="Create Lead"
         onPrimaryAction={handleCreate}
-        onImport={() => router.push('/crm/leads/import')}
+        onImport={canImport ? () => router.push('/crm/leads/import') : undefined}
         canCreate={canCreate}
         availableViews={['table']}
         activeView={'table' as ViewType}

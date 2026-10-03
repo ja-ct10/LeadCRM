@@ -98,14 +98,14 @@ export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandP
 
   const navItems = [
     { name: 'Dashboard',       path: 'dashboard',  icon: LayoutDashboard, permissions: ['p1'] },
-    { name: 'Client Profiles', path: 'contacts',   icon: Users,           permissions: ['contacts.view', 'p2', 'p2_own'] },
-    { name: 'Leads',           path: 'leads',      icon: Users,           permissions: ['contacts.view', 'p2', 'p2_own'] },
-    { name: 'Accounts',        path: 'accounts',   icon: Users,           permissions: ['accounts.view', 'p2', 'p2_own'] },
-    { name: 'Deals',           path: 'deals',      icon: Briefcase,       permissions: ['deals.view', 'p7', 'p7_own'] },
-    { name: 'Workflows',       path: 'workflows',  icon: Workflow,        permissions: ['workflows.view', 'p12'] },
-    { name: 'Campaigns',       path: 'campaigns',  icon: Mail,            permissions: ['campaigns.view', 'p17'] },
-    { name: 'Users',           path: 'users',      icon: Users,           permissions: ['users.view', 'p22'] },
-    { name: 'Settings',        path: 'settings',   icon: Settings,        permissions: ['settings.view', 'p27'] },
+    { name: 'Client Profiles', path: 'contacts',   icon: Users,           permissions: ['contacts.view'] },
+    { name: 'Leads',           path: 'leads',      icon: Users,           permissions: ['leads.view'] },
+    { name: 'Accounts',        path: 'accounts',   icon: Users,           permissions: ['accounts.view'] },
+    { name: 'Deals',           path: 'deals',      icon: Briefcase,       permissions: ['deals.view'] },
+    { name: 'Workflows',       path: 'workflows',  icon: Workflow,        permissions: ['workflows.view'] },
+    { name: 'Campaigns',       path: 'campaigns',  icon: Mail,            permissions: ['campaigns.view'] },
+    { name: 'Users',           path: 'users',      icon: Users,           permissions: ['users.view'] },
+    { name: 'Settings',        path: 'settings',   icon: Settings,        permissions: ['settings.view'] },
   ];
 
   const hasAccess = (item: { name: string; permissions?: string[]; roles?: string[]; enabled?: boolean }) => {

@@ -99,13 +99,13 @@ export default function CampaignsPage() {
   const avgOpenRate = totalMessagesSent ? totalOpened / totalMessagesSent * 100 : 0;
   const canCreateCampaign = useHasPermission('campaigns.create');
   const canEditCampaign = useHasPermission('campaigns.edit');
-  const canDeleteCampaign = useHasPermission('campaigns.delete');
+  const canDeleteCampaign = useHasPermission('campaigns.archive');
+  const canDuplicateCampaign = useHasPermission('campaigns.duplicate'), canViewReports = useHasPermission('campaigns.view_reports');
   const canSendCampaign = useHasPermission('campaigns.send');
 
   const handleDuplicate = async (camp: Campaign) => {
     try {
-      const full = (await campaignsApi.get(camp.id)).data;
-      await campaignsApi.create({ name: `${full.name.slice(0, 140)} (Copy)`, type: full.type === 'Email' ? 'EMAIL' : full.type === 'Sms' ? 'SMS' : 'MULTI_CHANNEL', subject: full.subject || '', body: full.body || '', targetAudienceId: full.targetAudienceId, audienceSource: full.audienceSource });
+      await campaignsApi.duplicate(camp.id);
       refetchCampaigns(); toast.success('Draft copy created.');
     } catch (e) { toast.error(e instanceof Error ? e.message : 'Could not duplicate campaign.'); }
   };
@@ -163,8 +163,8 @@ export default function CampaignsPage() {
 
   const filteredCampaigns = campaigns;
   const viewCampaign = (campaign: Campaign) => {
-    if (campaign.status.toLowerCase() === 'draft' && canEditCampaign) { setEditingCampaign(campaign); setShowBuilder(true); }
-    else setSelectedCampaignForReport(campaign);
+    if (campaign.status.toLowerCase() === 'draft' || !canViewReports) { setEditingCampaign(campaign); setShowBuilder(true); }
+    else if (canViewReports) setSelectedCampaignForReport(campaign);
   };
   const campaignColumns: DataGridColumnDef<Campaign>[] = [
     { id: 'name', sortable: true, header: 'Campaign', accessor: row => row.name, width: 260 },
@@ -177,7 +177,7 @@ export default function CampaignsPage() {
     { id: 'engagement', header: 'Engagement', accessor: row => `${row.sentCount ? Math.round((row.openedCount || 0) / row.sentCount * 100) : 0}%`, width: 130 },
     { id: 'createdAt', sortable: true, header: 'Created', accessor: row => row.createdAt, width: 180 },
   ];
-  const tableColumns = useModuleTableColumns('campaigns', CAMPAIGNS_TABLE_COLUMNS, campaignColumns);
+  const tableColumns = useModuleTableColumns('campaigns', CAMPAIGNS_TABLE_COLUMNS, campaignColumns.filter(column => canViewReports || !['submitted','opened','clicked','engagement'].includes(column.id)));
 
   if (showBuilder) {
     return <CampaignBuilder key={`${user?.tenantId}`} initialCampaign={editingCampaign} initialType={builderInitialType} initialContent={builderInitialContent} initialSubject={builderSubject} canSend={canSendCampaign}
@@ -254,7 +254,7 @@ export default function CampaignsPage() {
       </div>
 
       {/* 2. Overview Operational KPI Strip */}
-      <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-lg p-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 text-xs">
+      {canViewReports && <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-lg p-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 text-xs">
         <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
           <span className="text-slate-500 dark:text-slate-400 font-medium">Active Campaigns</span>
           <div className="flex items-baseline gap-1.5 mt-1">
@@ -302,6 +302,7 @@ export default function CampaignsPage() {
         </div>
       </div>
 
+      }
       {/* Tabs + contextual action per active tab */}
       <div className="flex items-center justify-between gap-2">
         {/* Tab strip */}
@@ -440,7 +441,7 @@ export default function CampaignsPage() {
               enableColumnMenu={false} ariaLabel="Campaigns table" summaryLabel={`${totalItems} total records`} onRowClick={viewCampaign}
               rowActions={campaign => [
                 { id: 'view', label: 'View', icon: <Eye size={14} />, onClick: () => viewCampaign(campaign) },
-                ...(canCreateCampaign ? [{ id: 'duplicate', label: 'Duplicate', icon: <Copy size={14} />, onClick: () => void handleDuplicate(campaign) }] : []),
+                ...(canDuplicateCampaign ? [{ id: 'duplicate', label: 'Duplicate', icon: <Copy size={14} />, onClick: () => void handleDuplicate(campaign) }] : []),
                 ...(canDeleteCampaign ? [{ id: 'archive', label: 'Archive', icon: <Archive size={14} />, separator: true, onClick: () => setArchiving(campaign) }] : []),
               ]} />}
             <BulkSelectionBar selectedCount={selected.size} selectedIds={selected} onClearSelection={() => setSelected(new Set())} onRemoveIds={ids => setSelected(previous => new Set([...previous].filter(id => !ids.includes(id))))}

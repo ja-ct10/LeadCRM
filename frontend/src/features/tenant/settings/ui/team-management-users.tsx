@@ -317,7 +317,8 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
     finally { setArchiving(false); }
   };
 
-  const canManageUsers = userCan('users', 'canEdit');
+  const canAssignRoles = userCan('roles', 'canAssign');
+  const canManageUsers = userCan('users', 'canEdit'), canCreateUsers = userCan('users', 'canCreate') && userCan('roles', 'canAssign'), canActivateUsers = userCan('users', 'canActivate'), canArchiveUsers = userCan('users', 'canArchive');
   const columns: DataGridColumnDef<User>[] = [
     { id: 'name', sortable: true, header: 'User', accessor: u => `${u.firstName} ${u.lastName}`, width: 240, cell: (_, u) => <button aria-label={`View ${u.firstName} ${u.lastName}`} onClick={() => openUser(u)} className="flex items-center gap-2 text-left"><UserAvatar user={u} /><span>{u.firstName} {u.lastName}</span></button> },
     { id: 'role', sortable: true, header: 'Role', accessor: u => u.role, width: 180, cell: (_, u) => <span className={cn('rounded-full border px-2 py-0.5 text-xs', roleColor(u.role))}>{u.role}</span> },
@@ -328,7 +329,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
   ];
 
   const tableColumns = useModuleTableColumns('users', USERS_TABLE_COLUMNS, columns);
-  const createAction = canManageUsers && <button aria-label="New user" title="New user" disabled={rolesLoading || !!rolesError} onClick={() => setIsAddOpen(true)} className="flex shrink-0 h-11 w-11 sm:h-auto sm:w-auto items-center justify-center gap-1.5 sm:px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold disabled:opacity-50">
+  const createAction = canCreateUsers && <button aria-label="New user" title="New user" disabled={rolesLoading || !!rolesError} onClick={() => setIsAddOpen(true)} className="flex shrink-0 h-11 w-11 sm:h-auto sm:w-auto items-center justify-center gap-1.5 sm:px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold disabled:opacity-50">
       <Plus size={16} /> <span className="hidden sm:inline">New User</span>
     </button>;
 
@@ -359,17 +360,17 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
         </motion.aside>}
         <div className="min-w-0 flex-1 space-y-4">
       {loading ? <TableLoadingState label="Loading users..." /> : loadError ? <DataErrorState message={loadError} onRetry={() => setReload(value => value + 1)} /> :
-        <DataGrid<User> sort={sort} sortingMode="external" onSortChange={next => setSort(next ?? { field: 'createdAt', direction: 'desc' })} columns={tableColumns.columns} data={paginated} getRowId={row => row.id} height="auto" selectable={canManageUsers} selectedIds={selected} onSelectionChange={setSelected} enableColumnMenu={false} ariaLabel="Team Management table" emptyMessage="No users found"
+        <DataGrid<User> sort={sort} sortingMode="external" onSortChange={next => setSort(next ?? { field: 'createdAt', direction: 'desc' })} columns={tableColumns.columns} data={paginated} getRowId={row => row.id} height="auto" selectable={canArchiveUsers} selectedIds={selected} onSelectionChange={setSelected} enableColumnMenu={false} ariaLabel="Team Management table" emptyMessage="No users found"
           onRowClick={u => openUser(u)} rowActions={u => [
             { id: 'view', label: 'View', onClick: () => openUser(u) },
-            ...(canManageUsers ? [
-              { id: 'edit', label: 'Edit', onClick: () => openUser(u, true) },
+            ...((canManageUsers || canAssignRoles || canActivateUsers || canArchiveUsers) ? [
+              { id: 'edit', label: canManageUsers ? 'Edit' : 'Change access', disabled: !canManageUsers && !canAssignRoles && !canActivateUsers, onClick: () => openUser(u, true) },
               { id: 'status', label: u.status === 'active' ? 'Mark as Inactive' : 'Mark as Active', onClick: async () => { try { const result = await usersService.update(u.id, { status: u.status === 'active' ? 'inactive' : 'active' }); if (result.data) handleSavedUser(result.data); toast.success('User status updated.'); } catch (e) { toast.error(e instanceof Error ? e.message : 'Unable to update user status.'); } } },
-              { id: 'archive', label: 'Archive', disabled: !!u.isArchived, onClick: () => setConfirmArchive(u) },
+              { id: 'archive', label: 'Archive', disabled: !!u.isArchived || !canArchiveUsers, onClick: () => setConfirmArchive(u) },
             ] : []),
           ]} />}
       <BulkSelectionBar selectedCount={selected.size} selectedIds={selected} onClearSelection={() => setSelected(new Set())} onRemoveIds={ids => setSelected(previous => new Set([...previous].filter(id => !ids.includes(id))))}
-        actions={canManageUsers ? [{ id: 'archive', label: 'Archive', entityName: 'user', destructive: true, onExecute: async ids => { const result = await executeSelectedRows(ids, usersService.archive); setReload(value => value + 1); return result; } }] : []} />
+        actions={canArchiveUsers ? [{ id: 'archive', label: 'Archive', entityName: 'user', destructive: true, onExecute: async ids => { const result = await executeSelectedRows(ids, usersService.archive); setReload(value => value + 1); return result; } }] : []} />
 
       {/* Pagination */}
       {!loading && !loadError && (
@@ -388,7 +389,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
       {/* Modals */}
       <AnimatePresence>
         {isAddOpen && (
-          <UserPanel roles={roleObjs} canEdit={canManageUsers} onSaved={handleSavedUser} onClose={() => setIsAddOpen(false)} />
+          <UserPanel roles={roleObjs} canEdit={canCreateUsers} onSaved={handleSavedUser} onClose={() => setIsAddOpen(false)} />
         )}
         {editingUser && (
           <UserPanel key={`${editingUser.id}:${initiallyEditing}`} initiallyEditing={initiallyEditing} user={editingUser} roles={roleObjs} canEdit={canManageUsers} onSaved={handleSavedUser} onClose={() => setEditingUser(null)} />

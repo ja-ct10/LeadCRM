@@ -200,7 +200,7 @@ it("keeps conversion errors visible without selecting a record", async () => {
 });
 
 it("blocks the relationship flow when Lead edit permission is missing", async () => {
-  api.denied = "contacts.edit";
+  api.denied = "leads.edit";
   render(
     <TaskRelatedRecordCreator
       kind="account"

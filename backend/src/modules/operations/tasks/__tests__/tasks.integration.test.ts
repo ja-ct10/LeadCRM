@@ -90,7 +90,7 @@ describe.skipIf(!disposable)(
       outsider = await user("outsider", otherTenantId);
       token = (await issueAuthSession(actor)).token;
       for (const [name, module] of [
-        ["Task Reader", "deals"],
+        ["Task Reader", "tasks"],
         ["Contact Reader", "contacts"],
       ]) {
         const reader = await user(module, tenantId, name);
@@ -105,7 +105,7 @@ describe.skipIf(!disposable)(
           data: { tenantId, userId: reader.id, roleId: role.id },
         });
         const session = (await issueAuthSession(reader)).token;
-        if (module === "deals") readerToken = session;
+        if (module === "tasks") readerToken = session;
         else contactsToken = session;
       }
       await scope(async () => {
@@ -137,7 +137,7 @@ describe.skipIf(!disposable)(
           data: {
             tenantId,
             pipelineId: pipeline.id,
-            name: "New",
+            name: "Lead",
             order: 0,
             requiredFields: [],
           },
@@ -357,10 +357,8 @@ describe.skipIf(!disposable)(
         (await call("/operations/tasks", "GET", undefined, contactsToken))
           .status,
       ).toBe(403);
-      for (const path of [
-        `/crm/leads/${lead.id}/relationships`,
-        `/crm/contacts/${contact.id}/relationships`,
-      ]) {
+      expect((await call(`/crm/leads/${lead.id}/relationships`, 'GET', undefined, contactsToken)).status).toBe(403);
+      for (const path of [`/crm/contacts/${contact.id}/relationships`]) {
         const response = await call(path, "GET", undefined, contactsToken);
         expect(response.status).toBe(200);
         expect(response.body.data.tasks).toEqual([]);
@@ -651,6 +649,11 @@ describe.skipIf(!disposable)(
       expect(
         (await call(`/crm/leads/${leadId}`, "PUT", { accountId })).status,
       ).toBe(200);
+      // Conversion requires an already confirmed sale; this test exercises task links.
+      await scope(async () => {
+        const won = await prisma.stage.create({ data: { tenantId, pipelineId: deal.pipelineId, name: 'Closed Won', order: 1, isWon: true, requiredFields: [] } });
+        await prisma.deal.create({ data: { tenantId, pipelineId: deal.pipelineId, stageId: won.id, leadId, title: 'Previously confirmed sale', wonConfirmedAt: new Date(), closedAt: new Date(), productInterests: [], tags: [] } });
+      });
       const converted = await call(`/crm/leads/${leadId}/convert`, "POST", {
         accountId,
         createContact: true,
@@ -729,89 +732,10 @@ describe.skipIf(!disposable)(
         (await call(`/operations/tasks/${saved.id}`)).body.data.assignedUserId,
       ).toBe(owner.id);
     });
-    it("deletes persisted tasks and links, updates counts, and enforces delete authority", async () => {
-      const saved = (
-        await call("/operations/tasks", "POST", {
-          ...draft("Delete acceptance"),
-          leadIds: [lead.id],
-        })
-      ).body.data;
-      const foreignTask = await scope(
-        async () =>
-          await prisma.task.create({
-            data: {
-              ...draft("Protected foreignTask"),
-              dueDate: new Date(draft().dueDate),
-              tenantId,
-            },
-          }),
-        otherTenantId,
-      );
-      const foreign = await tenantContext.run(
-        { tenantId: otherTenantId, },
-        async () =>
-          await prisma.task.create({
-            data: {
-              ...draft("Protected foreign"),
-              dueDate: new Date(draft().dueDate),
-              tenantId: otherTenantId,
-              assignedUserId: outsider.id,
-            },
-          }),
-      );
-      const before = (await call("/operations/tasks/summary")).body.data.total;
-      const payload = { operation: "delete", ids: [saved.id] };
-      expect(
-        (await call("/operations/tasks/bulk", "POST", payload, readerToken))
-          .status,
-      ).toBe(403);
-      expect(
-        (
-          await call("/operations/tasks/bulk", "POST", {
-            ...payload,
-            ids: [""],
-          })
-        ).status,
-      ).toBe(400);
-      expect(
-        (
-          await call("/operations/tasks/bulk", "POST", {
-            ...payload,
-            tenantId: otherTenantId,
-          })
-        ).status,
-      ).toBe(400);
-      const deleted = await call("/operations/tasks/bulk", "POST", {
-        operation: "delete",
-        ids: [saved.id, foreignTask.id, foreign.id],
-      });
-      expect(deleted.status).toBe(200);
-      expect(deleted.body.data.succeeded).toEqual([saved.id]);
-      expect(
-        deleted.body.data.failed.map((item: { id: string }) => item.id),
-      ).toEqual([foreignTask.id, foreign.id]);
-      expect((await call(`/operations/tasks/${saved.id}`)).status).toBe(404);
-      expect(
-        await scope(
-          async () =>
-            await prisma.taskLead.count({ where: { taskId: saved.id } }),
-        ),
-      ).toBe(0);
-      expect((await call("/operations/tasks/summary")).body.data.total).toBe(
-        before - 1,
-      );
-      expect(
-        await scope(
-          async () => await prisma.task.count({ where: { id: foreignTask.id } }),
-          otherTenantId,
-        ),
-      ).toBe(1);
-      expect(
-        await tenantContext.run(
-          { tenantId: otherTenantId, },
-          async () => await prisma.task.count({ where: { id: foreign.id } }),
-        ),
-      ).toBe(1);
+    it("rejects the retired permanent deletion operation", async () => {
+      const saved = (await call("/operations/tasks", "POST", draft("Deletion rejected"))).body.data;
+      expect((await call("/operations/tasks/bulk", "POST", { operation: "delete", ids: [saved.id] })).status).toBe(400);
+      expect((await call(`/operations/tasks/${saved.id}`)).status).toBe(200);
     });
     it("preserves and deduplicates all Task links through approved Merge integration", async () => {
       const merge = await import("../../../crm/merge/merge.repository");

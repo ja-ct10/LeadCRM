@@ -166,3 +166,9 @@ export async function getExecution(id: string, workflowId: string, tenantId: str
   if (!run) throw new NotFoundError('Workflow execution');
   return run;
 }
+
+export async function duplicateWorkflow(id: string, tenantId: string, userId: string) {
+  const original = await getWorkflowById(id, tenantId);
+  const names = (await repo.workflowNames(tenantId)).map(row => row.name);
+  return createWorkflow(tenantId, userId, { name: suggestWorkflowCopyName(original.name, names), description: original.description, trigger: original.trigger, conditions: original.conditions, actions: original.actions, isActive: false });
+}

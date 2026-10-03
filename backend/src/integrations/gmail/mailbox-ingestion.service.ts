@@ -8,16 +8,16 @@ import { classifyEngagement, engagementStatus, ENGAGEMENT_REASONS, hasBusinessCo
 import { GmailEmail } from './gmail.types';
 import { readDealStageAutomation } from '../../modules/crm/deal-stage-automation.service';
 
-export interface MailboxPermissions { crmEdit: boolean; dealsEdit: boolean; dealsView: boolean }
+export interface MailboxPermissions { leadsView: boolean; contactsView: boolean; leadsEdit: boolean; contactsEdit: boolean; dealsEdit: boolean; dealsView: boolean }
 type Tx = Prisma.TransactionClient;
 
-async function matchCustomer(tx: Tx, tenantId: string, email: string): Promise<CustomerLink | undefined> {
+async function matchCustomer(tx: Tx, tenantId: string, email: string, permissions: MailboxPermissions): Promise<CustomerLink | undefined> {
   // contains narrows legacy whitespace data; equality after normalization is mandatory.
   const where = { tenantId, isArchived: false, deletedAt: null, email: { contains: email, mode: 'insensitive' as const } };
-  const leads = (await tx.lead.findMany({ where })).filter(row => normalizeEmail(row.email ?? '') === email);
-  const contacts = (await tx.contact.findMany({ where })).filter(row => normalizeEmail(row.email ?? '') === email);
-  const convertedContacts = await tx.contact.findMany({ where: { tenantId, isArchived: false, deletedAt: null,
-    id: { in: leads.filter(lead => lead.convertedAt && lead.contactId).map(lead => lead.contactId!) } } });
+  const leads = permissions.leadsView ? (await tx.lead.findMany({ where })).filter(row => normalizeEmail(row.email ?? '') === email) : [];
+  const contacts = permissions.contactsView ? (await tx.contact.findMany({ where })).filter(row => normalizeEmail(row.email ?? '') === email) : [];
+  const convertedContacts = permissions.contactsView ? await tx.contact.findMany({ where: { tenantId, isArchived: false, deletedAt: null,
+    id: { in: leads.filter(lead => lead.convertedAt && lead.contactId).map(lead => lead.contactId!) } } }) : [];
   for (const contact of convertedContacts) if (!contacts.some(row => row.id === contact.id)) contacts.push(contact);
   const activeLeads = leads.filter(lead => !lead.convertedAt && (!lead.contactId || !contacts.some(contact => contact.id === lead.contactId)));
   if (activeLeads.length + contacts.length !== 1) return;
@@ -42,8 +42,9 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
       const from = normalizeEmail(email.from), recipients = [...email.to, ...(email.cc ?? [])].map(normalizeEmail);
       const direction = from === normalizeEmail(account.email) ? 'outbound' : recipients.includes(normalizeEmail(account.email)) && !internalEmails.has(from) ? 'inbound' : 'unknown';
       const externals = [...new Set([from, ...recipients].filter(address => address.includes('@') && !internalEmails.has(address)))];
-      const matched = direction !== 'unknown' && externals.length === 1 ? await matchCustomer(tx, account.tenantId, externals[0]) : undefined;
-      const link: CustomerLink | undefined = existing?.leadId ? { leadId: existing.leadId } : existing?.contactId ? { contactId: existing.contactId } : matched;
+      const matched = direction !== 'unknown' && externals.length === 1 ? await matchCustomer(tx, account.tenantId, externals[0], permissions) : undefined;
+      const priorLink: CustomerLink | undefined = existing?.leadId ? { leadId: existing.leadId } : existing?.contactId ? { contactId: existing.contactId } : matched;
+      const link = priorLink && (priorLink.leadId ? permissions.leadsView : permissions.contactsView) ? priorLink : undefined;
       const sentAt = new Date(email.date);
       if (!Number.isFinite(sentAt.getTime())) return;
       const sourceLeadIds = link?.contactId ? (await tx.lead.findMany({
@@ -72,13 +73,12 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
         readyToClose: signal === 'proceed', needsDealAssociation: !!link && !deal && deals.length > 1, engagementRuleVersion: 1 };
       const { tenantId: _tenantId, ...messageUpdate } = messageData;
       const stored = existing ? await tx.mailboxMessage.update({ where: { id: existing.id }, data: messageUpdate }) : await tx.mailboxMessage.create({ data: messageData });
-      if (!link) return;
+      if (!link || !(link.leadId ? permissions.leadsEdit : permissions.contactsEdit)) return;
       const eventKey = createHash('sha256').update([account.tenantId, link.leadId ?? link.contactId, email.rfcMessageId || `${account.id}:${email.id}`, direction].join(':')).digest('hex');
       const activityId = `${eventKey.slice(0, 8)}-${eventKey.slice(8, 12)}-${eventKey.slice(12, 16)}-${eventKey.slice(16, 20)}-${eventKey.slice(20, 32)}`;
       await tx.activity.upsert({ where: { id: activityId }, update: {}, create: { id: activityId, tenantId: account.tenantId, ...link, createdById: account.userId, type: 'email',
         title: `${direction === 'inbound' ? 'Received' : 'Sent'} email: ${email.subject}`.slice(0, 500), createdAt: sentAt,
         metadata: { mailboxMessageId: stored.id, providerMessageId: email.id, threadId: email.threadId, mailboxOwnerId: account.userId, direction } } });
-      if (!permissions.crmEdit) return;
       const customer = link.leadId ? await tx.lead.findFirst({ where: { tenantId: account.tenantId, id: link.leadId, isArchived: false, deletedAt: null } }) : await tx.contact.findFirst({ where: { tenantId: account.tenantId, id: link.contactId, isArchived: false, deletedAt: null } });
       if (!customer) return;
       const updateEngagement = async (data: { lastMeaningfulInboundAt?: Date; firstUnansweredOutboundAt?: Date | null; engagementEvaluatedAt?: Date }) => {
@@ -115,11 +115,11 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
 }
 
 export async function evaluateMailboxCold(account: EmailAccount, permissions: MailboxPermissions, now = new Date()) {
-  if (!permissions.crmEdit) return;
+  if (!permissions.leadsEdit && !permissions.contactsEdit) return;
   const messages = await prisma.mailboxMessage.findMany({ where: { tenantId: account.tenantId, accountId: account.id, meaningful: true }, distinct: ['leadId', 'contactId'], select: { leadId: true, contactId: true } });
   for (const message of messages) {
     const link: CustomerLink | undefined = message.leadId ? { leadId: message.leadId } : message.contactId ? { contactId: message.contactId } : undefined;
-    if (!link) continue;
+    if (!link || !(link.leadId ? permissions.leadsEdit : permissions.contactsEdit)) continue;
     await salesTransaction(async tx => {
       const customer = link.leadId ? await tx.lead.findFirst({ where: { tenantId: account.tenantId, id: link.leadId, isArchived: false } }) : await tx.contact.findFirst({ where: { tenantId: account.tenantId, id: link.contactId, isArchived: false } });
       if (!customer || !eligibleForCold(customer, now)) return;

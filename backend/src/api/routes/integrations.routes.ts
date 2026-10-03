@@ -18,12 +18,12 @@ import {
 } from '../../integrations/gmail/gmail.controller';
 
 import { workspaceReadyMiddleware } from '../middleware/tenant.middleware';
-import { authorize as requirePermission } from '../middleware/rbac.middleware';
+import { authorize as requirePermission, authorizeAny } from '../middleware/rbac.middleware';
 import { mailboxPermissions } from '../../integrations/gmail/mailbox-sync.service';
 
 const router = Router();
 router.get('/gmail/callback', callback);
-router.use('/gmail', authMiddleware, workspaceReadyMiddleware, requirePermission('contacts.view'), async (req, res, next) => {
+router.use('/gmail', authMiddleware, workspaceReadyMiddleware, authorizeAny('leads.view', 'contacts.view'), async (req, res, next) => {
   res.setHeader('Cache-Control', 'no-store');
   // Expired test access must still allow status, reconnect and token removal.
   const checkOwnership = !['/status', '/authorize', '/disconnect'].includes(req.path);

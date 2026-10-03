@@ -32,7 +32,7 @@ export async function resolveProducts(tx: Tx, tenantId: string, ids: string[]) {
 export async function eligibleAgents(tx: Tx, tenantId: string) {
   const users = await tx.user.findMany({ where: { tenantId, status: 'ACTIVE', role: { notIn: ['Client Admin', 'Guest'] } },
     include: { userRoles: { where: { tenantId, role: { tenantId, isArchived: false, NOT: { name: { equals: 'Guest', mode: 'insensitive' } } } }, include: { role: { include: { permissions: { where: { tenantId } } } } } } }, orderBy: { id: 'asc' } });
-  return users.filter(user => ['contacts', 'deals'].every(module => {
+  return users.filter(user => ['leads', 'deals'].every(module => {
     const permissions = user.userRoles.flatMap(link => link.role.permissions).filter(p => p.module === module);
     return permissions.some(p => p.canView) && permissions.some(p => p.canEdit);
   }));

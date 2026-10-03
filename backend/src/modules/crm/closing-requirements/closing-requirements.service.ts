@@ -11,11 +11,17 @@ import { isDeepStrictEqual } from 'node:util';
 
 export const listFields = (tenantId: string) => salesTransaction(tx => readFields(tx, tenantId));
 export async function saveField(tenantId: string, actorId: string, input: unknown, id?: string) {
-  const field = ClosingFieldInputSchema.parse(input);
   return salesTransaction(async tx => {
     const fields = await readFields(tx, tenantId);
     const previous = fields.find(f => f.id === id);
     if (id && !previous) throw new NotFoundError('Closing field');
+    const patch = input as Record<string, unknown>;
+    let definitionInput = input;
+    if (previous && Object.keys(patch).length === 1 && patch.active === false) {
+      const { id: _id, version: _version, ...definition } = previous;
+      definitionInput = { ...definition, active: false };
+    }
+    const field = ClosingFieldInputSchema.parse(definitionInput);
     if (!id && fields.length >= 100) throw new ValidationError('Maximum 100 closing fields.');
     if (fields.some(f => f.id !== id && f.name.toLowerCase() === field.name.toLowerCase())) throw new ValidationError('Field names must be unique.');
     // Keep IDs and types stable so existing values cannot change meaning after an edit.

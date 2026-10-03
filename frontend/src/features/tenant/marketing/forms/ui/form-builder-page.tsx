@@ -25,7 +25,8 @@ function makeField(type: FormFieldType): FormField {
 export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormRecord; onBack: () => void; onFormUpdate: (form: FormRecord) => void }) {
   const { products } = useProductInterests();
   const { userCan } = useAuth();
-  const canEdit = userCan('campaigns', 'canEdit');
+  const canEdit = userCan('forms', 'canEdit');
+  const canPublish = userCan('forms', 'canPublish');
   const [local, setLocal] = useState<FormRecord>({ ...form, design: { ...DEFAULT_DESIGN, ...form.design }, settings: { ...DEFAULT_SETTINGS, ...form.settings } });
   const [tab, setTab] = useState<'Builder' | 'Settings' | 'Share'>('Builder');
   const [panel, setPanel] = useState<'Fields' | 'Design'>('Fields');
@@ -53,7 +54,7 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
     document.addEventListener('keydown', trap);
     return () => { clearTimeout(timer); document.body.style.overflow = old; document.removeEventListener('keydown', trap); toolsButton.current?.focus(); };
   }, [tools]);
-  function change(patch: Partial<FormRecord>) { if (saving) return; setLocal(current => ({ ...current, ...patch })); setDirty(true); setError(''); }
+  function change(patch: Partial<FormRecord>) { if (saving || !canPublish) return; setLocal(current => ({ ...current, ...patch })); setDirty(true); setError(''); }
   function add(type: FormFieldType) { if (type !== 'file') change({ fields: [...local.fields, makeField(type)] }); }
   function drag(e: DragEndEvent) {
     if (!e.over || saving) return;
@@ -63,7 +64,7 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
     if (from >= 0 && to >= 0) change({ fields: arrayMove(local.fields, from, to) });
   }
   async function save(publish = false) {
-    if (saving) return; setError('');
+    if (saving || (dirty && !canEdit) || (publish && !canPublish) || (!publish && !canEdit)) return; setError('');
     const parsed = FormDefinitionSchema.safeParse({ name: local.name, fields: withProductOptions(local.fields, products), design: local.design, settings: local.settings });
     if (!parsed.success) { setError(parsed.error.issues.map(i => i.message).join(' ')); return; }
     setSaving(true);
@@ -75,7 +76,7 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
     } catch (err) { setError(err instanceof Error ? err.message : 'Unable to save form.'); } finally { setSaving(false); }
   }
   async function unpublish() {
-    if (saving || !canEdit) return;
+    if (saving || !canPublish) return;
     setSaving(true); setError('');
     try {
       const saved = await unpublishForm(local.id);
@@ -99,18 +100,18 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
         <button aria-label="Back to Forms" disabled={saving} onClick={() => { if (dirty) { setError('Save or discard your edits before leaving.'); return; } onBack(); }} className="shrink-0 p-2"><ArrowLeft size={16} /></button>
         <h1 className="min-w-0 flex-1 truncate text-sm font-semibold">{local.name}</h1>
         <span className="text-[9px] uppercase rounded bg-slate-100 text-slate-600 px-1">{local.status.toLowerCase() === 'published' ? 'Published' : 'Draft'}</span>
-        <button disabled={saving} onClick={() => void save(true)} className="bg-blue-600 text-white rounded p-2 text-xs disabled:opacity-50">Publish</button>
+        <button disabled={saving || !canPublish} onClick={() => void save(true)} className="bg-blue-600 text-white rounded p-2 text-xs disabled:opacity-50">Publish</button>
         <RowActionsMenu label="More actions" position="right" actions={[
           { id: 'discard', label: 'Discard changes', disabled: saving || !dirty, onClick: discard },
-          ...(local.status.toLowerCase() === 'published' ? [{ id: 'unpublish', label: 'Unpublish', disabled: saving || !canEdit, onClick: () => void unpublish() }] : []),
+          ...(local.status.toLowerCase() === 'published' ? [{ id: 'unpublish', label: 'Unpublish', disabled: saving || !canPublish, onClick: () => void unpublish() }] : []),
         ]} />
       </header>
       <nav className="flex items-center border-b min-w-0">{(['Builder', 'Settings', 'Share'] as const).map(t => <button key={t} onClick={() => setTab(t)} className={'px-2 sm:px-4 py-3 text-xs ' + (tab === t ? 'text-blue-600 border-b-2 border-blue-600' : '')}>{t}</button>)}
-        <button disabled={saving || !dirty} onClick={() => void save()} className="ml-auto text-xs text-blue-600 px-2 disabled:text-slate-400">{saving ? 'Saving…' : 'Save draft'}</button>
+        <button disabled={saving || !dirty || !canEdit} onClick={() => void save()} className="ml-auto text-xs text-blue-600 px-2 disabled:text-slate-400">{saving ? 'Saving…' : 'Save draft'}</button>
       </nav>
       {dirty && <p className="text-xs text-amber-700 p-2">Unsaved changes</p>}
       {error && <p role="alert" className="m-2 p-3 rounded border border-red-200 text-sm text-red-700 break-words">{error}</p>}
-      <fieldset disabled={saving} className="min-w-0">
+      <fieldset disabled={tab !== 'Share' && (saving || !canEdit)} className="min-w-0">
         {tab === 'Builder' && <div className="flex min-w-0">
           <div className="flex-1 min-w-0 bg-slate-100 dark:bg-slate-900/60 p-3 sm:p-6 space-y-4">
             <label className="block text-xs text-slate-600">Form name<input className="block mt-1 w-full border rounded bg-white text-slate-900 p-2 text-sm" maxLength={200} value={local.name} onChange={e => change({ name: e.target.value })} /></label>
@@ -121,7 +122,7 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
         {tab === 'Settings' && <div className="py-4 sm:p-6"><FormSettingsPanel settings={local.settings} onChange={settings => change({ settings })} /></div>}
         {tab === 'Share' && <div className="py-4 sm:p-6 min-w-0"><FormSharePanel form={local} dirty={dirty} shareLink={getShareLink(local.publicId)} embedCode={getEmbedCode(local.publicId)} /></div>}
       </fieldset>
-      {tab === 'Builder' && <div className="lg:hidden sticky bottom-0 bg-white border-t p-2"><button ref={toolsButton} disabled={saving} onClick={() => setTools(true)} className="w-full rounded bg-blue-600 text-white p-3 text-sm flex gap-2 justify-center"><Plus size={16} />Add fields or change design</button></div>}
+      {tab === 'Builder' && <div className="lg:hidden sticky bottom-0 bg-white border-t p-2"><button ref={toolsButton} disabled={saving || !canEdit} onClick={() => setTools(true)} className="w-full rounded bg-blue-600 text-white p-3 text-sm flex gap-2 justify-center"><Plus size={16} />Add fields or change design</button></div>}
       <Dialog open={tools} onOpenChange={setTools}><DialogContent ref={toolsRef} aria-label="Form tools" className="!fixed !bottom-0 !left-0 !right-0 !w-full !max-w-none !rounded-b-none !p-0 max-h-[85dvh] flex flex-col">
         <div className="p-5 pr-14"><h2 className="font-semibold">Form tools</h2><p className="text-xs text-slate-500">Tap a field to add it to your form.</p></div>
         <div className="overflow-y-auto min-h-0">{panelContent}</div>

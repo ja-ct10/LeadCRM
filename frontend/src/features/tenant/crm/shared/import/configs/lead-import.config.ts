@@ -15,7 +15,7 @@ export const leadImportConfig: ImportModuleConfig = {
   importApiPath: '/crm/leads/imports',
   detailsRoute: (importId: string) => `/crm/leads/imports/${importId}`,
   templateFileName: 'lead-import-template.csv',
-  permission: 'contacts.create',
+  permission: 'leads.import',
   duplicateCheckField: 'email',
 
   requiredFields: [

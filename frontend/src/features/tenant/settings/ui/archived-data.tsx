@@ -22,7 +22,8 @@ const rowId = (record: ArchivedRecord) => `${record.type}-${record.id}`;
 const restoreClass = 'inline-flex min-h-11 min-w-11 sm:min-h-8 items-center justify-center gap-1.5 px-3 py-1.5 bg-[#3B82F6]/10 hover:bg-[#3B82F6]/15 text-[#3B82F6] dark:text-[#60A5FA] rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500';
 
 export function ArchivedData(): React.ReactElement {
-  const { user, tenant } = useAuth();
+  const { user, tenant, userCan } = useAuth();
+  const canRestore = userCan('archived_data', 'canRestore');
   const { refreshDeals, refreshOrganizations } = useData();
   const identity = `${tenant?.id}:${user?.id}`;
   const identityRef = useRef(identity);
@@ -57,7 +58,7 @@ export function ArchivedData(): React.ReactElement {
   const changePage = (next: number) => { setSelectedIds(new Set()); setPage(next); };
   const selected = records.filter(record => selectedIds.has(rowId(record)));
   const confirmRestore = async () => {
-    if (!pending || busy.current) return;
+    if (!pending || busy.current || !canRestore) return;
     busy.current = true;
     setRestoring(true);
     const succeeded = new Set<string>();
@@ -99,7 +100,7 @@ export function ArchivedData(): React.ReactElement {
     { id: 'actions', header: 'Actions', accessor: () => '', width: 120,
       cell: (_value, record) => (
         <TableIconButton touchFriendly label="Restore" ariaLabel="Restore"
-          disabled={restoring || !record.canRestore} onClick={() => setPending({ records: [record], bulk: false })}>
+          disabled={!canRestore || restoring || !record.canRestore} onClick={() => setPending({ records: [record], bulk: false })}>
           <ArchiveRestore size={14} aria-hidden="true" />
         </TableIconButton>
       ),

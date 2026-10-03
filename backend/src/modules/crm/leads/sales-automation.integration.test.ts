@@ -31,7 +31,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     const admin = await prisma.user.create({ data: { tenantId, firstName: 'Admin', lastName: 'Test', email: 'admin@camxian.com', role: 'Client Admin', mustChangePassword: false } });
     adminId = admin.id; token = (await issueAuthSession(admin)).token;
     const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Eligible custom sales role' } });
-    await prisma.rolePermission.createMany({ data: ['contacts', 'deals'].map(module => ({ tenantId, roleId: role.id, module, canView: true, canEdit: true, canCreate: true })) });
+    await prisma.rolePermission.createMany({ data: ['leads', 'contacts', 'deals'].map(module => ({ tenantId, roleId: role.id, module, canView: true, canEdit: true, canCreate: true })) });
     agentIds = [];
     for (const index of [0, 1, 2]) {
       const agent = await prisma.user.create({ data: { tenantId, firstName: `Agent ${index}`, lastName: 'Sales', email: `agent${index}@camxian.com`, role: role.name, status: index === 2 ? 'INACTIVE' : 'ACTIVE', mustChangePassword: false } });

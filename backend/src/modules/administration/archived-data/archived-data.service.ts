@@ -9,12 +9,12 @@ import type { PermissionKey } from '../../../shared/constants/permissions';
 
 type Actor = { userId: string; tenantId: string; role: string };
 const permissions: Record<ArchiveType | z.infer<typeof ArchiveRestoreParamsSchema>['type'], [PermissionKey, PermissionKey]> = {
-  Task: ['deals.view', 'deals.edit'],
-  Lead: ['contacts.view', 'contacts.edit'], Contact: ['contacts.view', 'contacts.edit'],
-  Account: ['accounts.view', 'accounts.edit'], Deal: ['deals.view', 'deals.edit'],
-  Pipeline: ['deals.view', 'deals.edit'], User: ['users.view', 'users.manage'],
-  Role: ['roles.manage', 'roles.manage'], Workflow: ['workflows.view', 'workflows.edit'],
-  Campaign: ['campaigns.view', 'campaigns.edit'], Template: ['campaigns.view', 'campaigns.edit'],
+  Task: ['tasks.view', 'archived_data.restore'],
+  Lead: ['leads.view', 'archived_data.restore'], Contact: ['contacts.view', 'archived_data.restore'],
+  Account: ['accounts.view', 'archived_data.restore'], Deal: ['deals.view', 'archived_data.restore'],
+  Pipeline: ['deals.view', 'archived_data.restore'], User: ['users.view', 'archived_data.restore'],
+  Role: ['roles.view', 'archived_data.restore'], Workflow: ['workflows.view', 'archived_data.restore'],
+  Campaign: ['campaigns.view', 'archived_data.restore'], Template: ['campaigns.view', 'archived_data.restore'],
 };
 const protectedRole = (name: string) => ['guest', 'clientadmin'].includes(name.toLowerCase().replace(/[\s_-]/g, ''));
 
@@ -30,6 +30,7 @@ function source<T>(count: () => Promise<number>, load: (skip: number, take: numb
 }
 
 export async function list(actor: Actor, query: z.infer<typeof ArchiveQuerySchema>) {
+  await assertPermissions(actor, ['archived_data.view']);
   const where = scope(actor);
   const identityWhere = { tenantId: actor.tenantId, isArchived: true };
   const searchWhere = (...fields: string[]) => query.search?.trim() ? {
@@ -99,7 +100,7 @@ export async function list(actor: Actor, query: z.infer<typeof ArchiveQuerySchem
 }
 
 export async function restore(actor: Actor, params: z.infer<typeof ArchiveRestoreParamsSchema>) {
-  await assertPermissions(actor, permissions[params.type]);
+  await assertPermissions(actor, ['archived_data.restore', permissions[params.type][0]]);
   const where = { ...scope(actor), id: params.id };
   let result: { count: number };
   switch (params.type) {

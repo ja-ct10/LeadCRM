@@ -100,6 +100,7 @@ export async function update(id: string, tenantId: string, actorId: string, dto:
   if (!existing) throw new NotFoundError('User');
 
 
+  if (existing.role === 'Client Admin' && (dto.role !== undefined || dto.status !== undefined)) throw new ForbiddenError('Client Admin cannot be reassigned or deactivated');
   if (id === actorId && dto.status === 'INACTIVE') throw new ForbiddenError('Cannot deactivate your own account');
   const updateData: any = { ...dto };
   if (dto.status) updateData.status = dto.status as any; // Cast as enum
@@ -116,6 +117,7 @@ export async function update(id: string, tenantId: string, actorId: string, dto:
 export async function archive(id: string, tenantId: string, actorId: string) {
   const existing = await prisma.user.findFirst({ where: { id, tenantId } });
   if (!existing) throw new NotFoundError('User');
+  if (existing.role === 'Client Admin') throw new ForbiddenError('Client Admin cannot be archived');
   if (id === actorId) throw new ForbiddenError('Cannot archive your own account');
 
   await prisma.user.update({ where: { id }, data: { status: 'INACTIVE' } });
@@ -146,6 +148,7 @@ export async function bulkUpdate(ids: string[], tenantId: string, actorId: strin
     throw new ValidationError('Invalid status value provided');
   }
 
+  if (dto.status !== undefined && (ids.includes(actorId) || await prisma.user.count({ where: { id: { in: ids }, tenantId, role: 'Client Admin' } }))) throw new ForbiddenError('Cannot change your own or Client Admin status in bulk');
   await prisma.$transaction(async tx => {
     const where = { id: { in: ids }, tenantId };
     if (dto.role) {
@@ -154,6 +157,7 @@ export async function bulkUpdate(ids: string[], tenantId: string, actorId: strin
     }
     await tx.user.updateMany({ where, data: dto });
   });
+  if (dto.status === 'INACTIVE') for (const id of ids) await revokeAllUserSessions(id);
   await writeAuditLog({ tenantId, userId: actorId, action: 'user.bulk_updated', entityType: 'User', after: { ids, updates: dto }, severity: 'WARNING' });
 }
 

@@ -1,7 +1,7 @@
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { PERMISSION_MODULES } from '@leadcrm/shared';
+import { PERMISSION_MODULES, EMPTY_PERMISSION_FLAGS } from '@leadcrm/shared';
 import { DataProvider } from '@/store/DataContext';
 import { RolesPermissions } from '../roles-permissions';
 const mocks = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), }));
@@ -46,20 +46,20 @@ it('synchronizes group/individual switches, sends module flags through the real 
   localStorage.setItem('leadcrm_roles', '[{"name":"Obsolete"}]');
   const view = await open();
   fireEvent.change(screen.getByLabelText('Role Name *'), { target: { value: ' Sales Assistant ' } });
-  const contacts = screen.getByRole('switch', { name: 'Contacts & Accounts' });
+  const contacts = screen.getByRole('switch', { name: 'Contacts' });
   expect(contacts.getAttribute('aria-checked')).toBe('false');
   fireEvent.click(contacts);
-  expect(screen.getByText('8/8')).toBeTruthy();
-  fireEvent.click(screen.getByRole('switch', { name: 'View Contacts' }));
-  expect(screen.getByText('7/8')).toBeTruthy(); expect(screen.getByText('Partially enabled')).toBeTruthy();
-  fireEvent.click(contacts); expect(within(contacts.parentElement!.parentElement!).getByText('0/8')).toBeTruthy(); fireEvent.click(contacts);
-  fireEvent.click(screen.getByRole('switch', { name: 'Deals & Pipeline' }));
+  expect(screen.getByText('5/5')).toBeTruthy();
+  fireEvent.click(screen.getByRole('switch', { name: 'Edit Contacts' }));
+  expect(screen.getByText('4/5')).toBeTruthy(); expect(screen.getByText('Partially enabled')).toBeTruthy();
+  fireEvent.click(contacts); expect(within(contacts.parentElement!.parentElement!).getByText('0/5')).toBeTruthy(); fireEvent.click(contacts);
+  fireEvent.click(screen.getByRole('switch', { name: 'Deals' }));
   let finish!: () => void; pending = new Promise(resolve => { finish = resolve; });
   fireEvent.click(screen.getByRole('button', { name: 'Create Role' }));
   expect(mocks.success).not.toHaveBeenCalled(); expect(screen.getByRole('button', { name: 'Saving…' })).toBeTruthy();
   const [url, options] = posts()[0];
   expect(url).toBe('/api/proxy/administration/roles'); expect(options?.credentials).toBe('include');
-  expect(JSON.parse(String(options?.body))).toEqual({ name: 'Sales Assistant', description: '', permissions: ['contacts', 'accounts', 'deals'].map(module => ({ module, canView: true, canCreate: true, canEdit: true, canDelete: true })) });
+  expect(JSON.parse(String(options?.body))).toEqual({ name: 'Sales Assistant', description: '', permissions: ['contacts', 'deals'].map(module => ({ ...EMPTY_PERMISSION_FLAGS, module, ...Object.fromEntries(PERMISSION_MODULES.find(row => row.key === module)!.actions.map(action => [action, true])) })) });
   await act(async () => finish()); await screen.findByText('Sales Assistant');
   expect(mocks.success).toHaveBeenCalledTimes(1); expect(localStorage.getItem('leadcrm_roles')).toBeNull();
   view.unmount(); mount(); await screen.findByText('Sales Assistant');
@@ -67,12 +67,12 @@ it('synchronizes group/individual switches, sends module flags through the real 
 it('keeps values and permissions on server failure and allows a zero-permission role', async () => {
   await open(); fireEvent.change(screen.getByLabelText('Role Name *'), { target: { value: 'Sales Assistant' } });
   fireEvent.change(screen.getByLabelText(/Description/), { target: { value: 'Retain this' } });
-  fireEvent.click(screen.getByRole('switch', { name: 'Contacts & Accounts' }));
+  fireEvent.click(screen.getByRole('switch', { name: 'Contacts' }));
   failure = 'A role with this name already exists.';
   fireEvent.click(screen.getByRole('button', { name: 'Create Role' }));
-  await screen.findByText(failure); expect(screen.getByDisplayValue('Retain this')).toBeTruthy(); expect(screen.getByText('8/8')).toBeTruthy();
+  await screen.findByText(failure); expect(screen.getByDisplayValue('Retain this')).toBeTruthy(); expect(screen.getByText('5/5')).toBeTruthy();
   expect(mocks.success).not.toHaveBeenCalled(); expect(savedRoles).toHaveLength(0);
-  failure = ''; fireEvent.click(screen.getByRole('switch', { name: 'Contacts & Accounts' }));
+  failure = ''; fireEvent.click(screen.getByRole('switch', { name: 'Contacts' }));
   fireEvent.click(screen.getByRole('button', { name: 'Create Role' }));
   await waitFor(() => expect(savedRoles).toHaveLength(1));
   expect(JSON.parse(String(posts()[1][1]?.body)).permissions).toEqual([]);
@@ -84,7 +84,7 @@ it('keeps protected actions visible and disabled without navigation or requests'
   mount();
   fireEvent.click(await screen.findByRole('button', { name: 'Actions for Client Admin' }));
   const callsBefore = fetcher.mock.calls.length;
-  for (const name of ['Edit Permissions', 'Delete Role']) {
+  for (const name of ['Edit Permissions', 'Archive Role']) {
     const action = screen.getByRole('menuitem', { name });
     expect(action.getAttribute('aria-disabled')).toBe('true');
     fireEvent.click(action);
@@ -92,7 +92,7 @@ it('keeps protected actions visible and disabled without navigation or requests'
     fireEvent.keyDown(action, { key: ' ' });
   }
   expect(screen.queryByText('Edit Role')).toBeNull();
-  expect(screen.queryByText('Delete Role?')).toBeNull();
+  expect(screen.queryByText('Archive Role?')).toBeNull();
   expect(fetcher.mock.calls.length).toBe(callsBefore);
   expect(screen.getByRole('menuitem', { name: 'Duplicate Role' }).getAttribute('aria-disabled')).toBe('false');
   expect(screen.queryByText('perms')).toBeNull();

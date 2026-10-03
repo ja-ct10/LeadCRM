@@ -33,7 +33,7 @@ interface GroupsSubTabProps {
 
 export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): React.ReactElement {
   const { userCan } = useAuth();
-  const canManage = userCan('users', 'canEdit');
+  const canManage = userCan('groups', 'canEdit'), canCreate = userCan('groups', 'canCreate'), canDelete = userCan('groups', 'canDelete');
 
   const [groups, setGroups] = useState<TenantGroup[]>([]);
   const [search, setSearch] = useState('');
@@ -174,7 +174,7 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
   const visibleGroups = groups.filter(group => group.name.toLowerCase().includes(search.toLowerCase()) &&
     (!memberIds.length || group.members.some(member => memberIds.includes(member.userId))));
   const memberOptions = [...new Map(groups.flatMap(group => group.members.map(member => [member.userId, member.user] as const))).entries()];
-  const createAction = canManage && <button aria-label="New group" title="New group" onClick={() => { setActiveGroup(null); setIsNewGroupOpen(true); setNewGroupName(''); setNewSelectedIds([]); setNewMemberSearch(''); }}
+  const createAction = canCreate && <button aria-label="New group" title="New group" onClick={() => { setActiveGroup(null); setIsNewGroupOpen(true); setNewGroupName(''); setNewSelectedIds([]); setNewMemberSearch(''); }}
     className="flex shrink-0 h-11 w-11 sm:h-auto sm:w-auto items-center justify-center gap-1.5 sm:px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold">
     <Plus size={16} /><span className="hidden sm:inline">New Group</span>
   </button>;
@@ -199,9 +199,9 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
             </button>
             <h2 className="text-xl font-bold text-slate-900 dark:text-white">{groupData.name}</h2>
           </div>
-          {canManage && (
+          {(canManage || canCreate || canDelete) && (
             <div className="flex items-center gap-2">
-              <button onClick={() => { setEditGroupName(groupData.name); setIsEditNameOpen(true); }} className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06] rounded-lg transition-colors cursor-pointer"><Edit2 size={15} /></button>
+              <button disabled={!canManage} onClick={() => { setEditGroupName(groupData.name); setIsEditNameOpen(true); }} className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06] rounded-lg transition-colors cursor-pointer"><Edit2 size={15} /></button>
               <div className="relative">
                 <button onClick={() => setIsMoreMenuOpen((v) => !v)} className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06] rounded-lg transition-colors cursor-pointer"><MoreHorizontal size={15} /></button>
                 <AnimatePresence>
@@ -209,8 +209,8 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
                     <motion.div initial={{ opacity: 0, scale: 0.95, y: -4 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
                       className="absolute right-0 top-full mt-1 w-36 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.08] rounded-xl shadow-lg z-20 py-1"
                       onMouseLeave={() => setIsMoreMenuOpen(false)}>
-                      <button onClick={() => { handleDuplicateGroup(groupData); setIsMoreMenuOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.04] cursor-pointer"><Copy size={12} /> Duplicate</button>
-                      <button onClick={() => { handleDeleteGroup(groupData.id); setIsMoreMenuOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 cursor-pointer"><Trash2 size={12} /> Delete</button>
+                      <button disabled={!canCreate} onClick={() => { handleDuplicateGroup(groupData); setIsMoreMenuOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.04] cursor-pointer"><Copy size={12} /> Duplicate</button>
+                      <button disabled={!canDelete} onClick={() => { handleDeleteGroup(groupData.id); setIsMoreMenuOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 cursor-pointer"><Trash2 size={12} /> Delete</button>
                     </motion.div>
                   )}
                 </AnimatePresence>

@@ -41,6 +41,7 @@ metadata.json
 # Vite leftover artifacts (project uses Next.js)
 vite.config.ts
 index.html
+!frontend/qa/roles/index.html
 src/main.tsx
 # Turborepo cache
 .turbo/

@@ -16,6 +16,7 @@ type TaskSelectorProps = {
   selectedLabels?: TaskOption[];
   onCreate?: () => void;
   required?: boolean;
+  disabled?: boolean;
   leadIds?: string[];
 } & (
   | { multiple: true; value: string[]; onChange: (value: string[]) => void }
@@ -30,6 +31,7 @@ export function TaskSelector(props: TaskSelectorProps) {
     selectedLabels = [],
     onCreate,
     required = false,
+    disabled = false,
     leadIds = [],
   } = props;
   const selectedIds = Array.isArray(value) ? value : value ? [value] : [];
@@ -179,7 +181,7 @@ export function TaskSelector(props: TaskSelectorProps) {
           setOpen(false);
           trigger.current?.focus();
         }
-        if (event.key === "ArrowDown" && !open) {
+        if (event.key === "ArrowDown" && !open && !disabled) {
           event.preventDefault();
           setOpen(true);
         }
@@ -191,6 +193,7 @@ export function TaskSelector(props: TaskSelectorProps) {
       </label>
       <button
         ref={trigger}
+        disabled={disabled}
         type="button"
         aria-labelledby={id + "-label"}
         aria-expanded={open}

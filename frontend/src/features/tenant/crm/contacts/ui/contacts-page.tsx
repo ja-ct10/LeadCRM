@@ -36,8 +36,9 @@ export default function ContactsPage(): React.ReactElement {
   const { user, tenant } = useAuth();
   const { dialogProps, confirm, close } = useConfirmDialog();
   const canCreate = useHasPermission('contacts.create');
+  const canImport = useHasPermission('contacts.import');
   const canEdit   = useHasPermission('contacts.edit');
-  const canDelete = useHasPermission('contacts.delete');
+  const canDelete = useHasPermission('contacts.archive');
   const { getParam, getArrayParam, updateParams } = useFilterUrlSync('contacts');
 
   const highlightId = getParam('highlight') || undefined;
@@ -377,7 +378,7 @@ export default function ContactsPage(): React.ReactElement {
       moduleConfig={CONTACTS_MODULE_CONFIG}
       primaryActionLabel="Create Contact"
       onPrimaryAction={() => { setEditingContact(undefined); setIsFormOpen(true); }}
-      onImport={() => router.push('/crm/contacts/import')}
+      onImport={canImport ? () => router.push('/crm/contacts/import') : undefined}
       canCreate={canCreate}
       availableViews={['table']}
       activeView={'table' as ViewType}

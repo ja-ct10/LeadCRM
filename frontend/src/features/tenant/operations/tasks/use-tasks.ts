@@ -9,7 +9,7 @@ export function useTasks(query: TaskListQuery = {}, preserveOnRefresh = false) {
   const { user, tenant } = useAuth();
   const { queryTasks, queryTaskSummary, tasksRevision, refreshTasks } =
     useData();
-  const canRead = useHasPermission("deals.view");
+  const canRead = useHasPermission("tasks.view");
   useEffect(() => {
     refreshTasks();
   }, [refreshTasks]);

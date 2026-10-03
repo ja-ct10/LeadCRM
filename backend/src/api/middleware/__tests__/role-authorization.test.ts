@@ -13,7 +13,7 @@ it.each(['Guest', 'GUEST', ' guest '])('denies retired %s identities', async rol
 });
 it('permits Client Admin to manage custom roles without requiring permission rows', async () => {
   const next = vi.fn();
-  await authorize('roles.manage')(request('Client Admin') as never, {} as never, next);
+  await authorize('roles.edit')(request('Client Admin') as never, {} as never, next);
   expect(next).toHaveBeenCalledWith();
 });
 it('resolves scoped custom grants and denies missing or removed grants', async () => {

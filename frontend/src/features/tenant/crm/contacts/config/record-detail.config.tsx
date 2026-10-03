@@ -12,13 +12,13 @@ export const contactDetailConfig: RecordDetailConfig = {
   module: 'contacts',
   permissionModule: 'contacts',
   editPermission: 'contacts.edit',
-  deletePermission: 'contacts.delete',
+  deletePermission: 'contacts.archive',
   statuses: CRM_DETAIL_STATUSES,
   activityFilterKey: 'contactId',
 
   actionTemplates: [
     { id: 'edit', label: 'Edit', icon: Pencil, primary: true, permission: 'contacts.edit' },
-    { id: 'archive', label: 'Archive', icon: Archive, permission: 'contacts.delete' },
+    { id: 'archive', label: 'Archive', icon: Archive, permission: 'contacts.archive' },
   ],
 
   buildFieldSections: (record, onSave): FieldSection[] => [

@@ -11,7 +11,7 @@ async function main() {
   const tenant = await prisma.tenant.create({ data: { name: 'Sales UI test', slug: 'sales-ui-test', onboardingStep: 3, onboardingCompletedAt: new Date() } });
   const admin = await prisma.user.create({ data: { tenantId: tenant.id, email: 'sales-ui@camxian.com', firstName: 'Sales', lastName: 'Tester', role: 'Client Admin', emailVerified: new Date(), mustChangePassword: false, passwordHash: await hash('SalesPreview!2026', 10) } });
   const role = await prisma.roleDefinition.create({ data: { tenantId: tenant.id, name: 'Sales Agent' } });
-  for (const module of ['contacts', 'deals']) await prisma.rolePermission.create({ data: { tenantId: tenant.id, roleId: role.id, module, canView: true, canCreate: true, canEdit: true } });
+  for (const module of ['leads', 'contacts', 'deals']) await prisma.rolePermission.create({ data: { tenantId: tenant.id, roleId: role.id, module, canView: true, canCreate: true, canEdit: true } });
   const agent = await prisma.user.create({ data: { tenantId: tenant.id, email: 'agent-ui@camxian.com', firstName: 'Alex', lastName: 'Santos', role: role.name } });
   await prisma.userRole.create({ data: { tenantId: tenant.id, userId: agent.id, roleId: role.id } });
   await tenantContext.run({ tenantId: tenant.id, }, () => salesTransaction(async tx => {

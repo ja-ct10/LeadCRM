@@ -38,13 +38,14 @@ export function TaskEditor({
 }) {
   const { user } = useAuth();
   const { addTask, updateTask, deleteTask } = useData();
-  const canCreate = useHasPermission("deals.create"),
-    canEdit = useHasPermission("deals.edit"),
-    canArchive = useHasPermission("deals.delete");
+  const canCreate = useHasPermission("tasks.create"),
+    canEdit = useHasPermission("tasks.edit"),
+    canArchive = useHasPermission("tasks.archive");
+  const canComplete = useHasPermission("tasks.complete"), canAssign = useHasPermission("tasks.assign");
   const canCreateContacts = useHasPermission("contacts.create"),
-    canEditLeads = useHasPermission("contacts.edit"),
+    canEditLeads = useHasPermission("leads.edit"),
     canCreateAccounts = useHasPermission("accounts.create");
-  const canContacts = useHasPermission("contacts.view"),
+  const canContacts = useHasPermission("leads.view"),
     canAccounts = useHasPermission("accounts.view");
   const editable = !readOnly && !task?.isArchived && (task ? canEdit : canCreate);
   const [title, setTitle] = useState(task?.title ?? "");
@@ -292,7 +293,7 @@ export function TaskEditor({
                         setStatus(e.target.value as typeof status)
                       }
                     >
-                      {TASK_STATUSES.map((s) => (
+                      {TASK_STATUSES.filter(value => value !== "completed" || canComplete || task?.status === "completed").map((s) => (
                         <option key={s} value={s}>
                           {TASK_STATUS_LABELS[s]}
                         </option>
@@ -331,6 +332,7 @@ export function TaskEditor({
                 </label>
                 <TaskSelector
                   kind="user"
+                  disabled={!canAssign}
                   label="Assigned Agent"
                   required
                   value={assignedUserId}

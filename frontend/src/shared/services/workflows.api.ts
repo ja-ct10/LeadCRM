@@ -6,6 +6,7 @@ export interface WorkflowsResponse { success: boolean; data: Workflow[]; meta: {
 export interface WorkflowResponse { success: boolean; data: Workflow; }
 export interface WorkflowExecutionsResponse { success: boolean; data: WorkflowExecutionRun[]; }
 export const workflowsApi = {
+  duplicate: (id: string) => apiClient.post(`/automation/workflows/${id}/duplicate`, {}),
   nameAvailability: (name: string, excludeId?: string) => apiClient.get<{success:boolean;data:{available:boolean;suggestedName?:string}}>(`/automation/workflow-name-availability?${new URLSearchParams({ name, ...(excludeId ? { excludeId } : {}) })}`),
   options: () => apiClient.get<{success:boolean;data:WorkflowOptions}>('/automation/workflow-options'),
   listAll: async (): Promise<Workflow[]> => {

@@ -243,7 +243,7 @@ export function RecordTimelineTab({
   compact = false,
   tasks,
 }: RecordTimelineTabProps): React.ReactElement {
-  const canCreate = useHasPermission('contacts.create');
+  const canCreate = useHasPermission(`${module}.edit` as import('@leadcrm/shared').PermissionKey);
   const canLog = canCreate;
   const [filter, setFilter] = useState<FilterType>('All');
   const [searchTerm, setSearchTerm] = useState('');

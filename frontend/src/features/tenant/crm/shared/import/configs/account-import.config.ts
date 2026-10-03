@@ -14,7 +14,7 @@ export const accountImportConfig: ImportModuleConfig = {
   importApiPath: '/crm/accounts/imports',
   detailsRoute: (importId: string) => `/crm/accounts/imports/${importId}`,
   templateFileName: 'account-import-template.csv',
-  permission: 'accounts.create',
+  permission: 'accounts.import',
   duplicateCheckField: 'name',
 
   requiredFields: [

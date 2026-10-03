@@ -13,7 +13,7 @@ vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant'
 vi.mock('./workflow-execution-log-modal', () => ({ WorkflowExecutionLogModal: () => <div>Run history</div> }));
 vi.mock('@/shared/services/workflows.api', () => ({
   getWorkflowMetadata: async () => ({ triggers: WORKFLOW_TRIGGERS, actions: getAvailableActions() }),
-  workflowsApi: { get: vi.fn(), list: vi.fn(), create: vi.fn(), toggle: vi.fn(), archive: vi.fn(), nameAvailability: vi.fn() },
+  workflowsApi: { get: vi.fn(), list: vi.fn(), create: vi.fn(), duplicate: vi.fn(), toggle: vi.fn(), archive: vi.fn(), nameAvailability: vi.fn() },
 }));
 const workflow = { id: 'wf', name: 'Follow up', trigger: 'lead.created', status: 'ACTIVE', isActive: true, conditions: null, actions: [] };
 beforeEach(() => {
@@ -66,7 +66,7 @@ it('wires menus to view, edit, duplicate, pause, resume and confirmed archive', 
   action('View'); expect(push).toHaveBeenCalledWith('/automation/workflows/wf1/edit?view=true');
   action('Edit'); expect(push).toHaveBeenCalledWith('/automation/workflows/wf1/edit');
   action('Duplicate');
-  await waitFor(() => expect(workflowsApi.create).toHaveBeenCalledWith(expect.objectContaining({ name: 'Follow up (Copy)', isActive: false })));
+  await waitFor(() => expect(workflowsApi.duplicate).toHaveBeenCalledWith('wf1'));
   await waitFor(() => expect(screen.queryByText('Refreshing data')).toBeNull());
   vi.mocked(workflowsApi.list).mockResolvedValue({ success: true, data: [{ ...workflow, id: 'wf1', isActive: false, status: 'PAUSED' }], meta: { total: 1, page: 1, limit: 10, hasMore: false } } as never);
   action('Pause');
@@ -112,7 +112,7 @@ it('quick icons duplicate and toggle the same workflow while showing only the su
   render(<WorkflowsPage />); await screen.findByRole('grid');
   expect(screen.queryByLabelText('Resume workflow')).toBeNull();
   fireEvent.click(screen.getByLabelText('Duplicate workflow'));
-  await waitFor(() => expect(workflowsApi.create).toHaveBeenCalledWith(expect.objectContaining({ name: 'Follow up (Copy)', isActive: false })));
+  await waitFor(() => expect(workflowsApi.duplicate).toHaveBeenCalledWith('wf1'));
   await waitFor(() => expect((screen.getByLabelText('Pause workflow') as HTMLButtonElement).disabled).toBe(false));
   vi.mocked(workflowsApi.list).mockResolvedValue({ data: [{ ...workflow, id: 'wf1', isActive: false }], meta: { total: 1 } } as never);
   fireEvent.click(screen.getByLabelText('Pause workflow'));
