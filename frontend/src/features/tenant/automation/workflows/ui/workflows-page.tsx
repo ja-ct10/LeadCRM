@@ -7,7 +7,9 @@ import { Eye, Edit, Copy, Activity, Pause, Play, Archive } from 'lucide-react';
 import { DataGrid, type DataGridColumnDef, type SortState } from '@/shared/components/data-grid';
 import { TableIconButton } from '@/shared/components/data-grid/table-icon-button';
 import { FilterButton } from '@/shared/components/crm/filter-button';
-import { RefreshButton } from '@/shared/components/crm/refresh-button';
+import { ModuleTableToolbar } from '@/shared/components/crm/module-table-toolbar';
+import { useModuleTableColumns } from '@/shared/hooks/use-module-table-columns';
+import { WORKFLOWS_TABLE_COLUMNS } from '@leadcrm/shared';
 import { ModuleFilterRail } from '@/shared/components/crm/module-filter-rail';
 import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { useAuth } from '@/store/AuthContext';
@@ -80,6 +82,7 @@ export default function WorkflowsPage() {
         {canEdit && <TableIconButton touchFriendly label={workflow.isActive ? 'Pause workflow' : 'Resume workflow'} disabled={busy} onClick={() => toggleWorkflow(workflow)}>{workflow.isActive ? <Pause size={14} /> : <Play size={14} />}</TableIconButton>}
       </div> },
   ];
+  const tableColumns = useModuleTableColumns('workflows', WORKFLOWS_TABLE_COLUMNS, columns);
   async function mutate(work: () => Promise<unknown>, message: string) {
     if (mutationLock.current) return;
     mutationLock.current = true; setBusy(true);
@@ -99,11 +102,10 @@ export default function WorkflowsPage() {
     <div className="flex flex-wrap justify-between gap-4"><div><h1 className="text-2xl font-semibold">Workflows</h1><p className="text-sm text-[var(--muted-foreground)]">When something happens, check conditions and perform actions.</p></div>{canCreate && <Button disabled={!metadata || busy} onClick={() => setCreateOpen(true)}>Create workflow</Button>}</div>
     {metadataError && <div role="alert">{metadataError} <Button variant="outline" onClick={() => setRetry(retry + 1)}>Retry options</Button></div>}
     {workflowsError && <div role="alert">{workflowsError} <Button variant="outline" onClick={() => void refreshWorkflows()}>Retry workflows</Button></div>}
-    <div className="flex flex-wrap items-center gap-2">
-      <input aria-label="Search workflows" placeholder="Search workflows..." value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} className="h-8 w-full sm:w-64 min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-xs dark:bg-slate-800 dark:border-slate-700" />
-      <FilterButton title="Workflows" open={showFilters} onClick={() => setShowFilters(!showFilters)} />
-      <RefreshButton label="Refresh workflows" disabled={workflowsLoading} refreshing={workflowsLoading} onClick={() => void refreshWorkflows()} />
-    </div>
+    {tableColumns.drawer}
+    <ModuleTableToolbar label="Workflows" search={search} onSearch={value => { setSearch(value); setPage(1); }} placeholder="Search workflows..."
+      filter={<FilterButton title="Workflows" open={showFilters} active={!!(statuses.length || triggers.length)} onClick={() => setShowFilters(!showFilters)} />}
+      refreshing={workflowsLoading} onRefresh={refreshWorkflows} onManageColumns={tableColumns.openColumns} />
     <div className="flex items-start gap-3 min-w-0">
       <ModuleFilterRail showFilters={showFilters} onToggleFilters={() => setShowFilters(false)} filterSearchTerm={filterSearch} onFilterSearch={setFilterSearch} totalRecords={total} onClearFilters={clearFilters}
         filterGroups={[
@@ -112,7 +114,7 @@ export default function WorkflowsPage() {
         ]}
         onFilterToggle={(group, id) => { const setter = group === 'status' ? setStatuses : setTriggers; setter(previous => previous.includes(id) ? previous.filter(value => value !== id) : [...previous, id]); setPage(1); }} />
       <div className="min-w-0 flex-1">
-        {workflowsLoading ? <TableLoadingState label="Loading workflows..." /> : <DataGrid<Workflow> sort={sort} sortingMode="external" onSortChange={next => { setSort(next ?? { field: 'createdAt', direction: 'desc' }); setPage(1); }} columns={columns} data={workflows} getRowId={row => row.id} height="auto" selectable={canEdit || canDelete} selectedIds={selected} onSelectionChange={setSelected}
+        {workflowsLoading ? <TableLoadingState label="Loading workflows..." /> : <DataGrid<Workflow> sort={sort} sortingMode="external" onSortChange={next => { setSort(next ?? { field: 'createdAt', direction: 'desc' }); setPage(1); }} columns={tableColumns.columns} data={workflows} getRowId={row => row.id} height="auto" selectable={canEdit || canDelete} selectedIds={selected} onSelectionChange={setSelected}
           rowActions={workflow => [
             { id: 'view', label: 'View', icon: <Eye size={14} />, onClick: () => router.push(`/automation/workflows/${workflow.id}/edit?view=true`) },
             ...(canEdit ? [{ id: 'edit', label: 'Edit', icon: <Edit size={14} />, disabled: busy, onClick: () => router.push(`/automation/workflows/${workflow.id}/edit`) }] : []),

@@ -3,7 +3,7 @@ import { SelectedRowsBar } from '@/shared/components/crm/selected-rows-bar';
 
 
 import React, { useEffect, useRef, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { ArchiveRestore } from 'lucide-react';
 import { toast } from 'sonner';
 import { ARCHIVE_TYPES, type ArchivedRecord, type ArchiveType } from '@leadcrm/shared';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
@@ -12,7 +12,7 @@ import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { LeadsPagination } from '@/shared/components/crm/leads-pagination';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { TableIconButton } from '@/shared/components/data-grid/table-icon-button';
-import { ModuleSearchInput } from '@/shared/components/crm/module-search-input';
+import { ModuleTableToolbar } from '@/shared/components/crm/module-table-toolbar';
 import { archivedDataService } from '../services/archived-data.service';
 import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
@@ -98,9 +98,9 @@ export function ArchivedData(): React.ReactElement {
     }] : []),
     { id: 'actions', header: 'Actions', accessor: () => '', width: 120,
       cell: (_value, record) => (
-        <TableIconButton touchFriendly label="Restore" ariaLabel="Restore archived record"
+        <TableIconButton touchFriendly label="Restore" ariaLabel="Restore"
           disabled={restoring || !record.canRestore} onClick={() => setPending({ records: [record], bulk: false })}>
-          <RefreshCw size={14} aria-hidden="true" />
+          <ArchiveRestore size={14} aria-hidden="true" />
         </TableIconButton>
       ),
     },
@@ -121,10 +121,8 @@ export function ArchivedData(): React.ReactElement {
             </button>
           ))}
         </div>
-        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2" role="toolbar" aria-label="Archived data controls">
-          <ModuleSearchInput label="Search archived records" placeholder="Search archived records..." value={search} disabled={restoring}
-            onChange={value => { setSearch(value); changePage(1); }} />
-        </div>
+        <ModuleTableToolbar label="Archived records" search={search} onSearch={value => { setSearch(value); changePage(1); }} placeholder="Search archived records..."
+          disabled={restoring} refreshing={isInitialLoad || isRefreshing} onRefresh={refetch} />
         {error && <div role="alert" className="text-sm text-red-600">{error} <button type="button" className="underline" onClick={() => void refetch()}>Retry</button></div>}
         {isInitialLoad || isRefreshing ? <TableLoadingState label="Loading archived records..." /> : (
           <DataGrid<ArchivedRecord> columns={columns} data={error ? EMPTY_RECORDS : records} getRowId={rowId} sort={sort} sortingMode="external" onSortChange={next => { setSort(next ?? { field: 'archivedAt', direction: 'desc' }); setPage(1); }}

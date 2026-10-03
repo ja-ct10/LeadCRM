@@ -47,7 +47,7 @@ it('uses the shared grid, actual timestamp and one scrolling filter row', async 
   expect(screen.getByRole('grid')).toBeTruthy();
   expect(screen.getAllByRole('checkbox')).toHaveLength(4);
   expect(screen.getByRole('columnheader', { name: 'Archived On' })).toBeTruthy();
-  expect(screen.getAllByRole('button', { name: 'Restore archived record' })[0].textContent).toBe('');
+  expect(screen.getAllByRole('button', { name: 'Restore' })[0].textContent).toBe('');
 });
 
 it.each([
@@ -55,7 +55,7 @@ it.each([
 ])('confirms %s restoration using its configured endpoint', async (label, route) => {
   rows = [{ ...rows[0], id: label.toLowerCase() + '-id', type: label as ArchivedRecord['type'], name: 'Saved ' + label }];
   render(<ArchivedData />); await screen.findByText('Saved ' + label);
-  fireEvent.click(screen.getByRole('button', { name: 'Restore archived record' }));
+  fireEvent.click(within(screen.getByRole('grid')).getByRole('button', { name: 'Restore' }));
   expect(writes()).toHaveLength(0);
   expect(screen.getByText('This record will be restored to its original module.')).toBeTruthy();
   confirm();
@@ -66,7 +66,7 @@ it.each([
 
 it('cancel and Escape do not restore; dialog traps focus and restores it', async () => {
   render(<ArchivedData />); await screen.findByText('Saved Lead');
-  const button = screen.getAllByRole('button', { name: 'Restore archived record' })[0];
+  const button = screen.getAllByRole('button', { name: 'Restore' })[0];
   button.focus(); fireEvent.click(button);
   const dialog = screen.getByRole('alertdialog');
   const first = within(dialog).getByRole('button', { name: 'Close' });
@@ -86,7 +86,7 @@ it('selects, deselects and restores all visible records only after bulk confirma
   expect(all.indeterminate).toBe(true);
   fireEvent.click(all); expect(screen.getByText('3 selected')).toBeTruthy();
   fireEvent.click(all); expect(screen.queryByRole('group', { name: 'Bulk restore' })).toBeNull();
-  fireEvent.click(all); fireEvent.click(screen.getByRole('button', { name: 'Restore' }));
+  fireEvent.click(all); fireEvent.click(screen.getByText('Restore', { selector: 'button' }));
   expect(writes()).toHaveLength(0);
   expect(screen.getByText('This will restore 3 archived records to their original modules.')).toBeTruthy();
   confirm();
@@ -99,7 +99,7 @@ it('keeps failed records and reports partial bulk results accurately', async () 
   failIds.add('contact-id');
   render(<ArchivedData />); await screen.findByText('Saved Lead');
   fireEvent.click(screen.getByRole('checkbox', { name: 'Select all records' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Restore' })); confirm();
+  fireEvent.click(screen.getByText('Restore', { selector: 'button' })); confirm();
   await waitFor(() => expect(state.error).toHaveBeenCalledWith('1 record could not be restored. Permission denied'));
   expect(state.success).toHaveBeenCalledWith('2 records restored');
   expect(screen.getByText('Saved Contact')).toBeTruthy();
@@ -110,8 +110,8 @@ it('keeps failed records and reports partial bulk results accurately', async () 
 it('retains a rejected individual restore and disables forbidden actions', async () => {
   failIds.add('lead-id'); rows[1].canRestore = false;
   render(<ArchivedData />); await screen.findByText('Saved Lead');
-  expect((screen.getAllByRole('button', { name: 'Restore archived record' })[1] as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.click(screen.getAllByRole('button', { name: 'Restore archived record' })[0]); confirm();
+  expect((screen.getAllByRole('button', { name: 'Restore' })[1] as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getAllByRole('button', { name: 'Restore' })[0]); confirm();
   await waitFor(() => expect(state.error).toHaveBeenCalledWith('Permission denied'));
   expect(screen.getByText('Saved Lead')).toBeTruthy();
   expect(state.success).not.toHaveBeenCalled();

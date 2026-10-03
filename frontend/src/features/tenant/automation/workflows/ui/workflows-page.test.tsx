@@ -96,7 +96,7 @@ it('disables refresh and spins its icon until the in-flight request finishes', a
   render(<WorkflowsPage />); await screen.findByRole('grid');
   let resolve!: (response: any) => void;
   vi.mocked(workflowsApi.list).mockReturnValueOnce(new Promise(done => { resolve = done; }));
-  const refresh = screen.getByLabelText('Refresh workflows') as HTMLButtonElement;
+  const refresh = screen.getByLabelText('Refresh') as HTMLButtonElement;
   const calls = vi.mocked(workflowsApi.list).mock.calls.length;
   fireEvent.click(refresh); fireEvent.click(refresh);
   expect(refresh.disabled).toBe(true);

@@ -17,6 +17,7 @@ import { useViewTypePreference } from '@/shared/hooks/use-view-type-preference';
 import { VIEW_OPTIONS as VIEW_RENDERERS } from './view-registry';
 import { validateModuleConfig } from './validate-module-config';
 import { ModuleFilterRail, type FilterGroup } from './module-filter-rail';
+import { ManageColumnsButton } from './manage-columns-button';
 import { ModuleSearchInput } from './module-search-input';
 import { FilterButton } from './filter-button';
 import { RefreshButton } from './refresh-button';
@@ -512,12 +513,7 @@ export function ModuleWorkspace({
 
           {/* Table Settings Menu (Manage Columns, Reset Columns, View Mode) */}
           {directManageColumns ? (
-            <TooltipProvider><Tooltip><TooltipTrigger asChild>
-              <button type="button" onClick={onManageColumns} aria-label="Manage Columns" title="Manage Columns"
-                className="inline-flex items-center justify-center h-8 px-2.5 min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 text-[#5A6B85] dark:text-slate-300 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-blue-500/40">
-                <Settings2 size={14} aria-hidden="true" />
-              </button>
-            </TooltipTrigger><TooltipContent>Manage Columns</TooltipContent></Tooltip></TooltipProvider>
+            <ManageColumnsButton onClick={onManageColumns} />
           ) : <TableSettingsMenuInline
             pageSize={pageSize}
             onPageSizeChange={onPageSizeChange}

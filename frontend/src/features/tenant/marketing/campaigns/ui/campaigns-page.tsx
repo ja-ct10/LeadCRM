@@ -24,7 +24,9 @@ import { CampaignBuilder } from './campaign-builder';
 import { DataGrid, type DataGridColumnDef, type SortState } from '@/shared/components/data-grid';
 import { BulkSelectionBar, executeSelectedRows } from '@/shared/components/crm/bulk-selection-bar';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
-import { RefreshButton } from '@/shared/components/crm/refresh-button';
+import { ModuleTableToolbar } from '@/shared/components/crm/module-table-toolbar';
+import { useModuleTableColumns } from '@/shared/hooks/use-module-table-columns';
+import { CAMPAIGNS_TABLE_COLUMNS } from '@leadcrm/shared';
 import { LeadsPagination } from '@/shared/components/crm/leads-pagination';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
 
@@ -175,6 +177,7 @@ export default function CampaignsPage() {
     { id: 'engagement', header: 'Engagement', accessor: row => `${row.sentCount ? Math.round((row.openedCount || 0) / row.sentCount * 100) : 0}%`, width: 130 },
     { id: 'createdAt', sortable: true, header: 'Created', accessor: row => row.createdAt, width: 180 },
   ];
+  const tableColumns = useModuleTableColumns('campaigns', CAMPAIGNS_TABLE_COLUMNS, campaignColumns);
 
   if (showBuilder) {
     return <CampaignBuilder key={`${user?.tenantId}`} initialCampaign={editingCampaign} initialType={builderInitialType} initialContent={builderInitialContent} initialSubject={builderSubject} canSend={canSendCampaign}
@@ -378,6 +381,13 @@ export default function CampaignsPage() {
         )}
       </div>
 
+      {activeTab === 'all' && <>
+            {tableColumns.drawer}
+            <ModuleTableToolbar label="Campaigns" search={searchTerm} onSearch={setSearchTerm} placeholder="Search campaigns..."
+              filter={<FilterButton title="campaigns" open={showFilters} active={!!(statusFilter.length || typeFilter.length)} onClick={() => setShowFilters(!showFilters)} />}
+              refreshing={isInitialLoad || isRefreshing} onRefresh={refetchCampaigns} onManageColumns={tableColumns.openColumns} />
+      </>}
+
       {/* Tab Content */}
       {activeTab === 'all' && (
         totalItems === 0 && !searchTerm && !statusFilter.length && !typeFilter.length && !isInitialLoad && !isRefreshing ? (
@@ -393,28 +403,6 @@ export default function CampaignsPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="flex min-w-0 items-center gap-2">
-              <div className="relative min-w-0 flex-1 sm:max-w-md">
-                <Search size={14} aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-[#5A6B85]" />
-                <input
-                  type="text"
-                  aria-label="Search campaigns"
-                  placeholder="Search campaigns..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="h-9 w-full min-w-0 rounded-lg border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 pl-9 pr-8 text-[13px] text-[#0F172A] dark:text-slate-200 placeholder:text-[#5A6B85] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
-                />
-                {searchTerm && (
-                  <TooltipProvider><Tooltip><TooltipTrigger asChild>
-                    <button onClick={() => setSearchTerm('')} aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-[#5A6B85] focus-visible:ring-2 focus-visible:ring-blue-600">
-                      <X size={14} aria-hidden="true" />
-                    </button>
-                  </TooltipTrigger><TooltipContent>Clear search</TooltipContent></Tooltip></TooltipProvider>
-                )}
-              </div>
-              <FilterButton title="campaigns" open={showFilters} onClick={() => setShowFilters(!showFilters)} />
-              <RefreshButton label="Refresh campaigns" disabled={isInitialLoad || isRefreshing} refreshing={isRefreshing} onClick={() => void refetchCampaigns()} />
-            </div>
             <div className="flex min-w-0 items-start gap-3">
               <ModuleFilterRail
                 showFilters={showFilters}
@@ -448,7 +436,7 @@ export default function CampaignsPage() {
               />
               <div className="min-w-0 flex-1">
             {isInitialLoad || isRefreshing ? <TableLoadingState label="Loading campaigns..." /> : <DataGrid<Campaign> sort={sort} sortingMode="external" onSortChange={next => { setSort(next ?? { field: 'createdAt', direction: 'desc' }); goToPage(1); }}
-              columns={campaignColumns} data={filteredCampaigns} getRowId={row => row.id} height="auto" selectable={canDeleteCampaign} selectedIds={selected} onSelectionChange={setSelected}
+              columns={tableColumns.columns} data={filteredCampaigns} getRowId={row => row.id} height="auto" selectable={canDeleteCampaign} selectedIds={selected} onSelectionChange={setSelected}
               enableColumnMenu={false} ariaLabel="Campaigns table" summaryLabel={`${totalItems} total records`} onRowClick={viewCampaign}
               rowActions={campaign => [
                 { id: 'view', label: 'View', icon: <Eye size={14} />, onClick: () => viewCampaign(campaign) },

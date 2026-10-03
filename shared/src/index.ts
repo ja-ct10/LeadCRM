@@ -31,3 +31,5 @@ export * from './contracts/mailbox.contract';
 export * from './contracts/closing-requirements';
 export * from './contracts/deal-stage-automation';
 export * from './contracts/notifications';
+
+export * from './contracts/module-table-columns';

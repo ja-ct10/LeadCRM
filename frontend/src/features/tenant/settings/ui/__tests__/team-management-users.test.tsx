@@ -109,3 +109,21 @@ it('shows Leads pagination on a single page and pages the complete API-backed us
   await waitFor(() => expect(screen.queryByText('Saved User 0')).toBeNull());
   expect(screen.getByText('Saved User 26')).toBeTruthy();
 });
+
+it('preserves a valid page and search through refresh', async () => {
+  const users = Array.from({ length: 30 }, (_, index) => ({ id: `refresh-${index}`, tenantId: 't', firstName: 'User', lastName: String(index), email: `user${index}@example.com`, role: 'Sales', status: 'active' }));
+  mocks.list.mockResolvedValue({ data: users, meta: { hasMore: false } });
+  render(<UsersSubTab />);
+  await screen.findByRole('button', { name: 'Next page' });
+  fireEvent.change(screen.getByPlaceholderText('Search users...'), { target: { value: 'example.com' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+  await waitFor(() => expect(screen.getByLabelText('Pagination').textContent).toContain('Page 2 of 2'));
+  let resolve!: (response: unknown) => void;
+  mocks.list.mockReturnValueOnce(new Promise(done => { resolve = done; }));
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+  expect((screen.getByRole('button', { name: 'Refresh' }) as HTMLButtonElement).disabled).toBe(true);
+  resolve({ data: users, meta: { hasMore: false } });
+  await waitFor(() => expect(screen.queryByText('Loading users...')).toBeNull());
+  expect((screen.getByPlaceholderText('Search users...') as HTMLInputElement).value).toBe('example.com');
+  expect(screen.getByLabelText('Pagination').textContent).toContain('Page 2 of 2');
+});

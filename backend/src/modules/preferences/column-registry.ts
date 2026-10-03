@@ -1,4 +1,4 @@
-import { TASK_COLUMN_DEFINITIONS } from '@leadcrm/shared';
+import { CAMPAIGNS_TABLE_COLUMNS, WORKFLOWS_TABLE_COLUMNS, USERS_TABLE_COLUMNS, TASK_COLUMN_DEFINITIONS } from '@leadcrm/shared';
 import type { ColumnConfig, ColumnConfigItem, ColumnDefinition } from '@leadcrm/shared';
 
 /**
@@ -189,6 +189,9 @@ export const DEALS_COLUMN_REGISTRY: ModuleRegistry = {
 // ─────────────────────────────────────────────────────
 
 export const COLUMN_REGISTRIES: Record<string, ModuleRegistry> = {
+  campaigns: { module: 'campaigns', columns: CAMPAIGNS_TABLE_COLUMNS, sortableFields: ['name', 'createdAt'] },
+  workflows: { module: 'workflows', columns: WORKFLOWS_TABLE_COLUMNS, sortableFields: ['name', 'createdAt'] },
+  users: { module: 'users', columns: USERS_TABLE_COLUMNS, sortableFields: ['name', 'role', 'email', 'status', 'department', 'createdAt'] },
   tasks: { module: 'tasks', columns: TASK_COLUMN_DEFINITIONS, sortableFields: ['title', 'dueDate', 'createdAt', 'updatedAt'] },
   leads: LEADS_COLUMN_REGISTRY,
   accounts: ACCOUNTS_COLUMN_REGISTRY,

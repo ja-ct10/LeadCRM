@@ -3,9 +3,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { compareSortValues } from '@leadcrm/shared';
 import {
-  Search, Plus, X, Trash2, Filter,
+  Search, Plus, X,
   ShieldAlert, CheckCircle2,
-  Clock, Users,
+  Clock,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -18,13 +18,15 @@ import { FilterGroupSection } from '@/shared/components/crm/module-workspace';
 import { usersService } from '@/features/tenant/administration/users/services/users.service';
 import { DataGrid, type DataGridColumnDef, type SortState } from '@/shared/components/data-grid';
 import { BulkSelectionBar, executeSelectedRows } from '@/shared/components/crm/bulk-selection-bar';
-import { RefreshButton } from '@/shared/components/crm/refresh-button';
+import { ModuleTableToolbar } from '@/shared/components/crm/module-table-toolbar';
+import { FilterButton } from '@/shared/components/crm/filter-button';
+import { useModuleTableColumns } from '@/shared/hooks/use-module-table-columns';
+import { USERS_TABLE_COLUMNS } from '@leadcrm/shared';
 import { UserPanel } from './user-panel';
 import { UserAvatar as ProfileAvatar } from '@/shared/components/user-avatar';
 import { DataErrorState } from '@/shared/components/crm/data-view-states';
 import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { cn } from '@/lib/utils';
-import { USE_MOCK_DATA } from '@/lib/config';
 import type { User } from '@/store/types';
 
 // ── Avatar ─────────────────────────────────────────────────────────────────
@@ -218,7 +220,7 @@ function TimelineDrawer({ selectedUser, onClose }: TimelineDrawerProps): React.R
 
 // ── Main UsersSubTab ──────────────────────────────────────────────────────────
 
-export function UsersSubTab({ onUsersLoaded }: { onUsersLoaded?: (users: User[]) => void }): React.ReactElement {
+export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (action: React.ReactNode) => React.ReactNode; onUsersLoaded?: (users: User[]) => void }): React.ReactElement {
   const { user: currentUser, userCan } = useAuth();
   const { roles, rolesLoading, rolesError, refreshRoles } = useData();
   const [allUsers, setAllUsers] = useState<User[]>([]);
@@ -229,7 +231,7 @@ export function UsersSubTab({ onUsersLoaded }: { onUsersLoaded?: (users: User[])
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true); setLoadError(null); setAllUsers([]);
+    setLoading(true); setLoadError(null);
     const load = async () => {
       try {
         const result: User[] = [];
@@ -325,24 +327,19 @@ export function UsersSubTab({ onUsersLoaded }: { onUsersLoaded?: (users: User[])
     { id: 'activity', header: 'Actions', accessor: () => '', width: 90, cell: (_, u) => <button aria-label="View Activity" title="View Activity" className="min-h-11 min-w-11" onClick={() => setTimelineUser(u)}><Clock size={14} /></button> },
   ];
 
+  const tableColumns = useModuleTableColumns('users', USERS_TABLE_COLUMNS, columns);
+  const createAction = canManageUsers && <button aria-label="New user" title="New user" disabled={rolesLoading || !!rolesError} onClick={() => setIsAddOpen(true)} className="flex shrink-0 h-11 w-11 sm:h-auto sm:w-auto items-center justify-center gap-1.5 sm:px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold disabled:opacity-50">
+      <Plus size={16} /> <span className="hidden sm:inline">New User</span>
+    </button>;
+
   return (
     <div className="min-w-0 max-w-full space-y-4">
+      {renderHeader ? renderHeader(createAction) : <div className="flex justify-end">{createAction}</div>}
+      {tableColumns.drawer}
       {rolesError && <div role="alert" className="text-sm text-red-500">{rolesError} <button onClick={() => void refreshRoles()} className="underline">Retry roles</button></div>}
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-        <div className="relative flex-1 min-w-0 sm:max-w-xs">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input type="text" placeholder="Search users..." value={search} onChange={(e) => setSearch(e.target.value)}
-            aria-label="Search users" className="w-full min-w-0 h-11 sm:h-auto pl-8 sm:pl-9 pr-2 sm:pr-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-white/[0.08] text-slate-900 dark:text-white rounded-lg text-xs focus:outline-none focus:border-blue-500 transition-colors placeholder-slate-400" />
-        </div>
-        <button aria-label="Filter users" title="Filter users" aria-expanded={showFilters} aria-controls="user-filters" onClick={() => setShowFilters(value => !value)} className={cn('flex shrink-0 h-11 w-11 sm:h-auto sm:w-auto items-center justify-center gap-2 sm:px-3 py-2 border rounded-lg text-xs font-semibold', showFilters ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300')}>
-          <Filter size={14} /> <span className="hidden sm:inline">Filter</span>
-        </button>
-        <RefreshButton label="Refresh users" disabled={loading} refreshing={loading} onClick={() => setReload(value => value + 1)} />
-        {canManageUsers && <button aria-label="New user" title="New user" disabled={rolesLoading || !!rolesError} onClick={() => setIsAddOpen(true)} className="sm:ml-auto flex shrink-0 h-11 w-11 sm:h-auto sm:w-auto items-center justify-center gap-1.5 sm:px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold disabled:opacity-50">
-          <Plus size={16} /> <span className="hidden sm:inline">New User</span>
-        </button>}
-      </div>
+      <ModuleTableToolbar label="Users" search={search} onSearch={setSearch} placeholder="Search users..."
+        filter={<FilterButton title="users" open={showFilters} active={!!(roleFilter.length || statusFilter.length || departmentFilter.length)} onClick={() => setShowFilters(value => !value)} />}
+        refreshing={loading} onRefresh={() => setReload(value => value + 1)} onManageColumns={tableColumns.openColumns} />
 
       <div className="flex min-w-0 gap-3 items-stretch">
         {showFilters && <div className="fixed inset-0 z-30 bg-black/30 sm:hidden" aria-hidden="true" onClick={() => setShowFilters(false)} />}
@@ -362,7 +359,7 @@ export function UsersSubTab({ onUsersLoaded }: { onUsersLoaded?: (users: User[])
         </motion.aside>}
         <div className="min-w-0 flex-1 space-y-4">
       {loading ? <TableLoadingState label="Loading users..." /> : loadError ? <DataErrorState message={loadError} onRetry={() => setReload(value => value + 1)} /> :
-        <DataGrid<User> sort={sort} sortingMode="external" onSortChange={next => setSort(next ?? { field: 'createdAt', direction: 'desc' })} columns={columns} data={paginated} getRowId={row => row.id} height="auto" selectable={canManageUsers} selectedIds={selected} onSelectionChange={setSelected} enableColumnMenu={false} ariaLabel="Team Management table" emptyMessage="No users found"
+        <DataGrid<User> sort={sort} sortingMode="external" onSortChange={next => setSort(next ?? { field: 'createdAt', direction: 'desc' })} columns={tableColumns.columns} data={paginated} getRowId={row => row.id} height="auto" selectable={canManageUsers} selectedIds={selected} onSelectionChange={setSelected} enableColumnMenu={false} ariaLabel="Team Management table" emptyMessage="No users found"
           onRowClick={u => openUser(u)} rowActions={u => [
             { id: 'view', label: 'View', onClick: () => openUser(u) },
             ...(canManageUsers ? [
