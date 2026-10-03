@@ -55,18 +55,17 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft }: 
     }
   }, [isOpen, isMinimized]);
 
-  // Load initial draft data when opened with a draft
+  // Every new compose starts with its explicit draft or an empty recipient.
   useEffect(() => {
-    if (isOpen && initialDraft) {
-      setTo(initialDraft.to);
-      setSubject(initialDraft.subject);
-      setCurrentDraftId(initialDraft.draftId);
+    if (isOpen) {
+      setTo(initialDraft?.to ?? '');
+      setSubject(initialDraft?.subject ?? '');
+      setCurrentDraftId(initialDraft?.draftId);
       // Set body content in the editor after a short delay to ensure ref is mounted
-      setTimeout(() => {
-        if (editorRef.current && initialDraft.body) {
-          editorRef.current.innerHTML = safeMailboxHtml(initialDraft.body);
-        }
+      const timer = setTimeout(() => {
+        if (editorRef.current) editorRef.current.innerHTML = safeMailboxHtml(initialDraft?.body ?? '');
       }, 50);
+      return () => clearTimeout(timer);
     }
   }, [isOpen, initialDraft]);
 

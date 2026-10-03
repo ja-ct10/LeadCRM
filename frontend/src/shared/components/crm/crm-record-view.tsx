@@ -36,6 +36,8 @@ import { EntityCombobox } from '@/shared/components/entity-combobox';
 import { CrmEmailSchema } from '@leadcrm/shared';
 import { RecordBackButton } from './record-back-button';
 import { ConvertLeadDialog } from '@/features/tenant/crm/leads/ui/convert-lead-dialog';
+import { leadEmailComposeHref } from '@/features/tenant/inbox/services/compose-navigation';
+import { copyTextWithFeedback } from '@/shared/utils/clipboard';
 
 export type CrmRecordModule = 'leads' | 'contacts' | 'accounts' | 'deals';
 type RecordData = Record<string, unknown>;
@@ -56,11 +58,12 @@ const displayText = (value: unknown): string => Array.isArray(value) ? value.joi
 const present = (value: unknown) => value !== undefined && value !== null && value !== '' && (!Array.isArray(value) || value.length > 0);
 
 
-function RecordQuickInfo({ items, actions }: { items: { value: string; icon: LucideIcon; href?: string; label?: string }[]; actions?: React.ReactNode }) {
+function RecordQuickInfo({ items, actions }: { items: { value: string; icon: LucideIcon; href?: string; label?: string; onClick?: () => void; ariaLabel?: string; disabled?: boolean }[]; actions?: React.ReactNode }) {
   return <div className="mt-3 flex min-w-0 flex-wrap items-center gap-1 sm:mt-4 sm:gap-1.5">
-    {items.filter(item => item.value).map(({ value, icon: Icon, href, label }) => {
+    {items.filter(item => item.value).map(({ value, icon: Icon, href, label, onClick, ariaLabel, disabled }) => {
       const content = <><Icon className="h-3 w-3 shrink-0 text-muted-foreground sm:h-3.5 sm:w-3.5" /><span className="min-w-0 [overflow-wrap:anywhere]">{label}{value}</span></>;
       const cls = 'inline-flex min-h-8 max-w-full items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11px] text-foreground sm:min-h-9 sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-xs';
+      if (onClick) return <button key={label || value} type="button" onClick={onClick} aria-label={ariaLabel} disabled={disabled} className={cn(cls, 'text-left enabled:cursor-pointer enabled:hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-60')}>{content}</button>;
       return href ? <a key={label || value} href={href} className={cn(cls, 'hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring')}>{content}</a> : <span key={label || value} className={cls}>{content}</span>;
     })}
     {actions}
@@ -271,6 +274,10 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const owner = personName(object(record.assignedUser)) || personName(object(record.owner));
   const company = text(object(record.organization)?.name) || text(person?.companyName) || text(person?.company) || text(record.companyName) || text(record.company) || text(object(record.account)?.name);
   const location = [text(record.address), text(record.city), text(record.province), text(record.country)].filter(Boolean).join(', ');
+  const leadChipActions = module === 'leads' && !!onClose;
+  const email = text(person?.email);
+  const phone = text(person?.phone);
+  const composeHref = leadChipActions ? leadEmailComposeHref(email) : null;
   const subtitle = module === 'deals' ? `₱${Number(record.value ?? 0).toLocaleString()} · ${text(object(record.pipeline)?.name)}` : module === 'accounts' ? text(record.industry) || text(record.website) : company || text(record.jobTitle) || location;
   const rawStatus = text(module === 'deals' ? object(record.stage)?.name : module === 'accounts' ? '' : record.status);
   const status = module === 'leads' || module === 'contacts' ? normalizeCrmStatus(rawStatus) : rawStatus;
@@ -287,7 +294,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     ...(module === 'accounts' ? [['Account name', record.name], ['Industry', record.industry], ['Company size', record.size]] as [string, unknown][] : []),
     ...(module === 'deals' ? [['Deal title', title], ['Deal value', subtitle.split(' · ')[0]], ['Priority', record.priority], ['Associated Lead / Contact', personName(person)], ['Created', record.createdAt ? new Date(String(record.createdAt)).toLocaleDateString() : '']] as [string, unknown][] : []),
     ['Email', person?.email], ['Phone', person?.phone], ['Address', location], ['Company', module !== 'accounts' ? company : undefined], ['Job title', record.jobTitle], ['Website', record.website],
-    ['Product interests', record.productInterest ?? record.productInterests], ['Source', module === 'deals' ? record.leadSource : source], ['Status', statusLabel], ['Owner / Representative', owner], ['Notes', module === 'deals' ? undefined : record.notes ?? record.description],
+    ['Product interests', record.productInterest ?? record.productInterests], ['Source', module === 'deals' ? record.leadSource : source], ['Status', statusLabel], ['Assigned Agent', owner], ['Notes', module === 'deals' ? undefined : record.notes ?? record.description],
   ];
   const productIds = (record.productInterestIds as string[] | undefined)?.length ? record.productInterestIds as string[] : record.productInterestId ? [text(record.productInterestId)] : [];
   const productNames = (record.productInterest ?? record.productInterests ?? []) as string[];
@@ -300,7 +307,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     { label: 'Expected close date', value: text(record.expectedCloseDate).slice(0, 10), apiField: 'expectedCloseDate', type: 'date' },
     { label: 'Pipeline', value: object(record.pipeline)?.name },
     { label: 'Stage', value: statusLabel },
-    { label: 'Assigned user', value: record.assignedUserId, displayValue: owner, apiField: 'assignedUserId', type: 'users' },
+    { label: 'Assigned Agent', value: record.assignedUserId, displayValue: owner, apiField: 'assignedUserId', type: 'users' },
     { label: 'Account', value: record.accountId, displayValue: company, apiField: 'accountId', type: 'accounts' },
     { label: 'Contacts', value: (record.contactDeals as RecordData[] | undefined)?.map(link => text(object(link.contact)?.id)) ?? [], displayValue: (record.contactDeals as RecordData[] | undefined)?.map(link => personName(object(link.contact))) ?? [], apiField: 'contactIds', type: 'contacts' },
     { label: 'Leads', value: (record.leadDeals as RecordData[] | undefined)?.map(link => text(object(link.lead)?.id)) ?? [], displayValue: (record.leadDeals as RecordData[] | undefined)?.map(link => personName(object(link.lead))) ?? [], apiField: 'leadIds', type: 'leads' },
@@ -328,7 +335,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     { label: 'Address', value: record.address, apiField: 'address' },
     productRow,
     ...(module === 'accounts' ? [] : [{ label: 'Status', value: statusLabel, apiField: 'status', type: 'select' as const, options: statuses }]),
-    { label: 'Owner / Representative', value: owner },
+    { label: 'Assigned Agent', value: owner },
     { label: 'Notes', value: module === 'leads' ? record.description : record.notes, apiField: module === 'leads' ? 'description' : 'notes', type: 'textarea' },
   ];
 
@@ -384,12 +391,12 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
           </div>
         </div>
         <RecordQuickInfo items={[
-          { value: text(person?.email), icon: Mail, href: person?.email ? `mailto:${text(person.email)}` : undefined },
-          { value: text(person?.phone), icon: Phone, href: person?.phone ? `tel:${text(person.phone)}` : undefined },
+          { value: email, icon: Mail, ...(leadChipActions ? { onClick: () => { if (composeHref) router.push(composeHref); }, ariaLabel: `Compose email to ${email}`, disabled: !composeHref } : { href: email ? `mailto:${email}` : undefined }) },
+          { value: phone, icon: Phone, ...(leadChipActions ? { onClick: () => { void copyTextWithFeedback(phone, 'Phone number'); }, ariaLabel: `Copy phone number ${phone}` } : { href: phone ? `tel:${phone}` : undefined }) },
           ...(module === 'deals' ? [{ value: personName(person), icon: User }, { value: company, icon: Building }] : []),
-          { value: owner, icon: User, label: 'Rep: ' },
+          { value: owner, icon: User, label: 'Agent: ' },
           ...(module === 'accounts' ? [{ value: website, icon: Globe, href: websiteHref }] : []),
-          { value: location, icon: MapPin },
+          { value: location, icon: MapPin, ...(leadChipActions ? { onClick: () => { void copyTextWithFeedback(location, 'Address'); }, ariaLabel: `Copy address ${location}` } : {}) },
         ]} />
         <div className="mt-4" onKeyDown={event => {
           if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;

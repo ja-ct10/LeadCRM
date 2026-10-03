@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import InboxPage from './inbox-page';
 
 const mocks = vi.hoisted(() => ({ status: vi.fn(), list: vi.fn(), sync: vi.fn(), disconnect: vi.fn() }));
+vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(window.location.search) }));
 vi.mock('../services/gmail.service', () => ({ getGmailStatus: mocks.status, fetchGmailEmails: mocks.list, syncGmail: mocks.sync, disconnectGmail: mocks.disconnect }));
 vi.mock('./inbox-current-empty', () => ({ default: () => <div>Connect email</div> }));
 vi.mock('./inbox-done-empty', () => ({ default: () => <div>No done emails</div> }));

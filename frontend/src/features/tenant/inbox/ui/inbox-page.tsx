@@ -13,6 +13,9 @@ import InboxEmailList from './inbox-email-list';
 import EmailConversationView from './email-conversation-view';
 import ComposeModal from './compose-modal';
 import type { ApiRequestError } from '@/lib/api/client';
+import { useSearchParams } from 'next/navigation';
+import { toast } from 'sonner';
+import { consumeLeadEmailCompose } from '../services/compose-navigation';
 
 type InboxView = 'current' | 'done' | 'future' | 'drafts' | 'sent' | 'all';
 type InboxCategory = 'primary' | 'promotions' | 'social' | 'updates';
@@ -27,6 +30,7 @@ const VIEW_OPTIONS: { id: InboxView; label: string }[] = [
 ];
 
 export default function InboxPage(): React.ReactElement {
+  const searchParams = useSearchParams();
   const [activeView, setActiveView] = useState<InboxView>('current');
   const [activeCategory, setActiveCategory] = useState<InboxCategory>('primary');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -41,6 +45,15 @@ export default function InboxPage(): React.ReactElement {
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest' | 'unread'>('newest');
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [composeDraft, setComposeDraft] = useState<{ to: string; subject: string; body: string; draftId?: string } | null>(null);
+  useEffect(() => {
+    const request = consumeLeadEmailCompose(new URL(window.location.href));
+    if (!request) return;
+    // Remove the request synchronously so refresh and Strict Mode cannot replay it.
+    window.history.replaceState(window.history.state, '', request.url);
+    if (!request.to) { toast.error('Please enter a valid email address'); return; }
+    setComposeDraft({ to: request.to, subject: '', body: '' });
+    setIsComposeOpen(true);
+  }, [searchParams]);
   const [selectedEmail, setSelectedEmail] = useState<GmailEmail | null>(null);
   const [nextPageToken, setNextPageToken] = useState<string | undefined>(undefined);
   const [currentPage, setCurrentPage] = useState(1);
@@ -585,7 +598,7 @@ export default function InboxPage(): React.ReactElement {
       {/* Floating Compose Button — hide when compose is open */}
       {isConnected && !isComposeOpen && (
         <button
-          onClick={() => setIsComposeOpen(true)}
+          onClick={() => { setComposeDraft(null); setIsComposeOpen(true); }}
           className="fixed bottom-6 right-6 z-40 inline-flex items-center gap-2.5 h-14 px-6 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-xl shadow-blue-500/30 active:scale-95 transition-all cursor-pointer"
           aria-label="Compose new email"
         >

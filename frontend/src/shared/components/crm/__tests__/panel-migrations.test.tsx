@@ -28,6 +28,7 @@ vi.mock('@/features/tenant/crm/accounts/ui/account-form', () => ({ AccountFormSh
 vi.mock('@/features/tenant/crm/leads/ui/convert-lead-dialog', () => ({ ConvertLeadDialog: () => null }));
 import { CrmRecordPanel, CrmRecordView, type CrmRecordModule } from '../crm-record-view';
 import { clearPageCache } from '@/shared/cache/page-cache';
+import { toast } from 'sonner';
 
 const records = {
   deals: { id: 'one', title: 'Lina Reyes – Smart Lock', pipelineId: 'sales', stageId: 'lead', stage: { name: 'Lead' }, pipeline: { name: 'Sales Pipeline' }, value: 1250.75, priority: 'MEDIUM', productInterests: ['Smart Lock'], assignedUser: { firstName: 'Sam', lastName: 'Cruz' }, leadDeals: [{ lead: { id: 'lead-one', firstName: 'Lina', lastName: 'Reyes', email: 'lina@example.test' } }], contactDeals: [] },
@@ -70,6 +71,60 @@ it.each((['leads', 'contacts', 'accounts'] as const).flatMap(module =>
 });
 
 afterEach(cleanup);
+
+it.each((['leads', 'contacts', 'accounts', 'deals'] as const).flatMap(module => ['panel', 'page'].map(surface => ({ module, surface }))))('uses the assigned record agent on $module $surface', async ({ module, surface }) => {
+  const original = mocks.get.getMockImplementation()!;
+  mocks.get.mockImplementation(async (path: string) => path === `/crm/${module}/one`
+    ? { data: { ...records[module], assignedUser: { firstName: 'Actual', lastName: 'Agent' }, owner: { firstName: 'Other', lastName: 'Owner' } } }
+    : original(path));
+  render(surface === 'panel' ? <CrmRecordPanel module={module} id="one" open onOpenChange={() => {}} /> : <CrmRecordView module={module} id="one" />);
+  await screen.findByText('Agent: Actual Agent');
+  fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  expect(screen.getByText('Assigned Agent')).toBeTruthy();
+  expect(screen.queryByText(/Owner \/ Representative|Assigned user|Rep:/)).toBeNull();
+});
+
+it('Lead drawer navigates to existing Inbox and copies exact phone/address with feedback', async () => {
+  const original = mocks.get.getMockImplementation()!;
+  mocks.get.mockImplementation(async (path: string) => path === '/crm/leads/one'
+    ? { data: { ...records.leads, email: 'Lina+sales@Example.test', phone: '+63 935 454 1321', address: '139-E 15th Avenue', city: 'Quezon City' } }
+    : original(path));
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+  const success = vi.spyOn(toast, 'success');
+  const error = vi.spyOn(toast, 'error');
+  render(<CrmRecordPanel module="leads" id="one" open onOpenChange={() => {}} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Compose email to Lina+sales@Example.test' }));
+  expect(mocks.push).toHaveBeenCalledWith('/inbox?compose=lead-email&to=Lina%2Bsales%40Example.test');
+  mocks.push.mockClear();
+  fireEvent.click(screen.getByRole('button', { name: 'Copy phone number +63 935 454 1321' }));
+  await waitFor(() => expect(success).toHaveBeenCalledWith('Phone number copied'));
+  expect(writeText).toHaveBeenLastCalledWith('+63 935 454 1321');
+  fireEvent.click(screen.getByRole('button', { name: 'Copy address 139-E 15th Avenue, Quezon City' }));
+  await waitFor(() => expect(success).toHaveBeenCalledWith('Address copied'));
+  expect(writeText).toHaveBeenLastCalledWith('139-E 15th Avenue, Quezon City');
+  writeText.mockRejectedValueOnce(new Error('Permission denied'));
+  fireEvent.click(screen.getByRole('button', { name: 'Copy phone number +63 935 454 1321' }));
+  await waitFor(() => expect(error).toHaveBeenCalledWith('Unable to copy phone number'));
+  expect(mocks.push).not.toHaveBeenCalled();
+});
+
+it('disables invalid Lead email and omits missing phone/address actions', async () => {
+  const original = mocks.get.getMockImplementation()!;
+  mocks.get.mockImplementation(async (path: string) => path === '/crm/leads/one' ? { data: { ...records.leads, email: 'invalid' } } : original(path));
+  render(<CrmRecordPanel module="leads" id="one" open onOpenChange={() => {}} />);
+  const email = await screen.findByRole('button', { name: 'Compose email to invalid' });
+  expect((email as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(email);
+  expect(mocks.push).not.toHaveBeenCalled();
+  expect(screen.queryByRole('button', { name: /^Copy (phone|address)/ })).toBeNull();
+});
+
+it.each(['contacts', 'accounts', 'deals'] as const)('does not add Lead actions to %s', async module => {
+  render(<CrmRecordPanel module={module} id="one" open onOpenChange={() => {}} />);
+  await screen.findByRole('heading', { level: 1 });
+  expect(screen.queryByRole('button', { name: /^(Compose email to|Copy phone number|Copy address)/ })).toBeNull();
+});
 
 it.each(['leads', 'contacts', 'accounts', 'deals'] as const)('%s uses the same identity and three tabs on both surfaces', async module => {
   const title = module === 'deals' ? records.deals.title : module === 'accounts' ? records.accounts.name : module === 'leads' ? 'Lina Reyes' : 'Nora Lim';

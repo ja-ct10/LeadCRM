@@ -331,7 +331,7 @@ export function TaskEditor({
                 </label>
                 <TaskSelector
                   kind="user"
-                  label="Task owner"
+                  label="Assigned Agent"
                   required
                   value={assignedUserId}
                   selectedLabel={

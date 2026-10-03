@@ -121,7 +121,7 @@ export const ACCOUNTS_COLUMN_REGISTRY: ColumnDefinition[] = [
   { id: 'size',            label: 'Company Size',      required: false, defaultVisible: true,  defaultOrder: 3, group: 'Account Info',  priority: 'medium' },
   { id: 'city',            label: 'City',              required: false, defaultVisible: true,  defaultOrder: 4, group: 'Location',      priority: 'low' },
   { id: 'country',         label: 'Country',           required: false, defaultVisible: false, defaultOrder: 5, group: 'Location',      priority: 'low' },
-  { id: 'assignedUserId',  label: 'Owner',             required: false, defaultVisible: true,  defaultOrder: 6, group: 'Account Info',  priority: 'medium' },
+  { id: 'assignedUserId',  label: 'Assigned Agent',             required: false, defaultVisible: true,  defaultOrder: 6, group: 'Account Info',  priority: 'medium' },
   { id: 'website',         label: 'Website',           required: false, defaultVisible: false, defaultOrder: 7, group: 'Account Info',  priority: 'low' },
   { id: 'tags',            label: 'Tags',              required: false, defaultVisible: false, defaultOrder: 8, group: 'Account Info',  priority: 'low' },
   { id: 'createdAt',       label: 'Created Date',      required: false, defaultVisible: true,  defaultOrder: 9, group: 'System',        priority: 'low' },

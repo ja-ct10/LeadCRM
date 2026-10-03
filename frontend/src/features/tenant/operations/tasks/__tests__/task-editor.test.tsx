@@ -56,6 +56,11 @@ const task = {
   createdAt: "2026-09-01T00:00:00.000Z",
 };
 afterEach(cleanup);
+it('labels the existing task assignee Assigned Agent in the detail panel', () => {
+  render(<TaskEditor task={task} readOnly onClose={vi.fn()} />);
+  expect(screen.getByRole('button', { name: 'Assigned Agent *' })).toBeTruthy();
+  expect(screen.queryByText('Task owner')).toBeNull();
+});
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.canEdit = true;
