@@ -271,7 +271,7 @@ describe.sequential('Settings archived-data aggregation and missing restore rout
   });
   it('rejects unknown restore types and protected roles', async () => {
     expect((await archiveRequest(`/User/${randomUUID()}/restore`, 'PATCH')).status).toBe(400);
-    const role = await db.roleDefinition.create({ data: { tenantId, name: 'System-Admin', isArchived: true } });
+    const role = await db.roleDefinition.create({ data: { tenantId, name: 'Guest', isArchived: true } });
     expect((await archiveRequest(`/Role/${role.id}/restore`, 'PATCH')).status).toBe(403);
     expect((await archiveRequest('?type=Role')).status).toBe(400);
   });

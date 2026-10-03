@@ -16,7 +16,7 @@ const permissions: Record<ArchiveType | z.infer<typeof ArchiveRestoreParamsSchem
   Role: ['roles.manage', 'roles.manage'], Workflow: ['workflows.view', 'workflows.edit'],
   Campaign: ['campaigns.view', 'campaigns.edit'], Template: ['campaigns.view', 'campaigns.edit'],
 };
-const protectedRole = (name: string) => ['guest', 'clientadmin', 'systemadmin'].includes(name.toLowerCase().replace(/[\s_-]/g, ''));
+const protectedRole = (name: string) => ['guest', 'clientadmin'].includes(name.toLowerCase().replace(/[\s_-]/g, ''));
 
 function scope(actor: Actor) {
   const context = tenantContext.getStore();
@@ -41,7 +41,7 @@ export async function list(actor: Actor, query: z.infer<typeof ArchiveQuerySchem
   const titleWhere = { ...where, ...searchWhere('title') };
   const nameWhere = { ...where, ...searchWhere('name') };
   const accountWhere = { ...where, ...searchWhere('name', 'website', 'city') };
-  const usersWhere = { tenantId: actor.tenantId, status: 'INACTIVE' as const, role: { not: 'System Admin' }, ...searchWhere('firstName', 'lastName', 'email') };
+  const usersWhere = { tenantId: actor.tenantId, status: 'INACTIVE' as const, ...searchWhere('firstName', 'lastName', 'email') };
   const pageArgs = (skip: number, take: number) => ({ skip, take, orderBy: { id: 'asc' as const } });
   const person = (r: { id: string; firstName: string; lastName: string; email: string | null; deletedAt: Date | null }) =>
     ({ id: r.id, name: `${r.firstName} ${r.lastName}`.trim(), detail: r.email ?? '', archivedAt: r.deletedAt });

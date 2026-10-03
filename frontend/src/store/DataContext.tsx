@@ -24,7 +24,6 @@ import {
   Workflow,
   Campaign,
   User,
-  Tenant,
   Template,
   RoleDefinition,
   Permission,
@@ -100,7 +99,6 @@ interface DataContextType {
   rolesError: string;
   refreshRoles: () => Promise<void>;
   users: User[];
-  tenants: Tenant[];
   tasks: Task[];
   tasksRevision: number;
   queryTasks: (query?: TaskListQuery) => Promise<TaskPage>;
@@ -178,9 +176,6 @@ interface DataContextType {
     id: string,
   ) => void;
   resetDemoData: () => void;
-  approveTenant: (id: string) => void;
-  rejectTenant: (id: string) => void;
-  suspendTenant: (id: string) => void;
   addAuditLog: (action: string, details: string) => void;
 
   // Column Preferences
@@ -190,76 +185,7 @@ interface DataContextType {
   resetColumnPreference: (module: string) => Promise<void>;
 }
 
-const MOCK_AUDIT_LO·S: AuditLog[] = [
-  {
-    id: "log_seed_1",
-    userId: "user_client_admin",
-    userEmail: "admin@democorp.com",
-    action: "Auth Login",
-    details:
-      "User authenticated successfully via an active session from Chrome browser agent.",
-    timestamp: new Date(Date.now() - 4 * 3600 * 1000).toISOString(),
-    ipAddress: "192.168.1.15",
-    tenantId: "tenant_demo",
-  },
-  {
-    id: "log_seed_2",
-    userId: "user_sales_1",
-    userEmail: "bob@democorp.com",
-    action: "Contact Created",
-    details:
-      "Added a new contact profile for company 'Starlight Ventures' (Contact name: Chloe Starlight) with status 'New'.",
-    timestamp: new Date(Date.now() - 10 * 3600 * 1000).toISOString(),
-    ipAddress: "192.168.1.27",
-    tenantId: "tenant_demo",
-  },
-  {
-    id: "log_seed_3",
-    userId: "user_sales_1",
-    userEmail: "bob@democorp.com",
-    action: "Deal Updated",
-    details:
-      "Updated pipeline stage from 'Prospecting' to 'Proposal Sent' for active commercial deal 'Enterprise SaaS Expansion'.",
-    timestamp: new Date(Date.now() - 12 * 3600 * 1000).toISOString(),
-    ipAddress: "192.168.1.27",
-    tenantId: "tenant_demo",
-  },
-  {
-    id: "log_seed_4",
-    userId: "user_client_admin",
-    userEmail: "admin@democorp.com",
-    action: "Role Updated",
-    details:
-      "Updated access definitions and user authorization parameters for role: 'User'.",
-    timestamp: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
-    ipAddress: "192.168.1.15",
-    tenantId: "tenant_demo",
-  },
-  {
-    id: "log_seed_5",
-    userId: "system",
-    userEmail: "system@leadcrm.com",
-    action: "Workflow Automation",
-    details:
-      "Triggered business workflow automation rule 'New Contact Auto-responder' for context 'Starlight Ventures'.",
-    timestamp: new Date(Date.now() - 36 * 3600 * 1000).toISOString(),
-    ipAddress: "127.0.0.1",
-    tenantId: "tenant_demo",
-  },
-  {
-    id: "log_seed_7",
-    userId: "user_super",
-    userEmail: "super@leadcrm.com",
-    action: "System Health Check",
-    details:
-      "Tenant directory automated resource allocation quota & memory utilization status verified successfully.",
-    timestamp: new Date(Date.now() - 60 * 3600 * 1000).toISOString(),
-    ipAddress: "10.0.0.2",
-    tenantId: "system",
-  },
-];
-
-// ── Column Preferences: System Default (fallback when API unavailable) ────────
+// Column defaults remain available when preferences cannot be loaded.
 const LEADS_SYSTEM_DEFAULT: ColumnConfigItem[] = [
   { id: 'firstName', visible: true, order: 0 },
   { id: 'lastName', visible: true, order: 1 },
@@ -280,9 +206,8 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
 export function DataProvider({ children }: { children: ReactNode }) {
   const [closingDealId, setClosingDealId] = useState<string>();
   const { user, tenant, userCan, isLoading: authLoading, authError } = useAuth();
-  const workspaceReady = Boolean(!authLoading && !authError && user && (user.role === "System Admin" ||
-    (user.status?.toUpperCase() === "ACTIVE" && !user.mustChangePassword &&
-      (user.role !== "Client Admin" || isOnboardingComplete(user)))));
+  const workspaceReady = Boolean(!authLoading && !authError && user && (user.status?.toUpperCase() === "ACTIVE" && !user.mustChangePassword &&
+      (user.role !== "Client Admin" || isOnboardingComplete(user))));
 
   const dataIdentity = `${user?.id ?? ''}:${tenant?.id ?? ''}:${workspaceReady}`;
   const dataIdentityRef = useRef(dataIdentity);
@@ -337,7 +262,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     void refreshRoles();
   }, [refreshRoles]);
   const [users, setUsers] = useState<User[]>([]);
-  const [tenants, setTenants] = useState<Tenant[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const taskRows = useMemo(() => USE_MOCK_DATA ? tasks.map(task => ({
     ...task,
@@ -551,33 +475,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const c: Campaign[] = []; // Campaign business data is fetched through backend APIs.
     const tpl: Template[] = [];
     const u = safeParse("leadcrm_users", MOCK_USERS);
-    const t = safeParse("leadcrm_tenants", MOCK_TENANTS).map((tenant: Tenant) => {
-      if (!tenant.healthMetrics) {
-        const cpuUsage = Math.floor(Math.random() * 90) + 5;
-        const memoryUsage = Math.floor(Math.random() * 90) + 10;
-        const storageUsage = Math.floor(Math.random() * 80) + 20;
-        let status: "healthy" | "warning" | "critical" = "healthy";
-
-        if (cpuUsage > 90 || memoryUsage > 90 || storageUsage > 90) {
-          status = "critical";
-        } else if (cpuUsage > 70 || memoryUsage > 70 || storageUsage > 70) {
-          status = "warning";
-        }
-
-        return {
-          ...tenant,
-          healthMetrics: {
-            cpuUsage,
-            memoryUsage,
-            storageUsage,
-            uptime: (99 + Math.random()).toFixed(1) + "%",
-            status,
-            lastCheck: new Date().toISOString(),
-          },
-        };
-      }
-      return tenant;
-    });
     const tsk = safeParse<Task[]>("leadcrm_tasks", MOCK_TASKS ?? []).map(task => ({ ...task, status: TaskStatusSchema.parse(task.status) }));
     const logs = safeParse("leadcrm_audit_logs", [] as AuditLog[]);
     if (!localStorage.getItem("leadcrm_audit_logs")) {
@@ -589,20 +486,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     // Column preferences: use system default in mock mode
     setColumnPreferences(prev => ({ ...prev, leads: LEADS_SYSTEM_DEFAULT }));
 
-    if (user?.role?.toLowerCase() === "system admin") {
-      setContacts(l);
-      setDeals(d);
-      setPipelines(p);
-      setCampaigns(c);
-      setTemplates(tpl);
-      setUsers(u);
-      setTenants(t);
-      setTasks(tsk);
-      
-      setActivities(activityData);
-      
-      
-    } else if (tenant) {
+    if (tenant) {
       setAuditLogs(
         logs.filter((log: any) => !log.tenantId || log.tenantId === tenant.id),
       );
@@ -631,7 +515,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setCampaigns(c.filter((x: any) => x.tenantId === tenant.id));
       setTemplates(tpl.filter((x: any) => x.tenantId === tenant.id));
       setUsers(u.filter((x: any) => x.tenantId === tenant.id));
-      setTenants(t.filter((x: any) => x.id === tenant.id));
       setTasks(tsk.filter((x: any) => x.tenantId === tenant.id));
       
       
@@ -647,7 +530,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setWorkflows([]); setCampaigns([]); setTemplates([]); setTasks([]);
       setWorkflowsError(''); setWorkflowsLoading(workspaceReady);
       if (loadedSharedIdentity.current !== sharedIdentity) {
-        setUsers([]); setTenants([]);
+        setUsers([]);
       }
         
       setActivities([]);   setAuditLogs([]);
@@ -1775,9 +1658,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const updatedLogs = [newLog, ...allLogs].slice(0, 500); // Keep last 500 logs
     localStorage.setItem("leadcrm_audit_logs", JSON.stringify(updatedLogs));
 
-    if (user?.role?.toLowerCase() === "system admin") {
-      setAuditLogs(updatedLogs);
-    } else if (tenant) {
+    if (tenant) {
       setAuditLogs(
         updatedLogs.filter(
           (log: any) => !log.tenantId || log.tenantId === tenant.id,
@@ -1820,90 +1701,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setActivities(updated.filter((a: Activity) => a.tenantId === currentTenantId));
   };
 
-  const approveTenant = (id: string) => {
-    const allTenants = JSON.parse(
-      localStorage.getItem("leadcrm_tenants") || "[]",
-    );
-    const tenantToApprove = allTenants.find((t: Tenant) => t.id === id);
-    if (!tenantToApprove) return;
-
-    const newTenants = allTenants.map((t: Tenant) => {
-      if (t.id === id) {
-        if (t.approvalStep === "basic") {
-          addAuditLog(
-            "Approve Tenant Step 1",
-            `Approved basic details for ${t.name}.`,
-          );
-          return {
-            ...t,
-            approvalStep: "requirements",
-            status: "pending",
-          };
-        } else if (t.approvalStep === "requirements") {
-          addAuditLog(
-            "Approve Tenant Final",
-            `Approved business requirements for ${t.name}.`,
-          );
-          return {
-            ...t,
-            approvalStep: "completed",
-            status: "active",
-          };
-        }
-        return {
-          ...t,
-          status: "active",
-          approvalStep: "completed",
-        };
-      }
-      return t;
-    });
-    localStorage.setItem("leadcrm_tenants", JSON.stringify(newTenants));
-    loadData();
-  };
-
-  const rejectTenant = (id: string) => {
-    const allTenants = JSON.parse(
-      localStorage.getItem("leadcrm_tenants") || "[]",
-    );
-    const tenant = allTenants.find((t: Tenant) => t.id === id);
-    if (tenant)
-      addAuditLog("Reject Tenant", `Rejected application for ${tenant.name}.`);
-
-    const newTenants = allTenants.map((t: Tenant) =>
-      t.id === id ? { ...t, status: "rejected" } : t,
-    );
-    localStorage.setItem("leadcrm_tenants", JSON.stringify(newTenants));
-    loadData();
-  };
-
-  const suspendTenant = (id: string) => {
-    const allTenants = JSON.parse(
-      localStorage.getItem("leadcrm_tenants") || "[]",
-    );
-    const tenant = allTenants.find((t: Tenant) => t.id === id);
-    if (tenant)
-      addAuditLog("Suspend Tenant", `Suspended access for ${tenant.name}.`);
-
-    const newTenants = allTenants.map((t: Tenant) =>
-      t.id === id ? { ...t, status: "suspended" } : t,
-    );
-    localStorage.setItem("leadcrm_tenants", JSON.stringify(newTenants));
-    loadData();
-  };
-
   const resetDemoData = () => {
     localStorage.setItem("leadcrm_leads", JSON.stringify(MOCK_LEADS));
     localStorage.setItem("leadcrm_deals", JSON.stringify(MOCK_DEALS));
     localStorage.setItem("leadcrm_pipelines", JSON.stringify(MOCK_PIPELINES));
-
     localStorage.setItem("leadcrm_users", JSON.stringify(MOCK_USERS));
     localStorage.setItem("leadcrm_tenants", JSON.stringify(MOCK_TENANTS));
     localStorage.setItem("leadcrm_tasks", JSON.stringify(MOCK_TASKS));
     loadData();
   };
 
-  // ── Column Preferences: Save & Reset ───────────────────────────────────────
   const saveColumnPreference = useCallback(async (module: string, columns: ColumnConfigItem[]): Promise<void> => {
     const previous = columnPreferencesRef.current[module];
     // Optimistic update
@@ -1947,7 +1754,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     roles,
     permissions, rolesLoading, rolesError, refreshRoles,
     users,
-    tenants,
     tasks,
     ...taskQueries,
     bulkTasks,
@@ -1973,9 +1779,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     updateRole,
     deleteRole,
     resetDemoData,
-    approveTenant,
-    rejectTenant,
-    suspendTenant,
     addAuditLog,
     addTask,
     updateTask,
@@ -2002,7 +1805,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [
     organizations, contacts, deals, pipelines, workflows, workflowsLoading, workflowsError, refreshWorkflows, campaigns,
-    templates, roles, permissions, rolesLoading, rolesError, refreshRoles, users, tenants, tasks, taskQueries, dataIdentity,
+    templates, roles, permissions, rolesLoading, rolesError, refreshRoles, users, tasks, taskQueries, dataIdentity,
     activities, auditLogs,
     columnPreferences, columnPreferencesLoading,
   ]);
@@ -2041,5 +1844,4 @@ export const useData = (options?: { includeArchived?: boolean }) => {
     };
   }, [context, includeArchived]);
 };
-
 

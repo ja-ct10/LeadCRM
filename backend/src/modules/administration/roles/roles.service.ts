@@ -9,7 +9,7 @@ import { Prisma } from '@prisma/client';
 // Reserved names that cannot be used for custom roles (case-insensitive).
 // Includes legacy role names to prevent re-creation of removed system roles.
 const RESERVED_ROLE_NAMES = [
-  'guest', 'clientadmin', 'systemadmin',
+  'guest', 'clientadmin',
 ];
 
 function isReservedName(name: string): boolean {

@@ -7,7 +7,6 @@ import { authTenantSelect, buildAuthUserResponse } from './auth-user';
 import { authTransaction } from './auth-transaction';
 export { buildAuthUserResponse } from './auth-user';
 export type { AuthUserSource, AuthUserResponse } from './auth-user';
-export { sendRegistrationOtp, verifyRegistrationOtp } from './verification.service';
 export { requestPasswordReset, resetPasswordWithToken } from './password-reset.service';
 
 export interface LoginDto { email: string; password: string; }
@@ -43,7 +42,7 @@ export async function loginUser(dto: LoginDto, ctx: LoginContext = {}) {
   if (!user) throw new AppError('Invalid email or password', 401);
 
   requireEmployeeAccount(user);
-  if (user.role !== 'System Admin' && ['SUSPENDED', 'REJECTED'].includes(user.tenant?.status ?? '')) {
+  if (['SUSPENDED', 'REJECTED'].includes(user.tenant?.status ?? '')) {
     throw new AppError('Workspace access is suspended.', 403);
   }
 
@@ -58,7 +57,7 @@ export async function loginUser(dto: LoginDto, ctx: LoginContext = {}) {
     const current = await tx.user.findFirst({ where: { id: verified.id, tenantId: verified.tenantId }, include: { tenant: { select: authTenantSelect } } });
     if (!current || current.passwordHash !== verified.passwordHash || current.status !== 'ACTIVE') throw new AppError('Invalid email or password', 401);
     requireEmployeeAccount(current);
-    if (current.role !== 'System Admin' && ['SUSPENDED', 'REJECTED'].includes(current.tenant?.status ?? '')) throw new AppError('Workspace access is suspended.', 403);
+    if (['SUSPENDED', 'REJECTED'].includes(current.tenant?.status ?? '')) throw new AppError('Workspace access is suspended.', 403);
     return { token: await createAuthSessionToken(current, ctx, tx), user: buildAuthUserResponse(current) };
   });
 }

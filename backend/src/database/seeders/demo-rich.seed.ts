@@ -5,14 +5,14 @@ const prisma = new PrismaClient();
 /**
  * Seeds rich demo data for the Demo Corp tenant (admin@democorp.com).
  * Run with: npx ts-node src/database/seeders/demo-rich.seed.ts
- * Or add to seed.ts main() after seedDemoAccounts().
+ * Requires an existing Demo Corp tenant.
  */
 export async function seedDemoRichData() {
   console.log('[Seed] Seeding rich demo data for Demo Corp...');
 
   // ── Resolve tenant and users ──────────────────────────────────────
   const tenant = await prisma.tenant.findUnique({ where: { slug: 'demo-corp' } });
-  if (!tenant) throw new Error('Demo Corp tenant not found — run seedDemoAccounts() first');
+  if (!tenant) throw new Error('Demo Corp tenant not found — provision the demo tenant first');
 
   const adminUser = await prisma.user.findFirst({
     where: { tenantId: tenant.id, email: 'admin@democorp.com' },

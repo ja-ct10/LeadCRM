@@ -20,7 +20,7 @@ const USE_MOCK_AUTH = process.env.NODE_ENV !== 'production' && process.env.NEXT_
 // ─── Super-role names ─────────────────────────────────────────────────────────
 // Module-level constant — never recreated per render.
 // These roles bypass RolePermission evaluation in userCan().
-const SUPER_ROLE_NAMES = ['Client Admin', 'System Admin'] as const;
+const SUPER_ROLE_NAMES = ['Client Admin'] as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -68,7 +68,6 @@ export function buildTenantFromApiUser(apiUser: Record<string, unknown>): Tenant
     phone:              '',
     address:            '',
     status:             (tenantStatus?.toLowerCase() ?? 'active') as Tenant['status'],
-    approvalStep:       'completed' as Tenant['approvalStep'],
     createdAt:          '',
     currency:           (apiUser.currency as string | null) ?? null,
   } as unknown as Tenant;
@@ -87,7 +86,6 @@ interface AuthContextType {
   applyOrganizationSettings: (settings: import('@leadcrm/shared').OrganizationSettings) => void;
   applyAuthUser: (user: AuthUser, expectedUserId?: string) => void;
   login: (email: string, password?: string) => Promise<boolean>;
-  loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   requestPasswordReset: (email: string) => Promise<boolean>;
   confirmPasswordReset: (token: string, password: string) => Promise<boolean>;
@@ -136,7 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       department: apiUser.department ?? undefined,
       avatarUrl: apiUser.avatarUrl ?? undefined,
     });
-    setTenant(apiUser.role === 'System Admin' ? null : buildTenantFromApiUser({ ...apiUser }));
+    setTenant(buildTenantFromApiUser({ ...apiUser }));
     setAuthError(null);
     setIsLoading(false);
   }, []);
@@ -292,10 +290,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
-  /** Compatibility for old consumers; Google account authentication is retired. */
-  const loginWithGoogle = async (): Promise<void> => {
-    throw new Error('Use your employee email and password to sign in.');
-  };
 
   // ── Logout ────────────────────────────────────────────────────────
   const logout = async (): Promise<void> => {
@@ -319,7 +313,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('leadcrm_onboarding_complete');
     localStorage.removeItem('leadcrm_needs_company_setup');
     // Clear any saved post-login redirect so a new user doesn't inherit the
-    // previous session's destination (e.g. System Admin → /admin/dashboard).
+    // previous session's destination .
     sessionStorage.removeItem('leadcrm_redirect_after_login');
   };
 
@@ -396,7 +390,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider value={{
       user, tenant, isLoading, authError, retryAuthInit, refreshUser, applyAuthUser, applyOrganizationSettings,
-      login, loginWithGoogle, logout, requestPasswordReset, confirmPasswordReset,
+      login, logout, requestPasswordReset, confirmPasswordReset,
       switchRole, updateProfile, switchDemoAccount, permissions, isPermissionsLoaded,
       userCan, refreshPermissions, restoreSession,
     }}>

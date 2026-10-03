@@ -31,7 +31,6 @@ import {
   Check,
   Banknote,
   PhoneCall,
-  Activity,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
@@ -43,7 +42,6 @@ import { ProfileForm } from './profile-form';
 import { FormsTab } from './forms-tab';
 import { TeamManagement } from './team-management';
 import { RolesPermissions } from './roles-permissions';
-import AuditLogsPage from '@/features/tenant/administration/audit/ui/audit-logs-page';
 
 type SettingsTab =
   | 'profile'
@@ -55,8 +53,7 @@ type SettingsTab =
   | 'custom-fields'
   | 'archived'
   | 'account-details'
-  | 'forms'
-  | 'audit';
+  | 'forms';
 
 interface NavGroup {
   label: string;
@@ -101,29 +98,15 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'account-details', label: 'Account Details', icon: Shield },
     ],
   },
-  {
-    label: 'SYSTEM',
-    items: [
-      { id: 'audit', label: 'Audit Trail', icon: Activity },
-    ],
-  },
 
 ];
 
 export default function SettingsPage(): React.ReactElement {
-  const { user, tenant, userCan } = useAuth();
+  const { user, tenant } = useAuth();
 
   const isClientAdmin = user?.role === "Client Admin";
 
-  // RBAC-filtered nav groups — hide Audit Trail from non-admin roles
-  const canViewAudit = isClientAdmin || user?.role === "Administrator" || user?.role === "Admin" || userCan('audit', 'canView');
-  const visibleNavGroups = NAV_GROUPS.map((g) => ({
-    ...g,
-    items: g.items.filter((item) => {
-      if ((item as { id: string }).id === 'audit') return canViewAudit;
-      return true;
-    }),
-  })).filter((g) => g.items.length > 0) as typeof NAV_GROUPS;
+  const visibleNavGroups = NAV_GROUPS;
 
   const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
   const [isFormBuilderActive, setIsFormBuilderActive] = useState(false);
@@ -405,7 +388,7 @@ export default function SettingsPage(): React.ReactElement {
 
   const renderCustomFieldsTab = () => <ProductInterestsSettings />;
 
-  const tabContentMap: Record<Exclude<SettingsTab, 'forms' | 'roles' | 'audit'>, () => React.ReactElement> = {
+  const tabContentMap: Record<Exclude<SettingsTab, 'forms' | 'roles'>, () => React.ReactElement> = {
     'profile': renderProfileTab,
     'appearance': renderAppearanceTab,
     'org-general': renderOrgGeneralTab,
@@ -416,7 +399,7 @@ export default function SettingsPage(): React.ReactElement {
     'account-details': renderAccountDetailsTab,
   };
 
-  const VALID_TABS: SettingsTab[] = ['profile', 'appearance', 'org-general', 'users', 'roles', 'custom-fields', 'products', 'archived', 'account-details', 'forms', 'audit'];
+  const VALID_TABS: SettingsTab[] = ['profile', 'appearance', 'org-general', 'users', 'roles', 'custom-fields', 'products', 'archived', 'account-details', 'forms'];
   useEffect(() => {
     if (tabFromUrl && VALID_TABS.includes(tabFromUrl as SettingsTab)) {
       setActiveTab(tabFromUrl as SettingsTab);
@@ -521,7 +504,6 @@ export default function SettingsPage(): React.ReactElement {
           activeTab === 'org-general' ||
           activeTab === 'users' ||
           activeTab === 'roles' ||
-          activeTab === 'audit' ||
           activeTab === 'forms';
 
         return (
@@ -533,11 +515,9 @@ export default function SettingsPage(): React.ReactElement {
             )}
             {activeTab === 'forms'
               ? <FormsTab onBuilderActiveChange={setIsFormBuilderActive} />
-              : activeTab === 'audit'
-              ? <AuditLogsPage />
               : activeTab === 'roles'
               ? <RolesPermissions onViewActiveChange={setIsRolesViewActive} />
-              : tabContentMap[activeTab as Exclude<SettingsTab, 'forms' | 'roles' | 'audit'>]()
+              : tabContentMap[activeTab as Exclude<SettingsTab, 'forms' | 'roles'>]()
             }
           </div>
         );

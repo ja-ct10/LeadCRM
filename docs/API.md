@@ -54,7 +54,7 @@ All paths are relative to /api/v1. See [authentication and onboarding](authentic
 | GET | /auth/onboarding/status | Canonical account state |
 | POST | /auth/onboarding/complete | Client Admin informational acknowledgment; empty body |
 
-Public signup, Google sign-in, OTP, verification, company setup, and step-progression routes are not registered. System Admin provisioning uses /admin/tenants with no plan selection. SaaS billing, seat, document-verification, pricing, checkout, and payment-method APIs are retired. Customer invoice/payment APIs and Team Management domain APIs are also removed. See [security API and migration report](security-cleanup-mfa.md).
+Public signup, Google sign-in, OTP, verification, company setup, and step-progression routes are not registered. SaaS billing, seat, document-verification, pricing, checkout, and payment-method APIs are retired. Customer invoice/payment APIs and Team Management domain APIs are also removed. See [security API and migration report](security-cleanup-mfa.md).
 
 Profile updates use a strict shared Zod whitelist and derive both user and tenant identity
 from the session. Email and privilege fields are not editable. Avatar references are only
@@ -290,10 +290,10 @@ bound to the selected user ID. No reset token is returned to the administrator.
 }
 ```
 
-### Audit Log
+### Team Management activity history
 | Method | Path | Description | RolePermission flag |
 |---|---|---|---|
-| `GET` | `/administration/audit` | Audit log — paginated, filterable | `audit.canView` |
+| `GET` | `/administration/audit` | Retained user-history log — paginated, filterable | `audit.view` |
 
 **Query params for GET /audit:**
 - `?category=crm` — filter by category (auth/crm/billing/workflow/admin/system)
@@ -315,21 +315,6 @@ bound to the selected user ID. No reset token is returned to the administrator.
 
 ---
 
-## System Admin Endpoints (`/api/v1/admin/`) — System Admin only
-
-### Tenant management and audit
-
-| Method | Path | Description |
-|---|---|---|
-| GET | /admin/tenants | List tenants |
-| POST | /admin/tenants | Provision employee Client Admin and tenant |
-| PATCH | /admin/tenants/:id/deactivate | Suspend tenant |
-| PATCH | /admin/tenants/:id/activate | Reactivate tenant |
-| GET | /admin/audit-logs | Platform audit history |
-
-Pricing, subscription activation, business verification, and Stripe webhooks are removed. See [internal CRM cleanup](internal-crm-cleanup.md).
-
----
 
 ## Webhook Endpoints (No Auth)
 
@@ -343,7 +328,7 @@ Pricing, subscription activation, business verification, and Stripe webhooks are
 
 ## Tenancy Rule
 
-Every query must include `WHERE tenantId = :tenantId` unless the caller has the `System Admin` role. The `tenantId` is always read from the JWT — never from the request body.
+Every query must include `WHERE tenantId = :tenantId`. The `tenantId` is always read from the JWT — never from the request body.
 
 ---
 
@@ -353,7 +338,6 @@ Permissions are stored in the `RolePermission` table — one row per module per 
 `canView`, `canCreate`, `canEdit`, `canDelete` boolean flags.
 
 `Client Admin` bypasses all checks for their own tenant.
-`System Admin` is cross-tenant and bypasses all checks.
 
 ```typescript
 // Middleware usage — reads from RolePermission table

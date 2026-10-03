@@ -4,11 +4,6 @@ import { findUserEffectivePermissions } from '../../modules/administration/roles
 
 /** Shared by request guards and server-side automation; uses current tenant role assignments. */
 export async function assertPermissions(user: {userId:string;tenantId:string;role:string}, required: PermissionKey[]) {
-  if (required.includes('admin.access')) {
-    if (user.role !== 'System Admin') throw new AppError('Access denied', 403);
-    if (required.length === 1) return;
-  }
-  if (user.role === 'System Admin') throw new AppError('Use the System Admin portal.', 403);
   if (user.role === 'Client Admin') return;
   if (user.role.trim().toLowerCase() === 'guest') throw new AppError('Access denied', 403);
   const permissions = await findUserEffectivePermissions(user.userId, user.tenantId);

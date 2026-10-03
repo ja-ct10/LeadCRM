@@ -51,7 +51,7 @@ describe.skipIf(!disposable)('profile and sorting persistence through authentica
     token = (await issueAuthSession(dbUser)).token;
     const restored = (await request('/auth/me')).body.data.user;
     expect(restored).toMatchObject({ firstName: 'Ada', department: 'Research' }); expect(restored).not.toHaveProperty('passwordHash');
-    expect((await request('/auth/profile', 'PATCH', { role: 'System Admin' })).status).toBe(400);
+    expect((await request('/auth/profile', 'PATCH', { role: 'Client Admin' })).status).toBe(400);
     expect((await request('/auth/profile', 'PATCH', { tenantId: 'other', firstName: 'Other' })).status).toBe(400);
     expect((await request('/auth/profile', 'PATCH', { firstName: 'Anonymous' }, false)).status).toBe(401);
     expect(await prisma.auditLog.count({ where: { userId, action: 'profile.updated' } })).toBe(1);

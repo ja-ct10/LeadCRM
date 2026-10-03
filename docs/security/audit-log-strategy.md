@@ -41,7 +41,7 @@ model AuditLog {
 | `billing` | Invoice, PaymentTransaction changes |
 | `workflow` | Workflow CRUD, execution runs, trigger events |
 | `admin` | User, Role, and RolePermission changes |
-| `system` | Tenant provisioning, plan changes, SystemAdmin actions |
+| `system` | Workspace system events |
 
 ---
 
@@ -108,13 +108,6 @@ model AuditLog {
 | `invitation.sent` | INFO |
 | `invitation.revoked` | WARNING |
 
-### System Events (category: system)
-| Action | Severity |
-|---|---|
-| `tenant.approved` | INFO |
-| `tenant.suspended` | CRITICAL |
-| `plan.changed` | WARNING |
-| `tenant_document.verified` | INFO |
 
 ---
 
@@ -193,15 +186,9 @@ addAuditLog({
 
 ---
 
-## Audit Log Viewer
+## History consumers
 
-Location: **Administration → Audit Logs**
-
-Filter by: category · severity · userId · entityType · date range
-
-Columns: User · Action · Category · Entity · Changeset (expandable) · IP Address · Timestamp
-
-Visible to: **Client Admin** only (`audit.canView` in RolePermission)
+The standalone administrative viewer has been removed. `AuditLog` storage and tenant-scoped audit services remain for Team Management user history. Record Activity tabs use the activity APIs and continue to show email, task, status, and workflow events. See the [retirement report](../retired-features-cleanup.md).
 
 ---
 

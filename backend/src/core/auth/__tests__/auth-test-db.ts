@@ -18,7 +18,6 @@ const model = () => ({
 export const db = {
   user: model(), tenant: model(), roleDefinition: model(), rolePermission: model(),
   userRole: model(), pipeline: model(), account: { ...model(), count: vi.fn() },
-  oAuthAccount: model(), registrationOtpToken: model(),
   passwordResetToken: model(), emailVerificationToken: model(), auditLog: model(), session: model(), $transaction: vi.fn(),
 };
 
@@ -47,5 +46,4 @@ export function resetDb() {
   db.roleDefinition.findUniqueOrThrow.mockResolvedValue({ id: 'sales-role', tenantId: tenant.id });
   // Existing sandbox seeder is tested independently; avoid creating sample data in service tests.
   db.account.count.mockResolvedValue(1);
-  db.oAuthAccount.findUnique.mockResolvedValue(null);
 }

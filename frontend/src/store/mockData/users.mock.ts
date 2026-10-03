@@ -12,7 +12,6 @@ export const MOCK_TENANTS: Tenant[] = [
     phone: '+1 (555) 123-4567',
     address: '123 Tech Lane, Silicon Valley, CA',
     status: 'active',
-    approvalStep: 'completed',
     createdAt: '2025-01-15T08:00:00.000Z',
   },
   {
@@ -24,7 +23,6 @@ export const MOCK_TENANTS: Tenant[] = [
     phone: '+1 (555) 987-6543',
     address: '456 Freight Blvd, Chicago, IL',
     status: 'active',
-    approvalStep: 'completed',
     createdAt: '2025-02-20T10:30:00.000Z',
   },
   {
@@ -36,7 +34,6 @@ export const MOCK_TENANTS: Tenant[] = [
     phone: '+1 (555) 456-7890',
     address: '789 Medical Parkway, Boston, MA',
     status: 'pending',
-    approvalStep: 'basic',
     createdAt: '2026-03-28T14:15:00.000Z',
   },
   {
@@ -48,7 +45,6 @@ export const MOCK_TENANTS: Tenant[] = [
     phone: '+1 (555) 234-5678',
     address: '321 Creative Studio, Austin, TX',
     status: 'suspended',
-    approvalStep: 'completed',
     createdAt: '2025-06-10T09:45:00.000Z',
   },
 ];
@@ -56,25 +52,6 @@ export const MOCK_TENANTS: Tenant[] = [
 // ─── Users ────────────────────────────────────────────────────────────────────
 
 export const MOCK_USERS: User[] = [
-  {
-    id: 'user_super',
-    tenantId: 'system',
-    firstName: 'System',
-    lastName: 'Admin',
-    email: 'super@leadcrm.com',
-    role: 'System Admin',
-    status: 'active',
-  },
-  {
-    // Primary System Admin — email matches SYSTEM_ADMIN_EMAIL seed default (admin@gmail.com)
-    id: 'user_system_admin',
-    tenantId: 'system',
-    firstName: 'System',
-    lastName: 'Admin',
-    email: 'admin@gmail.com',
-    role: 'System Admin',
-    status: 'active',
-  },
   {
     id: 'user_client_admin',
     tenantId: 'tenant_demo',
@@ -154,7 +131,7 @@ export const MOCK_PERMISSIONS: Permission[] = [
   { id: 'p26',     name: 'Manage Roles',          category: 'Users',      description: 'Configure roles and permissions' },
   { id: 'p27',     name: 'View Settings',         category: 'Settings',   description: 'Access organization settings' },
   { id: 'p28',     name: 'Edit Settings',         category: 'Settings',   description: 'Modify organization settings' },
-  { id: 'p30',     name: 'View Audit Logs',       category: 'Settings',   description: 'Access system activity logs' },
+  { id: 'p30',     name: 'View User History',       category: 'Settings',   description: 'Access team member activity history' },
   { id: 'p31',     name: 'View Reports',          category: 'Reports',    description: 'Access analytics reports' },
   { id: 'p32',     name: 'Create Reports',        category: 'Reports',    description: 'Build custom reports' },
   { id: 'p33',     name: 'Export Reports',        category: 'Reports',    description: 'Export report data' },

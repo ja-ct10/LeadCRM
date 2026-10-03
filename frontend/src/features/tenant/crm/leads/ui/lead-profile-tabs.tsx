@@ -100,9 +100,9 @@ export const ClientProfileTabs = ({
   // Load activities of this lead
   useEffect(() => {
     const defaultActivities = [
-      { id: 'e1', type: 'note', text: 'Lead / Organization CRM record registered in database.', time: lead.createdAt || '3 days ago', user: lead.createdBy || 'System Admin' },
-      { id: 'e2', type: 'note', text: `Lead established with status '${lead.status}' and value of $${lead.estimatedValue?.toLocaleString()}.`, time: '3 days ago', user: 'System Admin' },
-      { id: 'e3', type: 'note', text: lead.assignedUserId ? `Assigned to representative handler.` : 'Registered as unassigned account.', time: '3 days ago', user: 'System Admin' }
+      { id: 'e1', type: 'note', text: 'Lead / Organization CRM record registered in database.', time: lead.createdAt || '3 days ago', user: lead.createdBy || 'System' },
+      { id: 'e2', type: 'note', text: `Lead established with status '${lead.status}' and value of $${lead.estimatedValue?.toLocaleString()}.`, time: '3 days ago', user: 'System' },
+      { id: 'e3', type: 'note', text: lead.assignedUserId ? `Assigned to representative handler.` : 'Registered as unassigned account.', time: '3 days ago', user: 'System' }
     ];
 
     const savedActivities = localStorage.getItem(`crm_activities_${lead.id}`);

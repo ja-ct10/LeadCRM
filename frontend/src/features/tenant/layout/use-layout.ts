@@ -1,12 +1,11 @@
 'use client';
 
 import { useRouter, usePathname } from 'next/navigation';
-import { useAuth } from '@/store/AuthContext';
 import { usePermissions, PERMISSION_BRIDGE } from '@/shared/hooks/use-permissions';
 import { resolveModulePath, PATH_TO_PATHNAME } from '@/lib/route-map';
 import {
   LayoutDashboard, Briefcase, Workflow, Mail, Settings,
-  Building2, Activity, ListTodo,
+  ListTodo,
   UserCheck, Building, Target,
 } from 'lucide-react';
 
@@ -26,10 +25,6 @@ export const NAV_ITEMS = [
   // ── Settings ────────────────────────────────────────
   // Single entry point for all configuration including Roles & Permissions.
   { name: 'Settings',          path: 'settings',          icon: Settings,        permission: 'settings.view',  roles: null,          group: 'Settings' },
-  // ── System Admin (separate portal) ──────────────────
-  { name: 'Dashboard',         path: 'admin-dashboard',   icon: LayoutDashboard, permission: null,             roles: ['System Admin'] as const, group: null },
-  { name: 'Client Management', path: 'admin-clients',     icon: Building2,       permission: null,             roles: ['System Admin'] as const, group: null },
-  { name: 'Audit Trail',       path: 'audit-log',         icon: Activity,        permission: null,             roles: ['System Admin'] as const, group: null },
 ] as const;
 
 type NavItem = (typeof NAV_ITEMS)[number];
@@ -37,7 +32,6 @@ type NavItem = (typeof NAV_ITEMS)[number];
 export function useLayout() {
   const router = useRouter();
   const pathname = usePathname();
-  const { user } = useAuth();
   const userPermissions = usePermissions();
 
   const currentPath = resolveModulePath(pathname);
@@ -48,17 +42,8 @@ export function useLayout() {
   };
 
   const isSuper = userPermissions.includes('*');
-  const isSystemAdminUser = user?.role === 'System Admin' || user?.tenantId === 'system' || user?.tenantId === 'leadcrm-system-demo';
 
   const hasAccess = (item: NavItem): boolean => {
-
-    const itemRoles: readonly string[] | null = item.roles;
-
-    if (isSystemAdminUser) return itemRoles?.includes('System Admin') ?? false;
-    if (itemRoles?.includes('System Admin')) return false;
-    if (itemRoles && !itemRoles.includes('System Admin')) {
-      return itemRoles.includes(user?.role ?? '');
-    }
 
     if (isSuper) return true;
     if (!item.permission) return true;

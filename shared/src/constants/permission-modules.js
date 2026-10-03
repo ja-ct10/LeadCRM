@@ -13,5 +13,5 @@ exports.PERMISSION_MODULES = [
     { key: 'users', label: 'Users', actions: ['canView', 'canCreate', 'canEdit', 'canDelete'] },
     { key: 'roles', label: 'Roles & Permissions', actions: ['canView', 'canCreate', 'canEdit', 'canDelete'] },
     { key: 'reports', label: 'Reports', actions: ['canView'] },
-    { key: 'audit', label: 'Audit Log', actions: ['canView'] },
+    { key: 'audit', label: 'User Activity', actions: ['canView'] },
 ];

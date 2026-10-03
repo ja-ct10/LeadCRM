@@ -7,7 +7,7 @@ import type { PermissionKey } from '@leadcrm/shared';
 import { USE_MOCK_AUTH } from '@/lib/config';
 
 // Roles that bypass all permission checks (case-insensitive check)
-const SUPER_ROLES = ['client admin', 'system admin'] as const;
+const SUPER_ROLES = ['client admin'] as const;
 
 /**
  * PERMISSION_BRIDGE — exported for CrmLayout nav access checks.
@@ -45,7 +45,6 @@ export const PERMISSION_BRIDGE: Record<PermissionKey, string[]> = {
   'settings.edit':       ['p27'],  // no distinct legacy p-ID — mirrors settings.view
   'roles.manage':        ['p26'],
   'audit.view':          ['p30'],
-  'admin.access':        [],
 };
 
 /**

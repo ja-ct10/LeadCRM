@@ -183,7 +183,7 @@ export function findTaskUser(
       id,
       tenantId,
       status: "ACTIVE",
-      role: { notIn: ["System Admin", "Guest"] },
+      role: { notIn: ["Guest"] },
     },
     select: person,
   });
@@ -271,7 +271,7 @@ export async function findTaskOptions(
       where: {
         tenantId,
         status: "ACTIVE",
-        role: { notIn: ["System Admin", "Guest"] },
+        role: { notIn: ["Guest"] },
         ...people,
       },
       take: 50,

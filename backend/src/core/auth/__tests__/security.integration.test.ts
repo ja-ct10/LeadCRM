@@ -6,6 +6,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createServer, type Server } from 'node:http';
 import { hashSync } from 'bcryptjs';
+import { replayCrmMigrations } from '../../../tests/replay-crm-migrations';
 
 vi.mock('../../../config/database.config', () => ({ default: new PrismaClient({ datasources: { db: { url: process.env.SECURITY_TEST_DATABASE_URL! } } }) }));
 let pg: PGlite, socket: PGLiteSocketServer, db: PrismaClient, http: Server, url: string;
@@ -14,7 +15,7 @@ const initialPassword = 'Temporary1!';
 const newPassword = ' Camxian2026! ';
 const email = 'security@camxian.com';
 const cleanupMigration = '20261016000000_remove_two_factor_and_obsolete_account_fields';
-const preservedTables = ['User', 'Account', 'Session', 'EmailVerificationToken', 'PasswordResetToken', 'RegistrationOtpToken', 'AuditLog', 'RolePermission'];
+const preservedTables = ['User', 'Account', 'Session', 'EmailVerificationToken', 'PasswordResetToken', 'AuditLog', 'RolePermission'];
 const snapshots = new Map<string, unknown[]>();
 const removedUserFields = ['mfaEnabled', 'mfaEnabledAt', 'mfaLastCounter', 'mfaPendingExpiresAt', 'mfaPendingSecretEncrypted', 'mfaSecretEncrypted'];
 const removedAccountFields = ['taxId', 'customerType', 'customerSince'];
@@ -33,7 +34,7 @@ async function login(password = newPassword) { return call('/auth/login', { emai
 beforeAll(async () => {
   process.env.JWT_SECRET = 'disposable-security-test-signing-key';
   pg = await PGlite.create();
-  await pg.exec(readFileSync(resolve(__dirname, '../../../tests/security-baseline.sql'), 'utf8'));
+  await replayCrmMigrations(pg, '20261007000000');
   // Preserve populated unrelated data and verify permission cleanup, not just empty DDL.
   await pg.exec(`INSERT INTO "Tenant" (id,name,slug,"updatedAt",domain) VALUES ('migration-tenant','Migration','migration',NOW(),'company.example');
     INSERT INTO "RoleDefinition" (id,"tenantId",name,"updatedAt") VALUES ('migration-role','migration-tenant','Sales',NOW());
@@ -51,7 +52,6 @@ beforeAll(async () => {
         INSERT INTO "Session" (id,"tenantId","userId","tokenHash","expiresAt") VALUES ('keep-session','migration-tenant','migration-user','keep-session-hash',NOW()+INTERVAL '1 day');
         INSERT INTO "EmailVerificationToken" (id,"userId",email,"tokenHash","expiresAt") VALUES ('keep-verification','migration-user','migration@camxian.com','keep-verification-hash',NOW()+INTERVAL '1 day');
         INSERT INTO "PasswordResetToken" (id,"userId",email,token,expires) VALUES ('keep-reset','migration-user','migration@camxian.com','keep-reset-token',NOW()+INTERVAL '1 day');
-        INSERT INTO "RegistrationOtpToken" (id,email,"codeHash",expires) VALUES ('keep-registration','registration@camxian.com','keep-registration-hash',NOW()+INTERVAL '1 day');
         INSERT INTO "AuditLog" (id,"tenantId","userId",action,"entityType") VALUES ('keep-audit','migration-tenant','migration-user','MFA_ENABLED','User');
       `);
       for (const table of preservedTables) snapshots.set(table, await snapshot(table));

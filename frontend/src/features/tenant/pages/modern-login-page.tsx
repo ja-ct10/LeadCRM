@@ -55,10 +55,10 @@ function ResendPasswordButton({ forgotEmail, requestPasswordReset }: ResendPassw
 
 interface ModernLoginPageProps {
   onNavigate: (path: string) => void;
-  oauthError?: string;
+  loginError?: string;
 }
 
-export default function ModernLoginPage({ onNavigate, oauthError }: ModernLoginPageProps): React.ReactElement {
+export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginPageProps): React.ReactElement {
   const { user, login, requestPasswordReset, confirmPasswordReset } = useAuth();
 
   const [email, setEmail] = useState('');

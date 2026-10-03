@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Users, Briefcase, LayoutDashboard, Workflow, Mail, Settings, ShieldAlert, Activity } from 'lucide-react';
+import { Search, Users, Briefcase, LayoutDashboard, Workflow, Mail, Settings } from 'lucide-react';
 import { useData } from '../../store/DataContext';
 import { useAuth } from '../../store/AuthContext';
 import { useDebounce } from '@/shared/hooks/use-debounce';
@@ -106,15 +106,9 @@ export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandP
     { name: 'Campaigns',       path: 'campaigns',  icon: Mail,            permissions: ['campaigns.view', 'p17'] },
     { name: 'Users',           path: 'users',      icon: Users,           permissions: ['users.view', 'p22'] },
     { name: 'Settings',        path: 'settings',   icon: Settings,        permissions: ['settings.view', 'p27'] },
-    { name: 'Audit Trail',     path: 'audit-log',  icon: Activity,        permissions: ['audit.view', 'p30'] },
-    { name: 'Admin Console',   path: 'admin',      icon: ShieldAlert,     roles: ['System Admin'] },
   ];
 
   const hasAccess = (item: { name: string; permissions?: string[]; roles?: string[]; enabled?: boolean }) => {
-    if (user?.role?.toLowerCase() === 'system admin') {
-      return ['Dashboard', 'Users', 'Settings', 'Admin Console', 'Audit Trail'].includes(item.name);
-    }
-    if (item.name === 'Admin Console') return false;
     if (user?.role?.toLowerCase() === 'client admin') return true;
 
     if (item.roles?.some((r) => r.toLowerCase() === user?.role?.toLowerCase())) return true;

@@ -52,7 +52,7 @@ it.each(['leads', 'contacts', 'accounts'] as const)('%s exposes only Activity fi
   expect(screen.getByText('Related task records')).toBeTruthy();
 });
 
-it('filters the activity timeline by email, task, and status rather than changing labels only', () => {
+it.each(['leads', 'contacts', 'accounts', 'deals'] as const)('filters %s by email, task, status, and all activity', module => {
   const activities = [
     { id: 'email', type: 'email', title: 'Sent welcome email', createdAt: '2026-09-01T10:00:00.000Z' },
     { id: 'note', type: 'note', title: 'Internal note', createdAt: '2026-09-01T10:01:00.000Z' },
@@ -60,7 +60,7 @@ it('filters the activity timeline by email, task, and status rather than changin
     { id: 'task', type: 'task', title: 'Follow up task activity', createdAt: '2026-09-01T10:03:00.000Z' },
     { id: 'status', type: 'stage_change', title: 'Status changed to Hot', createdAt: '2026-09-01T10:04:00.000Z' },
   ];
-  render(<RecordTimelineTab activities={activities} module="leads" recordId="record-1" />);
+  render(<RecordTimelineTab activities={activities} module={module} recordId="record-1" />);
   expect(screen.getByText('Internal note')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Emails' }));
   expect(screen.getAllByText('Sent welcome email').length).toBeGreaterThan(0);
@@ -72,6 +72,8 @@ it('filters the activity timeline by email, task, and status rather than changin
   fireEvent.click(screen.getByRole('button', { name: 'Status' }));
   expect(screen.getByText('Status changed to Hot')).toBeTruthy();
   expect(screen.queryByText('Follow up task activity')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'All' }));
+  for (const title of ['Internal note', 'Follow up task activity', 'Status changed to Hot']) expect(screen.getByText(title)).toBeTruthy();
 });
 
 it.each(['leads', 'contacts', 'accounts', 'deals'] as const)('removes the %s Call quick action while preserving historical calls', module => {

@@ -643,7 +643,7 @@ export function RecordPanel({
                             <GitMerge className="h-4 w-4 mr-2" /> Merge Record
                           </DropdownMenuItem>
                           <DropdownMenuItem onSelect={() => {}}>
-                            <Eye className="h-4 w-4 mr-2" /> View Audit Trail
+                            <Eye className="h-4 w-4 mr-2" /> View Activity History
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem destructive onSelect={() => {}}>

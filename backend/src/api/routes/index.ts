@@ -11,20 +11,18 @@ import integrationsRoutes from './integrations.routes';
 import notificationsRoutes from './notifications.routes';
 import preferencesRoutes from '../../modules/preferences/preferences.routes';
 import tablePreferencesRoutes from '../../modules/preferences/table-preferences.routes';
-import adminRoutes from './admin.routes';
 import { publicFormsRouter } from './public-forms.routes';
 
 const router = Router();
 
 // ── Health / version check ────────────────────────────────────────────────────
 // Unauthenticated — used to confirm which build is running on Render.
-// GET /api/v1/health  →  { status, commit, env, seedEmail }
+// GET /api/v1/health  →  { status, commit, env }
 router.get('/health', (_req, res) => {
   res.json({
     status:    'ok',
     commit:    process.env.RENDER_GIT_COMMIT ?? 'unknown',
     env:       process.env.NODE_ENV ?? 'development',
-    seedEmail: process.env.SYSTEM_ADMIN_EMAIL ?? 'not-set',
   });
 });
 
@@ -42,9 +40,6 @@ router.use('/notifications', notificationsRoutes);
 router.use('/preferences/columns', preferencesRoutes);
 router.use('/preferences/table', tablePreferencesRoutes);
 
-// ── System Admin routes (protected by systemAdminMiddleware) ──────────────────
-// /api/v1/admin/* — platform account management and audit
-router.use('/admin', adminRoutes);
 
 
 export default router;

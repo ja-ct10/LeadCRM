@@ -53,21 +53,18 @@ export async function authMiddleware(req: Request, _res: Response, next: NextFun
     requireEmployeeAccount(user);
     const authPath = req.baseUrl?.endsWith('/auth') ? req.path : '';
     const recovery = ['/me', '/change-password', '/logout'].includes(authPath);
-    if (user.role !== 'System Admin') {
-      if (['SUSPENDED', 'REJECTED'].includes(user.tenantStatus ?? '')) {
-        throw new AppError('Workspace access is suspended.', 403);
-      }
-      if (user.mustChangePassword && !recovery) {
-        throw new AppError('Change your temporary password first.', 403, 'PASSWORD_CHANGE_REQUIRED');
-      }
-      if (user.role === 'Client Admin' && !isOnboardingComplete(user) && !recovery &&
-          !['/onboarding/status', '/onboarding/complete'].includes(authPath)) {
-        throw new AppError('Complete the LeadCRM introduction first.', 403, 'ONBOARDING_REQUIRED');
-      }
+    if (['SUSPENDED', 'REJECTED'].includes(user.tenantStatus ?? '')) {
+      throw new AppError('Workspace access is suspended.', 403);
+    }
+    if (user.mustChangePassword && !recovery) {
+      throw new AppError('Change your temporary password first.', 403, 'PASSWORD_CHANGE_REQUIRED');
+    }
+    if (user.role === 'Client Admin' && !isOnboardingComplete(user) && !recovery &&
+        !['/onboarding/status', '/onboarding/complete'].includes(authPath)) {
+      throw new AppError('Complete the LeadCRM introduction first.', 403, 'ONBOARDING_REQUIRED');
     }
     req.authUser = user;
     req.user = { ...payload, role: user.role, email: user.email };
-    if (user.role === 'System Admin') return next();
     tenantContext.run({ tenantId: user.tenantId }, next);
   } catch (err) {
     if (err instanceof jwt.JsonWebTokenError || err instanceof jwt.NotBeforeError) {

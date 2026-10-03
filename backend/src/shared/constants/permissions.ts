@@ -52,8 +52,6 @@ export const Permission = {
   // Audit
   AUDIT_VIEW: 'audit.view',
 
-  // Admin (System Admin only)
-  ADMIN_ACCESS: 'admin.access',
 } as const;
 
 export type PermissionKey = typeof Permission[keyof typeof Permission];

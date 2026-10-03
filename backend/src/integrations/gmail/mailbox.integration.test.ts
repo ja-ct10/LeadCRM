@@ -15,7 +15,7 @@ import { updateContact as updateLead } from '../../modules/crm/contacts/contacts
 import { updateContact } from '../../modules/crm/contacts-v2/contacts-v2.repository';
 import { salesPipeline, salesTransaction } from '../../modules/crm/leads/lead-automation.service';
 import { convertClosedLead } from '../../modules/crm/leads/lead-conversion.service';
-import { sendEmail } from './gmail.service';
+import { getValidAccessToken, sendEmail } from './gmail.service';
 import app from '../../app';
 import type { GmailEmail } from './gmail.types';
 import { mailConfig } from '../../config/mail.config';
@@ -233,6 +233,25 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     await prisma.session.update({ where: { tokenHash: hashToken(token) }, data: { revokedAt: now } });
     await expect(finishMailboxConnection(new URL(second.url).searchParams.get('state')!, 'code')).rejects.toMatchObject({ statusCode: 401 });
     await prisma.session.update({ where: { tokenHash: hashToken(token) }, data: { revokedAt: null } });
+  });
+  it('refreshes expired Gmail tokens and persists rotation independently of application login', async () => {
+    await prisma.emailAccount.update({ where: { id: account.id }, data: { tokenExpiresAt: new Date(0), refreshToken: encryptToken('refresh-before-rotation') } });
+    const provider = vi.fn(async (_url: string, options: RequestInit) => {
+      const body = options.body as URLSearchParams;
+      expect(body.get('grant_type')).toBe('refresh_token');
+      expect(body.get('refresh_token')).toBe('refresh-before-rotation');
+      return Response.json({ access_token: 'refreshed-access', refresh_token: 'rotated-refresh', expires_in: 3600 });
+    });
+    vi.stubGlobal('fetch', provider);
+    expect(await getValidAccessToken(tenantId, userId)).toBe('refreshed-access');
+    const saved = await prisma.emailAccount.findUniqueOrThrow({ where: { id: account.id } });
+    expect(decryptToken(saved.accessToken)).toBe('refreshed-access');
+    expect(decryptToken(saved.refreshToken!)).toBe('rotated-refresh');
+    expect(saved.accessToken).not.toBe('refreshed-access');
+    expect(saved.refreshToken).not.toBe('rotated-refresh');
+    expect(saved.tokenExpiresAt!.getTime()).toBeGreaterThan(Date.now());
+    expect(await getValidAccessToken(tenantId, userId)).toBe('refreshed-access');
+    expect(provider).toHaveBeenCalledOnce();
   });
   it('rejects connecting another email address to the staff account', async () => {
     const oauth = await scope(() => beginMailboxConnection({ userId, tenantId, email: account.email }, token));

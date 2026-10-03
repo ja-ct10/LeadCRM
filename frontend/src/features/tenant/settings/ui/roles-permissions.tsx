@@ -205,7 +205,7 @@ function RoleEditor({ role, allPerms, allUsers, onSave, onCancel }: RoleEditorPr
   const [saving, setSaving] = useState(false);
   const submitting = useRef(false);
 
-  const isAdmin = !!role?.isSystemRole && ['Administrator', 'Client Admin', 'System Admin'].includes(role.name);
+  const isAdmin = !!role?.isSystemRole && ['Administrator', 'Client Admin'].includes(role.name);
   const isSystemRole = role?.isSystemRole ?? false;
   const effectivePermIds = isAdmin ? allPerms.map(permission => permission.id) : activePermIds;
   const userCount = allUsers.filter((u) => !u.isArchived && u.role === role?.name).length;
@@ -470,7 +470,7 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {visibleRoles.map((role, index) => {
             const roleUserCount = users.filter((u) => !u.isArchived && u.role === role.name).length;
-            const enabledCount = role.isSystemRole && ['Administrator', 'Client Admin', 'System Admin'].includes(role.name) ? permissions.length : role.permissions?.length ?? 0;
+            const enabledCount = role.isSystemRole && ['Administrator', 'Client Admin'].includes(role.name) ? permissions.length : role.permissions?.length ?? 0;
             const isDropdownOpen = openDropdownId === role.id;
             
             return (

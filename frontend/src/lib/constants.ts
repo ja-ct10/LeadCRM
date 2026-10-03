@@ -26,7 +26,6 @@ export const ROUTES = {
   // Public
   LANDING: 'landing',
   LOGIN: 'login',
-  REGISTER: 'register',
 
   // CRM Portal
   DASHBOARD: 'dashboard',
@@ -39,17 +38,11 @@ export const ROUTES = {
   SETTINGS: 'settings',
   ACCOUNT_DETAILS: 'account-details',
   PROFILE_SETTINGS: 'profile-settings',
-  AUDIT_LOG: 'audit-log',
 
-  // Admin Portal
-  ADMIN_DASHBOARD: 'admin-dashboard',
-  ADMIN_CLIENTS: 'admin-clients',
-  ADMIN_AUDIT_LOG: 'admin-audit-log',
 } as const;
 
 // ─── Roles ─────────────────────────────────────────────────────────────────
 export const CRM_ROLES = ['Client Admin'] as const;
-export const ADMIN_ROLES = ['System Admin'] as const;
-export const ALL_ROLES = [...ADMIN_ROLES, ...CRM_ROLES] as const;
+export const ALL_ROLES = CRM_ROLES;
 
 export const isCurrentLeadSource = (value: string) => !['linkedin ads', 'webinar', 'partner referral', 'cold call', 'youtube ads', 'seo/organic search'].includes(value.toLowerCase().replace(/\s*\/\s*/g, '/').trim());

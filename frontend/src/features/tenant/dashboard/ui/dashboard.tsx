@@ -32,7 +32,7 @@ function PesoIcon({ size }: { size: number }): React.ReactElement {
 
 export default function Dashboard() {
   const { user, tenant } = useAuth();
-  const { contacts, deals, users, roles, tasks, tenants, pipelines } = useData();
+  const { contacts, deals, users, roles, tasks, pipelines } = useData();
   const taskData = useTasks({ assignedUserId: user?.id, limit: 1 });
   const pendingPreview = useTasks({ assignedUserId: user?.id, status: 'pending', limit: 3 });
   const tenantCurrency = useMemo<CurrencyConfig>(() => getTenantCurrency(tenant), [tenant]);
@@ -230,71 +230,6 @@ export default function Dashboard() {
       <div className="p-4 lg:p-6 space-y-6">
         <DashboardSkeleton />
       </div>
-    );
-  }
-
-  // ── System Admin view ──────────────────────────────────────
-  if (user.role === 'System Admin') {
-    return (
-      <motion.div 
-        initial={{ opacity: 0, y: 15 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="p-4 lg:p-6 space-y-6"
-      >
-        <div className="flex justify-between items-center">
-          <p className="text-sm text-slate-500 dark:text-slate-400">Platform-wide metrics across all tenants</p>
-          <button onClick={handleRefresh} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.08] text-slate-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition-all active:scale-98">
-            <RefreshCw size={14} /> Refresh
-          </button>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {[
-            { label: 'Total Tenants', value: tenants.length, icon: Briefcase, color: 'blue' },
-            { label: 'Total Users', value: users.length, icon: Users, color: 'emerald' },
-            { label: 'Total Deals', value: deals.length, icon: TrendingUp, color: 'purple' },
-          ].map(({ label, value, icon: Icon, color }) => (
-            <div key={label} className={`bg-white dark:bg-white/[0.02] p-6 rounded-2xl border border-gray-200 dark:border-white/[0.06] shadow-sm flex items-center gap-4`}>
-              <div className={`p-3 rounded-xl bg-${color}-500/10 text-${color}-500`}><Icon size={22} /></div>
-              <div>
-                <p className="text-sm text-slate-500 dark:text-slate-400">{label}</p>
-                <p className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">{value}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="bg-white dark:bg-white/[0.02] rounded-2xl border border-gray-200 dark:border-white/[0.06] shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 dark:border-white/[0.05]">
-            <h3 className="font-semibold text-slate-900 dark:text-white">Active Tenants</h3>
-          </div>
-          <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 dark:bg-white/[0.02] text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider">
-              <tr>
-                <th className="px-6 py-3 text-left font-semibold">Company</th>
-                <th className="px-6 py-3 text-left font-semibold">Industry</th>
-                <th className="px-6 py-3 text-left font-semibold">Status</th>
-                <th className="px-6 py-3 text-left font-semibold">Created</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-white/[0.04]">
-              {tenants.map(t => (
-                <tr key={t.id} className="hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors">
-                  <td className="px-6 py-3.5 font-medium text-slate-900 dark:text-white">{t.name}</td>
-                  <td className="px-6 py-3.5 text-slate-500 dark:text-slate-400">{t.industry}</td>
-                  <td className="px-6 py-3.5">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${t.status === 'active' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400' : 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400'}`}>
-                      {t.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-3.5 text-slate-500 dark:text-slate-400">{new Date(t.createdAt).toLocaleDateString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
-        </div>
-      </motion.div>
     );
   }
 

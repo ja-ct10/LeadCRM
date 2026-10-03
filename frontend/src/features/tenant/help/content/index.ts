@@ -25,7 +25,7 @@ export const helpCategories: HelpCategory[] = [
   { id: 'team', title: 'Team Management', description: 'Manage members and user profiles.', sources: [`${frontend}settings/ui/team-management-users.tsx`, 'backend/src/api/routes/administration.routes.ts'] },
   { id: 'roles', title: 'Roles & Permissions', description: 'Define custom roles and grant the right capabilities.', sources: [`${frontend}settings/ui/roles-permissions.tsx`, `${backend}administration/roles/roles.service.ts`, 'shared/src/constants/permission-modules.ts'] },
   { id: 'settings', title: 'Settings', description: 'Profile, appearance, organization, forms, and recovery.', sources: [`${frontend}settings/ui/settings-page.tsx`, `${frontend}settings/ui/profile-form.tsx`, `${frontend}settings/ui/organization-settings-form.tsx`, `${frontend}marketing/forms/services/forms.service.ts`, 'frontend/src/store/DataContext.tsx', 'backend/src/core/auth/profile.service.ts'] },
-  { id: 'security', title: 'Security & Audit', description: 'Review recorded actions and understand access boundaries.', sources: [`${frontend}administration/audit/ui/audit-logs-page.tsx`, 'backend/src/api/middleware/rbac.middleware.ts'] },
+  { id: 'security', title: 'Security & History', description: 'Review recorded actions and understand access boundaries.', sources: [`${frontend}settings/ui/team-management-users.tsx`, 'backend/src/api/middleware/rbac.middleware.ts'] },
   { id: 'troubleshooting', title: 'Troubleshooting', description: 'Find missing records and resolve common input or access issues.', sources: ['frontend/src/shared/utils/ph-phone.ts', `${frontend}settings/ui/roles-permissions.tsx`, `${frontend}settings/ui/organization-settings-form.tsx`] },
 ];
 

@@ -1,3 +1,5 @@
+> Historical schema snapshot. The removed operator, document, and login models below are not in the current database. See the [retirement report](../retired-features-cleanup.md) and `backend/prisma/schema.prisma`.
+
 > Historical database design snapshot. Ignored SaaS structures are retained only for stored history, not runtime access. See ../crm-environments.md and ../internal-crm-cleanup.md for the current model.
 
 # LeadCRM ERD — Summary & Recommendations

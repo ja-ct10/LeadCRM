@@ -17,7 +17,6 @@ const INDUSTRIES = [
   'Financial Services'
 ];
 
-export { seedDemoAccounts as seedSystemAdmin } from './demo.seed';
 
 export async function generateTenants(count: number = 10) {
   console.log(`[Seed] Generating ${count} Realistic Tenants...`);

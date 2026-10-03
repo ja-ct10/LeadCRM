@@ -32,7 +32,6 @@ export const Permission = {
   SETTINGS_EDIT: 'settings.edit',
   ROLES_MANAGE: 'roles.manage',
   AUDIT_VIEW: 'audit.view',
-  ADMIN_ACCESS: 'admin.access',
 } as const;
 
 export type PermissionKey = (typeof Permission)[keyof typeof Permission];

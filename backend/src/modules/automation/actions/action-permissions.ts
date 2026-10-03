@@ -8,7 +8,7 @@ import { findTrigger } from '../triggers/trigger-catalog';
 /** Reuse the same active assignments and flag mapping as the HTTP RBAC guard. */
 export async function assertWorkflowPermissions(draft: WorkflowDraft, tenantId: string, userId: string) {
   const user = await findUser(userId, tenantId);
-  if (!user || user.role === 'System Admin' || user.role.trim().toLowerCase() === 'guest') throw new AppError('Workflow author is unavailable.', 403);
+  if (!user || user.role.trim().toLowerCase() === 'guest') throw new AppError('Workflow author is unavailable.', 403);
   const entity = findTrigger(draft.trigger)?.entity;
   const required: PermissionKey[] = ['workflows.activate', entity === 'deal' ? 'deals.view' : entity === 'account' ? 'accounts.view' : 'contacts.view'];
   for (const action of draft.actions) {

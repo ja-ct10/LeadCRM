@@ -50,3 +50,6 @@ src/main.tsx
 
 # Ignored env templates
 backend/.env.example
+
+# Local database inventories contain deployment-specific identifiers.
+data/outputs/retired-features-*.json

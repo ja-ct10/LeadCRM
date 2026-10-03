@@ -35,5 +35,4 @@ exports.Permission = {
     SETTINGS_EDIT: 'settings.edit',
     ROLES_MANAGE: 'roles.manage',
     AUDIT_VIEW: 'audit.view',
-    ADMIN_ACCESS: 'admin.access',
 };

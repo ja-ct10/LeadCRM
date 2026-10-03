@@ -145,7 +145,7 @@ export async function removeRoleFromUser(userId: string, roleId: string, tenantI
     const user = await tx.user.findFirst({ where: { id: userId, tenantId } });
     const role = await tx.roleDefinition.findFirst({ where: { id: roleId, tenantId } });
     if (!user || !role) throw new NotFoundError('User or role');
-    if (user.role === 'System Admin' || user.role === 'Client Admin' || user.role === role.name) {
+    if (user.role === 'Client Admin' || user.role === role.name) {
       throw new ForbiddenError('Assign a replacement custom role before removing the primary role');
     }
     return tx.userRole.deleteMany({ where: { userId, roleId, tenantId } });
@@ -200,8 +200,8 @@ export async function replaceUserRole(
     tx.roleDefinition.findFirst({ where: { tenantId, name: roleName, isArchived: false } }),
   ]);
   if (!user || !role) throw new NotFoundError('User or role');
-  if (['System Admin', 'Client Admin'].includes(user.role) || role.isSystemRole ||
-      ['guest', 'systemadmin', 'clientadmin'].includes(role.name.toLowerCase().replace(/[\s_-]/g, ''))) {
+  if (['Client Admin'].includes(user.role) || role.isSystemRole ||
+      ['guest', 'clientadmin'].includes(role.name.toLowerCase().replace(/[\s_-]/g, ''))) {
     throw new ForbiddenError('Select an active custom role for a non-administrator user');
   }
   requireEmployeeAccount({ role: role.name, email: user.email });

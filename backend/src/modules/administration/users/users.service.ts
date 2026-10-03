@@ -11,7 +11,6 @@ import { revokeAllUserSessions } from '../../../core/auth/session.service';
 import { NotFoundError, ConflictError, ForbiddenError, ValidationError } from '../../../shared/errors/http-error';
 import { hashPassword } from '../../../shared/helpers/crypto';
 import { getPaginationParams, paginate } from '../../../shared/helpers/pagination';
-import { Role } from '../../../shared/constants/roles';
 
 const SAFE_USER_SELECT = {
   id: true, tenantId: true, firstName: true, lastName: true,
@@ -20,10 +19,6 @@ const SAFE_USER_SELECT = {
   // passwordHash is NEVER selected
 };
 
-/** Case-insensitive check for System Admin role — guards against both 'System Admin' and 'SYSTEM_ADMIN' variants. */
-function isSystemAdminRole(role: string | null | undefined): boolean {
-  return (role ?? '').toLowerCase() === Role.SYSTEM_ADMIN.toLowerCase();
-}
 
 export async function getAll(tenantId: string, query: Record<string, unknown>) {
   const { page, limit } = getPaginationParams(query);
@@ -66,9 +61,6 @@ export async function create(tenantId: string, actorId: string, dto: {
   dto = CreateUsersSchema.parse(dto);
   const role = await prisma.roleDefinition.findFirst({ where: { tenantId, name: dto.role, isArchived: false, isSystemRole: false } });
   if (!role) throw new ValidationError('Select an active custom role.');
-  if (isSystemAdminRole(dto.role)) {
-    throw new ForbiddenError('Cannot assign System Admin role via tenant user management');
-  }
   requireEmployeeAccount({ email: dto.email, role: dto.role });
   const existing = await prisma.user.findFirst({ where: { email: dto.email, tenantId } });
   if (existing) throw new ConflictError('A user with this email already exists in this tenant');
@@ -100,9 +92,6 @@ export async function update(id: string, tenantId: string, actorId: string, dto:
   firstName?: string; lastName?: string; role?: string; status?: string; phone?: string; jobTitle?: string; department?: string;
 }) {
   dto = UpdateUsersSchema.parse(dto);
-  if (isSystemAdminRole(dto.role)) {
-    throw new ForbiddenError('Cannot assign System Admin role via tenant user management');
-  }
   if (dto.status && !['ACTIVE', 'INACTIVE', 'PENDING'].includes(dto.status)) {
     throw new ValidationError('Invalid status value provided');
   }
@@ -110,10 +99,6 @@ export async function update(id: string, tenantId: string, actorId: string, dto:
   const existing = await prisma.user.findFirst({ where: { id, tenantId } });
   if (!existing) throw new NotFoundError('User');
 
-  // Prevent modifying System Admin users
-  if (isSystemAdminRole(existing.role)) {
-    throw new ForbiddenError('Cannot modify System Admin users');
-  }
 
   if (id === actorId && dto.status === 'INACTIVE') throw new ForbiddenError('Cannot deactivate your own account');
   const updateData: any = { ...dto };
@@ -141,7 +126,6 @@ export async function archive(id: string, tenantId: string, actorId: string) {
 export async function restore(id: string, tenantId: string, actorId: string) {
   const existing = await prisma.user.findFirst({ where: { id, tenantId, status: 'INACTIVE' } });
   if (!existing) throw new NotFoundError('User');
-  if (isSystemAdminRole(existing.role)) throw new ForbiddenError('Cannot restore System Admin users');
   const result = await prisma.user.updateMany({ where: { id, tenantId, status: 'INACTIVE' }, data: { status: 'ACTIVE' } });
   if (!result.count) throw new NotFoundError('Archived user');
   await writeAuditLog({ tenantId, userId: actorId, action: 'user.restored', entityType: 'User', entityId: id, after: { status: 'ACTIVE' }, severity: 'INFO' });
@@ -151,7 +135,6 @@ export async function deleteRecord(id: string, tenantId: string, actorId: string
   const existing = await prisma.user.findFirst({ where: { id, tenantId } });
   if (!existing) throw new NotFoundError('User');
   if (id === actorId) throw new ForbiddenError('Cannot delete your own account');
-  if (isSystemAdminRole(existing.role)) throw new ForbiddenError('Cannot delete System Admin users');
 
   await prisma.user.delete({ where: { id } });
   await writeAuditLog({ tenantId, userId: actorId, action: 'user.deleted', entityType: 'User', entityId: id, severity: 'CRITICAL' });
@@ -159,13 +142,12 @@ export async function deleteRecord(id: string, tenantId: string, actorId: string
 
 export async function bulkUpdate(ids: string[], tenantId: string, actorId: string, dto: Record<string, any>) {
   dto = UpdateUsersSchema.parse(dto);
-  if (isSystemAdminRole(dto.role)) throw new ForbiddenError('Cannot assign System Admin role');
   if (dto.status && !['ACTIVE', 'INACTIVE', 'PENDING'].includes(dto.status)) {
     throw new ValidationError('Invalid status value provided');
   }
 
   await prisma.$transaction(async tx => {
-    const where = { id: { in: ids }, tenantId, NOT: { role: { equals: Role.SYSTEM_ADMIN, mode: 'insensitive' as const } } };
+    const where = { id: { in: ids }, tenantId };
     if (dto.role) {
       const targets = await tx.user.findMany({ where, select: { id: true } });
       for (const target of targets) await replaceUserRole(tx, target.id, tenantId, dto.role);
@@ -179,11 +161,9 @@ export async function bulkDelete(ids: string[], tenantId: string, actorId: strin
   if (ids.includes(actorId)) throw new ForbiddenError('Cannot delete your own account in a bulk operation');
 
   await prisma.user.deleteMany({
-    // Prevent bulk deleting System Admins — use mode: 'insensitive' for case-safe exclusion
     where: {
       id: { in: ids },
       tenantId,
-      NOT: { role: { equals: Role.SYSTEM_ADMIN, mode: 'insensitive' } },
     },
   });
   await writeAuditLog({ tenantId, userId: actorId, action: 'user.bulk_deleted', entityType: 'User', after: { ids }, severity: 'CRITICAL' });
@@ -191,7 +171,7 @@ export async function bulkDelete(ids: string[], tenantId: string, actorId: strin
 
 export async function sendPasswordReset(id: string, tenantId: string, actorId: string) {
   const user = await getById(id, tenantId);
-  if (user.status !== 'ACTIVE' || isSystemAdminRole(user.role)) throw new ForbiddenError('Password recovery is unavailable for this user.');
+  if (user.status !== 'ACTIVE') throw new ForbiddenError('Password recovery is unavailable for this user.');
   try { await requestPasswordReset({ email: user.email }, { userId: user.id, tenantId }); }
   catch { throw new ValidationError('Unable to send recovery email. Please try again.'); }
   await writeAuditLog({ tenantId, userId: actorId, action: 'user.password_reset_requested_by_admin', entityType: 'User', entityId: id });
