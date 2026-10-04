@@ -59,6 +59,40 @@ The initial local native PostgreSQL launch was blocked by the Windows sandbox;
 the approved retry outside the sandbox passed. Test clusters use local disposable
 credentials, are stopped afterward, and their generated files are ignored.
 
+## Render redeployment verified
+
+The fix was committed as `1005caeb77ff1a3036c9cc74e3542e2e730b9bde` and pushed
+to both `origin/main` and `upstream/main`. Render's saved Root Directory was
+cleared and its commands updated together:
+
+```text
+Build: npx --yes npm@11.19.1 ci --include=dev && npm --prefix backend run build
+Start: npm --prefix backend run db:deploy && npm --prefix backend start
+```
+
+Updating those fields triggered [deployment dep-db0vh82d0e5s73ddav70](https://dashboard.render.com/web/srv-d9q1v1lbedkc73audjsg/deploys/dep-db0vh82d0e5s73ddav70).
+Render showed **Deploy succeeded | Live** for `1005cae`, with a duration of
+1 minute 43 seconds. The dashboard timestamp was October 4, 2026, 2:56:32 PM
+GMT+8. The service's saved health-check setting was not changed in this repair.
+
+Post-deployment checks actually executed:
+
+- Backend `/health`: HTTP 200, `status: ok`.
+- Frontend `/api/proxy/health`: HTTP 200, production environment and commit
+  `1005caeb77ff1a3036c9cc74e3542e2e730b9bde`.
+- Anonymous GET requests to all four `/api/v1/crm/{module}/imports` history
+  routes: HTTP 401, `Authentication required`.
+- Read-only production inventory at `2026-10-04T07:00:01.529Z`: legacy Lead
+  jobs/results remain 2/8; shared jobs/results remain 2/8; the other three
+  legacy histories remain 0/0; uploads/chunks remain empty. Expansion remains
+  applied and the failed retirement attempt is marked rolled back.
+
+This verifies deployment recovery, health, authentication rejection and retained
+history. Authenticated creation/history/retry checks for all four modules were
+not run against this deployed release; I cannot confirm this. Production table
+retirement remains deferred until those checks pass. No production test CRM
+records were created, and no legacy tables were dropped during this repair.
+
 ## References
 
 Recovery follows the supported [Prisma migrate resolve workflow](https://docs.prisma.io/docs/cli/migrate/resolve).
