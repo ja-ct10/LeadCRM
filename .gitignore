@@ -25,6 +25,8 @@ Thumbs.db
 /data/outputs/csv-import-qa/
 /data-import-normalization-inventory.json
 /data-import-normalized-drift.sql
+/data-import-render-inventory.json
+/data/outputs/import-deploy-test/
 npm-debug.log*
 
 # Editor

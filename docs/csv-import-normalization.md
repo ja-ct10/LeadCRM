@@ -1,8 +1,9 @@
 # CRM import infrastructure normalization
 
-Implemented and verified locally on 2026-10-04. Production inspection was read-only.
-The code and migration files are ready for a coordinated rollout; the production
-database has **not** been migrated by this task. This report supersedes the
+Implemented and verified locally on 2026-10-04. The original report below records
+the pre-deployment audit. Render subsequently applied expansion but failed on the
+guarded retirement phase; see [the deployment recovery report](render-import-deployment-recovery.md)
+for the current production state. This report supersedes the
 persistence and rollout portions of [the earlier CSV feature audit](csv-import-audit.md).
 
 ## 1–2. Tables found and why they existed
@@ -101,13 +102,20 @@ other databases: **I cannot confirm this.** Check those before using the revised
    tables abort and roll back the destructive phase. The verifier, temporary
    comparison views and release marker are then removed.
 
-Fresh empty development databases can replay both migrations normally. Existing
-databases with history must use the two-phase sequence; blindly running ordinary
-`db:deploy` through retirement before API verification deliberately fails the gate.
-If that happens, confirm the retirement transaction rolled back, then use Prisma
-`migrate resolve --rolled-back 20261028000000_retire_legacy_crm_imports` before the
-verified retry. Never mark an unexecuted migration as applied. The rollout commands
-above were **not executed against production** during this task.
+The hosting entry point `npm --prefix backend run db:deploy` now invokes
+`--deploy`, applies expansion and defers retirement until API verification. Once
+retirement is applied, it resumes ordinary migration deployment. It refuses
+unresolved failures and later migrations while retirement is still pending,
+rather than silently omitting a later release's schema changes. Fresh disposable
+databases can also replay both SQL migrations directly.
+
+Bare `prisma migrate deploy` against the entire history bypasses this ordering and
+fails the retirement gate on a populated database. Recover that specific failed
+attempt with `npm --prefix backend run db:imports:recover`; it verifies original
+SQL checksums, all eight retained source tables, their write guards and complete
+history equality before Prisma `migrate resolve --rolled-back`. Never mark
+unexecuted SQL as applied. Run `db:imports:verify` and `db:imports:retire` only after
+the authenticated API checks and successful new imports described above.
 
 Original IDs are retained, so URLs/history links remain stable. Cross-table ID
 collisions or duplicate row numbers stop expansion instead of silently deleting,

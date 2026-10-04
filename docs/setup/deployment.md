@@ -73,6 +73,19 @@ Use the repository's `render.yaml`, or configure equivalent settings:
 | NODE_ENV | `production` |
 | SKIP_DEMO_TENANTS | `true` |
 
+`db:deploy` uses the phased CRM import migration runner. It applies expansion
+before startup and defers legacy-table retirement until the deployed import APIs
+have been verified. Do not substitute `npx prisma migrate deploy` in Render's
+saved commands: that attempts retirement before the new server can start.
+See [CRM import rollout and recovery](../csv-import-normalization.md).
+
+If the retirement migration failed during an older Render build, run
+`npm --prefix backend run db:imports:recover` once. Recovery checks migration
+checksums (allowing Git's LF/CRLF difference), retained source tables, write
+guards and exact historical payloads before marking that failed attempt rolled
+back through Prisma. It never marks unexecuted SQL as applied. Then deploy with
+the commands above. Unrelated failed migrations remain blocking errors.
+
 Do not set rootDir to backend: the compilation needs ../shared, tsconfig.base.json,
 and the workspace lockfile. Files outside a Render root directory are unavailable
 to that service. See [Render monorepo support](https://render.com/docs/monorepo-support).

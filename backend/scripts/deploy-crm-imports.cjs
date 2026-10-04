@@ -1,16 +1,68 @@
 // Two-phase Prisma rollout. All schema/data mutations are versioned migrations.
+// --deploy is the normal hosting entry point; retirement is a separate release step.
 // --expand copies history and retains frozen old tables. --verify is read-only.
 // --retire verifies deployed APIs before enabling the guarded retirement migration.
 require('dotenv').config();
 const { PrismaClient } = require('@prisma/client');
 const { spawnSync } = require('node:child_process');
-const { mkdtempSync, copyFileSync, mkdirSync, readdirSync, cpSync, rmSync, realpathSync } = require('node:fs');
+const { mkdtempSync, copyFileSync, mkdirSync, readdirSync, cpSync, rmSync, realpathSync, readFileSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { resolve, join, sep } = require('node:path');
+const { createHash } = require('node:crypto');
 const { verifyImportRollout } = require('./verify-crm-import-rollout.cjs');
 const root = resolve(__dirname, '../prisma');
 const expansion = '20261027000000_crm_import_integrity';
 const retirement = '20261028000000_retire_legacy_crm_imports';
+const legacyTables = ['Lead', 'Contact', 'Account', 'Deal'].flatMap(module => [`${module}Import`, `${module}ImportResult`]);
+
+const fail = code => { throw Object.assign(new Error(code), { code }); };
+const finished = row => row.finished_at && !row.rolled_back_at;
+function checksumMatches(source, expected) {
+  // Git checks out CRLF on Windows and LF on Render. Accept only that transport
+  // difference; any SQL/content change must still stop recovery.
+  const lf = source.replace(/\r\n/g, '\n');
+  return [source, lf, lf.replace(/\n/g, '\r\n')].some(text => createHash('sha256').update(text).digest('hex') === expected);
+}
+async function migrationRecords(db) {
+  const [{ present }] = await db.$queryRawUnsafe(`SELECT to_regclass('public._prisma_migrations') IS NOT NULL AS present`);
+  return present ? db.$queryRawUnsafe('SELECT migration_name, finished_at, rolled_back_at, checksum FROM "_prisma_migrations"') : [];
+}
+
+function deploymentTarget(records, localNames) {
+  if (records.some(row => !row.finished_at && !row.rolled_back_at)) fail('FAILED_MIGRATION_REQUIRES_RECOVERY');
+  if (records.some(row => row.migration_name === retirement && finished(row))) return '\uffff';
+  // Never silently skip a future release's migrations while this rollout is pending.
+  if (localNames.some(name => /^\d+_/.test(name) && name > retirement)) fail('RETIRE_IMPORT_TABLES_BEFORE_LATER_MIGRATIONS');
+  return expansion;
+}
+
+async function recoverRetirement(db) {
+  const records = await migrationRecords(db);
+  const failed = records.filter(row => !row.finished_at && !row.rolled_back_at);
+  if (!failed.length) { console.log('No failed import retirement to recover.'); return; }
+  if (failed.length !== 1 || failed[0].migration_name !== retirement || records.some(row => row.migration_name === retirement && finished(row))) fail('UNEXPECTED_FAILED_MIGRATION');
+  for (const name of [expansion, retirement]) {
+    const record = name === retirement ? failed[0] : records.find(row => row.migration_name === name && finished(row));
+    const source = readFileSync(join(root, 'migrations', name, 'migration.sql'), 'utf8');
+    if (!record || !checksumMatches(source, record.checksum)) fail('IMPORT_MIGRATION_CHECKSUM_MISMATCH');
+  }
+  const tables = await db.$queryRawUnsafe("SELECT table_name FROM information_schema.tables WHERE table_schema='public'");
+  if (!legacyTables.every(name => tables.some(table => table.table_name === name))) fail('LEGACY_IMPORT_TABLE_MISSING');
+  // The transaction must have rolled back completely. The copy verifier must still
+  // exist and prove exact source/job/result preservation before repairing history.
+  const counts = await db.$queryRawUnsafe('SELECT * FROM crm_verify_import_normalization()');
+  const [{ guards }] = await db.$queryRawUnsafe(`SELECT count(*)::int AS guards FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND t.tgname='crm_legacy_import_readonly' AND t.tgenabled='O'`);
+  if (guards !== 8) fail('LEGACY_IMPORT_GUARDS_MISSING');
+  // This changes only Prisma's failed-attempt bookkeeping. Never mark unapplied
+  // SQL as applied and never bypass the separate API-verification retirement gate.
+  runPrisma(['migrate', 'resolve', '--rolled-back', retirement, '--schema', join(root, 'schema.prisma')]);
+  console.log(JSON.stringify({ recovered: retirement, historical: counts.map(row => ({ module: row.module, jobs: Number(row.jobs), results: Number(row.results) })) }));
+}
+
+function runPrisma(args) {
+  const result = spawnSync(process.execPath, [require.resolve('prisma/build/index.js'), ...args], { cwd: resolve(__dirname, '..'), env: process.env, stdio: 'inherit', windowsHide: true });
+  if (result.status !== 0) fail('PRISMA_ROLLOUT_FAILED');
+}
 
 function migrate(through) {
   // Prisma has no deploy-to-version option. A temporary copy of the exact checked-in
@@ -23,8 +75,7 @@ function migrate(through) {
     for (const name of readdirSync(join(root, 'migrations'))) {
       if (/^\d+_/.test(name) && name <= through) cpSync(join(root, 'migrations', name), join(stage, 'migrations', name), { recursive: true });
     }
-    const result = spawnSync(process.execPath, [require.resolve('prisma/build/index.js'), 'migrate', 'deploy', '--schema', join(stage, 'schema.prisma')], { cwd: resolve(__dirname, '..'), env: process.env, stdio: 'inherit', windowsHide: true });
-    if (result.status !== 0) throw new Error('Prisma rollout failed. Inspect migration status before retrying.');
+    runPrisma(['migrate', 'deploy', '--schema', join(stage, 'schema.prisma')]);
   } finally {
     const target = realpathSync(stage);
     if (!target.startsWith(parent + sep) || !target.slice(parent.length + 1).startsWith('leadcrm-import-migrations-')) throw new Error('Unsafe temporary cleanup path');
@@ -32,12 +83,20 @@ function migrate(through) {
   }
 }
 
-(async () => {
+async function main() {
   const mode = process.argv[2];
-  if (!['--expand', '--verify', '--retire'].includes(mode)) throw new Error('Use --expand, --verify or --retire. See docs/csv-import-normalization.md.');
+  if (!['--deploy', '--expand', '--recover', '--verify', '--retire'].includes(mode)) fail('INVALID_ROLLOUT_MODE');
   if (mode === '--expand') { migrate(expansion); return; }
   const db = new PrismaClient({ log: [], datasources: { db: { url: process.env.DIRECT_URL || process.env.DATABASE_URL } } });
   try {
+    if (mode === '--recover') { await recoverRetirement(db); return; }
+    if (mode === '--deploy') {
+      const target = deploymentTarget(await migrationRecords(db), readdirSync(join(root, 'migrations')));
+      await db.$disconnect();
+      migrate(target);
+      if (target === expansion) console.log('CRM import expansion ready. Legacy-table retirement is deferred until deployed API verification.');
+      return;
+    }
     const report = await verifyImportRollout(db, process.env.CRM_IMPORT_VERIFY_API, JSON.parse(process.env.CRM_IMPORT_VERIFY_TOKENS || '[]'));
     console.log(JSON.stringify(report, null, 2));
     if (mode === '--retire') {
@@ -49,7 +108,9 @@ function migrate(through) {
       }
     }
   } finally { await db.$disconnect(); }
-})().catch(error => {
+}
+module.exports = { deploymentTarget, migrate, recoverRetirement, checksumMatches };
+if (require.main === module) main().catch(error => {
   // Assertion/Prisma payloads can contain historical PII. Report codes only.
   console.error('[crm-import-rollout]', error.code || error.errorCode || error.name, 'Rollout stopped; legacy data has not been discarded by the verifier.');
   process.exitCode = 1;
