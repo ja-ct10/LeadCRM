@@ -67,6 +67,7 @@ export const leadImportConfig: ImportModuleConfig = {
   ],
 
   optionalFields: [
+    { key: 'productInterest', label: 'Product Interest', required: false, type: 'text', autoMapPatterns: ['product interest', 'product interests', 'product_interest', 'products', 'product'] },
     {
       key: 'website',
       label: 'Website',
@@ -93,7 +94,7 @@ export const leadImportConfig: ImportModuleConfig = {
       label: 'Status',
       required: false,
       type: 'select',
-      options: Array.from(LEAD_STATUSES),
+      options: ['Hot', 'Warm', 'Cold', 'Cancelled'],
       autoMapPatterns: ['status', 'lead status', 'lead_status', 'stage'],
     },
   ],

@@ -28,4 +28,5 @@ __exportStar(require("./contracts/profile.contract"), exports);
 __exportStar(require("./contracts/record-sort"), exports);
 __exportStar(require("./contracts/lead-column-migration"), exports);
 __exportStar(require("./validation/administration-user.schema"), exports);
-__exportStar(require("./validation/deal-import.schema"), exports);
+
+__exportStar(require("./validation/crm-import.schema"), exports);

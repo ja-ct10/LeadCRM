@@ -5,7 +5,9 @@ import { installTenantScoping } from '../core/tenant/tenant-prisma';
 // This is the default export used by all repositories and services.
 // It is the standard PrismaClient — full model type safety included.
 const prisma = new PrismaClient({
-  log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
+  // Prisma's automatic error logger can include full failed insert arguments,
+  // including staged CSV content. Request middleware owns sanitized error logs.
+  log: process.env.NODE_ENV === 'development' ? ['warn'] : [],
 });
 installTenantScoping(prisma);
 

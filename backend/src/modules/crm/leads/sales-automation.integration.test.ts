@@ -25,6 +25,15 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     const response = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth}` }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
     return { status: response.status, body: await response.json() };
   }
+  async function prepareToClose(deal: { id: string; pipelineId: string }, expectedStatus = 200) {
+    const qualified = await prisma.stage.findFirstOrThrow({ where: { tenantId, pipelineId: deal.pipelineId, name: 'Qualified' } });
+    await scope(() => moveDealStage(deal.id, tenantId, qualified.id, adminId));
+    const saved = await request(`/crm/deals/${deal.id}/closing-requirements`, 'PATCH', {
+      values: { 'confirmation-type': 'Approved Quotation', 'confirmation-date': new Date().toISOString().slice(0, 10) },
+    });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(expectedStatus);
+    return saved;
+  }
   beforeAll(async () => {
     tenantId = (await prisma.tenant.create({ data: { name: 'Sales automation test', slug: randomUUID(), onboardingCompletedAt: new Date(), onboardingStep: 3 } })).id;
     otherTenant = (await prisma.tenant.create({ data: { name: 'Other sales tenant', slug: randomUUID() } })).id;
@@ -91,18 +100,21 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     const lead = await create(['Smart Lock', 'Biometrics'], { companyName: 'Example Company' });
     const deals = await prisma.deal.findMany({ where: { leadId: lead.id } });
     const won = await prisma.stage.findFirstOrThrow({ where: { tenantId, pipelineId: deals[0].pipelineId, isWon: true } });
+    await prepareToClose(deals[0]);
     const first = await scope(() => moveDealStage(deals[0].id, tenantId, won.id, adminId, undefined, undefined, undefined, { type: 'Approved Quotation', date: new Date().toISOString().slice(0, 10) }));
-    expect(first?.stageHistory).not.toBeNull();
+    // Saving the final closing requirements already completed the Won transition.
+    expect(first?.stageHistory).toBeNull();
     const repeat = await scope(() => moveDealStage(deals[0].id, tenantId, won.id, adminId, undefined, undefined, undefined, { type: 'Approved Quotation', date: new Date().toISOString().slice(0, 10) }));
     expect(repeat?.stageHistory).toBeNull();
     const updatedLead = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
     expect(updatedLead.assignedUserId).toBe(lead.assignedUserId); expect(updatedLead.contactId).toBeTruthy(); expect(updatedLead.accountId).toBeTruthy();
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[1].id } })).stageId).toBe(deals[1].stageId);
+    await prepareToClose(deals[1]);
     await scope(() => moveDealStage(deals[1].id, tenantId, won.id, adminId, undefined, undefined, undefined, { type: 'Approved Quotation', date: new Date().toISOString().slice(0, 10) }));
     expect(await prisma.contact.count({ where: { tenantId, email: lead.email } })).toBe(1);
     expect(await prisma.account.count({ where: { tenantId, name: 'Example Company' } })).toBe(1);
     expect(await prisma.contactDeal.count({ where: { tenantId, contactId: updatedLead.contactId! } })).toBe(2);
-    expect(await prisma.dealStageHistory.count({ where: { tenantId, dealId: deals[0].id } })).toBe(1);
+    expect(await prisma.dealStageHistory.count({ where: { tenantId, dealId: deals[0].id } })).toBe(2);
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[0].id } })).assignedUserId).toBe(lead.assignedUserId);
   });
   it('reuses normalized contact identity, preserves historical fields and rolls back ambiguous conversion', async () => {
@@ -111,23 +123,29 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     const lead = await create(['Smart Lock'], { email, phone: '+639123456789' });
     const deal = await prisma.deal.findFirstOrThrow({ where: { leadId: lead.id } });
     const won = await prisma.stage.findFirstOrThrow({ where: { tenantId, pipelineId: deal.pipelineId, isWon: true } });
+    await prepareToClose(deal);
     await scope(() => moveDealStage(deal.id, tenantId, won.id, adminId, undefined, undefined, undefined, { type: 'Approved Quotation', date: new Date().toISOString().slice(0, 10) }));
     expect((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).contactId).toBe(contact.id);
     expect((await prisma.contact.findUniqueOrThrow({ where: { id: contact.id } })).notes).toBe('Keep history');
     const second = await create(['Smart Lock'], { email });
     await prisma.contact.create({ data: { tenantId, firstName: 'Conflicting', lastName: 'Identity', email, activeProducts: [], productInterests: [] } });
     const secondDeal = await prisma.deal.findFirstOrThrow({ where: { leadId: second.id } });
-    await expect(scope(() => moveDealStage(secondDeal.id, tenantId, won.id, adminId, undefined, undefined, undefined, { type: 'Approved Quotation', date: new Date().toISOString().slice(0, 10) }))).rejects.toThrow('matching records');
-    expect((await prisma.deal.findUniqueOrThrow({ where: { id: secondDeal.id } })).stageId).toBe(secondDeal.stageId);
-    expect(await prisma.dealStageHistory.count({ where: { dealId: secondDeal.id } })).toBe(0);
+    const rejected = await prepareToClose(secondDeal, 409);
+    expect(rejected.body.error).toContain('conflicting Contact/Account matches');
+    const qualifiedId = (await prisma.deal.findUniqueOrThrow({ where: { id: secondDeal.id } })).stageId;
+    expect((await prisma.stage.findUniqueOrThrow({ where: { id: qualifiedId } })).name).toBe('Qualified');
+    expect((await prisma.lead.findUniqueOrThrow({ where: { id: second.id } })).contactId).toBeNull();
+    expect((await prisma.deal.findUniqueOrThrow({ where: { id: secondDeal.id } })).stageId).toBe(qualifiedId);
+    expect(await prisma.dealStageHistory.count({ where: { dealId: secondDeal.id } })).toBe(1);
   });
-  it('matches formatted phones and company whitespace without duplicating historical records', async () => {
+  it('preserves an explicitly linked Contact and matches company whitespace without duplicating history', async () => {
     const company = `  Legacy   Company ${randomUUID()}  `;
     const account = await prisma.account.create({ data: { tenantId, name: company, tags: [], productInterests: [], activeProducts: [] } });
     const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Original', lastName: 'Person', phone: '+63 (927) 555-12-34', company, activeProducts: [], productInterests: [] } });
-    const lead = await create(['Smart Lock'], { email: null, phone: '09275551234', companyName: company.trim().replace(/\s+/g, ' ') });
+    const lead = await create(['Smart Lock'], { contactId: contact.id, email: null, phone: '09275551234', companyName: company.trim().replace(/\s+/g, ' ') });
     const deal = await prisma.deal.findFirstOrThrow({ where: { leadId: lead.id } });
     const won = await prisma.stage.findFirstOrThrow({ where: { pipelineId: deal.pipelineId, isWon: true } });
+    await prepareToClose(deal);
     await scope(() => moveDealStage(deal.id, tenantId, won.id, adminId, undefined, undefined, undefined, { type: 'Approved Quotation', date: new Date().toISOString().slice(0, 10) }));
     const result = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
     expect(result.contactId).toBe(contact.id); expect(result.accountId).toBe(account.id);

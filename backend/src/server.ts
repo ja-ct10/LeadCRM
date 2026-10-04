@@ -4,6 +4,7 @@ import { startNotificationScheduler } from './modules/notifications/notification
 import { startMailboxScheduler } from './integrations/gmail/mailbox-sync.service';
 import { startCampaignScheduler } from './core/scheduler/campaign-scheduler.service';
 import { purgeExpiredSessions } from './core/auth/session.service';
+import { startImportCleanupScheduler } from './modules/crm/imports/import-cleanup.service';
 
 // Guard against missing required env vars at startup
 const REQUIRED_ENV = ['DATABASE_URL', 'JWT_SECRET'];
@@ -70,6 +71,7 @@ app.listen(PORT, () => {
   startMailboxScheduler();
   startNotificationScheduler();
   startSessionPurgeScheduler();
+  startImportCleanupScheduler();
 
 
 });

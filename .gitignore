@@ -21,6 +21,10 @@ Thumbs.db
 
 # Logs
 *.log
+/data-import-login.png
+/data/outputs/csv-import-qa/
+/data-import-normalization-inventory.json
+/data-import-normalized-drift.sql
 npm-debug.log*
 
 # Editor

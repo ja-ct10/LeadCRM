@@ -2,8 +2,8 @@ import { assertPermissions } from '../../core/permissions/permission.service';
 import * as activitiesService from '../../modules/crm/activities/activities.service';
 import type { PermissionKey } from '@leadcrm/shared';
 import { recordFilesRouter } from '../../modules/crm/record-files/record-files.routes';
-import * as dealImportController from '../../modules/crm/deal-imports/deal-imports.controller';
-import { CreateDealImportSchema } from '@leadcrm/shared';
+import { CreateCrmImportSchema, CsvUploadChunkSchema } from '@leadcrm/shared';
+import { importController } from '../../modules/crm/imports/imports.controller';
 import { Router } from 'express';
 import * as closingRequirements from '../../modules/crm/closing-requirements/closing-requirements.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
@@ -14,9 +14,6 @@ import { validate } from '../middleware/validate.middleware';
 // Controllers
 import * as contactController      from '../../modules/crm/contacts/contacts.controller';
 import * as contactsV2Controller   from '../../modules/crm/contacts-v2/contacts-v2.controller';
-import * as leadImportController   from '../../modules/crm/lead-imports/lead-imports.controller';
-import * as contactImportController from '../../modules/crm/contact-imports/contact-imports.controller';
-import * as accountImportController from '../../modules/crm/account-imports/account-imports.controller';
 import * as companyController      from '../../modules/crm/companies/companies.controller';
 import * as dealController         from '../../modules/crm/deals/deals.controller';
 import * as bulkDealsController    from '../../modules/crm/deals/bulk-deals.controller';
@@ -28,9 +25,6 @@ import * as relationshipsController    from '../../modules/crm/relationships/rel
 
 // Schemas
 import { CreateContactSchema, UpdateContactSchema, ConvertContactSchema } from '../../modules/crm/contacts/contacts.dto';
-import { CreateLeadImportSchema } from '../../modules/crm/lead-imports/lead-imports.dto';
-import { CreateContactImportSchema } from '../../modules/crm/contact-imports/contact-imports.dto';
-import { CreateAccountImportSchema } from '../../modules/crm/account-imports/account-imports.dto';
 import { CreateCompanySchema, UpdateCompanySchema }                       from '../../modules/crm/companies/companies.dto';
 import { ManualCreateDealSchema, UpdateDealSchema, MoveDealStageSchema }        from '../../modules/crm/deals/deals.dto';
 import {
@@ -42,6 +36,10 @@ import { DuplicateCheckSchema } from '../../modules/crm/duplicate-detection/dupl
 import { MergePreviewSchema, MergeExecuteSchema } from '../../modules/crm/merge/merge.dto';
 
 const router = Router();
+const leadImportController = importController('leads');
+const contactImportController = importController('contacts');
+const accountImportController = importController('accounts');
+const dealImportController = importController('deals');
 
 // All CRM routes require authentication + tenant context
 router.use(authMiddleware);
@@ -62,7 +60,9 @@ router.get(   '/leads',              authorize('leads.view'),   contactControlle
 router.get(   '/leads/imports',      authorize('leads.view'),   leadImportController.listImports);
 router.get(   '/leads/imports/:importId',         authorize('leads.view'),   leadImportController.getImport);
 router.get(   '/leads/imports/:importId/results', authorize('leads.view'),   leadImportController.getImportResults);
-router.post(  '/leads/imports',      authorize('leads.import'), validate(CreateLeadImportSchema), leadImportController.createImport);
+router.post('/leads/imports/upload', authorize('leads.import'), validate(CsvUploadChunkSchema), leadImportController.uploadCsv);
+router.post('/leads/imports/preview', authorize('leads.import'), validate(CreateCrmImportSchema), leadImportController.previewImport);
+router.post(  '/leads/imports',      authorize('leads.import'), validate(CreateCrmImportSchema), leadImportController.createImport);
 router.get(   '/leads/:id',          authorize('leads.view'),   contactController.getContactById);
 router.post(  '/leads',              authorize('leads.create'), validate(CreateContactSchema),  contactController.createContact);
 router.put(   '/leads/:id',          authorize('leads.edit'),   validate(UpdateContactSchema),  contactController.updateContact);
@@ -76,7 +76,9 @@ router.get(   '/contacts',              authorize('contacts.view'),   contactsV2
 router.get(   '/contacts/imports',      authorize('contacts.view'),   contactImportController.listImports);
 router.get(   '/contacts/imports/:importId',         authorize('contacts.view'),   contactImportController.getImport);
 router.get(   '/contacts/imports/:importId/results', authorize('contacts.view'),   contactImportController.getImportResults);
-router.post(  '/contacts/imports',      authorize('contacts.import'), validate(CreateContactImportSchema), contactImportController.createImport);
+router.post('/contacts/imports/upload', authorize('contacts.import'), validate(CsvUploadChunkSchema), contactImportController.uploadCsv);
+router.post('/contacts/imports/preview', authorize('contacts.import'), validate(CreateCrmImportSchema), contactImportController.previewImport);
+router.post(  '/contacts/imports',      authorize('contacts.import'), validate(CreateCrmImportSchema), contactImportController.createImport);
 router.get(   '/contacts/:id',          authorize('contacts.view'),   contactsV2Controller.getContactById);
 router.post(  '/contacts',              authorize('contacts.create'), contactsV2Controller.createContact);
 router.put(   '/contacts/:id',          authorize('contacts.edit'),   contactsV2Controller.updateContact);
@@ -89,7 +91,9 @@ router.get(   '/accounts',              authorize('accounts.view'),   companyCon
 router.get(   '/accounts/imports',      authorize('accounts.view'),   accountImportController.listImports);
 router.get(   '/accounts/imports/:importId',         authorize('accounts.view'),   accountImportController.getImport);
 router.get(   '/accounts/imports/:importId/results', authorize('accounts.view'),   accountImportController.getImportResults);
-router.post(  '/accounts/imports',      authorize('accounts.import'), validate(CreateAccountImportSchema), accountImportController.createImport);
+router.post('/accounts/imports/upload', authorize('accounts.import'), validate(CsvUploadChunkSchema), accountImportController.uploadCsv);
+router.post('/accounts/imports/preview', authorize('accounts.import'), validate(CreateCrmImportSchema), accountImportController.previewImport);
+router.post(  '/accounts/imports',      authorize('accounts.import'), validate(CreateCrmImportSchema), accountImportController.createImport);
 router.get(   '/accounts/:id',          authorize('accounts.view'),   companyController.getCompanyById);
 router.post(  '/accounts',              authorize('accounts.create'), validate(CreateCompanySchema), companyController.createCompany);
 router.put(   '/accounts/:id',          authorize('accounts.edit'),   validate(UpdateCompanySchema), companyController.updateCompany);
@@ -115,7 +119,9 @@ router.post(  '/deals/bulk/stage',    authorize('deals.edit'),   bulkDealsContro
 router.get('/deals/imports', authorize('deals.view'), dealImportController.listImports);
 router.get('/deals/imports/:importId', authorize('deals.view'), dealImportController.getImport);
 router.get('/deals/imports/:importId/results', authorize('deals.view'), dealImportController.getImportResults);
-router.post('/deals/imports', authorize('deals.create'), validate(CreateDealImportSchema), dealImportController.createImport);
+router.post('/deals/imports/upload', authorize('deals.create'), validate(CsvUploadChunkSchema), dealImportController.uploadCsv);
+router.post('/deals/imports/preview', authorize('deals.create'), validate(CreateCrmImportSchema), dealImportController.previewImport);
+router.post('/deals/imports', authorize('deals.create'), validate(CreateCrmImportSchema), dealImportController.createImport);
 router.get(   '/deals/:id',          authorize('deals.view'),   dealController.getDealById);
 router.get('/deals/:id/closing-requirements', authorize('deals.view'), closingRequirements.readValues);
 router.patch('/deals/:id/closing-requirements', authorize('deals.edit'), closingRequirements.saveValues);

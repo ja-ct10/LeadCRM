@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -22,6 +22,7 @@ import type { ImportSummary, PaginatedResponse } from '../types/import.types';
 
 interface ImportHistoryListProps {
   moduleKey: string;
+  onStartNew?: () => void;
 }
 
 type StatusFilter = 'all' | 'completed' | 'completed_with_errors' | 'failed';
@@ -45,7 +46,7 @@ function getStatusBadge(status: ImportSummary['status']): { label: string; class
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export function ImportHistoryList({ moduleKey }: ImportHistoryListProps): React.ReactElement {
+export function ImportHistoryList({ moduleKey, onStartNew }: ImportHistoryListProps): React.ReactElement {
   const router = useRouter();
   const config = useMemo(() => getImportConfig(moduleKey), [moduleKey]);
 
@@ -56,29 +57,33 @@ export function ImportHistoryList({ moduleKey }: ImportHistoryListProps): React.
   const [totalPages, setTotalPages] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const requestVersion = useRef(0);
 
   const pageSize = 10;
 
   const fetchImports = useCallback(async () => {
+    const version = ++requestVersion.current;
     setIsLoading(true);
     setError(null);
     try {
-      const response = await apiClient.get<PaginatedResponse<ImportSummary>>(config.importApiPath, { params: { page, limit: pageSize } });
+      const response = await apiClient.get<PaginatedResponse<ImportSummary>>(config.importApiPath, { params: { page, limit: pageSize, status: statusFilter === 'all' ? undefined : statusFilter } });
+      if (version !== requestVersion.current) return;
       setImports(response.data);
       setTotalRecords(response.meta.total);
       setTotalPages(Math.ceil(response.meta.total / pageSize) || 1);
     } catch (err) {
+      if (version !== requestVersion.current) return;
       const message = err instanceof Error ? err.message : 'Failed to load import history';
       setError(message);
       toast.error(message);
     } finally {
-      setIsLoading(false);
+      if (version === requestVersion.current) setIsLoading(false);
     }
-  }, [page, config.importApiPath]);
+  }, [page, statusFilter, config.importApiPath]);
 
-  useEffect(() => { fetchImports(); }, [fetchImports]);
+  useEffect(() => { fetchImports(); return () => { requestVersion.current++; }; }, [fetchImports]);
 
-  const filteredImports = statusFilter === 'all' ? imports : imports.filter((imp) => imp.status === statusFilter);
+  const filteredImports = imports;
 
   // ── Loading ────────────────────────────────────────────────────────────
   if (isLoading) {
@@ -103,7 +108,7 @@ export function ImportHistoryList({ moduleKey }: ImportHistoryListProps): React.
   }
 
   // ── Empty ──────────────────────────────────────────────────────────────
-  if (imports.length === 0) {
+  if (imports.length === 0 && statusFilter === 'all') {
     return (
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl min-w-0 px-3 sm:px-6 py-6">
         <div className="mb-6">
@@ -118,7 +123,7 @@ export function ImportHistoryList({ moduleKey }: ImportHistoryListProps): React.
           <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-1 max-w-xs">
             Upload a CSV to bring your first batch of {config.moduleLabel.toLowerCase()} into LeadCRM.
           </p>
-          <button onClick={() => { /* parent handles view switch */ }} className="mt-4 inline-flex items-center gap-1.5 h-9 px-4 text-[12.5px] font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors cursor-pointer">
+          <button onClick={onStartNew ?? (() => router.push(`/crm/${moduleKey}/import`))} className="mt-4 inline-flex items-center gap-1.5 h-9 px-4 text-[12.5px] font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors cursor-pointer">
             Start an import <ArrowRight size={13} />
           </button>
         </div>
@@ -135,11 +140,11 @@ export function ImportHistoryList({ moduleKey }: ImportHistoryListProps): React.
           <h3 className="text-[16px] font-bold text-slate-900 dark:text-white">Import history</h3>
           <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5">Every {config.moduleSingular.toLowerCase()} import from this workspace and how it turned out.</p>
         </div>
-        <div className="flex items-center gap-0.5 border border-slate-200 dark:border-slate-700 rounded-lg p-[2px] shrink-0">
+        <div className="flex flex-wrap items-center gap-0.5 border border-slate-200 dark:border-slate-700 rounded-lg p-[2px] shrink-0">
           {(['all', 'completed', 'completed_with_errors', 'failed'] as const).map((filter) => {
             const labels: Record<StatusFilter, string> = { all: 'All', completed: 'Success', completed_with_errors: 'Partial', failed: 'Failed' };
             return (
-              <button key={filter} onClick={() => setStatusFilter(filter)} className={cn('px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors cursor-pointer', statusFilter === filter ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300')}>
+              <button key={filter} onClick={() => { setPage(1); setStatusFilter(filter); }} className={cn('px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors cursor-pointer', statusFilter === filter ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300')}>
                 {labels[filter]}
               </button>
             );
@@ -160,7 +165,7 @@ export function ImportHistoryList({ moduleKey }: ImportHistoryListProps): React.
             <th scope="col" className="px-4 py-2.5 text-left font-semibold text-slate-600 dark:text-slate-400">File Name</th>
             <th scope="col" className="px-4 py-2.5 text-left font-semibold text-slate-600 dark:text-slate-400">Status</th>
             <th scope="col" className="px-4 py-2.5 text-right font-semibold text-slate-600 dark:text-slate-400">Records</th>
-            <th scope="col" className="px-4 py-2.5 text-right font-semibold text-slate-600 dark:text-slate-400">Errors</th>
+            <th scope="col" className="px-4 py-2.5 text-right font-semibold text-slate-600 dark:text-slate-400">Failed / Duplicates</th>
             <th scope="col" className="px-4 py-2.5 text-left font-semibold text-slate-600 dark:text-slate-400">Imported By</th>
           </tr></thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -173,7 +178,7 @@ export function ImportHistoryList({ moduleKey }: ImportHistoryListProps): React.
                   <td className="px-4 py-3"><div className="flex items-center gap-2"><FileText size={14} className="text-slate-400 shrink-0" /><span className="text-slate-900 dark:text-white font-medium truncate max-w-[180px]">{imp.fileName}</span></div></td>
                   <td className="px-4 py-3"><span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold', badge.className)}>{(imp.status === 'pending' || imp.status === 'importing') && <Loader2 size={10} className="animate-spin" />}{badge.label}</span></td>
                   <td className="px-4 py-3 text-right tabular-nums"><span className="text-emerald-600 dark:text-emerald-400 font-medium">{imp.successfulRecords}</span><span className="text-slate-400"> / {imp.totalRecords}</span></td>
-                  <td className="px-4 py-3 text-right tabular-nums">{imp.failedRecords > 0 ? <span className="text-red-600 dark:text-red-400 font-medium">{imp.failedRecords}</span> : <span className="text-slate-400">0</span>}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{imp.failedRecords > 0 ? <span className="text-red-600 dark:text-red-400 font-medium">{imp.failedRecords}</span> : <span className="text-slate-400">0</span>} / {imp.duplicateRecords ?? 0}</td>
                   <td className="px-4 py-3 text-slate-600 dark:text-slate-300 truncate max-w-[130px]">{userName}</td>
                 </tr>
               );

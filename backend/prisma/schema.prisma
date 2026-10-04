@@ -94,6 +94,7 @@ enum DealActionType {
 // TENANT
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Tenant {
+  crmImportUploads CrmImportUpload[]
   productInterestRecords ProductInterest[]
   recordFiles        RecordFile[]
   id                 String             @id @default(uuid())
@@ -149,10 +150,7 @@ model Tenant {
   AutomationRule     AutomationRule[]
   userPreferences    UserPreference[]
   tenantPreferences  TenantPreference[]
-  leadImports        LeadImport[]
-  dealImports        DealImport[]
-  accountImports     AccountImport[]
-  contactImports     ContactImport[]
+  crmImportJobs CrmImportJob[]
   tenantGroups       TenantGroup[]
   tenantGroupMembers TenantGroupMember[]
   marketingForms     MarketingForm[]
@@ -162,6 +160,7 @@ model Tenant {
 // USER
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model User {
+  crmImportUploads CrmImportUpload[]
   recordFiles        RecordFile[]
   id            String     @id @default(uuid())
   tenantId      String
@@ -208,10 +207,7 @@ model User {
   notifications        Notification[]
   auditLogs            AuditLog[]
   userPreferences      UserPreference[]
-  leadImports          LeadImport[]
-  dealImports          DealImport[]
-  accountImports       AccountImport[]
-  contactImports       ContactImport[]
+  crmImportJobs CrmImportJob[]
   emailVerificationTokens EmailVerificationToken[]
   groupMemberships TenantGroupMember[]
   marketingForms   MarketingForm[]
@@ -1504,182 +1500,82 @@ model TenantPreference {
   @@index([tenantId, module])
 }
 
-// -----------------------------------------------------
-// LEAD IMPORT (CSV batch import tracking)
-// -----------------------------------------------------
-model LeadImport {
-  id                String    @id @default(uuid())
+// Shared CRM import infrastructure; domain records remain independent.
+enum CrmImportModule {
+  LEAD
+  CONTACT
+  ACCOUNT
+  DEAL
+}
+
+model CrmImportJob {
+  id                String          @id @default(uuid())
   tenantId          String
+  module            CrmImportModule
   fileName          String
-  totalRecords      Int       @default(0)
-  successfulRecords Int       @default(0)
-  failedRecords     Int       @default(0)
-  status            String    @default("pending") // pending|importing|completed|completed_with_errors|failed
+  totalRecords      Int             @default(0)
+  successfulRecords Int             @default(0)
+  failedRecords     Int             @default(0)
+  duplicateRecords  Int             @default(0)
+  status            String          @default("pending")
   createdById       String
-  createdAt         DateTime  @default(now())
+  idempotencyKey    String?
+  requestHash       String?
+  uploadId          String?         @unique
+  createdAt         DateTime        @default(now())
   completedAt       DateTime?
+  tenant            Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  createdBy         User            @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  upload            CrmImportUpload? @relation(fields: [uploadId], references: [id], onDelete: SetNull)
+  results           CrmImportRowResult[]
 
-  tenant    Tenant             @relation(fields: [tenantId], references: [id])
-  createdBy User               @relation(fields: [createdById], references: [id])
-  results   LeadImportResult[]
-
-  @@index([tenantId, status])
-  @@index([tenantId, createdAt])
-  @@index([tenantId])
+  @@unique([tenantId, module, idempotencyKey])
+  @@index([tenantId, module, createdAt, id])
+  @@index([tenantId, module, status, createdAt, id])
 }
 
-// -----------------------------------------------------
-// LEAD IMPORT RESULT (per-row outcome)
-// -----------------------------------------------------
-model LeadImportResult {
-  id          String   @id @default(uuid())
-  importId    String
-  rowNumber   Int
-  status      String // imported|failed
-  leadId      String? // set on success
-  remarks     String? // error messages on failure
-  firstName   String?
-  lastName    String?
-  email       String?
-  phone       String?
-  companyName String?
-  address     String?
-  createdAt   DateTime @default(now())
-
-  import LeadImport @relation(fields: [importId], references: [id], onDelete: Cascade)
-
-  @@index([importId, status])
-  @@index([importId, rowNumber])
-}
-
-// -----------------------------------------------------
-// ACCOUNT IMPORT (CSV batch import tracking)
-// -----------------------------------------------------
-model AccountImport {
-  id                String    @id @default(uuid())
-  tenantId          String
-  fileName          String
-  totalRecords      Int       @default(0)
-  successfulRecords Int       @default(0)
-  failedRecords     Int       @default(0)
-  status            String    @default("pending") // pending|importing|completed|completed_with_errors|failed
-  createdById       String
-  createdAt         DateTime  @default(now())
-  completedAt       DateTime?
-
-  tenant    Tenant                @relation(fields: [tenantId], references: [id])
-  createdBy User                  @relation(fields: [createdById], references: [id])
-  results   AccountImportResult[]
-
-  @@index([tenantId, status])
-  @@index([tenantId, createdAt])
-  @@index([tenantId])
-}
-
-// -----------------------------------------------------
-// ACCOUNT IMPORT RESULT (per-row outcome)
-// -----------------------------------------------------
-model AccountImportResult {
-  id        String   @id @default(uuid())
-  importId  String
-  rowNumber Int
-  status    String // imported|failed
-  accountId String? // set on success
-  remarks   String? // error messages on failure
-  name      String?
-  industry  String?
-  website   String?
-  address   String?
-  city      String?
-  province  String?
-  country   String?
-  createdAt DateTime @default(now())
-
-  import AccountImport @relation(fields: [importId], references: [id], onDelete: Cascade)
-
-  @@index([importId, status])
-  @@index([importId, rowNumber])
-}
-
-// -----------------------------------------------------
-// CONTACT IMPORT (CSV batch import tracking)
-// -----------------------------------------------------
-model ContactImport {
-  id                String    @id @default(uuid())
-  tenantId          String
-  fileName          String
-  totalRecords      Int       @default(0)
-  successfulRecords Int       @default(0)
-  failedRecords     Int       @default(0)
-  status            String    @default("pending")
-  createdById       String
-  createdAt         DateTime  @default(now())
-  completedAt       DateTime?
-
-  tenant    Tenant                @relation(fields: [tenantId], references: [id])
-  createdBy User                  @relation(fields: [createdById], references: [id])
-  results   ContactImportResult[]
-
-  @@index([tenantId, status])
-  @@index([tenantId, createdAt])
-  @@index([tenantId])
-}
-
-// -----------------------------------------------------
-// CONTACT IMPORT RESULT (per-row outcome)
-// -----------------------------------------------------
-model ContactImportResult {
-  id          String   @id @default(uuid())
-  importId    String
+model CrmImportRowResult {
+  id          String       @id @default(uuid())
+  importJobId String
   rowNumber   Int
   status      String
-  contactId   String?
+  // Historical record reference, intentionally not a polymorphic domain FK.
+  recordId    String?
   remarks     String?
-  firstName   String?
-  lastName    String?
-  email       String?
-  phone       String?
-  companyName String?
-  address     String?
-  createdAt   DateTime @default(now())
+  data        Json         @default("{}")
+  createdAt   DateTime     @default(now())
+  job         CrmImportJob @relation(fields: [importJobId], references: [id], onDelete: Cascade)
 
-  import ContactImport @relation(fields: [importId], references: [id], onDelete: Cascade)
-
-  @@index([importId, status])
-  @@index([importId, rowNumber])
+  @@unique([importJobId, rowNumber])
+  @@index([importJobId, status, rowNumber])
 }
 
+// Uploads exist before a job. Scope, expiry and chunk count belong to the upload,
+// not to every chunk. Expiring/deleting an upload cascades its raw source content.
+model CrmImportUpload {
+  id          String          @id @default(uuid())
+  tenantId    String
+  actorId     String
+  module      CrmImportModule
+  totalChunks Int
+  sourceHash  String?
+  expiresAt   DateTime
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actor       User            @relation(fields: [actorId], references: [id], onDelete: Cascade)
+  chunks      CrmImportChunk[]
+  job         CrmImportJob?
 
-model DealImport {
-  id                String @id @default(uuid())
-  tenantId          String
-  fileName          String
-  totalRecords      Int @default(0)
-  successfulRecords Int @default(0)
-  failedRecords     Int @default(0)
-  status            String @default("pending")
-  createdById       String
-  createdAt         DateTime @default(now())
-  completedAt       DateTime?
-  tenant            Tenant @relation(fields: [tenantId], references: [id])
-  createdBy         User @relation(fields: [createdById], references: [id])
-  results           DealImportResult[]
-  @@index([tenantId])
-  @@index([tenantId, createdAt])
+  @@index([expiresAt])
 }
 
-model DealImportResult {
-  id        String @id @default(uuid())
-  importId  String
-  rowNumber Int
-  status    String
-  dealId    String?
-  remarks   String?
-  data      Json
-  createdAt DateTime @default(now())
-  import    DealImport @relation(fields: [importId], references: [id], onDelete: Cascade)
-  @@unique([importId, rowNumber])
-  @@index([importId, status])
+model CrmImportChunk {
+  id         String          @id @default(uuid())
+  uploadId   String
+  chunkIndex Int
+  content    String          @db.Text
+  upload     CrmImportUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  @@unique([uploadId, chunkIndex])
 }
 
 // Account-wide campaign reservations, independent of CRM tenant.

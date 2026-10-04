@@ -147,27 +147,50 @@ Record file history uses `GET`/`POST /crm/{module}/:id/files` and
 `GET /crm/{module}/:id/files/:fileId/download` for `leads`, `contacts`, `accounts`,
 and `deals`. These reuse the existing scoped file service and storage provider.
 
-### Deal imports
+### CRM CSV imports
 
-Paths below are relative to `/api/v1`. CSV parsing, column mapping, and preliminary
-validation run in the browser at `/crm/deals/import`; execution revalidates every
-row on the server. There is no separate upload or preview endpoint.
+Paths below are relative to `/api/v1`. Replace `{module}` with `leads`, `contacts`,
+`accounts`, or `deals`. The browser preserves Upload → Map Columns → Review & Validate;
+both preview and execution parse the source CSV and validate relationships on the server.
 
 | Method | Path | Description | Permission |
 |---|---|---|---|
-| `POST` | `/crm/deals/imports` | Execute import; return HTTP 201 with saved summary | `deals.create` |
-| `GET` | `/crm/deals/imports` | Paginated import history | `deals.view` |
-| `GET` | `/crm/deals/imports/:importId` | Saved import summary | `deals.view` |
-| `GET` | `/crm/deals/imports/:importId/results` | Paginated results; optional `status=imported\|failed` | `deals.view` |
+| `POST` | `/crm/{module}/imports/upload` | Optional durable source chunks, each at most 65,536 characters | Import permission |
+| `POST` | `/crm/{module}/imports/preview?offset=0` | Review up to 25 rows, or return existing execution metadata | Import permission |
+| `POST` | `/crm/{module}/imports` | Commit up to 25 remaining rows; HTTP 202 while importing, 201 when complete | Import permission |
+| `GET` | `/crm/{module}/imports` | Paginated history; optional job status filter | `{module}.view` |
+| `GET` | `/crm/{module}/imports/:importId` | Saved summary | `{module}.view` |
+| `GET` | `/crm/{module}/imports/:importId/results` | Paginated results; optional `status=imported\|failed\|duplicate` | `{module}.view` |
 
-Execution accepts `{ fileName, rows }`, with 1–5000 rows, each containing a unique
-`rowNumber` and string fields. Required fields: `title`, `pipeline`, `stage`.
-Optional fields: `value`, `priority`, `expectedCloseDate`, `account`, `contact`,
-`assignedUser`. Pipelines/stages/accounts resolve by exact name or
-ID; contacts/assignees resolve by email or ID. Ambiguous matches fail the row.
-Relationships must belong to the authenticated tenant.
-Valid rows write `Deal` and optional `ContactDeal`; all rows receive a saved
-`DealImportResult` under `DealImport`. See [verification report](settings-team-deal-import-verification.md).
+Import permissions are `leads.import`, `contacts.import`, `accounts.import`, and
+the existing `deals.create`. Preview and execution accept `{ fileName, csvText,
+mappings, idempotencyKey }`; mappings associate field keys with zero-based CSV
+column indices. Alternatively replace `csvText` with `uploadId` after uploading
+`{ uploadId, chunkIndex, totalChunks, content }`. Limits: 10 MiB UTF-8, 5,000 rows,
+100 columns. Chunk sources are scoped to tenant/user/module and expire after 24 hours.
+Completed imports delete raw chunks immediately; startup/hourly cleanup removes
+expired upload parents and remaining chunks without deleting job history.
+
+Repeat the identical execution request until its status is no longer `importing`.
+Reuse the UUID idempotency key across retries; different input with the same key
+returns 409. Committed rows and automatically created Deals are transactional.
+All four routes use `CrmImportJob` and `CrmImportRowResult`, filtered by tenant
+and the `CrmImportModule` enum. Idempotency is unique per tenant/module/key.
+Responses retain the existing summary fields and result aliases while also
+exposing `module`, `importJobId` and `recordId`. See the
+[normalization report and two-phase rollout](csv-import-normalization.md)
+before deploying the import migrations to an existing database.
+
+Deal fields require `title`, `productInterest`, `pipeline`, `stage`, plus a
+customer relationship (`customer`, `lead`, `contact`, or `account`). Optional:
+`priority`, `expectedCloseDate`, `assignedUser`. A Deal resolves exactly one active
+Product and snapshots its current configured price on the server. `value` is not
+an import field. Names/email addresses or IDs resolve within the current tenant;
+ambiguous, foreign, unavailable, and closed-stage relationships fail validation.
+People/accounts support semicolon-separated Product Interests and are create-only.
+See the [CSV import audit and verification report](csv-import-audit.md) for all
+identity rules and the earlier CSV feature verification. Its migration design
+is superseded by the normalization report linked above.
 
 ---
 

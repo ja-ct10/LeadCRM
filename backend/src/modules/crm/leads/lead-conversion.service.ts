@@ -36,6 +36,12 @@ export async function convertClosedLead(tx: Prisma.TransactionClient, tenantId: 
       tags: [], productInterests: lead.productInterest, activeProducts: [] } })).id;
   }
   if (accountId && !await tx.account.findFirst({ where: { tenantId, id: accountId, isArchived: false, deletedAt: null } })) throw conflict();
+  if (accountId) {
+    const account = await tx.account.findFirstOrThrow({ where: { tenantId, id: accountId } });
+    await tx.account.update({ where: { tenantId, id: accountId }, data: {
+      productInterests: [...new Set([...account.productInterests, ...lead.productInterest])],
+    } });
+  }
   const now = new Date();
   if (!contact) contact = await tx.contact.create({ data: { tenantId, firstName: lead.firstName, lastName: lead.lastName,
     email: lead.email?.trim().toLowerCase(), phone: lead.phone, company: lead.companyName, address: lead.address,

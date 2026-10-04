@@ -18,15 +18,16 @@ export function errorMiddleware(
   const errAsUnknown = err as unknown as Record<string, unknown>;
   const prismaCode = errAsUnknown.code as string | undefined;
   const prismaMeta = errAsUnknown.meta as Record<string, unknown> | undefined;
+  const importRequest = /\/crm\/(leads|contacts|accounts|deals)\/imports(?:\/|$)/.test(req.path);
 
   console.error('[Error]', {
     name: err.name,
-    message: err.message,
+    message: importRequest ? 'CRM import request failed' : err.message,
     ...(prismaCode !== undefined && { code: prismaCode }),
-    ...(prismaMeta !== undefined && { meta: prismaMeta }),
+    ...(!importRequest && prismaMeta !== undefined && { meta: prismaMeta }),
     path: req.path,
     method: req.method,
-    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+    stack: !importRequest && process.env.NODE_ENV === 'development' ? err.stack : undefined,
   });
 
   if (err instanceof AppError) {

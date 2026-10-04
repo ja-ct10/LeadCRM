@@ -14,7 +14,7 @@ export * from './contracts/record-sort';
 export * from './contracts/lead-column-migration';
 
 export * from './validation/administration-user.schema';
-export * from './validation/deal-import.schema';
+export * from './validation/crm-import.schema';
 
 export * from './contracts/campaign-email';
 export * from './contracts/forms.contract';

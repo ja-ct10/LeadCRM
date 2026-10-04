@@ -19,8 +19,7 @@ import { getValidAccessToken, sendEmail } from './gmail.service';
 import app from '../../app';
 import type { GmailEmail } from './gmail.types';
 import { mailConfig } from '../../config/mail.config';
-import { resolveRow as resolveImportRow } from '../../modules/crm/deal-imports/deal-imports.service';
-import { ImportDealRowSchema } from '@leadcrm/shared';
+import { validateImportRow } from '../../modules/crm/imports/import-rows.service';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = url.hostname === '127.0.0.1' && /^\/leadcrm_mailbox_test_\d+$/.test(url.pathname);
@@ -49,6 +48,12 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
   const call = async (path: string, method = 'GET', body?: unknown, auth = token) => {
     const response = await realFetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: `Bearer ${auth}` } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
     return { status: response.status, body: await response.json() };
+  };
+  const reviewClosedImport = async () => {
+    const product = await prisma.productInterest.create({ data: { tenantId, name: `Import product ${randomUUID()}`, dealValue: 100 } });
+    return scope(() => validateImportRow(prisma, 'deals', tenantId, { rowNumber: 2, data: {
+      title: 'Cannot import Won', pipeline: pipelineId, stage: stages['Closed Won'], productInterest: product.id,
+    } }));
   };
   beforeAll(async () => {
     tenantId = (await prisma.tenant.create({ data: { name: 'Mailbox tests', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } })).id;
@@ -216,8 +221,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     const c = await customer();
     expect((await call(`/crm/stages/${stages.Lead}`, 'PUT', { isWon: true })).status).toBe(400);
     expect(await stageOf(c.deals[0].id)).toBe('Lead');
-    const { resolveRow } = await import('../../modules/crm/deal-imports/deal-imports.service');
-    await expect(scope(() => resolveRow(tenantId, { title: 'Bypass', pipeline: pipelineId, stage: stages['Closed Won'] } as never))).rejects.toBeDefined();
+    expect((await reviewClosedImport()).errors.join()).toContain('Import into an open stage');
   });
   it('OAuth state is random, one-time, session-bound, PKCE-protected and stores encrypted tokens', async () => {
     const oauth = await scope(() => beginMailboxConnection({ userId, tenantId, email: account.email }, token));
@@ -382,7 +386,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
       await call(`/crm/deals/${dealId}/stage`, 'PATCH', { stageId: stages.Qualified });
       expect((await call(`/crm/deals/${dealId}/stage`, 'PATCH', { stageId: stages['Closed Won'] })).status).toBe(400);
       expect((await call('/crm/deals/bulk/stage', 'POST', { dealIds: [dealId], stageId: stages['Closed Won'] })).status).toBe(400);
-      await expect(scope(() => resolveImportRow(tenantId, ImportDealRowSchema.parse({ title: 'Cannot import Won', pipeline: pipelineId, stage: stages['Closed Won'] })))).rejects.toThrow('Import into an open stage');
+      expect((await reviewClosedImport()).errors.join()).toContain('Import into an open stage');
       expect(await prisma.deal.count({ where: { tenantId, title: 'Cannot import Won' } })).toBe(0);
       const foreignFile = await prisma.recordFile.create({ data: { tenantId, dealId: c.deals[1].id, name: 'other.pdf', type: 'application/pdf', size: 10, objectKey: randomUUID(), uploadedById: userId } });
       expect((await call(endpoint, 'PATCH', { values: { 'required-document': foreignFile.id } })).status).toBe(400);

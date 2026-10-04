@@ -31,6 +31,7 @@ export const accountImportConfig: ImportModuleConfig = {
   ],
 
   optionalFields: [
+    { key: 'productInterest', label: 'Product Interest', required: false, type: 'text', autoMapPatterns: ['product interest', 'product interests', 'product_interest', 'products', 'product'] },
     {
       key: 'industry',
       label: 'Industry',

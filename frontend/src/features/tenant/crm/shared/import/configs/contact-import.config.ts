@@ -65,5 +65,6 @@ export const contactImportConfig: ImportModuleConfig = {
     },
   ],
 
-  optionalFields: [],
+  optionalFields: [
+    { key: 'productInterest', label: 'Product Interest', required: false, type: 'text', autoMapPatterns: ['product interest', 'product interests', 'product_interest', 'products', 'product'] },],
 };
