@@ -12,6 +12,7 @@ export interface Account {
   province?: string;
   country?: string;
   assignedUserId?: string;
+  assignedUser?: { id: string; firstName: string; lastName: string };
   tags?: string[];
   notes?: string;
   internalNotes?: string;

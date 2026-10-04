@@ -146,7 +146,7 @@ export function ProductsPage() {
     <LeadsPagination currentPage={page} pageSize={pageSize} totalRecords={filtered.length} loading={loading} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); }} disabled={busy} />
     <SelectedRowsBar count={selected.size} onClear={() => setSelected(new Set())} disabled={busy}>{canArchive && <Button variant="outline" disabled={busy} onClick={() => setArchiveIds([...selected])}>Archive</Button>}</SelectedRowsBar>
     <SlidingDrawer isOpen={!!panel} onClose={() => { if (!busy) setPanel(null); }} title={panel?.mode === 'new' ? 'New Product' : panel?.mode === 'edit' ? 'Edit Product' : 'Product details'}>
-      <div className="min-w-0 p-4 sm:p-6">{panel?.mode === 'view' ? <ProductView key={panel.product!.id} id={panel.product!.id} /> : panel && <ProductEditor key={panel.product?.id ?? 'new'} product={panel.product} busy={busy} onSave={save} onCancel={() => setPanel(null)} />}</div>
+      <div className={panel?.mode === 'view' ? 'min-w-0 px-4 py-5 sm:px-6' : 'h-full min-h-0 min-w-0'}>{panel?.mode === 'view' ? <ProductView key={panel.product!.id} id={panel.product!.id} /> : panel && <ProductEditor key={panel.product?.id ?? 'new'} product={panel.product} busy={busy} onSave={save} onCancel={() => setPanel(null)} />}</div>
     </SlidingDrawer>
     <ConfirmActionDialog open={archiveIds.length > 0} onOpenChange={open => { if (!open && !busy) setArchiveIds([]); }} title={archiveIds.length === 1 ? 'Archive this product?' : `Archive ${archiveIds.length} products?`} description="Archived products are removed from new selections. Historical records and Deal values remain unchanged." confirmLabel="Archive" isLoading={busy} onConfirm={archive} />
   </div>;

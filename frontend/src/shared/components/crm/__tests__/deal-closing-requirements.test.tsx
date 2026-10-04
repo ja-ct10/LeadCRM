@@ -11,6 +11,22 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn() } }));
 beforeEach(() => { vi.clearAllMocks(); mocks.data = { fields: DEFAULT_CLOSING_FIELDS, values: {}, files: [], errors: {}, locked: false }; });
 afterEach(cleanup);
 
+it('shows truthful completion and warns about automatic closing before the last required save', () => {
+  render(<DealClosingRequirements dealId="deal" canEdit onSaved={() => {}} />);
+  expect(screen.getByText('0 of 2 required complete')).toBeTruthy();
+  expect(screen.getByText(/Add optional details before saving the final required field/)).toBeTruthy();
+  expect(screen.getByRole('progressbar', { name: 'Required fields completed' }).getAttribute('aria-valuenow')).toBe('0');
+});
+
+it('does not report a missing persistent document as complete or expose its raw ID', () => {
+  const field = { ...DEFAULT_CLOSING_FIELDS.find(f => f.type === 'File Upload')!, required: true };
+  mocks.data = { fields: [field], values: { [field.id]: '78e2894b-d16c-47d7-875c-beb2a342638c' }, files: [], errors: {}, locked: false };
+  render(<DealClosingRequirements dealId="deal" canEdit onSaved={() => {}} />);
+  expect(screen.getByText('0 of 1 required complete')).toBeTruthy();
+  expect(screen.getByText('File unavailable')).toBeTruthy();
+  expect(screen.queryByText('78e2894b-d16c-47d7-875c-beb2a342638c')).toBeNull();
+});
+
 it('requires a successful persistent upload and an explicit save before completing a document', async () => {
   const field = { ...DEFAULT_CLOSING_FIELDS.find(f => f.type === 'File Upload')!, required: true };
   mocks.data!.fields = [field];

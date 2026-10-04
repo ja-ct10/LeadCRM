@@ -141,7 +141,8 @@ export function toFrontendDeal(backendDeal: any): any {
   if (!backendDeal) return null;
 
   // Derive company name
-  const companyName = backendDeal.organization?.name || '';
+  const companyName = backendDeal.organization?.name || backendDeal.account?.name || '';
+  const accountId = backendDeal.accountId || backendDeal.organizationId || backendDeal.organization?.id || backendDeal.account?.id || undefined;
 
   // Extract leadIds from leadDeals junction
   let leadIds: string[] = [];
@@ -163,6 +164,11 @@ export function toFrontendDeal(backendDeal: any): any {
       };
     }
   }
+  if (!leadIds.length && (backendDeal.leadId || backendDeal.lead?.id)) {
+    leadIds = [backendDeal.leadId || backendDeal.lead.id];
+    leadId = leadIds[0];
+    if (backendDeal.lead) leadPerson = { id: leadId!, firstName: backendDeal.lead.firstName || '', lastName: backendDeal.lead.lastName || '' };
+  }
 
   // Derive contact person and contact IDs — use the ContactDeal junction
   let contactPerson = '';
@@ -179,6 +185,10 @@ export function toFrontendDeal(backendDeal: any): any {
         .filter(Boolean)
         .join(' ') || firstContact.email || '';
     }
+  }
+  if (!contactIds.length && (backendDeal.contactId || backendDeal.contact?.id)) {
+    contactIds = [backendDeal.contactId || backendDeal.contact.id];
+    if (backendDeal.contact) contactPerson = [backendDeal.contact.firstName, backendDeal.contact.lastName].filter(Boolean).join(' ');
   }
 
   // Process history and find last stage change date
@@ -209,13 +219,14 @@ export function toFrontendDeal(backendDeal: any): any {
     pipelineId: backendDeal.pipelineId || '',
     stageId: backendDeal.stageId || '',
     title: backendDeal.title || 'Untitled Deal',
-    organizationId: backendDeal.organizationId || backendDeal.organization?.id || undefined,
+    accountId,
+    organizationId: accountId,
     leadId: leadId,
     leadIds: leadIds.length > 0 ? leadIds : undefined,
     leadPerson: leadPerson,
     contactId: contactIds.length > 0 ? contactIds[0] : undefined,
     contactIds: contactIds,
-    companyId: backendDeal.organizationId || backendDeal.organization?.id || undefined,
+    companyId: accountId,
     companyName: companyName,
     contactPerson: contactPerson || (leadPerson ? [leadPerson.firstName, leadPerson.lastName].filter(Boolean).join(' ') : ''),
     productInterests: Array.isArray(backendDeal.productInterests) ? backendDeal.productInterests : [],
@@ -223,6 +234,7 @@ export function toFrontendDeal(backendDeal: any): any {
     priority: toFrontendPriority(backendDeal.priority),
     expectedCloseDate: backendDeal.expectedCloseDate || '',
     assignedUserId: backendDeal.assignedUserId || backendDeal.ownerId || '',
+    assignedUser: backendDeal.assignedUser || undefined,
     billingFrequency: backendDeal.billingFrequency || undefined,
     lostReason: backendDeal.lostReason || undefined,
     order: typeof backendDeal.order === 'number' ? backendDeal.order : 0,

@@ -1,4 +1,5 @@
 'use client';
+import { panelBodyClass, panelFooterClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
 
 import React, { useState, useEffect } from 'react';
 import { SlidingDrawer } from '@/shared/components/sliding-drawer';
@@ -180,7 +181,7 @@ export function MergeRecordsDialog({
       title={`Merge ${entityLabel} Records`}
       subtitle="Compare and merge duplicate records"
     >
-      <div className="flex flex-col h-full">
+      <div className="flex h-full min-h-0 flex-col">
         {/* Loading */}
         {isLoading && (
           <div className="flex-1 flex items-center justify-center">
@@ -193,19 +194,19 @@ export function MergeRecordsDialog({
         {preview && !isLoading && (
           <>
             {/* Scrollable comparison */}
-            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+            <div className={panelBodyClass + " space-y-5"}>
               {/* Record Headers */}
-              <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-3 items-center">
                 <div className="px-3 py-2 rounded-lg border-2 border-green-300 dark:border-green-600 bg-green-50 dark:bg-green-950/20">
                   <p className="text-xs font-semibold text-green-700 dark:text-green-400 uppercase tracking-wide">Primary (Keeps)</p>
-                  <p className="text-sm font-medium text-slate-900 dark:text-white truncate mt-0.5">
+                  <p className="text-sm font-medium text-slate-900 dark:text-white [overflow-wrap:anywhere] mt-0.5">
                     {String(preview.primary.firstName || preview.primary.name || '')} {preview.primary.lastName ? String(preview.primary.lastName) : ''}
                   </p>
                 </div>
                 <ArrowRight size={16} className="text-slate-400" />
                 <div className="px-3 py-2 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.02]">
                   <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Secondary (Archives)</p>
-                  <p className="text-sm font-medium text-slate-900 dark:text-white truncate mt-0.5">
+                  <p className="text-sm font-medium text-slate-900 dark:text-white [overflow-wrap:anywhere] mt-0.5">
                     {String(preview.secondary.firstName || preview.secondary.name || '')} {preview.secondary.lastName ? String(preview.secondary.lastName) : ''}
                   </p>
                 </div>
@@ -215,7 +216,7 @@ export function MergeRecordsDialog({
               <div className="space-y-1">
                 <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Field Values</h4>
                 {preview.fieldComparisons.filter((fc) => fc.isDifferent).map((fc) => (
-                  <div key={fc.field} className="grid grid-cols-[1fr_auto_1fr] gap-2 items-center py-2 border-b border-slate-100 dark:border-white/[0.05]">
+                  <div key={fc.field} className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2 items-center py-2 border-b border-slate-100 dark:border-white/[0.05]">
                     {/* Primary Value */}
                     <button
                       type="button"
@@ -228,7 +229,7 @@ export function MergeRecordsDialog({
                       )}
                     >
                       <span className="block text-[10px] text-slate-400 dark:text-slate-500 mb-0.5">{FIELD_LABELS[fc.field] || fc.field}</span>
-                      <span className="block truncate">{formatValue(fc.primaryValue)}</span>
+                      <span className="block [overflow-wrap:anywhere]">{formatValue(fc.primaryValue)}</span>
                     </button>
 
                     {/* Radio indicator */}
@@ -249,7 +250,7 @@ export function MergeRecordsDialog({
                       )}
                     >
                       <span className="block text-[10px] text-slate-400 dark:text-slate-500 mb-0.5">{FIELD_LABELS[fc.field] || fc.field}</span>
-                      <span className="block truncate">{formatValue(fc.secondaryValue)}</span>
+                      <span className="block [overflow-wrap:anywhere]">{formatValue(fc.secondaryValue)}</span>
                     </button>
                   </div>
                 ))}
@@ -298,11 +299,11 @@ export function MergeRecordsDialog({
             </div>
 
             {/* Footer */}
-            <div className="border-t border-gray-200 dark:border-white/[0.08] px-6 py-4 flex items-center justify-between">
+            <div className={panelFooterClass + " justify-between"}>
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors"
+                className={panelSecondaryActionClass}
               >
                 Cancel
               </button>
@@ -310,7 +311,7 @@ export function MergeRecordsDialog({
                 type="button"
                 onClick={handleMerge}
                 disabled={isSubmitting}
-                className="px-5 py-2 text-sm font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="min-h-[42px] px-5 py-2.5 text-sm font-semibold rounded-xl bg-red-600 text-white hover:bg-red-700 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSubmitting ? <RefreshCw size={14} className="animate-spin" /> : <GitMerge size={14} />}
                 Merge Records

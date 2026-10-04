@@ -1,6 +1,6 @@
 'use client';
 import { PageHeader } from '@/shared/components/ui/page-header';
-
+import { panelBodyClass, panelFooterClass, panelInputClass, panelLabelClass, panelPrimaryActionClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
 import DOMPurify from 'dompurify';
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -211,7 +211,7 @@ export default function CampaignsPage() {
   }
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
@@ -442,7 +442,7 @@ export default function CampaignsPage() {
       {activeTab === 'email' && (
         <div>
           <div className="flex justify-end mb-4">
-            <button 
+            <button
               onClick={() => { setNewTemplateType('Email'); setIsTemplateModalOpen(true); }}
               className="hidden md:flex items-center gap-2 bg-gray-50 dark:bg-white/5 border border-gray-300 dark:border-white/10 text-slate-900 dark:text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
             >
@@ -497,7 +497,7 @@ export default function CampaignsPage() {
       {activeTab === 'sms' && (
         <div>
           <div className="flex justify-end mb-4">
-            <button 
+            <button
               onClick={() => { setNewTemplateType('SMS'); setIsTemplateModalOpen(true); }}
               className="hidden md:flex items-center gap-2 bg-gray-50 dark:bg-white/5 border border-gray-300 dark:border-white/10 text-slate-900 dark:text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
             >
@@ -552,21 +552,21 @@ export default function CampaignsPage() {
       {/* Create Campaign Side Panel */}
       {/* Create Template Side Panel */}
       <SideSheet isOpen={isTemplateModalOpen} onClose={() => setIsTemplateModalOpen(false)} title={`Create ${newTemplateType} Template`} subtitle="Save a message to reuse in future campaigns.">
-        <div className="p-6 space-y-4">
+        <div className="flex h-full min-h-0 flex-col"><div className={panelBodyClass + " space-y-4"}>
               <div>
-                <label htmlFor="template-name" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Template Name <span className="text-red-500">*</span></label>
-                <input 
-                  id="template-name" className="w-full bg-white dark:bg-white/2 border border-gray-200 dark:border-white/5 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors"
-                  placeholder="e.g. Welcome Series - Email 1" 
+                <label htmlFor="template-name" className={panelLabelClass + " mb-1.5"}>Template Name <span className="text-red-500">*</span></label>
+                <input
+                  id="template-name" className={panelInputClass}
+                  placeholder="e.g. Welcome Series - Email 1"
                   value={newTemplate.name}
                   onChange={(e) => setNewTemplate({...newTemplate, name: e.target.value})}
                 />
                 <FieldError message={templateErrors.name} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Category</label>
-                <select 
-                  className="w-full bg-white dark:bg-white/2 border border-gray-200 dark:border-white/5 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors"
+                <label htmlFor="template-category" className={panelLabelClass + " mb-1.5"}>Category</label>
+                <select id="template-category"
+                  className={panelInputClass}
                   value={newTemplate.category}
                   onChange={(e) => setNewTemplate({...newTemplate, category: e.target.value})}
                 >
@@ -578,10 +578,10 @@ export default function CampaignsPage() {
               </div>
               {newTemplateType === 'Email' && (
                 <div>
-                  <label htmlFor="template-subject" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Subject Line <span className="text-red-500">*</span></label>
-                  <input 
-                    id="template-subject" className="w-full bg-white dark:bg-white/2 border border-gray-200 dark:border-white/5 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors"
-                    placeholder="Welcome to LeadCRM!" 
+                  <label htmlFor="template-subject" className={panelLabelClass + " mb-1.5"}>Subject Line <span className="text-red-500">*</span></label>
+                  <input
+                    id="template-subject" className={panelInputClass}
+                    placeholder="Welcome to LeadCRM!"
                     value={newTemplate.subject}
                     onChange={(e) => setNewTemplate({...newTemplate, subject: e.target.value})}
                   />
@@ -589,12 +589,12 @@ export default function CampaignsPage() {
                 </div>
               )}
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label htmlFor="template-content" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Message Content <span className="text-red-500">*</span></label>
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                  <label htmlFor="template-content" className={panelLabelClass}>Message Content <span className="text-red-500">*</span></label>
                   <div className="relative">
-                    <button 
+                    <button
                       type="button"
-                      onClick={() => setShowVarDropdown(!showVarDropdown)} 
+                      onClick={() => setShowVarDropdown(!showVarDropdown)}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-500/10 rounded-md hover:bg-blue-500/20 transition-colors duration-200 border border-blue-500/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                     >
                       <Wand2 size={14} /> Insert Variable
@@ -602,13 +602,13 @@ export default function CampaignsPage() {
                     {showVarDropdown && (
                       <div className="absolute right-0 bottom-full mb-1 w-48 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/10 rounded-lg shadow-xl overflow-hidden z-50 backdrop-blur-xl">
                         {EMAIL_VARIABLE_TOKENS.map(v => (
-                          <button 
-                            key={v} 
+                          <button
+                            key={v}
                             type="button"
-                            onClick={() => { 
-                              setNewTemplate({...newTemplate, content: newTemplate.content + v}); 
-                              setShowVarDropdown(false); 
-                            }} 
+                            onClick={() => {
+                              setNewTemplate({...newTemplate, content: newTemplate.content + v});
+                              setShowVarDropdown(false);
+                            }}
                             className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors duration-150 cursor-pointer"
                           >
                             {v}
@@ -618,9 +618,9 @@ export default function CampaignsPage() {
                     )}
                   </div>
                 </div>
-                <textarea 
+                <textarea
                   id="template-content" rows={8}
-                  className="w-full bg-white dark:bg-white/2 border border-gray-200 dark:border-white/5 rounded-lg px-4 py-2.5 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors resize-none" 
+                  className={panelInputClass + " resize-none"}
                   placeholder={`Hi {{first_name}},\n\n...`}
                   value={newTemplate.content}
                   onChange={(e) => setNewTemplate({...newTemplate, content: e.target.value})}
@@ -628,11 +628,11 @@ export default function CampaignsPage() {
                 <FieldError message={templateErrors.content} />
               </div>
           <FieldError message={templateErrors.form} />
-          <div className="sticky bottom-0 flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-white/5 bg-white dark:bg-slate-900">
-            <button onClick={() => setIsTemplateModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-white/5 rounded-lg border border-gray-200 dark:border-white/8 transition-colors">Cancel</button>
-            <button 
+          </div><div className={panelFooterClass + " justify-end"}>
+            <button onClick={() => setIsTemplateModalOpen(false)} className={panelSecondaryActionClass}>Cancel</button>
+            <button
               onClick={handleSaveTemplate} disabled={savingTemplate}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all"
+              className={panelPrimaryActionClass}
             >
               {savingTemplate ? 'Saving...' : 'Save Template'}
             </button>
@@ -666,12 +666,12 @@ export default function CampaignsPage() {
             </div>
             <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-slate-950">
               <button onClick={() => setPreviewTemplate(null)} className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/5 rounded-lg transition-colors">Close</button>
-              <button 
+              <button
                 onClick={() => {
                   setBuilderInitialType(previewTemplate.type); setBuilderInitialContent(previewTemplate.content); setBuilderSubject(previewTemplate.subject || '');
                   setShowBuilder(true);
                   setPreviewTemplate(null);
-                }} 
+                }}
                 className="px-4 py-2 bg-[#0A6EFF] text-slate-900 dark:text-white text-sm font-medium rounded-lg hover:bg-blue-600 transition-colors shadow-[0_0_15px_rgba(10,110,255,0.2)]"
               >
                 Use Template

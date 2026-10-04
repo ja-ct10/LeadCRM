@@ -147,6 +147,13 @@ export interface TaskPerson {
   firstName: string;
   lastName: string;
 }
+/** Display-only CRM connections of records explicitly associated with a task. */
+export interface TaskRelatedRecord {
+  kind: TaskLinkKind;
+  id: string;
+  label: string;
+  via: string;
+}
 export interface TaskRecord extends TaskAssociations {
   id: string;
   tenantId: string;
@@ -178,6 +185,7 @@ export interface TaskRecord extends TaskAssociations {
   lead?: TaskPerson | null;
   contact?: TaskPerson | null;
   deal?: { id: string; title: string } | null;
+  relatedRecords?: TaskRelatedRecord[];
 }
 export interface TaskPage {
   data: TaskRecord[];

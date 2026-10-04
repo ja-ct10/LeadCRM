@@ -1,4 +1,5 @@
 'use client';
+import { panelThemeClass, panelHeaderClass, panelTitleClass, panelCloseClass } from '@/shared/components/side-panel-styles';
 import { withProductOptions } from '@leadcrm/shared';
 import { useProductInterests } from '@/shared/hooks/use-product-interests';
 import { useEffect, useRef, useState } from 'react';
@@ -117,14 +118,14 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
             <label className="block text-xs text-slate-600">Form name<input className="block mt-1 w-full border rounded bg-white text-slate-900 p-2 text-sm" maxLength={200} value={local.name} onChange={e => change({ name: e.target.value })} /></label>
             <FormCanvas fields={withProductOptions(local.fields, products)} design={local.design} onChange={fields => change({ fields })} />
           </div>
-          <aside aria-label="Form tools" className="hidden lg:flex w-64 shrink-0 flex-col border-l bg-white dark:bg-slate-950 max-h-[80vh] overflow-y-auto">{panelContent}</aside>
+          <aside aria-label="Form tools" className={panelThemeClass + " hidden lg:flex w-64 shrink-0 flex-col border-l max-h-[80vh] overflow-y-auto overscroll-contain"}>{panelContent}</aside>
         </div>}
         {tab === 'Settings' && <div className="py-4 sm:p-6"><FormSettingsPanel settings={local.settings} onChange={settings => change({ settings })} /></div>}
         {tab === 'Share' && <div className="py-4 sm:p-6 min-w-0"><FormSharePanel form={local} dirty={dirty} shareLink={getShareLink(local.publicId)} embedCode={getEmbedCode(local.publicId)} /></div>}
       </fieldset>
       {tab === 'Builder' && <div className="lg:hidden sticky bottom-0 bg-white border-t p-2"><button ref={toolsButton} disabled={saving || !canEdit} onClick={() => setTools(true)} className="w-full rounded bg-blue-600 text-white p-3 text-sm flex gap-2 justify-center"><Plus size={16} />Add fields or change design</button></div>}
-      <Dialog open={tools} onOpenChange={setTools}><DialogContent ref={toolsRef} aria-label="Form tools" className="!fixed !bottom-0 !left-0 !right-0 !w-full !max-w-none !rounded-b-none !p-0 max-h-[85dvh] flex flex-col">
-        <div className="p-5 pr-14"><h2 className="font-semibold">Form tools</h2><p className="text-xs text-slate-500">Tap a field to add it to your form.</p></div>
+      <Dialog open={tools} onOpenChange={setTools}><DialogContent ref={toolsRef} aria-label="Form tools" className={panelThemeClass + " !fixed !bottom-0 !left-0 !right-0 !w-full !max-w-none !rounded-b-none !p-0 max-h-[85dvh] flex flex-col"} closeClassName={panelCloseClass}>
+        <div className={panelHeaderClass + " pr-20 sm:pr-20"}><h2 className={panelTitleClass}>Form tools</h2><p className="text-xs text-slate-500">Tap a field to add it to your form.</p></div>
         <div className="overflow-y-auto min-h-0">{panelContent}</div>
       </DialogContent></Dialog>
     </div>

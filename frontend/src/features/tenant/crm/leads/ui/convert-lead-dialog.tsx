@@ -1,4 +1,5 @@
 'use client';
+import { panelBodyClass, panelFooterClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
 
 import React, { useState, useCallback } from 'react';
 import { SlidingDrawer } from '@/shared/components/sliding-drawer';
@@ -163,12 +164,12 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
       <p className="text-sm text-slate-500 dark:text-slate-400">Confirm the lead details before conversion.</p>
       <div className={cardCls}>
         <div className="space-y-2 text-sm">
-          <div className="flex justify-between"><span className="text-slate-500 dark:text-slate-400">Name</span><span className="font-medium text-slate-900 dark:text-white">{leadName}</span></div>
-          {lead.email && <div className="flex justify-between"><span className="text-slate-500 dark:text-slate-400">Email</span><span className="text-slate-700 dark:text-slate-300">{lead.email}</span></div>}
-          {lead.phone && <div className="flex justify-between"><span className="text-slate-500 dark:text-slate-400">Phone</span><span className="text-slate-700 dark:text-slate-300">{lead.phone}</span></div>}
-          {lead.companyName && <div className="flex justify-between"><span className="text-slate-500 dark:text-slate-400">Company</span><span className="text-slate-700 dark:text-slate-300">{lead.companyName}</span></div>}
-          <div className="flex justify-between"><span className="text-slate-500 dark:text-slate-400">Status</span><span className="text-slate-700 dark:text-slate-300">{lead.status}</span></div>
-          {lead.leadSource && <div className="flex justify-between"><span className="text-slate-500 dark:text-slate-400">Source</span><span className="text-slate-700 dark:text-slate-300">{lead.leadSource}</span></div>}
+          <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 [&>span:last-child]:text-right [&>span:last-child]:[overflow-wrap:anywhere]"><span className="text-slate-500 dark:text-slate-400">Name</span><span className="font-medium text-slate-900 dark:text-white">{leadName}</span></div>
+          {lead.email && <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 [&>span:last-child]:text-right [&>span:last-child]:[overflow-wrap:anywhere]"><span className="text-slate-500 dark:text-slate-400">Email</span><span className="text-slate-700 dark:text-slate-300">{lead.email}</span></div>}
+          {lead.phone && <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 [&>span:last-child]:text-right [&>span:last-child]:[overflow-wrap:anywhere]"><span className="text-slate-500 dark:text-slate-400">Phone</span><span className="text-slate-700 dark:text-slate-300">{lead.phone}</span></div>}
+          {lead.companyName && <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 [&>span:last-child]:text-right [&>span:last-child]:[overflow-wrap:anywhere]"><span className="text-slate-500 dark:text-slate-400">Company</span><span className="text-slate-700 dark:text-slate-300">{lead.companyName}</span></div>}
+          <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 [&>span:last-child]:text-right [&>span:last-child]:[overflow-wrap:anywhere]"><span className="text-slate-500 dark:text-slate-400">Status</span><span className="text-slate-700 dark:text-slate-300">{lead.status}</span></div>
+          {lead.leadSource && <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 [&>span:last-child]:text-right [&>span:last-child]:[overflow-wrap:anywhere]"><span className="text-slate-500 dark:text-slate-400">Source</span><span className="text-slate-700 dark:text-slate-300">{lead.leadSource}</span></div>}
         </div>
       </div>
     </div>
@@ -394,9 +395,9 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
       title="Convert Lead"
       subtitle={leadName}
     >
-      <div className="flex flex-col h-full">
+      <div className="flex h-full min-h-0 flex-col">
         {/* Step Progress */}
-        <div className="px-6 pt-4 pb-2">
+        <div className="shrink-0 px-4 sm:px-6 pt-4 pb-2">
           <div className="flex items-center gap-1">
             {steps.map((s, idx) => (
               <React.Fragment key={s.num}>
@@ -415,7 +416,7 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
         </div>
 
         {/* Step Content */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">
+        <div className={panelBodyClass}>
           {step === 1 && renderStep1()}
           {step === 2 && renderStep2()}
           {step === 3 && renderStep3()}
@@ -424,11 +425,11 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
         </div>
 
         {/* Footer */}
-        <div className="border-t border-gray-200 dark:border-white/[0.08] px-6 py-4 flex items-center justify-between">
+        <div className={panelFooterClass + " justify-between"}>
           <button
             type="button"
             onClick={step === 1 ? onClose : goBack}
-            className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors flex items-center gap-1"
+            className={panelSecondaryActionClass}
           >
             {step === 1 ? 'Cancel' : <><ChevronLeft size={14} /> Back</>}
           </button>
@@ -438,7 +439,7 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
               onClick={goNext}
               disabled={!canGoNext()}
               className={cn(
-                'px-4 py-2 text-sm font-medium rounded-lg transition-all flex items-center gap-1',
+                'min-h-[42px] px-5 py-2.5 text-sm font-semibold rounded-xl transition-all flex items-center gap-1',
                 canGoNext()
                   ? 'bg-blue-600 text-white hover:bg-blue-700'
                   : 'bg-slate-100 dark:bg-white/[0.05] text-slate-400 cursor-not-allowed'
@@ -451,7 +452,7 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
               type="button"
               onClick={handleConvert}
               disabled={isSubmitting}
-              className="px-5 py-2 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="min-h-[42px] px-5 py-2.5 text-sm font-semibold rounded-xl bg-green-600 text-white hover:bg-green-700 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
               Convert Lead

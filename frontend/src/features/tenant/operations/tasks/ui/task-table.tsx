@@ -15,6 +15,7 @@ import {
 } from "@/shared/components/data-grid";
 import { Eye, Edit, Archive } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
+import { taskRecordOptions } from '../task-relations';
 interface Props {
   tasks: TaskRecord[];
   columns: ColumnConfigItem[];
@@ -52,11 +53,11 @@ export function TaskTable({
   onManageColumns,
 }: Props) {
   const selectable = canEdit || canArchive || canComplete || canAssign;
-  const relation = (text?: string | null) =>
+  const relation = (text?: string | null, context?: string) =>
     text ? (
       <span
         className="inline-flex max-w-48 truncate rounded-full bg-primary/10 px-2.5 py-1 text-xs text-primary"
-        title={text}
+        title={context ?? text}
       >
         {text}
       </span>
@@ -65,17 +66,19 @@ export function TaskTable({
     );
   const person = (value?: { firstName: string; lastName: string } | null) =>
     value ? value.firstName + " " + value.lastName : undefined;
-  const relations = (task: TaskRecord, names: (string | undefined)[]) => {
-    const labels = names.filter((name): name is string => !!name);
+  const relations = (task: TaskRecord, kind: 'lead' | 'contact' | 'deal' | 'account') => {
+    const direct = taskRecordOptions(task, kind);
+    const context = (task.relatedRecords ?? []).filter(row => row.kind === kind && !direct.some(option => option.id === row.id));
+    const labels = [...direct.map(row => row.label), ...context.map(row => row.label)];
     return (
-      <span className="inline-flex items-center gap-1">
-        {relation(labels[0])}
+      <span className="inline-flex min-w-0 items-center gap-1" title={context.length ? context.map(row => `${row.label} — via ${row.via}`).join('\n') : undefined}>
+        {relation(labels[0], !direct.length && context[0] ? `${context[0].label} — via ${context[0].via}` : undefined)}
         {labels.length > 1 && (
           <button
             type="button"
             onClick={() => onOpen(task)}
             className="rounded-full bg-primary/10 px-2 py-1 text-xs text-primary hover:bg-primary/20"
-            aria-label={`View all ${labels.length} associated records: ${labels.join(", ")}`}
+            aria-label={`View all ${labels.length} related records: ${labels.join(", ")}`}
             title={labels.join(", ")}
           >
             +{labels.length - 1}
@@ -107,7 +110,7 @@ export function TaskTable({
         return (
           <button
             onClick={() => onOpen(task)}
-            className="max-w-72 truncate text-left font-medium hover:text-primary hover:underline"
+            className="max-w-72 truncate text-left text-[13px] font-medium text-[#1a73e8] dark:text-blue-400 hover:underline"
             title={task.title}
           >
             {task.title}
@@ -155,29 +158,10 @@ export function TaskTable({
           </span>
         );
       case "lead":
-        return relations(
-          task,
-          (task.leads ?? (task.lead ? [task.lead] : [])).map(person),
-        );
       case "contact":
-        return relations(
-          task,
-          (task.contacts ?? (task.contact ? [task.contact] : [])).map(person),
-        );
       case "deal":
-        return relations(
-          task,
-          (task.deals ?? (task.deal ? [task.deal] : [])).map(
-            (row) => row.title,
-          ),
-        );
       case "account":
-        return relations(
-          task,
-          (task.accounts ?? (task.account ? [task.account] : [])).map(
-            (row) => row.name,
-          ),
-        );
+        return relations(task, id);
       case "assignedUser":
         return person(task.assignedUser) ?? "—";
       case "createdAt":

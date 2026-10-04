@@ -1,6 +1,6 @@
 # Uniform side-panel UI polish plan
 
-Status: Task and Workflow first slice implemented; remaining module rollout proposed. Audited and implemented 4 October 2026 (Asia/Manila). The evidence below describes the original audit; implementation results are recorded in section 9.
+Status: Planned active-panel UI rollout implemented locally. Audited and implemented 4 October 2026 (Asia/Manila). Sections 1–8 describe the original audit and acceptance targets; implementation results and verification limits are recorded in sections 9–10. No deployment is included.
 
 ## 1. Objective and boundaries
 
@@ -163,4 +163,42 @@ Validation performed using the real production components and CSS with local, in
 - Task and Workflow module suites: 102 tests across 12 files. The parallel run passed 101 tests; one existing Workflow template-opening test hit its five-second timeout. Its complete six-test file passed on an isolated rerun with no timeout or test-logic changes. The original 23 targeted checks also passed after correcting an accessible-label whitespace regression caught by the tests.
 - `git diff --check` passed. No production CRM records were changed. No commit or deployment was performed.
 
-Remaining items are the other modules in the rollout, true browser-zoom and screen-reader checks, visual inspection of live nested record creation, and the previously documented shared dialog/focus defects. They are not silently included in this cosmetic slice. The local fixture preview is kept under ignored build output and is not a shipped route or API change.
+At the end of this first slice, the other modules remained pending. Their subsequent implementation is recorded below. True browser-zoom and screen-reader checks, live nested record creation, and the previously documented shared dialog/focus defects remain separate. The local fixture preview is kept under ignored build output and is not a shipped route or API change.
+
+## 10. Remaining rollout implementation and validation
+
+The approved remaining active-panel scope is implemented. Shared presentation classes now cover SlidingDrawer and SideSheet, without replacing their event handling, scroll-locking or dismissal behavior. An optional close-button class lets Workflow overlays and mobile Form tools use the same close target while retaining Dialog's existing behavior. Explicit custom widths still take precedence.
+
+| Surface | Implemented presentation changes |
+| --- | --- |
+| Accounts, Contacts, Deals create/edit | Blue numbered section headings, consistent controls, responsive grids, aligned body gutters, fixed existing actions and matching 42px button heights. Active Account wrapper now has the contextual subtitle. |
+| CRM Lead, Contact, Account and Deal details | Reference width/surface, title hierarchy, body/header gutter alignment, and room for the larger close target. Full-page record layout retains its prior sizing and gutters. Tabs, actions, inline edits, relationships and activity behavior remain unchanged. |
+| Manage Columns | Consistent header, search, close target, backdrop and footer. Retains the compact 448px desktop width, drag-and-drop and keyboard reorder, draft confirmation, reset and save behavior. |
+| Campaign Email/SMS templates and Audience | Consistent fields/labels, corrected footer nesting, pinned existing actions and responsive condition rows. Category label is now associated with its existing select. Variable insertion and audience logic are unchanged. |
+| Users and user activity | Numbered form sections, body scrolling, fixed existing actions, timeline header/search/filter spacing and named close control. Read-only actions wrap on narrow screens. |
+| Administration role details | Standard shell/header, named close control, wrapping names and descriptions, and a contained horizontal scroll area for the existing wide permission matrix. |
+| Products | Full-height form with a body and fixed action bar instead of a small nested card. Detail-view gutters and shared shell align with the reference. Price validation, labels and requiredness are unchanged. |
+| Closing Fields and Deal Stage Automation | Standard form sections, fields, spacing, list gutters and action bar. The automation switch still saves immediately; field-type restrictions are unchanged. |
+| Workflow builder overlays | Standard overlay width, header, close target and scrolling content. Docked library/configuration allocation remains unchanged. |
+| Lead conversion and CRM merge | Standard gutters and existing action bars. Narrow conversion label/value rows have a clear gap; merge record names and comparisons wrap. All steps, choices, warnings and final actions are retained. |
+| Forms builder tools | Aligned surface and design-control styling. Desktop tools remain 256px wide; the mobile tools remain a bottom sheet. |
+| Lead reference | Shared shell regression checked; its existing domain form and functionality are retained. |
+
+### Verification evidence
+
+- Existing targeted regression suites passed: **220 tests across 24 files**, covering CRM forms/details, columns, users, products, closing fields, campaigns, forms and Workflow. The initial sandbox run could not start tests because Windows blocked temporary-file renames; the same command passed outside the sandbox.
+- Final CRM/Task rechecks passed **88 tests across 6 files**: 39 passed in the initial run, while two workers timed out before starting during the concurrent build. Those two files passed all 49 tests on an isolated one-worker rerun. No test logic or timeout limits were changed. The final production build also passed after the last CRM spacing correction.
+- Frontend lint/type check and production build passed. The build retains the existing local environment warning that the backend URL resolves to localhost; no environment or deployment configuration was changed.
+- A source AST comparison confirmed that **all 610 event/control attributes across the 24 changed source files** match the baseline, including handlers, values, checked/disabled/required/read-only states and input types. This supplements the existing behavioral tests; it is not a substitute for them. Diff review found no backend, shared API contract, validation, payload or permission changes.
+- Browser review used actual production components, CSS and the app font with isolated fixture data. Reviewed Account/Contact/Deal/Lead forms; Product create; User create/edit/view; Role details; user activity; CRM Lead/Account/Deal details; Manage Columns; Audience conditions; Email/SMS templates; New Field and dropdown options; conversion review/navigation; merge comparisons; Workflow overlay shell; desktop and mobile Form tools.
+- Exercised CRM Activity/Details switching, column search, template variable insertion, audience condition insertion, custom-field type/option controls, and conversion navigation without saving production data.
+- Representative layouts were checked at **1440×900, 1280×720, 640×360, 390×720/844 and 320×640**. Main desktop drawers measured 576px; the short 640px viewport used 512px. Phone drawers filled the viewport. Checked fixed actions, body scrolling, long labels and light/dark examples. These are representative checks, not every panel/state at every size or actual browser zoom.
+- Browser review caught and corrected mismatched primary/secondary button heights, crowded conversion values, truncated merge names, CRM body/header gutter differences and insufficient spacing beside the enlarged CRM close target.
+
+### Remaining flags and verification limits
+
+- Existing shared focus/dialog-semantic defects from section 2 remain outside this styling pass. Added names to two close controls and linked the template Category label; no focus-management rewrite or accessibility-conformance claim is included.
+- Existing SMS template name placeholder still says “Welcome Series - Email 1.” Product required markers and mode-specific action/title wording remain optional copy refinements from the plan; underlying validation is unchanged.
+- Product read-only relationships, Contact detail-specific content, Closing Fields list/edit and all live nested-panel combinations were covered by source review and applicable existing tests, not an exhaustive browser scenario matrix in this rollout. No real conversion, merge, password reset, automation change, template send, record save or permission change was performed.
+- Inactive legacy panels, centered confirmations and full-page editors remain outside scope. No commit or deployment was performed.
+- Final `git diff --check` passed. The temporary browser viewport was restored and the isolated preview server was stopped.

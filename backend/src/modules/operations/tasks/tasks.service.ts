@@ -16,6 +16,7 @@ import {
   type TaskBulkResult,
 } from "@leadcrm/shared";
 import * as repo from "./tasks.repository";
+import { hydrateTaskRecords } from './tasks.context';
 import { writeAuditLog } from "../../../core/audit/audit.service";
 import { tenantContext } from "../../../core/tenant/tenant-context";
 import {
@@ -110,38 +111,24 @@ export function serializeTask(task: repo.TaskRow): TaskRecord {
     contactId: task.contactId,
     dealId: task.dealId,
     accountId: task.accountId,
-    leads: (task.leadLinks?.length
-      ? task.leadLinks.map((row) => row.lead)
-      : task.lead
-        ? [task.lead]
-        : []
-    ).flatMap((row) => linkedPerson(row) ?? []),
-    contacts: (task.contactLinks?.length
-      ? task.contactLinks.map((row) => row.contact)
-      : task.contact
-        ? [task.contact]
-        : []
-    ).flatMap((row) => linkedPerson(row) ?? []),
-    deals: (task.dealLinks?.length
-      ? task.dealLinks.map((row) => row.deal)
-      : task.deal
-        ? [task.deal]
-        : []
-    )
+    leads: [...new Map([...(task.leadLinks ?? []).map(row => row.lead), ...(task.lead ? [task.lead] : [])]
+      .flatMap(row => linkedPerson(row) ?? []).map(row => [row.id, row])).values()],
+    contacts: [...new Map([...(task.contactLinks ?? []).map(row => row.contact), ...(task.contact ? [task.contact] : [])]
+      .flatMap(row => linkedPerson(row) ?? []).map(row => [row.id, row])).values()],
+    deals: [...new Map([...(task.dealLinks ?? []).map(row => row.deal), ...(task.deal ? [task.deal] : [])]
       .filter(
         (row) =>
           row.tenantId === task.tenantId,
       )
-      .map(({ id, title }) => ({ id, title })),
+      .map(({ id, title }) => [id, { id, title }] as const)).values()],
     accounts: (task.accountLinks ?? [])
       .filter(
         (row) =>
           row.account.tenantId === task.tenantId,
       )
       .map(({ account: { id, name } }) => ({ id, name })),
-    account:
-      task.accountLinks?.find((row) => row.accountId === task.accountId)
-        ?.account ?? null,
+    account: task.accountLinks?.filter(row => row.account.tenantId === task.tenantId)
+      .map(({ account: { id, name } }) => ({ id, name })).find(row => row.id === task.accountId) ?? null,
     assignedUser: person(task.assignedUser),
     assignedByUser: person(task.assignedBy),
     completedBy: person(task.completedBy),
@@ -162,20 +149,14 @@ export async function getTasks(
     tenantId,
     parseInput(TaskQuerySchema, query),
   );
-  const accounts = await repo.findTaskAccounts(tenantId, [
-    ...new Set(
-      result.data.flatMap((task) => (task.accountId ? [task.accountId] : [])),
-    ),
-  ]);
-  const accountMap = new Map(accounts.map((account) => [account.id, account]));
   return paginate(
-    result.data.map((task) => ({
-      ...serializeTask(task),
-      account: task.accountId ? (accountMap.get(task.accountId) ?? null) : null,
-    })),
+    await hydrateTaskRecords(result.data.map(serializeTask), tenantId),
     result.total,
     result,
   );
+}
+export async function serializeTaskResponse(task: repo.TaskRow): Promise<TaskRecord> {
+  return (await hydrateTaskRecords([serializeTask(task)], task.tenantId))[0];
 }
 export async function getTaskById(id: string, tenantId: string) {
   requireScope(tenantId);

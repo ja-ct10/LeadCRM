@@ -41,6 +41,15 @@ beforeEach(() => {
   );
 });
 
+it('renders legacy links and workflow CRM context in their Task table columns', () => {
+  const task = { id: 'task', tenantId: 'tenant', title: 'Follow-up', description: '', status: 'pending' as const, assignedUserId: 'owner', dueDate: '2030-01-01T00:00:00Z', createdAt: '2026-10-01T00:00:00Z',
+    leads: [], lead: { id: 'l', firstName: 'Jordan', lastName: 'Lee' }, accounts: [], account: { id: 'a', name: 'Northstar' },
+    relatedRecords: [{ kind: 'deal' as const, id: 'd', label: 'Expansion', via: 'Lead: Jordan Lee' }, { kind: 'contact' as const, id: 'c', label: 'Alex Morgan', via: 'Lead: Jordan Lee' }],
+  };
+  render(<TaskTable tasks={[task]} columns={normalizeTaskColumns([])} selected={[]} onSelect={vi.fn()} onOpen={vi.fn()} onStatus={vi.fn()} onSort={vi.fn()} query={{}} busy={false} canEdit canArchive onEdit={vi.fn()} onArchive={vi.fn()} totalRecords={1} onManageColumns={vi.fn()} />);
+  for (const name of ['Jordan Lee', 'Northstar', 'Expansion', 'Alex Morgan']) expect(screen.getByText(name, { exact: true }).closest('td')?.textContent).toBe(name);
+});
+
 it("searches inside the association dropdown, checks one explicit record, and supports clearing and creating", async () => {
   api.options.mockImplementation(async (_kind, search) => ({
     data: search

@@ -131,7 +131,7 @@ export function useTaskQueries(identity: string, tasks: Task[], mock: boolean) {
       if (document.visibilityState === "visible") refreshTasks();
     };
     const unsubscribe = subscribePageCacheInvalidation((module) => {
-      if (module === "*" || module === "activities") refreshTasks();
+      if (["*", "activities", "leads", "contacts", "accounts", "deals"].includes(module)) refreshTasks();
     });
     const timer = window.setInterval(visible, 60000);
     window.addEventListener("focus", visible);

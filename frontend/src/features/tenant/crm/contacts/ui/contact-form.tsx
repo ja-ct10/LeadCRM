@@ -1,4 +1,5 @@
 'use client';
+import { PanelSectionHeading, panelBodyClass, panelFooterClass, panelInputClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
 import { ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
 import { CRM_STATUSES, normalizeCrmStatus } from '@leadcrm/shared';
 import { useProductInterests } from '@/shared/hooks/use-product-interests';
@@ -144,22 +145,20 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
   };
 
   // Style classes
-  const inputCls =
-    'w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none transition-all focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500';
+  const inputCls = panelInputClass;
   const inputErrorCls = '!border-red-500 focus:!ring-red-500/20';
-  const selectCls =
-    'w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl pl-3.5 pr-8 py-2.5 text-sm text-slate-900 dark:text-white outline-none appearance-none cursor-pointer focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all [&>option]:bg-white dark:[&>option]:bg-slate-900';
+  const selectCls = panelInputClass + ' appearance-none pr-8 cursor-pointer';
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit(onSubmit)} className="flex flex-col h-full" noValidate>
+    <form ref={formRef} onSubmit={handleSubmit(onSubmit)} className="flex h-full min-h-0 flex-col" noValidate>
       {/* Scrollable Body */}
-      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+      <div className={panelBodyClass + " space-y-6"}>
         {/* Section 1: Basic Information */}
         <div className="space-y-4">
           <SectionHeader num={1} title="Basic Information" />
 
           {/* First & Last Name (required) */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FieldWrap label="First Name *" htmlFor={`${fieldId}-firstName`} error={errors.firstName?.message}>
               <input
                 {...register('firstName')}
@@ -183,7 +182,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
           </div>
 
           {/* Email & Phone */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FieldWrap label="Email *" htmlFor={`${fieldId}-email`} error={errors.email?.message}>
               <div className="relative">
                 <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
@@ -224,7 +223,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
         <div className="space-y-4">
           <SectionHeader num={2} title="Status & Classification" />
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Status */}
             <FieldWrap label="Status" htmlFor={`${fieldId}-status`} error={errors.status?.message}>
               <div className="relative">
@@ -340,18 +339,18 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
       </div>
 
       {/* Sticky Footer */}
-      <div className="shrink-0 px-6 py-4 border-t border-gray-200 dark:border-white/[0.06] bg-white dark:bg-slate-900 flex items-center justify-end gap-3">
+      <div className={panelFooterClass + " justify-end"}>
         <button
           type="button"
           onClick={onCancel}
-          className="px-5 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-white/[0.05] hover:bg-slate-200 dark:hover:bg-white/[0.08] border border-gray-200 dark:border-white/[0.08] rounded-xl transition-colors"
+          className={panelSecondaryActionClass}
         >
           Cancel
         </button>
         <button
           type="submit"
           disabled={isSubmitting}
-          className="px-6 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 rounded-xl transition-all shadow-lg shadow-blue-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="h-[42px] px-6 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 rounded-xl transition-all shadow-lg shadow-blue-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isSubmitting ? 'Saving...' : isEdit ? 'Save Changes' : 'Create Contact'}
         </button>
@@ -378,15 +377,7 @@ export function ContactFormSheet({ initialData, isOpen, onClose, onSave }: Conta
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 function SectionHeader({ num, title }: { num: number; title: string }): React.ReactElement {
-  return (
-    <div className="flex items-center gap-3">
-      <div className="flex items-center justify-center w-6 h-6 rounded-full bg-teal-500 text-white text-[11px] font-bold shrink-0">
-        {num}
-      </div>
-      <h3 className="text-sm font-bold text-slate-900 dark:text-white tracking-wide">{title}</h3>
-      <div className="flex-1 h-px bg-gray-200 dark:bg-white/[0.06]" />
-    </div>
-  );
+  return <PanelSectionHeading number={num}>{title}</PanelSectionHeading>;
 }
 
 function FieldWrap({ label, error, htmlFor, children }: { label: string; error?: string; htmlFor?: string; children: React.ReactNode }): React.ReactElement {

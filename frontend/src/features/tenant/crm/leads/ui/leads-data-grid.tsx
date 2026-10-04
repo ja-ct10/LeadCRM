@@ -211,10 +211,14 @@ export function LeadsDataGrid({
     assignedUserId: (_value: unknown, row: Lead) => (
       <div className="flex items-center gap-1.5">
         <div className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-[9px] font-bold text-slate-600 dark:text-slate-300 shrink-0">
-          {getOwnerInitials(row.assignedUserId)}
+          {row.assignedUser
+            ? `${row.assignedUser.firstName?.[0] ?? ''}${row.assignedUser.lastName?.[0] ?? ''}` || getOwnerInitials(row.assignedUserId)
+            : getOwnerInitials(row.assignedUserId)}
         </div>
         <span className="text-[12px] text-[#3C4858] dark:text-slate-400 truncate max-w-[100px]">
-          {getOwnerName(row.assignedUserId)}
+          {row.assignedUser
+            ? `${row.assignedUser.firstName} ${row.assignedUser.lastName}`.trim() || getOwnerName(row.assignedUserId)
+            : getOwnerName(row.assignedUserId)}
         </span>
       </div>
     ),
@@ -266,7 +270,8 @@ export function LeadsDataGrid({
     },
 
     productInterest: (_value: unknown, row: Lead) => {
-      const interests = row.productInterest ?? row.productInterests ?? [];
+      const interests = row.productInterests ?? (Array.isArray(row.productInterest)
+        ? row.productInterest : row.productInterest ? [row.productInterest] : []);
       if (!interests.length) return <span className="text-[12px] text-[#94a3b8]">—</span>;
       return (
         <div className="flex flex-wrap gap-1 min-w-0">

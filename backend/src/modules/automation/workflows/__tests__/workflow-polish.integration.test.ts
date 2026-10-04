@@ -11,6 +11,7 @@ import { updateCompany } from '../../../crm/companies/companies.service';
 import { moveDealStage, updateDeal } from '../../../crm/deals/deals.service';
 import { sendSms } from '../../../../shared/services/sms.service';
 import { getAvailableActions, WORKFLOW_TRIGGERS, type WorkflowDraft } from '@leadcrm/shared';
+import { getTasks } from '../../../operations/tasks/tasks.service';
 vi.mock('../../../../shared/services/sms.service', async original => ({ ...await original<typeof import('../../../../shared/services/sms.service')>(), isSmsConfigured: () => true, sendSms: vi.fn(async () => ({ submitted: true, messageId: 'sms-test' })) }));
 vi.mock('../../../../shared/services/email.service', async original => ({ ...await original<typeof import('../../../../shared/services/email.service')>(), sendMail: vi.fn(async () => ({ submitted: true, messageId: 'mail-test' })) }));
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
@@ -89,6 +90,20 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
       expect(await runs(workflow.id), trigger).toHaveLength(1);
       expect((await runs(workflow.id))[0].status, trigger).toBe('completed');
     }
+  });
+  it('keeps workflow-created Deal tasks connected to the source Deal and its CRM records', async () => {
+    const deal = await newDeal({ accountId: account.id });
+    const workflow = await create({ trigger: 'deal.updated' });
+    await scope(() => updateDeal(deal.id, tenantId, actor.id, { title: 'Workflow linked context' }));
+    expect((await runs(workflow.id))[0].status).toBe('completed');
+    const tasks = await scope(() => getTasks(tenantId, { dealId: deal.id }));
+    expect(tasks.data).toHaveLength(1);
+    expect(tasks.data[0].dealIds).toEqual([deal.id]);
+    expect(tasks.data[0].relatedRecords).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'lead', id: lead.id }),
+      expect.objectContaining({ kind: 'contact', id: contact.id }),
+      expect.objectContaining({ kind: 'account', id: account.id }),
+    ]));
   });
   it('treats empty and Others separately and persists optional details through Update Fields', async () => {
     const workflow = await create({ conditions: { operator: 'AND', conditions: [{ field: 'lead.productInterest', operator: 'is_empty', value: null }] },

@@ -64,6 +64,37 @@ export const taskInclude = {
 } satisfies Prisma.TaskInclude;
 export type TaskRow = Prisma.TaskGetPayload<{ include: typeof taskInclude }>;
 
+/** One batch per source kind; never infer connections from names or company text. */
+export async function findTaskRecordContext(tenantId: string, ids: Required<TaskAssociations>) {
+  const account = { id: true, name: true, tenantId: true } as const;
+  const deal = { id: true, title: true, tenantId: true } as const;
+  const [leads, contacts, deals, accounts] = await Promise.all([
+    ids.leadIds.length ? prisma.lead.findMany({
+      where: { tenantId, id: { in: ids.leadIds } },
+      select: { ...person, account: { select: account }, convertedContact: { select: person },
+        deals: { where: { tenantId }, select: deal },
+        leadDeals: { where: { tenantId }, select: { deal: { select: deal } } } },
+    }) : [],
+    ids.contactIds.length ? prisma.contact.findMany({
+      where: { tenantId, id: { in: ids.contactIds } },
+      select: { ...person, account: { select: account },
+        convertedFromLeads: { where: { tenantId }, select: person },
+        deals: { where: { tenantId }, select: deal },
+        contactDeals: { where: { tenantId }, select: { deal: { select: deal } } } },
+    }) : [],
+    ids.dealIds.length ? prisma.deal.findMany({
+      where: { tenantId, id: { in: ids.dealIds } },
+      select: { ...deal, organization: { select: account }, lead: { select: person }, contact: { select: person },
+        leadDeals: { where: { tenantId }, select: { lead: { select: person } } },
+        contactDeals: { where: { tenantId }, select: { contact: { select: person } } } },
+    }) : [],
+    ids.accountIds.length ? prisma.account.findMany({
+      where: { tenantId, id: { in: ids.accountIds } }, select: account,
+    }) : [],
+  ]);
+  return { leads, contacts, deals, accounts };
+}
+
 export async function withTaskTransaction<T>(
   work: (client: TaskClient) => Promise<T>,
 ): Promise<T> {

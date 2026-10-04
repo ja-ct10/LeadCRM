@@ -4,6 +4,7 @@ import React, { useId } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { FormFieldType, FormDesign } from '../types/form.types';
 import { cn } from '@/lib/utils';
+import { panelInputClass, panelLabelClass } from '@/shared/components/side-panel-styles';
 
 // ── Palette item descriptor ─────────────────────────────────────────────────
 export interface PaletteField {
@@ -150,12 +151,12 @@ function ColorInput({ label, value, onChange }: { label: string; value: string; 
   const id = useId();
   return (
     <div className="space-y-1">
-      <label htmlFor={id} className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{label}</label>
+      <label htmlFor={id} className={panelLabelClass}>{label}</label>
       <div className="relative">
         <input type="color" aria-label={`${label} color picker`} value={/^#[\da-f]{6}$/i.test(value) ? value : '#ffffff'} onChange={(e) => onChange(e.target.value)}
           className="absolute left-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded cursor-pointer border-0 bg-transparent" />
         <input id={id} type="text" value={value} maxLength={9} onChange={(e) => onChange(e.target.value)} placeholder="e.g. #3B82F6"
-          className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg text-[11px] focus:outline-none focus:border-blue-500 transition-colors" />
+          className={panelInputClass + " pl-9"} />
       </div>
     </div>
   );
@@ -186,16 +187,16 @@ function DesignPanel({ design, onChange }: DesignPanelProps): React.ReactElement
           <ColorInput label="Border" value={design.fieldBorder} onChange={(v) => update({ fieldBorder: v })} />
           <ColorInput label="Text" value={design.fieldText} onChange={(v) => update({ fieldText: v })} />
           <div className="space-y-1">
-            <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Radius</label>
+            <label className={panelLabelClass}>Radius</label>
             <select aria-label="Field radius" value={design.fieldRadius} onChange={(e) => update({ fieldRadius: e.target.value as FormDesign['fieldRadius'] })}
-              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg text-xs focus:outline-none focus:border-blue-500">
+              className={panelInputClass}>
               {(['none','sm','md','lg','full'] as const).map((r) => <option key={r} value={r}>{r.charAt(0).toUpperCase()+r.slice(1)}</option>)}
             </select>
           </div>
           <div className="space-y-1">
-            <label className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Size</label>
+            <label className={panelLabelClass}>Size</label>
             <select aria-label="Field size" value={design.fieldSize} onChange={(e) => update({ fieldSize: e.target.value as FormDesign['fieldSize'] })}
-              className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white rounded-lg text-xs focus:outline-none focus:border-blue-500">
+              className={panelInputClass}>
               {(['sm','regular','lg'] as const).map((s) => <option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>)}
             </select>
           </div>

@@ -22,10 +22,10 @@ export function DealStageAutomationSettings() {
       kind="requirements" status={query.isInitialLoad ? 'Loading' : query.error ? 'Unavailable' : enabled ? 'Enabled' : 'Disabled'} meta="Automatic stage changes"
       onClick={() => setOpen(true)} actions={[{ id: 'configure', label: canEdit ? 'Edit configuration' : 'View configuration', onClick: () => setOpen(true) }]} />
     <SlidingDrawer isOpen={open} onClose={() => setOpen(false)} title="Deal Stage Automation" subtitle="Manage automatic Deal stage changes.">
-      <div className="min-w-0 space-y-5 p-4 sm:p-6">
+      <div className="min-w-0 space-y-5 px-4 py-5 sm:px-6">
         <p className="text-sm text-muted-foreground">Controls whether detected customer engagement can automatically progress Deal pipeline stages.</p>
         {query.error ? <div role="alert">Unable to load configuration.<Button onClick={() => void query.refetch()}>Retry</Button></div> :
-          <label className="flex min-h-11 items-center justify-between gap-4 text-sm font-medium">Automatic Deal Stage Changes
+          <label className="flex min-h-11 items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold dark:border-white/10 dark:bg-slate-800/50">Automatic Deal Stage Changes
             <input type="checkbox" role="switch" aria-label="Automatic Deal Stage Changes" className="h-5 w-5 shrink-0 accent-blue-600"
               disabled={!canEdit || busy || query.isInitialLoad} checked={enabled} onChange={async event => {
                 const next = event.target.checked;

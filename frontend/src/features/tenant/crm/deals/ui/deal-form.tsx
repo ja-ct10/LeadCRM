@@ -1,4 +1,5 @@
 'use client';
+import { PanelSectionHeading, panelBodyClass, panelFooterClass, panelInputClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
 import { ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
 import { useProductInterests } from '@/shared/hooks/use-product-interests';
 
@@ -235,10 +236,8 @@ export function DealForm({
   };
 
   // ── Shared styling ────────────────────────────────────────────────────
-  const inputCls =
-    'w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none transition-all focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500';
-  const selectCls =
-    'w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl pl-3.5 pr-8 py-2.5 text-sm text-slate-900 dark:text-white outline-none appearance-none cursor-pointer focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all [&>option]:bg-white dark:[&>option]:bg-slate-900';
+  const inputCls = panelInputClass;
+  const selectCls = panelInputClass + ' appearance-none pr-8 cursor-pointer';
   const errorInputCls = '!border-red-500 focus:!ring-red-500/20';
 
   const isSubmitDisabled = !isValid || isSubmitting || isLoading || !hasPermission || (isCreateMode && (productsLoading || !!productsError || !selectedProductIds.length));
@@ -247,11 +246,11 @@ export function DealForm({
     <form
       ref={formRef}
       onSubmit={handleSubmit(onFormSubmit)}
-      className="flex flex-col h-full"
+      className="flex h-full min-h-0 flex-col"
       noValidate
     >
       {/* Scrollable Body */}
-      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+      <div className={panelBodyClass + " space-y-6"}>
         {/* Section 1: Pipeline & Stage (Create mode only — edit does not change pipeline/stage here) */}
         {isCreateMode && (
           <div className="space-y-4">
@@ -427,11 +426,11 @@ export function DealForm({
       </div>
 
       {/* Sticky Footer */}
-      <div className="shrink-0 px-6 py-4 border-t border-gray-200 dark:border-white/[0.06] bg-white dark:bg-slate-900 flex items-center justify-end gap-3">
+      <div className={panelFooterClass + " justify-end"}>
         <button
           type="button"
           onClick={onCancel}
-          className="px-5 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-white/[0.05] hover:bg-slate-200 dark:hover:bg-white/[0.08] border border-gray-200 dark:border-white/[0.08] rounded-xl transition-colors"
+          className={panelSecondaryActionClass}
         >
           Cancel
         </button>
@@ -440,7 +439,7 @@ export function DealForm({
             type="submit"
             disabled={isSubmitDisabled}
             className={cn(
-              'px-6 py-2.5 text-sm font-semibold text-white rounded-xl transition-all shadow-lg shadow-blue-500/25',
+              'h-[42px] px-6 py-2.5 text-sm font-semibold text-white rounded-xl transition-all shadow-lg shadow-blue-500/25',
               isSubmitDisabled
                 ? 'bg-blue-400 cursor-not-allowed opacity-60'
                 : 'bg-blue-600 hover:bg-blue-700 active:scale-95',
@@ -472,15 +471,7 @@ export function DealCreateForm({ onSave, onCancel }: LegacyDealCreateFormProps):
 // ── Reusable Helpers ───────────────────────────────────────────────────────
 
 function SectionHeader({ num, title }: { num: number; title: string }): React.ReactElement {
-  return (
-    <div className="flex items-center gap-3">
-      <div className="flex items-center justify-center w-6 h-6 rounded-full bg-indigo-600 text-white text-[11px] font-bold shrink-0">
-        {num}
-      </div>
-      <h3 className="text-sm font-bold text-slate-900 dark:text-white tracking-wide">{title}</h3>
-      <div className="flex-1 h-px bg-gray-200 dark:bg-white/[0.06]" />
-    </div>
-  );
+  return <PanelSectionHeading number={num}>{title}</PanelSectionHeading>;
 }
 
 function FieldWrap({ label, error, htmlFor, children }: { label: string; error?: string; htmlFor?: string; children: React.ReactNode }): React.ReactElement {

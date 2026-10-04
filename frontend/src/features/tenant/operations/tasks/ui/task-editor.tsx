@@ -1,4 +1,5 @@
 "use client";
+import { taskRecordOptions } from "../task-relations";
 import { useEffect, useId, useRef, useState } from "react";
 import {
   TASK_STATUSES,
@@ -410,37 +411,7 @@ export function TaskEditor({
                           (kind === "account" ? canAccounts : canContacts),
                       )
                       .map((kind) => {
-                        const options: TaskOption[] =
-                          kind === "lead"
-                            ? (
-                                task?.leads ?? (task?.lead ? [task.lead] : [])
-                              ).map((row) => ({
-                                id: row.id,
-                                label: row.firstName + " " + row.lastName,
-                              }))
-                            : kind === "contact"
-                              ? (
-                                  task?.contacts ??
-                                  (task?.contact ? [task.contact] : [])
-                                ).map((row) => ({
-                                  id: row.id,
-                                  label: row.firstName + " " + row.lastName,
-                                }))
-                              : kind === "deal"
-                                ? (
-                                    task?.deals ??
-                                    (task?.deal ? [task.deal] : [])
-                                  ).map((row) => ({
-                                    id: row.id,
-                                    label: row.title,
-                                  }))
-                                : (
-                                    task?.accounts ??
-                                    (task?.account ? [task.account] : [])
-                                  ).map((row) => ({
-                                    id: row.id,
-                                    label: row.name,
-                                  }));
+                        const options = taskRecordOptions(task, kind);
                         return (
                           <TaskSelector
                             appearance="panel"
@@ -489,6 +460,18 @@ export function TaskEditor({
                   </div>
                 </section>
               </fieldset>
+              {!!task?.relatedRecords?.length && (
+                <section aria-label="Related CRM records" className="space-y-3 rounded-xl border border-border p-4">
+                  <h3 className="text-sm font-semibold">Related CRM records</h3>
+                  <p className="text-xs text-muted-foreground">Connections from the records associated above. These do not change the task’s selected associations.</p>
+                  <ul className="space-y-3">
+                    {task.relatedRecords.map(record => <li key={record.kind + record.id} className="min-w-0 text-sm [overflow-wrap:anywhere]">
+                      <span className="capitalize text-muted-foreground">{record.kind}: </span>{record.label}
+                      <p className="text-xs text-muted-foreground">Via {record.via}</p>
+                    </li>)}
+                  </ul>
+                </section>
+              )}
               {task && (
                 <dl className="space-y-2 border-t border-border pt-4 text-xs text-muted-foreground">
                   <div>Created {new Date(task.createdAt).toLocaleString()}</div>

@@ -50,6 +50,8 @@ export async function findAllDeals(tenantId: string, params: DealsQueryParams) {
         pipeline:     true,
         assignedUser: { select: { id: true, firstName: true, lastName: true } },
         organization: { select: { id: true, name: true } },
+        lead: { select: { id: true, firstName: true, lastName: true } },
+        contact: { select: { id: true, firstName: true, lastName: true } },
         leadDeals: {
           include: { lead: { select: { id: true, firstName: true, lastName: true } } },
         },
@@ -310,6 +312,10 @@ export async function findDealsGroupedByStage(
         include: {
           stage: true,
           assignedUser: { select: { id: true, firstName: true, lastName: true } },
+          organization: { select: { id: true, name: true } },
+          lead: { select: { id: true, firstName: true, lastName: true } },
+          contact: { select: { id: true, firstName: true, lastName: true } },
+          contactDeals: { include: { contact: { select: { id: true, firstName: true, lastName: true } } } },
           leadDeals: {
             include: { lead: { select: { id: true, firstName: true, lastName: true } } },
           },

@@ -11,6 +11,7 @@ import {
   taskDateRange,
 } from "@leadcrm/shared";
 import type { Task } from "@/store/types";
+import { invalidatePageCache } from '@/shared/cache/page-cache';
 const api = vi.hoisted(() => ({ list: vi.fn(), summary: vi.fn() }));
 vi.mock("@/shared/services/tasks.api", () => ({ tasksApi: api }));
 import {
@@ -131,6 +132,18 @@ describe("Task query owner", () => {
     await expect(result.current.queryTasks()).resolves.toMatchObject({
       data: [],
     });
+  });
+  it('refreshes Task relationship labels when a CRM record changes', async () => {
+    api.list.mockResolvedValue({ data: [task], meta: { total: 1 } });
+    const { result } = renderHook(() => useTaskQueries('tenant:user', [], false));
+    await result.current.queryTasks({});
+    for (const module of ['leads', 'contacts', 'accounts', 'deals']) {
+      const previous = result.current.tasksRevision;
+      act(() => invalidatePageCache(module, 'tenant'));
+      expect(result.current.tasksRevision).toBe(previous + 1);
+      await result.current.queryTasks({});
+    }
+    expect(api.list).toHaveBeenCalledTimes(5);
   });
 });
 

@@ -1,5 +1,21 @@
 ﻿import { Request, Response, NextFunction } from "express";
 import * as service from "./tasks.service";
+import { hasModulePermission, type TaskRecord } from "@leadcrm/shared";
+import { findUserEffectivePermissions } from "../../administration/roles/roles.repository";
+
+async function visibleTaskContext(req: Request, tasks: TaskRecord[]): Promise<TaskRecord[]> {
+  if (req.user!.role === "Client Admin" || !tasks.some(task => task.relatedRecords?.length)) return tasks;
+  const permissions = await findUserEffectivePermissions(req.user!.userId, req.user!.tenantId);
+  return tasks.map(task => ({
+    ...task,
+    relatedRecords: task.relatedRecords?.filter(record =>
+      hasModulePermission(permissions, `${record.kind}s`, "canView")),
+  }));
+}
+
+async function serializeTaskResponse(req: Request, task: Parameters<typeof service.serializeTaskResponse>[0]) {
+  return (await visibleTaskContext(req, [await service.serializeTaskResponse(task)]))[0];
+}
 
 export async function getTasks(
   req: Request,
@@ -11,7 +27,7 @@ export async function getTasks(
       req.user!.tenantId,
       req.query as Record<string, unknown>,
     );
-    res.json({ success: true, ...result });
+    res.json({ success: true, ...result, data: await visibleTaskContext(req, result.data) });
   } catch (err) {
     next(err);
   }
@@ -25,7 +41,7 @@ export async function getTaskById(
   try {
     res.json({
       success: true,
-      data: service.serializeTask(
+      data: await serializeTaskResponse(req,
         await service.getTaskById(String(req.params.id), req.user!.tenantId),
       ),
     });
@@ -45,7 +61,7 @@ export async function createTask(
       req.user!.userId,
       req.body,
     );
-    res.status(201).json({ success: true, data: service.serializeTask(task) });
+    res.status(201).json({ success: true, data: await serializeTaskResponse(req, task) });
   } catch (err) {
     next(err);
   }
@@ -59,7 +75,7 @@ export async function updateTask(
   try {
     res.json({
       success: true,
-      data: service.serializeTask(
+      data: await serializeTaskResponse(req,
         await service.updateTask(
           String(req.params.id),
           req.user!.tenantId,
@@ -81,7 +97,7 @@ export async function completeTask(
   try {
     res.json({
       success: true,
-      data: service.serializeTask(
+      data: await serializeTaskResponse(req,
         await service.completeTask(
           String(req.params.id),
           req.user!.tenantId,

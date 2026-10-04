@@ -210,7 +210,7 @@ export default function ContactsPage(): React.ReactElement {
   const getAccountName = useCallback((contact: Contact): string => {
     const linked = organizations.find(org => org.id === (contact.accountId ?? contact.organizationId));
     const apiContact = contact as Contact & { account?: { name: string }; company?: string };
-    return linked?.name ?? contact.companyName ?? apiContact.account?.name ?? apiContact.company ?? '—';
+    return apiContact.account?.name || linked?.name || contact.companyName || apiContact.company || '—';
   }, [organizations]);
 
   // ── Pagination ───────────────────────────────────────────────────────
@@ -483,11 +483,11 @@ export default function ContactsPage(): React.ReactElement {
               className="bg-white dark:bg-slate-800/60 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-4 cursor-pointer hover:shadow-md hover:border-[#2563EB]/30 transition-all"
             >
               <div className="flex items-start gap-3 mb-3">
-                <div className="w-10 h-10 rounded-full bg-teal-500 flex items-center justify-center text-white font-bold text-[11px] shrink-0">
+                <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-[11px] shrink-0">
                   {getInitials(contact)}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-semibold text-[#0F172A] dark:text-white truncate">
+                  <p className="text-[13px] font-medium text-[#1a73e8] dark:text-blue-400 truncate hover:underline">
                     {getName(contact)}
                   </p>
                   <p className="text-[11.5px] text-[#2563EB] dark:text-blue-400 truncate font-medium">
@@ -521,11 +521,11 @@ export default function ContactsPage(): React.ReactElement {
               onClick={() => setSelectedContact(contact)}
               className="bg-white dark:bg-slate-800/60 border border-[#E4E9F0] dark:border-slate-700 rounded-xl p-3 cursor-pointer hover:shadow-md transition-all flex items-center gap-2.5"
             >
-              <div className="w-9 h-9 rounded-full bg-teal-500 flex items-center justify-center text-white font-bold text-[10px] shrink-0">
+              <div className="w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-[10px] shrink-0">
                 {getInitials(contact)}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-[12px] font-semibold text-[#0F172A] dark:text-white truncate">
+                <p className="text-[13px] font-medium text-[#1a73e8] dark:text-blue-400 truncate hover:underline">
                   {getName(contact)}
                 </p>
                 <p className="text-[10.5px] text-[#5A6B85] dark:text-slate-400 truncate">

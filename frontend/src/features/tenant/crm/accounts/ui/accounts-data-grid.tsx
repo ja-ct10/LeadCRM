@@ -104,11 +104,11 @@ export function AccountsDataGrid({
 
       return (
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className={`w-8 h-8 rounded-full ${MODULE_ACCENT_COLORS.accounts} flex items-center justify-center text-white font-bold text-[10px] shrink-0`}>
+          <div className={`w-7 h-7 rounded-full ${MODULE_ACCENT_COLORS.leads} flex items-center justify-center text-white font-bold text-[10px] shrink-0`}>
             {initials}
           </div>
           <div className="min-w-0">
-            <p className="text-[13px] font-semibold text-[#0F172A] dark:text-white truncate leading-tight">
+            <p className="text-[13px] font-medium text-[#1a73e8] dark:text-blue-400 truncate leading-tight hover:underline cursor-pointer">
               {row.name}
             </p>
             {row.city && (
@@ -122,33 +122,33 @@ export function AccountsDataGrid({
     },
 
     industry: (_value: unknown, row: Account) => (
-      <p className="text-[12.5px] text-[#0F172A] dark:text-slate-200 truncate">
+      <p className="text-[12.5px] text-[#3C4858] dark:text-slate-200 truncate">
         {row.industry ?? '—'}
       </p>
     ),
 
 
     size: (_value: unknown, row: Account) => (
-      <p className="text-[12.5px] text-[#0F172A] dark:text-slate-200 truncate">
+      <p className="text-[12.5px] text-[#3C4858] dark:text-slate-200 truncate">
         {row.size ?? '—'}
       </p>
     ),
 
     city: (_value: unknown, row: Account) => (
-      <p className="text-[12.5px] text-[#0F172A] dark:text-slate-200 truncate">
+      <p className="text-[12.5px] text-[#3C4858] dark:text-slate-200 truncate">
         {row.city ?? '—'}
       </p>
     ),
 
     country: (_value: unknown, row: Account) => (
-      <p className="text-[12.5px] text-[#0F172A] dark:text-slate-200 truncate">
+      <p className="text-[12.5px] text-[#3C4858] dark:text-slate-200 truncate">
         {row.country ?? '—'}
       </p>
     ),
 
     assignedUserId: (_value: unknown, row: Account) => (
       <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-        {getOwnerName(row.assignedUserId)}
+        {row.assignedUser ? `${row.assignedUser.firstName} ${row.assignedUser.lastName}`.trim() : getOwnerName(row.assignedUserId)}
       </p>
     ),
 

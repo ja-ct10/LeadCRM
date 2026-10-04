@@ -1,4 +1,5 @@
 'use client';
+import { panelThemeClass, panelHeaderClass, panelTitleClass, panelCloseClass } from '@/shared/components/side-panel-styles';
 
 import React, { ReactNode, useEffect } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
@@ -67,13 +68,13 @@ export function SlidingDrawer({
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 280 }}
-            className={`fixed inset-y-0 right-0 h-full ${width} bg-white dark:bg-slate-900 shadow-[0_0_50px_0_rgba(0,0,0,0.15)] dark:shadow-[0_0_50px_0_rgba(0,0,0,0.3)] z-[110] flex flex-col border-l border-slate-200 dark:border-white/10`}
+            className={`fixed inset-y-0 right-0 h-dvh ${width} ${panelThemeClass} shadow-[0_0_50px_0_rgba(0,0,0,0.15)] dark:shadow-[0_0_50px_0_rgba(0,0,0,0.3)] z-[110] flex flex-col border-l border-slate-200 dark:border-white/10`}
           >
             {/* Drawer Header */}
-            <div className="shrink-0 flex items-center justify-between px-4 sm:px-6 py-5 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.01]">
-              <div>
+            <div className={panelHeaderClass + " flex items-center justify-between gap-3"}>
+              <div className="min-w-0">
                 {title ? (
-                  <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">
+                  <h2 className={panelTitleClass}>
                     {title}
                   </h2>
                 ) : (
@@ -85,15 +86,15 @@ export function SlidingDrawer({
                   </p>
                 )}
               </div>
-              
+
               <div className="flex items-center gap-2">
                 {headerActions}
-                <ModalCloseButton onClose={onClose} ariaLabel="Close drawer" size={20} />
+                <ModalCloseButton onClose={onClose} ariaLabel="Close drawer" size={20} className={panelCloseClass + " grid place-items-center"} />
               </div>
             </div>
 
             {/* Scrollable Drawer Body Content */}
-            <div className="flex-1 overflow-y-auto min-h-0">
+            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain">
               {children}
             </div>
           </motion.div>

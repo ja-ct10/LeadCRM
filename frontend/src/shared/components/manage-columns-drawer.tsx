@@ -1,4 +1,5 @@
 'use client';
+import { panelThemeClass, panelHeaderClass, panelTitleClass, panelBodyClass, panelFooterClass, panelInputClass, panelCloseClass, panelPrimaryActionClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { GripVertical, Lock, X, Search } from 'lucide-react';
@@ -338,7 +339,7 @@ export function ManageColumnsDrawer({
     <div className="fixed inset-0 z-50 flex justify-end">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/50 dark:bg-black/70 transition-opacity"
+        className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm transition-opacity"
         onClick={handleClose}
         aria-hidden="true"
       />
@@ -349,26 +350,26 @@ export function ManageColumnsDrawer({
         aria-modal="true"
         aria-label={`Manage Columns - ${module}`}
         className={cn(
-          'relative w-full max-w-md bg-white dark:bg-gray-900 shadow-xl',
-          'flex flex-col h-full transition-transform duration-300',
+          'relative w-full max-w-md shadow-xl border-l', panelThemeClass,
+          'flex flex-col h-dvh transition-transform duration-300',
           'sm:max-w-md max-sm:max-w-full',
           isOpen ? 'translate-x-0' : 'translate-x-full'
         )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Manage Columns</h2>
+        <div className={panelHeaderClass + " flex items-center justify-between gap-3"}>
+          <h2 className={panelTitleClass}>Manage Columns</h2>
           <button
             type="button"
             onClick={handleClose}
-            className="p-2 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+            className={panelCloseClass + " grid place-items-center"}
             aria-label="Close drawer"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
         {/* Search */}
-        <div className="px-6 py-3 border-b border-gray-200 dark:border-gray-700">
+        <div className="shrink-0 border-b border-slate-100 px-4 py-4 sm:px-6 dark:border-white/5">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-gray-500" />
             <input
@@ -376,18 +377,13 @@ export function ManageColumnsDrawer({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search columns..."
-              className={cn(
-                'w-full pl-10 pr-4 py-2 rounded-md border text-sm',
-                'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800',
-                'text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500',
-                'focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400'
-              )}
+              className={panelInputClass + " pl-10"}
               aria-label="Search columns"
             />
           </div>
         </div>
         {/* Column List */}
-        <div className="flex-1 overflow-y-auto px-6 py-3">
+        <div className={panelBodyClass}>
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={displayColumnIds} strategy={verticalListSortingStrategy}>
               {groupedColumns.length > 0 ? (
@@ -449,11 +445,11 @@ export function ManageColumnsDrawer({
           </div>
         )}
         {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 dark:border-gray-700">
+        <div className={panelFooterClass + " justify-between"}>
           <button
             type="button"
             onClick={() => setShowResetConfirm(true)}
-            className="px-4 py-2 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+            className={panelSecondaryActionClass}
           >
             Reset to Default
           </button>
@@ -461,7 +457,7 @@ export function ManageColumnsDrawer({
             type="button"
             onClick={handleSave}
             disabled={!hasChanges || saveState === 'saving' || saveState === 'saved'}
-            className="px-4 py-2 text-sm font-medium rounded-md transition-colors text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            className={panelPrimaryActionClass}
           >
             {saveState === 'saving' && 'Saving...'}
             {saveState === 'saved' && 'Saved'}

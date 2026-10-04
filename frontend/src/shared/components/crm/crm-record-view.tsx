@@ -1,4 +1,5 @@
 'use client';
+import { panelSurfaceClass, panelHeaderClass, panelTitleClass, panelCloseClass } from '@/shared/components/side-panel-styles';
 
 import React, { useEffect, useId, useState } from 'react';
 import { DealClosingRequirements } from './deal-closing-requirements';
@@ -363,9 +364,9 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     </DropdownMenu>
   );
 
-  return <div className="flex h-full min-h-0 min-w-0 flex-col bg-background [--panel-gutter:1rem]">
+  return <div className={cn('flex h-full min-h-0 min-w-0 flex-col [--panel-gutter:1rem]', onClose ? 'bg-white dark:bg-slate-900 sm:[--panel-gutter:1.5rem]' : 'bg-background')}>
     <Tabs defaultValue="activity" value={tab} onValueChange={value => { setTab(value); if (value === 'details') setDetailsVisited(true); }} className="flex min-h-0 flex-1 flex-col">
-      <header className="@container max-h-[60dvh] shrink-0 overflow-y-auto border-b border-border bg-card p-3 sm:p-4">
+      <header className={cn('@container max-h-[60dvh] shrink-0 overflow-y-auto', onClose ? panelHeaderClass : 'border-b border-border bg-card p-3 sm:p-4')}>
         <div className={cn('mx-auto min-w-0', !onClose && 'max-w-[1440px]')}>
         {!onClose && (
           <div className="mb-3">
@@ -377,17 +378,17 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
         )}
         <div className="relative flex min-w-0 flex-wrap items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--primary)] text-sm font-semibold text-[var(--primary-foreground)]">{module === 'accounts' ? <Building size={20} /> : module === 'deals' ? title.split(/\s+/).slice(0, 2).map(word => word[0]).join('').toUpperCase() : `${text(record.firstName)[0] || ''}${text(record.lastName)[0] || ''}`}</div>
-          <div className="min-w-0 flex-1 basis-[calc(100%-64px)] pr-9 @min-[400px]:basis-0 @min-[400px]:pr-0">
+          <div className={cn('min-w-0 flex-1 basis-[calc(100%-64px)] @min-[400px]:basis-0 @min-[400px]:pr-0', onClose ? 'pr-11' : 'pr-9')}>
             <div className="mb-1 flex flex-wrap gap-1"><span className="rounded bg-[var(--primary)]/10 px-1.5 py-0.5 text-[9px] font-semibold tracking-wide text-[var(--primary)]">{label.toUpperCase()}</span>{source && <span className="max-w-full rounded border border-border px-1.5 py-0.5 text-[9px] text-muted-foreground [overflow-wrap:anywhere]">{source}</span>}</div>
-            <h1 className="text-base font-semibold leading-tight tracking-tight [overflow-wrap:anywhere] sm:text-lg">{title}</h1>
+            <h1 className={onClose ? panelTitleClass : 'text-base font-semibold leading-tight tracking-tight [overflow-wrap:anywhere] sm:text-lg'}>{title}</h1>
             {subtitle && <p className="mt-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">{subtitle}</p>}
             {onClose && <Link href={`/crm/${module}/${encodeURIComponent(id)}?from=${module}`} className="mt-1 inline-flex min-h-8 items-center gap-1 text-xs font-medium text-[var(--primary)]">Open full page <ExternalLink size={11} /></Link>}
           </div>
-          <div className="ml-[52px] flex min-w-0 max-w-[calc(100%-52px)] items-center gap-1.5 [&>div]:min-w-0 @min-[400px]:ml-0 @min-[400px]:pr-9">
+          <div className={cn('ml-[52px] flex min-w-0 max-w-[calc(100%-52px)] items-center gap-1.5 [&>div]:min-w-0 @min-[400px]:ml-0', onClose ? '@min-[400px]:pr-11' : '@min-[400px]:pr-9')}>
             {manageMenu}
             {module === 'deals' && <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="outline" size="icon" className="h-9 w-9 shrink-0" aria-label="Open messages" title="Open messages" onClick={() => router.push('/inbox')}><Inbox size={16} /></Button></TooltipTrigger><TooltipContent>Open messages</TooltipContent></Tooltip></TooltipProvider>}
             {status && (canEdit ? <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" disabled={saving} className={cn('min-h-9 min-w-0 max-w-full gap-1 rounded-lg text-xs', getCRMStatusStyles(statusLabel))}><span className="min-w-0 max-w-[90px] truncate @min-[400px]:max-w-[140px]">{statusLabel}</span><ChevronDown size={12} className="shrink-0" /></Button></DropdownMenuTrigger><DropdownMenuContent>{module === 'deals' ? dealStages.map(stage => <DropdownMenuItem key={stage.id} onSelect={() => { if (stage.id === record.stageId) return; if (stage.isLost) { setLostReason(''); setLostStage(stage.id); } else void changeStage(stage.id); }}>{stage.name}</DropdownMenuItem>) : statuses.map(option => <DropdownMenuItem key={option} onSelect={() => void save({ status: option })}>{option}</DropdownMenuItem>)}</DropdownMenuContent></DropdownMenu> : <span className={cn('rounded-lg px-2 py-1 text-xs', getCRMStatusStyles(statusLabel))}>{statusLabel}</span>)}
-            {onClose && <Button variant="ghost" size="icon" className="absolute right-0 top-0 h-9 w-9" onClick={onClose} aria-label="Close record" title="Close record"><X size={16} /></Button>}
+            {onClose && <Button variant="ghost" size="icon" className={panelCloseClass + " absolute -right-1 -top-1"} onClick={onClose} aria-label="Close record" title="Close record"><X size={16} /></Button>}
           </div>
         </div>
         <RecordQuickInfo items={[
@@ -413,13 +414,13 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
         </TabsList></div>
         </div>
       </header>
-      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/20">
+      <div className={cn('min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain', onClose ? 'bg-white dark:bg-slate-900' : 'bg-muted/20')}>
         <div className={cn('mx-auto w-full min-w-0', !onClose && 'max-w-[1440px]')}>
-          <TabsContent value="activity" forceMount className="m-0">
+          <TabsContent value="activity" forceMount className={cn('m-0', onClose && '[&>div]:px-[var(--panel-gutter)]')}>
             <RecordTimelineTab compact activities={timeline.activities} module={module} recordId={id} loading={activityLoading} error={activityError} onActivityCreated={refresh}
               tasks={<RecordSection title="Tasks" count={taskCount}><RelatedTasks links={links} onCountChange={setTaskCount} /></RecordSection>} />
           </TabsContent>
-          <TabsContent value="details" forceMount className="m-0 p-4"><div className="space-y-3">
+          <TabsContent value="details" forceMount className={cn('m-0 p-4', onClose && 'px-[var(--panel-gutter)]')}><div className="space-y-3">
             {module === 'deals' && !USE_MOCK_DATA && <DealClosingRequirements dealId={id} canEdit={canEdit} onSaved={() => { for (const key of ['deals', 'leads', 'contacts', 'accounts', 'activities']) invalidatePageCache(key, tenant?.id || user?.tenantId || ''); refresh(); }} />}
             <RecordSection title="About">
               <InlineEditRows rows={aboutRows} canEdit={canEdit && !USE_MOCK_DATA} onSave={saveField} />
@@ -444,7 +445,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
 
             {customFields && Object.keys(customFields).length > 0 && <RecordSection title="Custom fields" count={Object.keys(customFields).length}><RecordRows rows={Object.entries(customFields)} /></RecordSection>}
           </div></TabsContent>
-          <TabsContent value="files" className="m-0">
+          <TabsContent value="files" className={cn('m-0', onClose && '[&>div]:px-[var(--panel-gutter)]')}>
             <RecordFilesTab files={filesQuery.data ?? []} loading={filesQuery.isInitialLoad} error={filesQuery.error} onRetry={() => void filesQuery.refetch()}
               onUpload={canEdit && !USE_MOCK_DATA ? async file => {
                 const query = new URLSearchParams({ name: file.name, type: file.type || 'application/octet-stream' });
@@ -467,7 +468,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
 
 export function CrmRecordPanel({ module, id, open, onOpenChange, onEdit, focusClosing }: { module: CrmRecordModule; id?: string; open: boolean; onOpenChange: (open: boolean) => void; onEdit?: (record: RecordData) => void; focusClosing?: boolean }) {
   const { user } = useAuth();
-  return <Sheet open={open} onOpenChange={onOpenChange}><SheetContent showClose={false} aria-label={`${labels[module]} details`} className="w-full max-w-full sm:max-w-[480px]">
+  return <Sheet open={open} onOpenChange={onOpenChange}><SheetContent showClose={false} aria-label={`${labels[module]} details`} className={panelSurfaceClass}>
     {open && id && <CrmRecordView key={`${module}:${id}:${user?.id}`} module={module} id={id} onClose={() => onOpenChange(false)} onEdit={onEdit} focusClosing={focusClosing} />}
   </SheetContent></Sheet>;
 }

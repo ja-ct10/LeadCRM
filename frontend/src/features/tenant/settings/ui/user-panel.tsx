@@ -1,4 +1,5 @@
 'use client';
+import { PanelSectionHeading, panelBodyClass, panelFooterClass, panelPrimaryActionClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
 
 import { useAuth } from '@/store/AuthContext';
 import React, { useRef, useState } from 'react';
@@ -121,20 +122,20 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, initiallyEdi
   };
 
   return <SlidingDrawer isOpen onClose={() => { if (!busy) onClose(); }} title={creating ? 'New User' : 'User Details'} subtitle={creating ? 'Complete the user details below.' : undefined}>
-    {editing ? <form ref={form} onSubmit={save} noValidate className="flex flex-col min-h-full text-slate-900 dark:text-white">
-      <div className="p-4 sm:p-6 space-y-6 flex-1">
-        <section className="space-y-4"><h3 className="font-semibold">1. Basic Information</h3><div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{input('firstName', true)}{input('lastName', true)}{input('email', true)}{input('phone', creating)}</div></section>
-        <section className="space-y-4"><h3 className="font-semibold">2. Organization</h3>{input('role', true)}<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{input('jobTitle')}{input('department')}{!creating && input('status')}</div></section>
+    {editing ? <form ref={form} onSubmit={save} noValidate className="flex h-full min-h-0 flex-col text-slate-900 dark:text-white">
+      <div className={panelBodyClass + " space-y-6"}>
+        <section className="space-y-4"><PanelSectionHeading number={1}>Basic Information</PanelSectionHeading><div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{input('firstName', true)}{input('lastName', true)}{input('email', true)}{input('phone', creating)}</div></section>
+        <section className="space-y-4"><PanelSectionHeading number={2}>Organization</PanelSectionHeading>{input('role', true)}<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{input('jobTitle')}{input('department')}{!creating && input('status')}</div></section>
       </div>
-      <div className="sticky bottom-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700 p-4 flex flex-wrap justify-end gap-3">
-        <button type="button" disabled={busy} onClick={() => { if (creating) onClose(); else { setDraft(makeDraft(saved)); setErrors({}); setTouched({}); setEditing(false); } }} className="px-4 py-2 text-sm">Cancel</button>
-        <button disabled={busy} type="submit" className="flex items-center gap-2 rounded-lg px-4 py-2 bg-blue-600 text-white text-sm disabled:opacity-50">{busy && <Loader2 className="animate-spin" size={16} />}{creating ? 'Create User' : 'Save Changes'}</button>
+      <div className={panelFooterClass + " justify-end"}>
+        <button type="button" disabled={busy} onClick={() => { if (creating) onClose(); else { setDraft(makeDraft(saved)); setErrors({}); setTouched({}); setEditing(false); } }} className={panelSecondaryActionClass}>Cancel</button>
+        <button disabled={busy} type="submit" className={panelPrimaryActionClass}>{busy && <Loader2 className="animate-spin" size={16} />}{creating ? 'Create User' : 'Save Changes'}</button>
       </div>
-    </form> : <div className="flex flex-col min-h-full text-slate-900 dark:text-white">
-      <div className="p-4 sm:p-6 flex-1"><h3 className="font-semibold mb-5">Personal Information</h3><dl className="grid grid-cols-1 sm:grid-cols-2 gap-5">{(Object.keys(labels) as (keyof Draft)[]).map(key => <div key={key} className="min-w-0"><dt className="text-xs text-slate-500">{labels[key]}</dt><dd className="text-sm mt-1 break-words">{saved?.[key] || '—'}</dd></div>)}</dl></div>
-      {canChange && <div className="sticky bottom-0 bg-white dark:bg-slate-900 p-4 border-t border-slate-200 dark:border-slate-700 flex flex-wrap gap-3">
-        <button disabled={busy} onClick={() => setEditing(true)} className="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm">Edit User</button>
-        <button disabled={busy || !canEdit || saved?.status !== 'active'} onClick={resetPassword} className="border rounded-lg px-4 py-2 text-sm disabled:opacity-50">{busy ? 'Sending…' : 'Send Password Reset'}</button>
+    </form> : <div className="flex h-full min-h-0 flex-col text-slate-900 dark:text-white">
+      <div className={panelBodyClass}><h3 className="font-semibold mb-5">Personal Information</h3><dl className="grid grid-cols-1 sm:grid-cols-2 gap-5">{(Object.keys(labels) as (keyof Draft)[]).map(key => <div key={key} className="min-w-0"><dt className="text-xs text-slate-500">{labels[key]}</dt><dd className="text-sm mt-1 break-words">{saved?.[key] || '—'}</dd></div>)}</dl></div>
+      {canChange && <div className={panelFooterClass}>
+        <button disabled={busy} onClick={() => setEditing(true)} className={panelPrimaryActionClass}>Edit User</button>
+        <button disabled={busy || !canEdit || saved?.status !== 'active'} onClick={resetPassword} className={panelSecondaryActionClass}>{busy ? 'Sending…' : 'Send Password Reset'}</button>
       </div>}
     </div>}
   </SlidingDrawer>;

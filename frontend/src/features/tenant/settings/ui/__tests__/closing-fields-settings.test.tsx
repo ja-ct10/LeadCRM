@@ -8,11 +8,18 @@ const mocks = vi.hoisted(() => ({ post: vi.fn(), patch: vi.fn(), refetch: vi.fn(
 vi.mock('@/lib/api/client', () => ({ apiClient: mocks }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
 vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => ({ data: DEFAULT_CLOSING_FIELDS, refetch: mocks.refetch, isInitialLoad: false, error: null }) }));
-vi.mock('../deal-stage-automation-settings', () => ({ DealStageAutomationSettings: () => null }));
+vi.mock('../deal-stage-automation-settings', () => ({ DealStageAutomationSettings: () => <div>Deal Stage Automation</div> }));
 vi.mock('@/shared/components/sliding-drawer', () => ({ SlidingDrawer: ({ isOpen, title, children }: { isOpen: boolean; title: string; children: React.ReactNode }) => isOpen ? <section aria-label={title}><h2>{title}</h2>{children}</section> : null }));
 vi.mock('sonner', () => ({ toast: { success: mocks.success } }));
 beforeEach(() => { vi.clearAllMocks(); mocks.post.mockResolvedValue({ data: { id: 'new-id' } }); mocks.patch.mockResolvedValue({}); });
 afterEach(cleanup);
+
+it('exposes closing fields without the Deal Stage Automation settings card', () => {
+  render(<ClosingFieldsSettings />);
+  expect(screen.getByText('Closed Won Requirements')).toBeTruthy();
+  expect(screen.queryByText('Deal Stage Automation')).toBeNull();
+  expect(mocks.patch).not.toHaveBeenCalled();
+});
 
 it('edits the selected ID, then starts a clean create form without leaking values or validation', async () => {
   render(<ClosingFieldsSettings />);

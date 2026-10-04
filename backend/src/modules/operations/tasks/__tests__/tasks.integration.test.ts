@@ -174,7 +174,57 @@ describe.skipIf(!disposable)(
         await new Promise<void>((resolve) => server.close(() => resolve()));
       await prisma.$disconnect();
     });
-    it("persists links, completion, reassignment, reopen, archive, and audit through HTTP", async () => {
+    it('hydrates legacy Account-only tasks consistently in list and detail responses', async () => {
+      const task = await scope(() => prisma.task.create({ data: { ...draft('Legacy account task'), tenantId, accountId: account.id } }));
+      const detail = (await call(`/operations/tasks/${task.id}`)).body.data;
+      const listing = (await call('/operations/tasks?search=Legacy%20account%20task')).body.data[0];
+      for (const row of [detail, listing]) {
+        expect(row.account).toMatchObject({ id: account.id, name: account.name });
+        expect(row.accounts).toEqual([{ id: account.id, name: account.name }]);
+      }
+    });
+    it('shows a Deal task’s existing CRM connections without rewriting its selected associations', async () => {
+      const linkedLead = await scope(() => prisma.lead.create({ data: { tenantId, firstName: 'Workflow', lastName: 'Context' } }));
+      const linkedDeal = await scope(() => prisma.deal.create({ data: { tenantId, pipelineId: deal.pipelineId, stageId: deal.stageId, title: 'Linked task deal', leadId: linkedLead.id, contactId: contact.id, accountId: account.id } }));
+      const saved = await call('/operations/tasks', 'POST', { ...draft('Workflow context task'), dealId: linkedDeal.id });
+      expect(saved.status, JSON.stringify(saved.body)).toBe(201);
+      const task = saved.body.data;
+      const listing = (await call('/operations/tasks?search=Workflow%20context%20task')).body.data[0];
+      const detail = (await call(`/operations/tasks/${task.id}`)).body.data;
+      for (const row of [task, listing, detail]) {
+        expect(row.relatedRecords).toEqual(expect.arrayContaining([
+          expect.objectContaining({ kind: 'lead', id: linkedLead.id }), expect.objectContaining({ kind: 'contact', id: contact.id }), expect.objectContaining({ kind: 'account', id: account.id }),
+        ]));
+        expect(row.leadIds).toEqual([]);
+        expect(row.contactIds).toEqual([]);
+        expect(row.accountIds).toEqual([]);
+      }
+    });
+      it('limits additional CRM context to the reader’s module View permissions', async () => {
+        const linkedLead = await scope(() => prisma.lead.create({ data: { tenantId, firstName: 'Permission', lastName: 'Context' } }));
+        const linkedDeal = await scope(() => prisma.deal.create({ data: { tenantId, pipelineId: deal.pipelineId, stageId: deal.stageId, title: 'Permission context deal', leadId: linkedLead.id, contactId: contact.id, accountId: account.id } }));
+        const created = await call('/operations/tasks', 'POST', { ...draft('Permission context task'), dealId: linkedDeal.id });
+        expect(created.status).toBe(201);
+        const taskId = created.body.data.id;
+        for (const path of [`/operations/tasks/${taskId}`, '/operations/tasks?search=Permission%20context%20task']) {
+          const response = await call(path, 'GET', undefined, readerToken);
+          expect(response.status).toBe(200);
+          const task = Array.isArray(response.body.data) ? response.body.data[0] : response.body.data;
+          expect(task.relatedRecords).toEqual([]);
+          expect(task.dealIds).toEqual([linkedDeal.id]);
+        }
+        const viewer = await prisma.user.create({ data: { tenantId, role: 'Task Contact Reader', email: `task-context-${Date.now()}@camxian.com`, firstName: 'Context', lastName: 'Reader', emailVerified: new Date(), mustChangePassword: false } });
+        const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Task Contact Reader', permissions: { create: ['tasks', 'contacts'].map(module => ({ tenantId, module, canView: true })) } } });
+        await prisma.userRole.create({ data: { tenantId, userId: viewer.id, roleId: role.id } });
+        const viewerToken = (await issueAuthSession(viewer)).token;
+        for (const path of [`/operations/tasks/${taskId}`, '/operations/tasks?search=Permission%20context%20task']) {
+          const response = await call(path, 'GET', undefined, viewerToken);
+          expect(response.status).toBe(200);
+          const task = Array.isArray(response.body.data) ? response.body.data[0] : response.body.data;
+          expect(task.relatedRecords).toEqual([expect.objectContaining({ kind: 'contact', id: contact.id })]);
+        }
+      });
+      it("persists links, completion, reassignment, reopen, archive, and audit through HTTP", async () => {
       const created = await call("/operations/tasks", "POST", {
         ...draft(),
         leadId: lead.id,
