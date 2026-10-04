@@ -22,6 +22,7 @@ export interface Campaign {
   clickedCount?: number;
   engagement: number;
   createdAt: string;
+  sentAt?: string | null;
   isArchived?: boolean;
 }
 

@@ -18,6 +18,7 @@ import EmptyState from '@/shared/components/empty-state';
 import { FilterButton } from '@/shared/components/crm/filter-button';
 import { ModuleFilterRail } from '@/shared/components/crm/module-filter-rail';
 import { SideSheet } from '@/shared/components/side-sheet';
+import { CreateActionDropdown } from '@/shared/components/crm/module-workspace';
 import { CampaignReportView } from './campaign-report-view';
 import { CampaignBuilder } from './campaign-builder';
 
@@ -78,7 +79,6 @@ export default function CampaignsPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [filterSearchTerm, setFilterSearchTerm] = useState('');
   const [selectedCampaignForReport, setSelectedCampaignForReport] = useState<Campaign | null>(null);
-  const [activeMetricTab, setActiveMetricTab] = useState<'sent' | 'delivered' | 'opened' | 'clicked' | 'bounced'>('sent');
   
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [newTemplateType, setNewTemplateType] = useState<'Email' | 'SMS'>('Email');
@@ -188,8 +188,6 @@ export default function CampaignsPage() {
     return (
       <CampaignReportView
         campaign={selectedCampaignForReport}
-        activeMetricTab={activeMetricTab}
-        onMetricTabChange={setActiveMetricTab}
         onBack={() => setSelectedCampaignForReport(null)}
       />
     );
@@ -229,27 +227,13 @@ export default function CampaignsPage() {
           </span>
         </div>
         {canCreateCampaign && campaigns.length > 0 && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => {
-                    setEditingCampaign(undefined);
-                    setBuilderInitialType('Email');
-                    setBuilderInitialContent(undefined);
-                    setBuilderSubject('');
-                    setShowBuilder(true);
-                  }}
-                  aria-label="Create campaign"
-                  className="inline-flex h-9 w-9 sm:w-auto shrink-0 items-center justify-center gap-2 rounded-lg bg-blue-600 sm:px-4 text-sm font-semibold text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
-                >
-                  <Plus size={16} aria-hidden="true" />
-                  <span className="hidden sm:inline">Create Campaign</span>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Create Campaign</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <CreateActionDropdown primaryActionLabel="Create Campaign" onPrimaryAction={() => {
+            setEditingCampaign(undefined);
+            setBuilderInitialType('Email');
+            setBuilderInitialContent(undefined);
+            setBuilderSubject('');
+            setShowBuilder(true);
+          }} />
         )}
       </div>
 

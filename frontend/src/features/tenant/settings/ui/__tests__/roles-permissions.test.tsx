@@ -14,6 +14,7 @@ const savedRoles: object[] = [];
 let failure = '';
 let pending: Promise<void> | undefined;
 let holdCrm = false;
+let rolesPending: Promise<void> | undefined;
 const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
   const path = url.split('?')[0];
   if (holdCrm && path.endsWith('/crm/accounts')) return new Promise<never>(() => {});
@@ -27,14 +28,15 @@ const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
       savedRoles.push(data);
       return { ok: true, json: async () => ({ success: true, data }) };
     }
+    if (rolesPending) await rolesPending;
     return { ok: true, json: async () => ({ data: savedRoles }) };
   }
   return { ok: true, json: async () => ({ data: [], meta: { total: 0, totalPages: 0 } }) };
 });
-beforeEach(() => { localStorage.clear(); savedRoles.length = 0; failure = ''; pending = undefined; holdCrm = false; fetcher.mockClear(); vi.clearAllMocks(); vi.stubGlobal('fetch', fetcher); });
+beforeEach(() => { localStorage.clear(); savedRoles.length = 0; failure = ''; pending = undefined; rolesPending = undefined; holdCrm = false; fetcher.mockClear(); vi.clearAllMocks(); vi.stubGlobal('fetch', fetcher); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const mount = () => render(<DataProvider><RolesPermissions /></DataProvider>);
-async function open() { const view = mount(); fireEvent.click(await screen.findByRole('button', { name: 'Create Custom Role' })); return view; }
+async function open() { const view = mount(); const button = await screen.findByRole('button', { name: 'Create Custom Role' }); await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false)); fireEvent.click(button); return view; }
 const posts = () => fetcher.mock.calls.filter(([url, options]) => url.endsWith('/administration/roles') && options?.method === 'POST');
 it('blocks whitespace names with one inline error and no POST', async () => {
   await open(); fireEvent.change(screen.getByLabelText('Role Name *'), { target: { value: '   ' } });
@@ -117,4 +119,15 @@ it('toggles a role menu with a full pointer sequence, dismisses it, and opens on
   click(first); fireEvent.click(screen.getByRole('menuitem', { name: 'Edit Permissions' }));
   expect(screen.getByText('Edit Role')).toBeTruthy();
   expect(screen.queryByRole('menu')).toBeNull();
+});
+
+it('shows card-shaped skeletons while loading, then roles or the empty state', async () => {
+  let finish!: () => void; rolesPending = new Promise(resolve => { finish = resolve; });
+  mount();
+  const skeleton = await screen.findByRole('status', { name: 'Loading roles and permissions' });
+  expect(skeleton.querySelectorAll('[aria-hidden="true"]')).toHaveLength(3);
+  expect(skeleton.querySelectorAll('button')).toHaveLength(0);
+  expect(screen.queryByText('Loading roles and permissions…')).toBeNull();
+  await act(async () => finish()); await screen.findByText('No roles yet.');
+  expect(screen.queryByRole('status', { name: 'Loading roles and permissions' })).toBeNull();
 });

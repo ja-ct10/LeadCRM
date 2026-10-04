@@ -40,6 +40,13 @@ export function formatDate(value: string | Date | null | undefined): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+export function formatDateTime(value: string | Date | null | undefined): string {
+  if (!value) return '—';
+  const date = value instanceof Date ? value : new Date(value);
+  if (isNaN(date.getTime())) return '—';
+  return `${formatDate(date)}, ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+}
+
 /**
  * Renders a date cell with consistent styling and formatting.
  * Applies 12px font, muted text color, and truncation.

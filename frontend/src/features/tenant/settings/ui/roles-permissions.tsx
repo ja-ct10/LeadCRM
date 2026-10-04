@@ -365,8 +365,6 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
 
   useEffect(() => { setView('list'); setSelectedRole(null); onViewActiveChange?.(false); }, [tenant?.id]);
 
-  if (rolesLoading) return <p role="status" className="p-4 text-sm">Loading roles and permissions…</p>;
-  if (rolesError) return <div role="alert" className="p-4 space-y-3"><p>{rolesError}</p><Button variant="outline" onClick={() => void refreshRoles()}>Retry</Button></div>;
 
   // ── Editor views ─────────────────────────────────────────────────────────────
 
@@ -410,7 +408,7 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Manage team access and control what users can see and do.</p>
         </div>
         {canCreate && (
-          <Button onClick={openNew} className="shrink-0"><Plus size={16} /> Create Custom Role</Button>
+          <Button onClick={openNew} disabled={rolesLoading} className="shrink-0"><Plus size={16} /> Create Custom Role</Button>
         )}
       </div>
 
@@ -426,7 +424,16 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
       </div>
 
       {/* Role cards grid */}
-      <div className="pt-2">
+      {rolesError && <div role="alert" className="p-4 space-y-3 text-sm text-red-600 dark:text-red-400"><p>{rolesError}</p><Button variant="outline" disabled={rolesLoading} onClick={() => void refreshRoles()}>Retry</Button></div>}
+      <div className="pt-2" aria-busy={rolesLoading}>
+        {rolesLoading && !visibleRoles.length ? <div role="status" aria-label="Loading roles and permissions" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {Array.from({ length: 3 }, (_, index) => <div key={index} aria-hidden="true" className="rounded-2xl border border-gray-200 dark:border-[#262A33] bg-white dark:bg-[#16191E] p-5 shadow-sm">
+            <div className="flex gap-3 mb-3"><div className="h-10 w-10 shrink-0 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" /><div className="min-w-0 flex-1 space-y-2"><div className="h-5 w-3/4 animate-pulse rounded bg-slate-100 dark:bg-slate-800" /><div className="h-4 w-16 animate-pulse rounded bg-slate-100 dark:bg-slate-800" /></div><div className="h-7 w-7 animate-pulse rounded bg-slate-100 dark:bg-slate-800" /></div>
+            <div className="mb-6 space-y-2"><div className="h-4 w-full animate-pulse rounded bg-slate-100 dark:bg-slate-800" /><div className="h-4 w-2/3 animate-pulse rounded bg-slate-100 dark:bg-slate-800" /></div>
+            <div className="flex justify-between gap-4 border-t border-slate-100 dark:border-slate-800 pt-4"><div className="h-5 w-16 animate-pulse rounded bg-slate-100 dark:bg-slate-800" /><div className="h-5 w-24 animate-pulse rounded bg-slate-100 dark:bg-slate-800" /></div>
+          </div>)}
+        </div> : <>
+        {!rolesError && !visibleRoles.length && <p className="py-8 text-center text-sm text-slate-500">No roles yet.</p>}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {visibleRoles.map((role, index) => {
             const roleUserCount = users.filter((u) => !u.isArchived && u.role === role.name).length;
@@ -506,7 +513,7 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
                 </p>
 
                 {/* Stats Footer */}
-                <div className="pt-4 mt-auto border-t border-slate-100 dark:border-white/[0.04] flex items-center justify-between text-sm">
+                <div className="pt-4 mt-auto border-t border-slate-100 dark:border-white/[0.04] flex flex-wrap gap-2 items-center justify-between text-sm">
                   <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
                     <Users size={14} className="text-slate-400 dark:text-slate-500" />
                     {roleUserCount > 0 ? (
@@ -524,6 +531,7 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
             );
           })}
         </div>
+        </>}
       </div>
 
       {/* Delete confirm modal */}

@@ -33,3 +33,4 @@ export * from './contracts/deal-stage-automation';
 export * from './contracts/notifications';
 
 export * from './contracts/module-table-columns';
+export * from './contracts/group.contract';

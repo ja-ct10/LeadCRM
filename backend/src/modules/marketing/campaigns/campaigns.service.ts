@@ -10,6 +10,53 @@ import { getPaginationParams, paginate } from '../../../shared/helpers/paginatio
 import { sendMail, assertBrevoConfigured, EmailSubmissionError } from '../../../shared/services/email.service';
 import { audienceDefinition, campaignScope, resolveAudience } from './audiences.service';
 import { sanitizeCampaignHtml, renderCampaignMessage } from './campaign-content';
+import { findCampaignReport } from './campaigns.repository';
+import type { CampaignRecipient, CampaignClickedLink } from '@leadcrm/shared';
+
+export async function getCampaignReport(id: string, tenantId: string) {
+  const report = await findCampaignReport(id, tenantId);
+  if (!report) throw new AppError('Campaign not found.', 404);
+  const { campaignContacts, emailDeliveryLogs, ...campaign } = report;
+  const latestByEmail = new Map<string, number>();
+  const links = new Map<string, { emails: Set<string>; total: number; last: number }>();
+  for (const log of emailDeliveryLogs) {
+    const email = log.toEmail.toLowerCase();
+    for (const event of log.EmailEvent) {
+      const time = event.createdAt.getTime();
+      latestByEmail.set(email, Math.max(latestByEmail.get(email) ?? 0, time));
+      if (event.eventType !== 'click' || !event.url) continue;
+      try { if (!['http:', 'https:'].includes(new URL(event.url).protocol)) continue; } catch { continue; }
+      const link = links.get(event.url) ?? { emails: new Set<string>(), total: 0, last: 0 };
+      link.emails.add(email); link.total++; link.last = Math.max(link.last, time);
+      links.set(event.url, link);
+    }
+  }
+  const recipients: CampaignRecipient[] = campaignContacts.map(recipient => {
+    const person = recipient.contact ?? recipient.lead;
+    const snapshot = recipient.personalization as Record<string, unknown> | null;
+    const name = person?.tenantId === tenantId ? `${person.firstName} ${person.lastName}`.trim()
+      : [snapshot?.first_name, snapshot?.last_name].filter(value => typeof value === 'string').join(' ').trim();
+    const last = Math.max(latestByEmail.get((recipient.email ?? '').toLowerCase()) ?? 0,
+      ...[recipient.sentAt, recipient.deliveredAt, recipient.openedAt, recipient.clickedAt, recipient.bouncedAt].map(at => at?.getTime() ?? 0));
+    return {
+      id: recipient.id, name: name || recipient.email || 'Unknown recipient', email: recipient.email ?? '',
+      deliveryStatus: recipient.bouncedAt ? 'Bounced' : recipient.deliveredAt ? 'Delivered'
+        : ['failed', 'error', 'invalid_email'].includes(recipient.status) ? 'Failed' : recipient.sentAt ? 'Submitted' : 'Pending',
+      opened: !!recipient.openedAt, clicked: !!recipient.clickedAt,
+      lastActivity: last ? new Date(last).toISOString() : null, failureReason: recipient.failureReason,
+    };
+  });
+  const topLinks: CampaignClickedLink[] = [...links].map(([url, link]) => ({
+    url, uniqueClicks: link.emails.size, totalClicks: link.total,
+    clickRate: campaign.recipientCount ? link.emails.size / campaign.recipientCount * 100 : 0,
+    lastClicked: new Date(link.last).toISOString(),
+  })).sort((a, b) => b.uniqueClicks - a.uniqueClicks || b.totalClicks - a.totalClicks || a.url.localeCompare(b.url));
+  return { ...campaign, recipients, topLinks, sendResult: campaignSendResult(campaign),
+    deliveredCount: recipients.filter(row => row.deliveryStatus === 'Delivered').length,
+    bouncedCount: recipients.filter(row => row.deliveryStatus === 'Bounced').length,
+    openedCount: recipients.filter(row => row.opened).length, clickedCount: recipients.filter(row => row.clicked).length,
+  };
+}
 
 export async function getCampaigns(tenantId: string, query: Record<string, unknown>) {
   const { page, limit } = getPaginationParams(query);

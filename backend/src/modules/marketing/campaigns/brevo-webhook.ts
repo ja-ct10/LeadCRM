@@ -10,6 +10,8 @@ export const BrevoEventSchema = z.object({
   event: z.enum(['request', 'delivered', 'opened', 'unique_opened', 'click', 'soft_bounce', 'hard_bounce', 'blocked', 'spam', 'unsubscribed', 'invalid_email', 'error', 'deferred']),
   email: z.string().trim().email().max(254), 'message-id': z.string().min(1).max(500),
   ts_event: z.number().int().nonnegative().optional(),
+  ts_epoch: z.number().int().nonnegative().optional(),
+  link: z.string().max(8192).optional(),
 });
 export function verifyWebhookAuthorization(header?: string) {
   const token = process.env.BREVO_WEBHOOK_TOKEN;
@@ -31,9 +33,14 @@ export async function processBrevoEvent(input: unknown) {
     await prisma.$transaction(async tx => {
       // Serialize events for this campaign so aggregate counters cannot overwrite newer values.
       await tx.campaign.update({ where: { id: log.campaignId!, ...scope }, data: { engagement: { increment: 0 } } });
-      const inserted = await tx.emailEvent.createMany({ data: [{ ...scope, deliveryLogId: log.id, eventType: type, providerEventKey: `${log.id}:${type}` }], skipDuplicates: true });
-      if (!inserted.count) return;
       const at = event.ts_event && event.ts_event <= Date.now() / 1000 + 300 ? new Date(event.ts_event * 1000) : new Date();
+      // Retain separate click events; retries must not inflate link totals.
+      const eventKey = type === 'click' && event.link
+        ? `${log.id}:click:${createHash('sha256').update(JSON.stringify([event.link ?? '', event.ts_epoch ?? event.ts_event ?? null])).digest('hex')}`
+        : `${log.id}:${type}`;
+      const inserted = await tx.emailEvent.createMany({ data: [{ ...scope, deliveryLogId: log.id, eventType: type,
+        url: type === 'click' ? event.link : undefined, createdAt: at, providerEventKey: eventKey }], skipDuplicates: true });
+      if (!inserted.count) return;
       const blocked = ['hard_bounce', 'blocked', 'spam', 'invalid_email'].includes(type);
       const bounced = blocked || type === 'soft_bounce';
       const current = await tx.emailDeliveryLog.findFirstOrThrow({ where: { id: log.id, ...scope } });

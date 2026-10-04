@@ -1,12 +1,13 @@
 'use client';
 
 import { apiClient } from '@/lib/api/client';
-import type { Campaign as ApiCampaign, CampaignDetailResponse as ApiCampaignDetailResponse, CreateCampaignInput, CampaignSendResult } from '@leadcrm/shared';
+import type { Campaign as ApiCampaign, CampaignDetailResponse as ApiCampaignDetailResponse, CampaignReportResponse as ApiCampaignReportResponse, CreateCampaignInput, CampaignSendResult } from '@leadcrm/shared';
 import type { Campaign } from '@/store/types';
 
 export interface CampaignsResponse { success: boolean; data: Campaign[]; meta: { total: number; page: number; limit: number; hasMore: boolean }; }
 export interface CampaignResponse  { success: boolean; data: Campaign; }
 export interface CampaignDetailResponse { success: boolean; data: Campaign & Pick<ApiCampaignDetailResponse['data'], 'sendResult'>; }
+export interface CampaignReportResponse { success: boolean; data: Campaign & Pick<ApiCampaignReportResponse['data'], 'sendResult' | 'recipients' | 'topLinks' | 'deliveredCount' | 'bouncedCount'>; }
 
 function buildQuery(params: Record<string, unknown>): string {
   const q = new URLSearchParams();
@@ -23,9 +24,9 @@ function normalize(c: ApiCampaign & { targetAudience?: { name: string }; deliver
 }
 export const campaignsApi = {
   duplicate: (id: string) => apiClient.post('/marketing/campaigns/' + id + '/duplicate', {}),
-  report: async (id: string): Promise<CampaignDetailResponse> => {
-    const res = await apiClient.get<ApiCampaignDetailResponse>('/marketing/campaigns/' + id + '/report');
-    return { ...res, data: { ...normalize(res.data), sendResult: res.data.sendResult } };
+  report: async (id: string): Promise<CampaignReportResponse> => {
+    const res = await apiClient.get<ApiCampaignReportResponse>('/marketing/campaigns/' + id + '/report');
+    return { ...res, data: { ...normalize(res.data), sendResult: res.data.sendResult, recipients: res.data.recipients, topLinks: res.data.topLinks, deliveredCount: res.data.deliveredCount, bouncedCount: res.data.bouncedCount } };
   },
   list: async (query: Record<string, unknown> = {}): Promise<CampaignsResponse> => {
     const res = await apiClient.get<{ success: boolean; data: ApiCampaign[]; meta: CampaignsResponse['meta'] }>(`/marketing/campaigns${buildQuery(query)}`);

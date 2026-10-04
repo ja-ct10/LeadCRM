@@ -290,6 +290,34 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     const foreign = await scoped(() => createTemplate(otherTenantId, userId, { name: 'Foreign', type: 'Email', subject: 'Hi', content: 'Hello' }), otherTenantId);
     await expect(scoped(() => createCampaign(tenantId, userId, { name: 'Invalid', type: 'EMAIL', emailTemplateId: foreign.id }))).rejects.toMatchObject({ statusCode: 404 });
   });
+  it('returns scoped recipients, saved audience, distinct links and repeat-click totals through the report route', async () => {
+    const campaign = await draft(); await scoped(() => sendCampaign(campaign.id, tenantId, userId));
+    const logs = await prisma.emailDeliveryLog.findMany({ where: { campaignId: campaign.id }, orderBy: { toEmail: 'asc' } });
+    const started = Math.floor(Date.now() / 1000) - 120;
+    await scoped(() => prisma.campaignContact.updateMany({ where: { campaignId: campaign.id, tenantId }, data: { sentAt: new Date((started - 10) * 1000) } }));
+    const payload = { email: logs[0].toEmail, 'message-id': logs[0].brevoMessageId!, ts_event: started };
+    await processBrevoEvent({ ...payload, event: 'delivered' });
+    await processBrevoEvent({ ...payload, event: 'opened', ts_event: started + 1 });
+    const click = { ...payload, event: 'click', link: 'https://camxian.com/cctv', ts_event: started + 2 };
+    await processBrevoEvent(click); await processBrevoEvent(click);
+    await processBrevoEvent({ ...click, ts_event: started + 3 });
+    await processBrevoEvent({ ...click, link: 'https://camxian.com/security', ts_event: started + 4 });
+    await processBrevoEvent({ ...click, link: 'javascript:alert(1)', ts_event: started + 5 });
+    await processBrevoEvent({ email: logs[1].toEmail, 'message-id': logs[1].brevoMessageId!, event: 'hard_bounce', ts_event: started + 6 });
+    const result = await request(`/marketing/campaigns/${campaign.id}/report`);
+    expect(result.status).toBe(200);
+    expect(result.body.data).toMatchObject({ recipientCount: 2, deliveredCount: 1, bouncedCount: 1, openedCount: 1, clickedCount: 1, targetAudience: { name: 'All Leads & Contacts' } });
+    expect(result.body.data.recipients).toHaveLength(2);
+    expect(result.body.data.recipients.find((row: { email: string }) => row.email === logs[0].toEmail)).toMatchObject({ name: expect.any(String), deliveryStatus: 'Delivered', opened: true, clicked: true, lastActivity: new Date((started + 5) * 1000).toISOString() });
+    expect(result.body.data.recipients.find((row: { email: string }) => row.email === logs[1].toEmail)).toMatchObject({ deliveryStatus: 'Bounced', opened: false, clicked: false });
+    expect(result.body.data.topLinks).toEqual([
+      { url: 'https://camxian.com/cctv', uniqueClicks: 1, totalClicks: 2, clickRate: 50, lastClicked: new Date((started + 3) * 1000).toISOString() },
+      { url: 'https://camxian.com/security', uniqueClicks: 1, totalClicks: 1, clickRate: 50, lastClicked: new Date((started + 4) * 1000).toISOString() },
+    ]);
+    expect((await request(`/marketing/campaigns/${campaign.id}/report`, 'GET', undefined, deniedToken)).status).toBe(403);
+    const foreign = await scoped(() => createCampaign(otherTenantId, userId, { name: 'Private report', type: 'EMAIL' }), otherTenantId);
+    expect((await request(`/marketing/campaigns/${foreign.id}/report`)).status).toBe(404);
+  });
   it('authenticates webhooks, deduplicates events and suppresses unsubscribed emails', async () => {
     const campaign = await draft(); await scoped(() => sendCampaign(campaign.id, tenantId, userId));
     const log = await prisma.emailDeliveryLog.findFirstOrThrow({ where: { campaignId: campaign.id } });

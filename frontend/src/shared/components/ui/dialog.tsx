@@ -90,17 +90,36 @@ export function DialogTrigger({
 
 export interface DialogContentProps extends React.HTMLAttributes<HTMLDivElement> {
   showClose?: boolean;
+  trapFocus?: boolean;
   children: React.ReactNode;
 }
 
 export const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
-  ({ className, children, showClose = true, ...props }, ref) => {
+  ({ className, children, showClose = true, trapFocus = false, ...props }, ref) => {
     const { open, onOpenChange } = useDialog();
     const [mounted, setMounted] = React.useState(false);
+    const panelRef = React.useRef<HTMLDivElement | null>(null);
 
     React.useEffect(() => {
       setMounted(true);
     }, []);
+
+    React.useEffect(() => {
+      if (!open || !mounted || !trapFocus) return;
+      const previous = document.activeElement as HTMLElement | null;
+      const panel = panelRef.current;
+      const focusable = () => Array.from(panel?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]') ?? []);
+      if (panel && !panel.contains(document.activeElement)) (focusable()[0] ?? panel).focus();
+      const onKeyDown = (event: KeyboardEvent) => {
+        if (event.key !== 'Tab' || !panel) return;
+        const elements = focusable(), first = elements[0], last = elements[elements.length - 1];
+        if (!first) { event.preventDefault(); panel.focus(); }
+        else if (event.shiftKey && (document.activeElement === first || !panel.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && (document.activeElement === last || !panel.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
+      };
+      document.addEventListener('keydown', onKeyDown);
+      return () => { document.removeEventListener('keydown', onKeyDown); if (previous?.isConnected) previous.focus(); };
+    }, [open, mounted, trapFocus]);
 
     // Handle Escape key
     React.useEffect(() => {
@@ -133,7 +152,12 @@ export const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps
 
             {/* Dialog Panel */}
             <motion.div
-              ref={ref}
+              ref={node => {
+                panelRef.current = node;
+                if (typeof ref === 'function') ref(node);
+                else if (ref) ref.current = node;
+              }}
+              tabIndex={trapFocus ? -1 : undefined}
               role="dialog"
               aria-modal="true"
               initial={{ opacity: 0, scale: 0.95, y: 8 }}
