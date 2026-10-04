@@ -30,11 +30,11 @@ it('opens the chosen template at its original catalog index and supports startin
   Element.prototype.scrollTo = vi.fn();
   render(<WorkflowsPage />); await screen.findByRole('grid');
   fireEvent.click(screen.getByRole('button', { name: /Create workflow/i }));
-  fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Contact Welcome & Check-in Email' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Preview Contact Welcome & Check-in Email' }));
+  fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Qualified Deal Follow-up' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Preview Qualified Deal Follow-up' }));
   expect(push).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Use this template' }));
-  expect(push).toHaveBeenCalledExactlyOnceWith('/automation/workflows/new?template=12');
+  expect(push).toHaveBeenCalledExactlyOnceWith('/automation/workflows/new?template=22');
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   fireEvent.click(screen.getByRole('button', { name: /Create workflow/i }));
   fireEvent.click(screen.getByRole('button', { name: 'Start from scratch' }));

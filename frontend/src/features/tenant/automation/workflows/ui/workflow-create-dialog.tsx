@@ -7,7 +7,7 @@ import type { ActionDefinition, TriggerDefinition, WorkflowEntity } from '@leadc
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/shared/components/ui/dialog';
-import { WORKFLOW_RECIPES } from '../services/workflow-recipes';
+import { WORKFLOW_STARTER_TEMPLATES } from '../services/workflow-recipes';
 import { actionSummary, workflowActionLabel } from '../services/workflow-editor';
 import { templateAvailability, templateConditionLabel, templateSetup, workflowRecordLabels } from '../services/workflow-template-catalog';
 import { emptyOptions, workflowControl } from './workflow-fields';
@@ -74,7 +74,7 @@ export function WorkflowCreateDialog({ triggers, actions, onClose, onChoose }: P
     previousTemplate.current = selected;
   }, [selected]);
 
-  const catalog = useMemo(() => WORKFLOW_RECIPES.map((recipe, index) => {
+  const catalog = useMemo(() => WORKFLOW_STARTER_TEMPLATES.map(({ recipe, index }) => {
     const trigger = triggers.find(entry => entry.type === recipe.trigger);
     return { recipe, index, trigger, issues: templateAvailability(recipe, triggers, actions) };
   }), [triggers, actions]);
@@ -85,12 +85,13 @@ export function WorkflowCreateDialog({ triggers, actions, onClose, onChoose }: P
     (action === 'all' || recipe.actions.some(entry => entry.type === action)) &&
     `${recipe.name} ${recipe.description ?? ''} ${trigger?.label ?? ''} ${recipe.actions.map(entry => workflowActionLabel(entry.type)).join(' ')}`.toLowerCase().includes(query),
   );
-  const current = selected === null ? undefined : catalog[selected];
+  const current = catalog.find(entry => entry.index === selected);
   const hasFilters = !!search || record !== 'all' || action !== 'all';
   const clear = () => { setSearch(''); setRecord('all'); setAction('all'); searchInput.current?.focus(); };
 
   async function choose(index?: number) {
-    if (lock.current || (index !== undefined && catalog[index]?.issues.length)) return;
+    const template = catalog.find(entry => entry.index === index);
+    if (lock.current || (index !== undefined && (!template || template.issues.length))) return;
     lock.current = true; setOpening(true); setError('');
     try { await onChoose(index); }
     catch (failure) {

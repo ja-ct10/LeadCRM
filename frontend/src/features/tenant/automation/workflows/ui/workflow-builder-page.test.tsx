@@ -15,12 +15,12 @@ vi.mock('./visual-workflow-builder', () => ({ default: ({ initial }: { initial: 
 beforeEach(() => { vi.clearAllMocks(); navigation.query = new URLSearchParams(); });
 afterEach(cleanup);
 
-it('loads the selected template from the URL without changing its source definition', async () => {
-  navigation.query.set('template', '12');
-  const original = structuredClone(WORKFLOW_RECIPES[12]);
+it.each(WORKFLOW_RECIPES.map((recipe, index) => [recipe.name, index] as const))('preserves the existing URL for %s even when omitted from the chooser', async (name, index) => {
+  navigation.query.set('template', String(index));
+  const original = structuredClone(WORKFLOW_RECIPES[index]);
   render(<WorkflowBuilderPage />);
-  expect((await screen.findByTestId('loaded-template')).textContent).toBe('Contact Welcome & Check-in Email');
-  expect(WORKFLOW_RECIPES[12]).toEqual(original);
+  expect((await screen.findByTestId('loaded-template')).textContent).toBe(name);
+  expect(WORKFLOW_RECIPES[index]).toEqual(original);
 });
 
 it.each(['-1', '999', '1.5', 'unknown', ''])('rejects unavailable template URL %s with recovery navigation', async value => {

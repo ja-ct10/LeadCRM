@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { getAvailableActions, WORKFLOW_TRIGGERS } from '@leadcrm/shared';
 import { toast } from 'sonner';
 import { WorkflowCreateDialog } from './workflow-create-dialog';
-import { WORKFLOW_RECIPES } from '../services/workflow-recipes';
+import { WORKFLOW_RECIPES, WORKFLOW_STARTER_TEMPLATES } from '../services/workflow-recipes';
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 beforeEach(() => { Element.prototype.scrollTo = vi.fn(); });
@@ -15,7 +15,7 @@ function setup(overrides: Partial<React.ComponentProps<typeof WorkflowCreateDial
   return { onChoose, onClose };
 }
 
-it.each(WORKFLOW_RECIPES.map((recipe, index) => [recipe.name, index] as const))('previews and opens the original index for %s after filtering', async (name, index) => {
+it.each(WORKFLOW_STARTER_TEMPLATES.map(({ recipe, index }) => [recipe.name, index] as const))('previews and opens the original index for %s after filtering', async (name, index) => {
   const { onChoose } = setup();
   fireEvent.change(screen.getByRole('searchbox'), { target: { value: ` ${name.toUpperCase()} ` } });
   fireEvent.click(screen.getByRole('button', { name: `Preview ${name}` }));
@@ -27,21 +27,34 @@ it.each(WORKFLOW_RECIPES.map((recipe, index) => [recipe.name, index] as const))(
   expect(toast.success).not.toHaveBeenCalled();
 });
 
+it('shows only the nine approved starters and excludes removed templates from search', () => {
+  setup();
+  expect(screen.getByRole('status').textContent).toBe('9 templates available');
+  expect(screen.getAllByRole('button', { name: /^Preview / })).toHaveLength(9);
+  const starters = new Set(WORKFLOW_STARTER_TEMPLATES.map(entry => entry.index));
+  WORKFLOW_RECIPES.forEach((recipe, index) => {
+    if (starters.has(index)) return;
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: recipe.name } });
+    expect(screen.queryByRole('button', { name: `Preview ${recipe.name}` })).toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('0 templates of 9');
+  });
+});
+
 it('combines record, action, and text filters; returns to the same result and focus; clears empty SMS results', () => {
   setup();
-  fireEvent.change(screen.getByLabelText('Record type'), { target: { value: 'contact' } });
+  fireEvent.change(screen.getByLabelText('Record type'), { target: { value: 'lead' } });
   fireEvent.change(screen.getByLabelText('Action'), { target: { value: 'send_email' } });
-  expect(screen.getByRole('status').textContent).toBe('1 template of 23');
-  const name = 'Preview Contact Welcome & Check-in Email';
+  expect(screen.getByRole('status').textContent).toBe('1 template of 9');
+  const name = 'Preview New Lead Email Welcome';
   fireEvent.click(screen.getByRole('button', { name }));
   expect(screen.getByText(/connect the selected sender to Gmail/)).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'All templates' }));
   expect(document.activeElement).toBe(screen.getByRole('button', { name }));
-  expect((screen.getByLabelText('Record type') as HTMLSelectElement).value).toBe('contact');
+  expect((screen.getByLabelText('Record type') as HTMLSelectElement).value).toBe('lead');
   fireEvent.change(screen.getByLabelText('Action'), { target: { value: 'send_sms' } });
   expect(screen.getByText(/No SMS templates are included yet/)).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
-  expect(screen.getAllByRole('button', { name: /^Preview / })).toHaveLength(23);
+  expect(screen.getAllByRole('button', { name: /^Preview / })).toHaveLength(9);
   expect(document.activeElement).toBe(screen.getByRole('searchbox'));
 });
 

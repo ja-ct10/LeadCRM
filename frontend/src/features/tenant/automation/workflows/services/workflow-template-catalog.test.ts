@@ -1,12 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import { CRM_STATUSES, getAvailableActions, WORKFLOW_TRIGGERS, WorkflowDraftSchema } from '@leadcrm/shared';
 import { editorDocument, editorIssues } from './workflow-editor';
-import { prepareWorkflowRecipe, WORKFLOW_RECIPES } from './workflow-recipes';
+import { prepareWorkflowRecipe, WORKFLOW_RECIPES, WORKFLOW_STARTER_TEMPLATES } from './workflow-recipes';
 import { templateAvailability, templateConditionLabel, templateSetup } from './workflow-template-catalog';
 const userId = '30000000-0000-4000-8000-000000000001';
 const stageId = '30000000-0000-4000-8000-000000000002';
 const options = { users: [{ id: userId, name: 'Agent' }], pipelines: [{ id: '30000000-0000-4000-8000-000000000003', name: 'Sales', stages: [{ id: stageId, name: 'Qualified' }] }], templates: [], campaigns: [] };
 describe('complete workflow recipe catalog', () => {
+  it('retains the approved starters in display order with stable template URL indexes', () => {
+    expect(WORKFLOW_STARTER_TEMPLATES.map(({ index, recipe }) => [index, recipe.name])).toEqual([
+      [0, 'New Lead Follow-up'],
+      [1, 'Hot Lead Urgent Response'],
+      [7, 'New Lead Email Welcome'],
+      [8, 'Contact Onboarding Handoff'],
+      [10, 'At-Risk Contact Follow-up'],
+      [22, 'Qualified Deal Follow-up'],
+      [13, 'High-value Deal Review'],
+      [18, 'Won Deal Handoff'],
+      [20, 'Lost Deal Win/Loss Analysis'],
+    ]);
+  });
   it.each(WORKFLOW_RECIPES)('$name matches supported metadata and validates after configuring references', recipe => {
     const original = structuredClone(recipe);
     const actions = getAvailableActions();
