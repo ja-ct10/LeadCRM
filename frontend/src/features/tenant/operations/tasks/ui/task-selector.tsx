@@ -7,6 +7,7 @@ import { useAuth } from "@/store/AuthContext";
 import { tasksApi } from "@/shared/services/tasks.api";
 import { USE_MOCK_DATA } from "@/lib/config";
 import { Button } from "@/shared/components/ui/button";
+import { panelInputClass, panelLabelClass } from "@/shared/components/side-panel-styles";
 export const taskInputClass =
   "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 type TaskSelectorProps = {
@@ -18,6 +19,7 @@ type TaskSelectorProps = {
   required?: boolean;
   disabled?: boolean;
   leadIds?: string[];
+  appearance?: "panel";
 } & (
   | { multiple: true; value: string[]; onChange: (value: string[]) => void }
   | { multiple?: false; value: string; onChange: (value: string) => void }
@@ -33,7 +35,9 @@ export function TaskSelector(props: TaskSelectorProps) {
     required = false,
     disabled = false,
     leadIds = [],
+    appearance,
   } = props;
+  const inputClass = appearance === "panel" ? panelInputClass : taskInputClass;
   const selectedIds = Array.isArray(value) ? value : value ? [value] : [];
   const leadKey = JSON.stringify(leadIds);
   const id = useId();
@@ -187,9 +191,9 @@ export function TaskSelector(props: TaskSelectorProps) {
         }
       }}
     >
-      <label id={id + "-label"} className="block text-sm font-medium">
+      <label id={id + "-label"} className={appearance === "panel" ? panelLabelClass : "block text-sm font-medium"}>
         {label}
-        {required ? " *" : ""}
+        {required ? <> {appearance === "panel" ? <span className="text-red-500">*</span> : "*"}</> : ""}
       </label>
       <button
         ref={trigger}
@@ -204,12 +208,12 @@ export function TaskSelector(props: TaskSelectorProps) {
           setSearch("");
         }}
         className={
-          taskInputClass + " flex items-center justify-between gap-2 text-left"
+          inputClass + " flex items-center justify-between gap-2 text-left"
         }
       >
         <span
           className={
-            "truncate " + (selectedIds.length ? "" : "text-muted-foreground")
+            (appearance === "panel" ? "min-w-0 [overflow-wrap:anywhere] " : "truncate ") + (selectedIds.length ? "" : "text-muted-foreground")
           }
         >
           {selectedIds.length
@@ -218,7 +222,7 @@ export function TaskSelector(props: TaskSelectorProps) {
               (kind === "user" || kind === "account" ? "an " : "a ") +
               singular}
         </span>
-        <ChevronDown size={16} className={open ? "rotate-180" : ""} />
+        <ChevronDown size={16} className={"shrink-0 " + (open ? "rotate-180" : "")} />
       </button>
       {open && (
         <div
@@ -227,19 +231,20 @@ export function TaskSelector(props: TaskSelectorProps) {
           aria-label={"Select " + singular}
           className={
             "absolute left-0 right-0 z-30 overflow-hidden rounded-xl border border-border bg-background shadow-xl " +
+            (appearance === "panel" ? "bg-white dark:bg-slate-900 " : "") +
             (above ? "bottom-full mb-1" : "top-full mt-1")
           }
         >
           <div className="relative border-b border-border p-3">
             <Search
               size={16}
-              className="absolute left-6 top-6 text-muted-foreground"
+              className="absolute left-6 top-1/2 -translate-y-1/2 text-muted-foreground"
             />
             <input
               ref={input}
               aria-label={"Search " + singular}
               placeholder={"Search for " + singular}
-              className={taskInputClass + " pl-9"}
+              className={inputClass + " pl-9"}
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />

@@ -58,11 +58,12 @@ export function Sheet({
 export interface SheetContentProps extends React.HTMLAttributes<HTMLDivElement> {
   side?: 'top' | 'right' | 'bottom' | 'left';
   showClose?: boolean;
+  closeClassName?: string;
   children: React.ReactNode;
 }
 
 export const SheetContent = React.forwardRef<HTMLDivElement, SheetContentProps>(
-  ({ className, children, side = 'right', showClose = true, ...props }, ref) => {
+  ({ className, children, side = 'right', showClose = true, closeClassName, ...props }, ref) => {
     const { open, onOpenChange } = useSheet();
     const [mounted, setMounted] = React.useState(false);
 
@@ -162,7 +163,7 @@ export const SheetContent = React.forwardRef<HTMLDivElement, SheetContentProps>(
                   type="button"
                   onClick={() => onOpenChange(false)}
                   aria-label="Close sheet"
-                  className="absolute right-4 top-4 z-20 grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className={cn('absolute right-4 top-4 z-20 grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', closeClassName)}
                 >
                   <X className="h-4 w-4" />
                 </button>

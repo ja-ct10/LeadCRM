@@ -13,7 +13,7 @@ it('keeps runs, action order, refresh and pagination in the record Sheet', async
   expect(screen.getByRole('status', { name: 'Loading workflow runs' })).toBeTruthy();
   const dialog = await screen.findByRole('dialog', { name: 'Runs — Follow up' });
   expect(dialog.className).toContain('right-0');
-  expect(dialog.className).toContain('sm:max-w-[480px]');
+  expect(dialog.className).toContain('md:max-w-xl');
   await waitFor(() => expect(dialog.querySelectorAll('details')).toHaveLength(25));
   const details = dialog.querySelector('details')!;
   fireEvent.click(details.querySelector('summary')!);

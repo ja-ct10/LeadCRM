@@ -19,10 +19,23 @@ import { USE_MOCK_DATA } from "@/lib/config";
 import { TaskRecordCreator } from "./task-record-creator";
 import { Sheet, SheetContent } from "@/shared/components/ui/sheet";
 import { Button } from "@/shared/components/ui/button";
+import {
+  PanelSectionHeading,
+  panelBodyClass,
+  panelCloseClass,
+  panelFooterClass,
+  panelHeaderClass,
+  panelInputClass,
+  panelLabelClass,
+  panelPrimaryButtonClass,
+  panelSecondaryButtonClass,
+  panelSurfaceClass,
+  panelTitleClass,
+} from "@/shared/components/side-panel-styles";
 import { localDateTime, taskDueInstant } from "../task-data";
 
 export type TaskLinks = TaskLinkInput;
-import { TaskSelector, taskInputClass } from "./task-selector";
+import { TaskSelector } from "./task-selector";
 export { TaskSelector, taskInputClass } from "./task-selector";
 
 export function TaskEditor({
@@ -195,6 +208,8 @@ export function TaskEditor({
         ref={panel}
         aria-labelledby={heading}
         showClose={!busy}
+        className={panelSurfaceClass}
+        closeClassName={panelCloseClass + " right-3 top-3 sm:right-5"}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
             event.preventDefault();
@@ -206,8 +221,8 @@ export function TaskEditor({
           }
         }}
       >
-        <header className="border-b border-border bg-primary/10 px-6 py-5 pr-14">
-          <h2 id={heading} className="mt-1 text-xl font-semibold">
+        <header className={panelHeaderClass + " pr-16 sm:pr-20"}>
+          <h2 id={heading} className={panelTitleClass}>
             {creating
               ? creating === "contact"
                 ? "New Contact"
@@ -260,7 +275,7 @@ export function TaskEditor({
               void save();
             }}
           >
-            <div className="flex-1 space-y-5 overflow-y-auto p-6">
+            <div className={panelBodyClass + " space-y-6"}>
               {error && (
                 <p
                   role="alert"
@@ -271,101 +286,111 @@ export function TaskEditor({
               )}
               <fieldset
                 disabled={!editable || busy}
-                className="space-y-5 disabled:opacity-75"
+                className="min-w-0 space-y-6"
               >
-                <label className="block space-y-2">
-                  <span className="text-sm font-medium">Title *</span>
-                  <input
-                    className={taskInputClass}
-                    required
-                    maxLength={255}
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                  />
-                </label>
-                <div className="grid grid-cols-2 gap-4">
-                  <label className="space-y-2">
-                    <span className="text-sm font-medium">Status</span>
-                    <select
-                      className={taskInputClass}
-                      value={status}
-                      onChange={(e) =>
-                        setStatus(e.target.value as typeof status)
-                      }
-                    >
-                      {TASK_STATUSES.filter(value => value !== "completed" || canComplete || task?.status === "completed").map((s) => (
-                        <option key={s} value={s}>
-                          {TASK_STATUS_LABELS[s]}
-                        </option>
-                      ))}
-                    </select>
+                <section className="space-y-4">
+                  <PanelSectionHeading number={1}>Task Information</PanelSectionHeading>
+                  <label className="block space-y-1.5">
+                    <span className={panelLabelClass}>Title <span className="text-red-500">*</span></span>
+                    <input
+                      className={panelInputClass}
+                      required
+                      maxLength={255}
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                    />
                   </label>
-                  <label className="space-y-2">
-                    <span className="text-sm font-medium">Priority</span>
-                    <select
-                      className={taskInputClass}
-                      value={priority}
-                      onChange={(e) =>
-                        setPriority(e.target.value as typeof priority)
-                      }
-                    >
-                      {["Low", "Medium", "High"].map((p) => (
-                        <option key={p}>{p}</option>
-                      ))}
-                    </select>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <label className="min-w-0 space-y-1.5">
+                      <span className={panelLabelClass}>Status</span>
+                      <select
+                        className={panelInputClass}
+                        value={status}
+                        onChange={(e) =>
+                          setStatus(e.target.value as typeof status)
+                        }
+                      >
+                        {TASK_STATUSES.filter(value => value !== "completed" || canComplete || task?.status === "completed").map((s) => (
+                          <option key={s} value={s}>
+                            {TASK_STATUS_LABELS[s]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="min-w-0 space-y-1.5">
+                      <span className={panelLabelClass}>Priority</span>
+                      <select
+                        className={panelInputClass}
+                        value={priority}
+                        onChange={(e) =>
+                          setPriority(e.target.value as typeof priority)
+                        }
+                      >
+                        {["Low", "Medium", "High"].map((p) => (
+                          <option key={p}>{p}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                </section>
+                <section className="space-y-4">
+                  <PanelSectionHeading number={2}>Schedule &amp; Assignment</PanelSectionHeading>
+                  <label className="block space-y-1.5">
+                    <span className={panelLabelClass}>
+                      Due date and time <span className="text-red-500">*</span>
+                    </span>
+                    <input
+                      className={panelInputClass}
+                      type="datetime-local"
+                      required
+                      value={dueDate}
+                      onChange={(e) => setDueDate(e.target.value)}
+                    />
+                    <span className="block text-xs text-muted-foreground">
+                      {Intl.DateTimeFormat().resolvedOptions().timeZone}
+                    </span>
                   </label>
-                </div>
-                <label className="block space-y-2">
-                  <span className="text-sm font-medium">
-                    Due date and time *
-                  </span>
-                  <input
-                    className={taskInputClass}
-                    type="datetime-local"
+                  <TaskSelector
+                    appearance="panel"
+                    kind="user"
+                    disabled={!canAssign}
+                    label="Assigned Agent"
                     required
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
+                    value={assignedUserId}
+                    selectedLabel={
+                      person
+                        ? person.firstName + " " + person.lastName
+                        : undefined
+                    }
+                    onChange={setOwner}
                   />
-                  <span className="block text-xs text-muted-foreground">
-                    {Intl.DateTimeFormat().resolvedOptions().timeZone}
-                  </span>
-                </label>
-                <TaskSelector
-                  kind="user"
-                  disabled={!canAssign}
-                  label="Assigned Agent"
-                  required
-                  value={assignedUserId}
-                  selectedLabel={
-                    person
-                      ? person.firstName + " " + person.lastName
-                      : undefined
-                  }
-                  onChange={setOwner}
-                />
-                <label className="block space-y-2">
-                  <span className="text-sm font-medium">Notes</span>
-                  <textarea
-                    rows={5}
-                    maxLength={10000}
-                    className={taskInputClass}
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                  />
-                  <span className="text-xs text-muted-foreground">
-                    {description.length}/10000
-                  </span>
-                </label>
+                </section>
+                <section className="space-y-4">
+                  <PanelSectionHeading number={3}>Additional Information</PanelSectionHeading>
+                  <label className="block space-y-1.5">
+                    <span className={panelLabelClass}>Notes</span>
+                    <textarea
+                      rows={5}
+                      maxLength={10000}
+                      className={panelInputClass}
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      {description.length}/10000
+                    </span>
+                  </label>
+                </section>
                 <section>
-                  <h3 className="text-sm font-semibold text-primary">
+                  <PanelSectionHeading number={4}>
                     Associate task (
                     {Object.values(relations).reduce(
                       (sum, ids) => sum + ids.length,
                       0,
                     )}
                     )
-                  </h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
+                  </PanelSectionHeading>
+                  <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
                     Select multiple records. Contacts, deals, and accounts are
                     filtered by the selected leads.
                   </p>
@@ -418,6 +443,7 @@ export function TaskEditor({
                                   }));
                         return (
                           <TaskSelector
+                            appearance="panel"
                             key={
                               kind +
                               (kind === "lead"
@@ -514,11 +540,12 @@ export function TaskEditor({
                 </div>
               )}
             </div>
-            <footer className="flex items-center justify-between gap-3 border-t border-border p-4">
+            <footer className={panelFooterClass + " justify-between"}>
               {task && !readOnly && canArchive && !task.isArchived ? (
                 <Button
                   type="button"
                   variant="ghost"
+                  className="h-[42px] rounded-xl"
                   disabled={busy}
                   onClick={() => setConfirmArchive(true)}
                 >
@@ -527,17 +554,18 @@ export function TaskEditor({
               ) : (
                 <span />
               )}
-              <div className="flex gap-2">
+              <div className="ml-auto flex flex-wrap justify-end gap-3">
                 <Button
                   type="button"
                   variant="outline"
+                  className={panelSecondaryButtonClass}
                   disabled={busy}
                   onClick={onClose}
                 >
                   Close
                 </Button>
                 {editable && (
-                  <Button type="submit" disabled={busy}>
+                  <Button type="submit" className={panelPrimaryButtonClass} disabled={busy}>
                     {busy ? "Saving…" : task ? "Save changes" : "Create task"}
                   </Button>
                 )}
