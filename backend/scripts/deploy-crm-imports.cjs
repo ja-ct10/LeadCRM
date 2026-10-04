@@ -10,6 +10,7 @@ const { tmpdir } = require('node:os');
 const { resolve, join, sep } = require('node:path');
 const { createHash } = require('node:crypto');
 const { verifyImportRollout } = require('./verify-crm-import-rollout.cjs');
+const { verifyBrowserImportRollout } = require('./verify-crm-import-browser.cjs');
 const root = resolve(__dirname, '../prisma');
 const expansion = '20261027000000_crm_import_integrity';
 const retirement = '20261028000000_retire_legacy_crm_imports';
@@ -97,7 +98,9 @@ async function main() {
       if (target === expansion) console.log('CRM import expansion ready. Legacy-table retirement is deferred until deployed API verification.');
       return;
     }
-    const report = await verifyImportRollout(db, process.env.CRM_IMPORT_VERIFY_API, JSON.parse(process.env.CRM_IMPORT_VERIFY_TOKENS || '[]'));
+    const report = process.env.CRM_IMPORT_VERIFY_BROWSER_EVIDENCE
+      ? await verifyBrowserImportRollout(db, process.env.CRM_IMPORT_VERIFY_API, JSON.parse(readFileSync(process.env.CRM_IMPORT_VERIFY_BROWSER_EVIDENCE, 'utf8')))
+      : await verifyImportRollout(db, process.env.CRM_IMPORT_VERIFY_API, JSON.parse(process.env.CRM_IMPORT_VERIFY_TOKENS || '[]'));
     console.log(JSON.stringify(report, null, 2));
     if (mode === '--retire') {
       await db.$executeRawUnsafe(`COMMENT ON TABLE "CrmImportJob" IS 'crm-import-normalization-api-verified-v1'`);

@@ -1,9 +1,10 @@
 # CRM import infrastructure normalization
 
-Implemented and verified locally on 2026-10-04. The original report below records
-the pre-deployment audit. Render subsequently applied expansion but failed on the
-guarded retirement phase; see [the deployment recovery report](render-import-deployment-recovery.md)
-for the current production state. This report supersedes the
+Implemented and verified locally on 2026-10-04. Production retirement completed
+on the same date at 15:35:37 Asia/Manila; all eight obsolete tables are removed.
+See [the production retirement report](crm-import-production-retirement.md) for
+executed checks and preserved counts, and [the deployment recovery report](render-import-deployment-recovery.md)
+for the earlier deployment failure. This report supersedes the
 persistence and rollout portions of [the earlier CSV feature audit](csv-import-audit.md).
 
 ## 1–2. Tables found and why they existed
@@ -40,7 +41,7 @@ Inline CSV requests do not create upload records.
 
 All eight old Prisma models and their runtime delegates/services are removed.
 The retirement migration removes all eight physical tables only after verification.
-They remain in production today, and remain read-only between rollout phases.
+They were read-only between rollout phases and are now absent from production.
 Historical SQL, migration tests and the read-only inventory script intentionally
 retain old names. Domain tables remain independent and are not changed by these
 normalization migrations. No global customer-plus-Product Deal constraint is added.
@@ -95,6 +96,23 @@ other databases: **I cannot confirm this.** Check those before using the revised
    per module, and rechecks the original historical data. The retirement command
    reruns these checks, then supplies a single-use database comment allowing the
    versioned retirement migration. Tokens and row contents are never reported.
+
+   For small histories, an operator can instead capture the signed-in production
+   UI's History and every Import Details table without exporting HttpOnly cookies.
+   Set `CRM_IMPORT_VERIFY_BROWSER_EVIDENCE` to the local JSON evidence file and
+   `CRM_IMPORT_VERIFY_API` to the frontend HTTPS origin (no API path in this mode).
+   `verify-crm-import-browser.cjs` checks the origin, capture age, exact displayed
+   History rows and every displayed result cell against Prisma, plus the same
+   complete historical SQL comparison. It refuses histories over 10 jobs or 25
+   results per job; use paginated API verification for those. Capture evidence
+   directly from the DOM; never manufacture responses from database records.
+   Keep the evidence in ignored local storage because it contains CRM data.
+
+   A historical workspace marked `SANDBOX` with **zero active users** cannot
+   complete authenticated checks. Its full historical payloads must still pass
+   SQL comparison before and inside retirement. This narrow exception is reported
+   separately; active workspaces and sandboxes with active users require all four
+   successful imports and authenticated History checks. No users are reactivated.
 
 5. `20261028000000_retire_legacy_crm_imports` locks the source tables and verifies
    preservation again before dropping results, then jobs, without `CASCADE`.

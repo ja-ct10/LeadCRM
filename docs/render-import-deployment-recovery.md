@@ -1,5 +1,9 @@
 # Render import migration deployment recovery — 2026-10-04
 
+The recovery below was followed by successful [production retirement](crm-import-production-retirement.md)
+at 15:35:37 Asia/Manila. The eight legacy tables are now removed; references below
+to deferred retirement describe the state immediately after deployment recovery.
+
 ## Cause
 
 Render's saved Root Directory was `backend`; its Build Command was
