@@ -2,10 +2,10 @@ import React, { StrictMode } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import InboxPage from './inbox-page';
-import { leadEmailComposeHref } from '../services/compose-navigation';
+import { recordEmailComposeHref } from '../services/compose-navigation';
 
-const mocks = vi.hoisted(() => ({ send: vi.fn(), save: vi.fn() }));
-vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(window.location.search) }));
+const mocks = vi.hoisted(() => ({ send: vi.fn(), save: vi.fn(), replace: vi.fn() }));
+vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(window.location.search), useRouter: () => ({ replace: mocks.replace }) }));
 vi.mock('../services/gmail.service', () => ({
   getGmailStatus: async () => ({ isConnected: true, email: 'staff@example.test' }),
   fetchGmailEmails: async () => ({ emails: [] }), syncGmail: vi.fn(), disconnectGmail: vi.fn(),
@@ -18,12 +18,13 @@ afterEach(cleanup);
 
 it('consumes a Lead action once, preserves exact recipient, clears fresh compose and refresh, and never sends', async () => {
   const email = 'Lina+sales@Example.test';
-  window.history.replaceState({ retained: true }, '', `${leadEmailComposeHref(email)}&view=sent#mail`);
+  window.history.replaceState({ retained: true }, '', `${recordEmailComposeHref(email)}&view=sent#mail`);
   const view = render(<StrictMode><InboxPage /></StrictMode>);
   await waitFor(() => expect((screen.getByLabelText('To') as HTMLInputElement).value).toBe(email));
   expect(window.location.search).toBe('?view=sent');
   expect(window.location.hash).toBe('#mail');
   expect(window.history.state).toEqual({ retained: true });
+  expect(mocks.replace).toHaveBeenCalledWith('/inbox?view=sent#mail', { scroll: false });
   fireEvent.click(screen.getByRole('button', { name: 'Close' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Compose new email' }));
   expect((screen.getByLabelText('To') as HTMLInputElement).value).toBe('');
@@ -44,5 +45,5 @@ it.each(['?to=lina@example.test', '?compose=lead-email&to=broken', '?compose=lea
 });
 
 it.each(['', 'broken', 'two@example.test,other@example.test', 'a@example.test\nBcc: b@example.test'])('rejects invalid Lead email %s', email => {
-  expect(leadEmailComposeHref(email)).toBeNull();
+  expect(recordEmailComposeHref(email)).toBeNull();
 });

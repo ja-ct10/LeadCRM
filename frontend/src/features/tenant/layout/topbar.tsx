@@ -173,6 +173,8 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
           )}
           aria-label={`Notifications, ${notificationCount} unread`}
           aria-expanded={isNotificationsOpen}
+          aria-haspopup="dialog"
+          aria-controls="notifications-dropdown"
         >
           <Bell size={16} />
           {notificationCount > 0 && (

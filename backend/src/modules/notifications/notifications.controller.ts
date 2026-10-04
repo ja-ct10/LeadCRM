@@ -16,12 +16,12 @@ export async function getNotifications(req: Request, res: Response, next: NextFu
 
 export async function markRead(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    await service.markRead(
+    const counts = await service.markRead(
       String(req.params.id),
       req.user!.tenantId,
       req.user!.userId,
     );
-    res.json({ success: true });
+    res.json({ success: true, ...counts });
   } catch (err) {
     next(err);
   }
@@ -29,9 +29,16 @@ export async function markRead(req: Request, res: Response, next: NextFunction):
 
 export async function markAllRead(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    await service.markAllRead(req.user!.tenantId, req.user!.userId);
-    res.json({ success: true });
+    const counts = await service.markAllRead(req.user!.tenantId, req.user!.userId);
+    res.json({ success: true, ...counts });
   } catch (err) {
     next(err);
   }
+}
+
+export async function deleteNotifications(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const counts = await service.deleteNotifications(req.body.ids, req.user!.tenantId, req.user!.userId);
+    res.json({ success: true, ...counts });
+  } catch (err) { next(err); }
 }

@@ -2,7 +2,7 @@
 
 import { apiClient } from '@/lib/api/client';
 
-import type { NotificationsResponse } from '@leadcrm/shared';
+import type { NotificationsResponse, NotificationMutationResponse } from '@leadcrm/shared';
 export type { NotificationRecord as Notification, NotificationsResponse } from '@leadcrm/shared';
 
 export const notificationsApi = {
@@ -16,8 +16,11 @@ export const notificationsApi = {
   },
 
   markRead: (id: string) =>
-    apiClient.patch<{ success: boolean }>(`/notifications/${id}/read`),
+    apiClient.patch<NotificationMutationResponse>(`/notifications/${id}/read`),
 
   markAllRead: () =>
-    apiClient.patch<{ success: boolean }>('/notifications/read-all'),
+    apiClient.patch<NotificationMutationResponse>('/notifications/read-all'),
+
+  delete: (ids: string[]) =>
+    apiClient.deleteWithBody<NotificationMutationResponse>('/notifications', { ids }),
 };

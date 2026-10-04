@@ -52,10 +52,14 @@ export async function getNotifications(
   return repo.findNotifications(tenantId, userId, query);
 }
 
-export async function markRead(id: string, tenantId: string, userId: string): Promise<void> {
-  await repo.markNotificationRead(id, tenantId, userId);
+export async function markRead(id: string, tenantId: string, userId: string) {
+  return repo.markNotificationRead(id, tenantId, userId);
 }
 
-export async function markAllRead(tenantId: string, userId: string): Promise<void> {
-  await repo.markAllNotificationsRead(tenantId, userId);
+export async function markAllRead(tenantId: string, userId: string) {
+  return repo.markAllNotificationsRead(tenantId, userId);
+}
+
+export async function deleteNotifications(ids: string[], tenantId: string, userId: string) {
+  return repo.deleteNotifications(ids, tenantId, userId);
 }

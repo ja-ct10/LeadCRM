@@ -84,18 +84,18 @@ it.each((['leads', 'contacts', 'accounts', 'deals'] as const).flatMap(module => 
   expect(screen.queryByText(/Owner \/ Representative|Assigned user|Rep:/)).toBeNull();
 });
 
-it('Lead drawer navigates to existing Inbox and copies exact phone/address with feedback', async () => {
+it.each(['leads', 'contacts'] as const)('%s drawer navigates to existing Inbox and copies exact phone/address with feedback', async module => {
   const original = mocks.get.getMockImplementation()!;
-  mocks.get.mockImplementation(async (path: string) => path === '/crm/leads/one'
-    ? { data: { ...records.leads, email: 'Lina+sales@Example.test', phone: '+63 935 454 1321', address: '139-E 15th Avenue', city: 'Quezon City' } }
+  mocks.get.mockImplementation(async (path: string) => path === '/crm/' + module + '/one'
+    ? { data: { ...records[module], email: 'Lina+sales@Example.test', phone: '+63 935 454 1321', address: '139-E 15th Avenue', city: 'Quezon City' } }
     : original(path));
   const writeText = vi.fn().mockResolvedValue(undefined);
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
   const success = vi.spyOn(toast, 'success');
   const error = vi.spyOn(toast, 'error');
-  render(<CrmRecordPanel module="leads" id="one" open onOpenChange={() => {}} />);
+  render(<CrmRecordPanel module={module} id="one" open onOpenChange={() => {}} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Compose email to Lina+sales@Example.test' }));
-  expect(mocks.push).toHaveBeenCalledWith('/inbox?compose=lead-email&to=Lina%2Bsales%40Example.test');
+  expect(mocks.push).toHaveBeenCalledWith('/inbox?compose=record-email&to=Lina%2Bsales%40Example.test');
   mocks.push.mockClear();
   fireEvent.click(screen.getByRole('button', { name: 'Copy phone number +63 935 454 1321' }));
   await waitFor(() => expect(success).toHaveBeenCalledWith('Phone number copied'));
@@ -120,7 +120,7 @@ it('disables invalid Lead email and omits missing phone/address actions', async 
   expect(screen.queryByRole('button', { name: /^Copy (phone|address)/ })).toBeNull();
 });
 
-it.each(['contacts', 'accounts', 'deals'] as const)('does not add Lead actions to %s', async module => {
+it.each(['accounts', 'deals'] as const)('does not add person chip actions to %s', async module => {
   render(<CrmRecordPanel module={module} id="one" open onOpenChange={() => {}} />);
   await screen.findByRole('heading', { level: 1 });
   expect(screen.queryByRole('button', { name: /^(Compose email to|Copy phone number|Copy address)/ })).toBeNull();

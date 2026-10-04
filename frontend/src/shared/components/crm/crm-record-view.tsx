@@ -36,7 +36,7 @@ import { EntityCombobox } from '@/shared/components/entity-combobox';
 import { CrmEmailSchema } from '@leadcrm/shared';
 import { RecordBackButton } from './record-back-button';
 import { ConvertLeadDialog } from '@/features/tenant/crm/leads/ui/convert-lead-dialog';
-import { leadEmailComposeHref } from '@/features/tenant/inbox/services/compose-navigation';
+import { recordEmailComposeHref } from '@/features/tenant/inbox/services/compose-navigation';
 import { copyTextWithFeedback } from '@/shared/utils/clipboard';
 
 export type CrmRecordModule = 'leads' | 'contacts' | 'accounts' | 'deals';
@@ -63,7 +63,7 @@ function RecordQuickInfo({ items, actions }: { items: { value: string; icon: Luc
     {items.filter(item => item.value).map(({ value, icon: Icon, href, label, onClick, ariaLabel, disabled }) => {
       const content = <><Icon className="h-3 w-3 shrink-0 text-muted-foreground sm:h-3.5 sm:w-3.5" /><span className="min-w-0 [overflow-wrap:anywhere]">{label}{value}</span></>;
       const cls = 'inline-flex min-h-8 max-w-full items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11px] text-foreground sm:min-h-9 sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-xs';
-      if (onClick) return <button key={label || value} type="button" onClick={onClick} aria-label={ariaLabel} disabled={disabled} className={cn(cls, 'text-left enabled:cursor-pointer enabled:hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-60')}>{content}</button>;
+      if (onClick) return <button key={label || value} type="button" onClick={onClick} aria-label={ariaLabel} title={ariaLabel} disabled={disabled} className={cn(cls, 'text-left enabled:cursor-pointer enabled:hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-60')}>{content}</button>;
       return href ? <a key={label || value} href={href} className={cn(cls, 'hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring')}>{content}</a> : <span key={label || value} className={cls}>{content}</span>;
     })}
     {actions}
@@ -274,10 +274,10 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const owner = personName(object(record.assignedUser)) || personName(object(record.owner));
   const company = text(object(record.organization)?.name) || text(person?.companyName) || text(person?.company) || text(record.companyName) || text(record.company) || text(object(record.account)?.name);
   const location = [text(record.address), text(record.city), text(record.province), text(record.country)].filter(Boolean).join(', ');
-  const leadChipActions = module === 'leads' && !!onClose;
+  const personChipActions = module === 'contacts' || (module === 'leads' && !!onClose);
   const email = text(person?.email);
   const phone = text(person?.phone);
-  const composeHref = leadChipActions ? leadEmailComposeHref(email) : null;
+  const composeHref = personChipActions ? recordEmailComposeHref(email) : null;
   const subtitle = module === 'deals' ? `₱${Number(record.value ?? 0).toLocaleString()} · ${text(object(record.pipeline)?.name)}` : module === 'accounts' ? text(record.industry) || text(record.website) : company || text(record.jobTitle) || location;
   const rawStatus = text(module === 'deals' ? object(record.stage)?.name : module === 'accounts' ? '' : record.status);
   const status = module === 'leads' || module === 'contacts' ? normalizeCrmStatus(rawStatus) : rawStatus;
@@ -391,12 +391,12 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
           </div>
         </div>
         <RecordQuickInfo items={[
-          { value: email, icon: Mail, ...(leadChipActions ? { onClick: () => { if (composeHref) router.push(composeHref); }, ariaLabel: `Compose email to ${email}`, disabled: !composeHref } : { href: email ? `mailto:${email}` : undefined }) },
-          { value: phone, icon: Phone, ...(leadChipActions ? { onClick: () => { void copyTextWithFeedback(phone, 'Phone number'); }, ariaLabel: `Copy phone number ${phone}` } : { href: phone ? `tel:${phone}` : undefined }) },
+          { value: email, icon: Mail, ...(personChipActions ? { onClick: () => { if (composeHref) router.push(composeHref); }, ariaLabel: `Compose email to ${email}`, disabled: !composeHref } : { href: email ? `mailto:${email}` : undefined }) },
+          { value: phone, icon: Phone, ...(personChipActions ? { onClick: () => { void copyTextWithFeedback(phone, 'Phone number'); }, ariaLabel: `Copy phone number ${phone}` } : { href: phone ? `tel:${phone}` : undefined }) },
           ...(module === 'deals' ? [{ value: personName(person), icon: User }, { value: company, icon: Building }] : []),
           { value: owner, icon: User, label: 'Agent: ' },
           ...(module === 'accounts' ? [{ value: website, icon: Globe, href: websiteHref }] : []),
-          { value: location, icon: MapPin, ...(leadChipActions ? { onClick: () => { void copyTextWithFeedback(location, 'Address'); }, ariaLabel: `Copy address ${location}` } : {}) },
+          { value: location, icon: MapPin, ...(personChipActions ? { onClick: () => { void copyTextWithFeedback(location, 'Address'); }, ariaLabel: `Copy address ${location}` } : {}) },
         ]} />
         <div className="mt-4" onKeyDown={event => {
           if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
