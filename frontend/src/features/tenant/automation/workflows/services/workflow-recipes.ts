@@ -11,6 +11,8 @@ export function prepareWorkflowRecipe(recipe: WorkflowDraft, options: WorkflowOp
   return draft;
 }
 
+// Numeric indexes are used by existing template URLs. Keep this registry in order;
+// curate the chooser through WORKFLOW_STARTER_TEMPLATES below.
 export const WORKFLOW_RECIPES: WorkflowDraft[] = [
   // 1. Lead Management & Qualification
   {
@@ -289,3 +291,16 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     actions: [{ type: 'create_task', config: { title: 'Follow up on qualified deal', dueDaysFromNow: 1, priority: 'Medium' } }],
   },
 ];
+
+/** The nine starter templates shown in the chooser, with their original URL indexes. */
+export const WORKFLOW_STARTER_TEMPLATES = [
+  0,  // New Lead Follow-up
+  1,  // Hot Lead Urgent Response
+  7,  // New Lead Email Welcome
+  8,  // Contact Onboarding Handoff
+  10, // At-Risk Contact Follow-up
+  22, // Qualified Deal Follow-up
+  13, // High-value Deal Review
+  18, // Won Deal Handoff
+  20, // Lost Deal Win/Loss Analysis
+].map(index => ({ index, recipe: WORKFLOW_RECIPES[index] }));
