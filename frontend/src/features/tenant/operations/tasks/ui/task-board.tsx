@@ -379,7 +379,8 @@ export default function TaskBoard() {
       <ModuleWorkspace
         moduleId="tasks"
         title="Tasks"
-        primaryActionLabel="Create task"
+        description="Manage follow-ups and sales activities assigned to your team."
+        primaryActionLabel="Create Task"
         onPrimaryAction={() => setEditor({})}
         canCreate={canCreate}
         availableViews={["table"]}

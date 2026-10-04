@@ -21,22 +21,22 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   badge,
 }) => {
   return (
-    <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 mb-6 border-b border-slate-200/80 dark:border-white/10 ${className}`}>
-      <div className="flex items-start gap-3">
+    <div className={`flex min-w-0 items-start justify-between gap-3 mb-4 ${className}`}>
+      <div className="flex min-w-0 flex-1 items-start gap-3">
         {backButtonProps && (
           <div className="pt-0.5">
             <BackButton {...backButtonProps} />
           </div>
         )}
-        <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className="text-xl font-bold leading-7 tracking-tight text-slate-900 dark:text-white [overflow-wrap:anywhere]">
               {title}
             </h1>
             {badge}
           </div>
           {subtitle && (
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+            <p className="mt-0.5 text-sm font-normal leading-5 text-slate-500 dark:text-slate-400">
               {subtitle}
             </p>
           )}

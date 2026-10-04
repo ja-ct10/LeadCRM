@@ -63,7 +63,7 @@ it('requests server pages and sizes, uses real totals, and resets filtered pagin
 it('wires menus to view, edit, duplicate, pause, resume and confirmed archive', async () => {
   render(<WorkflowsPage />); await screen.findByRole('grid');
   const action = (name: string) => { fireEvent.click(screen.getByRole('button', { name: 'Row actions' })); fireEvent.click(screen.getByRole('menuitem', { name })); };
-  action('View'); expect(push).toHaveBeenCalledWith('/automation/workflows/wf1/edit?view=true');
+  action('View'); expect(screen.getByText('Run history')).toBeTruthy(); expect(push).not.toHaveBeenCalled();
   action('Edit'); expect(push).toHaveBeenCalledWith('/automation/workflows/wf1/edit');
   action('Duplicate');
   await waitFor(() => expect(workflowsApi.duplicate).toHaveBeenCalledWith('wf1'));
@@ -102,10 +102,22 @@ it('disables refresh and spins its icon until the in-flight request finishes', a
   expect(refresh.disabled).toBe(true);
   expect(screen.getByText('Loading workflows...').parentElement?.querySelector('.animate-spin')).toBeTruthy();
   expect(screen.getByLabelText('Search workflows')).toBeTruthy();
+  expect(screen.queryByRole('navigation', { name: 'Pagination' })).toBeNull();
   expect(refresh.querySelector('.animate-spin')).toBeTruthy();
   expect(workflowsApi.list).toHaveBeenCalledTimes(calls + 1);
   resolve({ success: true, data: [workflow], meta: { total: 1, page: 1, limit: 10, hasMore: false } });
   await waitFor(() => expect(refresh.disabled).toBe(false));
+});
+
+it('opens row details without opening them for selection or action controls', async () => {
+  render(<WorkflowsPage />); await screen.findByRole('grid');
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select all records' }));
+  expect(screen.queryByText('Run history')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Row actions' }));
+  expect(screen.queryByText('Run history')).toBeNull();
+  fireEvent.mouseDown(document.body);
+  fireEvent.click(screen.getByText('Follow up'));
+  expect(screen.getByText('Run history')).toBeTruthy();
 });
 
 it('quick icons duplicate and toggle the same workflow while showing only the supported state action', async () => {

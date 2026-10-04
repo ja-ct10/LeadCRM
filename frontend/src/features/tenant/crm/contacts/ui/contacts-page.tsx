@@ -375,6 +375,7 @@ export default function ContactsPage(): React.ReactElement {
       bulkSelection={{ count: contactSelectedIds.size, onClear: () => setContactSelectedIds(new Set()), actions: canDelete && <Button variant="outline" onClick={() => confirmArchive([...contactSelectedIds], `${contactSelectedIds.size} contacts`)}>Archive</Button> }}
       moduleId="contacts"
       title="Contacts"
+        description="Manage customer and business contact information."
       moduleConfig={CONTACTS_MODULE_CONFIG}
       primaryActionLabel="Create Contact"
       onPrimaryAction={() => { setEditingContact(undefined); setIsFormOpen(true); }}

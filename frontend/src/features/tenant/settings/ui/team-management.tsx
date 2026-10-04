@@ -1,4 +1,6 @@
 'use client';
+import { PageHeader } from '@/shared/components/ui/page-header';
+
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -67,6 +69,7 @@ export function TeamManagement(): React.ReactElement {
 
   return (
     <div className="min-w-0 w-full space-y-4">
+      <PageHeader title="Team Management" subtitle="Manage users and groups within Camxian Technologies." />
       {/* Tab content */}
       <AnimatePresence mode="wait">
         {activeTab === 'Users' && userCan('users', 'canView') && (

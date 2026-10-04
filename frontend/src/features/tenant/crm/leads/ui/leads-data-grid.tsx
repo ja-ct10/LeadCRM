@@ -385,7 +385,7 @@ export function LeadsDataGrid({
         columns={gridColumns}
         data={leads}
         getRowId={getRowId}
-        height={600}
+        height="auto"
         selectable
         selectedIds={selectedIds}
         onSelectionChange={onSelectionChange}

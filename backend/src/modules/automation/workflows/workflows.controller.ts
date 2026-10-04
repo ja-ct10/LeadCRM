@@ -62,7 +62,9 @@ export async function getWorkflowExecutions(req: Request, res: Response, next: N
   try {
     const requestedPage = Number(req.query.page);
     const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
-    res.json({ success: true, data: await service.getWorkflowExecutions(String(req.params.id), req.user!.tenantId, page) });
+    const requestedLimit = Number(req.query.limit);
+    const limit = Number.isSafeInteger(requestedLimit) && requestedLimit > 0 ? Math.min(requestedLimit, 100) : 25;
+    res.json({ success: true, ...await service.getWorkflowExecutionPage(String(req.params.id), req.user!.tenantId, page, limit) });
   } catch (err) { next(err); }
 }
 

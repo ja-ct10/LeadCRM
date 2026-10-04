@@ -1,4 +1,5 @@
 'use client';
+import { CreateButton } from '@/shared/components/ui/button';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { compareSortValues } from '@leadcrm/shared';
@@ -329,9 +330,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
   ];
 
   const tableColumns = useModuleTableColumns('users', USERS_TABLE_COLUMNS, columns);
-  const createAction = canCreateUsers && <button aria-label="New user" title="New user" disabled={rolesLoading || !!rolesError} onClick={() => setIsAddOpen(true)} className="flex shrink-0 h-11 w-11 sm:h-auto sm:w-auto items-center justify-center gap-1.5 sm:px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold disabled:opacity-50">
-      <Plus size={16} /> <span className="hidden sm:inline">New User</span>
-    </button>;
+  const createAction = canCreateUsers && <CreateButton label="New User" disabled={rolesLoading || !!rolesError} onClick={() => setIsAddOpen(true)} />;
 
   return (
     <div className="min-w-0 max-w-full space-y-4">

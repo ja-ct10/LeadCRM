@@ -109,6 +109,10 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     expect(history[0].steps.map(step => step.status)).toEqual(['success', 'success', 'success']);
     expect(await prisma.activity.count({ where: { leadId: record.id, title: `Workflow: ${workflow.name}`, createdById: actor.id } })).toBe(1);
     expect((await call(`/automation/workflows/${workflow.id}/executions`)).body.data[0].id).toBe(history[0].id);
+    const firstPage = await call(`/automation/workflows/${workflow.id}/executions?page=1&limit=10`);
+    expect(firstPage.body.meta).toEqual({ total: 1, page: 1, limit: 10, hasMore: false });
+    const emptyPage = await call(`/automation/workflows/${workflow.id}/executions?page=2&limit=10`);
+    expect(emptyPage.body.data).toEqual([]); expect(emptyPage.body.meta.total).toBe(1);
     // Workflow tasks use the existing CRM notification path, including its retry deduplication.
     for (let attempt = 0; attempt < 2; attempt++) {
       await scope(() => dispatchTenantNotifications(tenantId));

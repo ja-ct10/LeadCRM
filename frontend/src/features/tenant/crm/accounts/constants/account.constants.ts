@@ -1,8 +1,4 @@
-export const COMPANY_INDUSTRIES = [
-  'Technology', 'Manufacturing', 'Retail', 'Healthcare',
-  'Finance', 'Education', 'Construction', 'Real Estate',
-  'Telecommunications', 'Security', 'Other',
-] as const;
+export { COMPANY_INDUSTRIES } from '@leadcrm/shared';
 
 export const COMPANY_SIZES = [
   '1–10', '11–50', '51–200', '201–500', '500+',

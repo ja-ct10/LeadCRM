@@ -108,9 +108,12 @@ export function updateExecutionRun(id: string, tenantId: string, data: { status:
 export function createExecutionStep(data: { tenantId: string; executionId: string; stepIndex: number; actionType: string; status: string; output?: object; error?: string }) {
   return prisma.workflowExecutionStep.create({ data });
 }
-export function listExecutions(workflowId: string, tenantId: string, page = 1) {
-  return prisma.workflowExecutionRun.findMany({ where: { workflowId, tenantId }, orderBy: { startedAt: 'desc' },
-    skip: (page - 1) * 25, take: 25,
+export function countExecutions(workflowId: string, tenantId: string) {
+  return prisma.workflowExecutionRun.count({ where: { workflowId, tenantId } });
+}
+export function listExecutions(workflowId: string, tenantId: string, page = 1, limit = 25) {
+  return prisma.workflowExecutionRun.findMany({ where: { workflowId, tenantId }, orderBy: [{ startedAt: 'desc' }, { id: 'asc' }],
+    skip: (page - 1) * limit, take: limit,
     include: { steps: { orderBy: { stepIndex: 'asc' } }, trigger: { select: { triggerType: true, entityType: true, triggeredAt: true, payload: true } } } });
 }
 export async function entityContext(entity: WorkflowEntity, id: string, tenantId: string): Promise<Record<string, unknown> | null> {

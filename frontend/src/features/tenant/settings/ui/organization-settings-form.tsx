@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Building2, Globe, Mail, Phone, Link, MapPin, Pencil, Save } from 'lucide-react';
 import { toast } from 'sonner';
-import { UpdateOrganizationSettingsSchema, formatOrganizationPhone, ORGANIZATION_PHONE_ERROR, type OrganizationSettings } from '@leadcrm/shared';
+import { UpdateOrganizationSettingsSchema, formatOrganizationPhone, ORGANIZATION_PHONE_ERROR, ORGANIZATION_FIELD_LIMITS, COMPANY_INDUSTRIES, type OrganizationSettings } from '@leadcrm/shared';
+import { PageHeader } from '@/shared/components/ui/page-header';
 import { useAuth } from '@/store/AuthContext';
 import { settingsApiService } from '../services/settings.service';
 
@@ -78,7 +79,7 @@ export function OrganizationSettingsForm() {
 
   if (error) return <div role="alert" className="space-y-3 text-sm"><p>{error}</p><button type="button" onClick={() => setReload(value => value + 1)} className="border rounded-lg px-3 py-2">Retry</button></div>;
   if (!draft) return <div role="status" aria-label="Loading organization settings" className="w-full max-w-none min-w-0 space-y-6">
-    <h2 className="text-xl font-bold text-slate-900 dark:text-white">General</h2>
+    <PageHeader title="General" subtitle="Manage your organization's profile and contact details." />
     <section className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-5">
     <div><h3 className="text-sm font-semibold">Organization Details</h3><p className="text-xs text-slate-500 mt-1">Your organization's profile and contact details</p></div>
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" aria-hidden="true">{fields.map(([key]) => <div key={key} className={`space-y-1.5 ${key === 'address' ? 'lg:col-span-2' : ''}`}>
@@ -89,7 +90,7 @@ export function OrganizationSettingsForm() {
   </div>;
 
   return <form onSubmit={save} noValidate className="w-full max-w-none min-w-0 space-y-6">
-    <h2 className="text-xl font-bold text-slate-900 dark:text-white">General</h2>
+    <PageHeader title="General" subtitle="Manage your organization's profile and contact details." />
     <section aria-labelledby="organization-details-title" className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-5">
     <div>
       <div className="flex items-center justify-between gap-3">
@@ -102,13 +103,15 @@ export function OrganizationSettingsForm() {
       {fields.map(([key, label, Icon]) => {
         const props = {
           id: `org-${key}`, value: draft[key], readOnly: !editing || saving,
+          maxLength: ORGANIZATION_FIELD_LIMITS[key],
+          required: key === 'name' || key === 'email',
           'aria-invalid': !!fieldErrors[key],
           'aria-describedby': fieldErrors[key] ? `org-${key}-error` : undefined,
-          onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+          onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
             let next = event.target.value;
             if (key === 'phone') {
               next = next.replace(/^\+63\s*/, '');
-              if (!/^[0-9 ()-]*$/.test(next)) { setFieldErrors(errors => ({ ...errors, phone: ORGANIZATION_PHONE_ERROR })); return; }
+              if (!/^[0-9 ()-]*$/.test(next) || next.replace(/\D/g, '').length > (next.startsWith('0') ? 10 : 9)) { setFieldErrors(errors => ({ ...errors, phone: ORGANIZATION_PHONE_ERROR })); return; }
             }
             setFieldErrors(errors => ({ ...errors, [key]: '' }));
             setDraft(value => value && ({ ...value, [key]: next }));
@@ -116,7 +119,7 @@ export function OrganizationSettingsForm() {
           className: `w-full min-w-0 pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white outline-none transition-colors ${editing && !saving ? 'focus:border-blue-500' : 'cursor-default'}`,
         };
         return <div key={key} className={`min-w-0 space-y-1.5 ${key === 'address' ? 'lg:col-span-2' : ''}`}>
-          <label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor={props.id}>{label}</label>
+          <label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor={props.id}>{label}{props.required && <span aria-hidden="true" className="ml-1 text-red-500">*</span>}</label>
           {key === 'phone' ? <div className="flex min-w-0 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-[#1B252F] focus-within:border-blue-500">
             <span className="flex shrink-0 items-center border-r border-gray-200 dark:border-slate-700 px-3 text-sm text-slate-500">+63</span>
             <input {...props} type="tel" inputMode="tel" placeholder="(28) 123-3488"
@@ -124,7 +127,11 @@ export function OrganizationSettingsForm() {
               onBlur={() => setDraft(value => value && ({ ...value, phone: formatOrganizationPhone(value.phone) }))}
             />
           </div> : <div className="relative"><Icon aria-hidden="true" className="absolute left-3 top-3 w-3.5 h-3.5 text-slate-500" />
-            {key === 'address' ? <textarea {...props} rows={2} /> : <input {...props} type={key === 'email' ? 'email' : 'text'} />}
+            {key === 'industry' ? <select {...props} disabled={!editing || saving}>
+              <option value="">Select industry</option>
+              {draft.industry && !COMPANY_INDUSTRIES.includes(draft.industry as typeof COMPANY_INDUSTRIES[number]) && <option value={draft.industry} disabled>{draft.industry} (choose an industry)</option>}
+              {COMPANY_INDUSTRIES.map(industry => <option key={industry} value={industry}>{industry}</option>)}
+            </select> : key === 'address' ? <textarea {...props} rows={2} /> : <input {...props} type={key === 'email' ? 'email' : 'text'} />}
           </div>}
           {fieldErrors[key] && <p id={`org-${key}-error`} role="alert" className="text-xs text-red-600 dark:text-red-400">{fieldErrors[key]}</p>}
         </div>;

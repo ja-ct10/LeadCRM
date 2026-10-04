@@ -1,4 +1,7 @@
 'use client';
+import { PageHeader } from '@/shared/components/ui/page-header';
+import { CreateButton } from '@/shared/components/ui/button';
+
 import { SelectedRowsBar } from '@/shared/components/crm/selected-rows-bar';
 
 
@@ -297,30 +300,10 @@ export function ModuleWorkspace({
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* ── Header ──────────────────────────────────────────────────── */}
-      <div className="flex flex-row items-center justify-between gap-3 mb-4">
-        <div className="min-w-0 flex-1">
-          <h1 className="text-[28px] font-extrabold text-[#0F172A] dark:text-white tracking-tight leading-tight">
-            {title}
-          </h1>
-          {description && (
-            <p className="text-[13px] text-[#5A6B85] dark:text-slate-400 mt-0.5">
-              {description}
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {canCreate && (
-            <CreateActionDropdown
-              primaryActionLabel={primaryActionLabel}
-              onPrimaryAction={onPrimaryAction}
-              onImport={onImport}
-            />
-          )}
-          {!canCreate && onImport && (
-            <button onClick={onImport} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">Import File</button>
-          )}
-        </div>
-      </div>
+      <PageHeader title={title} subtitle={description} actions={<>
+        {canCreate && <CreateActionDropdown primaryActionLabel={primaryActionLabel} onPrimaryAction={onPrimaryAction} onImport={onImport} />}
+        {!canCreate && onImport && <button onClick={onImport} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">Import File</button>}
+      </>} />
 
       {/* ── Saved View Tabs ─────────────────────────────────────────── */}
       {savedTabs && savedTabs.length > 0 && (
@@ -348,7 +331,7 @@ export function ModuleWorkspace({
       {/* ── Toolbar ─────────────────────────────────────────────────── */}
       {/* Control order: search → filter toggle → sort dropdown → page-size selector → pagination nav (Req 8.1) */}
       {/* Mobile: search on row 1 (full width), all secondary controls on row 2 via flex-col */}
-      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 mb-3" role="toolbar" aria-label="Module controls">
+      <div data-selection-toolbar className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 mb-3" role="toolbar" aria-label="Module controls">
         {/* 1. Search field — full width on mobile, fixed width on sm+ */}
         <ModuleSearchInput value={searchTerm} onChange={value => onSearch?.(value)} placeholder={searchPlaceholder} />
 
@@ -360,12 +343,12 @@ export function ModuleWorkspace({
           <FilterButton title={title} open={showFilters} onClick={onToggleFilters} />
 
           {/* 3. Page-size selector */}
-          {onPageSizeChange && (
+          {!loading && !isDataLoading && onPageSizeChange && (
             <PageSizeSelectorInline pageSize={pageSize} onPageSizeChange={onPageSizeChange} />
           )}
 
           {/* 5. Pagination nav (compact toolbar variant) */}
-          {onPageChange && (paginationTotalRecords ?? totalRecords) > 0 && (
+          {!loading && !isDataLoading && onPageChange && (paginationTotalRecords ?? totalRecords) > 0 && (
             <PaginationNavInline
               currentPage={currentPage}
               totalRecords={paginationTotalRecords ?? totalRecords}
@@ -587,7 +570,7 @@ export function ModuleWorkspace({
           )}
 
           {/* Pagination Controls (Task 13.2) */}
-          {onPageChange && onPageSizeChange && (
+          {!loading && !isDataLoading && onPageChange && onPageSizeChange && (
             <PaginationControls
               currentPage={currentPage}
               totalRecords={paginationTotalRecords ?? totalRecords}
@@ -916,54 +899,13 @@ export function CreateActionDropdown({ primaryActionLabel, onPrimaryAction, onIm
     return () => window.removeEventListener('keydown', handleKey);
   }, [isOpen]);
 
-  // If no import action, just render the primary button directly (no dropdown)
-  if (!onImport) {
-    return (
-      <>
-        {/* Mobile: compact icon-only button (hidden at sm+) */}
-        <button
-          onClick={onPrimaryAction}
-          aria-label={primaryActionLabel}
-          className="sm:hidden inline-flex items-center justify-center h-9 w-9 shrink-0 text-white bg-[#2563EB] hover:bg-[#1D4ED8] rounded-lg transition-colors shadow-sm"
-        >
-          <Plus size={16} />
-        </button>
-        {/* Desktop: full labeled button (hidden below sm) */}
-        <button
-          onClick={onPrimaryAction}
-          className="hidden sm:inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-semibold text-white bg-[#2563EB] hover:bg-[#1D4ED8] rounded-lg transition-colors shadow-sm"
-        >
-          <span className="text-base leading-none">+</span>
-          {primaryActionLabel}
-        </button>
-      </>
-    );
-  }
+  if (!onImport) return <CreateButton label={primaryActionLabel} onClick={onPrimaryAction} />;
 
   return (
     <div ref={dropdownRef} className="relative">
-      {/* Mobile: compact icon-only [+] button (hidden at sm+) */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        aria-expanded={isOpen}
-        aria-haspopup="true"
-        aria-label={primaryActionLabel}
-        className="sm:hidden inline-flex items-center justify-center h-9 w-9 shrink-0 text-white bg-[#2563EB] hover:bg-[#1D4ED8] rounded-lg transition-colors shadow-sm"
-      >
-        <Plus size={16} />
-      </button>
-
-      {/* Desktop: full labeled dropdown button (hidden below sm) */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        aria-expanded={isOpen}
-        aria-haspopup="true"
-        className="hidden sm:inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-semibold text-white bg-[#2563EB] hover:bg-[#1D4ED8] rounded-lg transition-colors shadow-sm"
-      >
-        <span className="text-base leading-none">+</span>
-        {primaryActionLabel}
-        <ChevronDown size={14} className={cn('ml-0.5 opacity-60 transition-transform', isOpen && 'rotate-180')} />
-      </button>
+      <CreateButton label={primaryActionLabel} onClick={() => setIsOpen(!isOpen)} aria-expanded={isOpen} aria-haspopup="menu">
+        <ChevronDown size={14} className={cn('hidden sm:block opacity-60 transition-transform', isOpen && 'rotate-180')} />
+      </CreateButton>
 
       <AnimatePresence>
         {isOpen && (

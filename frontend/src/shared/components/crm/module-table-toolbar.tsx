@@ -11,7 +11,7 @@ export function ModuleTableToolbar({ search, onSearch, placeholder, label, filte
   filter?: ReactNode; refreshing?: boolean; onRefresh: () => void | Promise<unknown>;
   onManageColumns?: () => void; disabled?: boolean;
 }) {
-  return <div role="toolbar" aria-label={`${label} controls`} className="flex min-w-0 flex-wrap items-center gap-2">
+  return <div data-selection-toolbar role="toolbar" aria-label={`${label} controls`} className="flex min-w-0 flex-wrap items-center gap-2">
     <ModuleSearchInput value={search} onChange={onSearch} placeholder={placeholder} label={`Search ${label.toLowerCase()}`} disabled={disabled} />
     {filter}
     <div className="ml-auto flex shrink-0 items-center gap-2">

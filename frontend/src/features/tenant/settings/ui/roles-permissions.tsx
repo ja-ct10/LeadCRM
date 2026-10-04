@@ -1,4 +1,6 @@
 'use client';
+import { PageHeader } from '@/shared/components/ui/page-header';
+
 
 import React, { useState, useId, useMemo, useCallback, useEffect, useRef } from 'react';
 import { ArrowLeft, Plus, Copy, Trash2, Users, Shield, Info, X, MoreHorizontal, Edit2 } from 'lucide-react';
@@ -8,7 +10,7 @@ import { useAuth } from '@/store/AuthContext';
 import { toast } from 'sonner';
 import type { RoleDefinition, Permission } from '@/store/types';
 import { PERMISSION_GROUPS, togglePermissionSelection } from '@leadcrm/shared';
-import { Button } from '@/shared/components/ui/button';
+import { Button, CreateButton } from '@/shared/components/ui/button';
 import { cn } from '@/lib/utils';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/shared/components/ui/dropdown-menu';
 
@@ -402,15 +404,8 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Roles &amp; Permissions</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Manage team access and control what users can see and do.</p>
-        </div>
-        {canCreate && (
-          <Button onClick={openNew} disabled={rolesLoading} className="shrink-0"><Plus size={16} /> Create Custom Role</Button>
-        )}
-      </div>
+      <PageHeader title="Roles & Permissions" subtitle="Manage team access and control what users can see and do."
+        actions={canCreate && <CreateButton label="Create Custom Role" onClick={openNew} disabled={rolesLoading} />} />
 
       {/* Info banner */}
       <div className="flex items-start gap-3 p-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60 rounded-2xl">

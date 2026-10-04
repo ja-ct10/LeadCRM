@@ -42,7 +42,7 @@ it('renders saved avatars through the tenant endpoint and falls back on missing 
   expect(screen.queryByRole('img', { name: 'Ana Photo' })).toBeNull();
   expect(screen.getByText('AP')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Filter users' }).title).toBe('Filter users');
-  expect(screen.getByRole('button', { name: 'New user' }).title).toBe('New user');
+  expect(screen.getByRole('button', { name: 'New User' }).title).toBe('New User');
 });
 it('keeps the toolbar/header, shows a spinner until API rows arrive and opens readonly details', async () => {
   let resolve!: (value: unknown) => void;

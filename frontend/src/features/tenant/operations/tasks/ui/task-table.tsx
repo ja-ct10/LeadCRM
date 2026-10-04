@@ -214,7 +214,7 @@ export function TaskTable({
       columns={gridColumns}
       data={tasks}
       getRowId={(task) => task.id}
-      height={600}
+      height="auto"
       selectable={selectable}
       selectedIds={new Set(selected)}
       onSelectionChange={(ids) => {

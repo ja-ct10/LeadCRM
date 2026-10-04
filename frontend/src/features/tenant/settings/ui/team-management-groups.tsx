@@ -8,7 +8,7 @@ import { useAuth } from '@/store/AuthContext';
 import type { User } from '@/store/types';
 import { groupsApi, type TenantGroup } from '@/shared/services/groups.api';
 import { USE_MOCK_DATA } from '@/lib/config';
-import { Button } from '@/shared/components/ui/button';
+import { Button, CreateButton } from '@/shared/components/ui/button';
 import { Card } from '@/shared/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/shared/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/shared/components/ui/dropdown-menu';
@@ -143,7 +143,7 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
     ...(canManage ? [{ id: 'actions', header: 'Actions', accessor: () => '', width: 80,
       cell: (_: unknown, member: TenantGroupMember) => <Button variant="ghost" size="icon" disabled={busy} aria-label={`Remove ${memberName(member.user)}`} title="Remove member" onClick={() => requestRemove(member)}><X size={14} /></Button> }] : []),
   ];
-  const createAction = canCreate && <Button size="sm" aria-label="New Group" title="New Group" onClick={() => openModal('create')} className="h-9 w-9 shrink-0 p-0 sm:w-auto sm:px-3"><Plus size={16} /><span className="hidden sm:inline">New Group</span></Button>;
+  const createAction = canCreate && <CreateButton label="New Group" onClick={() => openModal('create')} />;
   const header = renderHeader ? renderHeader(createAction) : <div className="flex justify-end">{createAction}</div>;
 
   return <div className="w-full min-w-0 space-y-4">
@@ -167,7 +167,7 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
       <DataGrid ariaLabel="Group members" columns={columns} data={visibleMembers} getRowId={member => member.id} height="auto" emptyMessage={members.length ? 'No members match your search.' : 'No members yet. Use Add Members to add users to this group.'} />
     </> : <>
       <ModuleTableToolbar label="Groups" search={search} onSearch={setSearch} placeholder="Search groups..." refreshing={loading} onRefresh={loadGroups} />
-      {!loaded && loading ? <Card role="status" aria-label="Loading groups" className="rounded-xl shadow-none overflow-hidden"><div aria-hidden="true"><DataLoadingSkeleton rowCount={4} columnCount={2} rowHeight={64} /></div></Card> : loaded && <Card className="rounded-xl shadow-none overflow-hidden" aria-busy={loading}>
+      {loading ? <Card role="status" aria-label="Loading groups" className="rounded-xl shadow-none overflow-hidden"><div aria-hidden="true"><DataLoadingSkeleton rowCount={4} columnCount={2} rowHeight={64} /></div></Card> : loaded && <Card className="rounded-xl shadow-none overflow-hidden" aria-busy={loading}>
         {visibleGroups.map(group => <div key={group.id} className="flex min-w-0 items-center gap-2 border-b border-slate-100 dark:border-slate-800 last:border-0 px-3 py-2">
           <button aria-label={`Open ${group.name}`} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg p-1 text-left hover:bg-slate-50 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" onClick={() => { setActiveId(group.id); setMemberSearch(''); }}>
             <span className="rounded-lg bg-blue-50 dark:bg-blue-950/30 p-2 text-blue-500"><Users size={16} /></span>

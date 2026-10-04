@@ -1,4 +1,7 @@
 'use client';
+import { PageHeader } from '@/shared/components/ui/page-header';
+import { CreateButton } from '@/shared/components/ui/button';
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Plus, Layout, Edit, Copy, Trash2, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
@@ -58,10 +61,8 @@ export default function FormsPage({ onBuilderActiveChange }: { onBuilderActiveCh
   };
   if (active) return <FormBuilderPage key={active.id} form={active} onBack={() => setActive(null)} onFormUpdate={update} />;
   return <div className="space-y-5 min-w-0">
-    <header className="flex items-start justify-between gap-4">
-      <div className="min-w-0"><h1 className="text-xl font-bold">Forms</h1><p className="text-sm text-slate-500 mt-1">Create and manage web forms to capture leads from your website</p></div>
-      <button type="button" aria-label="New Form" title="New Form" disabled={busy || loading || !canCreate} onClick={create} className="flex shrink-0 items-center gap-2 rounded-md bg-blue-600 p-3 text-white disabled:opacity-50"><Plus size={18} /><span className="hidden sm:inline text-sm">New Form</span></button>
-    </header>
+    <PageHeader title="Forms" subtitle="Create and manage web forms used to capture inquiries and leads."
+      actions={<CreateButton label="New Form" disabled={busy || loading || !canCreate} onClick={create} />} />
     {loading ? <div aria-label="Loading forms" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{[1,2,3].map(n => <div key={n} className="animate-pulse h-52 rounded-xl bg-slate-200 dark:bg-slate-800" />)}</div>
       : error ? <div role="alert" className="p-6 border rounded-xl"><p>{error}</p><button className="mt-3 text-blue-600 underline" onClick={() => setRetry(v => v + 1)}>Retry</button></div>
       : !forms.length ? <div className="py-16 text-center border border-dashed rounded-xl"><Layout className="mx-auto mb-3 text-slate-400" /><h2 className="font-semibold">No forms yet</h2><p className="text-sm text-slate-500">Create your first Contact Us form to start capturing leads.</p></div>

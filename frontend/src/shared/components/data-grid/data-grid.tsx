@@ -178,7 +178,10 @@ function DataGridRowInner<T>({
             : 'hover:bg-[#f7f8fa] dark:hover:bg-slate-800/50',
       )}
       style={viewMode === 'wrap' ? { minHeight: rowHeight, maxHeight: 156 } : { height: rowHeight }}
-      onClick={() => onRowClick?.(row)}
+      onClick={event => {
+        if ((event.target as HTMLElement).closest('button, a, input, select, textarea, [role="button"], [role="checkbox"], [role="menuitem"]')) return;
+        onRowClick?.(row);
+      }}
       aria-selected={selected}
       role="row"
     >

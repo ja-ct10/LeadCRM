@@ -1,4 +1,4 @@
-﻿/**
+/**
  * AccountsDataGrid — Accounts table implemented with the shared DataGrid component.
  *
  * This replaces the legacy flex-based inline layout for the "table" view type,
@@ -214,7 +214,7 @@ export function AccountsDataGrid({
       columns={gridColumns}
       data={accounts}
       getRowId={getRowId}
-      height={600}
+      height="auto"
       selectable
       selectedIds={selectedIds}
       onSelectionChange={onSelectionChange}

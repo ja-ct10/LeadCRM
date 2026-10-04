@@ -460,6 +460,7 @@ export default function LeadsPage(): React.ReactElement {
       <ModuleWorkspace
         moduleId="leads"
         title="Leads"
+        description="Manage and track potential customers and sales opportunities."
         moduleConfig={LEADS_MODULE_CONFIG}
         primaryActionLabel="Create Lead"
         onPrimaryAction={handleCreate}

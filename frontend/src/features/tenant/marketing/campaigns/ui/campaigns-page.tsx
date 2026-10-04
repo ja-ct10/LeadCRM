@@ -1,4 +1,6 @@
 'use client';
+import { PageHeader } from '@/shared/components/ui/page-header';
+
 import DOMPurify from 'dompurify';
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -217,25 +219,10 @@ export default function CampaignsPage() {
     >
 
       {/* 1. Standardized Header Row */}
-      <div className="flex items-center justify-between gap-2 pb-1 border-b border-slate-200 dark:border-slate-800">
-        <div className="flex items-center gap-2 min-w-0">
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">
-            Campaigns
-          </h1>
-          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 shrink-0">
-            {isInitialLoad ? '…' : totalItems} total
-          </span>
-        </div>
-        {canCreateCampaign && campaigns.length > 0 && (
-          <CreateActionDropdown primaryActionLabel="Create Campaign" onPrimaryAction={() => {
-            setEditingCampaign(undefined);
-            setBuilderInitialType('Email');
-            setBuilderInitialContent(undefined);
-            setBuilderSubject('');
-            setShowBuilder(true);
-          }} />
-        )}
-      </div>
+      <PageHeader title="Campaigns" subtitle="Create, send, and monitor customer marketing campaigns." badge={<span className="text-xs text-slate-500">{isInitialLoad ? '…' : totalItems} total</span>}
+        actions={canCreateCampaign && <CreateActionDropdown primaryActionLabel="Create Campaign" onPrimaryAction={() => {
+          setEditingCampaign(undefined); setBuilderInitialType('Email'); setBuilderInitialContent(undefined); setBuilderSubject(''); setShowBuilder(true);
+        }} />} />
 
       {/* 2. Overview Operational KPI Strip */}
       {canViewReports && <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-lg p-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 text-xs">

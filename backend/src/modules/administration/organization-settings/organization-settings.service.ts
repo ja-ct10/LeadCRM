@@ -1,4 +1,4 @@
-import { UpdateOrganizationSettingsSchema, type UpdateOrganizationSettings } from '@leadcrm/shared';
+import { OrganizationRequiredFieldsSchema, UpdateOrganizationSettingsSchema, type UpdateOrganizationSettings } from '@leadcrm/shared';
 import type { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
 import { buildChangeset } from '../../../core/audit/audit.service';
@@ -19,6 +19,8 @@ export async function updateOrganizationSettings(tenantId: string, userId: strin
   return prisma.$transaction(async tx => {
     const before = await tx.tenant.findUnique({ where: { id: tenantId }, select });
     if (!before) throw new NotFoundError('Organization');
+    // PATCH may omit unchanged fields, but required persisted values may never be blank.
+    OrganizationRequiredFieldsSchema.parse({ ...before, ...data });
     const saved = await tx.tenant.update({ where: { id: tenantId }, data, select });
     await tx.auditLog.create({ data: {
       tenantId, userId, action: 'organization.updated', entityType: 'Tenant', entityId: tenantId,

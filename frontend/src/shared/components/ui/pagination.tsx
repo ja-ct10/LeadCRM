@@ -136,7 +136,7 @@ export function Pagination({
   );
 
   // Don't render anything when there's truly nothing to paginate
-  if (totalItems === 0 && !isLoading) return null;
+  if (isLoading || totalItems === 0) return null;
 
   return (
     <nav

@@ -30,3 +30,5 @@ __exportStar(require("./contracts/lead-column-migration"), exports);
 __exportStar(require("./validation/administration-user.schema"), exports);
 
 __exportStar(require("./validation/crm-import.schema"), exports);
+
+__exportStar(require("./constants/company-industries"), exports);

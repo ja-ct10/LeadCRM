@@ -34,7 +34,7 @@ describe.skipIf(!disposable)('organization and account settings over authenticat
   afterAll(async () => { if (server) await new Promise<void>(resolve => server.close(() => resolve())); await prisma.$disconnect(); });
 
   it('persists all six fields, reloads them, audits changes, and leaves another tenant unchanged', async () => {
-    const values = { name: ' Saved ', industry: 'IT', email: 'info@example.com', phone: '+63 (28) 123-3488', domain: 'example.com', address: 'Manila' };
+    const values = { name: ' Saved ', industry: 'Technology', email: 'info@example.com', phone: '+63 (28) 123-3488', domain: 'example.com', address: 'Manila' };
     const saved = await call('/administration/organization-settings', 'PATCH', values);
     expect(saved.status).toBe(200);
     expect(saved.body.data).toMatchObject({ ...values, name: 'Saved', phone: '+63281233488', id: tenantId });
@@ -42,8 +42,9 @@ describe.skipIf(!disposable)('organization and account settings over authenticat
     expect(await prisma.tenant.findUnique({ where: { id: tenantId } })).toMatchObject({ domain: 'example.com', address: 'Manila' });
     expect((await prisma.tenant.findUniqueOrThrow({ where: { id: otherTenantId } })).name).toBe('Other tenant');
     expect(await prisma.auditLog.count({ where: { tenantId, action: 'organization.updated' } })).toBe(1);
-    expect((await call('/auth/me')).body.data.user).toMatchObject({ tenantName: 'Saved', industry: 'IT' });
-    expect((await call('/administration/organization-settings', 'PATCH', { phone: '', domain: '', email: '   ' })).body.data).toMatchObject({ phone: null, domain: null, email: null });
+    expect((await call('/auth/me')).body.data.user).toMatchObject({ tenantName: 'Saved', industry: 'Technology' });
+    expect((await call('/administration/organization-settings', 'PATCH', { phone: '', domain: '', email: '   ' })).status).toBe(400);
+    expect((await call('/administration/organization-settings', 'PATCH', { phone: '', domain: '' })).body.data).toMatchObject({ phone: null, domain: null, email: 'info@example.com' });
   });
 
   it('enforces authentication, read/edit permissions, and the strict tenant-safe whitelist', async () => {
@@ -53,6 +54,18 @@ describe.skipIf(!disposable)('organization and account settings over authenticat
     for (const payload of [{ id: otherTenantId }, { tenantId: otherTenantId }, { status: 'ACTIVE' }, { name: ' ' }, { email: 'invalid' }]) {
       expect((await call('/administration/organization-settings', 'PATCH', payload)).status).toBe(400);
     }
+  });
+
+  it('rejects invalid values for every editable field without writing them', async () => {
+    const before = (await call('/administration/organization-settings')).body.data;
+    for (const payload of [{ name: 'x'.repeat(151) }, { email: '' }, { email: 'abc..test@camxian.com' }, { domain: 'arbitrary text' }, { industry: 'Unsupported' }, { address: '   ' }, { address: 'x'.repeat(501) }]) {
+      const result = await call('/administration/organization-settings', 'PATCH', payload);
+      expect(result.status).toBe(400);
+      expect(result.body.fieldErrors).toHaveProperty(Object.keys(payload)[0]);
+      expect((await call('/administration/organization-settings')).body.data).toEqual(before);
+    }
+    const result = await call('/administration/organization-settings', 'PATCH', { email: ' INFO@Camxian.com ', domain: 'https://Camxian.com/' });
+    expect(result.body.data).toMatchObject({ email: 'info@camxian.com', domain: 'camxian.com' });
   });
 
   it('rejects malformed telephones before persistence and normalizes supported landline formats', async () => {
@@ -79,9 +92,9 @@ describe.skipIf(!disposable)('organization and account settings over authenticat
     const created = await call('/crm/accounts', 'POST', { name: 'Account', country: 'Philippines' });
     expect(created.status).toBe(201);
     const accountId = created.body.data.id;
-    const updated = await call(`/crm/accounts/${accountId}`, 'PUT', { name: 'Saved account', industry: 'IT' });
+    const updated = await call(`/crm/accounts/${accountId}`, 'PUT', { name: 'Saved account', industry: 'Technology' });
     expect(updated.status).toBe(200);
-    expect(updated.body.data).toMatchObject({ name: 'Saved account', industry: 'IT', country: 'Philippines' });
+    expect(updated.body.data).toMatchObject({ name: 'Saved account', industry: 'Technology', country: 'Philippines' });
     const saved = await prisma.account.findUniqueOrThrow({ where: { id: accountId } });
     for (const value of [created.body.data, updated.body.data, saved]) {
       for (const field of ['taxId', 'customerType', 'customerSince']) expect(value).not.toHaveProperty(field);

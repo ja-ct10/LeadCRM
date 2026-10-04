@@ -1,45 +1,98 @@
 'use client';
-import { useEffect, useState } from 'react';
-import type { WorkflowExecutionRun } from '@leadcrm/shared';
+import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+import type { Workflow, WorkflowExecutionRun } from '@leadcrm/shared';
 import { WORKFLOW_TRIGGERS } from '@leadcrm/shared';
 import { workflowActionLabel } from '../services/workflow-editor';
 import { workflowsApi } from '@/shared/services/workflows.api';
 import { Button } from '@/shared/components/ui/button';
 import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
 import { DataLoadingSkeleton } from '@/shared/components/crm/data-view-states';
+import { useAuth } from '@/store/AuthContext';
+import { RefreshButton } from '@/shared/components/crm/refresh-button';
+import { LeadsPagination } from '@/shared/components/crm/leads-pagination';
+import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/shared/components/ui/dropdown-menu';
 import {
   panelBodyClass,
   panelCloseClass,
-  panelFooterClass,
   panelHeaderClass,
-  panelSecondaryButtonClass,
   panelSurfaceClass,
   panelTitleClass,
 } from '@/shared/components/side-panel-styles';
-import { ChevronRight, X } from 'lucide-react';
+import { ChevronRight, X, MoreHorizontal, Edit, Pause, Play, Copy, Archive } from 'lucide-react';
 interface WorkflowRunsProps {
   workflowId: string;
   name: string;
   status?: string;
   onClose: () => void;
+  onUpdated?: () => void | Promise<unknown>;
 }
 export function WorkflowExecutionLogModal({
   workflowId,
   name,
   status,
   onClose,
+  onUpdated,
 }: WorkflowRunsProps) {
+  const router = useRouter();
+  const { userCan } = useAuth();
+  const canViewRuns = userCan('workflows', 'canViewRuns');
+  const [workflow, setWorkflow] = useState<Workflow | null>(null);
+  const [revision, setRevision] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [runsLoading, setRunsLoading] = useState(canViewRuns);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const lock = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true); setError('');
+    workflowsApi.get(workflowId).then(response => { if (!cancelled) setWorkflow(response.data); })
+      .catch(reason => { if (!cancelled) setError(reason instanceof Error ? reason.message : 'Unable to load workflow.'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [workflowId, revision]);
+  const refresh = () => { setLoading(true); setRunsLoading(canViewRuns); setRevision(value => value + 1); };
+  const mutate = async (action: () => Promise<unknown>, message: string) => {
+    if (lock.current) return;
+    lock.current = true; setBusy(true);
+    try { await action(); setArchiveOpen(false); await onUpdated?.(); refresh(); toast.success(message); }
+    catch (reason) { toast.error(reason instanceof Error ? reason.message : 'Unable to update workflow.'); }
+    finally { lock.current = false; setBusy(false); }
+  };
+  const savedStatus = workflow ? workflow.isArchived ? 'Archived' : workflow.status === 'DRAFT' ? 'Draft' : workflow.isActive ? 'Active' : 'Paused' : status;
+  const unavailable = busy || loading || !workflow || workflow.isArchived;
   return (
     <Sheet open onOpenChange={open => { if (!open) onClose(); }}>
-      <SheetContent showClose={false} aria-label={`Runs — ${name}`} className={panelSurfaceClass}>
-        <header className={panelHeaderClass + ' flex items-start gap-3'}>
+      <SheetContent showClose={false} aria-label={`Workflow details — ${workflow?.name ?? name}`} className={panelSurfaceClass}>
+        <header className={panelHeaderClass + ' flex flex-wrap items-start gap-2'}>
           <div className="min-w-0 flex-1">
-            <p className="mb-1 text-xs font-medium text-muted-foreground">Workflow runs{status ? ` · ${status}` : ''}</p>
-            <h2 className={panelTitleClass}>{name}</h2>
+            <p className="mb-1 text-xs font-medium text-muted-foreground">Workflow details{savedStatus ? ` · ${savedStatus}` : ''}</p>
+            <h2 className={panelTitleClass}>{workflow?.name ?? name}</h2>
           </div>
-          <Button variant="ghost" size="icon" className={panelCloseClass + ' -mr-1 -mt-2'} onClick={onClose} aria-label="Close workflow runs"><X size={16} /></Button>
+          <div className="flex shrink-0 items-center gap-0.5">
+            <RefreshButton label="Refresh workflow activity" refreshing={loading || runsLoading} disabled={busy} onClick={refresh} />
+            <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="Workflow actions" title="Workflow actions"><MoreHorizontal size={16} /></Button></DropdownMenuTrigger>
+              <DropdownMenuContent aria-label="Workflow actions menu">
+                {userCan('workflows', 'canEdit') && <DropdownMenuItem disabled={unavailable} onSelect={() => router.push(`/automation/workflows/${workflowId}/edit`)}><Edit size={16} />Edit</DropdownMenuItem>}
+                {userCan('workflows', 'canActivate') && <DropdownMenuItem disabled={unavailable} onSelect={() => void mutate(() => workflowsApi.toggle(workflowId, !workflow!.isActive), workflow?.isActive ? 'Workflow paused.' : 'Workflow activated.')}>
+                  {workflow?.isActive ? <Pause size={16} /> : <Play size={16} />}{workflow?.isActive ? 'Pause' : 'Resume'}
+                </DropdownMenuItem>}
+                {userCan('workflows', 'canDuplicate') && <DropdownMenuItem disabled={busy || loading || !workflow} onSelect={() => void mutate(() => workflowsApi.duplicate(workflowId), 'Workflow duplicated as a draft.')}><Copy size={16} />Duplicate</DropdownMenuItem>}
+                {userCan('workflows', 'canArchive') && <DropdownMenuItem disabled={unavailable} destructive onSelect={() => setArchiveOpen(true)}><Archive size={16} />Archive</DropdownMenuItem>}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button variant="ghost" size="icon" className={panelCloseClass} onClick={onClose} aria-label="Close workflow details"><X size={16} /></Button>
+          </div>
         </header>
-        <WorkflowRuns key={workflowId} workflowId={workflowId} layout="panel" />
+        {error && <p role="alert" className="px-4 py-2 text-sm text-red-600">{error}</p>}
+        {workflow?.description && <p className="px-4 pt-4 text-sm text-muted-foreground [overflow-wrap:anywhere] sm:px-6">{workflow.description}</p>}
+        {canViewRuns ? <WorkflowRuns key={workflowId} workflowId={workflowId} layout="panel" refreshVersion={revision} onLoadingChange={setRunsLoading} /> : <p className="p-4 text-sm text-muted-foreground">Run history requires permission to view workflow runs.</p>}
+        <ConfirmActionDialog open={archiveOpen} onOpenChange={setArchiveOpen} title="Archive workflow?" description="This pauses the workflow and preserves its run history." confirmLabel="Archive" variant="destructive" isLoading={busy}
+          onConfirm={() => mutate(() => workflowsApi.archive(workflowId), 'Workflow archived.')} />
       </SheetContent>
     </Sheet>
   );
@@ -57,20 +110,27 @@ function runStatusClass(status: string) {
   }
 }
 
-export function WorkflowRuns({ workflowId, layout = 'inline' }: { workflowId: string; layout?: 'inline' | 'panel' }) {
+export function WorkflowRuns({ workflowId, layout = 'inline', refreshVersion = 0, onLoadingChange }: { workflowId: string; layout?: 'inline' | 'panel'; refreshVersion?: number; onLoadingChange?: (loading: boolean) => void }) {
   const [runs, setRuns] = useState<WorkflowExecutionRun[]>([]);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    onLoadingChange?.(true);
     setError('');
     workflowsApi
-      .getExecutions(workflowId, page)
+      .getExecutions(workflowId, page, pageSize)
       .then((response) => {
-        if (!cancelled) setRuns(response.data);
+        if (!cancelled) {
+          setRuns(response.data); setTotal(response.meta.total);
+          const lastPage = Math.max(1, Math.ceil(response.meta.total / pageSize));
+          if (page > lastPage) setPage(lastPage);
+        }
       })
       .catch((failure) => {
         if (!cancelled)
@@ -79,12 +139,12 @@ export function WorkflowRuns({ workflowId, layout = 'inline' }: { workflowId: st
           );
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) { setLoading(false); onLoadingChange?.(false); }
       });
     return () => {
       cancelled = true;
     };
-  }, [workflowId, page, retry]);
+  }, [workflowId, page, pageSize, retry, refreshVersion, onLoadingChange]);
   return (
     <div className={'min-w-0 [overflow-wrap:anywhere] ' + (layout === 'panel' ? 'flex min-h-0 flex-1 flex-col' : 'space-y-4')}>
       <div className={layout === 'panel' ? panelBodyClass + ' space-y-4' : 'space-y-4'}>
@@ -92,14 +152,7 @@ export function WorkflowRuns({ workflowId, layout = 'inline' }: { workflowId: st
           Runs show the action order at execution time. Older runs may differ from
           the current canvas.
         </p>
-        <Button
-          variant="outline"
-          className={panelSecondaryButtonClass}
-          disabled={loading}
-          onClick={() => setRetry(retry + 1)}
-        >
-          Refresh activity
-        </Button>
+        {layout === 'inline' && <RefreshButton label="Refresh workflow activity" refreshing={loading} onClick={() => { setLoading(true); setRetry(value => value + 1); }} />}
         {loading ? (
           <div role="status" aria-label="Loading workflow runs"><DataLoadingSkeleton rowCount={4} columnCount={2} /></div>
         ) : error ? (
@@ -153,25 +206,9 @@ export function WorkflowRuns({ workflowId, layout = 'inline' }: { workflowId: st
           ))
         )}
       </div>
-      <div className={layout === 'panel' ? panelFooterClass + ' justify-between' : 'flex flex-wrap items-center gap-2'}>
-        <Button
-          variant="outline"
-          className={panelSecondaryButtonClass}
-          disabled={loading || page === 1}
-          onClick={() => setPage(page - 1)}
-        >
-          Previous
-        </Button>
-        <span className="text-sm text-slate-600 dark:text-slate-300">Page {page}</span>
-        <Button
-          variant="outline"
-          className={panelSecondaryButtonClass}
-          disabled={loading || runs.length < 25}
-          onClick={() => setPage(page + 1)}
-        >
-          Next
-        </Button>
-      </div>
+      {!loading && !error && <div className={layout === 'panel' ? 'shrink-0 px-2 pb-3' : undefined}>
+        <LeadsPagination currentPage={page} totalRecords={total} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); }} />
+      </div>}
     </div>
   );
 }

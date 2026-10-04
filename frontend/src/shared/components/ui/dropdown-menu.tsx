@@ -114,7 +114,7 @@ export function DropdownMenuContent({
       }
     };
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setOpen(false); triggerRef.current?.focus(); }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setOpen(false); triggerRef.current?.focus(); }
     };
 
     document.addEventListener('mousedown', handleClickOutside);

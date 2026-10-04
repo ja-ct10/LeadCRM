@@ -14,14 +14,14 @@ const mount = () => render(<GroupsSubTab tenantUsers={[user] as never} />);
 const openGroup = async () => { fireEvent.click(await screen.findByRole('button', { name: 'Open Sales' })); };
 beforeEach(() => { vi.clearAllMocks(); mocks.getAll.mockResolvedValue({ data: [group()] }); mocks.remove.mockResolvedValue(undefined); mocks.removeMember.mockResolvedValue(undefined); mocks.addMember.mockResolvedValue(undefined); vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
-it('uses skeletons, removes filters, searches groups and retains rows while refreshing once', async () => {
+it('uses skeletons, removes filters, searches groups and uses skeleton rows while refreshing once', async () => {
   let resolve!: (value: unknown) => void; mocks.getAll.mockReturnValueOnce(new Promise(done => { resolve = done; })); mount();
   expect(screen.getByRole('status', { name: 'Loading groups' })).toBeTruthy(); expect(screen.queryByText(/Loading groups/)).toBeNull(); expect(screen.queryByRole('button', { name: /Filter/ })).toBeNull();
   await act(async () => resolve({ data: [group()] }));
   fireEvent.change(screen.getByLabelText('Search groups'), { target: { value: 'none' } }); expect(screen.getByText('No groups match your search.')).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Search groups'), { target: { value: 'sal' } }); expect(screen.getByText('Sales')).toBeTruthy();
   mocks.getAll.mockReturnValueOnce(new Promise(done => { resolve = done; })); const refresh = screen.getByRole('button', { name: 'Refresh' }); fireEvent.click(refresh); fireEvent.click(refresh);
-  expect(screen.getByText('Sales')).toBeTruthy(); expect(mocks.getAll).toHaveBeenCalledTimes(2); await act(async () => resolve({ data: [group()] }));
+  expect(screen.queryByText('Sales')).toBeNull(); expect(screen.getByRole('status', { name: 'Loading groups' })).toBeTruthy(); expect(mocks.getAll).toHaveBeenCalledTimes(2); await act(async () => resolve({ data: [group()] }));
 });
 it('requires trimmed names and creates a group with zero optional members, without duplicate requests', async () => {
   mount(); await screen.findByText('Sales'); fireEvent.click(screen.getByRole('button', { name: 'New Group' }));

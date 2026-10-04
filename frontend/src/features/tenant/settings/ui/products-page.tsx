@@ -1,4 +1,6 @@
 'use client';
+import { PageHeader } from '@/shared/components/ui/page-header';
+
 
 import { useEffect, useRef, useState } from 'react';
 import { Plus, Eye, Edit, Archive } from 'lucide-react';
@@ -19,7 +21,7 @@ import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { RefreshButton } from '@/shared/components/crm/refresh-button';
 import { SlidingDrawer } from '@/shared/components/sliding-drawer';
-import { Button } from '@/shared/components/ui/button';
+import { Button, CreateButton } from '@/shared/components/ui/button';
 import { ProductEditor } from './product-editor';
 
 const php = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' });
@@ -87,6 +89,8 @@ export function ProductsPage() {
   useEffect(() => { setSelected(new Set()); setPanel(null); setArchiveIds([]); }, [user?.tenantId]);
   useEffect(() => { setSelected(new Set()); }, [page, pageSize, search]);
   const filtered = products.filter(product => product.name.toLowerCase().includes(search.toLowerCase())).sort((a, b) => {
+    const others = Number(a.name.trim().toLowerCase() === 'others') - Number(b.name.trim().toLowerCase() === 'others');
+    if (others) return others;
     if (!sort) return 0;
     const comparison = sort.field === 'dealValue' ? a.dealValue - b.dealValue : a.name.localeCompare(b.name);
     return sort.direction === 'desc' ? -comparison : comparison;
@@ -129,18 +133,17 @@ export function ProductsPage() {
     { id: 'actions', header: 'Actions', accessor: () => '', width: 110, cell: (_, row) => <TableIconButton touchFriendly label="Edit product" disabled={!canEdit || busy} onClick={() => setPanel({ mode: 'edit', product: row })}><Edit size={14} /></TableIconButton> },
   ];
   return <div className="min-w-0 max-w-full space-y-4">
-    <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h2 className="text-xl font-semibold">Products</h2><p className="mt-1 text-sm text-muted-foreground">Manage products and their default Deal values.</p></div>
-      {canCreate && <Button aria-label="Add Product" title="Add Product" disabled={busy || !enabled} onClick={() => setPanel({ mode: 'new' })} className="shrink-0"><Plus size={16} /><span className="hidden sm:inline">Add Product</span></Button>}
-    </div>
-    <div className="flex flex-wrap items-center gap-2"><ModuleSearchInput label="Search products" placeholder="Search products..." value={search} onChange={value => { setSearch(value); setPage(1); }} /><RefreshButton label="Refresh products" refreshing={loading} disabled={busy || loading} onClick={refresh} /></div>
+    <PageHeader title="Products" subtitle="Manage products and their default Deal values."
+      actions={canCreate && <CreateButton label="Add Product" disabled={busy || !enabled} onClick={() => setPanel({ mode: 'new' })} />} />
+    <div data-selection-toolbar role="toolbar" aria-label="Products controls" className="flex flex-wrap items-center gap-2"><ModuleSearchInput label="Search products" placeholder="Search products..." value={search} onChange={value => { setSearch(value); setPage(1); }} /><RefreshButton label="Refresh products" refreshing={loading} disabled={busy || loading} onClick={refresh} /></div>
     {error && <p role="alert" className="text-destructive">{error}</p>}
     {!enabled && <div className="space-y-2"><p className="text-sm text-muted-foreground">Enable Product Interest to add products.</p>{canCreate && <Button variant="outline" disabled={busy} onClick={() => void enableProducts()}>Enable Product Interest</Button>}</div>}
-    {loading && !products.length ? <TableLoadingState label="Loading products" /> : <DataGrid columns={columns} data={filtered.slice((page - 1) * pageSize, page * pageSize)} getRowId={row => row.id} height="auto" selectable={canArchive} selectedIds={selected} onSelectionChange={ids => { if (!busy) setSelected(ids); }} sort={sort} onSortChange={setSort} sortingMode="external" enableColumnMenu={false} ariaLabel="Products table" summaryLabel={`${filtered.length} products`} onRowClick={product => setPanel({ mode: 'view', product })}
+    {loading ? <TableLoadingState label="Loading products" /> : <DataGrid columns={columns} data={filtered.slice((page - 1) * pageSize, page * pageSize)} getRowId={row => row.id} height="auto" selectable={canArchive} selectedIds={selected} onSelectionChange={ids => { if (!busy) setSelected(ids); }} sort={sort} onSortChange={setSort} sortingMode="external" enableColumnMenu={false} ariaLabel="Products table" summaryLabel={`${filtered.length} products`} onRowClick={product => setPanel({ mode: 'view', product })}
       rowActions={product => [{ id: 'view', label: 'View', icon: <Eye size={14} />, onClick: () => setPanel({ mode: 'view', product }) }, ...((canEdit || canArchive) ? [
         { id: 'edit', label: 'Edit', icon: <Edit size={14} />, disabled: busy || !canEdit, onClick: () => setPanel({ mode: 'edit', product }) },
         { id: 'archive', label: 'Archive', icon: <Archive size={14} />, separator: true, disabled: busy || !canArchive, onClick: () => setArchiveIds([product.id]) },
       ] : [])]} />}
-    <LeadsPagination currentPage={page} pageSize={pageSize} totalRecords={filtered.length} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); }} disabled={busy} />
+    <LeadsPagination currentPage={page} pageSize={pageSize} totalRecords={filtered.length} loading={loading} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); }} disabled={busy} />
     <SelectedRowsBar count={selected.size} onClear={() => setSelected(new Set())} disabled={busy}>{canArchive && <Button variant="outline" disabled={busy} onClick={() => setArchiveIds([...selected])}>Archive</Button>}</SelectedRowsBar>
     <SlidingDrawer isOpen={!!panel} onClose={() => { if (!busy) setPanel(null); }} title={panel?.mode === 'new' ? 'New Product' : panel?.mode === 'edit' ? 'Edit Product' : 'Product details'}>
       <div className="min-w-0 p-4 sm:p-6">{panel?.mode === 'view' ? <ProductView key={panel.product!.id} id={panel.product!.id} /> : panel && <ProductEditor key={panel.product?.id ?? 'new'} product={panel.product} busy={busy} onSave={save} onCancel={() => setPanel(null)} />}</div>

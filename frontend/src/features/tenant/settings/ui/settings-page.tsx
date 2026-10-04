@@ -1,4 +1,6 @@
 'use client';
+import { PageHeader } from '@/shared/components/ui/page-header';
+
 import { ProductsPage } from './products-page';
 import { ProductInterestsSettings } from './product-interests-settings';
 
@@ -511,9 +513,7 @@ export default function SettingsPage(): React.ReactElement {
         return (
           <div className={`flex-1 min-w-0 overflow-y-auto custom-scrollbar ${isFullPane ? '' : 'px-4 sm:px-6 py-5'}`}>
             {!isFullPane && !hasOwnHeader && (
-              <div className="mb-5">
-                <h1 className="text-xl font-bold text-slate-900 dark:text-white">{activeItem?.label ?? 'Settings'}</h1>
-              </div>
+              <PageHeader title={activeItem?.label ?? 'Settings'} subtitle={activeItem?.label === 'Account Details' ? 'Manage your account and security information.' : undefined} />
             )}
             {!canAccessTab(activeTab) ? <p role="alert">You do not have permission to access this settings section.</p> : activeTab === 'forms'
               ? <FormsTab onBuilderActiveChange={setIsFormBuilderActive} />

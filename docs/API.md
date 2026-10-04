@@ -228,14 +228,14 @@ See the [workflow production report](workflows/workflow-production-report.md#c-a
 | `PUT` | `/automation/workflows/:id` | Update workflow |
 | `PATCH` | `/automation/workflows/:id/toggle` | Set active state with `{isActive: boolean}` |
 | `PATCH` | `/automation/workflows/:id/archive` | Archive and preserve history |
-| `GET` | `/automation/workflows/:id/executions` | Paginated execution history |
+| `GET` | `/automation/workflows/:id/executions` | Execution history with `page` (default 1), `limit` (default 25, max 100), and shared `meta: {total, page, limit, hasMore}` |
 | `GET` | `/automation/workflows/:id/executions/:executionId` | Execution detail |
 | `POST` | `/automation/workflows/:id/test` | Read-only sample validation |
 | `GET` | `/automation/workflow-options` | Scoped users, pipelines, stages, templates and campaigns |
 | `GET` | `/automation/triggers` | Supported event and condition metadata |
 | `GET` | `/automation/actions` | Supported action metadata |
 
-Duplicate uses `POST /automation/workflows` with an inactive copy. Removal uses archive; there is no workflow DELETE endpoint.
+Duplicate uses `POST /automation/workflows/:id/duplicate` to create an inactive draft copy. Removal uses archive; there is no workflow DELETE endpoint.
 
 ---
 
@@ -260,10 +260,16 @@ Duplicate uses `POST /automation/workflows` with an inactive copy. Removal uses 
 | `PATCH` | `/administration/organization-settings` | Persist organization settings and audit the change | `settings.edit` |
 
 Both endpoints require an authenticated, ready tenant workspace. PATCH accepts
-only `name`, `industry`, `email`, `phone`, `domain`, and `address`. Name cannot be
-blank; nonempty email must be valid. Phone accepts a Philippine landline such as
+only `name`, `industry`, `email`, `phone`, `domain`, and `address`. Name and email
+are required in the persisted record, including after a partial update. Email must
+be valid and is normalized to lowercase. Industry uses the shared company-industry
+options. Domain accepts hostnames, lowercases them, and removes an HTTP(S) prefix
+and trailing slash; paths and malformed hostnames are rejected. Phone accepts a Philippine landline such as
 `+63 (28) 123-3488` and stores `+63281233488`. The shared Zod schema rejects letters,
-malformed punctuation, mobile numbers and invalid lengths. All text is trimmed.
+malformed punctuation, unsupported area codes, mobile numbers and invalid lengths.
+All text is trimmed. Limits are name 150, industry 32, email 254, phone 24,
+domain 253 and office address 500 characters. Address punctuation and line breaks
+are preserved; whitespace-only addresses and markup/control characters fail validation.
 Cleared optional fields become `null`. The
 response contains `id` and all six canonical saved values. Tenant identity comes
 from the session, never the request body. `domain` is descriptive organization

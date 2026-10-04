@@ -34,6 +34,32 @@ it('uses the shared row menu with View, Edit and Archive', async () => {
   fireEvent.click(trigger); expect(screen.queryByRole('menu')).toBeNull();
   fireEvent.click(trigger); fireEvent.mouseDown(document.body); expect(screen.queryByRole('menu')).toBeNull();
 });
+
+it('pins Others after all sorted products, including descending order', async () => {
+  vi.mocked(apiClient.get).mockResolvedValue({ data: [
+    { ...product, id: 'others', name: 'Others', dealValue: 10 },
+    { ...product, id: 'zebra', name: 'Zebra', dealValue: 500 },
+    { ...product, id: 'alpha', name: 'Alpha', dealValue: 50 },
+  ], meta: { enabled: true } });
+  render(<ProductsPage />); await screen.findByRole('grid');
+  const last = () => within(screen.getByRole('grid')).getAllByRole('row').at(-1)!.textContent;
+  expect(last()).toContain('Others');
+  fireEvent.click(screen.getByRole('columnheader', { name: 'Product Name' })); expect(last()).toContain('Others');
+  fireEvent.click(screen.getByRole('columnheader', { name: 'Product Name' })); expect(last()).toContain('Others');
+  fireEvent.click(screen.getByRole('columnheader', { name: 'Deal Value' })); expect(last()).toContain('Others');
+});
+
+it('replaces rows with the Leads spinner and hides pagination during a deduplicated refresh', async () => {
+  render(<ProductsPage />); await screen.findByRole('grid');
+  let finish!: (value: any) => void;
+  vi.mocked(apiClient.get).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  const calls = vi.mocked(apiClient.get).mock.calls.length;
+  fireEvent.click(screen.getByLabelText('Refresh products')); fireEvent.click(screen.getByLabelText('Refresh products'));
+  expect(screen.queryByRole('grid')).toBeNull(); expect(screen.queryByRole('navigation', { name: 'Pagination' })).toBeNull();
+  expect(screen.getByText('Loading products').querySelector('.animate-spin')).toBeTruthy(); expect(document.querySelector('.animate-pulse')).toBeNull();
+  expect(apiClient.get).toHaveBeenCalledTimes(calls + 1);
+  finish({ data: [product], meta: { enabled: true } }); await screen.findByRole('grid'); expect(screen.getByRole('navigation', { name: 'Pagination' })).toBeTruthy();
+});
 it('can enable the existing product field from Products after removing its Custom Fields card', async () => {
   vi.mocked(apiClient.get).mockResolvedValueOnce({ data: [], meta: { enabled: false } });
   render(<ProductsPage />);

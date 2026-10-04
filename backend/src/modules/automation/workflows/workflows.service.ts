@@ -118,6 +118,12 @@ export async function getWorkflowExecutions(id: string, tenantId: string, page =
   await getWorkflowById(id, tenantId);
   return repo.listExecutions(id, tenantId, page);
 }
+export async function getWorkflowExecutionPage(id: string, tenantId: string, page: number, limit: number) {
+  requireScope(tenantId);
+  await getWorkflowById(id, tenantId);
+  const [data, total] = await Promise.all([repo.listExecutions(id, tenantId, page, limit), repo.countExecutions(id, tenantId)]);
+  return paginate(data, total, { page, limit });
+}
 export async function testWorkflow(id: string, tenantId: string, entityId: string): Promise<WorkflowTestResult> {
   requireScope(tenantId);
   const existing = await getWorkflowById(id, tenantId);

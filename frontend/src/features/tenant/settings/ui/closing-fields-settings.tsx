@@ -1,4 +1,6 @@
 'use client';
+import { PageHeader } from '@/shared/components/ui/page-header';
+
 import { useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { CLOSING_FIELD_TYPES, ClosingFieldInputSchema, type ClosingField, type ClosingFieldInput } from '@leadcrm/shared';
@@ -6,7 +8,7 @@ import { apiClient } from '@/lib/api/client';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { SlidingDrawer } from '@/shared/components/sliding-drawer';
-import { Button } from '@/shared/components/ui/button';
+import { Button, CreateButton } from '@/shared/components/ui/button';
 import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { toast } from 'sonner';
 import { CustomFieldCard } from './custom-field-card';
@@ -57,7 +59,7 @@ export function ClosingFieldsSettings() {
   const fieldCount = query.data?.length ?? 0;
   const fieldStatus = query.isInitialLoad ? 'Loading' : query.error ? 'Unavailable' : query.data?.some(field => field.active) ? 'Enabled' : 'Setup';
   return <div className="min-w-0 space-y-5">
-    <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-semibold">Custom Fields</h2>{canCreate && <Button aria-label="Add New Field" title="Add New Field" onClick={() => setPanel('new')}><Plus size={16} /><span className="hidden sm:inline">Add New Field</span></Button>}</div>
+    <PageHeader title="Custom Fields" subtitle="Configure additional fields used throughout LeadCRM." actions={canCreate && <CreateButton label="Add New Field" onClick={() => setPanel('new')} />} />
     <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3"><CustomFieldCard title="Closed Won Requirements" description="Configure the information and documents needed to close a Deal as won." kind="requirements" status={fieldStatus} meta={query.isInitialLoad ? 'Loading fields…' : query.error ? 'Unable to load fields' : `${fieldCount} ${fieldCount === 1 ? 'field' : 'fields'}`} onClick={() => setPanel('list')} actions={[{ id: 'view', label: 'View requirements', onClick: () => setPanel('list') }, ...(canCreate ? [{ id: 'add', label: 'Add New Field', onClick: () => setPanel('new') }] : [])]} /><DealStageAutomationSettings /></div>
     <SlidingDrawer isOpen={panel !== null} onClose={() => setPanel(null)} title={panel === 'list' ? 'Closed Won Requirements' : typeof panel === 'object' && panel ? 'Edit Field' : 'New Field'} subtitle={panel === 'list' ? 'Manage the fields used to close a Deal as won.' : 'Complete the custom field details below.'}>
       {panel === 'list' ? <div className="space-y-4 p-4 sm:p-6">{query.isInitialLoad ? <TableLoadingState label="Loading requirements" /> : query.error ? <div role="alert">{query.error}<Button onClick={() => void query.refetch()}>Retry</Button></div> : <ul className="divide-y divide-border rounded-xl border border-border">{query.data?.map(field => <li key={field.id} className="flex min-w-0 items-start justify-between gap-3 p-3"><div className="min-w-0 [overflow-wrap:anywhere]"><p className="text-sm font-semibold">{field.name}</p><p className="mt-1 text-xs text-muted-foreground">{field.type} · {field.required ? 'Required' : 'Optional'} · {field.active ? 'Active' : 'Inactive'}</p>{field.type === 'Dropdown' && <p className="mt-1 text-xs text-muted-foreground">{field.options.join(', ')}</p>}{field.description && <p className="mt-1 text-xs">{field.description}</p>}</div><div className="flex shrink-0 flex-wrap gap-1">{canEdit && <Button variant="ghost" size="sm" onClick={() => setPanel(field)}>Edit</Button>}{canDisable && field.active && <Button variant="ghost" size="sm" onClick={() => void disable(field.id)}>Disable</Button>}</div></li>)}</ul>}{canCreate && <Button onClick={() => setPanel('new')}><Plus size={14} />Add New Field</Button>}</div> : panel && <FieldForm key={typeof panel === 'object' ? panel.id : 'new'} field={typeof panel === 'object' ? panel : undefined} onClose={() => setPanel(null)} onSaved={() => { void query.refetch(); setPanel(null); }} />}

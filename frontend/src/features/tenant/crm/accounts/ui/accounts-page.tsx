@@ -356,6 +356,7 @@ export default function AccountsPage(): React.ReactElement {
         bulkSelection={{ count: accountSelectedIds.size, onClear: () => setAccountSelectedIds(new Set()), actions: canDelete && <Button variant="outline" onClick={() => confirmArchive([...accountSelectedIds], `${accountSelectedIds.size} accounts`)}>Archive</Button> }}
         moduleId="accounts"
         title="Accounts"
+        description="Manage companies and organizations linked to CRM records."
         moduleConfig={ACCOUNTS_MODULE_CONFIG}
         primaryActionLabel="Add Account"
         onPrimaryAction={handleOpenCreate}

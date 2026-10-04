@@ -18,6 +18,7 @@ export function LeadsPagination({ currentPage, totalRecords, pageSize, onPageCha
   loading?: boolean;
 }) {
   const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
+  if (loading || refreshing) return null;
   return <nav aria-label="Pagination" className="flex min-w-0 flex-wrap items-center justify-between gap-1 px-2 py-2 sm:gap-3 sm:px-4 sm:py-3 mt-2 bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 rounded-lg">
     <div className="flex min-w-0 items-center gap-1 sm:gap-2">
       <span className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400">Per page</span>

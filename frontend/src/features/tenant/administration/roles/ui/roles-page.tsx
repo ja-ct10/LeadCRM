@@ -10,6 +10,9 @@ import { RoleCard } from './role-card';
 import { RoleBuilderModal } from './role-builder-modal';
 import { RoleDetailDrawer } from './role-detail-drawer';
 import { PermissionsTab } from './permissions-tab';
+import { PageHeader } from '@/shared/components/ui/page-header';
+import { CreateButton } from '@/shared/components/ui/button';
+import { RefreshButton } from '@/shared/components/crm/refresh-button';
 import type { RoleListItem } from '@/store/types/roles.types';
 
 type Tab = 'roles' | 'permissions';
@@ -52,34 +55,7 @@ export default function RolesPage(): React.ReactElement {
       className="p-4 lg:p-6 space-y-5"
     >
       {/* Page header */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-[17px] font-semibold text-slate-900 dark:text-white">Roles & Permissions</h1>
-          <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-0.5">
-            Define access levels and assign them to your team.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => refetch()}
-            title="Refresh"
-            className="h-9 w-9 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-          >
-            <RefreshCw size={14} />
-          </button>
-          {canCreate && (
-            <button
-              type="button"
-              onClick={() => openBuilder()}
-              className="h-9 px-4 flex items-center gap-1.5 text-[13px] font-medium rounded-lg bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors"
-            >
-              <Plus size={14} />
-              New Role
-            </button>
-          )}
-        </div>
-      </div>
+      <PageHeader title="Roles & Permissions" subtitle="Manage team access and control what users can see and do." actions={<><RefreshButton refreshing={isLoading} onClick={refetch} />{canCreate && <CreateButton label="Create Custom Role" onClick={() => openBuilder()} />}</>} />
 
       {/* Tabs */}
       <div className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-700">

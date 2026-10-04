@@ -98,6 +98,7 @@ describe('workflow test and activity', () => {
       .mockRejectedValueOnce(new Error('Temporary failure'))
       .mockResolvedValue({
         success: true,
+        meta: { total: 1, page: 1, limit: 25, hasMore: false },
         data: [
           {
             id: 'run',
@@ -123,11 +124,12 @@ describe('workflow test and activity', () => {
       } as never);
     render(<WorkflowRuns workflowId="saved-workflow" />);
     await screen.findByText('Temporary failure');
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh activity' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh workflow activity' }));
     await screen.findByText('Action disabled');
     expect(workflowsApi.getExecutions).toHaveBeenLastCalledWith(
       'saved-workflow',
       1,
+      25,
     );
   });
 });

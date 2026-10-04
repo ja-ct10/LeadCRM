@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ContactsDataGrid — Contacts table implemented with the shared DataGrid component.
  *
  * This replaces the legacy flex-based inline layout for the "table" view type,
@@ -216,7 +216,7 @@ export function ContactsDataGrid({
       columns={gridColumns}
       data={contacts}
       getRowId={getRowId}
-      height={600}
+      height="auto"
       selectable
       selectedIds={selectedIds}
       onSelectionChange={onSelectionChange}

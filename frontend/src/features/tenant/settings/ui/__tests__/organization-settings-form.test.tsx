@@ -6,10 +6,10 @@ vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: mocks.te
 vi.mock('../../services/settings.service', () => ({ settingsApiService: { getOrganization: mocks.get, updateOrganization: mocks.save } }));
 vi.mock('sonner', () => ({ toast: { success: mocks.success, error: mocks.error } }));
 import { OrganizationSettingsForm } from '../organization-settings-form';
-const saved = { id: 'tenant', name: 'Original', industry: 'IT', email: 'info@example.com', phone: '+63281233488', domain: 'example.com', address: 'Manila' };
+const saved = { id: 'tenant', name: 'Original', industry: 'Technology', email: 'info@example.com', phone: '+63281233488', domain: 'example.com', address: 'Manila' };
 beforeEach(() => { vi.resetAllMocks(); mocks.canEdit = true; mocks.tenant = 'tenant'; mocks.get.mockResolvedValue({ data: saved }); });
 afterEach(cleanup);
-const name = () => screen.getByLabelText('Organization Name') as HTMLInputElement;
+const name = () => screen.getByRole('textbox', { name: 'Organization Name' }) as HTMLInputElement;
 
 it('hydrates readonly values, Edit enables fields, Cancel restores the persisted snapshot', async () => {
   render(<OrganizationSettingsForm />);

@@ -225,7 +225,7 @@ export function DealsDataGrid({
       data={deals}
       highlightRowId={highlightRowId}
       getRowId={getRowId}
-      height={600}
+      height="auto"
       selectable
       selectedIds={selectedIds}
       onSelectionChange={onSelectionChange}
