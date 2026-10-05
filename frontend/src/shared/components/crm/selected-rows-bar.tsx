@@ -1,29 +1,57 @@
 'use client';
 
-import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
+import React, { type ReactNode, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { X } from 'lucide-react';
 import { Button } from '@/shared/components/ui/button';
 
-/** Shared presentation; each module retains its permission and mutation rules. */
+/** Shared presentation for bulk row actions floating dock; each module retains its permission and mutation rules. */
 export function SelectedRowsBar({ count, onClear, children, disabled = false }: {
   count: number; onClear: () => void; children: ReactNode; disabled?: boolean;
 }) {
-  const anchor = useRef<HTMLSpanElement>(null);
-  const [toolbar, setToolbar] = useState<HTMLElement | null>(null);
-  useLayoutEffect(() => {
-    const scope = anchor.current?.closest('main') ?? anchor.current?.parentElement;
-    setToolbar(scope?.querySelector<HTMLElement>('[data-selection-toolbar]') ?? null);
-  }, [count]);
-  return <>
-    <span ref={anchor} hidden />
-    {count > 0 && <>
-    <style>{`[data-selection-toolbar] { position: relative; } [data-selection-toolbar]:has(> [data-selected-row-actions]) > :not([data-selected-row-actions]) { visibility: hidden; }`}</style>
-    {createPortal(<section data-selected-row-actions role="toolbar" aria-label="Selected row actions"
-      className={(toolbar ? 'absolute inset-0 z-10 flex min-w-0 items-center gap-2 overflow-x-auto rounded-lg bg-background px-1 ' : 'fixed inset-x-3 bottom-3 z-40 mx-auto flex w-fit max-w-[calc(100vw-1.5rem)] flex-wrap items-center justify-center gap-2 rounded-xl border border-border bg-background p-3 shadow-xl ') + 'text-sm text-foreground [&_button]:h-9 [&_button]:shrink-0 [&_button]:whitespace-nowrap [&_button]:rounded-lg [&_button]:px-3'}>
-      <span aria-live="polite" className="whitespace-nowrap px-1 tabular-nums">{count} selected</span>
-      <Button variant="ghost" size="sm" disabled={disabled} onClick={onClear}>Clear selection</Button>
-      {children}
-    </section>, toolbar ?? document.body)}
-    </>}
-  </>;
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted || count <= 0) return null;
+
+  const hasActions = Boolean(children) && (Array.isArray(children) ? children.some(Boolean) : true);
+
+  return createPortal(
+    <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
+      <section
+        data-selected-row-actions
+        role="toolbar"
+        aria-label="Selected row actions"
+        className="pointer-events-auto flex max-w-[calc(100vw-2rem)] flex-wrap sm:flex-nowrap items-center justify-center gap-2 sm:gap-2.5 rounded-2xl border border-gray-200 dark:border-white/10 bg-white/95 dark:bg-slate-900/95 px-3.5 py-2 sm:px-4 sm:py-2.5 shadow-2xl backdrop-blur-md text-sm text-foreground animate-in fade-in slide-in-from-bottom-4 duration-200 [&_button]:shrink-0 [&_button]:whitespace-nowrap"
+      >
+        <div className="flex items-center gap-1.5 rounded-full bg-blue-500/10 dark:bg-blue-400/15 px-2.5 py-1 text-xs sm:text-sm font-medium text-blue-600 dark:text-blue-400 shrink-0">
+          <span aria-live="polite" className="tabular-nums font-semibold">{count} selected</span>
+        </div>
+        <div className="h-4 w-px bg-gray-200 dark:bg-white/10 shrink-0 hidden sm:block" aria-hidden="true" />
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={disabled}
+          onClick={onClear}
+          className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 text-xs sm:text-sm h-8 px-2.5"
+        >
+          <X className="size-3.5 mr-1 shrink-0 opacity-70" aria-hidden="true" />
+          Clear selection
+        </Button>
+        {hasActions && (
+          <>
+            <div className="h-4 w-px bg-gray-200 dark:bg-white/10 shrink-0" aria-hidden="true" />
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              {children}
+            </div>
+          </>
+        )}
+      </section>
+    </div>,
+    document.body
+  );
 }
+
