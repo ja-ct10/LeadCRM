@@ -9,7 +9,7 @@ import { isSmsConfigured } from '../../../shared/services/sms.service';
 
 export async function builderOptions(tenantId: string, marketing: boolean, access = { contacts: false, accounts: false }) {
   const [users, pipelines, templates, productInterests, accounts, contacts, leads] = await Promise.all([
-    prisma.user.findMany({ where: { tenantId, status: 'ACTIVE' }, select: { id: true, firstName: true, lastName: true }, orderBy: { firstName: 'asc' } }),
+    prisma.user.findMany({ where: { tenantId, status: 'ACTIVE', role: { not: 'Client Admin' } }, select: { id: true, firstName: true, lastName: true }, orderBy: { firstName: 'asc' } }),
     prisma.pipeline.findMany({ where: { tenantId, isArchived: false }, select: { id: true, name: true, stages: { select: { id: true, name: true }, orderBy: { order: 'asc' } } } }),
     marketing ? prisma.template.findMany({ where: { tenantId, isArchived: false, type: 'Email' }, select: { id: true, name: true } }) : [],
     prisma.productInterest.findMany({ where: { tenantId, active: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),

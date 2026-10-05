@@ -322,7 +322,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         //   ✅ column prefs     → useColumnPreferences per module
         //   ✅ campaigns        → useCampaignsData (campaigns-page.tsx)
         //   ✅ templates        → useCampaignsData (campaigns-page.tsx, same hook)
-        //   ✅ auditLogs        → TimelineDrawer fetches on-demand (settings page)
         //   ✅ accounts list    → useAccounts (accounts-page.tsx) — server-paginated + server-filtered
         //
         // REMAINING — still loaded here (cross-module consumers prevent safe removal):
@@ -374,7 +373,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
       // Defer network-heavy secondary modules to the next event-loop tick.
       // Batch 2 COMPLETED migrations (removed from startup):
-      //   ✅ auditLogs  → TimelineDrawer fetches on-demand
       //   ✅ campaigns  → useCampaignsData hook (campaigns-page.tsx)
       //   ✅ templates  → useCampaignsData hook (same)
       // Tasks are queried on demand by their existing DataProvider owner.
@@ -1841,4 +1839,3 @@ export const useData = (options?: { includeArchived?: boolean }) => {
     };
   }, [context, includeArchived]);
 };
-

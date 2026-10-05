@@ -57,3 +57,17 @@ it.skipIf(!disposable)('preserves RBAC and tenant isolation for group and member
   expect((await request(`/${foreignGroup.id}`, 'DELETE')).status).toBe(404);
   expect((await request(`/${foreignGroup.id}/members`, 'POST', { userId })).status).toBe(404);
 });
+
+it.skipIf(!disposable)('allows non-admin tenant roles to view group members but reserves membership changes for Client Admin', async () => {
+  const id = (await request('', 'POST', { name: 'Read only group' })).body.data.id;
+  expect((await request(`/${id}/members`, 'POST', { userId })).status).toBe(200);
+
+  const visible = await request('', 'GET', undefined, deniedToken);
+  expect(visible.status).toBe(200);
+  expect(visible.body.data.find((group: { id: string }) => group.id === id).members[0].user)
+    .toMatchObject({ firstName: 'Julie', lastName: 'Tiron', role: 'Client Admin' });
+  expect((await request(`/${id}/members`, 'POST', { userId }, deniedToken)).status).toBe(403);
+  expect((await request(`/${id}/members/${userId}`, 'DELETE', undefined, deniedToken)).status).toBe(403);
+  expect((await request(`/${id}/members/${userId}`, 'DELETE')).status).toBe(200);
+  expect((await request(`/${id}`, 'DELETE')).status).toBe(200);
+});

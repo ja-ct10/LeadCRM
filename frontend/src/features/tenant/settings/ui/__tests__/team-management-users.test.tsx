@@ -9,19 +9,27 @@ vi.mock('@/features/tenant/administration/users/services/users.service', () => (
 import { UsersSubTab } from '../team-management-users';
 beforeEach(() => { vi.resetAllMocks(); vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(cleanup);
-it('offers only the current status action and confirms bulk archive before persistence', async () => {
+it('confirms activation and deactivation, updates the persisted row immediately, and confirms bulk archive', async () => {
   const active = { id: 'a', tenantId: 't', firstName: 'Ana', lastName: 'Sales', role: 'Sales', status: 'active', email: 'a@example.com' };
   mocks.list.mockResolvedValue({ data: [active], meta: { hasMore: false } });
-  mocks.update.mockResolvedValue({ data: { ...active, status: 'inactive', isArchived: true } });
+  mocks.update
+    .mockResolvedValueOnce({ data: { ...active, status: 'inactive' } })
+    .mockResolvedValueOnce({ data: { ...active, status: 'active' } });
   mocks.archive.mockResolvedValue(undefined);
   render(<UsersSubTab />);
   fireEvent.click(await screen.findByRole('button', { name: 'Row actions' }));
   expect(screen.getByRole('menuitem', { name: 'View' })).toBeTruthy();
   expect(screen.getByRole('menuitem', { name: 'Edit' })).toBeTruthy();
-  expect(screen.queryByRole('menuitem', { name: 'Mark as Active' })).toBeNull();
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Mark as Inactive' }));
+  expect(screen.queryByRole('menuitem', { name: 'Activate' })).toBeNull();
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Deactivate' }));
+  expect(mocks.update).not.toHaveBeenCalled();
+  fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Deactivate' }));
   await waitFor(() => expect(mocks.update).toHaveBeenCalledWith('a', { status: 'inactive' }));
-  await screen.findByRole('button', { name: 'View Ana Sales' });
+  expect(await screen.findByText('inactive')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Activate Ana Sales' }));
+  fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Activate' }));
+  await waitFor(() => expect(mocks.update).toHaveBeenLastCalledWith('a', { status: 'active' }));
+  expect(await screen.findByText('active')).toBeTruthy();
   fireEvent.click(screen.getByRole('checkbox', { name: 'Select all records' }));
   fireEvent.click(screen.getByRole('button', { name: 'Archive' }));
   expect(mocks.archive).not.toHaveBeenCalled();

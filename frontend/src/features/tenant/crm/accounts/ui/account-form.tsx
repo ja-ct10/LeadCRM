@@ -7,6 +7,7 @@ import React, { useMemo, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useData } from '@/store/DataContext';
+import { getAssignableAgents } from '@/shared/utils/assigned-agents';
 import { SlidingDrawer } from '@/shared/components/sliding-drawer';
 import { useScrollToError } from '@/shared/hooks/use-scroll-to-error';
 import {
@@ -288,7 +289,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
                 className={`${selectCls} ${errors.assignedUserId ? inputErrorCls : ''}`}
               >
                 <option value="">Unassigned</option>
-                {users.map((u) => (
+                {getAssignableAgents(users).map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.firstName} {u.lastName}
                   </option>

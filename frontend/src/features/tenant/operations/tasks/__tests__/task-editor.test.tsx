@@ -44,6 +44,7 @@ vi.mock("@/shared/services/tasks.api", () => ({
   },
 }));
 import { TaskEditor } from "../ui/task-editor";
+import { manilaCurrentDate } from "../task-data";
 const task = {
   id: "task",
   tenantId: "tenant",
@@ -60,6 +61,12 @@ it('labels the existing task assignee Assigned Agent in the detail panel', () =>
   render(<TaskEditor task={task} readOnly onClose={vi.fn()} />);
   expect(screen.getByRole('button', { name: 'Assigned Agent *' })).toBeTruthy();
   expect(screen.queryByText('Task owner')).toBeNull();
+});
+it("uses the Philippine calendar minimum and does not show a timezone label", () => {
+  render(<TaskEditor onClose={vi.fn()} />);
+  const dueDate = screen.getByLabelText("Due date and time *") as HTMLInputElement;
+  expect(dueDate.min).toBe(`${manilaCurrentDate()}T00:00`);
+  expect(screen.queryByText("Asia/Manila")).toBeNull();
 });
 beforeEach(() => {
   vi.resetAllMocks();

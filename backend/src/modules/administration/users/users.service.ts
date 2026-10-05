@@ -11,6 +11,7 @@ import { revokeAllUserSessions } from '../../../core/auth/session.service';
 import { NotFoundError, ConflictError, ForbiddenError, ValidationError } from '../../../shared/errors/http-error';
 import { hashPassword } from '../../../shared/helpers/crypto';
 import { getPaginationParams, paginate } from '../../../shared/helpers/pagination';
+import { Prisma } from '@prisma/client';
 
 const SAFE_USER_SELECT = {
   id: true, tenantId: true, firstName: true, lastName: true,
@@ -100,15 +101,29 @@ export async function update(id: string, tenantId: string, actorId: string, dto:
   if (!existing) throw new NotFoundError('User');
 
 
-  if (existing.role === 'Client Admin' && (dto.role !== undefined || dto.status !== undefined)) throw new ForbiddenError('Client Admin cannot be reassigned or deactivated');
+  if (existing.role === 'Client Admin' && dto.role !== undefined) throw new ForbiddenError('Client Admin role cannot be reassigned');
   if (id === actorId && dto.status === 'INACTIVE') throw new ForbiddenError('Cannot deactivate your own account');
   const updateData: any = { ...dto };
   if (dto.status) updateData.status = dto.status as any; // Cast as enum
 
-  const user = await prisma.$transaction(async tx => {
-    if (dto.role) await replaceUserRole(tx, id, tenantId, dto.role);
-    return tx.user.update({ where: { id }, data: updateData, select: SAFE_USER_SELECT });
-  });
+  const protectsLastClientAdmin = existing.role === 'Client Admin' && existing.status === 'ACTIVE' && dto.status === 'INACTIVE';
+  let user;
+  try {
+    user = await prisma.$transaction(async tx => {
+      if (protectsLastClientAdmin) {
+        const activeAdmins = await tx.user.count({ where: { tenantId, role: 'Client Admin', status: 'ACTIVE' } });
+        if (activeAdmins <= 1) throw new ConflictError('At least one active Client Admin must remain.');
+      }
+      if (dto.role) await replaceUserRole(tx, id, tenantId, dto.role);
+      return tx.user.update({ where: { id }, data: updateData, select: SAFE_USER_SELECT });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  } catch (error) {
+    // A concurrent administrator deactivation can invalidate the serializable count.
+    if (protectsLastClientAdmin && error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+      throw new ConflictError('At least one active Client Admin must remain.');
+    }
+    throw error;
+  }
   if (dto.status === 'INACTIVE') await revokeAllUserSessions(id);
   await writeAuditLog({ tenantId, userId: actorId, action: 'user.updated', entityType: 'User', entityId: id, before: { status: existing.status }, after: dto as Record<string, unknown> });
   return user;

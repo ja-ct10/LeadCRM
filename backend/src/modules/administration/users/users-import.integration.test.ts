@@ -6,12 +6,13 @@ const mail = vi.hoisted(() => ({ send: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('../../../shared/services/email.service', () => ({ sendMail: mail.send, buildPasswordResetEmail: (url: string) => url }));
 import prisma from '../../../config/database.config';
 import { issueAuthSession } from '../../../core/auth/auth-session';
+import * as usersService from './users.service';
 import app from '../../../app';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_account_test_\d+$/.test(url.pathname);
 describe.skipIf(!disposable)('user administration and deal imports over authenticated HTTP', () => {
-  let server: Server, base: string, tenantId: string, otherTenant: string, token: string, readerToken: string;
+  let server: Server, base: string, tenantId: string, otherTenant: string, token: string, readerToken: string, readerId: string;
   let userId: string, otherUserId: string, pipelineId: string, stageId: string, otherStageId: string;
   let accountId: string, productId: string, otherAccountId: string, otherContactId: string;
   async function call(path: string, method = 'GET', body?: unknown, bearer = token) {
@@ -26,6 +27,7 @@ describe.skipIf(!disposable)('user administration and deal imports over authenti
     const admin = await prisma.user.create({ data: { tenantId, email: 'admin@camxian.com', firstName: 'Admin', lastName: 'Test', role: 'Client Admin', mustChangePassword: false } });
     token = (await issueAuthSession(admin)).token;
     const reader = await prisma.user.create({ data: { tenantId, email: 'reader@camxian.com', firstName: 'Reader', lastName: 'Test', role: 'Reader', mustChangePassword: false } });
+    readerId = reader.id;
     readerToken = (await issueAuthSession(reader)).token;
     await prisma.roleDefinition.create({ data: { tenantId, name: 'Sales representative' } });
     await prisma.roleDefinition.create({ data: { tenantId, name: 'Sales manager' } });
@@ -68,6 +70,25 @@ describe.skipIf(!disposable)('user administration and deal imports over authenti
     expect(updated.status).toBe('INACTIVE');
     expect(updated.userRoles.map(assignment => assignment.role.name)).toEqual(['Sales manager']);
     expect((await call(`/administration/users/${userId}`, 'PUT', { status: 'ACTIVE' })).status).toBe(200);
+  });
+
+  it('allows Client Admin status changes while preserving one active administrator', async () => {
+    const currentAdmin = await prisma.user.findFirstOrThrow({ where: { tenantId, role: 'Client Admin', status: 'ACTIVE' } });
+    const additionalAdmin = await prisma.user.create({ data: {
+      tenantId, email: `second-admin-${randomUUID()}@camxian.com`, firstName: 'Second', lastName: 'Admin',
+      role: 'Client Admin', mustChangePassword: false, emailVerified: new Date(),
+    } });
+
+    await usersService.update(additionalAdmin.id, tenantId, readerId, { status: 'INACTIVE' });
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: additionalAdmin.id } })).status).toBe('INACTIVE');
+    await usersService.update(additionalAdmin.id, tenantId, readerId, { status: 'ACTIVE' });
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: additionalAdmin.id } })).status).toBe('ACTIVE');
+
+    await usersService.update(additionalAdmin.id, tenantId, readerId, { status: 'INACTIVE' });
+    await expect(usersService.update(currentAdmin.id, tenantId, readerId, { status: 'INACTIVE' }))
+      .rejects.toThrow('At least one active Client Admin must remain.');
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: currentAdmin.id } })).status).toBe('ACTIVE');
+    expect(await prisma.user.count({ where: { tenantId, role: 'Client Admin', status: 'ACTIVE' } })).toBe(1);
   });
 
   it('protects recovery, binds tokens to the selected tenant user, and returns no token', async () => {

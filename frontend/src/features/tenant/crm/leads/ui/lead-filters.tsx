@@ -1,6 +1,7 @@
 import React from 'react';
 import { Search, X, User, Briefcase } from 'lucide-react';
 import { TrelloFilter, FilterOption } from '@/shared/components/trello-filter';
+import { getAssignableAgents } from '@/shared/utils/assigned-agents';
 
 interface FilterProps {
   searchTerm: string;
@@ -70,7 +71,7 @@ export function ClientFilters({
     label: src
   }));
 
-  const memberOptions: FilterOption[] = usersList.map(u => ({
+  const memberOptions: FilterOption[] = getAssignableAgents(usersList).map(u => ({
     id: u.id,
     label: `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email,
     icon: (u.firstName?.[0] || u.email?.[0] || '?').toUpperCase()

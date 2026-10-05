@@ -18,6 +18,11 @@ import {
   localTaskQuery,
   taskDueInstant,
   localDateTime,
+  isPastManilaTaskDueDateTime,
+  manilaCurrentDate,
+  manilaLocalDateTime,
+  manilaTaskDueInstant,
+  resolveManilaTaskDueDateTime,
   useTaskQueries,
 } from "../task-data";
 afterEach(() => {
@@ -67,6 +72,15 @@ describe("Task contract and calendar rules", () => {
     const week = taskDateRange("week", new Date(2026, 8, 27));
     expect(new Date(week.dueFrom).getDay()).toBe(1);
     expect(new Date(week.dueTo).getDay()).toBe(1);
+  });
+  it("uses Manila wall time and rolls an elapsed same-day clock time to tomorrow", () => {
+    const now = new Date(manilaTaskDueInstant("2026-10-05T21:50"));
+    expect(manilaCurrentDate(now)).toBe("2026-10-05");
+    expect(manilaLocalDateTime(now)).toBe("2026-10-05T21:50");
+    expect(resolveManilaTaskDueDateTime("2026-10-05T21:30", now)).toBe("2026-10-06T21:30");
+    expect(resolveManilaTaskDueDateTime("2026-10-05T22:30", now)).toBe("2026-10-05T22:30");
+    expect(isPastManilaTaskDueDateTime("2026-10-06T21:30", now)).toBe(false);
+    expect(manilaLocalDateTime(manilaTaskDueInstant("2026-10-06T21:30"))).toBe("2026-10-06T21:30");
   });
   it("excludes completed, cancelled and archived records from overdue", () => {
     expect(isTaskOverdue(task)).toBe(true);

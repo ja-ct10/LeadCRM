@@ -10,6 +10,7 @@ import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useColumnPreferences } from '@/shared/hooks/use-column-preferences';
 import { useAccounts } from '../hooks/use-accounts';
 import { useData } from '@/store/DataContext';
+import { getAssignableAgents } from '@/shared/utils/assigned-agents';
 import { useFilterUrlSync } from '@/shared/hooks/use-filter-url-sync';
 import { useDebounce } from '@/shared/hooks/use-debounce';
 import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
@@ -271,7 +272,7 @@ export default function AccountsPage(): React.ReactElement {
           count: accounts.filter((a) => a.size === sz).length,
           isChecked: selectedTypes.includes(sz),
         })),
-        ...users.slice(0, 5).map((u) => ({
+        ...getAssignableAgents(users).slice(0, 5).map((u) => ({
           id: `owner:${u.id}`,
           label: `Owner: ${u.firstName} ${u.lastName}`,
           count: accounts.filter((a) => a.assignedUserId === u.id).length,

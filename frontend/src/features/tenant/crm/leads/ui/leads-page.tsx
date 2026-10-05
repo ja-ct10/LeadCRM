@@ -8,6 +8,7 @@ import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dial
 import { leadsService } from '../services/leads.service';
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useData } from '@/store/DataContext';
+import { getAssignableAgents } from '@/shared/utils/assigned-agents';
 import { useAuth } from '@/store/AuthContext';
 import { useLeadsData } from '../hooks/use-leads-data';
 import { DataErrorState } from '@/shared/components/crm/data-view-states';
@@ -358,7 +359,7 @@ export default function LeadsPage(): React.ReactElement {
           count: activeLeads.filter((l) => l.leadSource === source).length,
           isChecked: selectedSources.includes(source),
         })),
-        ...users.slice(0, 5).map((u) => ({
+        ...getAssignableAgents(users).slice(0, 5).map((u) => ({
           id: `owner:${u.id}`,
           label: `Owner: ${u.firstName} ${u.lastName}`,
           count: activeLeads.filter((l) => l.assignedUserId === u.id).length,

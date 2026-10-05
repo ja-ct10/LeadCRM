@@ -33,7 +33,13 @@ import {
   panelSurfaceClass,
   panelTitleClass,
 } from "@/shared/components/side-panel-styles";
-import { localDateTime, taskDueInstant } from "../task-data";
+import {
+  isPastManilaTaskDueDateTime,
+  manilaCurrentDate,
+  manilaLocalDateTime,
+  manilaTaskDueInstant,
+  resolveManilaTaskDueDateTime,
+} from "../task-data";
 
 export type TaskLinks = TaskLinkInput;
 import { TaskSelector } from "./task-selector";
@@ -67,7 +73,7 @@ export function TaskEditor({
   const [status, setStatus] = useState(task?.status ?? "pending");
   const [priority, setPriority] = useState(task?.priority ?? "Medium");
   const [dueDate, setDueDate] = useState(
-    localDateTime(
+    manilaLocalDateTime(
       task?.dueDate ?? new Date(Date.now() + 86400000).toISOString(),
     ),
   );
@@ -144,15 +150,23 @@ export function TaskEditor({
     try {
       if (!title.trim()) throw new Error("Enter a task title.");
       if (!assignedUserId) throw new Error("Select a task owner.");
+      const dueDateUnchanged = !!task && dueDate === manilaLocalDateTime(task.dueDate);
+      const resolvedDueDate = resolveManilaTaskDueDateTime(dueDate);
+      if (!dueDateUnchanged) {
+        if (resolvedDueDate.slice(0, 10) < manilaCurrentDate())
+          throw new Error("Choose today or a future due date.");
+        if (isPastManilaTaskDueDateTime(resolvedDueDate))
+          throw new Error("Choose a due date and time in the future.");
+      }
+      if (resolvedDueDate !== dueDate) setDueDate(resolvedDueDate);
       const data = {
         title,
         description,
         status,
         priority,
-        dueDate:
-          task && dueDate === localDateTime(task.dueDate)
-            ? task.dueDate
-            : taskDueInstant(dueDate),
+        dueDate: dueDateUnchanged
+          ? task.dueDate
+          : manilaTaskDueInstant(resolvedDueDate),
         assignedUserId,
         leadIds: relations.lead,
         contactIds: relations.contact,
@@ -345,11 +359,9 @@ export function TaskEditor({
                       type="datetime-local"
                       required
                       value={dueDate}
-                      onChange={(e) => setDueDate(e.target.value)}
+                      min={task ? undefined : `${manilaCurrentDate()}T00:00`}
+                      onChange={(e) => setDueDate(resolveManilaTaskDueDateTime(e.target.value))}
                     />
-                    <span className="block text-xs text-muted-foreground">
-                      {Intl.DateTimeFormat().resolvedOptions().timeZone}
-                    </span>
                   </label>
                   <TaskSelector
                     appearance="panel"

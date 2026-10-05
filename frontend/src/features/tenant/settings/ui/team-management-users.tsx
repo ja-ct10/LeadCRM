@@ -1,13 +1,10 @@
 'use client';
 import { CreateButton } from '@/shared/components/ui/button';
-import { panelSurfaceClass, panelHeaderClass, panelTitleClass, panelBodyClass, panelInputClass, panelCloseClass } from '@/shared/components/side-panel-styles';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { compareSortValues } from '@leadcrm/shared';
 import {
-  Search, Plus, X,
-  ShieldAlert, CheckCircle2,
-  Clock,
+  Plus, X, UserCheck, UserX,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -15,8 +12,8 @@ import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
 import { usePagination } from '@/shared/hooks/use-pagination';
 import { LeadsPagination, LEADS_PAGE_SIZES } from '@/shared/components/crm/leads-pagination';
-import { auditApi } from '@/shared/services/audit.api';
 import { FilterGroupSection } from '@/shared/components/crm/module-workspace';
+import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { usersService } from '@/features/tenant/administration/users/services/users.service';
 import { DataGrid, type DataGridColumnDef, type SortState } from '@/shared/components/data-grid';
 import { BulkSelectionBar, executeSelectedRows } from '@/shared/components/crm/bulk-selection-bar';
@@ -56,168 +53,6 @@ function roleColor(role: string): string {
   if (role === 'Marketing Manager') return 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20';
   if (role === 'Viewer') return 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20';
   return 'bg-slate-500/10 text-slate-600 dark:text-slate-300 border-slate-500/20';
-}
-
-// ── Timeline drawer ─────────────────────────────────────────────────────────
-
-interface TimelineDrawerProps {
-  selectedUser: User;
-  onClose: () => void;
-}
-
-type AuditEntry = { id: string; userId?: string; userEmail?: string; action: string; details: string; timestamp: string; ipAddress?: string };
-
-function TimelineDrawer({ selectedUser, onClose }: TimelineDrawerProps): React.ReactElement {
-  const [filter, setFilter] = useState<'all' | 'auth' | 'edits' | 'permissions'>('all');
-  const [search, setSearch] = useState('');
-  const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
-  const [isLoadingLogs, setIsLoadingLogs] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  // Fetch audit logs for this user on open — on-demand, not at startup
-  const fetchLogs = useCallback(async (): Promise<void> => {
-    setIsLoadingLogs(true);
-    setLoadError(null);
-    try {
-      const res = await auditApi.list({ limit: 100 });
-      const all = (res?.data ?? []).map((entry) => ({
-        id: entry.id,
-        userId: entry.userId,
-        userEmail: entry.user?.email,
-        action: entry.action,
-        details: entry.changeset
-          ? JSON.stringify(entry.changeset)
-          : (entry.metadata ? JSON.stringify(entry.metadata) : entry.action),
-        timestamp: entry.createdAt,
-        ipAddress: entry.ipAddress,
-      })) as AuditEntry[];
-      const uEmail = selectedUser.email?.toLowerCase() ?? '';
-      const uName = `${selectedUser.firstName ?? ''} ${selectedUser.lastName ?? ''}`.toLowerCase();
-      const relevant = all.filter((log) => {
-        const logEmail = log.userEmail?.toLowerCase() ?? '';
-        const detailsLow = log.details?.toLowerCase() ?? '';
-        return (
-          log.userId === selectedUser.id ||
-          (logEmail && logEmail === uEmail) ||
-          (uName && detailsLow.includes(uName.trim())) ||
-          (uEmail && detailsLow.includes(uEmail))
-        );
-      });
-      setAuditLogs(relevant.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
-    } catch (err: unknown) {
-      setLoadError(err instanceof Error ? err.message : 'Failed to load activity');
-    } finally {
-      setIsLoadingLogs(false);
-    }
-  }, [selectedUser.id, selectedUser.email, selectedUser.firstName, selectedUser.lastName]);
-
-  useEffect(() => { void fetchLogs(); }, [fetchLogs]);
-
-  const filtered = useMemo(() => {
-    let result = auditLogs;
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      result = result.filter((l) => l.action.toLowerCase().includes(q) || l.details.toLowerCase().includes(q));
-    }
-    if (filter !== 'all') {
-      result = result.filter((l) => {
-        const a = l.action.toLowerCase();
-        if (filter === 'auth') return a.includes('auth') || a.includes('login') || a.includes('recovery');
-        if (filter === 'edits') return a.includes('update') || a.includes('create') || a.includes('register') || a.includes('deal') || a.includes('contact');
-        if (filter === 'permissions') return a.includes('role') || a.includes('permission') || a.includes('suspend') || a.includes('provision');
-        return true;
-      });
-    }
-    return result;
-  }, [auditLogs, search, filter]);
-
-  return (
-    <motion.div
-      initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
-      transition={{ type: 'spring', damping: 30, stiffness: 280 }}
-      className={panelSurfaceClass + " fixed inset-y-0 right-0 border-l shadow-2xl z-[60] flex flex-col"}>
-      {/* Header */}
-      <div className={panelHeaderClass + " flex items-start justify-between gap-3"}>
-        <div className="flex min-w-0 items-center gap-3">
-          <UserAvatar user={selectedUser} size={10} />
-          <div className="min-w-0">
-            <p className={panelTitleClass}>{selectedUser.firstName} {selectedUser.lastName}</p>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 break-all">{selectedUser.email}</p>
-          </div>
-        </div>
-        <button onClick={onClose} aria-label="Close user activity" className={panelCloseClass + " grid place-items-center"}><X size={16} /></button>
-      </div>
-      {/* Filters */}
-      <div className="px-4 py-4 sm:px-6 border-b border-slate-100 dark:border-white/5 shrink-0 space-y-3">
-        <div className="relative">
-          <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input type="text" placeholder="Search activity..." value={search} onChange={(e) => setSearch(e.target.value)}
-            className={panelInputClass + " pl-9"} />
-        </div>
-        <div className="flex gap-1 flex-wrap">
-          {(['all', 'auth', 'edits', 'permissions'] as const).map((f) => (
-            <button key={f} onClick={() => setFilter(f)}
-              className={cn('px-3 py-2 text-xs font-semibold rounded-full border transition-colors cursor-pointer capitalize',
-                filter === f ? 'bg-blue-600 text-white border-blue-600' : 'bg-transparent text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-blue-400')}>
-              {f}
-            </button>
-          ))}
-        </div>
-      </div>
-      {/* Timeline */}
-      <div className={panelBodyClass + " custom-scrollbar space-y-4"}>
-        {isLoadingLogs && (
-          <div className="space-y-3 pt-2" role="status" aria-label="Loading activity">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="flex gap-3">
-                <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 animate-pulse shrink-0 motion-reduce:animate-none" />
-                <div className="flex-1 space-y-1.5 pt-0.5">
-                  <div className="h-3 w-3/4 bg-slate-100 dark:bg-slate-800 rounded animate-pulse motion-reduce:animate-none" />
-                  <div className="h-2.5 w-1/2 bg-slate-100 dark:bg-slate-800 rounded animate-pulse motion-reduce:animate-none" />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-        {!isLoadingLogs && loadError && (
-          <div className="py-12 text-center">
-            <ShieldAlert size={28} className="text-red-400 mx-auto mb-2" />
-            <p className="text-xs text-slate-400 mb-3">{loadError}</p>
-            <button
-              onClick={() => { void fetchLogs(); }}
-              className="text-xs text-blue-500 hover:text-blue-600 underline underline-offset-2 cursor-pointer"
-            >
-              Try again
-            </button>
-          </div>
-        )}
-        {!isLoadingLogs && !loadError && filtered.length === 0 && (
-          <div className="py-16 text-center">
-            <Clock size={32} className="text-slate-300 dark:text-slate-700 mx-auto mb-3" />
-            <p className="text-xs text-slate-400">No activity found</p>
-          </div>
-        )}
-        {!isLoadingLogs && !loadError && filtered.map((log) => (
-          <div key={log.id} className="flex gap-3">
-            <div className="flex flex-col items-center">
-              <div className="w-6 h-6 rounded-full bg-blue-500/10 dark:bg-blue-500/20 flex items-center justify-center shrink-0">
-                <CheckCircle2 size={12} className="text-blue-500" />
-              </div>
-              <div className="w-px flex-1 bg-slate-100 dark:bg-slate-800 mt-1" />
-            </div>
-            <div className="pb-4 flex-1 min-w-0">
-              <div className="flex items-start justify-between gap-2">
-                <p className="text-xs font-semibold text-slate-900 dark:text-white leading-tight">{log.action}</p>
-                <span className="text-[10px] text-slate-400 shrink-0">{new Date(log.timestamp).toLocaleDateString()}</span>
-              </div>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed [overflow-wrap:anywhere]">{log.details}</p>
-              {log.ipAddress && <p className="text-[10px] text-slate-400 mt-0.5">{log.ipAddress}</p>}
-            </div>
-          </div>
-        ))}
-      </div>
-    </motion.div>
-  );
 }
 
 // ── Main UsersSubTab ──────────────────────────────────────────────────────────
@@ -275,8 +110,9 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editingUser, setEditingUser] = useState<User | null>(null);
   useEffect(() => { setEditingUser(null); setIsAddOpen(false); }, [tenantId]);
-  const [timelineUser, setTimelineUser] = useState<User | null>(null);
   const [confirmArchive, setConfirmArchive] = useState<User | null>(null);
+  const [statusChangeUser, setStatusChangeUser] = useState<User | null>(null);
+  const [changingStatus, setChangingStatus] = useState(false);
 
   const filtered = useMemo(() => {
     return tenantUsers.filter((u) => {
@@ -303,9 +139,9 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
   useEffect(() => { setSelected(new Set()); }, [tenantId, currentPage, pageSize, search, roleFilter, statusFilter, departmentFilter]);
   const openUser = (user: User, edit = false) => { setInitiallyEditing(edit); setEditingUser(user); };
 
-  const handleSavedUser = (saved: User) => {
+  const handleSavedUser = (saved: User, refresh = true) => {
     setAllUsers(previous => previous.some(user => user.id === saved.id) ? previous.map(user => user.id === saved.id ? saved : user) : [saved, ...previous]);
-    setReload(value => value + 1);
+    if (refresh) setReload(value => value + 1);
   };
   const [archiving, setArchiving] = useState(false);
   const handleArchive = async () => {
@@ -319,6 +155,23 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
     finally { setArchiving(false); }
   };
 
+  const handleStatusChange = async () => {
+    if (!statusChangeUser || changingStatus) return;
+    const nextStatus = statusChangeUser.status === 'active' ? 'inactive' : 'active';
+    setChangingStatus(true);
+    try {
+      const result = await usersService.update(statusChangeUser.id, { status: nextStatus });
+      if (!result.data) throw new Error('Unable to update user status.');
+      handleSavedUser(result.data, false);
+      setStatusChangeUser(null);
+      toast.success(`User ${nextStatus === 'active' ? 'activated' : 'deactivated'}.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to update user status.');
+    } finally {
+      setChangingStatus(false);
+    }
+  };
+
   const canAssignRoles = userCan('roles', 'canAssign');
   const canManageUsers = userCan('users', 'canEdit'), canCreateUsers = userCan('users', 'canCreate') && userCan('roles', 'canAssign'), canActivateUsers = userCan('users', 'canActivate'), canArchiveUsers = userCan('users', 'canArchive');
   const columns: DataGridColumnDef<User>[] = [
@@ -327,7 +180,11 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
     { id: 'email', sortable: true, header: 'Contact', accessor: u => u.email, width: 250, cell: (_, u) => <div><p>{u.email}</p><p className="text-xs text-muted-foreground">{u.phone}</p></div> },
     { id: 'status', sortable: true, header: 'Status', accessor: u => u.status ?? 'active', width: 110, cell: (_, u) => <span className={cn('rounded-full px-2 py-1 text-xs', u.status === 'active' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-slate-500/10 text-slate-500')}>{u.status ?? 'active'}</span> },
     { id: 'department', sortable: true, header: 'Department', accessor: u => u.department || '—', width: 150 },
-    { id: 'activity', header: 'Actions', accessor: () => '', width: 90, cell: (_, u) => <button aria-label="View Activity" title="View Activity" className="min-h-11 min-w-11" onClick={() => setTimelineUser(u)}><Clock size={14} /></button> },
+    { id: 'activity', header: 'Actions', accessor: () => '', width: 90, cell: (_, u) => {
+      const active = u.status === 'active';
+      const label = active ? `Deactivate ${u.firstName} ${u.lastName}` : `Activate ${u.firstName} ${u.lastName}`;
+      return <button type="button" aria-label={label} title={active ? 'Deactivate user' : 'Activate user'} disabled={!canActivateUsers} className="min-h-11 min-w-11 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => setStatusChangeUser(u)}>{active ? <UserX size={16} /> : <UserCheck size={16} />}</button>;
+    } },
   ];
 
   const tableColumns = useModuleTableColumns('users', USERS_TABLE_COLUMNS, columns);
@@ -365,7 +222,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
                 { id: 'view', label: 'View', onClick: () => openUser(u) },
                 ...((canManageUsers || canAssignRoles || canActivateUsers || canArchiveUsers) ? [
                   { id: 'edit', label: canManageUsers ? 'Edit' : 'Change access', disabled: !canManageUsers && !canAssignRoles && !canActivateUsers, onClick: () => openUser(u, true) },
-                  { id: 'status', label: u.status === 'active' ? 'Mark as Inactive' : 'Mark as Active', onClick: async () => { try { const result = await usersService.update(u.id, { status: u.status === 'active' ? 'inactive' : 'active' }); if (result.data) handleSavedUser(result.data); toast.success('User status updated.'); } catch (e) { toast.error(e instanceof Error ? e.message : 'Unable to update user status.'); } } },
+                  { id: 'status', label: u.status === 'active' ? 'Deactivate' : 'Activate', disabled: !canActivateUsers, onClick: () => setStatusChangeUser(u) },
                   { id: 'archive', label: 'Archive', disabled: !!u.isArchived || !canArchiveUsers, onClick: () => setConfirmArchive(u) },
                 ] : []),
               ]} />}
@@ -418,13 +275,19 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
             </motion.div>
           </motion.div>
         )}
-        {timelineUser && (
-          <TimelineDrawer
-            selectedUser={timelineUser}
-            onClose={() => setTimelineUser(null)}
-          />
-        )}
       </AnimatePresence>
+      <ConfirmActionDialog
+        open={!!statusChangeUser}
+        onOpenChange={(open) => { if (!open && !changingStatus) setStatusChangeUser(null); }}
+        title={statusChangeUser?.status === 'active' ? 'Deactivate this user?' : 'Activate this user?'}
+        description={statusChangeUser?.status === 'active'
+          ? `Deactivate ${statusChangeUser.firstName} ${statusChangeUser.lastName}? They will lose access to this workspace.`
+          : `Activate ${statusChangeUser?.firstName ?? ''} ${statusChangeUser?.lastName ?? ''}? They will regain access to this workspace.`}
+        confirmLabel={statusChangeUser?.status === 'active' ? 'Deactivate' : 'Activate'}
+        variant={statusChangeUser?.status === 'active' ? 'destructive' : 'default'}
+        isLoading={changingStatus}
+        onConfirm={handleStatusChange}
+      />
     </div>
   );
 }

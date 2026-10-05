@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Search, Settings }  from 'lucide-react';
 import { toast } from 'sonner';
 import { useData } from '@/store/DataContext';
+import { getAssignableAgents } from '@/shared/utils/assigned-agents';
 import { useAuth } from '@/store/AuthContext';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
@@ -79,7 +80,7 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
   });
   const groups: FilterGroup[] = [
     { id: 'stage', label: 'Stage', items: pipeline?.stages.map(s => ({ id: s.id, label: s.name })) ?? [] },
-    { id: 'owner', label: 'Assigned Agent', items: [...users.map(u => ({ id: u.id, label: `${u.firstName} ${u.lastName}` })), { id: 'unassigned', label: 'Unassigned' }] },
+    { id: 'owner', label: 'Assigned Agent', items: [...getAssignableAgents(users).map(u => ({ id: u.id, label: `${u.firstName} ${u.lastName}` })), { id: 'unassigned', label: 'Unassigned' }] },
     { id: 'product', label: 'Product Interest', items: [...new Set(all.flatMap(d => d.productInterests ?? []))].map(name => ({ id: name, label: name })) },
     { id: 'priority', label: 'Priority', items: ['Low', 'Medium', 'High'].map(name => ({ id: name, label: name })) },
     { id: 'status', label: 'Deal Status', items: ['Open', 'Won', 'Lost'].map(name => ({ id: name, label: name })) },

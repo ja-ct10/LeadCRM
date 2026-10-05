@@ -20,6 +20,7 @@ import * as permController       from '../../modules/administration/permissions/
 import * as auditController      from '../../modules/administration/audit/audit.controller';
 import * as groupController      from '../../modules/administration/groups/groups.controller';
 import { CreateGroupSchema, UpdateGroupSchema, GroupMemberSchema } from '../../modules/administration/groups/groups.dto';
+import { ForbiddenError } from '../../shared/errors/http-error';
 
 const router = Router();
 
@@ -79,12 +80,17 @@ router.get(   '/permissions',          authorize('roles.view'), permController.g
 router.get(   '/audit',                authorize('users.view'),   auditController.getAuditLogs);
 
 // -- Groups ---------------------------------------------
-router.get(   '/groups',                     authorize('groups.view'), groupController.getAll);
+router.get(   '/groups',                     groupController.getAll);
 router.post(  '/groups',                     authorize('groups.create'), validate(CreateGroupSchema), groupController.create);
 router.put(   '/groups/:id',                 authorize('groups.edit'), validate(UpdateGroupSchema), groupController.update);
 router.delete('/groups/:id',                 authorize('groups.delete'), groupController.remove);
-router.post(  '/groups/:id/members',         authorize('groups.edit'), validate(GroupMemberSchema), groupController.addMember);
-router.delete('/groups/:id/members/:userId', authorize('groups.edit'), groupController.removeMember);
+router.post(  '/groups/:id/members',         authorizeClientAdmin, authorize('groups.edit'), validate(GroupMemberSchema), groupController.addMember);
+router.delete('/groups/:id/members/:userId', authorizeClientAdmin, authorize('groups.edit'), groupController.removeMember);
+
+function authorizeClientAdmin(req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) {
+  if (req.user?.role === 'Client Admin') return next();
+  next(new ForbiddenError('Only Client Admin users can add or remove group members.'));
+}
 
 
 async function authorizeUserChanges(req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) {

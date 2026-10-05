@@ -10,6 +10,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useData } from '@/store/DataContext';
 import { SlidingDrawer } from '@/shared/components/sliding-drawer';
 import { EntityCombobox } from '@/shared/components/entity-combobox';
+import { AssignedAgentSelect } from '@/shared/components/crm/assigned-agent-select';
 import { useScrollToError } from '@/shared/hooks/use-scroll-to-error';
 import { toast } from 'sonner';
 import { PhilippinePhoneInput } from '@/shared/components/philippine-phone-input';
@@ -244,25 +245,9 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
               </div>
             </FieldWrap>
 
-            {/* Source */}
-            <FieldWrap label="Source" htmlFor={`${fieldId}-source`} error={errors.source?.message}>
-              <div className="relative">
-                <select
-                  {...register('source')}
-                  id={`${fieldId}-source`}
-                  aria-invalid={!!errors.source}
-                  aria-describedby={errors.source ? `${fieldId}-source-error` : undefined}
-                  className={`${selectCls} ${errors.source ? inputErrorCls : ''}`}
-                >
-                  <option value="">Select source...</option>
-                  {SOURCES.map((src) => (
-                    <option key={src} value={src}>
-                      {src}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
-              </div>
+            <FieldWrap label="Product Interest">
+              <ProductInterestSelect products={productRecords} valueMode="name" values={selectedProducts} onChange={values => setValue('productInterest', values, { shouldValidate: true })} disabled={productsLoading || !!productError} />
+              {productError && <p role="alert" className="text-xs text-destructive">{productError}</p>}
             </FieldWrap>
           </div>
         </div>
@@ -290,35 +275,46 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
 
           {/* Assigned User */}
           <FieldWrap label="Assigned Agent" htmlFor={`${fieldId}-assignedUserId`} error={errors.assignedUserId?.message}>
+            <Controller
+              name="assignedUserId"
+              control={control}
+              render={({ field }) => (
+                <AssignedAgentSelect
+                  id={`${fieldId}-assignedUserId`}
+                  value={field.value ?? ''}
+                  name={field.name}
+                  onBlur={field.onBlur}
+                  onChange={field.onChange}
+                  users={users}
+                  placeholder={isEdit ? 'Unassigned' : 'Assign automatically'}
+                  className={`${selectCls} ${errors.assignedUserId ? inputErrorCls : ''}`}
+                  invalid={!!errors.assignedUserId}
+                  describedBy={errors.assignedUserId ? `${fieldId}-assignedUserId-error` : undefined}
+                />
+              )}
+            />
+          </FieldWrap>
+        </div>
+
+        {/* Section 4: Additional Information */}
+        <div className="space-y-4">
+          <SectionHeader num={4} title="Additional Information" />
+
+          <FieldWrap label="Source" htmlFor={`${fieldId}-source`} error={errors.source?.message}>
             <div className="relative">
               <select
-                {...register('assignedUserId')}
-                id={`${fieldId}-assignedUserId`}
-                aria-invalid={!!errors.assignedUserId}
-                aria-describedby={errors.assignedUserId ? `${fieldId}-assignedUserId-error` : undefined}
-                className={`${selectCls} ${errors.assignedUserId ? inputErrorCls : ''}`}
+                {...register('source')}
+                id={`${fieldId}-source`}
+                aria-invalid={!!errors.source}
+                aria-describedby={errors.source ? `${fieldId}-source-error` : undefined}
+                className={`${selectCls} ${errors.source ? inputErrorCls : ''}`}
               >
-                <option value="">Unassigned</option>
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.firstName} {u.lastName}
-                  </option>
-                ))}
+                <option value="">Select source...</option>
+                {SOURCES.map((src) => <option key={src} value={src}>{src}</option>)}
               </select>
               <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
             </div>
           </FieldWrap>
-        </div>
-
-        {/* Section 4: Product Interest & Address */}
-        <div className="space-y-4">
-          <SectionHeader num={4} title="Additional Information" />
-
-          {/* Product Interest (multi-select chips) */}
-          <FieldWrap label="Product Interest">
-<ProductInterestSelect products={productRecords} valueMode="name" values={selectedProducts} onChange={values => setValue('productInterest', values, { shouldValidate: true })} disabled={productsLoading || !!productError} />
-{productError && <p role="alert" className="text-xs text-destructive">{productError}</p>}
-</FieldWrap>
 
           {/* Address */}
           <FieldWrap label="Address" htmlFor={`${fieldId}-address`} error={errors.address?.message}>

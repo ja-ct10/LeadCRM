@@ -5,6 +5,7 @@ import { Button } from '@/shared/components/ui/button';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useData } from '@/store/DataContext';
+import { getAssignableAgents } from '@/shared/utils/assigned-agents';
 import { useAuth } from '@/store/AuthContext';
 import { Contact } from '@/store/types';
 import { ModuleWorkspace, ViewType, StatusBadge, ContactPanel } from '@/shared/components/crm';
@@ -312,7 +313,7 @@ export default function ContactsPage(): React.ReactElement {
       label: 'Filter By Fields',
       isExpanded: true,
       items: [
-        ...users.slice(0, 5).map(u => ({
+        ...getAssignableAgents(users).slice(0, 5).map(u => ({
           id: `owner:${u.id}`,
           label: `Assigned Agent: ${u.firstName} ${u.lastName}`,
           count: activeContacts.filter(c => c.assignedUserId === u.id).length,

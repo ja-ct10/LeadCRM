@@ -16,6 +16,7 @@ import { useScrollToError } from '@/shared/hooks/use-scroll-to-error';
 import { useDuplicateCheck } from '@/shared/hooks/use-duplicate-check';
 import { DuplicateWarning } from '@/shared/components/crm/duplicate-warning';
 import { EntityCombobox } from '@/shared/components/entity-combobox';
+import { AssignedAgentSelect } from '@/shared/components/crm/assigned-agent-select';
 import { PhilippinePhoneInput } from '@/shared/components/philippine-phone-input';
 import { toE164, validatePhMobile, normalizePhInput } from '@/shared/utils/ph-phone';
 import {
@@ -351,21 +352,24 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
               </div>
             </FieldWrap>
             <FieldWrap htmlFor={`${fieldId}-assignedUserId`} error={errors.assignedUserId?.message} label="Assigned Agent">
-              <div className="relative">
-                <select
-                  {...register('assignedUserId')}
-                  id={`${fieldId}-assignedUserId`}
-                  aria-invalid={!!errors.assignedUserId}
-                  aria-describedby={errors.assignedUserId ? `${fieldId}-assignedUserId-error` : undefined}
-                  className={selectCls}
-                >
-                  <option value="">{isEdit ? 'Unassigned' : 'Assign automatically'}</option>
-                  {users.map((u) => (
-                    <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
-                  ))}
-                </select>
-                <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
-              </div>
+              <Controller
+                name="assignedUserId"
+                control={control}
+                render={({ field }) => (
+                  <AssignedAgentSelect
+                    id={`${fieldId}-assignedUserId`}
+                    value={field.value ?? ''}
+                    name={field.name}
+                    onBlur={field.onBlur}
+                    onChange={field.onChange}
+                    users={users}
+                    placeholder={isEdit ? 'Unassigned' : 'Assign automatically'}
+                    className={selectCls}
+                    invalid={!!errors.assignedUserId}
+                    describedBy={errors.assignedUserId ? `${fieldId}-assignedUserId-error` : undefined}
+                  />
+                )}
+              />
             </FieldWrap>
           </div>
           <FieldWrap htmlFor={`${fieldId}-address`} error={errors.address?.message} label="Full Address">

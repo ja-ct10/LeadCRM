@@ -3,16 +3,16 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { GroupsSubTab } from '../team-management-groups';
 import type { TenantGroup } from '@leadcrm/shared';
-const mocks = vi.hoisted(() => ({ getAll: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), addMember: vi.fn(), removeMember: vi.fn(), success: vi.fn(), error: vi.fn() }));
+const mocks = vi.hoisted(() => ({ getAll: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), addMember: vi.fn(), removeMember: vi.fn(), success: vi.fn(), error: vi.fn(), role: 'Client Admin' }));
 vi.mock('@/shared/services/groups.api', () => ({ groupsApi: mocks }));
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ userCan: () => true }) }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { role: mocks.role }, userCan: () => true }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('sonner', () => ({ toast: mocks }));
 const user = { id: 'julie', firstName: 'Julie Ann', lastName: 'Tiron', email: 'julie@example.com', role: 'Sales Marketing' };
 const group = (members = true): TenantGroup => ({ id: 'sales', tenantId: 'tenant', name: 'Sales', createdAt: '', updatedAt: '', members: members ? [{ id: 'membership', userId: user.id, user }] : [] });
 const mount = () => render(<GroupsSubTab tenantUsers={[user] as never} />);
 const openGroup = async () => { fireEvent.click(await screen.findByRole('button', { name: 'Open Sales' })); };
-beforeEach(() => { vi.clearAllMocks(); mocks.getAll.mockResolvedValue({ data: [group()] }); mocks.remove.mockResolvedValue(undefined); mocks.removeMember.mockResolvedValue(undefined); mocks.addMember.mockResolvedValue(undefined); vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} }); });
+beforeEach(() => { vi.clearAllMocks(); mocks.role = 'Client Admin'; mocks.getAll.mockResolvedValue({ data: [group()] }); mocks.remove.mockResolvedValue(undefined); mocks.removeMember.mockResolvedValue(undefined); mocks.addMember.mockResolvedValue(undefined); vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 it('uses skeletons, removes filters, searches groups and uses skeleton rows while refreshing once', async () => {
   let resolve!: (value: unknown) => void; mocks.getAll.mockReturnValueOnce(new Promise(done => { resolve = done; })); mount();
@@ -38,6 +38,13 @@ it.each(['Julie', 'Tiron', 'Julie Ann Tiron', 'julie@example', 'Sales Marketing'
   // Deliberately omit tenantUsers: the group response is the complete membership source.
   render(<GroupsSubTab tenantUsers={[]} />); await openGroup(); fireEvent.change(screen.getByLabelText('Search members...'), { target: { value: query } }); expect(screen.getByText('Julie Ann Tiron')).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Search members...'), { target: { value: 'no match' } }); expect(screen.getByText('No members match your search.')).toBeTruthy();
+});
+it('lets other roles view members but hides membership controls', async () => {
+  mocks.role = 'Sales'; mount(); await openGroup();
+  expect(screen.getByText('Julie Ann Tiron')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Add Members' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Remove Julie Ann Tiron' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Edit group' })).toBeTruthy();
 });
 it('requires removal confirmation, traps focus, cancels safely and updates membership/counts after success', async () => {
   mount(); await openGroup(); fireEvent.click(screen.getByRole('button', { name: 'Remove Julie Ann Tiron' }));

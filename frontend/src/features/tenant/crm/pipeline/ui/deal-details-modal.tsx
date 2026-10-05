@@ -12,6 +12,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { Deal, Pipeline, User as UserType, Task, TaskStatus } from '@/store/types';
 import { useData } from '@/store/DataContext';
+import { getAssignableAgents } from '@/shared/utils/assigned-agents';
 import { toast } from 'sonner';
 import { ModalCloseButton } from '@/shared/components/ui/modal-close-button';
 import { DealContactsField } from '@/features/tenant/crm/deals/ui/deal-contacts-field';
@@ -346,7 +347,7 @@ export function DealDetailsModal({
                     <select value={editFields.assignedUserId} onChange={e => setEditFields({ ...editFields, assignedUserId: e.target.value })}
                       className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none">
                       <option value="">Unassigned</option>
-                      {users.map(u => <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>)}
+                      {getAssignableAgents(users).map(u => <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>)}
                     </select>
                   </div>
 

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Calendar, User, FileText, CheckCircle2 } from 'lucide-react';
 import { Deal, User as SystemUser } from '@/store/types';
+import { getAssignableAgents } from '@/shared/utils/assigned-agents';
 
 interface HandoffModalProps {
   isOpen: boolean;
@@ -68,7 +69,7 @@ export function HandoffModal({ isOpen, onClose, onConfirm, deal, users }: Handof
                   className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                 >
                   <option value="">-- Select Owner (Optional) --</option>
-                  {users.map(u => (
+                  {getAssignableAgents(users).map(u => (
                     <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
                   ))}
                 </select>

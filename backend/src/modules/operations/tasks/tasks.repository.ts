@@ -282,7 +282,7 @@ export async function findTaskOptions(
       where: {
         tenantId,
         status: "ACTIVE",
-        role: { notIn: ["Guest"] },
+        role: { notIn: ["Guest", "Client Admin"] },
         ...people,
       },
       take: 50,

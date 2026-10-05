@@ -36,6 +36,8 @@ The pre-retirement backup `retirement-recovery-2026-10-05T08-28-26-869Z.json` ha
 
 Subsequent live activity added mailbox messages, a mailbox connection, workspace configuration and audit/preferences rows. The 12:19 UTC catalog contained 775 application rows. These newer records are preserved; the historical cleanup totals above do not describe the later database. The inventory records the latest per-table counts, and a new recovery snapshot protects this current data before column retirement.
 
+The refreshed recovery file is `retirement-recovery-2026-10-05T12-28-58-431Z.json`, SHA-256 `15775f41ce4de92442fbadf15bdef526126e92f56cb6bfa8b9c1dbe796a9a39a`: **796 application rows across 57 tables**, including 704 mailbox messages. Every backed-up row restored exactly, and migration 86 passed against the restored data with the User unchanged.
+
 ## Sources of truth
 
 | Fact | Authority | Deliberately retained meaning |
@@ -119,7 +121,7 @@ Before cleanup there were no declared-FK orphans, but six AuditLog actor tenant 
 | PostgreSQL application groups | **259 passed**: smoke, workflows/tasks, forms, campaigns, completion, mailbox, account security, permissions |
 | Product/import/sales/notification tests | **48 passed, 1 skipped**, four files |
 | Native roles / groups | **9 passed** |
-| Full frontend suite | 1,000 passed, one outdated label assertion failed; corrected assertion and three affected suites then passed **14/14** |
+| Full frontend suite | **1,001 passed, 0 failed**; corrected permission/cache/label suites also passed **14/14** |
 | Deployment gate tests | **6 passed**, separate Node test runner |
 | Workspace lint / typechecks | All three passed |
 | Separate seeder typecheck | Passed; seeders not executed on live data |

@@ -14,6 +14,5 @@ export * from './campaigns.api';
 export * from './templates.api';
 export * from './workflows.api';
 export * from './users.api';
-export * from './audit.api';
 export * from './reporting.api';
 export * from './notifications.api';

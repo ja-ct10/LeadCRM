@@ -30,8 +30,9 @@ const initials = (user: TenantGroupMember['user']) => `${user.firstName[0] ?? ''
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : 'Unable to update group. Please try again.';
 
 export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): React.ReactElement {
-  const { userCan } = useAuth();
+  const { user, userCan } = useAuth();
   const canManage = userCan('groups', 'canEdit'), canCreate = userCan('groups', 'canCreate'), canDelete = userCan('groups', 'canDelete');
+  const canManageMembers = user?.role?.trim().toLowerCase() === 'client admin';
   const [groups, setGroups] = useState<TenantGroup[]>([]);
   const [search, setSearch] = useState('');
   const [memberSearch, setMemberSearch] = useState('');
@@ -92,12 +93,12 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
         toast.success('Group created successfully.');
         // Creation is committed even if an optional member operation fails.
         setModal('members');
-        if (canManage && selectedIds.length) await addMembers(created.id, selectedIds);
+        if (canManageMembers && selectedIds.length) await addMembers(created.id, selectedIds);
       } else if (modal === 'rename' && active && canManage && parsed.success) {
         const updated = (await groupsApi.update(active.id, parsed.data)).data;
         setGroups(previous => previous.map(group => group.id === active.id ? updated : group));
         toast.success('Group name updated');
-      } else if (modal === 'members' && active && canManage) {
+      } else if (modal === 'members' && active && canManageMembers) {
         await addMembers(active.id, selectedIds.filter(id => !active.members.some(member => member.userId === id)));
       }
       setModal(null);
@@ -115,7 +116,7 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
       }) });
   };
   const requestRemove = (member: TenantGroupMember) => {
-    if (!active || !canManage) return;
+    if (!active || !canManageMembers) return;
     const groupId = active.id;
     confirm({ title: 'Remove member?', description: `Are you sure you want to remove ${memberName(member.user)} from this group?`,
       confirmLabel: 'Remove Member', variant: 'destructive', onConfirm: () => mutate(async () => {
@@ -127,7 +128,7 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
   const duplicate = (group: TenantGroup) => mutate(async () => {
     const created = (await groupsApi.create(`${group.name.slice(0, 93)} (Copy)`)).data;
     setGroups(previous => [...previous, created]);
-    if (canManage && group.members.length) await addMembers(created.id, group.members.map(member => member.userId));
+    if (canManageMembers && group.members.length) await addMembers(created.id, group.members.map(member => member.userId));
     toast.success('Group duplicated');
   });
   const visibleGroups = groups.filter(group => group.name.toLowerCase().includes(search.trim().toLowerCase()));
@@ -140,7 +141,7 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
       cell: (_, member) => <AvatarCell name={memberName(member.user)} initials={initials(member.user)} /> },
     { id: 'role', header: 'Role', accessor: member => member.user.role, width: 180 },
     { id: 'email', header: 'Email', accessor: member => member.user.email, width: 260 },
-    ...(canManage ? [{ id: 'actions', header: 'Actions', accessor: () => '', width: 80,
+    ...(canManageMembers ? [{ id: 'actions', header: 'Actions', accessor: () => '', width: 80,
       cell: (_: unknown, member: TenantGroupMember) => <Button variant="ghost" size="icon" disabled={busy} aria-label={`Remove ${memberName(member.user)}`} title="Remove member" onClick={() => requestRemove(member)}><X size={14} /></Button> }] : []),
   ];
   const createAction = canCreate && <CreateButton label="New Group" onClick={() => openModal('create')} />;
@@ -155,16 +156,16 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
         <div className="flex shrink-0 gap-1">
           {canManage && <Button variant="ghost" size="icon" title="Edit group" aria-label="Edit group" onClick={() => openModal('rename')}><Edit2 size={16} /></Button>}
           {(canCreate || canDelete) && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="Group actions" title="Group actions"><MoreHorizontal size={16} /></Button></DropdownMenuTrigger><DropdownMenuContent>
-            {canCreate && <DropdownMenuItem disabled={busy || (!canManage && !!active.members.length)} onSelect={() => void duplicate(active)}><Copy size={14} />Duplicate</DropdownMenuItem>}
+            {canCreate && <DropdownMenuItem disabled={busy || (!canManageMembers && !!active.members.length)} onSelect={() => void duplicate(active)}><Copy size={14} />Duplicate</DropdownMenuItem>}
             {canDelete && <DropdownMenuItem destructive onSelect={() => requestDelete(active)}><Trash2 size={14} />Delete Group</DropdownMenuItem>}
           </DropdownMenuContent></DropdownMenu>}
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <ModuleSearchInput value={memberSearch} onChange={setMemberSearch} placeholder="Search members..." />
-        {canManage && <Button variant="outline" size="sm" className="ml-auto" disabled={busy} onClick={() => openModal('members')}><Plus size={14} />Add Members</Button>}
+        {canManageMembers && <Button variant="outline" size="sm" className="ml-auto" disabled={busy} onClick={() => openModal('members')}><Plus size={14} />Add Members</Button>}
       </div>
-      <DataGrid ariaLabel="Group members" columns={columns} data={visibleMembers} getRowId={member => member.id} height="auto" emptyMessage={members.length ? 'No members match your search.' : 'No members yet. Use Add Members to add users to this group.'} />
+      <DataGrid ariaLabel="Group members" columns={columns} data={visibleMembers} getRowId={member => member.id} height="auto" emptyMessage={members.length ? 'No members match your search.' : canManageMembers ? 'No members yet. Use Add Members to add users to this group.' : 'No members yet.'} />
     </> : <>
       <ModuleTableToolbar label="Groups" search={search} onSearch={setSearch} placeholder="Search groups..." refreshing={loading} onRefresh={loadGroups} />
       {loading ? <Card role="status" aria-label="Loading groups" className="rounded-xl shadow-none overflow-hidden"><div aria-hidden="true"><DataLoadingSkeleton rowCount={4} columnCount={2} rowHeight={64} /></div></Card> : loaded && <Card className="rounded-xl shadow-none overflow-hidden" aria-busy={loading}>
@@ -187,7 +188,7 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
               className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" />
             {nameError && <p id="group-name-error" role="alert" className="mt-1 text-xs text-red-500">{nameError}</p>}
           </div>}
-          {modal !== 'rename' && canManage && <div className="space-y-2">
+          {modal !== 'rename' && canManageMembers && <div className="space-y-2">
             <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Add Members {modal === 'create' && <span className="font-normal text-slate-400">(optional)</span>}</p>
             <ModuleSearchInput value={userSearch} onChange={setUserSearch} placeholder="Search users..." disabled={busy} />
             <div className="max-h-52 overflow-y-auto space-y-1">

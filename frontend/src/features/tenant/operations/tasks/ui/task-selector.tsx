@@ -3,6 +3,7 @@ import { ChevronDown, Search, Plus } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { TaskOption, TaskOptionKind } from "@leadcrm/shared";
 import { useData } from "@/store/DataContext";
+import { getAssignableAgents } from "@/shared/utils/assigned-agents";
 import { useAuth } from "@/store/AuthContext";
 import { tasksApi } from "@/shared/services/tasks.api";
 import { USE_MOCK_DATA } from "@/lib/config";
@@ -86,7 +87,7 @@ export function TaskSelector(props: TaskSelectorProps) {
         if (USE_MOCK_DATA) {
           rows =
             kind === "user"
-              ? users
+              ? getAssignableAgents(users)
                   .filter((u) => u.status.toLowerCase() === "active")
                   .map((u) => ({
                     id: u.id,
@@ -167,7 +168,7 @@ export function TaskSelector(props: TaskSelectorProps) {
   const visible = !search
     ? [
         ...selectedIds
-          .filter((id) => !options.some((option) => option.id === id))
+          .filter((id) => kind !== "user" && !options.some((option) => option.id === id))
           .map((id) => ({ id, label: labelFor(id) })),
         ...options,
       ]

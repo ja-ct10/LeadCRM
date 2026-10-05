@@ -7,6 +7,13 @@ The backend includes implemented CRM, authentication, administration, campaigns,
 
 The Prisma schema has 57 models. See the [database audit](database/normalization-report.md) for current relations, compatibility fields, and verified deployment notes. Existing databases use the forward migration deployment command, `npm --prefix backend run db:deploy`.
 
+Deal `leadId`/`contactId` and Task `leadId`/`contactId`/`dealId`/`accountId` remain
+public API projections of ordered junctions. Plural association fields remain
+supported; singular response IDs identify the first ordered participant. They are
+not independent database columns in the final schema. Mailbox thread associations
+use `MailboxThreadAssociation`; generic mailbox-thread preferences are retired.
+Column retirement uses `db:relations:retire` only after exact-release verification.
+
 ## Base URL
 ```
 http://localhost:4000/api/v1
