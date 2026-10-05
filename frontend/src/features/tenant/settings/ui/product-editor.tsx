@@ -1,7 +1,7 @@
 'use client';
 import { PanelSectionHeading, panelBodyClass, panelFooterClass, panelInputClass, panelLabelClass, panelPrimaryButtonClass, panelSecondaryButtonClass } from '@/shared/components/side-panel-styles';
 import { useState } from 'react';
-import { ProductInterestSchema, type ProductInterest } from '@leadcrm/shared';
+import { ProductInterestSchema, parseProductAmount, type ProductInterest } from '@leadcrm/shared';
 import { Button } from '@/shared/components/ui/button';
 const inputClass = panelInputClass;
 export function ProductEditor({ product, busy, onSave, onCancel }: { product?: ProductInterest; busy: boolean; onSave: (data: { name: string; dealValue: number }) => Promise<void>; onCancel: () => void }) {
@@ -11,8 +11,9 @@ export function ProductEditor({ product, busy, onSave, onCancel }: { product?: P
   return <form className="flex h-full min-h-0 flex-col" onSubmit={async event => {
     event.preventDefault();
     if (busy) return;
-    if (!/^\d+(\.\d{1,2})?$/.test(amount.trim())) { setError('Enter a non-negative amount with up to two decimal places.'); return; }
-    const parsed = ProductInterestSchema.safeParse({ name, dealValue: Number(amount.trim()) });
+    const dealValue = parseProductAmount(amount);
+    if (dealValue === null) { setError('Enter a non-negative amount with up to two decimal places.'); return; }
+    const parsed = ProductInterestSchema.safeParse({ name, dealValue });
     if (!parsed.success) { setError(parsed.error.issues[0].message); return; }
     setError(''); await onSave(parsed.data);
   }}>

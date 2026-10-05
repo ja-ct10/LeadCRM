@@ -1,4 +1,5 @@
 import { validateProductSnapshots, normalizeProductOther } from '../leads/product-snapshots';
+import { productRelationData } from '../leads/product-relations';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import prisma from '../../../config/database.config';
 import { CrmStatusSchema, normalizeCrmStatus } from '@leadcrm/shared';
@@ -14,7 +15,7 @@ import { getPaginationParams } from '../../../shared/helpers/pagination';
  *   company        → Contact.company       (plain text, company name)
  *   accountId      → Contact.accountId      (FK → Account.id)  ← CANONICAL company link (ADR-001)
  *   status         → ContactStatus enum    (HOT | WARM | COLD | CANCELLED | CLOSED)
- *   productInterests → String[]
+ *   productInterests → names derived from ContactProductInterest
  *   isArchived     → Boolean (archive = set isArchived:true, not status change)
  */
 
@@ -90,10 +91,10 @@ export async function createContact(tenantId: string, dto: Record<string, unknow
   if (dto.status === 'Closed') throw new ValidationError('Confirm a related Deal as Closed Won before setting Closed.');
   dto.productInterests = await validateProductSnapshots(tenantId, dto.productInterests);
   normalizeProductOther(dto, (dto.productInterests as string[] | undefined) ?? []);
-  return prisma.contact.create({
-    data: { ...dto, tenantId, status: CrmStatusSchema.parse(dto.status).toUpperCase() } as never,
+  return salesTransaction(async tx => tx.contact.create({
+    data: { ...dto, ...await productRelationData(tx, 'contact', tenantId, { names: dto.productInterests as string[] | undefined }), tenantId, status: CrmStatusSchema.parse(dto.status).toUpperCase() } as never,
     include: CONTACT_INCLUDE,
-  });
+  }));
 }
 
 export async function updateContact(id: string, tenantId: string, dto: Record<string, unknown>, actorId?: string) {
@@ -102,6 +103,7 @@ export async function updateContact(id: string, tenantId: string, dto: Record<st
   normalizeProductOther(dto, (dto.productInterests as string[] | undefined) ?? previous?.productInterests ?? [], previous?.productInterestOther);
   return salesTransaction(async tx => {
     const current = await tx.contact.findFirstOrThrow({ where: { id, tenantId } });
+    if (dto.productInterests !== undefined) Object.assign(dto, await productRelationData(tx, 'contact', tenantId, { names: dto.productInterests as string[] }, current, true));
     const status = dto.status === undefined ? undefined : CrmStatusSchema.parse(dto.status);
     if (status === 'Closed' && normalizeCrmStatus(current.status) !== 'Closed') await assertClosedStatus(tx, tenantId, { contactId: id });
     const contact = await tx.contact.update({

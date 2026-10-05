@@ -384,27 +384,21 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     expect((await request(`/crm/${module}/${created.body.data.id}`)).body.data.email).toBe('email@example.test');
   });
 
-  it('persists multiple catalog IDs, deduplicates selections, derives price and preserves snapshots', async () => {
+  it('requires one Product for new Deals and preserves the original snapshot on every edit', async () => {
     const { pipeline, initial } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
-    const products = await Promise.all([12.25, 9.5, 3].map(dealValue => prisma.productInterest.create({ data: { tenantId, name: randomUUID(), dealValue } })));
-    const result = await request('/crm/deals', 'POST', { title: 'Multiple products', pipelineId: pipeline.id, stageId: initial.id, productInterestIds: [products[0].id, products[1].id, products[0].id], value: 999 });
+    const products = await Promise.all([12.25, 9.5].map(dealValue => prisma.productInterest.create({ data: { tenantId, name: randomUUID(), dealValue } })));
+    const input = { title: 'One product', pipelineId: pipeline.id, stageId: initial.id };
+    expect((await request('/crm/deals', 'POST', { ...input, productInterestIds: products.map(p => p.id) })).status).toBe(400);
+    expect((await request('/crm/deals', 'POST', { ...input, productInterestId: products[1].id, productInterestIds: [products[0].id] })).status).toBe(400);
+    const result = await request('/crm/deals', 'POST', { ...input, productInterestIds: [products[0].id, products[0].id], value: 999 });
     expect(result.status).toBe(201);
     const id = result.body.data.id;
-    expect(result.body.data).toMatchObject({ productInterestIds: products.slice(0, 2).map(p => p.id), productInterests: products.slice(0, 2).map(p => p.name), value: 21.75, currency: 'PHP' });
+    expect(result.body.data).toMatchObject({ productInterestIds: [products[0].id], productInterests: [products[0].name], value: 12.25, currency: 'PHP' });
     await prisma.productInterest.update({ where: { id: products[0].id }, data: { dealValue: 500 } });
-    await request(`/crm/deals/${id}`, 'PUT', { title: 'Preserve snapshot' });
-    expect((await request(`/crm/deals/${id}`)).body.data.value).toBe(21.75);
-    const sameSelection = await request(`/crm/deals/${id}`, 'PUT', { productInterestIds: [products[1].id, products[0].id], value: 999, currency: 'USD' });
-    expect(sameSelection.status).toBe(200);
-    expect(sameSelection.body.data).toMatchObject({ productInterestIds: products.slice(0, 2).map(p => p.id), productInterests: products.slice(0, 2).map(p => p.name), value: 21.75, currency: 'PHP' });
-    expect((await request(`/crm/deals/${id}`, 'PUT', { value: 999 })).status).toBe(400);
-    expect((await request(`/crm/deals/${id}`, 'PUT', { currency: 'USD' })).status).toBe(400);
-    expect((await request(`/crm/deals/${id}`, 'PUT', { productInterestIds: [] })).status).toBe(400);
-    expect((await request(`/crm/deals/${id}`, 'PUT', { productInterestIds: [randomUUID()] })).status).toBe(400);
-    const updated = await request(`/crm/deals/${id}`, 'PUT', { productInterestIds: products.slice(1).map(p => p.id), value: 999 });
-    expect(updated.status).toBe(200);
-    expect((await request(`/crm/deals/${id}`)).body.data).toMatchObject({ productInterestIds: products.slice(1).map(p => p.id), value: 12.5 });
-    expect((await request(`/crm/deals/${id}`, 'PUT', { title: 'Denied' }, deniedToken)).status).toBe(403);
+    const same = await request('/crm/deals/' + id, 'PUT', { title: 'Preserve snapshot', productInterestIds: [products[0].id], value: 999, currency: 'USD' });
+    expect(same.status).toBe(200); expect(same.body.data.value).toBe(12.25);
+    for (const patch of [{ value: 999 }, { currency: 'USD' }, { productInterestIds: [] }, { productInterestIds: [products[1].id] }]) expect((await request('/crm/deals/' + id, 'PUT', patch)).status).toBe(400);
+    expect((await request('/crm/deals/' + id, 'PUT', { title: 'Denied' }, deniedToken)).status).toBe(403);
   });
 
   it('manages existing pipeline stages while protecting ownership, archived Deals and history', async () => {

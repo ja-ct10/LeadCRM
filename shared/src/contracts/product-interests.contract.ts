@@ -1,5 +1,13 @@
 import { z } from 'zod';
 
+/** Accept display currency only at the form boundary; API money remains numeric. */
+export function parseProductAmount(input: string): number | null {
+  const text = input.trim().replace(/^₱\s*/, '');
+  if (!/^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?$/.test(text)) return null;
+  const amount = Number(text.replace(/,/g, ''));
+  return Number.isFinite(amount) ? amount : null;
+}
+
 export const ProductInterestSchema = z.object({
   name: z.string().max(200).refine(v => !/[\u0000-\u001f\u007f-\u009f]/.test(v), 'Control characters are not allowed').transform(v => v.trim()).pipe(z.string().min(1, 'Product name is required')),
   dealValue: z.number().finite().min(0).max(999_999_999_999).multipleOf(0.01),

@@ -103,22 +103,37 @@ and import country behavior is unchanged.
 
 ### Deals / Pipeline
 
-Manual `POST /crm/deals` accepts active, tenant-owned `productInterestIds` (one or
-more unique UUIDs); the existing singular `productInterestId` remains supported.
-The server resolves catalog names and sums their numeric `dealValue` in the
-creation transaction, sets the currency to PHP, and stores a price snapshot.
-`PUT /crm/deals/:id` accepts the same ID array when changing products and derives
-the new price on the server. Unchanged selections retain their snapshots, and
-manual amounts cannot override product-linked prices. Later catalog price changes
-do not rewrite existing Deals.
-Trusted import flows keep their existing historical-value contract.
+Manual `POST /crm/deals` requires exactly one active, tenant-owned Product UUID,
+in `productInterestIds` or the existing singular `productInterestId`. If both are
+provided they must agree. The server copies that Product's current `dealValue`,
+sets PHP currency, and stores a historical price snapshot. Imports and duplicated
+Deals use the same current-price rule. Later catalog edits never reprice old Deals.
+`PUT /crm/deals/:id` preserves Product, value and currency. Existing clients may
+resubmit unchanged Product IDs and their preview amount; the preview is ignored.
+Changing the Product or overriding its stored snapshot is rejected. Other fields
+remain editable, including on unresolved or multi-product historical Deals.
+Workflow update actions cannot change these snapshot fields; existing steps are
+preserved for review but cannot be activated or executed. Price/Product conditions
+remain available.
+
+Lead, Contact and Account Product display arrays keep their existing response
+shape but are derived from normalized ProductInterest junctions. The internal
+normalization marker is not exposed by ordinary record responses. Unresolved
+legacy rows retain their original arrays until reconciled. Renames are reflected
+in normalized displays; retained inactive Product relationships remain valid.
+Returning Contact form inquiries add Product links and new priced Deals. Retrying
+the same `requestId` does not duplicate the submission or Deals.
 
 Product configuration uses `GET /administration/product-interests` and
 `PATCH /administration/product-interests/:id` (under `/api/v1`). The update requires
-`settings.edit`, a valid product UUID, a trimmed name, and a non-negative numeric
+`products.edit`, a valid product UUID, and a non-empty patch containing a trimmed
+name and/or a non-negative numeric
 amount with at most two decimal places. It returns the updated catalog after the
 transaction commits. `ProductInterest.dealValue` remains the existing decimal
 database field; currency formatting is presentation only.
+The editor accepts `₱25,000.00` and sends `dealValue: 25000`; formatted strings are
+not accepted by the API. See [the normalization report](product-normalization-report.md)
+for migration verification and deployment requirements.
 
 | Method | Path | Description |
 |---|---|---|

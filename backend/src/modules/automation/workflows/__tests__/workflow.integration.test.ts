@@ -334,6 +334,8 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
   });
   it('emits Deal created for duplication after copying CRM associations', async () => {
     await scope(async () => {
+      const product = await prisma.productInterest.create({ data: { tenantId, name: 'Duplication test Product', dealValue: 25000 } });
+      await prisma.deal.update({ where: { id: deal.id }, data: { productInterestId: product.id, productsNormalized: true } });
       await prisma.leadDeal.createMany({ data: [{ tenantId, leadId: lead.id, dealId: deal.id, addedById: actor.id }], skipDuplicates: true });
       await prisma.contactDeal.createMany({ data: [{ tenantId, contactId: contact.id, dealId: deal.id, addedById: actor.id }], skipDuplicates: true });
     });

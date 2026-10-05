@@ -24,7 +24,7 @@ function getDatePlusDays(days: number): string {
 
 const InlineDealSchema = z.object({
   title: z.string().min(1, 'Title is required').max(255),
-  productInterestIds: z.array(z.string().uuid()).min(1, 'Select at least one Product Interest.'),
+  productInterestIds: z.array(z.string().uuid()).length(1, 'Select exactly one Product Interest.'),
   pipelineId: z.string().min(1, 'Pipeline is required'),
   stageId: z.string().min(1, 'Stage is required'),
   expectedCloseDate: z.string().optional(),
@@ -171,7 +171,7 @@ export function InlineDealForm({
 
       <div>
         <label htmlFor={productFieldId} className={labelCls}>Product Interest</label>
-        <ProductInterestSelect id={productFieldId} products={products} values={selectedProductIds} onChange={values => setValue('productInterestIds', values, { shouldValidate: true })} disabled={loading || !!error} />
+        <ProductInterestSelect single id={productFieldId} products={products} values={selectedProductIds} onChange={values => setValue('productInterestIds', values, { shouldValidate: true })} disabled={loading || !!error} />
         {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
       </div>
       <div>

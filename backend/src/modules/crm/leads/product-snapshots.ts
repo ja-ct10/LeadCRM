@@ -4,7 +4,7 @@ import type { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
 import { ValidationError } from '../../../shared/errors/http-error';
 
-/** Contact/Account/standalone Deal names are historical snapshots; new choices must come from the catalog. */
+/** Validate legacy name-based input; normalized writes resolve it to catalog FKs. */
 export async function validateProductSnapshots(tenantId: string, input: unknown, previous: string[] = [], db: Prisma.TransactionClient = prisma) {
   if (input === undefined) return;
   const names = z.array(ProductInterestSchema.shape.name).max(100).parse(input);

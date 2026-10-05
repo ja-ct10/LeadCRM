@@ -10,14 +10,12 @@ function getWorkflowUpdateFields(entity) {
     const account = { field: 'accountId', label: 'Account', type: 'account', nullable: true };
     if (entity === 'deal')
         return [
-            text('title', 'Deal title', true), text('currency', 'Currency', true),
+            text('title', 'Deal title', true),
             { field: 'priority', label: 'Priority', type: 'enum', options: ['LOW', 'MEDIUM', 'HIGH'], required: true },
             { field: 'billingFrequency', label: 'Billing frequency', type: 'enum', options: ['monthly', 'one_time', 'annual', 'quarterly'], required: true },
             { field: 'expectedCloseDate', label: 'Expected close date', type: 'date', nullable: true },
             text('leadSource', 'Lead source'), text('industry', 'Industry'), text('address', 'Address'), assignment, account,
             { field: 'contactIds', label: 'Contacts', type: 'contacts' }, { field: 'leadIds', label: 'Leads', type: 'leads' },
-            { field: 'productInterestIds', label: 'Product Interest', type: 'products', required: true },
-            { field: 'value', label: 'Deal Value', type: 'number', group: 'custom', required: true },
         ];
     if (entity === 'account')
         return [text('name', 'Account name', true), text('industry', 'Industry'),
@@ -46,7 +44,7 @@ function fields(entity) {
         status.options = ['HOT', 'WARM', 'COLD', 'CANCELLED', 'CLOSED', 'Hot', 'Warm', 'Cold', 'Cancelled', 'Closed'];
     }
     if (entity === 'deal')
-        definitions.push({ field: 'deal.stageId', label: 'Stage', type: 'stage' }, { field: 'deal.pipelineId', label: 'Pipeline', type: 'pipeline' }, { field: 'deal.hasEverBeenWon', label: 'Has ever reached Won', type: 'boolean' }, { field: 'deal.wonHistoryVerified', label: 'Stage history verified', type: 'boolean' });
+        definitions.push({ field: 'deal.value', label: 'Deal Value', type: 'number' }, { field: 'deal.currency', label: 'Currency', type: 'string' }, { field: 'deal.productInterests', label: 'Product Interest', type: 'products' }, { field: 'deal.stageId', label: 'Stage', type: 'stage' }, { field: 'deal.pipelineId', label: 'Pipeline', type: 'pipeline' }, { field: 'deal.hasEverBeenWon', label: 'Has ever reached Won', type: 'boolean' }, { field: 'deal.wonHistoryVerified', label: 'Stage history verified', type: 'boolean' });
     return definitions;
 }
 exports.WORKFLOW_TRIGGERS = [
@@ -81,7 +79,7 @@ function getAvailableActions() {
         { type: 'assign_owner', label: 'Assign Agent', description: 'Assign the record to an eligible workspace agent.', entities: ['lead', 'contact', 'deal', 'account'], configSchema: {
                 userId: { type: 'user', label: 'Agent', required: true },
             } },
-        { type: 'update_field', label: 'Update Fields', description: 'Update an editable record field. Deal Value is available under Custom Fields.', entities: ['lead', 'contact', 'deal', 'account'], configSchema: {
+        { type: 'update_field', label: 'Update Fields', description: 'Update an editable record field.', entities: ['lead', 'contact', 'deal', 'account'], configSchema: {
                 field: { type: 'field', label: 'Field', required: true }, value: { type: 'value', label: 'New value', required: false },
                 clear: { type: 'boolean', label: 'Clear value', required: false }, otherDetails: { type: 'string', label: 'Specify (optional)', required: false },
             } },

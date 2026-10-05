@@ -123,13 +123,16 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
     const empty = await scope(() => prisma.lead.findFirstOrThrow({ where: { tenantId, id: lead.id } }));
     expect(empty.productInterest).toEqual([]); expect(empty.productInterestOther).toBeNull();
   });
-  it('supports a numeric Deal Value Custom Fields action and leaves unrelated fields intact', async () => {
+  it('preserves legacy price actions for review and prevents historical price changes', async () => {
     const deal = await newDeal({ productInterestId: others.id, productInterestIds: [others.id], productInterests: ['Others'] });
-    const workflow = await create({ trigger: 'deal.updated', actions: [{ type: 'update_field', config: { field: 'value', value: 4321.5 } }] });
+    const workflow = await create({ isActive: false, trigger: 'deal.updated', actions: [{ type: 'update_field', config: { field: 'value', value: 4321.5 } }] });
+    await expect(scope(() => workflows.toggleWorkflow(workflow.id, tenantId, actor.id, true))).rejects.toThrow(/historical snapshots/);
+    // Simulate a workflow already active when the new pricing rule is deployed.
+    await prisma.workflow.update({ where: { id: workflow.id }, data: { isActive: true } });
     await scope(() => updateDeal(deal.id, tenantId, actor.id, { priority: 'HIGH' }));
     const saved = await scope(() => prisma.deal.findFirstOrThrow({ where: { id: deal.id, tenantId } }));
-    expect(saved.value).toBe(4321.5); expect(saved.title).toBe(deal.title); expect(saved.priority).toBe('HIGH');
-    expect((await runs(workflow.id))[0].status).toBe('completed');
+    expect(saved.value).toBe(deal.value); expect(saved.title).toBe(deal.title); expect(saved.priority).toBe('HIGH');
+    expect((await runs(workflow.id))[0].status).toBe('failed');
     await expect(create({ trigger: 'deal.updated', actions: [{ type: 'update_field', config: { field: 'id', value: 'bad' } }] })).rejects.toThrow(/editable/);
   });
   it('sends SMS once for an event and reports a missing phone without submission', async () => {

@@ -1,3 +1,4 @@
+import { productRelationData } from '../leads/product-relations';
 import type { Prisma } from '@prisma/client';
 import { importIdentity, importRowSchemas, splitProductInterests, type CrmImportModule, type ImportReviewRow } from '@leadcrm/shared';
 import { ValidationError } from '../../../shared/errors/http-error';
@@ -132,14 +133,14 @@ async function createLead(tx: Tx, tenantId: string, actorId: string, jobId: stri
 async function createContact(tx: Tx, tenantId: string, _actorId: string, _jobId: string, row: ResolvedRow) {
   const d = row.data, names = row.products.map(p => p.name);
   return (await tx.contact.create({ data: { tenantId, firstName: d.firstName, lastName: d.lastName,
-    email: d.email, phone: d.phone, company: d.companyName, address: d.address, status: 'WARM', productInterests: names, activeProducts: [],
+    email: d.email, phone: d.phone, company: d.companyName, address: d.address, status: 'WARM', ...await productRelationData(tx, 'contact', tenantId, { ids: row.products.map(p => p.id) }),
   } })).id;
 }
 async function createAccount(tx: Tx, tenantId: string, _actorId: string, _jobId: string, row: ResolvedRow) {
   const d = row.data, names = row.products.map(p => p.name);
   return (await tx.account.create({ data: { tenantId, name: d.name, industry: d.industry, website: d.website,
     address: d.address, city: d.city, province: d.province, country: d.country || 'Philippines', size: d.size || null,
-    productInterests: names, activeProducts: [], tags: [],
+    ...await productRelationData(tx, 'account', tenantId, { ids: row.products.map(p => p.id) }), tags: [],
   } })).id;
 }
 async function createImportedDeal(tx: Tx, tenantId: string, actorId: string, _jobId: string, row: ResolvedRow) {
@@ -150,17 +151,16 @@ async function createImportedDeal(tx: Tx, tenantId: string, actorId: string, _jo
   if (leadId) {
     const lead = await tx.lead.findFirstOrThrow({ where: { tenantId, id: leadId } });
     await tx.lead.update({ where: { tenantId, id: leadId }, data: {
-      productInterest: [...new Set([...lead.productInterest, ...names])],
-      productInterestIds: [...new Set([...lead.productInterestIds, ...row.products.map(p => p.id)])],
+      ...await productRelationData(tx, 'lead', tenantId, { names: [...new Set([...lead.productInterest, ...names])] }, lead, true),
     } });
   }
   if (contactId) {
     const contact = await tx.contact.findFirstOrThrow({ where: { tenantId, id: contactId } });
-    await tx.contact.update({ where: { tenantId, id: contactId }, data: { productInterests: [...new Set([...contact.productInterests, ...names])] } });
+    await tx.contact.update({ where: { tenantId, id: contactId }, data: await productRelationData(tx, 'contact', tenantId, { names: [...new Set([...contact.productInterests, ...names])] }, contact, true) });
   }
   if (accountId) {
     const account = await tx.account.findFirstOrThrow({ where: { tenantId, id: accountId } });
-    await tx.account.update({ where: { tenantId, id: accountId }, data: { productInterests: [...new Set([...account.productInterests, ...names])] } });
+    await tx.account.update({ where: { tenantId, id: accountId }, data: await productRelationData(tx, 'account', tenantId, { names: [...new Set([...account.productInterests, ...names])] }, account, true) });
   }
   if (leadId || contactId) await tx.deal.update({ where: { tenantId, id: deal.id }, data: { leadId, contactId } });
   return deal.id;

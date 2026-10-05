@@ -5,8 +5,8 @@ import * as fc from 'fast-check';
  * Property-based test for deal duplication field preservation.
  *
  * **Property 13: Deal Duplication Field Preservation**
- * For any deal, the duplicated deal SHALL have identical values for all fields except
- * `id`, `createdAt`, `updatedAt`, `closedAt`, `lostReason`, `isArchived`, and `ownerId`.
+ * Preserve sales context while starting a new opportunity at the current Product price.
+ * Identity, lifecycle, owner, price and currency are deliberately reset.
  * The duplicated deal's `title` SHALL equal the source title suffixed with ` (Copy)`.
  *
  * **Validates: Requirements 16.1, 16.2, 16.3**
@@ -23,8 +23,9 @@ const mockContactDealFindMany = vi.fn();
 const mockContactDealCreateMany = vi.fn();
 
 vi.mock('../../../../config/database.config', () => {
-  return {
-    default: {
+  const client = {
+      $transaction: async (work: (tx: unknown) => unknown) => work(client),
+      productInterest: { findMany: async () => [{ id: '11111111-1111-4111-8111-111111111111', name: 'CCTV', dealValue: 30000, active: true }] },
       stage: { findFirst: async () => ({ id: "initial-lead-stage" }) },
       deal: {
         create: (...args: unknown[]) => mockDealCreate(...args),
@@ -37,8 +38,8 @@ vi.mock('../../../../config/database.config', () => {
         findMany: (...args: unknown[]) => mockContactDealFindMany(...args),
         createMany: (...args: unknown[]) => mockContactDealCreateMany(...args),
       },
-    },
-  };
+    };
+  return { default: client };
 });
 
 vi.mock('../../../../core/audit/audit.service', () => ({
@@ -111,7 +112,8 @@ const sourceDealArb = fc.record({
   expectedCloseDate: fc.oneof(fc.constant(null), dateArb),
   probability: fc.oneof(fc.constant(null), fc.integer({ min: 0, max: 100 })),
   source: fc.oneof(fc.constant(null), fc.constantFrom('Inbound', 'Outbound', 'Referral')),
-  productInterests: fc.oneof(fc.constant(null), fc.array(fc.string({ minLength: 1, maxLength: 20 }), { minLength: 0, maxLength: 5 })),
+  productInterests: fc.constant(['CCTV']),
+  productInterestIds: fc.constant(['11111111-1111-4111-8111-111111111111']),
   currency: fc.oneof(fc.constant(null), fc.constantFrom('PHP', 'USD', 'EUR', 'GBP')),
 
   // Relation fields (returned by findDealById include but excluded from create)
@@ -241,8 +243,8 @@ describe('Feature: deals-module-modernization, Property 13: Deal Duplication Fie
           expect(createCallData.stageId).toBe("initial-lead-stage");
           expect(createCallData.pipelineId).toBe(sourceDeal.pipelineId);
 
-          // Value and priority preserved
-          expect(createCallData.value).toBe(sourceDeal.value);
+          // A duplicate is a NEW Deal; the original historical value is untouched.
+          expect(createCallData.value).toBe(30000);
           expect(createCallData.priority).toBe(sourceDeal.priority);
 
           // Other preserved fields
@@ -251,7 +253,7 @@ describe('Feature: deals-module-modernization, Property 13: Deal Duplication Fie
           expect(createCallData.expectedCloseDate).toEqual(sourceDeal.expectedCloseDate);
           expect(createCallData.probability).toBe(sourceDeal.probability);
           expect(createCallData.source).toBe(sourceDeal.source);
-          expect(createCallData.currency).toBe(sourceDeal.currency);
+          expect(createCallData.currency).toBe('PHP');
         }),
         { numRuns: 100 },
       );

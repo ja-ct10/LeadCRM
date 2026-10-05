@@ -1,3 +1,4 @@
+import { resolveProducts, salesTransaction } from '../leads/lead-automation.service';
 import { validateSalesOwner } from '../leads/lead-automation.service';
 import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
@@ -281,42 +282,51 @@ export async function duplicateDeal(id: string, tenantId: string, userId: string
 
   let newDeal: any;
   try {
-    newDeal = await prisma.deal.create({
-      data: {
-        ...copyData,
-        automationKey: null,
-        hasEverBeenWon: false,
-        wonHistoryVerified: true,
-        title: `${source.title} (Copy)`,
-        tenantId,
-        ownerId: userId,
-        isArchived: false,
-        closedAt: null,
-        lostReason: null,
-        stageId: initialStage.id,
-        stageChangedAt: new Date(),
-        wonConfirmationType: null, wonConfirmationNote: null, wonConfirmedById: null, wonConfirmedAt: null,
-        closingValues: {}, closingSnapshot: Prisma.DbNull,
-      } as never,
+    newDeal = await salesTransaction(async tx => {
+      const ids = [...new Set([...source.productInterestIds, ...(source.productInterestId ? [source.productInterestId] : [])])];
+      if (ids.length !== 1) throw new ValidationError('Choose one Product in a new Deal instead of duplicating a legacy opportunity.');
+      const [product] = await resolveProducts(tx, tenantId, ids);
+      if (source.productInterests.some(name => name.trim().toLowerCase() !== product.name.trim().toLowerCase())) throw new ValidationError('Reconcile legacy Product details before duplicating this Deal.');
+      const created = await tx.deal.create({
+        data: {
+          ...copyData,
+          productInterestId: product.id, productInterestIds: [], productInterests: [], productsNormalized: true,
+          value: Number(product.dealValue), currency: 'PHP',
+          automationKey: null,
+          hasEverBeenWon: false,
+          wonHistoryVerified: true,
+          title: `${source.title} (Copy)`,
+          tenantId,
+          ownerId: userId,
+          isArchived: false,
+          closedAt: null,
+          lostReason: null,
+          stageId: initialStage.id,
+          stageChangedAt: new Date(),
+          wonConfirmationType: null, wonConfirmationNote: null, wonConfirmedById: null, wonConfirmedAt: null,
+          closingValues: {}, closingSnapshot: Prisma.DbNull,
+        } as never,
+      });
+
+      // Copy lead associations from source deal
+      const leadAssociations = await tx.leadDeal.findMany({ where: { dealId: id, tenantId } });
+      if (leadAssociations.length > 0) {
+        await tx.leadDeal.createMany({
+          data: leadAssociations.map(a => ({ leadId: a.leadId, dealId: created.id, tenantId, addedById: userId })),
+          skipDuplicates: true,
+        });
+      }
+
+      // Copy contact associations from source deal
+      const contactAssociations = await tx.contactDeal.findMany({ where: { dealId: id, tenantId } });
+      if (contactAssociations.length > 0) {
+        await tx.contactDeal.createMany({
+          data: contactAssociations.map(a => ({ contactId: a.contactId, dealId: created.id, tenantId, addedById: userId })),
+          skipDuplicates: true,
+        });
+      }
+      return created;
     });
-
-    // Copy lead associations from source deal
-    const leadAssociations = await prisma.leadDeal.findMany({ where: { dealId: id, tenantId } });
-    if (leadAssociations.length > 0) {
-      await prisma.leadDeal.createMany({
-        data: leadAssociations.map(a => ({ leadId: a.leadId, dealId: newDeal.id, tenantId, addedById: userId })),
-        skipDuplicates: true,
-      });
-    }
-
-    // Copy contact associations from source deal
-    const contactAssociations = await prisma.contactDeal.findMany({ where: { dealId: id, tenantId } });
-    if (contactAssociations.length > 0) {
-      await prisma.contactDeal.createMany({
-        data: contactAssociations.map(a => ({ contactId: a.contactId, dealId: newDeal.id, tenantId, addedById: userId })),
-        skipDuplicates: true,
-      });
-    }
   } catch (error) {
     mapRepositoryError(error, 'duplicateDeal');
   }

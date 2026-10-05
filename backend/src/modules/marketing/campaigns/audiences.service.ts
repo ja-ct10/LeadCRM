@@ -40,7 +40,11 @@ function conditionsFor(input: AudienceInput, lead: boolean): Prisma.LeadWhereInp
       case 'company': return lead ? { companyName: scalar } : { company: scalar };
       case 'assignedUserId': return { assignedUserId: scalar };
       case 'productInterest': {
-        const filter = lead ? { productInterest: { has: c.value } } : { productInterests: { has: c.value } };
+        const legacy = lead ? { productInterest: { has: c.value } } : { productInterests: { has: c.value } };
+        const filter = { OR: [
+          { productsNormalized: true, productLinks: { some: { ...(lead ? {} : { interested: true }), product: { name: c.value } } } },
+          { productsNormalized: false, ...legacy },
+        ] };
         return c.operator === 'not_equals' ? { NOT: filter } : filter;
       }
     }

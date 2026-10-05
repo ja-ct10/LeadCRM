@@ -58,7 +58,7 @@ function UpdateFieldFields({ action, options, entity, onChange }: {
         {action.config.field && !field ? <option value={String(action.config.field)}>Unavailable field</option> : null}
       </select>
     </label>
-    {entity === 'deal' && <p className="text-xs text-[var(--muted-foreground)]">Deal Value is available under Custom Fields.</p>}
+    {entity === 'deal' && <p className="text-xs text-[var(--muted-foreground)]">A Deal keeps its original Product and value. Create a new Deal for a new opportunity.</p>}
     {field && !field.required && <label className="flex items-center gap-2"><input type="checkbox" checked={!!action.config.clear} onChange={(event) => change({ clear: event.target.checked })} />Clear this field</label>}
     {field && !action.config.clear && <div className="space-y-2">
       {multiple ? <fieldset className="space-y-2"><legend className="mb-2">New value</legend><div className="max-h-56 overflow-auto rounded-lg border border-[var(--border)] p-2">

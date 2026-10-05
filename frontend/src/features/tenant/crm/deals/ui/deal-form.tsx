@@ -38,7 +38,7 @@ const CreateDealFormSchema = z.object({
   leadIds: z.array(z.string()).optional(),
   industry: z.string().optional(),
   address: z.string().optional(),
-  productInterests: z.array(z.string().uuid()).min(1, 'Select at least one Product Interest.').max(100),
+  productInterests: z.array(z.string().uuid()).length(1, 'Select exactly one Product Interest.'),
 });
 
 const UpdateDealFormSchema = z.object({
@@ -297,7 +297,7 @@ export function DealForm({
               name="productInterests"
               control={control}
               render={({ field }) => (
-                <ProductInterestSelect products={products} disabled={productsLoading || isSubmitting || isLoading} id={`${fieldId}-product-interest`} values={field.value || []} onChange={field.onChange} />
+                <ProductInterestSelect single={isCreateMode} products={products} disabled={!isCreateMode || productsLoading || isSubmitting || isLoading} id={`${fieldId}-product-interest`} values={field.value || []} onChange={field.onChange} />
               )}
             />
           </FieldWrap>
@@ -307,7 +307,7 @@ export function DealForm({
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-medium select-none pointer-events-none">₱</span>
                 <input id={`${fieldId}-value`} readOnly value={new Intl.NumberFormat('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(!isCreateMode && productsUnchanged ? initialData?.value ?? 0 : productValue)} className={cn(inputCls, 'pl-9 bg-slate-50')} aria-describedby={`${fieldId}-value-help`} />
               </div>
-              {isCreateMode && <p id={`${fieldId}-value-help`} className="text-xs text-muted-foreground">Uses the combined configured value of the selected products.</p>}
+              {isCreateMode && <p id={`${fieldId}-value-help`} className="text-xs text-muted-foreground">Uses the configured value of the selected product.</p>}
             </FieldWrap>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FieldWrap label="Priority" htmlFor={`${fieldId}-priority`} error={errors.priority?.message}>

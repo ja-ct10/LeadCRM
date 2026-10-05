@@ -150,3 +150,23 @@ it('opens the existing editor from the icon-only product quick action', async ()
   expect(screen.getByText('Edit Product')).toBeTruthy();
   expect((screen.getByLabelText('Product Name') as HTMLInputElement).value).toBe(product.name);
 });
+
+it('saves a formatted Peso amount, reloads the committed value and reopens the editor', async () => {
+  let saved = { ...product, dealValue: 0 };
+  vi.mocked(apiClient.get).mockImplementation(async () => ({ data: [saved], meta: { enabled: true } }));
+  vi.mocked(apiClient.patch).mockImplementation(async (_url, body) => {
+    saved = { ...saved, ...(body as { name: string; dealValue: number }) };
+    return { data: [saved], meta: { enabled: true } };
+  });
+  const first = render(<ProductsPage />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Edit product' }));
+  fireEvent.change(screen.getByLabelText('Deal Value (PHP)'), { target: { value: '₱25,000.00' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save Product' }));
+  await waitFor(() => expect(apiClient.patch).toHaveBeenCalledWith('/administration/product-interests/' + product.id, { name: product.name, dealValue: 25000 }));
+  await screen.findByText('₱25,000.00');
+  expect(toast.success).toHaveBeenCalledWith('Product updated successfully.');
+  first.unmount(); render(<ProductsPage />);
+  await screen.findByText('₱25,000.00');
+  fireEvent.click(screen.getByRole('button', { name: 'Edit product' }));
+  expect((screen.getByLabelText('Deal Value (PHP)') as HTMLInputElement).value).toBe('25000');
+});

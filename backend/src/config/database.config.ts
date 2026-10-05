@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { installTenantScoping } from '../core/tenant/tenant-prisma';
+import { installProductProjections } from '../core/tenant/product-projections';
 
 // ── Singleton raw Prisma client ───────────────────────
 // This is the default export used by all repositories and services.
@@ -9,6 +10,7 @@ const prisma = new PrismaClient({
   // including staged CSV content. Request middleware owns sanitized error logs.
   log: process.env.NODE_ENV === 'development' ? ['warn'] : [],
 });
+installProductProjections(prisma);
 installTenantScoping(prisma);
 
 export default prisma;

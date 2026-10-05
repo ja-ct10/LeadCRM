@@ -1,3 +1,4 @@
+import { productRelationData } from '../../crm/leads/product-relations';
 import { Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { convertClosedLead } from '../../crm/leads/lead-conversion.service';
@@ -9,7 +10,7 @@ import { tenantContext } from '../../../core/tenant/tenant-context';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 import { sendMail } from '../../../shared/services/email.service';
 import { normalizePhone } from '../../crm/duplicate-detection/duplicate-detection.service';
-import { createAssignedLead, createProductDeals, productConfiguration, salesTransaction, resolveProducts } from '../../crm/leads/lead-automation.service';
+import { createAssignedLead, createProductDeals, productConfiguration, salesTransaction, resolveProducts, salesPipeline } from '../../crm/leads/lead-automation.service';
 
 export class SubmissionValidationError extends ValidationError {
   constructor(public fieldErrors: Record<string, string>) { super('Please check the highlighted fields.'); }
@@ -105,8 +106,7 @@ export async function submitPublicForm(publicId: string, body: unknown) {
           if (leadId && lead && !contactId) {
             // A repeat inquiry can add interests, but must never replace historical Deals or owners.
             await tx.lead.update({ where: { id: leadId, ...scope }, data: {
-              productInterestIds: [...new Set([...lead.productInterestIds, ...selectedProducts])],
-              productInterest: [...new Set([...lead.productInterest, ...resolvedProducts.map(p => p.name)])],
+              ...await productRelationData(tx, 'lead', scope.tenantId, { names: [...new Set([...lead.productInterest, ...resolvedProducts.map(p => p.name)])] }, lead, true),
             } });
             await createProductDeals(tx, scope.tenantId, leadId);
           }
@@ -120,6 +120,24 @@ export async function submitPublicForm(publicId: string, body: unknown) {
           const submission = await tx.formSubmission.create({ data: { ...scope, formId: live.id, requestKey: input.requestId, publishedVersion: live.publishedVersion,
             publishedConfig: { name: config.name, fields: config.fields, design: config.design }, leadId, contactId, email, phone,
             values: validated.values, tracking: config.settings.trackUrlParams ? input.tracking : {}, notificationStatus: config.settings.notificationEmail ? 'pending' : 'not_requested' } });
+          if (contactId && resolvedProducts.length) {
+            const customer = await tx.contact.findFirstOrThrow({ where: { ...scope, id: contactId } });
+            await tx.contact.update({ where: { ...scope, id: customer.id }, data: await productRelationData(tx, 'contact', scope.tenantId,
+              { names: [...new Set([...customer.productInterests, ...resolvedProducts.map(p => p.name)])] }, customer, true) });
+            const { pipeline, initial } = await salesPipeline(tx, scope.tenantId);
+            // Each accepted inquiry is a new opportunity. requestId retries return above,
+            // while later purchases of the same Product remain legitimate separate Deals.
+            for (const product of resolvedProducts) {
+              const deal = await tx.deal.create({ data: { ...scope, contactId, accountId: customer.accountId,
+                title: `${customer.firstName} ${customer.lastName} – ${product.name}`.slice(0, 255),
+                pipelineId: pipeline.id, stageId: initial.id, productInterestId: product.id, productsNormalized: true,
+                value: Number(product.dealValue), currency: 'PHP', assignedUserId: customer.assignedUserId, ownerId: customer.assignedUserId,
+                automationKey: `form:${submission.id}:${product.id}`, leadSource: 'Website', tags: [] } });
+              await tx.contactDeal.create({ data: { ...scope, contactId, dealId: deal.id, addedById: live.createdById } });
+              await tx.activity.create({ data: { ...scope, contactId, dealId: deal.id, createdById: live.createdById,
+                type: 'deal_action', title: `Deal created for ${product.name}`, description: 'New website inquiry from an existing Contact.' } });
+            }
+          }
           return { submission, notificationEmail: config.settings.notificationEmail };
         }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 15000 });
         // Notification cannot roll back accepted data. Do not include visitor HTML or identity in mail/logs.

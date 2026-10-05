@@ -9,8 +9,9 @@ import { replayCrmMigrations } from '../../../../tests/replay-crm-migrations';
 // Always use an isolated in-memory PostgreSQL database, never DATABASE_URL.
 vi.mock('../../../../config/database.config', async () => {
   const { installTenantScoping } = await import('../../../../core/tenant/tenant-prisma');
+  const { installProductProjections } = await import('../../../../core/tenant/product-projections');
   const client = new PrismaClient({ datasources: { db: { url: process.env.CRM_ARCHIVE_TEST_DATABASE_URL! } } });
-  installTenantScoping(client);
+  installProductProjections(client); installTenantScoping(client);
   return { default: client };
 });
 
@@ -64,7 +65,7 @@ beforeAll(async () => {
   otherTenantId = (await db.tenant.create({ data: { name: 'Other tenant', slug: 'other-archive-test' } })).id;
   const admin = await db.user.create({ data: { tenantId, email: 'archive@camxian.com', firstName: 'Archive', lastName: 'Admin', role: 'Client Admin', mustChangePassword: false } });
   const viewer = await db.user.create({ data: { tenantId, email: 'viewer@camxian.com', firstName: 'Read', lastName: 'Only', role: 'Archive Viewer', mustChangePassword: false } });
-  const role = await db.roleDefinition.create({ data: { tenantId, name: 'Archive Viewer', permissions: { create: ['contacts', 'organizations'].map(module => ({ tenantId, module, canView: true, canEdit: false, canDelete: false })) } } });
+  const role = await db.roleDefinition.create({ data: { tenantId, name: 'Archive Viewer', permissions: { create: ['leads', 'contacts', 'archived_data'].map(module => ({ tenantId, module, canView: true, canEdit: false, canDelete: false })) } } });
   await db.userRole.create({ data: { tenantId, userId: viewer.id, roleId: role.id } });
   const { issueAuthSession } = await import('../../../../core/auth/auth-session');
   adminCookie = `leadcrm_token=${(await issueAuthSession(admin)).token}`;

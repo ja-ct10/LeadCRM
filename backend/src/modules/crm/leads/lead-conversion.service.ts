@@ -1,3 +1,4 @@
+import { productRelationData } from './product-relations';
 import type { Prisma } from '@prisma/client';
 import { ConflictError, NotFoundError } from '../../../shared/errors/http-error';
 
@@ -33,28 +34,28 @@ export async function convertClosedLead(tx: Prisma.TransactionClient, tenantId: 
       .filter(row => companyIdentity(row.name) === companyIdentity(name));
     if (matches.length > 1 || matches[0]?.isArchived || matches[0]?.deletedAt) throw conflict();
     accountId = matches[0]?.id ?? (await tx.account.create({ data: { tenantId, name, assignedUserId: lead.assignedUserId,
-      tags: [], productInterests: lead.productInterest, activeProducts: [] } })).id;
+      tags: [], ...await productRelationData(tx, 'account', tenantId, { names: lead.productInterest }, lead) } })).id;
   }
   if (accountId && !await tx.account.findFirst({ where: { tenantId, id: accountId, isArchived: false, deletedAt: null } })) throw conflict();
   if (accountId) {
     const account = await tx.account.findFirstOrThrow({ where: { tenantId, id: accountId } });
     await tx.account.update({ where: { tenantId, id: accountId }, data: {
-      productInterests: [...new Set([...account.productInterests, ...lead.productInterest])],
+      ...await productRelationData(tx, 'account', tenantId, { names: [...new Set([...account.productInterests, ...lead.productInterest])] }, { ...account, productInterests: [...account.productInterests, ...lead.productInterest] }, true),
     } });
   }
   const now = new Date();
   if (!contact) contact = await tx.contact.create({ data: { tenantId, firstName: lead.firstName, lastName: lead.lastName,
     email: lead.email?.trim().toLowerCase(), phone: lead.phone, company: lead.companyName, address: lead.address,
     source: lead.source, notes: lead.description, assignedUserId: lead.assignedUserId, accountId,
-    productInterests: lead.productInterest, activeProducts: [], status: 'CLOSED', lifecycleStage: 'CUSTOMER',
+    ...await productRelationData(tx, 'contact', tenantId, { names: lead.productInterest }, lead), status: 'CLOSED', lifecycleStage: 'CUSTOMER',
     customerType: 'Customer', customerSince: now, convertedAt: now, lastStatusChangedAt: now } });
   else contact = await tx.contact.update({ where: { tenantId, id: contact.id }, data: { accountId,
     status: 'CLOSED', lifecycleStage: 'CUSTOMER', customerType: 'Customer', customerSince: contact.customerSince ?? now,
     convertedAt: contact.convertedAt ?? now, lastStatusChangedAt: contact.status === 'CLOSED' ? contact.lastStatusChangedAt : now,
-    productInterests: [...new Set([...contact.productInterests, ...lead.productInterest])] } });
+    ...await productRelationData(tx, 'contact', tenantId, { names: [...new Set([...contact.productInterests, ...lead.productInterest])] }, { ...contact, productInterests: [...contact.productInterests, ...lead.productInterest] }, true) } });
   // Link every original Deal, including archived/terminal history, without changing its sales data.
   const activeProducts = [...new Set([...contact.activeProducts, ...deals.filter(d => d.stage.isWon).flatMap(d => d.productInterests)])];
-  contact = await tx.contact.update({ where: { tenantId, id: contact.id }, data: { activeProducts } });
+  contact = await tx.contact.update({ where: { tenantId, id: contact.id }, data: await productRelationData(tx, 'contact', tenantId, { activeNames: activeProducts }, { ...contact, activeProducts }, true) });
   for (const deal of deals) {
     await tx.contactDeal.upsert({ where: { contactId_dealId: { contactId: contact.id, dealId: deal.id } },
       create: { tenantId, contactId: contact.id, dealId: deal.id, addedById: actorId }, update: {} });

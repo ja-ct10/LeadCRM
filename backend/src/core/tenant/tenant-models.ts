@@ -7,3 +7,5 @@ export const tenantChildren: Record<string, { relation: string; model: string }>
 };
 tenantModels.add('MailboxMessage');
 tenantModels.add('ClosingFieldDefinition');
+tenantModels.add('ProductInterest');
+for (const model of ['Lead', 'Contact', 'Account']) tenantChildren[model + 'ProductInterest'] = { relation: model.toLowerCase(), model };

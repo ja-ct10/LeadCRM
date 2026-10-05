@@ -29,7 +29,10 @@ export const CreateDealSchema = z.object({
 }).strict();
 
 // Manual creation accepts catalog IDs; the singular ID remains supported for existing clients.
-export const ManualCreateDealSchema = CreateDealSchema.extend({ productInterests: z.never().optional() }).refine(data => !!data.productInterestId || !!data.productInterestIds?.length, { path: ['productInterestIds'], message: 'Select at least one Product Interest.' });
+export const ManualCreateDealSchema = CreateDealSchema.extend({ productInterests: z.never().optional() }).refine(data => {
+  const ids = [...new Set(data.productInterestIds ?? (data.productInterestId ? [data.productInterestId] : []))];
+  return ids.length === 1 && (!data.productInterestId || data.productInterestId === ids[0]);
+}, { path: ['productInterestIds'], message: 'Select exactly one Product Interest per Deal.' });
 
 // DI-2 fix: stageId is explicitly excluded from updates.
 // Stage changes MUST go through PATCH /deals/:id/stage (moveDealStage) to ensure

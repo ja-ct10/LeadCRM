@@ -1,3 +1,4 @@
+import { productRelationData } from '../leads/product-relations';
 import type { Deal, Prisma } from '@prisma/client';
 import { crmScope } from '../leads/lead-automation.service';
 import { changeCustomerStatus } from '../engagement.service';
@@ -32,7 +33,7 @@ export async function resolveWonRelationships(tx: Prisma.TransactionClient, deal
       const name = contact.company.trim().replace(/\s+/g, ' ');
       const matches = (await tx.account.findMany({ where: { ...scope, name: { contains: name.split(' ')[0], mode: 'insensitive' } } })).filter(account => account.name.trim().replace(/\s+/g, ' ').toLowerCase() === name.toLowerCase());
       if (matches.length > 1 || matches[0]?.isArchived) throw conflict();
-      linkedAccount = matches[0]?.id ?? (await tx.account.create({ data: { ...scope, name, assignedUserId: deal.assignedUserId, tags: [], productInterests: contact.productInterests, activeProducts: [] } })).id;
+      linkedAccount = matches[0]?.id ?? (await tx.account.create({ data: { ...scope, name, assignedUserId: deal.assignedUserId, tags: [], ...await productRelationData(tx, 'account', deal.tenantId, { names: contact.productInterests }, contact) } })).id;
     }
     if (!contact.accountId && linkedAccount) await tx.contact.update({ where: { ...scope, id: contact.id }, data: { accountId: linkedAccount } });
     accountId ??= linkedAccount;
@@ -41,7 +42,7 @@ export async function resolveWonRelationships(tx: Prisma.TransactionClient, deal
     const account = await tx.account.findFirst({ where: { ...scope, id: accountId, isArchived: false } });
     if (!account) throw conflict();
     await tx.account.update({ where: { ...scope, id: accountId }, data: {
-      activeProducts: [...new Set([...account.activeProducts, ...deal.productInterests])] } });
+      ...await productRelationData(tx, 'account', deal.tenantId, { activeNames: [...new Set([...account.activeProducts, ...deal.productInterests])] }, { ...account, activeProducts: [...account.activeProducts, ...deal.productInterests] }, true) } });
     await tx.deal.update({ where: { ...scope, id: deal.id }, data: { accountId } });
   }
 }

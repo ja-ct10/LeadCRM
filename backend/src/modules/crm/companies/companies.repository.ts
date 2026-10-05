@@ -1,4 +1,6 @@
 import { validateProductSnapshots, normalizeProductOther } from '../leads/product-snapshots';
+import { productRelationData } from '../leads/product-relations';
+import { salesTransaction } from '../leads/lead-automation.service';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import prisma from '../../../config/database.config';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
@@ -66,19 +68,19 @@ export async function findCompanyById(id: string, tenantId: string) {
 export async function createCompany(tenantId: string, dto: CreateCompanyDto) {
   dto.productInterests = await validateProductSnapshots(tenantId, dto.productInterests);
   normalizeProductOther(dto, (dto.productInterests as string[] | undefined) ?? []);
-  return prisma.account.create({ data: { ...dto, tenantId } as never });
+  return salesTransaction(async tx => tx.account.create({ data: { ...dto, ...await productRelationData(tx, 'account', tenantId, { names: dto.productInterests, activeNames: dto.activeProducts }), tenantId } as never }));
 }
 
 export async function updateCompany(id: string, tenantId: string, dto: UpdateCompanyDto) {
   const previous = await prisma.account.findFirst({ where: { id, tenantId } });
   dto.productInterests = await validateProductSnapshots(tenantId, dto.productInterests, previous?.productInterests);
   normalizeProductOther(dto, (dto.productInterests as string[] | undefined) ?? previous?.productInterests ?? [], previous?.productInterestOther);
-  try {
-    return await prisma.account.update({ where: { id, tenantId }, data: dto as never });
-  } catch {
-    // Record not found or cross-tenant attempt
-    return null;
-  }
+  return salesTransaction(async tx => {
+      const current = await tx.account.findFirst({ where: { id, tenantId } });
+      if (!current) return null;
+      const relations = dto.productInterests === undefined && dto.activeProducts === undefined ? {} : await productRelationData(tx, 'account', tenantId, { names: dto.productInterests, activeNames: dto.activeProducts }, current, true);
+      return tx.account.update({ where: { id, tenantId }, data: { ...dto, ...relations } as never });
+  });
 }
 
 export async function archiveCompany(id: string, tenantId: string, userId: string) {

@@ -1,4 +1,5 @@
 import { normalizeProductOther } from '../leads/product-snapshots';
+import { productRelationData } from '../leads/product-relations';
 import { parseLeadCreatedFilter } from '../leads/lead-created-filter';
 import { convertClosedLead } from '../leads/lead-conversion.service';
 import { assertClosedStatus, cancelOpenDeals } from '../engagement.service';
@@ -125,6 +126,7 @@ export async function updateContact(
         data.productInterest = [...existing.map(p => p.name), ...products.map(p => p.name)];
       }
       normalizeProductOther(data, (data.productInterest as string[] | undefined) ?? current.productInterest, current.productInterestOther);
+      if (dto.productInterest) Object.assign(data, await productRelationData(tx, 'lead', tenantId, { ids: dto.productInterest }, current, true));
       if (dto.accountId && !await tx.account.findFirst({ where: { id: dto.accountId, tenantId, isArchived: false } })) throw new ValidationError('Account is unavailable in this workspace.');
       if (dto.assignedUserId) await validateSalesOwner(tx, tenantId, dto.assignedUserId);
       const updated = await tx.lead.update({

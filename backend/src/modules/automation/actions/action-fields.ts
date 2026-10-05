@@ -11,6 +11,10 @@ export async function fieldUpdatePatch(action: WorkflowAction, entity: WorkflowE
   const config = action.config;
   for (const key of Object.keys(config)) if (!['field', 'value', 'clear', 'otherDetails'].includes(key)) throw new ValidationError(`Remove unsupported action setting: ${key}.`);
   if (config.clear !== undefined && typeof config.clear !== 'boolean') throw new ValidationError('Choose whether to clear the field.');
+  if (entity === 'deal' && ['value', 'currency', 'productInterestIds'].includes(String(config.field))) {
+    if (incomplete) return {}; // Preserve old steps in drafts/disabled form for review.
+    throw new ValidationError('Deal Product and value are historical snapshots. Disable or remove this action.');
+  }
   const field = getWorkflowUpdateFields(entity).find(f => f.field === config.field);
   if (!field) {
     if (incomplete && !config.field) return {};

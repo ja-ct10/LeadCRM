@@ -100,7 +100,7 @@ describe.sequential('security flows on migrated PostgreSQL', () => {
   });
   it('drops retired structures and permissions while preserving company domain and CRM permission data', async () => {
     expect((await pg.query(`SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename IN ('PricingPlan','PlanFeature','Invoice','Subscription','PaymentMethod','PaymentTransaction','StripeWebhookEvent','TenantDomain','TenantDomainSettings')`)).rows).toHaveLength(0);
-    expect(await db.rolePermission.findMany({ where: { roleId: 'migration-role' } })).toMatchObject([{ module: 'contacts' }]);
+    expect((await db.rolePermission.findMany({ where: { roleId: 'migration-role' } })).map(p => p.module).sort()).toEqual(['contacts', 'leads']);
     expect(await db.tenant.findUnique({ where: { id: 'migration-tenant' } })).toHaveProperty('domain', 'company.example');
     expect(await db.activity.findUnique({ where: { id: 'keep-activity' } })).toHaveProperty('title', 'Historical record');
   });

@@ -1,3 +1,4 @@
+import { productRelationData } from '../leads/product-relations';
 import prisma from '../../../config/database.config';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { NotFoundError, ValidationError } from '../../../shared/errors/http-error';
@@ -25,7 +26,7 @@ const LEAD_MERGE_FIELDS = [
 
 const CONTACT_MERGE_FIELDS = [
   'firstName', 'lastName', 'email', 'phone', 'companyName', 'address',
-  'productInterest', 'source', 'assignedUserId', 'status', 'accountId',
+  'productInterests', 'source', 'assignedUserId', 'status', 'accountId',
 ];
 
 const ACCOUNT_MERGE_FIELDS = [
@@ -114,6 +115,7 @@ async function executeLeadMerge(
     // 1. Reassign relationships
     const reassignedCounts = await repo.reassignLeadRelationships(tx, primaryId, secondaryId, tenantId);
 
+    if (mergedData.productInterest !== undefined) Object.assign(mergedData, await productRelationData(tx, 'lead', tenantId, { names: mergedData.productInterest as string[] }, { productInterest: [...primary.productInterest, ...secondary.productInterest] }, true));
     // 2. Update primary with resolved fields
     const updatedPrimary = await tx.lead.update({
       where: { id: primaryId } as never,
@@ -196,6 +198,7 @@ async function executeContactMerge(
 
   const result = await prisma.$transaction(async (tx) => {
     const reassignedCounts = await repo.reassignContactRelationships(tx, primaryId, secondaryId, tenantId);
+    if (mergedData.productInterests !== undefined) Object.assign(mergedData, await productRelationData(tx, 'contact', tenantId, { names: mergedData.productInterests as string[] }, { ...primary, productInterests: [...primary.productInterests, ...secondary.productInterests] }, true));
 
     const updatedPrimary = await tx.contact.update({
       where: { id: primaryId } as never,
@@ -276,6 +279,7 @@ async function executeAccountMerge(
 
   const result = await prisma.$transaction(async (tx) => {
     const reassignedCounts = await repo.reassignAccountRelationships(tx, primaryId, secondaryId, tenantId);
+    if (mergedData.productInterests !== undefined || mergedData.activeProducts !== undefined) Object.assign(mergedData, await productRelationData(tx, 'account', tenantId, { names: mergedData.productInterests as string[] | undefined, activeNames: mergedData.activeProducts as string[] | undefined }, { ...primary, productInterests: [...primary.productInterests, ...secondary.productInterests], activeProducts: [...primary.activeProducts, ...secondary.activeProducts] }, true));
 
     const updatedPrimary = await tx.account.update({
       where: { id: primaryId } as never,

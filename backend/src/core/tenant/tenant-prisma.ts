@@ -11,7 +11,7 @@ export function scopeWhere(model: string, where: Args = {}): Args {
   if (!scope) return where;
   if (tenantModels.has(model)) return { ...where, ...scope };
   const child = tenantChildren[model];
-  if (child) return { ...where, AND: [where.AND ?? {}, { [child.relation]: scope }] };
+  if (child) return { ...where, AND: [...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []), { [child.relation]: scope }] };
   if (model === 'AuditLog') return { ...where, tenantId: scope.tenantId };
   return where;
 }

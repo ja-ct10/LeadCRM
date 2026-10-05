@@ -6,7 +6,7 @@ const metadata = new Set([
   'lastStatusChangedAt', 'stageChangedAt', 'assignedUser', 'createdBy', 'updatedBy',
   'account', 'organization', 'owner', 'pipeline', 'stage', 'stageHistories',
   'lead', 'contact', 'productInterestRecord', 'recordFiles', 'activities', 'tasks',
-  'actions', 'taskLinks', 'order',
+  'actions', 'taskLinks', 'order', 'productsNormalized', 'productLinks',
 ]);
 const setFields = new Set(['productInterest', 'productInterestIds', 'productInterests', 'activeProducts', 'tags', 'leadIds', 'contactIds']);
 

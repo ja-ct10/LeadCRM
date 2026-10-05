@@ -1,5 +1,5 @@
 import { resolveProducts } from '../leads/lead-automation.service';
-import { validateProductSnapshots, normalizeProductOther } from '../leads/product-snapshots';
+import { normalizeProductOther } from '../leads/product-snapshots';
 import { salesTransaction, crmScope } from '../leads/lead-automation.service';
 import { resolveWonRelationships } from './won-conversion.service';
 import type { ClosedWonConfirmation } from '@leadcrm/shared';
@@ -97,20 +97,17 @@ export async function createDeal(tenantId: string, ownerId: string, dto: CreateD
   if (!stage || stage.isWon) throw new ValidationError('New Deals require an available open stage. Confirm Closed Won through the stage action.');
   const { leadIds, contactIds, ...dealData } = dto as CreateDealDto & { leadIds?: string[]; contactIds?: string[] };
 
-  if (dto.productInterestIds?.length || dto.productInterestId) {
-    const products = await resolveProducts(db, tenantId, dto.productInterestIds ?? [dto.productInterestId!]);
-    dealData.productInterestIds = products.map(p => p.id);
-    dealData.productInterestId = products[0].id;
-    dealData.productInterests = products.map(p => p.name);
-    dealData.value = products.reduce((sum, p) => sum + Math.round(Number(p.dealValue) * 100), 0) / 100;
-    if (dealData.value > 999_999_999_999) throw new ValidationError('Combined product value exceeds the maximum.');
-    dealData.currency = 'PHP';
-  } else {
-    // Trusted imports retain their independent historical value contract.
-    dealData.productInterests = await validateProductSnapshots(tenantId, dto.productInterests, [], db);
-  }
+  const ids = [...new Set(dto.productInterestIds ?? (dto.productInterestId ? [dto.productInterestId] : []))];
+  if (ids.length !== 1 || (dto.productInterestId && dto.productInterestId !== ids[0])) throw new ValidationError('Select exactly one Product Interest per Deal.');
+  const [product] = await resolveProducts(db, tenantId, ids);
+  dealData.productInterestId = product.id;
+  delete dealData.productInterestIds;
+  delete dealData.productInterests;
+  dealData.value = Number(product.dealValue);
+  dealData.currency = 'PHP';
+  normalizeProductOther(dealData, [product.name]);
   const deal = await db.deal.create({
-    data: { ...dealData, tenantId, ownerId } as never,
+    data: { ...dealData, tenantId, ownerId, productsNormalized: true } as never,
   });
 
   if (leadIds && leadIds.length > 0) {
@@ -156,23 +153,17 @@ export async function updateDeal(id: string, tenantId: string, dto: UpdateDealDt
       const currentIds = existing.productInterestIds.length ? existing.productInterestIds : existing.productInterestId ? [existing.productInterestId] : [];
       if (dto.productInterestIds) {
         const ids = [...new Set(dto.productInterestIds)];
-        const changed = ids.length !== currentIds.length || ids.some(id => !currentIds.includes(id));
-        if (changed) {
-          const products = await resolveProducts(tx, tenantId, ids);
-          updateData.productInterestIds = products.map(p => p.id);
-          Object.assign(updateData, { productInterestId: products[0].id, productInterests: products.map(p => p.name), currency: 'PHP', value: products.reduce((sum, p) => sum + Math.round(Number(p.dealValue) * 100), 0) / 100 });
-          if (updateData.value! > 999_999_999_999) throw new ValidationError('Combined product value exceeds the maximum.');
-        } else {
-          delete updateData.productInterestIds;
-          delete updateData.productInterests;
-          delete updateData.value;
-          delete updateData.currency;
-        }
+        if (ids.length !== currentIds.length || ids.some(id => !currentIds.includes(id))) throw new ValidationError('A Deal keeps its original Product and value. Create a new Deal for another Product.');
+        delete updateData.productInterestIds;
+        delete updateData.productInterests;
+        // Existing clients submit the read-only preview. It never changes the snapshot.
+        delete updateData.value;
+        delete updateData.currency;
       } else {
-        if (currentIds.length && dto.productInterests && JSON.stringify(dto.productInterests) !== JSON.stringify(existing.productInterests)) throw new ValidationError('Update Product Interests using catalog IDs.');
-        updateData.productInterests = await validateProductSnapshots(tenantId, dto.productInterests, existing.productInterests, tx);
-        if (currentIds.length && dto.value !== undefined && dto.value !== existing.value) throw new ValidationError('Product-linked Deal values cannot be overridden.');
-        if (currentIds.length && dto.currency !== undefined && dto.currency !== existing.currency) throw new ValidationError('Product-linked Deal currency cannot be overridden.');
+        if (dto.productInterests && JSON.stringify(dto.productInterests) !== JSON.stringify(existing.productInterests)) throw new ValidationError('A Deal keeps its original Product.');
+        delete updateData.productInterests;
+        if (dto.value !== undefined && dto.value !== existing.value) throw new ValidationError('Deal values are historical snapshots and cannot be overridden.');
+        if (dto.currency !== undefined && dto.currency !== existing.currency) throw new ValidationError('Deal currency cannot be overridden.');
       }
       normalizeProductOther(updateData, updateData.productInterests ?? existing.productInterests, existing.productInterestOther);
       await tx.deal.update({ where: { id, tenantId }, data: updateData as never });

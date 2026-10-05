@@ -4,6 +4,7 @@ import { productConfiguration, salesTransaction } from '../../crm/leads/lead-aut
 import { AppError } from '../../../shared/errors/app-error';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import * as service from './product-interests.service';
+import { Prisma } from '@prisma/client';
 
 export async function detail(req: Request, res: Response, next: NextFunction) {
   try { res.json({ success: true, data: await service.getProduct(req.user!.tenantId, req.params.id) }); }
@@ -39,7 +40,12 @@ async function mutate(req: Request, res: Response, next: NextFunction, action: '
         if (await tx.productInterest.count({ where: { tenantId, active: true } }) >= 100) throw new AppError('Maximum 100 products.', 400);
         await tx.productInterest.create({ data: { tenantId, ...ProductInterestSchema.parse(input) } });
       }
-      if (action === 'update') await tx.productInterest.update({ where: { id, tenantId }, data: input! });
+      if (action === 'update') {
+        const updated = await tx.productInterest.update({ where: { id, tenantId }, data: {
+          ...input!, ...(input!.dealValue === undefined ? {} : { dealValue: new Prisma.Decimal(input!.dealValue.toFixed(2)) }),
+        } });
+        if (input!.dealValue !== undefined && !updated.dealValue.equals(input!.dealValue)) throw new AppError('Product value was not saved. Retry the update.', 409);
+      }
       if (action === 'remove') await tx.productInterest.update({ where: { id, tenantId }, data: { active: false } });
       if (action === 'removeField' || action === 'enableField') {
         if (action === 'removeField') await tx.productInterest.updateMany({ where: { tenantId, active: true }, data: { active: false } });

@@ -20,14 +20,12 @@ describe('workflow polish controls', () => {
     view.rerender(<ConditionFields options={options} trigger={trigger} value={{ operator: 'AND', conditions: [{ field: 'lead.productInterest', operator: 'contains', value: 'Others' }] }} onChange={onChange} />);
     expect((screen.getByLabelText('Condition 1 value') as HTMLSelectElement).value).toBe('Others');
   });
-  it('exposes Deal Value only in Custom Fields and stores a number', () => {
+  it('keeps historical Deal Product, value and currency out of update actions', () => {
     render(<Editor entity="deal" config={{ field: '', value: '' }} />);
     expect(screen.queryByRole('option', { name: 'Deal Value' })).toBeNull();
-    fireEvent.change(screen.getByLabelText('Field group'), { target: { value: 'custom' } });
-    fireEvent.change(screen.getByLabelText('Field'), { target: { value: 'value' } });
-    fireEvent.change(screen.getByLabelText('New value'), { target: { value: '12500' } });
-    expect(JSON.parse(screen.getByTestId('config').textContent!)).toEqual({ field: 'value', value: 12500 });
-    expect(screen.queryByLabelText('Clear this field')).toBeNull();
+    expect(screen.queryByRole('option', { name: 'Product Interest' })).toBeNull();
+    expect(screen.queryByRole('option', { name: 'Currency' })).toBeNull();
+    expect(WORKFLOW_TRIGGERS.find(t => t.type === 'deal.updated')?.fields.some(f => f.field === 'deal.value')).toBe(true);
   });
   it('allows optional Others details and requires an explicit clear choice', () => {
     render(<Editor entity="lead" config={{ field: 'productInterest', value: [] }} />);

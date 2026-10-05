@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { ProductInterestIdSchema } from '@leadcrm/shared';
+import { productRelationData } from './product-relations';
 
 type Tx = Prisma.TransactionClient;
 export const crmScope = (tenantId: string) => ({ tenantId });
@@ -79,7 +80,7 @@ export async function createProductDeals(tx: Tx, tenantId: string, leadId: strin
       continue;
     }
     const deal = await tx.deal.create({ data: { ...scope, automationKey, leadId: lead.id, title: `${lead.firstName} ${lead.lastName} – ${product.name}`.slice(0, 255),
-      productInterestId: product.id, productInterestIds: [product.id], productInterests: [product.name], value: Number(product.dealValue), assignedUserId: lead.assignedUserId, ownerId: lead.assignedUserId,
+      productInterestId: product.id, productsNormalized: true, value: Number(product.dealValue), assignedUserId: lead.assignedUserId, ownerId: lead.assignedUserId,
       pipelineId: pipeline.id, stageId: initial.id, accountId: lead.accountId, leadSource: lead.source, tags: [] } });
     await tx.leadDeal.create({ data: { ...scope, leadId: lead.id, dealId: deal.id, addedById: actorId } });
     if (actorId || lead.assignedUserId) await tx.activity.create({ data: { ...scope, dealId: deal.id, createdById: (actorId ?? lead.assignedUserId)!,
@@ -100,7 +101,8 @@ export async function createAssignedLead(tx: Tx, input: Prisma.LeadUncheckedCrea
     ? await resolveProducts(tx, scope.tenantId, input.productInterestIds as string[])
     : await tx.productInterest.findMany({ where: { tenantId: scope.tenantId, active: true, name: { in: (input.productInterest ?? []) as string[] } } });
   if (!input.productInterestIds && new Set((input.productInterest ?? []) as string[]).size !== products.length) throw new ValidationError('Unknown Product Interest');
-  const lead = await tx.lead.create({ data: { ...input, ...scope, productInterestIds: products.map(p => p.id), productInterest: products.map(p => p.name), assignedUserId: null } });
+  const relations = await productRelationData(tx, 'lead', scope.tenantId, { ids: products.map(p => p.id) });
+  const lead = await tx.lead.create({ data: { ...input, ...scope, ...relations, assignedUserId: null } });
   const agents = await eligibleAgents(tx, scope.tenantId);
   let agent = input.assignedUserId ? await validateSalesOwner(tx, scope.tenantId, input.assignedUserId) : undefined;
   if (!agent && agents.length) {

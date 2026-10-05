@@ -8,7 +8,6 @@ import { createTask } from '../../operations/tasks/tasks.service';
 import { sendSms } from '../../../shared/services/sms.service';
 import { smsRecipient } from './action-sms';
 import { fieldUpdatePatch } from './action-fields';
-import { updateWorkflowDealValue } from './action-deal-value';
 import { updateCompany } from '../../crm/companies/companies.service';
 import { createActivity } from '../../crm/activities/activities.service';
 import { moveDealStage, updateDeal } from '../../crm/deals/deals.service';
@@ -48,9 +47,7 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
     }
     if (!['assign_owner', 'update_field'].includes(action.type)) throw new ValidationError('This action is no longer available.');
     const update = action.type === 'assign_owner' ? { assignedUserId: String(config.userId) } : await fieldUpdatePatch(action, entity, tenantId);
-    if (entity === 'deal' && action.type === 'update_field' && config.field === 'value') {
-      await updateWorkflowDealValue(entityId, tenantId, actorId, Number(update.value));
-    } else if (entity === 'deal') {
+    if (entity === 'deal') {
       await updateDeal(entityId, tenantId, actorId, update);
     } else if (entity === 'lead') {
       await updateLead(entityId, tenantId, actorId, update);

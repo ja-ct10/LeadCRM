@@ -20,13 +20,10 @@ it('requires a catalog product and submits its ID array without a manual value',
   fireEvent.change(screen.getByLabelText(/Title/), { target: { value: 'Installation' } });
   expect((screen.getByRole('button', { name: 'Create Deal' }) as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(selector);
-  fireEvent.click(screen.getByRole('checkbox', { name: 'CCTV' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'CCTV' }));
   expect(amount.value).toBe('5,000.00');
-  expect((screen.getByRole('checkbox', { name: 'CCTV' }) as HTMLInputElement).checked).toBe(true);
+  expect((screen.getByRole('radio', { name: 'CCTV' }) as HTMLInputElement).checked).toBe(true);
   expect(screen.getByText('Product Interests').closest('.space-y-4')?.textContent).toContain('Deal Information');
-  fireEvent.click(screen.getByRole('checkbox', { name: 'CCTV' }));
-  expect(amount.value).toBe('0.00');
-  fireEvent.click(screen.getByRole('checkbox', { name: 'CCTV' }));
   fireEvent.keyDown(screen.getByRole('group', { name: 'Product interests' }), { key: 'Escape' });
   await waitFor(() => expect((screen.getByRole('button', { name: 'Create Deal' }) as HTMLButtonElement).disabled).toBe(false));
   fireEvent.click(screen.getByRole('button', { name: 'Create Deal' }));

@@ -97,6 +97,14 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     await prisma.lead.create({ data: { tenantId, firstName: 'Historic', lastName: 'Person', email: v.email, productInterest: [], contactId: c.id } });
     await submit(form.publicId, v);
     expect(await prisma.formSubmission.findFirst({ where: { formId: form.id } })).toMatchObject({ contactId: c.id, leadId: null });
+    expect(await prisma.contactProductInterest.count({ where: { contactId: c.id, productInterestId: productIds['Smart Lock'] } })).toBe(1);
+    const product = await prisma.productInterest.findUniqueOrThrow({ where: { id: productIds['Smart Lock'] } });
+    const deals = await prisma.deal.findMany({ where: { contactId: c.id } });
+    expect(deals).toHaveLength(1); expect(deals[0].value).toBe(Number(product.dealValue));
+    const requestId = randomUUID();
+    await submitPublicForm(form.publicId, { version: 1, values: v, requestId });
+    await submitPublicForm(form.publicId, { version: 1, values: v, requestId });
+    expect(await prisma.deal.count({ where: { contactId: c.id } })).toBe(2);
   });
   it('routes a historically won lead to Contact without altering its deal', async () => {
     const form = await publish((await draft()).id), v = values();

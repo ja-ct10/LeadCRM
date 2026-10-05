@@ -13,11 +13,12 @@ interface Props {
   products: ProductInterest[];
   valueMode?: 'id' | 'name';
   disabled?: boolean;
+  single?: boolean;
   labels?: Record<string, string>;
 }
 
 /** One catalog-backed selector; name mode preserves the Contact/Account snapshot API. */
-export function ProductInterestSelect({ id, values, onChange, products, valueMode = 'id', disabled, labels = {} }: Props) {
+export function ProductInterestSelect({ id, values, onChange, products, valueMode = 'id', disabled, single = false, labels = {} }: Props) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const selected = [...new Set(values)];
@@ -40,7 +41,7 @@ export function ProductInterestSelect({ id, values, onChange, products, valueMod
       }} onBlur={event => { if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node) && event.relatedTarget !== trigger.current) setOpen(false); }}>
         <div className="max-h-[min(18rem,60dvh)] overflow-y-auto overscroll-contain">
           {options.length ? options.map((p, index) => <label key={p.id} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-accent focus-within:bg-accent">
-            <input autoFocus={index === 0} type="checkbox" disabled={disabled} checked={selected.includes(p.value)} onChange={e => onChange(e.target.checked ? [...new Set([...selected, p.value])] : selected.filter(v => v !== p.value))} className="h-4 w-4 shrink-0 accent-primary" />
+            <input autoFocus={index === 0} type={single ? "radio" : "checkbox"} disabled={disabled} checked={selected.includes(p.value)} onChange={e => onChange(e.target.checked ? (single ? [p.value] : [...new Set([...selected, p.value])]) : selected.filter(v => v !== p.value))} className="h-4 w-4 shrink-0 accent-primary" />
             <span className="min-w-0 [overflow-wrap:anywhere]">{p.label}</span>
           </label>) : <p className="p-3 text-sm text-muted-foreground">No configured Product Interests.</p>}
         </div>

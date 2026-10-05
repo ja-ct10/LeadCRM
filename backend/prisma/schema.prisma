@@ -361,6 +361,9 @@ model TenantGroupMember {
 // ORGANIZATION
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Account {
+  // False only for legacy rows requiring explicit product reconciliation.
+  productsNormalized Boolean @default(false)
+  productLinks AccountProductInterest[]
   productInterestOther String?
   id               String    @id @default(uuid())
   tenantId         String
@@ -410,6 +413,9 @@ model Account {
 // LEAD
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Lead {
+  // False only for legacy rows requiring explicit product reconciliation.
+  productsNormalized Boolean @default(false)
+  productLinks LeadProductInterest[]
   productInterestOther String?
   creationKey String?
   @@unique([tenantId, creationKey])
@@ -488,6 +494,9 @@ model Lead {
 
 // -----------------------------------------------------
 model Contact {
+  // False only for legacy rows requiring explicit product reconciliation.
+  productsNormalized Boolean @default(false)
+  productLinks ContactProductInterest[]
   productInterestOther String?
   formSubmissions FormSubmission[]
   id                  String               @id @default(uuid())
@@ -612,13 +621,14 @@ model Stage {
 // DEAL
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Deal {
+  productsNormalized Boolean @default(false)
   productInterestOther String?
   hasEverBeenWon Boolean @default(false)
   wonHistoryVerified Boolean @default(true)
   productInterestIds String[] @default([])
   recordFiles RecordFile[]
   productInterestId String?
-  productInterestRecord ProductInterest? @relation(fields: [productInterestId], references: [id], onDelete: SetNull)
+  productInterestRecord ProductInterest? @relation(fields: [productInterestId, tenantId], references: [id, tenantId], onDelete: Restrict)
   automationKey String?
   @@unique([tenantId, automationKey])
   id                String    @id @default(uuid())
@@ -1675,5 +1685,47 @@ model ProductInterest {
   updatedAt DateTime @updatedAt
   deals     Deal[]
 
+  leadLinks LeadProductInterest[]
+  contactLinks ContactProductInterest[]
+  accountLinks AccountProductInterest[]
+  @@unique([id, tenantId])
+
   @@index([tenantId, active])
+}
+
+model LeadProductInterest {
+  leadId String
+  productInterestId String
+  tenantId String
+  position Int @default(0)
+  lead Lead @relation(fields: [leadId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  product ProductInterest @relation(fields: [productInterestId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  @@id([leadId, productInterestId])
+  @@index([tenantId, productInterestId])
+}
+
+model ContactProductInterest {
+  contactId String
+  productInterestId String
+  tenantId String
+  position Int @default(0)
+  interested Boolean @default(true)
+  activeProduct Boolean @default(false)
+  contact Contact @relation(fields: [contactId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  product ProductInterest @relation(fields: [productInterestId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  @@id([contactId, productInterestId])
+  @@index([tenantId, productInterestId])
+}
+
+model AccountProductInterest {
+  accountId String
+  productInterestId String
+  tenantId String
+  position Int @default(0)
+  interested Boolean @default(true)
+  activeProduct Boolean @default(false)
+  account Account @relation(fields: [accountId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  product ProductInterest @relation(fields: [productInterestId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  @@id([accountId, productInterestId])
+  @@index([tenantId, productInterestId])
 }

@@ -299,7 +299,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   ];
   const productIds = (record.productInterestIds as string[] | undefined)?.length ? record.productInterestIds as string[] : record.productInterestId ? [text(record.productInterestId)] : [];
   const productNames = (record.productInterest ?? record.productInterests ?? []) as string[];
-  const productRow: InlineRowDef = { label: 'Product interests', value: module === 'leads' || module === 'deals' ? productIds : productNames, displayValue: productNames, apiField: module === 'leads' ? 'productInterest' : module === 'deals' ? 'productInterestIds' : 'productInterests', type: 'products', valueMode: module === 'leads' || module === 'deals' ? 'id' : 'name', productLabels: Object.fromEntries(productIds.map((id, i) => [id, productNames[i] ?? 'Unavailable product'])) };
+  const productRow: InlineRowDef = { label: 'Product interests', value: module === 'leads' || module === 'deals' ? productIds : productNames, displayValue: productNames, apiField: module === 'leads' ? 'productInterest' : module === 'deals' ? undefined : 'productInterests', type: 'products', valueMode: module === 'leads' || module === 'deals' ? 'id' : 'name', productLabels: Object.fromEntries(productIds.map((id, i) => [id, productNames[i] ?? 'Unavailable product'])) };
   const aboutRows: InlineRowDef[] = module === 'deals' ? [
     { label: 'Deal title', value: title, apiField: 'title' },
     { label: 'Deal value', value: subtitle.split(' · ')[0] },
