@@ -38,6 +38,7 @@ const input = {
   priority: "High" as const,
 };
 const original = {
+  leadLinks: [], contactLinks: [], dealLinks: [], accountLinks: [],
   ...input,
   id: "task-id",
   tenantId,

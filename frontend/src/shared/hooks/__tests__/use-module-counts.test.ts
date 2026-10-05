@@ -31,15 +31,15 @@ it.each(['tenant', 'user'])('clears stale totals and refetches on %s changes', a
   expect(hook.result.current.counts).toEqual({ leads: 0, contacts: 0 });
   expect(mocks.get).toHaveBeenCalledTimes(4);
 });
-it.each(['leads', 'contacts'])('refreshes only the affected count after %s create/archive/delete', async module => {
+it.each(['leads', 'contacts'])('refreshes related customer counts after %s create/archive/delete', async module => {
   const hook = renderHook(() => useModuleCounts(['leads', 'contacts']));
   await waitFor(() => expect(hook.result.current.counts.contacts).toBe(5));
   for (const suffix of ['', '/record/archive', '/record']) {
     mocks.get.mockClear(); mocks.get.mockResolvedValue({ meta: { total: 0 } });
     await act(async () => invalidateApiPageCache(`/crm/${module}${suffix}`));
     await waitFor(() => expect(hook.result.current.counts[module]).toBe(0));
-    expect(mocks.get).toHaveBeenCalledTimes(1);
-    expect(mocks.get.mock.calls[0][0]).toBe(`/crm/${module}`);
+    expect(mocks.get).toHaveBeenCalledTimes(2);
+    expect(mocks.get.mock.calls.map(call => call[0]).sort()).toEqual(['/crm/contacts', '/crm/leads']);
   }
 });
 it('does not retry indefinitely after permission denial', async () => {

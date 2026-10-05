@@ -39,7 +39,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     expect(lead.status, JSON.stringify(lead.body)).toBe(201);
     expect(lead.body.data.productInterestIds).toEqual([cctv.id, bio.id]);
     expect(await prisma.leadProductInterest.count({ where: { leadId: lead.body.data.id } })).toBe(2);
-    const deals = await prisma.deal.findMany({ where: { tenantId, leadId: lead.body.data.id }, orderBy: { value: 'desc' } });
+    const deals = await prisma.deal.findMany({ where: { tenantId, leadDeals: { some: { leadId: lead.body.data.id } } }, orderBy: { value: 'desc' } });
     expect(deals.map(d => d.value)).toEqual([25000, 15000]);
     expect((await request(path, 'PATCH', { name: 'CCTV Renamed', dealValue: 30000 })).status).toBe(200);
     expect((await request('/crm/leads/' + lead.body.data.id)).body.data.productInterest).toEqual(['CCTV Renamed', 'Biometrics']);

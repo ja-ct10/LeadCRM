@@ -1,3 +1,4 @@
+import { participantOrder, withDealParticipants } from './deal-participants';
 import { resolveProducts } from '../leads/lead-automation.service';
 import { normalizeProductOther } from '../leads/product-snapshots';
 import { salesTransaction, crmScope } from '../leads/lead-automation.service';
@@ -50,12 +51,12 @@ export async function findAllDeals(tenantId: string, params: DealsQueryParams) {
         pipeline:     true,
         assignedUser: { select: { id: true, firstName: true, lastName: true } },
         organization: { select: { id: true, name: true } },
-        lead: { select: { id: true, firstName: true, lastName: true } },
-        contact: { select: { id: true, firstName: true, lastName: true } },
         leadDeals: {
+          orderBy: participantOrder,
           include: { lead: { select: { id: true, firstName: true, lastName: true } } },
         },
         contactDeals: {
+          orderBy: participantOrder,
           include: { contact: { select: { id: true, firstName: true, lastName: true } } },
         },
       },
@@ -63,11 +64,11 @@ export async function findAllDeals(tenantId: string, params: DealsQueryParams) {
     prisma.deal.count({ where }),
   ]);
 
-  return { data, total, page, limit };
+  return { data: data.map(withDealParticipants), total, page, limit };
 }
 
 export async function findDealById(id: string, tenantId: string) {
-  return prisma.deal.findFirst({
+  const deal = await prisma.deal.findFirst({
     where: { id, tenantId },
     include: {
       stage:        { select: { id: true, name: true, isWon: true, isLost: true, color: true } },
@@ -76,9 +77,10 @@ export async function findDealById(id: string, tenantId: string) {
       assignedUser: { select: { id: true, firstName: true, lastName: true, email: true } },
       owner:        { select: { id: true, firstName: true, lastName: true, email: true } },
       leadDeals: {
+        orderBy: participantOrder,
         include: { lead: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } } },
       },
-      contactDeals: { include: { contact: true } },
+      contactDeals: { orderBy: participantOrder, include: { contact: true } },
       stageHistories: {
         orderBy: { movedAt: 'desc' },
         take: 20,
@@ -90,6 +92,7 @@ export async function findDealById(id: string, tenantId: string) {
       },
     },
   });
+  return deal ? withDealParticipants(deal) : null;
 }
 
 export async function createDeal(tenantId: string, ownerId: string, dto: CreateDealDto, db: Prisma.TransactionClient = prisma) {
@@ -112,14 +115,14 @@ export async function createDeal(tenantId: string, ownerId: string, dto: CreateD
 
   if (leadIds && leadIds.length > 0) {
     await db.leadDeal.createMany({
-      data: leadIds.map((leadId) => ({ leadId, dealId: deal.id, tenantId, addedById: ownerId })),
+      data: [...new Set(leadIds)].map((leadId, position) => ({ position, leadId, dealId: deal.id, tenantId, addedById: ownerId })),
       skipDuplicates: true,
     });
   }
 
   if (contactIds && contactIds.length > 0) {
     await db.contactDeal.createMany({
-      data: contactIds.map((contactId) => ({ contactId, dealId: deal.id, tenantId, addedById: ownerId })),
+      data: [...new Set(contactIds)].map((contactId, position) => ({ position, contactId, dealId: deal.id, tenantId, addedById: ownerId })),
       skipDuplicates: true,
     });
   }
@@ -133,18 +136,20 @@ export async function createDeal(tenantId: string, ownerId: string, dto: CreateD
       organization: true,
       assignedUser: { select: { id: true, firstName: true, lastName: true } },
       leadDeals: {
+        orderBy: participantOrder,
         include: { lead: { select: { id: true, firstName: true, lastName: true } } },
       },
       contactDeals: {
+        orderBy: participantOrder,
         include: { contact: { select: { id: true, firstName: true, lastName: true } } },
       },
     },
   });
 
-  return fullDeal!;
+  return withDealParticipants(fullDeal!);
 }
 
-export async function updateDeal(id: string, tenantId: string, dto: UpdateDealDto) {
+export async function updateDeal(id: string, tenantId: string, dto: UpdateDealDto, actorId?: string) {
   try {
     await salesTransaction(async tx => {
       const { leadIds: _leadIds, contactIds: _contactIds, ...updateData } = dto as UpdateDealDto & { leadIds?: string[]; contactIds?: string[] };
@@ -167,6 +172,10 @@ export async function updateDeal(id: string, tenantId: string, dto: UpdateDealDt
       }
       normalizeProductOther(updateData, updateData.productInterests ?? existing.productInterests, existing.productInterestOther);
       await tx.deal.update({ where: { id, tenantId }, data: updateData as never });
+      // A rejected relationship rolls back the scalar edit too. Ordered
+      // junctions are the only mutable relationship authority.
+      if (dto.contactIds !== undefined) await syncContactAssociations(id, tenantId, dto.contactIds, actorId, tx);
+      if (dto.leadIds !== undefined) await syncLeadAssociations(id, tenantId, dto.leadIds, actorId, tx);
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
@@ -176,7 +185,7 @@ export async function updateDeal(id: string, tenantId: string, dto: UpdateDealDt
   }
 
   // Re-fetch with includes so the response contains junction data for the frontend adapter
-  return prisma.deal.findFirst({
+  const updated = await prisma.deal.findFirst({
     where: { id, tenantId },
     include: {
       stage:        { select: { id: true, name: true, isWon: true, isLost: true, color: true } },
@@ -184,13 +193,16 @@ export async function updateDeal(id: string, tenantId: string, dto: UpdateDealDt
       organization: true,
       assignedUser: { select: { id: true, firstName: true, lastName: true } },
       leadDeals: {
+        orderBy: participantOrder,
         include: { lead: { select: { id: true, firstName: true, lastName: true } } },
       },
       contactDeals: {
+        orderBy: participantOrder,
         include: { contact: { select: { id: true, firstName: true, lastName: true } } },
       },
     },
   });
+  return updated ? withDealParticipants(updated) : null;
 }
 
 export async function moveDealStage(
@@ -206,7 +218,9 @@ export async function moveDealStage(
 ) {
   const transition = async (tx: Prisma.TransactionClient) => {
     const scope = crmScope(tenantId);
-    const deal = await tx.deal.findFirst({ where: { id, ...scope }, include: { stage: true } });
+    const storedDeal = await tx.deal.findFirst({ where: { id, ...scope }, include: { stage: true,
+      leadDeals: { orderBy: participantOrder }, contactDeals: { orderBy: participantOrder } } });
+    const deal = storedDeal ? withDealParticipants(storedDeal) : null;
     if (!deal) return null;
     const newStage = await tx.stage.findFirst({ where: { id: newStageId, ...scope, pipelineId: deal.pipelineId } });
     if (!newStage) throw new ValidationError("Stage must belong to this Deal’s pipeline.");
@@ -234,8 +248,8 @@ export async function moveDealStage(
         await resolveWonRelationships(tx, deal, movedById);
         const leads = await tx.leadDeal.findMany({ where: { tenantId, dealId: id } });
         const contacts = await tx.contactDeal.findMany({ where: { tenantId, dealId: id } });
-        for (const leadId of new Set([deal.leadId, ...leads.map(link => link.leadId)].filter((value): value is string => !!value))) await changeCustomerStatus(tx, tenantId, movedById, { leadId }, 'Closed', note!, now);
-        for (const contactId of new Set([deal.contactId, ...contacts.map(link => link.contactId)].filter((value): value is string => !!value))) await changeCustomerStatus(tx, tenantId, movedById, { contactId }, 'Closed', note!, now);
+        for (const leadId of new Set(leads.map(link => link.leadId))) await changeCustomerStatus(tx, tenantId, movedById, { leadId }, 'Closed', note!, now);
+        for (const contactId of new Set(contacts.map(link => link.contactId))) await changeCustomerStatus(tx, tenantId, movedById, { contactId }, 'Closed', note!, now);
       }
       stageHistory = await tx.dealStageHistory.create({ data: { ...scope, dealId: id, previousStageId: deal.stageId, newStageId, movedById,
         movedAt: now, note, timeInPrevStage: Math.floor((now.getTime() - (previous?.movedAt ?? deal.createdAt).getTime()) / 60000) } });
@@ -244,13 +258,13 @@ export async function moveDealStage(
     }
     const fullDeal = await tx.deal.findFirstOrThrow({ where: { id, ...scope }, include: {
       stage: true, pipeline: true, organization: true, assignedUser: { select: { id: true, firstName: true, lastName: true } },
-      leadDeals: { include: { lead: true } }, contactDeals: { include: { contact: true } },
+      leadDeals: { orderBy: participantOrder, include: { lead: true } }, contactDeals: { orderBy: participantOrder, include: { contact: true } },
       stageHistories: { orderBy: { movedAt: 'desc' }, take: 20, include: {
         newStage: { select: { id: true, name: true } }, previousStage: { select: { id: true, name: true } },
         movedBy: { select: { id: true, firstName: true, lastName: true } },
       } },
     } });
-    return { deal: fullDeal, stageHistory, previousDeal: deal };
+    return { deal: withDealParticipants(fullDeal), stageHistory, previousDeal: deal };
   };
   return transaction ? transition(transaction) : salesTransaction(transition);
 }
@@ -304,10 +318,9 @@ export async function findDealsGroupedByStage(
           stage: true,
           assignedUser: { select: { id: true, firstName: true, lastName: true } },
           organization: { select: { id: true, name: true } },
-          lead: { select: { id: true, firstName: true, lastName: true } },
-          contact: { select: { id: true, firstName: true, lastName: true } },
-          contactDeals: { include: { contact: { select: { id: true, firstName: true, lastName: true } } } },
+          contactDeals: { orderBy: participantOrder, include: { contact: { select: { id: true, firstName: true, lastName: true } } } },
           leadDeals: {
+            orderBy: participantOrder,
             include: { lead: { select: { id: true, firstName: true, lastName: true } } },
           },
         },
@@ -319,7 +332,7 @@ export async function findDealsGroupedByStage(
 
     results.push({
       stageId: stage.id,
-      deals,
+      deals: deals.map(withDealParticipants),
       total,
       page,
       hasMore: total > page * PAGE_SIZE,
@@ -334,9 +347,10 @@ export async function findDealsGroupedByStage(
  * ContactDeal junction. New IDs are validated against the Contact table within the tenant.
  */
 export async function syncContactAssociations(
-  dealId: string, tenantId: string, contactIds: string[], userId: string
+  dealId: string, tenantId: string, contactIds: string[], userId?: string, client?: Prisma.TransactionClient
 ): Promise<void> {
-  await prisma.$transaction(async (tx) => {
+  const work = async (tx: Prisma.TransactionClient) => {
+    await tx.deal.findFirstOrThrow({ where: { id: dealId, tenantId }, select: { id: true } });
     // Current ContactDeal associations for this deal
     const current = await tx.contactDeal.findMany({
       where: { dealId, tenantId },
@@ -369,11 +383,16 @@ export async function syncContactAssociations(
       }
 
       await tx.contactDeal.createMany({
-        data: toAdd.map(contactId => ({ contactId, dealId, tenantId, addedById: userId })),
+        data: toAdd.map(contactId => ({ contactId, dealId, tenantId, position: [...targetIds].indexOf(contactId), addedById: userId })),
         skipDuplicates: true,
       });
     }
-  });
+    for (const [position, contactId] of [...targetIds].entries()) {
+      if (currentIds.has(contactId)) await tx.contactDeal.updateMany({ where: { dealId, tenantId, contactId }, data: { position } });
+    }
+  };
+  if (client) await work(client);
+  else await salesTransaction(work);
 }
 
 /**
@@ -381,9 +400,10 @@ export async function syncContactAssociations(
  * junction. New IDs are validated against the Lead table within the tenant.
  */
 export async function syncLeadAssociations(
-  dealId: string, tenantId: string, leadIds: string[], userId: string
+  dealId: string, tenantId: string, leadIds: string[], userId?: string, client?: Prisma.TransactionClient
 ): Promise<void> {
-  await prisma.$transaction(async (tx) => {
+  const work = async (tx: Prisma.TransactionClient) => {
+    await tx.deal.findFirstOrThrow({ where: { id: dealId, tenantId }, select: { id: true } });
     // Current LeadDeal associations for this deal
     const current = await tx.leadDeal.findMany({
       where: { dealId, tenantId },
@@ -416,9 +436,14 @@ export async function syncLeadAssociations(
       }
 
       await tx.leadDeal.createMany({
-        data: toAdd.map(leadId => ({ leadId, dealId, tenantId, addedById: userId })),
+        data: toAdd.map(leadId => ({ leadId, dealId, tenantId, position: [...targetIds].indexOf(leadId), addedById: userId })),
         skipDuplicates: true,
       });
     }
-  });
+    for (const [position, leadId] of [...targetIds].entries()) {
+      if (currentIds.has(leadId)) await tx.leadDeal.updateMany({ where: { dealId, tenantId, leadId }, data: { position } });
+    }
+  };
+  if (client) await work(client);
+  else await salesTransaction(work);
 }

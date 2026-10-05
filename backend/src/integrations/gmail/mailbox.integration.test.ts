@@ -40,7 +40,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     const email = `${randomUUID()}@example.test`;
     const lead = await prisma.lead.create({ data: { tenantId, firstName: 'Customer', lastName: 'Test', email, status, productInterest: ['Product'], createdAt: before(180) } });
     const deals = [];
-    for (let n = 0; n < dealCount; n++) deals.push(await prisma.deal.create({ data: { tenantId, pipelineId, stageId: stages.Lead, leadId: lead.id, title: `Opportunity ${n}`, value: 3250, assignedUserId: userId, productInterests: ['Product'], tags: [], createdAt: before(180) } }));
+    for (let n = 0; n < dealCount; n++) deals.push(await prisma.deal.create({ data: { tenantId, pipelineId, stageId: stages.Lead, leadDeals: { create: { leadId: lead.id, position: 0 } }, title: `Opportunity ${n}`, value: 3250, assignedUserId: userId, productInterests: ['Product'], tags: [], createdAt: before(180) } }));
     return { lead, deals, email, thread: randomUUID().replaceAll('-', '') };
   }
   const read = (id: string) => prisma.lead.findUniqueOrThrow({ where: { id } });
@@ -138,7 +138,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     expect(await stageOf(c.deals[0].id)).toBe('Lead'); expect(await stageOf(c.deals[1].id)).toBe('Lead');
     await scope(() => associateMailboxDeal(tenantId, userId, c.thread, c.deals[1].id));
     // Advance the saved association barrier into the past to represent a subsequent real response.
-    await prisma.tenantPreference.update({ where: { tenantId_module_key: { tenantId, module: 'mailbox-thread', key: `${account.id}:${c.thread}` } }, data: { value: { dealId: c.deals[1].id, linkedAt: before(3).toISOString() } } });
+    await prisma.mailboxThreadAssociation.update({ where: { accountId_threadId: { accountId: account.id, threadId: c.thread } }, data: { linkedAt: before(3) } });
     await ingest([message(c.thread, c.email, 'inbound', 'We want to proceed with the product.', 2)]);
     expect(await stageOf(c.deals[0].id)).toBe('Lead'); expect(await stageOf(c.deals[1].id)).toBe('Qualified');
     await expect(scope(() => associateMailboxDeal(otherTenant, userId, c.thread, c.deals[0].id))).rejects.toBeDefined();

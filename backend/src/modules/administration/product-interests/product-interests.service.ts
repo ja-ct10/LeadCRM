@@ -21,7 +21,7 @@ export async function getWonDeals(tenantId: string, input: unknown, query: unkno
   const name = (row: { firstName: string; lastName: string }) => `${row.firstName} ${row.lastName}`.trim();
   const data: ProductWonDeal[] = deals.map(deal => ({
     id: deal.id, title: deal.title, value: deal.value, currency: deal.currency ?? 'PHP', closedAt: deal.closedAt?.toISOString() ?? null,
-    customers: [...new Set([deal.lead, deal.contact, ...deal.leadDeals.map(row => row.lead), ...deal.contactDeals.map(row => row.contact)].flatMap(row => row && sameScope(row) ? [name(row)] : []))],
+    customers: [...new Set([...deal.leadDeals.map(row => row.lead), ...deal.contactDeals.map(row => row.contact)].flatMap(row => row && sameScope(row) ? [name(row)] : []))],
     company: sameScope(deal.organization) ? deal.organization!.name : null,
     assignedAgent: deal.assignedUser?.tenantId === tenantId ? name(deal.assignedUser) : null,
   }));

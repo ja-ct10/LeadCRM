@@ -102,21 +102,10 @@ export async function updateDeal(id: string, tenantId: string, userId: string, d
 
   let deal;
   try {
-    deal = await repo.updateDeal(id, tenantId, dto);
+    deal = await repo.updateDeal(id, tenantId, dto, userId);
   } catch (error) {
     mapRepositoryError(error, 'updateDeal');
   }
-  if (!deal) throw new NotFoundError('Deal');
-
-  // After deal update succeeds, sync associations if provided.
-  // Contacts → ContactDeal, Leads → LeadDeal (distinct junctions).
-  if (dto.contactIds) {
-    await repo.syncContactAssociations(id, tenantId, dto.contactIds, userId);
-  }
-  if (dto.leadIds) {
-    await repo.syncLeadAssociations(id, tenantId, dto.leadIds, userId);
-  }
-  if (dto.contactIds || dto.leadIds) deal = await repo.findDealById(id, tenantId);
   if (!deal) throw new NotFoundError('Deal');
 
   const { before: changedBefore, after: changedAfter } = buildChangeset(
@@ -260,7 +249,7 @@ export async function restoreDeal(id: string, tenantId: string, userId: string) 
     after: { isArchived: false, archiveReason: null },
   });
 
-  return restored;
+  return { ...restored, leadId: deal.leadId, contactId: deal.contactId };
 }
 
 export async function duplicateDeal(id: string, tenantId: string, userId: string) {
@@ -277,6 +266,7 @@ export async function duplicateDeal(id: string, tenantId: string, userId: string
     // Exclude relation fields that Prisma won't accept in create
     stage: _stage, pipeline: _pipeline, organization: _org, assignedUser: _au,
     owner: _owner, leadDeals: _ld, contactDeals: _cd, stageHistories: _sh,
+    lead: _lead, contact: _contact, leadId: _leadId, contactId: _contactId,
     ...copyData
   } = source as Record<string, unknown>;
 
@@ -312,7 +302,7 @@ export async function duplicateDeal(id: string, tenantId: string, userId: string
       const leadAssociations = await tx.leadDeal.findMany({ where: { dealId: id, tenantId } });
       if (leadAssociations.length > 0) {
         await tx.leadDeal.createMany({
-          data: leadAssociations.map(a => ({ leadId: a.leadId, dealId: created.id, tenantId, addedById: userId })),
+          data: leadAssociations.map(a => ({ leadId: a.leadId, dealId: created.id, tenantId, addedById: userId, position: a.position })),
           skipDuplicates: true,
         });
       }
@@ -321,7 +311,7 @@ export async function duplicateDeal(id: string, tenantId: string, userId: string
       const contactAssociations = await tx.contactDeal.findMany({ where: { dealId: id, tenantId } });
       if (contactAssociations.length > 0) {
         await tx.contactDeal.createMany({
-          data: contactAssociations.map(a => ({ contactId: a.contactId, dealId: created.id, tenantId, addedById: userId })),
+          data: contactAssociations.map(a => ({ contactId: a.contactId, dealId: created.id, tenantId, addedById: userId, position: a.position })),
           skipDuplicates: true,
         });
       }
@@ -338,5 +328,5 @@ export async function duplicateDeal(id: string, tenantId: string, userId: string
   });
 
   await fireDealCreated({ tenantId, actorId: userId, deal: newDeal });
-  return newDeal;
+  return repo.findDealById(newDeal.id, tenantId);
 }

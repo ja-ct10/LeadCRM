@@ -89,12 +89,6 @@ export async function reassignLeadRelationships(
     }
   }
 
-  // Direct Deal.leadId references
-  await tx.deal.updateMany({
-    where: { leadId: secondaryId, tenantId },
-    data: { leadId: primaryId },
-  });
-
   // CampaignContacts
   const campaigns = await tx.campaignContact.updateMany({
     where: { leadId: secondaryId, tenantId },
@@ -158,12 +152,6 @@ export async function reassignContactRelationships(
       dealsReassigned++;
     }
   }
-
-  // Direct Deal.contactId references
-  await tx.deal.updateMany({
-    where: { contactId: secondaryId, tenantId },
-    data: { contactId: primaryId },
-  });
 
   // CampaignContacts
   const campaigns = await tx.campaignContact.updateMany({

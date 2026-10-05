@@ -23,6 +23,7 @@ router.get('/health', (_req, res) => {
     status:    'ok',
     commit:    process.env.RENDER_GIT_COMMIT ?? 'unknown',
     env:       process.env.NODE_ENV ?? 'development',
+    capabilities: ['canonical-crm-relations-v1'],
   });
 });
 

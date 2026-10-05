@@ -74,12 +74,12 @@ export async function createProductDeals(tx: Tx, tenantId: string, leadId: strin
   const { pipeline, initial } = await salesPipeline(tx, tenantId);
   for (const product of selected) {
     const automationKey = `${lead.id}:${product.id}`;
-    const existing = await tx.deal.findFirst({ where: { ...scope, OR: [{ automationKey }, { leadId: lead.id, productInterestId: product.id }] } });
+    const existing = await tx.deal.findFirst({ where: { ...scope, OR: [{ automationKey }, { leadDeals: { some: { tenantId, leadId: lead.id } }, productInterestId: product.id }] } });
     if (existing) {
       if (!existing.assignedUserId && lead.assignedUserId) await tx.deal.update({ where: { id: existing.id, ...scope }, data: { assignedUserId: lead.assignedUserId, ownerId: lead.assignedUserId } });
       continue;
     }
-    const deal = await tx.deal.create({ data: { ...scope, automationKey, leadId: lead.id, title: `${lead.firstName} ${lead.lastName} – ${product.name}`.slice(0, 255),
+    const deal = await tx.deal.create({ data: { ...scope, automationKey, title: `${lead.firstName} ${lead.lastName} – ${product.name}`.slice(0, 255),
       productInterestId: product.id, productsNormalized: true, value: Number(product.dealValue), assignedUserId: lead.assignedUserId, ownerId: lead.assignedUserId,
       pipelineId: pipeline.id, stageId: initial.id, accountId: lead.accountId, leadSource: lead.source, tags: [] } });
     await tx.leadDeal.create({ data: { ...scope, leadId: lead.id, dealId: deal.id, addedById: actorId } });

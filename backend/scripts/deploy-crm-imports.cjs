@@ -14,6 +14,8 @@ const { verifyBrowserImportRollout } = require('./verify-crm-import-browser.cjs'
 const root = resolve(__dirname, '../prisma');
 const expansion = '20261027000000_crm_import_integrity';
 const retirement = '20261028000000_retire_legacy_crm_imports';
+const relationshipExpansion = '20261101000000_expand_canonical_relationships';
+const relationshipRetirement = '20261102000000_retire_relationship_compatibility';
 const legacyTables = ['Lead', 'Contact', 'Account', 'Deal'].flatMap(module => [`${module}Import`, `${module}ImportResult`]);
 
 const fail = code => { throw Object.assign(new Error(code), { code }); };
@@ -31,7 +33,9 @@ async function migrationRecords(db) {
 
 function deploymentTarget(records, localNames) {
   if (records.some(row => !row.finished_at && !row.rolled_back_at)) fail('FAILED_MIGRATION_REQUIRES_RECOVERY');
-  if (records.some(row => row.migration_name === retirement && finished(row))) return '\uffff';
+  if (records.some(row => row.migration_name === retirement && finished(row))) {
+    return records.some(row => row.migration_name === relationshipRetirement && finished(row)) ? '\uffff' : relationshipExpansion;
+  }
   // Never silently skip a future release's migrations while this rollout is pending.
   if (localNames.some(name => /^\d+_/.test(name) && name > retirement)) fail('RETIRE_IMPORT_TABLES_BEFORE_LATER_MIGRATIONS');
   return expansion;

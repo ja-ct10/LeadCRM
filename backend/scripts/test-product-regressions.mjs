@@ -44,7 +44,7 @@ try {
     }
     if (await run(resolve(bin, 'psql.exe'), [...connection, '-d', database, '-X', '-q', '-v', 'ON_ERROR_STOP=1'], sql)) throw new Error('Test migration replay failed');
     console.log(`Testing ${group} with fresh migrated PostgreSQL.`);
-    if (await run(process.execPath, [resolve(root, '../node_modules/vitest/vitest.mjs'), 'run', ...suites, '--pool=threads', '--maxWorkers=1'])) process.exitCode = 1;
+    if (await run(process.execPath, [resolve(root, '../node_modules/vitest/vitest.mjs'), 'run', ...suites, '--pool=threads', '--maxWorkers=1', '--reporter=json', `--outputFile=${resolve(base, `${group}-results.json`)}`])) process.exitCode = 1;
   }
 } finally {
   if (started) await run(resolve(bin, 'pg_ctl.exe'), ['-D', directory, '-m', 'fast', '-w', 'stop']);

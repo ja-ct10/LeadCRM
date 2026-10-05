@@ -75,17 +75,6 @@ enum CampaignStatus {
   SCHEDULED
 }
 
-// Actions that can be manually performed on a deal
-enum DealActionType {
-  UPDATE_FIELD
-  ASSIGN_AGENT
-  CHANGE_STATUS
-  SEND_EMAIL
-  SEND_SMS
-  ADD_NOTE
-  CREATE_TASK
-  CHANGE_STAGE
-}
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -126,7 +115,6 @@ model Tenant {
   pipelines          Pipeline[]
   stages             Stage[]
   deals              Deal[]
-  dealActions        DealAction[]
   leadDeals          LeadDeal[]
   contactDeals       ContactDeal[]
   dealStageHistories DealStageHistory[]
@@ -145,9 +133,7 @@ model Tenant {
   closingFieldDefinitions ClosingFieldDefinition[]
   auditLogs          AuditLog[]
   emailDeliveryLogs  EmailDeliveryLog[]
-  SMSQueue           SMSQueue[]
   EmailEvent         EmailEvent[]
-  AutomationRule     AutomationRule[]
   userPreferences    UserPreference[]
   tenantPreferences  TenantPreference[]
   crmImportJobs CrmImportJob[]
@@ -199,7 +185,6 @@ model User {
   leadDealsAdded       LeadDeal[]
   contactDealsAdded   ContactDeal[]
   dealStageHistories   DealStageHistory[]
-  dealActionsPerformed DealAction[]
   assignedTasks        Task[]             @relation("AssignedTasks")
   tasksAssignedByMe    Task[]             @relation("TaskAssignedBy")
   completedTasks       Task[]             @relation("TaskCompletedBy")
@@ -208,12 +193,13 @@ model User {
   auditLogs            AuditLog[]
   userPreferences      UserPreference[]
   crmImportJobs CrmImportJob[]
-  emailVerificationTokens EmailVerificationToken[]
   groupMemberships TenantGroupMember[]
   marketingForms   MarketingForm[]
 
   @@unique([tenantId, email])
   @@index([tenantId, status])
+
+  @@unique([id, tenantId])
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -236,6 +222,8 @@ model RoleDefinition {
 
   @@unique([tenantId, name])
   @@index([tenantId, isArchived])
+
+  @@unique([id, tenantId])
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -268,7 +256,7 @@ model RolePermission {
   canDisable Boolean @default(false)
   canRestore Boolean @default(false)
 
-  role RoleDefinition @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  role RoleDefinition @relation(fields: [roleId, tenantId], references: [id, tenantId], onDelete: Cascade)
 
   @@unique([roleId, module])
   @@index([roleId])
@@ -284,8 +272,8 @@ model UserRole {
   roleId   String
   tenantId String
 
-  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role   RoleDefinition @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  user   User           @relation(fields: [userId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  role   RoleDefinition @relation(fields: [roleId, tenantId], references: [id, tenantId], onDelete: Cascade)
   tenant Tenant         @relation(fields: [tenantId], references: [id])
 
   @@unique([userId, roleId, tenantId])
@@ -307,11 +295,10 @@ model Session {
   lastActiveAt DateTime  @default(now())
   createdAt    DateTime  @default(now())
 
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId, tenantId], references: [id, tenantId], onDelete: Cascade)
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
   @@index([userId, tenantId])
-  @@index([tokenHash])
 }
 
 // ---------------------------------------------
@@ -327,12 +314,14 @@ model TenantGroup {
   tenantId  String
   name      String
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @default(now()) @updatedAt
 
   tenant  Tenant              @relation(fields: [tenantId], references: [id])
   members TenantGroupMember[]
 
   @@index([tenantId])
+
+  @@unique([id, tenantId])
 }
 
 // TENANT GROUP MEMBER (junction: group ↔ user)
@@ -343,8 +332,8 @@ model TenantGroupMember {
   userId   String
   tenantId String
 
-  group  TenantGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group  TenantGroup @relation(fields: [groupId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  user   User        @relation(fields: [userId, tenantId], references: [id, tenantId], onDelete: Cascade)
   tenant Tenant      @relation(fields: [tenantId], references: [id])
 
   @@unique([groupId, userId])
@@ -374,9 +363,9 @@ model Account {
   website          String?
   notes            String?   @db.Text
   internalNotes    String?   @db.Text
-  tags             String[]
-  productInterests String[]
-  activeProducts   String[]
+  tags             String[] @default([])
+  productInterests String[] @default([])
+  activeProducts   String[] @default([])
   address          String?
   city             String?
   province         String?
@@ -385,7 +374,7 @@ model Account {
   deletedAt        DateTime?
   deletedBy        String?
   createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  updatedAt        DateTime  @default(now()) @updatedAt
 
   tenant       Tenant     @relation(fields: [tenantId], references: [id])
   assignedUser User?      @relation(fields: [assignedUserId], references: [id])
@@ -432,7 +421,7 @@ model Lead {
   email               String?
   description         String?   @db.Text
   website             String?
-  productInterest     String[]
+  productInterest     String[] @default([])
   productInterestIds  String[] @default([])
   source              String?
   assignedUserId      String?
@@ -462,12 +451,9 @@ model Lead {
   convertedBy      User?    @relation("ConvertedLeads", fields: [convertedById], references: [id])
 
   leadDeals         LeadDeal[]
-  deals             Deal[]
-  tasks             Task[]
   activities        Activity[]
   campaignContacts  CampaignContact[]
   emailDeliveryLogs EmailDeliveryLog[]
-  SMSQueue          SMSQueue[]
   recordFiles       RecordFile[]
 
   @@index([tenantId, status])
@@ -546,12 +532,9 @@ model Contact {
 
   convertedFromLeads Lead[]             @relation("ConvertedFromLead")
   contactDeals       ContactDeal[]
-  deals              Deal[]
-  tasks              Task[]
   activities         Activity[]
   campaignContacts   CampaignContact[]
   emailDeliveryLogs  EmailDeliveryLog[]
-  SMSQueue           SMSQueue[]
   recordFiles        RecordFile[]
 
   @@index([tenantId, status])
@@ -561,6 +544,8 @@ model Contact {
   @@index([tenantId, accountId])
   @@map("Contact")
   @@index([tenantId])
+  @@index([tenantId, isArchived])
+  @@index([tenantId, lifecycleStage])
   taskLinks TaskContact[]
 
   @@unique([id, tenantId])
@@ -588,6 +573,8 @@ model Pipeline {
 
   @@index([tenantId, isArchived])
   @@index([tenantId])
+
+  @@unique([id, tenantId])
 }
 
 model Stage {
@@ -606,7 +593,7 @@ model Stage {
   rottenAfterDays Int? // days after which a deal in this stage is flagged stale
   createdAt       DateTime @default(now())
 
-  pipeline               Pipeline           @relation(fields: [pipelineId], references: [id])
+  pipeline               Pipeline           @relation(fields: [pipelineId, tenantId], references: [id, tenantId])
   tenant                 Tenant             @relation(fields: [tenantId], references: [id])
   deals                  Deal[]
   dealStageHistoriesNew  DealStageHistory[] @relation("NewStage")
@@ -615,6 +602,8 @@ model Stage {
   @@index([pipelineId, order])
   @@index([tenantId, pipelineId])
   @@index([tenantId])
+
+  @@unique([id, pipelineId, tenantId])
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -635,8 +624,6 @@ model Deal {
   tenantId          String
   pipelineId        String
   stageId           String
-  leadId            String?
-  contactId        String? // legacy singular FK G�� use ContactDeal for new multi-contact deals
   accountId         String?
   assignedUserId    String?
   ownerId           String? // original deal owner (immutable)
@@ -668,18 +655,14 @@ model Deal {
   updatedAt         DateTime  @updatedAt
 
   tenant         Tenant             @relation(fields: [tenantId], references: [id])
-  pipeline       Pipeline           @relation(fields: [pipelineId], references: [id])
-  stage          Stage              @relation(fields: [stageId], references: [id])
-  lead           Lead?              @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  contact        Contact?           @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  pipeline       Pipeline           @relation(fields: [pipelineId, tenantId], references: [id, tenantId])
+  stage          Stage              @relation(fields: [stageId, pipelineId, tenantId], references: [id, pipelineId, tenantId])
   organization   Account?           @relation(fields: [accountId], references: [id])
   assignedUser   User?              @relation("AssignedDeals", fields: [assignedUserId], references: [id])
   owner          User?              @relation("OwnedDeals", fields: [ownerId], references: [id])
   leadDeals      LeadDeal[]
   contactDeals   ContactDeal[]
   stageHistories DealStageHistory[]
-  actions        DealAction[]
-  tasks          Task[]
   activities     Activity[]
 
   @@index([tenantId, stageId])
@@ -692,6 +675,7 @@ model Deal {
 
   @@unique([id, tenantId])
 
+  mailboxThreads MailboxThreadAssociation[]
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -706,8 +690,8 @@ model LeadDeal {
   addedById String?
   addedAt   DateTime @default(now())
 
-  lead    Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  deal    Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  lead    Lead   @relation(fields: [leadId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  deal    Deal   @relation(fields: [dealId, tenantId], references: [id, tenantId], onDelete: Cascade)
   tenant  Tenant @relation(fields: [tenantId], references: [id])
   addedBy User?  @relation(fields: [addedById], references: [id])
 
@@ -715,6 +699,7 @@ model LeadDeal {
   @@index([dealId, tenantId])
   @@index([leadId, tenantId])
   @@index([tenantId])
+  position Int @default(0)
 }
 
 model ContactDeal {
@@ -726,8 +711,8 @@ model ContactDeal {
   addedById String?
   addedAt   DateTime @default(now())
 
-  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  deal    Deal    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  contact Contact @relation(fields: [contactId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  deal    Deal    @relation(fields: [dealId, tenantId], references: [id, tenantId], onDelete: Cascade)
   tenant  Tenant  @relation(fields: [tenantId], references: [id])
   addedBy User?   @relation(fields: [addedById], references: [id])
 
@@ -736,6 +721,7 @@ model ContactDeal {
   @@index([contactId, tenantId])
   @@map("ContactDeal")
   @@index([tenantId])
+  position Int @default(0)
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -769,25 +755,6 @@ model DealStageHistory {
 // Distinct from automated WorkflowExecutionStep G�� these are user-initiated deal operations.
 // Every DealAction also triggers an Activity entry for the timeline.
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
-model DealAction {
-  id            String         @id @default(uuid())
-  tenantId      String
-  dealId        String
-  performedById String
-  actionType    DealActionType
-  payload       Json? // e.g. { field: "status", from: "WARM", to: "HOT" } or { to: "user@email.com" }
-  note          String?
-  performedAt   DateTime       @default(now())
-
-  tenant      Tenant @relation(fields: [tenantId], references: [id])
-  deal        Deal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  performedBy User   @relation(fields: [performedById], references: [id])
-
-  @@index([dealId, tenantId])
-  @@index([tenantId, actionType])
-  @@index([tenantId, performedAt])
-  @@index([tenantId])
-}
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // TASK
@@ -795,10 +762,6 @@ model DealAction {
 model Task {
   id             String    @id @default(uuid())
   tenantId       String
-  dealId         String?
-  leadId         String?
-  contactId     String?
-  accountId      String?
   assignedUserId String
   assignedById   String?
   completedById  String?
@@ -814,9 +777,6 @@ model Task {
   updatedAt      DateTime  @updatedAt
 
   tenant       Tenant     @relation(fields: [tenantId], references: [id])
-  deal         Deal?      @relation(fields: [dealId], references: [id], onDelete: SetNull)
-  lead         Lead?      @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  contact      Contact?   @relation(fields: [contactId], references: [id], onDelete: SetNull)
   assignedUser User       @relation("AssignedTasks", fields: [assignedUserId], references: [id])
   assignedBy   User?      @relation("TaskAssignedBy", fields: [assignedById], references: [id])
   completedBy  User?      @relation("TaskCompletedBy", fields: [completedById], references: [id])
@@ -824,7 +784,6 @@ model Task {
 
   @@index([tenantId, assignedUserId, status])
   @@index([tenantId, dueDate])
-  @@index([tenantId, dealId])
   @@index([tenantId])
   leadLinks TaskLead[]
   contactLinks TaskContact[]
@@ -846,7 +805,7 @@ model Activity {
   title       String
   description String?
   metadata    Json?
-  // Exactly one of these is non-null
+  // Events may carry multiple contextual links; each supplied target must be valid.
   leadId      String?
   contactId  String?
   dealId      String?
@@ -887,7 +846,7 @@ model Notification {
   createdAt  DateTime  @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId, tenantId], references: [id, tenantId], onDelete: Cascade)
 
   @@index([userId, tenantId, isRead])
   @@index([tenantId, createdAt])
@@ -900,7 +859,7 @@ model ClosingFieldDefinition {
   id         String
   definition Json
   createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  updatedAt  DateTime @default(now()) @updatedAt
   tenant     Tenant @relation(fields: [tenantId], references: [id])
 
   @@id([tenantId, id])
@@ -983,7 +942,6 @@ model Campaign {
   campaignContacts  CampaignContact[]
   metrics           CampaignMetrics[]
   emailDeliveryLogs EmailDeliveryLog[]
-  SMSQueue          SMSQueue[]
 
   @@index([tenantId, status])
   @@index([tenantId, isArchived])
@@ -1022,6 +980,8 @@ model MarketingForm {
   @@index([tenantId, isArchived, createdAt])
   @@index([tenantId, status])
   @@index([tenantId])
+
+  @@unique([id, tenantId])
 }
 
 model FormSubmission {
@@ -1040,7 +1000,7 @@ model FormSubmission {
   values Json
   tracking Json @default("{}")
   notificationStatus String @default("not_requested")
-  form MarketingForm @relation(fields: [formId], references: [id], onDelete: Restrict)
+  form MarketingForm @relation(fields: [formId, tenantId], references: [id, tenantId], onDelete: Restrict)
   lead Lead? @relation(fields: [leadId], references: [id], onDelete: Restrict)
   contact Contact? @relation(fields: [contactId], references: [id], onDelete: Restrict)
   @@index([tenantId, formId, submittedAt])
@@ -1156,6 +1116,8 @@ model Workflow {
 
   @@index([tenantId, isActive])
   @@index([tenantId])
+
+  @@unique([id, tenantId])
 }
 
 model WorkflowTriggerRecord {
@@ -1170,13 +1132,15 @@ model WorkflowTriggerRecord {
   payload     Json?
 
   tenant   Tenant                 @relation(fields: [tenantId], references: [id])
-  workflow Workflow               @relation(fields: [workflowId], references: [id])
+  workflow Workflow               @relation(fields: [workflowId, tenantId], references: [id, tenantId])
   runs     WorkflowExecutionRun[]
 
   @@unique([tenantId, workflowId, eventId], map: "workflow_event_once")
   @@index([tenantId, workflowId])
   @@index([tenantId, triggeredAt])
   @@index([tenantId])
+
+  @@unique([id, workflowId, tenantId])
 }
 
 model WorkflowExecutionRun {
@@ -1192,12 +1156,14 @@ model WorkflowExecutionRun {
   errorMessage String?
 
   tenant  Tenant                  @relation(fields: [tenantId], references: [id])
-  trigger WorkflowTriggerRecord   @relation(fields: [triggerId], references: [id])
+  trigger WorkflowTriggerRecord   @relation(fields: [triggerId, workflowId, tenantId], references: [id, workflowId, tenantId])
   steps   WorkflowExecutionStep[]
 
   @@index([tenantId, workflowId, status])
   @@index([tenantId, startedAt])
   @@index([tenantId])
+
+  @@unique([id, tenantId])
 }
 
 model WorkflowExecutionStep {
@@ -1212,7 +1178,7 @@ model WorkflowExecutionStep {
   executedAt  DateTime @default(now())
 
   tenant    Tenant               @relation(fields: [tenantId], references: [id])
-  execution WorkflowExecutionRun @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  execution WorkflowExecutionRun @relation(fields: [executionId, tenantId], references: [id, tenantId], onDelete: Cascade)
 
   @@index([executionId])
   @@index([tenantId])
@@ -1282,7 +1248,6 @@ model EmailDeliveryLog {
   @@index([tenantId, leadId])
   @@index([tenantId, contactId])
   @@index([tenantId, campaignId])
-  @@index([gmailMessageId])
   @@index([tenantId])
 }
 
@@ -1309,21 +1274,6 @@ model PasswordResetToken {
 // EMAIL VERIFICATION TOKEN (account security)
 // Stores SHA-256 hash of the plaintext token. Single-use, time-limited.
 // ═══════════════════════════════════════════════════════════════════════
-model EmailVerificationToken {
-  id        String    @id @default(uuid())
-  userId    String?   // nullable — may be generated before user exists (e.g. pre-registration)
-  email     String
-  tokenHash String    @unique // SHA-256 hex digest of plaintext token
-  type      String    @default("EMAIL_VERIFICATION")
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime  @default(now())
-
-  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([email])
-  @@index([userId])
-}
 
 // EMAIL ACCOUNT (Gmail OAuth2 integration per user)
 // Stores encrypted tokens for Gmail API access.
@@ -1354,6 +1304,9 @@ model EmailAccount {
   @@unique([tenantId, userId, provider])
   @@index([tenantId, userId])
   @@index([tenantId, isActive])
+
+  @@unique([id, tenantId])
+  threadAssociations MailboxThreadAssociation[]
 }
 
 // One-time OAuth challenges are bound to the initiating staff session.
@@ -1390,7 +1343,7 @@ model MailboxMessage {
   engagementRuleVersion Int @default(0)
   needsDealAssociation Boolean @default(false)
   createdAt DateTime @default(now())
-  account EmailAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  account EmailAccount @relation(fields: [accountId, tenantId], references: [id, tenantId], onDelete: Restrict)
   @@unique([accountId, providerMessageId])
   @@index([tenantId, accountId, threadId, sentAt])
   @@index([tenantId, leadId, sentAt])
@@ -1400,31 +1353,6 @@ model MailboxMessage {
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // SMS QUEUE (Local Android Gateway)
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
-model SMSQueue {
-  id           String    @id @default(uuid())
-  tenantId     String
-  campaignId   String?
-  leadId       String?
-  contactId   String?
-  toNumber     String
-  message      String
-  status       String    @default("pending") // pending|processing|sent|delivered|failed
-  retryCount   Int       @default(0)
-  scheduledFor DateTime?
-  sentAt       DateTime?
-  errorMessage String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-
-  tenant   Tenant    @relation(fields: [tenantId], references: [id])
-  campaign Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  lead     Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  contact  Contact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
-
-  @@index([tenantId, status])
-  @@index([tenantId, scheduledFor])
-  @@index([tenantId])
-}
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // EMAIL EVENT (Tracking opens, clicks, etc.)
@@ -1451,24 +1379,6 @@ model EmailEvent {
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // AUTOMATION RULE (Trigger-based background jobs)
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
-model AutomationRule {
-  id          String   @id @default(uuid())
-  tenantId    String
-  name        String
-  description String?
-  triggerType String // e.g. "contact.created", "deal.won", "no.reply.3days"
-  conditions  Json?
-  actions     Json // what to do (e.g., schedule campaign)
-  isActive               Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-
-  @@index([tenantId, isActive])
-  @@index([tenantId, triggerType])
-  @@index([tenantId])
-}
 
 // -----------------------------------------------------
 // USER PREFERENCE (per-user, per-module, per-key)
@@ -1728,4 +1638,17 @@ model AccountProductInterest {
   product ProductInterest @relation(fields: [productInterestId, tenantId], references: [id, tenantId], onDelete: Restrict)
   @@id([accountId, productInterestId])
   @@index([tenantId, productInterestId])
+}
+
+// One explicit Deal selection per provider account/thread; historical messages stay separate.
+model MailboxThreadAssociation {
+  accountId String
+  threadId String
+  tenantId String
+  dealId String
+  linkedAt DateTime @default(now())
+  account EmailAccount @relation(fields: [accountId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  deal Deal @relation(fields: [dealId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  @@id([accountId, threadId])
+  @@index([tenantId, dealId])
 }

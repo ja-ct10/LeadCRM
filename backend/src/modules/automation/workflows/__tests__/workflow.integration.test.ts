@@ -53,7 +53,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
   // An existing confirmed sale is the prerequisite for the explicit conversion
   // endpoint. Fixture creation itself must not emit Deal Created.
   const confirmedDeal = (leadId: string) => scope(() => prisma.deal.create({ data: {
-    tenantId, pipelineId: deal.pipelineId, stageId: won.id, leadId, title: 'Existing confirmed sale',
+    tenantId, pipelineId: deal.pipelineId, stageId: won.id, leadDeals: { create: { leadId: leadId, position: 0 } }, title: 'Existing confirmed sale',
     assignedUserId: actor.id, tags: [], productInterests: [], closedAt: new Date(),
     wonConfirmedAt: new Date(), wonConfirmedById: actor.id, closingValues,
     closingSnapshot: { fields: [], values: closingValues },
@@ -67,7 +67,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     actor = await user('actor'); owner = await user('owner'); outsider = await user('outsider', otherTenantId);
     const viewer = await user('viewer', tenantId, 'Workflow Viewer');
     const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Workflow Viewer', permissions: { create: {
-      tenantId, module: 'workflows', canView: true, canCreate: false, canEdit: false, canDelete: false,
+      module: 'workflows', canView: true, canCreate: false, canEdit: false, canDelete: false,
     } } } });
     await prisma.userRole.create({ data: { tenantId, userId: viewer.id, roleId: role.id } });
     token = (await issueAuthSession(actor)).token; viewerToken = (await issueAuthSession(viewer)).token;
@@ -81,7 +81,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
       contacted = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Contacted', order: 4, requiredFields: [] } });
       lead = await prisma.lead.create({ data: { tenantId, firstName: 'Ada', lastName: 'Lead', email: 'recipient@example.test', assignedUserId: actor.id, productInterest: [] } });
       contact = await prisma.contact.create({ data: { tenantId, firstName: 'Grace', lastName: 'Client', assignedUserId: actor.id, activeProducts: [], productInterests: [] } });
-      deal = await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: stage.id, leadId: lead.id, contactId: contact.id,
+      deal = await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: stage.id, leadDeals: { create: { leadId: lead.id, position: 0 } }, contactDeals: { create: { contactId: contact.id, position: 0 } },
         title: 'Acceptance deal', value: 50000, assignedUserId: actor.id, tags: [], productInterests: [] } });
       template = await prisma.template.create({ data: { tenantId, name: 'Welcome', type: 'Email', subject: 'Hello {{first_name}}', content: '<p>Welcome {{first_name}}</p>' } });
     });
@@ -103,7 +103,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     expect(response.status, JSON.stringify(response.body)).toBe(201);
     const record = await prisma.lead.findUniqueOrThrow({ where: { id: response.body.data.id } });
     expect(record.assignedUserId).toBe(owner.id); expect(record.description).toBe('Follow up requested');
-    const task = await prisma.task.findFirstOrThrow({ where: { leadId: record.id } });
+    const task = await prisma.task.findFirstOrThrow({ where: { leadLinks: { some: { leadId: record.id } } } });
     expect(task.assignedUserId).toBe(owner.id); expect(task.assignedById).toBe(actor.id);
     const history = await runs(workflow.id); expect(history).toHaveLength(1); expect(history[0].status).toBe('completed');
     expect(history[0].steps.map(step => step.status)).toEqual(['success', 'success', 'success']);
@@ -152,7 +152,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     expect(history).toHaveLength(1);
     expect(history[0].status, JSON.stringify(history[0])).toBe('completed');
     expect(history[0].steps.map(step => step.status)).toEqual(draft.actions.map(() => 'success'));
-    const tasks = await prisma.task.findMany({ where: { tenantId, ...(entity === 'lead' ? { leadId: record.id } : entity === 'contact' ? { contactId: record.id } : { dealId: record.id }) } });
+    const tasks = await prisma.task.findMany({ where: { tenantId, [entity + 'Links']: { some: { [entity + 'Id']: record.id } } } });
     expect(tasks).toHaveLength(draft.actions.filter(action => action.type === 'create_task').length);
     for (const task of tasks) {
       expect(task.title).not.toContain('{{');
@@ -199,7 +199,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     expect((await call(`/crm/leads/${id}`, 'PUT', { status: 'Warm' })).status).toBe(200);
     expect((await call(`/crm/leads/${id}`, 'PUT', { status: 'Warm', description: 'No second status event' })).status).toBe(200);
     expect(await runs(workflow.id)).toHaveLength(1);
-    expect(await prisma.task.count({ where: { leadId: id, title: 'Warm status follow-up' } })).toBe(1);
+    expect(await prisma.task.count({ where: { leadLinks: { some: { leadId: id } }, title: 'Warm status follow-up' } })).toBe(1);
     const listed = await call('/operations/tasks?limit=100');
     expect(listed.status).toBe(200);
     expect(listed.body.data.some((task: { leadId: string }) => task.leadId === id)).toBe(true);
@@ -216,9 +216,9 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     expect((await call(`/crm/contacts/${id}`, 'PUT', { status: 'Warm' })).status).toBe(200);
     expect(await runs(createdWorkflow.id)).toHaveLength(1);
     expect(await runs(changedWorkflow.id)).toHaveLength(1);
-    const task = await prisma.task.findFirstOrThrow({ where: { contactId: id, title: 'Profile created' } });
-    expect(task.leadId).toBeNull();
-    expect(await prisma.task.count({ where: { contactId: id, title: 'Contact warmed' } })).toBe(1);
+    const task = await prisma.task.findFirstOrThrow({ where: { contactLinks: { some: { contactId: id } }, title: 'Profile created' }, include: { leadLinks: true } });
+    expect(task.leadLinks).toEqual([]);
+    expect(await prisma.task.count({ where: { contactLinks: { some: { contactId: id } }, title: 'Contact warmed' } })).toBe(1);
   });
   it('fires Deal creation, stage change, won and lost through governed HTTP transitions', async () => {
     const triggers = ['deal.created', 'deal.stage_changed', 'deal.closed_won', 'deal.closed_lost'];
@@ -237,7 +237,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
       const history = await runs(definitions[index].id);
       expect(history).toHaveLength(count);
       expect(history.every(run => run.status === 'completed')).toBe(true);
-      expect(await prisma.task.count({ where: { dealId: { in: [id, second.body.data.id] }, title: triggers[index] } })).toBe(count);
+      expect(await prisma.task.count({ where: { dealLinks: { some: { dealId: { in: [id, second.body.data.id] } } }, title: triggers[index] } })).toBe(count);
     }
     expect(await prisma.dealStageHistory.count({ where: { dealId: id } })).toBe(2);
   });
@@ -246,7 +246,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     const workflow = await create([{ type: 'assign_owner', enabled: false, config: { userId: owner.id } }, { type: 'create_task', config: { title: 'Original owner remains' } }]);
     expect((await scope(() => workflows.testWorkflow(workflow.id, tenantId, record.id))).valid).toBe(true);
     await fire('lead', record);
-    const task = await prisma.task.findFirstOrThrow({ where: { leadId: record.id } });
+    const task = await prisma.task.findFirstOrThrow({ where: { leadLinks: { some: { leadId: record.id } } } });
     expect(task.assignedUserId).toBe(actor.id);
     expect((await prisma.lead.findUniqueOrThrow({ where: { id: record.id } })).assignedUserId).toBe(actor.id);
     expect((await runs(workflow.id))[0].steps.map(step => step.status)).toEqual(['skipped', 'success']);
@@ -266,7 +266,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
       expect(response.body.data.succeeded).toBe(1);
     }
     expect(await runs(workflow.id)).toHaveLength(1);
-    expect(await prisma.task.count({ where: { dealId: id, title: 'Bulk qualified follow-up' } })).toBe(1);
+    expect(await prisma.task.count({ where: { dealLinks: { some: { dealId: id } }, title: 'Bulk qualified follow-up' } })).toBe(1);
     expect(await prisma.dealStageHistory.count({ where: { dealId: id } })).toBe(1);
     expect((await call('/crm/deals/bulk/stage', 'POST', { dealIds: [id], stageId: won.id })).status).toBe(400);
     expect((await call('/crm/deals/' + id + '/stage', 'PATCH', { stageId: won.id })).status).toBe(200);
@@ -295,12 +295,12 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
       expect(history).toHaveLength(1);
       expect(history[0].status).toBe('completed');
     }
-    expect(await prisma.task.count({ where: { leadId: id, title: 'Converted Lead' } })).toBe(1);
-    expect(await prisma.task.count({ where: { contactId: record.contactId, title: 'Converted Profile' } })).toBe(1);
+    expect(await prisma.task.count({ where: { leadLinks: { some: { leadId: id } }, title: 'Converted Lead' } })).toBe(1);
+    expect(await prisma.task.count({ where: { contactLinks: { some: { contactId: record.contactId } }, title: 'Converted Profile' } })).toBe(1);
     expect(await runs(dealWorkflow.id)).toHaveLength(0);
     expect(converted.body.data.deal.id).toBe(completedDeal.id);
-    expect(await prisma.deal.count({ where: { tenantId, leadId: id } })).toBe(1);
-    expect(await prisma.task.count({ where: { dealId: completedDeal.id, title: 'Converted Deal' } })).toBe(0);
+    expect(await prisma.deal.count({ where: { tenantId, leadDeals: { some: { leadId: id } } } })).toBe(1);
+    expect(await prisma.task.count({ where: { dealLinks: { some: { dealId: completedDeal.id } }, title: 'Converted Deal' } })).toBe(0);
     expect((await call('/crm/leads/' + id + '/convert', 'POST', { createContact: true, dealId: completedDeal.id })).status).toBe(200);
     expect(await runs(leadWorkflow.id)).toHaveLength(1);
     expect(await runs(contactWorkflow.id)).toHaveLength(1);
@@ -348,7 +348,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     expect(history[0].status).toBe('completed');
     expect(await prisma.leadDeal.count({ where: { tenantId, dealId: duplicateId, leadId: lead.id } })).toBe(1);
     expect(await prisma.contactDeal.count({ where: { tenantId, dealId: duplicateId, contactId: contact.id } })).toBe(1);
-    expect(await prisma.task.count({ where: { dealId: duplicateId, title: 'Duplicated deal follow-up' } })).toBe(1);
+    expect(await prisma.task.count({ where: { dealLinks: { some: { dealId: duplicateId } }, title: 'Duplicated deal follow-up' } })).toBe(1);
   });
   it('does not accept foreign references even in disabled steps', async () => {
     await expect(create([{ type: 'create_task', config: { title: 'Enabled' } }, { type: 'assign_owner', enabled: false, config: { userId: outsider.id } }])).rejects.toThrow('Active workspace user');
@@ -360,8 +360,8 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     expect((await runs(workflow.id))[0].status).toBe('completed');
     const updated = await prisma.contact.findUniqueOrThrow({ where: { id: contact.id } });
     expect(updated.status).toBe(contact.status); expect(updated.notes).toBe('Client follow-up'); expect(updated.assignedUserId).toBe(owner.id);
-    const task = await prisma.task.findFirstOrThrow({ where: { contactId: contact.id } });
-    expect(task.leadId).toBeNull();
+    const task = await prisma.task.findFirstOrThrow({ where: { contactLinks: { some: { contactId: contact.id } } }, include: { leadLinks: true } });
+    expect(task.leadLinks).toEqual([]);
     expect(task.priority).toBe('Medium');
     expect(task.dueDate!.getTime() - task.createdAt.getTime()).toBeGreaterThan(2 * 86400000);
     expect(task.dueDate!.getTime() - task.createdAt.getTime()).toBeLessThanOrEqual(3 * 86400000);

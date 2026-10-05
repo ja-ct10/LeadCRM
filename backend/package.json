@@ -27,7 +27,10 @@
     "db:deploy": "node scripts/deploy-crm-imports.cjs --deploy",
     "db:imports:recover": "node scripts/deploy-crm-imports.cjs --recover",
     "db:imports:verify": "node scripts/deploy-crm-imports.cjs --verify",
-    "db:imports:retire": "node scripts/deploy-crm-imports.cjs --retire"
+    "db:imports:retire": "node scripts/deploy-crm-imports.cjs --retire",
+    "db:relations:verify": "node scripts/deploy-canonical-relationships.cjs --verify",
+    "db:relations:retire": "node scripts/deploy-canonical-relationships.cjs --retire",
+    "test:rollout": "node --test scripts/verify-crm-import-rollout.test.cjs scripts/verify-canonical-rollout.test.cjs"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

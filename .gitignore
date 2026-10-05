@@ -63,3 +63,6 @@ data/outputs/retired-features-*.json
 /data/outputs/product-normalization-tests/
 /product-normalization-before.json
 /product-normalization-after.json
+
+# Local audit evidence and recovery backups may contain private account data.
+/data/outputs/database-audit/

@@ -57,8 +57,7 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
       const signal = direction === 'inbound' ? classifyEngagement(email.plainText ?? email.body, businessThread, email.automated) : 'none';
       const deals = link && permissions.dealsView ? await tx.deal.findMany({ where: { ...customerDealWhere(account.tenantId, link), stage: { isWon: false, isLost: false } }, include: { stage: true } }) : [];
       // Existing thread linkage outranks the single-open-Deal fallback. A terminal link never falls through to a new opportunity.
-      const association = await tx.tenantPreference.findUnique({ where: { tenantId_module_key: { tenantId: account.tenantId, module: 'mailbox-thread', key: `${account.id}:${email.threadId}` } } });
-      const associationValue = association?.value as { dealId?: string; linkedAt?: string } | null;
+      const associationValue = await tx.mailboxThreadAssociation.findUnique({ where: { accountId_threadId: { accountId: account.id, threadId: email.threadId } } });
       const explicitIds = associationValue?.dealId ? [associationValue.dealId] : existing?.dealId ? [existing.dealId] : [...new Set(prior.map(message => message.dealId).filter((id): id is string => !!id))];
       const context = `${email.subject}\n${newMessageText(email.plainText ?? email.body)}`.toLowerCase();
       const productMatches = deals.filter(row => row.productInterests.some(product => product.trim().length >= 3 && context.includes(product.trim().toLowerCase())));

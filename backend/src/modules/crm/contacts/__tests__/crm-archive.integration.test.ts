@@ -65,7 +65,7 @@ beforeAll(async () => {
   otherTenantId = (await db.tenant.create({ data: { name: 'Other tenant', slug: 'other-archive-test' } })).id;
   const admin = await db.user.create({ data: { tenantId, email: 'archive@camxian.com', firstName: 'Archive', lastName: 'Admin', role: 'Client Admin', mustChangePassword: false } });
   const viewer = await db.user.create({ data: { tenantId, email: 'viewer@camxian.com', firstName: 'Read', lastName: 'Only', role: 'Archive Viewer', mustChangePassword: false } });
-  const role = await db.roleDefinition.create({ data: { tenantId, name: 'Archive Viewer', permissions: { create: ['leads', 'contacts', 'archived_data'].map(module => ({ tenantId, module, canView: true, canEdit: false, canDelete: false })) } } });
+  const role = await db.roleDefinition.create({ data: { tenantId, name: 'Archive Viewer', permissions: { create: ['leads', 'contacts', 'archived_data'].map(module => ({ module, canView: true, canEdit: false, canDelete: false })) } } });
   await db.userRole.create({ data: { tenantId, userId: viewer.id, roleId: role.id } });
   const { issueAuthSession } = await import('../../../../core/auth/auth-session');
   adminCookie = `leadcrm_token=${(await issueAuthSession(admin)).token}`;
@@ -192,13 +192,13 @@ describe.sequential('Settings archived-data aggregation and missing restore rout
     const pipeline = await db.pipeline.create({ data: { tenantId, name: 'Deal recovery pipeline' } });
     const stage = await db.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Qualified', order: 1 } });
     const lead = await create('leads');
-    const deal = await db.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: stage.id, leadId: lead.id, title: 'Recover deal', value: 1200, currency: 'PHP', isArchived: true } });
+    const deal = await db.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: stage.id, leadDeals: { create: { leadId: lead.id, position: 0 } }, title: 'Recover deal', value: 1200, currency: 'PHP', isArchived: true } });
     const listed = await archiveRequest('?type=Deal');
     expect(listed.body.data.find((row: any) => row.id === deal.id)).toMatchObject({ name: deal.title, detail: 'PHP 1200', archivedAt: null });
     expect((await call('deals/invalid/restore', 'PATCH')).status).toBe(400);
     expect((await call(`deals/${deal.id}/restore`, 'PATCH', viewerCookie)).status).toBe(403);
     expect((await call(`deals/${deal.id}/restore`, 'PATCH')).status).toBe(200);
-    expect(await db.deal.findUniqueOrThrow({ where: { id: deal.id } })).toMatchObject({ isArchived: false, stageId: stage.id, pipelineId: pipeline.id, leadId: lead.id, value: 1200 });
+    expect(await db.deal.findUniqueOrThrow({ where: { id: deal.id }, include: { leadDeals: true } })).toMatchObject({ isArchived: false, stageId: stage.id, pipelineId: pipeline.id, leadDeals: [expect.objectContaining({ leadId: lead.id })], value: 1200 });
     expect((await archiveRequest('?type=Deal')).body.data.some((row: any) => row.id === deal.id)).toBe(false);
     expect((await call(`deals/${deal.id}/restore`, 'PATCH')).status).toBe(400);
   });
@@ -236,7 +236,7 @@ describe.sequential('Settings archived-data aggregation and missing restore rout
       case 'Workflow': return db.workflow.create({ data: { ...data, trigger: 'deal.created', actions: [], isActive: false, status: 'PAUSED' } });
       case 'Campaign': return db.campaign.create({ data: { ...data, type: 'EMAIL', status: 'SENT', sentCount: 7 } });
       case 'Template': return db.template.create({ data: { ...data, type: 'Email', content: 'Preserved content' } });
-      case 'Role': return db.roleDefinition.create({ data: { tenantId: tenant, name: data.name, isArchived: true, permissions: { create: { tenantId: tenant, module: 'contacts', canView: true } } } });
+      case 'Role': return db.roleDefinition.create({ data: { tenantId: tenant, name: data.name, isArchived: true, permissions: { create: { module: 'contacts', canView: true } } } });
     }
   }
   async function readExtra(type: typeof extraTypes[number], id: string) {

@@ -128,14 +128,14 @@ export async function convertContact(id: string, tenantId: string, userId: strin
     if (dto.createContact === false) throw new ValidationError('Closed Lead conversion requires a Contact.');
     if (dto.createDeal) throw new ValidationError('Complete an existing Deal before converting this Lead.');
     if (dto.dealId && !await tx.deal.findFirst({ where: { tenantId, id: dto.dealId,
-      OR: [{ leadId: id }, { leadDeals: { some: { tenantId, leadId: id } } }] } })) throw new ValidationError('Choose a Deal already associated with this Lead.');
+      leadDeals: { some: { tenantId, leadId: id } } } })) throw new ValidationError('Choose a Deal already associated with this Lead.');
     await assertClosedStatus(tx, tenantId, { leadId: id });
     // Capture the records this conversion may link before any transaction writes.
     const previousContacts = await tx.contact.findMany({ where: { tenantId, OR: [
       { id: dto.contactId ?? lead.contactId ?? '' },
       ...(lead.email?.trim() ? [{ email: { contains: lead.email.trim(), mode: 'insensitive' as const } }] : []),
     ] } });
-    const previousDeals = await tx.deal.findMany({ where: { tenantId, OR: [{ leadId: id }, { leadDeals: { some: { tenantId, leadId: id } } }] } });
+    const previousDeals = await tx.deal.findMany({ where: { tenantId, leadDeals: { some: { tenantId, leadId: id } } } });
     // Never replace the identity of a previously converted customer on a retry.
     if (!lead.convertedAt) await tx.lead.update({ where: { tenantId, id }, data: {
       ...(dto.contactId ? { contactId: dto.contactId } : {}), ...(dto.accountId ? { accountId: dto.accountId } : {}),

@@ -28,7 +28,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     const lead = await prisma.lead.create({ data: { tenantId, firstName: 'Customer', lastName: 'Test', email: `${randomUUID()}@example.test`, companyName,
       productInterest: ['Camera', 'Access Control'], assignedUserId: agentId, createdAt: before, source: 'Website' } });
     const deals = [];
-    for (let n = 0; n < count; n++) deals.push(await prisma.deal.create({ data: { tenantId, leadId: lead.id, pipelineId, stageId: stages.Qualified,
+    for (let n = 0; n < count; n++) deals.push(await prisma.deal.create({ data: { tenantId, leadDeals: { create: { leadId: lead.id, position: 0 } }, pipelineId, stageId: stages.Qualified,
       title: `Deal ${n}`, productInterests: [n === 0 ? 'Camera' : 'Access Control'], value: 100 + n, assignedUserId: agentId, createdAt: before,
       closingValues: { 'reference-number': `REF-${randomUUID()}` }, tags: [] } }));
     return { lead, deals };
@@ -66,8 +66,8 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     expect((await call(`/crm/contacts/${contact.id}`)).body.data.status).toBe('Closed');
     expect((await call(`/crm/contacts/${contact.id}/relationships`)).body.data.activities.map((row: { id: string }) => row.id)).toContain(activity.id);
     for (const original of deals) {
-      const persisted = await prisma.deal.findUniqueOrThrow({ where: { id: original.id } });
-      expect(persisted).toMatchObject({ id: original.id, leadId: lead.id, value: original.value, productInterests: original.productInterests, assignedUserId: agentId, accountId: saved.accountId });
+      const persisted = await prisma.deal.findUniqueOrThrow({ where: { id: original.id }, include: { leadDeals: true } });
+      expect(persisted).toMatchObject({ id: original.id, leadDeals: [{ leadId: lead.id }], value: original.value, productInterests: original.productInterests, assignedUserId: agentId, accountId: saved.accountId });
       expect(await prisma.contactDeal.count({ where: { contactId: contact.id, dealId: original.id } })).toBe(1);
     }
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[1].id } })).stageId).toBe(stages.Qualified);
@@ -132,7 +132,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     expect((await call('/administration/deal-stage-automation')).body.data.enabled).toBe(false);
     expect((await call('/administration/deal-stage-automation', 'PATCH', { enabled: true }, agentToken)).status).toBe(403);
     const { lead, deals } = await customer(null);
-    await prisma.deal.updateMany({ where: { leadId: lead.id }, data: { stageId: stages.Lead, stageChangedAt: before } });
+    await prisma.deal.updateMany({ where: { leadDeals: { some: { leadId: lead.id } } }, data: { stageId: stages.Lead, stageChangedAt: before } });
     const account = await prisma.emailAccount.create({ data: { tenantId, userId: agentId, email: 'sales@camxian.com', accessToken: 'test-only', scopes: [], connectedAt: before } });
     const message = (subject: string) => ({ id: randomUUID(), threadId: randomUUID(), rfcMessageId: randomUUID(), from: lead.email!, to: [account.email], subject,
       body: 'We want to proceed with the product purchase.', snippet: 'Purchase request', date: new Date().toISOString(), isRead: false, labels: ['INBOX'] });
@@ -144,13 +144,13 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     await scope(() => ingestMailboxMessages(account, [message('Camera quotation')], rights));
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[0].id } })).stageId).toBe(stages.Qualified);
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[1].id } })).stageId).toBe(stages.Lead);
-    await prisma.deal.updateMany({ where: { leadId: lead.id }, data: { stageId: stages.Lead, stageChangedAt: before } });
+    await prisma.deal.updateMany({ where: { leadDeals: { some: { leadId: lead.id } } }, data: { stageId: stages.Lead, stageChangedAt: before } });
     await scope(() => ingestMailboxMessages(account, [message('Product quotation')], rights));
-    expect(await prisma.deal.count({ where: { leadId: lead.id, stageId: stages.Lead } })).toBe(2);
+    expect(await prisma.deal.count({ where: { leadDeals: { some: { leadId: lead.id } }, stageId: stages.Lead } })).toBe(2);
     await call('/administration/deal-stage-automation', 'PATCH', { enabled: false });
     await scope(() => ingestMailboxMessages(account, [{ ...message('Camera cancellation'), body: 'Please cancel my order. We are no longer interested.' }], rights));
     expect((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).status).toBe('Cancelled');
-    expect(await prisma.deal.count({ where: { leadId: lead.id, stageId: stages.Lead } })).toBe(2);
+    expect(await prisma.deal.count({ where: { leadDeals: { some: { leadId: lead.id } }, stageId: stages.Lead } })).toBe(2);
   });
   it('delivers role/owner notifications, deduplicates retries and never creates a foreign recipient', async () => {
     await scope(() => dispatchTenantNotifications(tenantId));

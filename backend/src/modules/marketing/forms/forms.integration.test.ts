@@ -86,10 +86,10 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     expect(history.data.map(s => (s.values as Record<string, string>).productInterest).sort()).toEqual([productIds.Biometrics, productIds['Smart Lock']].sort());
     const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, email: v.email } });
     expect(lead.productInterestIds.sort()).toEqual([productIds.Biometrics, productIds['Smart Lock']].sort());
-    const deals = await prisma.deal.findMany({ where: { tenantId, leadId: lead.id } });
+    const deals = await prisma.deal.findMany({ where: { tenantId, leadDeals: { some: { leadId: lead.id } } } });
     expect(deals).toHaveLength(2);
     await submit(form.publicId, v);
-    expect(await prisma.deal.findMany({ where: { tenantId, leadId: lead.id } })).toEqual(deals);
+    expect(await prisma.deal.findMany({ where: { tenantId, leadDeals: { some: { leadId: lead.id } } } })).toEqual(deals);
   });
   it('reuses contacts and converted lead links', async () => {
     const form = await publish((await draft()).id), v = values();
@@ -99,24 +99,24 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     expect(await prisma.formSubmission.findFirst({ where: { formId: form.id } })).toMatchObject({ contactId: c.id, leadId: null });
     expect(await prisma.contactProductInterest.count({ where: { contactId: c.id, productInterestId: productIds['Smart Lock'] } })).toBe(1);
     const product = await prisma.productInterest.findUniqueOrThrow({ where: { id: productIds['Smart Lock'] } });
-    const deals = await prisma.deal.findMany({ where: { contactId: c.id } });
+    const deals = await prisma.deal.findMany({ where: { contactDeals: { some: { contactId: c.id } } } });
     expect(deals).toHaveLength(1); expect(deals[0].value).toBe(Number(product.dealValue));
     const requestId = randomUUID();
     await submitPublicForm(form.publicId, { version: 1, values: v, requestId });
     await submitPublicForm(form.publicId, { version: 1, values: v, requestId });
-    expect(await prisma.deal.count({ where: { contactId: c.id } })).toBe(2);
+    expect(await prisma.deal.count({ where: { contactDeals: { some: { contactId: c.id } } } })).toBe(2);
   });
   it('routes a historically won lead to Contact without altering its deal', async () => {
     const form = await publish((await draft()).id), v = values();
     const l = await prisma.lead.create({ data: { tenantId, firstName: 'Customer', lastName: 'Test', email: v.email, productInterest: ['CCTV'] } });
     const pipeline = await prisma.pipeline.create({ data: { tenantId, name: 'Sales' } });
     const stage = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Won', order: 1, isWon: true, requiredFields: [] } });
-    const deal = await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: stage.id, leadId: l.id, title: 'Historic sale', productInterests: ['CCTV'], tags: [] } });
+    const deal = await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: stage.id, leadDeals: { create: { leadId: l.id, position: 0 } }, title: 'Historic sale', productInterests: ['CCTV'], tags: [] } });
     await submit(form.publicId, v); await submit(form.publicId, v);
     const repaired = await prisma.lead.findUniqueOrThrow({ where: { id: l.id } }); expect(repaired.contactId).toBeTruthy();
     expect(repaired.status).toBe('Closed');
-    expect(await prisma.deal.findUnique({ where: { id: deal.id } })).toMatchObject({
-      id: deal.id, stageId: deal.stageId, value: deal.value, productInterests: deal.productInterests, contactId: repaired.contactId,
+    expect(await prisma.deal.findUnique({ where: { id: deal.id }, include: { contactDeals: true } })).toMatchObject({
+      id: deal.id, stageId: deal.stageId, value: deal.value, productInterests: deal.productInterests, contactDeals: [{ contactId: repaired.contactId }],
     });
     expect(await prisma.contact.count({ where: { tenantId, email: v.email } })).toBe(1);
     expect(await prisma.formSubmission.count({ where: { formId: form.id, contactId: repaired.contactId } })).toBe(2);
@@ -141,7 +141,7 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     await prisma.dealStageHistory.create({ data: { tenantId, dealId: deal.id, newStageId: won.id, movedById: userId } });
     await submit(f.publicId, v);
     expect(await prisma.formSubmission.findFirst({ where: { formId: f.id } })).toMatchObject({ contactId: contact.id, leadId: null });
-    expect(await prisma.deal.findUnique({ where: { id: deal.id } })).toMatchObject({ id: deal.id, stageId: deal.stageId, value: deal.value, productInterests: deal.productInterests, contactId: contact.id });
+    expect(await prisma.deal.findUnique({ where: { id: deal.id }, include: { contactDeals: true } })).toMatchObject({ id: deal.id, stageId: deal.stageId, value: deal.value, productInterests: deal.productInterests, contactDeals: [{ contactId: contact.id }] });
     expect(await prisma.lead.findUnique({ where: { id: lead.id } })).toMatchObject({ status: 'Closed', contactId: contact.id });
   });
   it('matches legacy formatted phones and whitespace-normalized email', async () => {

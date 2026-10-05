@@ -52,17 +52,19 @@ async function audit() {
       }
     }
     const candidates = {};
+    const presentTable = async table => (await tx.$queryRawUnsafe('SELECT to_regclass($1)::text AS name', '"' + table + '"'))[0].name;
     for (const [table, stamp] of [['DealAction','performedAt'],['AutomationRule','updatedAt'],['SMSQueue','createdAt'],['EmailVerificationToken','createdAt']]) {
-      candidates[table] = await tx.$queryRawUnsafe(`SELECT count(*)::int AS rows, max("${stamp}") AS latest FROM "${table}"`);
+      candidates[table] = await presentTable(table) ? await tx.$queryRawUnsafe(`SELECT count(*)::int AS rows, max("${stamp}") AS latest FROM "${table}"`) : { retired: true };
     }
-    candidates.validVerificationTokens = await tx.$queryRawUnsafe('SELECT count(*)::int AS n FROM "EmailVerificationToken" WHERE "usedAt" IS NULL AND "expiresAt" > now()');
-    candidates.smsStatus = await tx.$queryRawUnsafe('SELECT status,count(*)::int AS n FROM "SMSQueue" GROUP BY status');
-    candidates.activeAutomationRules = await tx.$queryRawUnsafe('SELECT count(*)::int AS n FROM "AutomationRule" WHERE "isActive"');
+    if (await presentTable('EmailVerificationToken')) candidates.validVerificationTokens = await tx.$queryRawUnsafe('SELECT count(*)::int AS n FROM "EmailVerificationToken" WHERE "usedAt" IS NULL AND "expiresAt" > now()');
+    if (await presentTable('SMSQueue')) candidates.smsStatus = await tx.$queryRawUnsafe('SELECT status,count(*)::int AS n FROM "SMSQueue" GROUP BY status');
+    if (await presentTable('AutomationRule')) candidates.activeAutomationRules = await tx.$queryRawUnsafe('SELECT count(*)::int AS n FROM "AutomationRule" WHERE "isActive"');
     const missingLinks = {};
     const orphanLinks = {};
     for (const [parent, target, link] of [['Deal','Lead','LeadDeal'],['Deal','Contact','ContactDeal'],...['Lead','Contact','Deal','Account'].map(t => ['Task',t,'Task'+t])]) {
       const field = target[0].toLowerCase()+target.slice(1)+'Id', parentField = parent.toLowerCase()+'Id';
-      missingLinks[link] = (await tx.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "${parent}" p WHERE p."${field}" IS NOT NULL AND NOT EXISTS (SELECT 1 FROM "${link}" l WHERE l."${parentField}"=p.id AND l."${field}"=p."${field}" AND l."tenantId"=p."tenantId")`))[0].n;
+      const column = await tx.$queryRawUnsafe('SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name=$1 AND column_name=$2', parent, field);
+      missingLinks[link] = column.length ? (await tx.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "${parent}" p WHERE p."${field}" IS NOT NULL AND NOT EXISTS (SELECT 1 FROM "${link}" l WHERE l."${parentField}"=p.id AND l."${field}"=p."${field}" AND l."tenantId"=p."tenantId")`))[0].n : 'legacy column retired';
       orphanLinks[link] = (await tx.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "${link}" l LEFT JOIN "${parent}" p ON p.id=l."${parentField}" AND p."tenantId"=l."tenantId" LEFT JOIN "${target}" r ON r.id=l."${field}" AND r."tenantId"=l."tenantId" WHERE p.id IS NULL OR r.id IS NULL`))[0].n;
     }
     const normalization = {};

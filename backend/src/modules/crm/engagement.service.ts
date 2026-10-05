@@ -9,7 +9,7 @@ type Tx = Prisma.TransactionClient;
 const contactStatuses: Record<CrmStatus, ContactStatus> = { Hot: ContactStatus.HOT, Warm: ContactStatus.WARM, Cold: ContactStatus.COLD, Closed: ContactStatus.CLOSED, Cancelled: ContactStatus.CANCELLED };
 export const contactStatusValue = (value: CrmStatus) => contactStatuses[value];
 export const customerDealWhere = (tenantId: string, link: CustomerLink): Prisma.DealWhereInput => ({ tenantId, isArchived: false, deletedAt: null,
-  OR: link.leadId ? [{ leadId: link.leadId }, { leadDeals: { some: { tenantId, leadId: link.leadId } } }] : [{ contactId: link.contactId }, { contactDeals: { some: { tenantId, contactId: link.contactId } } }],
+  ...(link.leadId ? { leadDeals: { some: { tenantId, leadId: link.leadId } } } : { contactDeals: { some: { tenantId, contactId: link.contactId } } }),
 });
 
 export async function changeCustomerStatus(tx: Tx, tenantId: string, actorId: string, link: CustomerLink, status: CrmStatus, reason: string, changedAt: Date) {

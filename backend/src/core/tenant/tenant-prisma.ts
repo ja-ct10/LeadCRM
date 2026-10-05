@@ -41,18 +41,24 @@ function scopeSelection(model: string, args: Args): void {
   }
 }
 
-function scopeData(model: string, data: Args, create: boolean): void {
+function scopeData(model: string, data: Args, create: boolean, inheritedTenant = false): void {
   const scope = tenantContext.getStore()!;
   if (tenantModels.has(model)) {
     if (!create && ('tenantId' in data || 'tenant' in data)) {
       throw new AppError('Record tenant cannot be changed.', 400);
     }
-    if (create && !data.tenant) data.tenantId = scope.tenantId;
+    if (create && !data.tenant && !inheritedTenant) data.tenantId = scope.tenantId;
     if (create && data.tenant) data.tenant = { connect: { id: scope.tenantId } };
   }
+  // Composite nested relations supply tenantId from their parent. Prisma excludes
+  // this scalar from nested create inputs; the parent scope and FK enforce it.
+  if (create && inheritedTenant) delete data.tenantId;
   for (const field of models.get(model)?.fields ?? []) {
     const nested = data[field.name];
     if (field.kind !== 'object' || !nested) continue;
+    const inheritsTenant = (models.get(field.type)?.fields ?? []).some(parent =>
+      parent.kind === 'object' && parent.type === model && parent.relationName === field.relationName &&
+      parent.relationFromFields?.includes('tenantId'));
     for (const operation of ['connect', 'set', 'disconnect', 'delete']) {
       if (!nested[operation] || typeof nested[operation] === 'boolean') continue;
       nested[operation] = Array.isArray(nested[operation])
@@ -69,13 +75,13 @@ function scopeData(model: string, data: Args, create: boolean): void {
       for (const entry of entries) {
         if (action === 'upsert' || action === 'connectOrCreate') {
           entry.where = scopeWhere(field.type, entry.where);
-          scopeData(field.type, entry.create, true);
+          scopeData(field.type, entry.create, true, inheritsTenant);
           if (entry.update) scopeData(field.type, entry.update, false);
         } else if (action === 'createMany') {
-          for (const row of Array.isArray(entry.data) ? entry.data : [entry.data]) scopeData(field.type, row, true);
+          for (const row of Array.isArray(entry.data) ? entry.data : [entry.data]) scopeData(field.type, row, true, inheritsTenant);
         } else {
           if (entry.where) entry.where = scopeWhere(field.type, entry.where);
-          scopeData(field.type, entry.data ?? entry, action === 'create');
+          scopeData(field.type, entry.data ?? entry, action === 'create', inheritsTenant);
         }
       }
     }

@@ -120,11 +120,16 @@ export async function entityContext(entity: WorkflowEntity, id: string, tenantId
   const record = entity === 'lead' ? await prisma.lead.findFirst({ where: { id, tenantId, isArchived: false } })
     : entity === 'contact' ? await prisma.contact.findFirst({ where: { id, tenantId, isArchived: false } })
     : entity === 'account' ? await prisma.account.findFirst({ where: { id, tenantId, isArchived: false } })
-    : await prisma.deal.findFirst({ where: { id, tenantId, isArchived: false }, include: { stage: true } });
+    : await prisma.deal.findFirst({ where: { id, tenantId, isArchived: false }, include: { stage: true,
+      leadDeals: { orderBy: [{ position: 'asc' }, { addedAt: 'asc' }, { id: 'asc' }], take: 1 },
+      contactDeals: { orderBy: [{ position: 'asc' }, { addedAt: 'asc' }, { id: 'asc' }], take: 1 },
+    } });
   if (!record) return null;
   const context = Object.fromEntries(Object.entries(record).filter(([, value]) => value instanceof Date || value === null || Array.isArray(value) && value.every(item => typeof item === 'string') || ['string', 'number', 'boolean'].includes(typeof value))
     .map(([key, value]) => [`${entity}.${key}`, value instanceof Date ? value.toISOString() : value]));
   if (entity === 'deal' && 'stage' in record) {
+    context['deal.leadId'] = record.leadDeals[0]?.leadId ?? null;
+    context['deal.contactId'] = record.contactDeals[0]?.contactId ?? null;
     context['deal.isQualified'] = !record.stage.isWon && !record.stage.isLost && record.stage.name.trim().toLowerCase() === 'qualified';
     context['deal.hasEverBeenWon'] = record.hasEverBeenWon || !!record.wonConfirmedAt || record.stage.isWon;
   }

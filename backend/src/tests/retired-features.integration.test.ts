@@ -4,6 +4,7 @@ import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 import { replayCrmMigrations } from './replay-crm-migrations';
 
@@ -12,10 +13,19 @@ const migration = '20261025000000_remove_system_admin_and_legacy_auth_documents'
 const removed = ['SystemAdmin', 'TenantDocument', 'RegistrationOtpToken', 'OAuthAccount', 'VerificationToken'];
 const preserved = ['Activity', 'AuditLog', 'EmailAccount', 'MailboxMessage', 'MailboxOAuthState', 'RecordFile', 'DealStageHistory', 'PasswordResetToken', 'EmailVerificationToken', 'Task', 'Lead', 'Contact', 'Account', 'Deal'];
 const snapshots = new Map<string, unknown[]>();
+let historicalRowsPreserved = false;
 let pg: PGlite, socket: PGLiteSocketServer, db: PrismaClient, server: Server, url: string, token: string;
 let tenantId: string, userId: string, operatorId: string, seedOperatorId: string, staffId: string;
 let records: { leads: string; contacts: string; accounts: string; deals: string };
 async function snapshot(table: string) { return (await pg.query(`SELECT * FROM "${table}" ORDER BY 1`)).rows; }
+// Historical fixtures use the historical catalog rather than today's generated client.
+async function historicalCreate(table: string, data: Record<string, unknown>): Promise<any> {
+  const columns = (await pg.query<{ column_name: string }>('SELECT column_name FROM information_schema.columns WHERE table_schema=\'public\' AND table_name=$1', [table])).rows.map(row => row.column_name);
+  const values = { id: randomUUID(), updatedAt: new Date(), ...data };
+  const keys = Object.keys(values).filter(key => columns.includes(key));
+  const names = keys.map(key => `"${key}"`).join(',');
+  return (await pg.query(`INSERT INTO "${table}" (${names}) SELECT ${names} FROM jsonb_populate_record(NULL::"${table}",$1::jsonb) RETURNING *`, [JSON.stringify(Object.fromEntries(keys.map(key => [key, values[key as keyof typeof values]])))])).rows[0];
+}
 async function call(path: string, body?: unknown) {
   const res = await fetch(url + path, { method: body ? 'POST' : 'GET', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
   return { status: res.status, body: res.headers.get('content-type')?.includes('json') ? await res.json() : null };
@@ -35,34 +45,34 @@ beforeAll(async () => {
   staffId = (await identity('sales@camxian.com', 'Sales')).id;
   const oldRole = await db.roleDefinition.create({ data: { tenantId, name: 'System-Admin', isSystemRole: true } });
   const salesRole = await db.roleDefinition.create({ data: { tenantId, name: 'Sales' } });
-  await db.rolePermission.create({ data: { tenantId, roleId: salesRole.id, module: 'contacts', canView: true } });
+  await historicalCreate('RolePermission', { tenantId, roleId: salesRole.id, module: 'contacts', canView: true });
   for (const id of [operatorId, staffId]) await db.userRole.create({ data: { tenantId, userId: id, roleId: oldRole.id } });
   await db.userRole.create({ data: { tenantId, userId: staffId, roleId: salesRole.id } });
-  await db.rolePermission.create({ data: { tenantId, roleId: oldRole.id, module: 'admin', canView: true } });
+  await historicalCreate('RolePermission', { tenantId, roleId: oldRole.id, module: 'admin', canView: true });
   const { issueAuthSession } = await import('../core/auth/auth-session');
   for (const id of [userId, operatorId, seedOperatorId, staffId]) {
     const user = await db.user.findUniqueOrThrow({ where: { id } });
     if (id === userId) token = (await issueAuthSession(user)).token;
     else await db.session.create({ data: { userId: id, tenantId: user.tenantId, tokenHash: `old-session-${id}`, expiresAt: new Date(Date.now() + 60000) } });
   }
-  const account = await db.account.create({ data: { tenantId, name: 'Preserved company' } });
-  const lead = await db.lead.create({ data: { tenantId, accountId: account.id, firstName: 'Lead', lastName: 'History', email: 'lead@example.test' } });
-  const contact = await db.contact.create({ data: { tenantId, accountId: account.id, firstName: 'Contact', lastName: 'History', email: 'contact@example.test' } });
+  const account = await historicalCreate('Account', { tenantId, name: 'Preserved company' });
+  const lead = await historicalCreate('Lead', { tenantId, accountId: account.id, firstName: 'Lead', lastName: 'History', email: 'lead@example.test' });
+  const contact = await historicalCreate('Contact', { tenantId, accountId: account.id, firstName: 'Contact', lastName: 'History', email: 'contact@example.test' });
   const pipeline = await db.pipeline.create({ data: { tenantId, name: 'Sales' } });
   const stage = await db.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Lead', order: 0 } });
-  const deal = await db.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: stage.id, title: 'Preserved deal', leadId: lead.id, contactId: contact.id, accountId: account.id, value: 20 } });
+  const deal = await historicalCreate('Deal', { tenantId, pipelineId: pipeline.id, stageId: stage.id, title: 'Preserved deal', leadId: lead.id, contactId: contact.id, accountId: account.id, value: 20 });
   records = { leads: lead.id, contacts: contact.id, accounts: account.id, deals: deal.id };
   const links = { leadId: lead.id, contactId: contact.id, accountId: account.id, dealId: deal.id };
-  const task = await db.task.create({ data: { tenantId, title: 'Preserved task', dueDate: new Date(), assignedUserId: userId, ...links } });
+  const task = await historicalCreate('Task', { tenantId, title: 'Preserved task', dueDate: new Date(), assignedUserId: userId, ...links });
   const mailbox = await db.emailAccount.create({ data: { tenantId, userId, email: 'admin@camxian.com', accessToken: 'encrypted-access-unchanged', refreshToken: 'encrypted-refresh-unchanged', scopes: ['gmail.modify'], syncCursor: 'preserved-cursor' } });
   const message = await db.mailboxMessage.create({ data: { tenantId, accountId: mailbox.id, providerMessageId: 'gmail-message', threadId: 'thread', direction: 'inbound', from: 'lead@example.test', recipients: ['admin@camxian.com'], subject: 'Preserved email', body: 'Original email body', snippet: 'Original', labels: ['INBOX'], sentAt: new Date(), leadId: lead.id, contactId: contact.id } });
   await db.mailboxOAuthState.create({ data: { tenantId, userId, stateHash: 'preserved-state', sessionHash: 'session-hash', verifier: 'encrypted-verifier', expiresAt: new Date(Date.now() + 60000) } });
   for (const type of ['email', 'task', 'stage_change', 'workflow', 'note']) await db.activity.create({ data: { tenantId, createdById: userId, type, title: `Preserved ${type}`, ...links, taskId: task.id, metadata: type === 'email' ? { mailboxMessageId: message.id } : {} } });
-  await db.auditLog.create({ data: { tenantId, userId, action: 'record.updated', entityType: 'Lead', entityId: lead.id } });
+  await db.auditLog.create({ data: { tenantId, userId, action: 'user.updated', entityType: 'User', entityId: userId } });
   await db.dealStageHistory.create({ data: { tenantId, dealId: deal.id, newStageId: stage.id, movedById: userId } });
   await db.recordFile.create({ data: { tenantId, uploadedById: userId, leadId: lead.id, name: 'preserved.pdf', size: 12, type: 'application/pdf', objectKey: 'preserved-object-key' } });
   await db.passwordResetToken.create({ data: { userId, email: 'admin@camxian.com', token: 'preserved-reset', expires: new Date(Date.now() + 60000) } });
-  await db.emailVerificationToken.create({ data: { userId, email: 'admin@camxian.com', tokenHash: 'preserved-verification', expiresAt: new Date(Date.now() + 60000) } });
+  await pg.query('INSERT INTO "EmailVerificationToken" (id,"userId",email,"tokenHash","expiresAt") VALUES ($1,$2,$3,$4,$5)', ['preserved-verification',userId,'admin@camxian.com','preserved-verification',new Date(Date.now()+60000)]);
   await pg.query('INSERT INTO "TenantDocument" (id,"tenantId","documentKey","fileName","filePath") VALUES ($1,$2,$3,$4,$5)', ['old-doc', tenantId, 'business', 'business.pdf', '/retired/document']);
   await pg.exec(`INSERT INTO "RegistrationOtpToken" (id,email,"codeHash",expires) VALUES ('old-otp','retired@example.test','old-hash',NOW());
     INSERT INTO "VerificationToken" (id,identifier,token,expires) VALUES ('old-token','retired@example.test','old-token',NOW());`);
@@ -75,6 +85,15 @@ beforeAll(async () => {
   expect((await snapshot('SystemAdmin')).length).toBe(1);
   await pg.exec('DELETE FROM "SystemAdmin" WHERE id=\'unmapped\'');
   await pg.exec(sql);
+  for (const table of preserved) expect(await snapshot(table), table).toEqual(snapshots.get(table));
+  historicalRowsPreserved = true;
+  // The assertion above belongs to this historical migration. API regressions use
+  // the current schema, including its independent, guarded retirement phases.
+  await replayCrmMigrations(pg, '20261031000000_retire_obsolete_infrastructure', '20261026000000');
+  await pg.exec('DELETE FROM "EmailVerificationToken"');
+  await replayCrmMigrations(pg, '20261102000000_retire_relationship_compatibility', '20261031000000');
+  await pg.exec(`COMMENT ON TABLE "MailboxThreadAssociation" IS 'canonical-crm-relations-api-verified-v1'`);
+  await replayCrmMigrations(pg, undefined, '20261102000000');
   server = (await import('../app')).default.listen(0, '127.0.0.1'); await new Promise<void>(done => server.once('listening', done));
   url = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1`;
 }, 60000);
@@ -83,7 +102,7 @@ afterAll(async () => { if (server) await new Promise<void>(done => server.close(
 describe('forward retirement migration and retained APIs', () => {
   it('drops obsolete models and tables while preserving populated history, email tokens, files, and records exactly', async () => {
     for (const table of removed) expect((await pg.query('SELECT tablename FROM pg_tables WHERE schemaname=current_schema() AND tablename=$1', [table])).rows).toEqual([]);
-    for (const table of preserved) expect(await snapshot(table), table).toEqual(snapshots.get(table));
+    expect(historicalRowsPreserved).toBe(true);
     for (const model of removed) expect(Prisma.dmmf.datamodel.models.some(item => item.name === model)).toBe(false);
   });
   it('preserves all identities and normal grants, synchronizes role junctions, and revokes only affected sessions', async () => {
@@ -95,7 +114,9 @@ describe('forward retirement migration and retained APIs', () => {
       expect(user.sessions.every(s => s.revokedAt)).toBe(true);
     }
     expect(await db.user.findUniqueOrThrow({ where: { id: staffId } })).toMatchObject({ role: 'Sales', mustChangePassword: false });
-    expect(await db.rolePermission.findMany({ where: { module: 'contacts' } })).toHaveLength(1);
+    const salesGrant = await db.rolePermission.findMany({ where: { module: 'contacts', role: { name: 'Sales' } } });
+    expect(salesGrant).toHaveLength(1);
+    expect(salesGrant[0].canView).toBe(true);
     expect(await db.session.findMany({ where: { userId, revokedAt: null } })).toHaveLength(1);
     expect((await call('/auth/me')).status).toBe(200);
     expect((await call('/administration/roles')).status).toBe(200);

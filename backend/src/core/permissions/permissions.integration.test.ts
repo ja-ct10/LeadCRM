@@ -15,8 +15,8 @@ const disposable = ['localhost','127.0.0.1'].includes(url.hostname) && /^\/leadc
 describe.skipIf(!disposable)('independent module actions with real sessions and database roles', () => {
   let server: Server, base: string, tenantId: string, adminToken: string;
   async function roleUser(name: string, permissions: Array<Record<string, unknown>>) {
-    const role = await prisma.roleDefinition.create({ data: { name, tenantId, permissions: { create: permissions.map(p => ({ ...EMPTY_PERMISSION_FLAGS, ...p, tenantId })) as never } } });
-    const user = await prisma.user.create({ data: { tenantId, role: name, email: `${role.id}@camxian.com`, firstName: name, lastName: 'QA', mustChangePassword: false, userRoles: { create: { tenantId, roleId: role.id } } } });
+    const role = await prisma.roleDefinition.create({ data: { name, tenantId, permissions: { create: permissions.map(p => ({ ...EMPTY_PERMISSION_FLAGS, ...p })) as never } } });
+    const user = await prisma.user.create({ data: { tenantId, role: name, email: `${role.id}@camxian.com`, firstName: name, lastName: 'QA', mustChangePassword: false, userRoles: { create: { roleId: role.id } } } });
     return { token: (await issueAuthSession(user)).token, user: { userId: user.id, tenantId, role: name }, roleId: role.id };
   }
   async function call(path: string, token: string, method = 'GET', body?: unknown) {

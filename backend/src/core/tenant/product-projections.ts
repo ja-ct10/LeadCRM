@@ -23,14 +23,37 @@ function selectProducts(model: string, args: Args): (row: any) => any {
   const fields = productFields[model];
   const wanted = fields?.filter(field => !args.select || args.select[field]) ?? [];
   const extra = new Set<string>();
+  const cleanups: Array<(row: any) => void> = [];
   const selection = args.select ?? (args.include ??= {});
+  const ensureFields = (selected: Args, names: string[]) => {
+    const added = names.filter(name => selected.select && !selected.select[name]);
+    for (const name of added) selected.select[name] = true;
+    return (row: any) => { for (const name of added) if (row) delete row[name]; };
+  };
   if (wanted.length) {
     const add = (key: string, value: unknown) => { if (!selection[key]) { selection[key] = value; extra.add(key); } };
     if (model === 'Deal') {
       add('productInterestRecord', { select: { id: true, name: true } });
+      if (!extra.has('productInterestRecord')) {
+        const relation = selection.productInterestRecord === true ? {} : selection.productInterestRecord;
+        selection.productInterestRecord = relation;
+        const clean = ensureFields(relation, ['id', 'name']);
+        cleanups.push(row => clean(row.productInterestRecord));
+      }
       if (args.select) add('productsNormalized', true);
     } else {
       add('productLinks', { include: { product: { select: { id: true, name: true } } }, orderBy: [{ position: 'asc' }, { productInterestId: 'asc' }] });
+      if (!extra.has('productLinks')) {
+        const links = selection.productLinks === true ? {} : selection.productLinks;
+        selection.productLinks = links;
+        const cleanFlags = ensureFields(links, model === 'Lead' ? [] : ['interested', 'activeProduct']);
+        const linkFields = links.select ?? (links.include ??= {});
+        const addedProduct = !linkFields.product;
+        const product = linkFields.product === true ? {} : linkFields.product || { select: { id: true, name: true } };
+        linkFields.product = product;
+        const cleanProduct = ensureFields(product, ['id', 'name']);
+        cleanups.push(row => { for (const link of row.productLinks ?? []) { cleanFlags(link); cleanProduct(link.product); if (addedProduct) delete link.product; } });
+      }
       if (args.select) add('productsNormalized', true);
     }
   }
@@ -58,6 +81,7 @@ function selectProducts(model: string, args: Args): (row: any) => any {
         if (wanted.includes('activeProducts')) row.activeProducts = links.filter((link: any) => link.activeProduct).map((link: any) => link.product.name);
       }
     }
+    for (const clean of cleanups) clean(row);
     for (const key of extra) delete row[key];
     if (fields && !args.select?.productsNormalized) delete row.productsNormalized;
     return row;

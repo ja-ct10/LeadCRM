@@ -83,7 +83,7 @@ export async function submitPublicForm(publicId: string, body: unknown) {
           let leadId: string | null = lead?.id ?? null, contactId: string | null = contact?.id ?? null;
           if (lead && !lead.convertedAt) {
             const won = await tx.deal.findFirst({ where: { ...scope, AND: [
-              { OR: [{ leadId: lead.id }, { leadDeals: { some: { ...scope, leadId: lead.id } } }] },
+              { leadDeals: { some: { ...scope, leadId: lead.id } } },
               { OR: [{ stage: { isWon: true } }, { stageHistories: { some: { ...scope, newStage: { isWon: true } } } }] },
             ],
             } });
@@ -91,7 +91,7 @@ export async function submitPublicForm(publicId: string, body: unknown) {
               // Existing historical sales links may identify a customer whose email has changed.
               if (!contactId) {
                 const links = await tx.contactDeal.findMany({ where: { ...scope, dealId: won.id }, select: { contactId: true } });
-                const ids = [...new Set([won.contactId, ...links.map(row => row.contactId)].filter((id): id is string => !!id))];
+                const ids = [...new Set(links.map(row => row.contactId))];
                 if (ids.length > 1) throw conflict();
                 contactId = ids[0] ?? null;
               }
@@ -128,7 +128,7 @@ export async function submitPublicForm(publicId: string, body: unknown) {
             // Each accepted inquiry is a new opportunity. requestId retries return above,
             // while later purchases of the same Product remain legitimate separate Deals.
             for (const product of resolvedProducts) {
-              const deal = await tx.deal.create({ data: { ...scope, contactId, accountId: customer.accountId,
+              const deal = await tx.deal.create({ data: { ...scope, accountId: customer.accountId,
                 title: `${customer.firstName} ${customer.lastName} – ${product.name}`.slice(0, 255),
                 pipelineId: pipeline.id, stageId: initial.id, productInterestId: product.id, productsNormalized: true,
                 value: Number(product.dealValue), currency: 'PHP', assignedUserId: customer.assignedUserId, ownerId: customer.assignedUserId,

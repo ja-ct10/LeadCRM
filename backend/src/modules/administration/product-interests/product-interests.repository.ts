@@ -9,7 +9,6 @@ export function findWonDeals(tenantId: string, id: string, skip: number, take: n
   return Promise.all([
     prisma.deal.findMany({ where, skip, take, orderBy: [{ closedAt: 'desc' }, { id: 'asc' }], select: {
       id: true, title: true, value: true, currency: true, closedAt: true,
-      lead: { select: person }, contact: { select: person },
       leadDeals: { where: scope, select: { lead: { select: person } } },
       contactDeals: { where: scope, select: { contact: { select: person } } },
       organization: { select: { name: true, tenantId: true } },

@@ -65,7 +65,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     for (let i = 0; i < 4; i++) leads.push(await create(['Smart Lock', 'Biometrics', 'Smart Lock']));
     expect(leads.map(lead => lead.assignedUserId)).toEqual([agentIds[0], agentIds[1], agentIds[0], agentIds[1]]);
     for (const lead of leads) {
-      const deals = await prisma.deal.findMany({ where: { tenantId, leadId: lead.id }, include: { stage: true, pipeline: true } });
+      const deals = await prisma.deal.findMany({ where: { tenantId, leadDeals: { some: { leadId: lead.id } } }, include: { stage: true, pipeline: true } });
       expect(deals).toHaveLength(2);
       expect(deals.every(d => d.assignedUserId === lead.assignedUserId && d.ownerId === lead.assignedUserId && d.stage.name === 'Lead' && d.pipeline.name === 'Sales Pipeline')).toBe(true);
       expect(deals.find(d => d.productInterests[0] === 'Smart Lock')?.value).toBe(1250.75);
@@ -79,7 +79,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     const retry = await create(['Smart Lock'], { creationKey });
     expect(retry.id).toBe(lead.id);
     await Promise.all([0, 1, 2].map(() => scope(() => salesTransaction(tx => createProductDeals(tx, tenantId, lead.id, adminId)))));
-    expect(await prisma.deal.count({ where: { tenantId, leadId: lead.id } })).toBe(1);
+    expect(await prisma.deal.count({ where: { tenantId, leadDeals: { some: { leadId: lead.id } } } })).toBe(1);
     expect(await prisma.activity.count({ where: { tenantId, leadId: lead.id, type: 'assignment' } })).toBe(1);
   });
   it('rejects invalid/inactive/foreign owners and unknown products with complete rollback', async () => {
@@ -91,14 +91,14 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
   it('creates unassigned Deals when no agent is eligible and assigns them without duplicating', async () => {
     await prisma.user.updateMany({ where: { id: { in: agentIds }, tenantId }, data: { status: 'INACTIVE' } });
     const lead = await create(); expect(lead.assignedUserId).toBeNull();
-    expect(await prisma.deal.count({ where: { leadId: lead.id } })).toBe(1);
+    expect(await prisma.deal.count({ where: { leadDeals: { some: { leadId: lead.id } } } })).toBe(1);
     await prisma.user.updateMany({ where: { id: { in: agentIds }, tenantId }, data: { status: 'ACTIVE' } });
     await scope(() => updateContact(lead.id, tenantId, { assignedUserId: agentIds[0] }, adminId));
-    expect((await prisma.deal.findFirstOrThrow({ where: { leadId: lead.id } })).assignedUserId).toBe(agentIds[0]);
+    expect((await prisma.deal.findFirstOrThrow({ where: { leadDeals: { some: { leadId: lead.id } } } })).assignedUserId).toBe(agentIds[0]);
   });
   it('preserves both owners and sibling Deals while Won resolves one Contact and Account exactly once', async () => {
     const lead = await create(['Smart Lock', 'Biometrics'], { companyName: 'Example Company' });
-    const deals = await prisma.deal.findMany({ where: { leadId: lead.id } });
+    const deals = await prisma.deal.findMany({ where: { leadDeals: { some: { leadId: lead.id } } } });
     const won = await prisma.stage.findFirstOrThrow({ where: { tenantId, pipelineId: deals[0].pipelineId, isWon: true } });
     await prepareToClose(deals[0]);
     const first = await scope(() => moveDealStage(deals[0].id, tenantId, won.id, adminId, undefined, undefined, undefined, { type: 'Approved Quotation', date: new Date().toISOString().slice(0, 10) }));
@@ -121,7 +121,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     const email = `${randomUUID()}@example.test`;
     const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Historical', lastName: 'Name', email: email.toUpperCase(), phone: '09123456789', notes: 'Keep history', activeProducts: [], productInterests: [] } });
     const lead = await create(['Smart Lock'], { email, phone: '+639123456789' });
-    const deal = await prisma.deal.findFirstOrThrow({ where: { leadId: lead.id } });
+    const deal = await prisma.deal.findFirstOrThrow({ where: { leadDeals: { some: { leadId: lead.id } } } });
     const won = await prisma.stage.findFirstOrThrow({ where: { tenantId, pipelineId: deal.pipelineId, isWon: true } });
     await prepareToClose(deal);
     await scope(() => moveDealStage(deal.id, tenantId, won.id, adminId, undefined, undefined, undefined, { type: 'Approved Quotation', date: new Date().toISOString().slice(0, 10) }));
@@ -129,7 +129,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     expect((await prisma.contact.findUniqueOrThrow({ where: { id: contact.id } })).notes).toBe('Keep history');
     const second = await create(['Smart Lock'], { email });
     await prisma.contact.create({ data: { tenantId, firstName: 'Conflicting', lastName: 'Identity', email, activeProducts: [], productInterests: [] } });
-    const secondDeal = await prisma.deal.findFirstOrThrow({ where: { leadId: second.id } });
+    const secondDeal = await prisma.deal.findFirstOrThrow({ where: { leadDeals: { some: { leadId: second.id } } } });
     const rejected = await prepareToClose(secondDeal, 409);
     expect(rejected.body.error).toContain('conflicting Contact/Account matches');
     const qualifiedId = (await prisma.deal.findUniqueOrThrow({ where: { id: secondDeal.id } })).stageId;
@@ -143,7 +143,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     const account = await prisma.account.create({ data: { tenantId, name: company, tags: [], productInterests: [], activeProducts: [] } });
     const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Original', lastName: 'Person', phone: '+63 (927) 555-12-34', company, activeProducts: [], productInterests: [] } });
     const lead = await create(['Smart Lock'], { contactId: contact.id, email: null, phone: '09275551234', companyName: company.trim().replace(/\s+/g, ' ') });
-    const deal = await prisma.deal.findFirstOrThrow({ where: { leadId: lead.id } });
+    const deal = await prisma.deal.findFirstOrThrow({ where: { leadDeals: { some: { leadId: lead.id } } } });
     const won = await prisma.stage.findFirstOrThrow({ where: { pipelineId: deal.pipelineId, isWon: true } });
     await prepareToClose(deal);
     await scope(() => moveDealStage(deal.id, tenantId, won.id, adminId, undefined, undefined, undefined, { type: 'Approved Quotation', date: new Date().toISOString().slice(0, 10) }));
@@ -152,7 +152,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
   });
   it('requires a lost reason, retains the owner, and rejects a foreign pipeline stage', async () => {
     const lead = await create();
-    const deal = await prisma.deal.findFirstOrThrow({ where: { leadId: lead.id } });
+    const deal = await prisma.deal.findFirstOrThrow({ where: { leadDeals: { some: { leadId: lead.id } } } });
     const lost = await prisma.stage.findFirstOrThrow({ where: { pipelineId: deal.pipelineId, isLost: true } });
     expect((await request(`/crm/deals/${deal.id}/stage`, 'PATCH', { stageId: lost.id })).status).toBe(400);
     expect((await request(`/crm/deals/${deal.id}/stage`, 'PATCH', { stageId: lost.id, lostReason: 'Project postponed' })).status).toBe(200);
@@ -171,7 +171,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     expect(submissions).toHaveLength(1);
     const lead = await prisma.lead.findUniqueOrThrow({ where: { id: submissions[0].leadId! } });
     expect(agentIds).toContain(lead.assignedUserId);
-    expect(await prisma.deal.count({ where: { leadId: lead.id, assignedUserId: lead.assignedUserId } })).toBe(2);
+    expect(await prisma.deal.count({ where: { leadDeals: { some: { leadId: lead.id } }, assignedUserId: lead.assignedUserId } })).toBe(2);
   });
   it('settings API persists valid prices and rejects invalid input and unauthorized changes', async () => {
     const path = '/administration/product-interests/' + productIds['Smart Lock'];
@@ -180,7 +180,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     expect((await request(path, 'PATCH', { dealValue: 45.25 })).status).toBe(200);
     expect((await request('/administration/product-interests')).body.data.find((p: { id: string }) => p.id === productIds['Smart Lock']).dealValue).toBe(45.25);
     for (const dealValue of [NaN, Infinity, -1, 1e15, '1', '1e2']) expect(ProductInterestConfigSchema.safeParse([{ name: 'A', dealValue }]).success).toBe(false);
-    const lead = await create(); expect((await prisma.deal.findFirstOrThrow({ where: { leadId: lead.id } })).value).toBe(45.25);
+    const lead = await create(); expect((await prisma.deal.findFirstOrThrow({ where: { leadDeals: { some: { leadId: lead.id } } } })).value).toBe(45.25);
   });
   it('commits product edits and snapshots the database price for each manual Deal', async () => {
     const product = await prisma.productInterest.create({ data: { tenantId, name: 'Manual price test', dealValue: 5000 } });
@@ -230,7 +230,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     const body = { requestId: randomUUID(), email: 'manual@example.test', firstName: 'Manual', lastName: 'Lead', productInterest: [productIds['Smart Lock']] };
     const first = await request('/crm/leads', 'POST', body); expect(first.status, JSON.stringify(first.body)).toBe(201);
     const retry = await request('/crm/leads', 'POST', body); expect(retry.body.data.id).toBe(first.body.data.id);
-    expect(await prisma.deal.count({ where: { leadId: first.body.data.id } })).toBe(1);
+    expect(await prisma.deal.count({ where: { leadDeals: { some: { leadId: first.body.data.id } } } })).toBe(1);
   });
   it('creates, renames and deletes catalog records without changing historical Deals', async () => {
     const endpoint = '/administration/product-interests';
@@ -246,19 +246,19 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     expect((await request(endpoint + '/invalid', 'PATCH', { name: 'A' })).status).toBe(400);
     expect((await request(endpoint + '/' + randomUUID(), 'PATCH', { name: 'A' })).status).toBe(404);
     const lead = (await request('/crm/leads', 'POST', { email: 'fixture@example.test', firstName: 'Snapshot', lastName: 'Test', productInterest: [product.id], value: 1, dealValue: 2 })).body.data;
-    const deal = await prisma.deal.findFirstOrThrow({ where: { leadId: lead.id } });
+    const deal = await prisma.deal.findFirstOrThrow({ where: { leadDeals: { some: { leadId: lead.id } } } });
     expect(deal.value).toBe(25000.50);
     expect((await request('/crm/deals/' + deal.id, 'PUT', { value: 1 })).status).toBe(400);
     expect((await request(endpoint + '/' + product.id, 'PATCH', { name: 'Renamed product', dealValue: 55000 })).status).toBe(200);
     await scope(() => salesTransaction(tx => createProductDeals(tx, tenantId, lead.id, adminId)));
-    expect(await prisma.deal.count({ where: { leadId: lead.id } })).toBe(1);
+    expect(await prisma.deal.count({ where: { leadDeals: { some: { leadId: lead.id } } } })).toBe(1);
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } })).value).toBe(25000.50);
     const next = (await request('/crm/leads', 'POST', { email: 'fixture@example.test', firstName: 'Future', lastName: 'Test', productInterest: [product.id] })).body.data;
-    expect((await prisma.deal.findFirstOrThrow({ where: { leadId: next.id } })).value).toBe(55000);
+    expect((await prisma.deal.findFirstOrThrow({ where: { leadDeals: { some: { leadId: next.id } } } })).value).toBe(55000);
     expect((await request(endpoint + '/' + product.id, 'DELETE')).status).toBe(200);
     expect((await prisma.productInterest.findUniqueOrThrow({ where: { id: product.id } })).active).toBe(false);
     expect((await request('/crm/leads', 'POST', { email: 'fixture@example.test', firstName: 'Deleted', lastName: 'Test', productInterest: [product.id] })).status).toBe(400);
-    expect(await prisma.deal.count({ where: { leadId: lead.id } })).toBe(1);
+    expect(await prisma.deal.count({ where: { leadDeals: { some: { leadId: lead.id } } } })).toBe(1);
   });
   it('rejects public forged product IDs, product names and submitted amounts with no partial writes', async () => {
     const config = defaultContactForm();
@@ -290,7 +290,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     const { pipeline, initial: open } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
     const won = await prisma.stage.findFirstOrThrow({ where: { pipelineId: pipeline.id, isWon: true } });
     const lead = await prisma.lead.create({ data: { tenantId, firstName: 'Actual', lastName: 'Customer', productInterest: [], status: 'Warm' } });
-    const baseDeal = { tenantId, pipelineId: pipeline.id, stageId: won.id, title: 'Won lookup', value: 99.5, currency: 'PHP', leadId: lead.id, assignedUserId: adminId, closedAt: new Date('2026-09-29T00:00:00Z') };
+    const baseDeal = { tenantId, pipelineId: pipeline.id, stageId: won.id, title: 'Won lookup', value: 99.5, currency: 'PHP', leadDeals: { create: { leadId: lead.id, position: 0 } }, assignedUserId: adminId, closedAt: new Date('2026-09-29T00:00:00Z') };
     const singular = await prisma.deal.create({ data: { ...baseDeal, productInterestId: product.id, productInterestIds: [] } });
     const plural = await prisma.deal.create({ data: { ...baseDeal, productInterestIds: [product.id], isArchived: true } });
     await prisma.deal.create({ data: { ...baseDeal, stageId: open.id, productInterestIds: [product.id] } });
@@ -332,7 +332,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     expect(lead.status).toBe(201);
     expect(lead.body.data.status).toBe(status);
     expect(lead.body.data.productInterestIds).toEqual(selectedIds);
-    const deals = await prisma.deal.findMany({ where: { tenantId, leadId: lead.body.data.id } });
+    const deals = await prisma.deal.findMany({ where: { tenantId, leadDeals: { some: { leadId: lead.body.data.id } } } });
     expect(deals).toHaveLength(2);
     expect(deals.map(deal => deal.value).sort()).toEqual([550, 1250.75].sort());
     const editedLead = await request(`/crm/leads/${lead.body.data.id}`, 'PUT', { status });

@@ -9,7 +9,7 @@ export async function convertClosedLead(tx: Prisma.TransactionClient, tenantId: 
   const lead = await tx.lead.findFirst({ where: { tenantId, id: leadId } });
   if (!lead) throw new NotFoundError('Lead');
   if (lead.status !== 'Closed') throw new ConflictError('Persist Closed status before converting this Lead.');
-  const deals = await tx.deal.findMany({ where: { tenantId, OR: [{ leadId }, { leadDeals: { some: { tenantId, leadId } } }] }, include: { stage: true } });
+  const deals = await tx.deal.findMany({ where: { tenantId, leadDeals: { some: { tenantId, leadId } } }, include: { stage: true } });
   const conflict = () => new ConflictError('Multiple, archived, or conflicting Contact/Account matches found. Resolve the CRM relationship before closing this Lead.');
   let contact = lead.contactId ? await tx.contact.findFirst({ where: { tenantId, id: lead.contactId } }) : null;
   if (lead.contactId && !contact) throw conflict();
@@ -59,8 +59,7 @@ export async function convertClosedLead(tx: Prisma.TransactionClient, tenantId: 
   for (const deal of deals) {
     await tx.contactDeal.upsert({ where: { contactId_dealId: { contactId: contact.id, dealId: deal.id } },
       create: { tenantId, contactId: contact.id, dealId: deal.id, addedById: actorId }, update: {} });
-    await tx.deal.update({ where: { tenantId, id: deal.id }, data: {
-      ...(!deal.contactId ? { contactId: contact.id } : {}), ...(!deal.accountId && accountId ? { accountId } : {}) } });
+    if (!deal.accountId && accountId) await tx.deal.update({ where: { tenantId, id: deal.id }, data: { accountId } });
   }
   const convertedLead = await tx.lead.update({ where: { tenantId, id: leadId }, data: { contactId: contact.id, accountId,
     convertedAt: lead.convertedAt ?? now, convertedById: lead.convertedById ?? actorId } });

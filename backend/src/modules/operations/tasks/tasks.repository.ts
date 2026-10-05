@@ -56,11 +56,6 @@ export const taskInclude = {
   assignedUser: { select: person },
   assignedBy: { select: person },
   completedBy: { select: person },
-  lead: { select: { ...person } },
-  contact: { select: { ...person } },
-  deal: {
-    select: { id: true, title: true, tenantId: true },
-  },
 } satisfies Prisma.TaskInclude;
 export type TaskRow = Prisma.TaskGetPayload<{ include: typeof taskInclude }>;
 
@@ -72,19 +67,17 @@ export async function findTaskRecordContext(tenantId: string, ids: Required<Task
     ids.leadIds.length ? prisma.lead.findMany({
       where: { tenantId, id: { in: ids.leadIds } },
       select: { ...person, account: { select: account }, convertedContact: { select: person },
-        deals: { where: { tenantId }, select: deal },
         leadDeals: { where: { tenantId }, select: { deal: { select: deal } } } },
     }) : [],
     ids.contactIds.length ? prisma.contact.findMany({
       where: { tenantId, id: { in: ids.contactIds } },
       select: { ...person, account: { select: account },
         convertedFromLeads: { where: { tenantId }, select: person },
-        deals: { where: { tenantId }, select: deal },
         contactDeals: { where: { tenantId }, select: { deal: { select: deal } } } },
     }) : [],
     ids.dealIds.length ? prisma.deal.findMany({
       where: { tenantId, id: { in: ids.dealIds } },
-      select: { ...deal, organization: { select: account }, lead: { select: person }, contact: { select: person },
+      select: { ...deal, organization: { select: account },
         leadDeals: { where: { tenantId }, select: { lead: { select: person } } },
         contactDeals: { where: { tenantId }, select: { contact: { select: person } } } },
     }) : [],
@@ -354,19 +347,7 @@ export function taskAssociationWhere(
   id: string,
   tenantId: string,
 ): Prisma.TaskWhereInput {
-  return {
-    OR: [
-      { [`${kind}Id`]: id },
-      {
-        [`${kind}Links`]: {
-          some: {
-            [`${kind}Id`]: id,
-            tenantId,
-          },
-        },
-      },
-    ],
-  };
+  return { [`${kind}Links`]: { some: { [`${kind}Id`]: id, tenantId } } };
 }
 export async function replaceTaskLinks(
   task: { id: string; tenantId: string },
@@ -485,7 +466,6 @@ async function relatedOptionFilters(
     },
     deal: {
       OR: [
-        { leadId: { in: leadIds } },
         {
           leadDeals: {
             some: { tenantId, leadId: { in: leadIds } },
@@ -515,18 +495,13 @@ export async function reassignTaskLinks(
       deal: task.dealLinks.map((row) => row.dealId),
       account: task.accountLinks.map((row) => row.accountId),
     };
-    const legacy = task[`${kind}Id`];
     const ids = [
       ...new Set(
-        [...all[kind], ...(legacy ? [legacy] : [])].map((id) =>
+        all[kind].map((id) =>
           id === secondaryId ? primaryId : id,
         ),
       ),
     ];
-    await client.task.update({
-      where: { id: task.id, tenantId },
-      data: { [`${kind}Id`]: ids[0] ?? null },
-    });
     await replaceTaskLinks(task, { [`${kind}Ids`]: ids }, client);
   }
   return { count: tasks.length };

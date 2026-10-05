@@ -48,47 +48,46 @@ function storedLinks(task: repo.TaskRow): TaskAssociations {
     leadIds: [
       ...new Set([
         ...(task.leadLinks ?? []).map((row) => row.leadId),
-        ...(task.leadId ? [task.leadId] : []),
       ]),
     ],
     contactIds: [
       ...new Set([
         ...(task.contactLinks ?? []).map((row) => row.contactId),
-        ...(task.contactId ? [task.contactId] : []),
       ]),
     ],
     dealIds: [
       ...new Set([
         ...(task.dealLinks ?? []).map((row) => row.dealId),
-        ...(task.dealId ? [task.dealId] : []),
       ]),
     ],
     accountIds: [
       ...new Set([
         ...(task.accountLinks ?? []).map((row) => row.accountId),
-        ...(task.accountId ? [task.accountId] : []),
       ]),
     ],
   };
 }
 function splitLinks<T extends TaskLinkInput>(dto: T) {
-  const { leadIds, contactIds, dealIds, accountIds, ...data } = dto;
+  const { leadIds, contactIds, dealIds, accountIds, leadId, contactId, dealId, accountId, ...data } = dto;
   const links: TaskAssociations = {};
   for (const kind of TASK_LINK_KINDS) {
     if (dto[`${kind}Ids`] !== undefined || dto[`${kind}Id`] !== undefined) {
       const ids = taskAssociationIds(dto, kind);
       links[`${kind}Ids`] = ids;
-      data[`${kind}Id`] = ids[0] ?? null;
     }
   }
   return { data, links };
 }
 export function serializeTask(task: repo.TaskRow): TaskRecord {
+  const lead = task.leadLinks[0]?.lead ?? null;
+  const contact = task.contactLinks[0]?.contact ?? null;
+  const deal = task.dealLinks[0]?.deal ?? null;
+  const account = task.accountLinks[0]?.account ?? null;
   const person = (value: typeof task.assignedUser | null) =>
     value?.tenantId === task.tenantId
       ? { id: value.id, firstName: value.firstName, lastName: value.lastName }
       : null;
-  const linkedPerson = (value: typeof task.lead) =>
+  const linkedPerson = (value: typeof lead) =>
     person(value);
   return {
     id: task.id,
@@ -107,15 +106,15 @@ export function serializeTask(task: repo.TaskRow): TaskRecord {
     assignedUserId: task.assignedUserId,
     assignedById: task.assignedById,
     isArchived: task.isArchived,
-    leadId: task.leadId,
-    contactId: task.contactId,
-    dealId: task.dealId,
-    accountId: task.accountId,
-    leads: [...new Map([...(task.leadLinks ?? []).map(row => row.lead), ...(task.lead ? [task.lead] : [])]
+    leadId: lead?.id ?? null,
+    contactId: contact?.id ?? null,
+    dealId: deal?.id ?? null,
+    accountId: account?.id ?? null,
+    leads: [...new Map((task.leadLinks ?? []).map(row => row.lead)
       .flatMap(row => linkedPerson(row) ?? []).map(row => [row.id, row])).values()],
-    contacts: [...new Map([...(task.contactLinks ?? []).map(row => row.contact), ...(task.contact ? [task.contact] : [])]
+    contacts: [...new Map((task.contactLinks ?? []).map(row => row.contact)
       .flatMap(row => linkedPerson(row) ?? []).map(row => [row.id, row])).values()],
-    deals: [...new Map([...(task.dealLinks ?? []).map(row => row.deal), ...(task.deal ? [task.deal] : [])]
+    deals: [...new Map((task.dealLinks ?? []).map(row => row.deal)
       .filter(
         (row) =>
           row.tenantId === task.tenantId,
@@ -127,16 +126,15 @@ export function serializeTask(task: repo.TaskRow): TaskRecord {
           row.account.tenantId === task.tenantId,
       )
       .map(({ account: { id, name } }) => ({ id, name })),
-    account: task.accountLinks?.filter(row => row.account.tenantId === task.tenantId)
-      .map(({ account: { id, name } }) => ({ id, name })).find(row => row.id === task.accountId) ?? null,
+    account: account?.tenantId === task.tenantId ? { id: account.id, name: account.name } : null,
     assignedUser: person(task.assignedUser),
     assignedByUser: person(task.assignedBy),
     completedBy: person(task.completedBy),
-    lead: linkedPerson(task.lead),
-    contact: linkedPerson(task.contact),
+    lead: linkedPerson(lead),
+    contact: linkedPerson(contact),
     deal:
-      task.deal?.tenantId === task.tenantId
-        ? { id: task.deal.id, title: task.deal.title }
+      deal?.tenantId === task.tenantId
+        ? { id: deal.id, title: deal.title }
         : null,
   };
 }
@@ -199,10 +197,10 @@ function auditState(task: repo.TaskRow) {
     assignedById: task.assignedById,
     completedAt: task.completedAt,
     completedById: task.completedById,
-    leadId: task.leadId,
-    contactId: task.contactId,
-    dealId: task.dealId,
-    accountId: task.accountId,
+    leadId: task.leadLinks[0]?.leadId ?? null,
+    contactId: task.contactLinks[0]?.contactId ?? null,
+    dealId: task.dealLinks[0]?.dealId ?? null,
+    accountId: task.accountLinks[0]?.accountId ?? null,
     isArchived: task.isArchived,
   };
 }

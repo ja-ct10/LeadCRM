@@ -69,11 +69,11 @@ export async function associateMailboxDeal(tenantId: string, userId: string, thr
     if (!(link.leadId ? permissions.leadsView : permissions.contactsView)) throw new AppError('Access denied', 403);
     const deal = await tx.deal.findFirst({ where: { ...customerDealWhere(tenantId, link), id: dealId, stage: { isWon: false, isLost: false } } });
     if (!deal) throw new AppError('Select an open Deal belonging to the linked CRM record.', 400);
-    const key = { tenantId, module: 'mailbox-thread', key: `${account.id}:${threadId}` };
-    const previous = await tx.tenantPreference.findUnique({ where: { tenantId_module_key: key } });
-    if ((previous?.value as { dealId?: string } | null)?.dealId === dealId) return;
-    const value = { dealId, linkedAt: new Date().toISOString() };
-    await tx.tenantPreference.upsert({ where: { tenantId_module_key: key }, create: { ...key, value }, update: { value } });
+    const key = { accountId: account.id, threadId };
+    const previous = await tx.mailboxThreadAssociation.findUnique({ where: { accountId_threadId: key } });
+    if (previous?.dealId === dealId) return;
+    const value = { dealId, linkedAt: new Date() };
+    await tx.mailboxThreadAssociation.upsert({ where: { accountId_threadId: key }, create: { ...key, tenantId, ...value }, update: value });
     await tx.activity.create({ data: { tenantId, dealId, createdById: userId, type: 'note', title: 'Email conversation associated with this Deal', description: 'Staff selected this opportunity. Future customer messages may update its open stage.', metadata: { threadId, mailboxOwnerId: userId } } });
   });
   return { success: true };

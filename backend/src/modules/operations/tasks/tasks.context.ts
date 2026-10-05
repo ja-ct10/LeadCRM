@@ -17,19 +17,19 @@ export function withTaskContext(task: TaskRecord, context: Context): TaskRecord 
     const via = `Lead: ${label(row)}`;
     add('contact', row.convertedContact, via);
     add('account', row.account, via);
-    for (const deal of [...row.deals, ...row.leadDeals.map(link => link.deal)]) add('deal', deal, via);
+    for (const { deal } of row.leadDeals) add('deal', deal, via);
   }
   for (const row of context.contacts.filter(row => row.tenantId === task.tenantId && linked('contact', row.id))) {
     const via = `Contact: ${label(row)}`;
     add('account', row.account, via);
     for (const lead of row.convertedFromLeads) add('lead', lead, via);
-    for (const deal of [...row.deals, ...row.contactDeals.map(link => link.deal)]) add('deal', deal, via);
+    for (const { deal } of row.contactDeals) add('deal', deal, via);
   }
   for (const row of context.deals.filter(row => row.tenantId === task.tenantId && linked('deal', row.id))) {
     const via = `Deal: ${row.title}`;
     add('account', row.organization, via);
-    for (const lead of [row.lead, ...row.leadDeals.map(link => link.lead)]) add('lead', lead, via);
-    for (const contact of [row.contact, ...row.contactDeals.map(link => link.contact)]) add('contact', contact, via);
+    for (const { lead } of row.leadDeals) add('lead', lead, via);
+    for (const { contact } of row.contactDeals) add('contact', contact, via);
   }
   const accounts = context.accounts.filter(row => row.tenantId === task.tenantId && linked('account', row.id)).map(({ id, name }) => ({ id, name }));
   return { ...task, accounts, account: accounts.find(row => row.id === task.accountId) ?? null, relatedRecords: [...related.values()] };

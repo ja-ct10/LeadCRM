@@ -19,6 +19,7 @@ try {
     const columns = await tx.$queryRawUnsafe(`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='Tenant' AND column_name IN ('approvedById','approvedAt','verificationStatus','businessType','verificationRejectionReason') ORDER BY column_name`);
     const fingerprints = {};
     for (const table of ['Activity','AuditLog','EmailAccount','MailboxMessage','MailboxOAuthState','RecordFile','DealStageHistory','Task','Lead','Contact','Account','Deal','PasswordResetToken','EmailVerificationToken','Workflow','WorkflowExecutionRun','WorkflowExecutionStep']) {
+      if (!(await tx.$queryRawUnsafe('SELECT to_regclass($1)::text AS name', '"' + table + '"'))[0].name) { fingerprints[table] = { retired: true }; continue; }
       fingerprints[table] = (await tx.$queryRawUnsafe(`SELECT count(*)::int AS count, md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text)::text, '[]')) AS digest FROM "${table}" t`))[0];
     }
     const users = await tx.user.findMany({ select: { id: true, tenantId: true, role: true, status: true, mustChangePassword: true } });

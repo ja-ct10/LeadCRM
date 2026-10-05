@@ -98,7 +98,7 @@ describe.skipIf(!disposable)(
           data: {
             tenantId,
             name,
-            permissions: { create: { tenantId, module, canView: true } },
+            permissions: { create: { module, canView: true } },
           },
         });
         await prisma.userRole.create({
@@ -175,7 +175,7 @@ describe.skipIf(!disposable)(
       await prisma.$disconnect();
     });
     it('hydrates legacy Account-only tasks consistently in list and detail responses', async () => {
-      const task = await scope(() => prisma.task.create({ data: { ...draft('Legacy account task'), tenantId, accountId: account.id } }));
+      const task = await scope(() => prisma.task.create({ data: { ...draft('Legacy account task'), tenantId, accountLinks: { create: { accountId: account.id, position: 0 } } } }));
       const detail = (await call(`/operations/tasks/${task.id}`)).body.data;
       const listing = (await call('/operations/tasks?search=Legacy%20account%20task')).body.data[0];
       for (const row of [detail, listing]) {
@@ -185,7 +185,7 @@ describe.skipIf(!disposable)(
     });
     it('shows a Deal task’s existing CRM connections without rewriting its selected associations', async () => {
       const linkedLead = await scope(() => prisma.lead.create({ data: { tenantId, firstName: 'Workflow', lastName: 'Context' } }));
-      const linkedDeal = await scope(() => prisma.deal.create({ data: { tenantId, pipelineId: deal.pipelineId, stageId: deal.stageId, title: 'Linked task deal', leadId: linkedLead.id, contactId: contact.id, accountId: account.id } }));
+      const linkedDeal = await scope(() => prisma.deal.create({ data: { tenantId, pipelineId: deal.pipelineId, stageId: deal.stageId, title: 'Linked task deal', leadDeals: { create: { leadId: linkedLead.id, position: 0 } }, contactDeals: { create: { contactId: contact.id, position: 0 } }, accountId: account.id } }));
       const saved = await call('/operations/tasks', 'POST', { ...draft('Workflow context task'), dealId: linkedDeal.id });
       expect(saved.status, JSON.stringify(saved.body)).toBe(201);
       const task = saved.body.data;
@@ -202,7 +202,7 @@ describe.skipIf(!disposable)(
     });
       it('limits additional CRM context to the reader’s module View permissions', async () => {
         const linkedLead = await scope(() => prisma.lead.create({ data: { tenantId, firstName: 'Permission', lastName: 'Context' } }));
-        const linkedDeal = await scope(() => prisma.deal.create({ data: { tenantId, pipelineId: deal.pipelineId, stageId: deal.stageId, title: 'Permission context deal', leadId: linkedLead.id, contactId: contact.id, accountId: account.id } }));
+        const linkedDeal = await scope(() => prisma.deal.create({ data: { tenantId, pipelineId: deal.pipelineId, stageId: deal.stageId, title: 'Permission context deal', leadDeals: { create: { leadId: linkedLead.id, position: 0 } }, contactDeals: { create: { contactId: contact.id, position: 0 } }, accountId: account.id } }));
         const created = await call('/operations/tasks', 'POST', { ...draft('Permission context task'), dealId: linkedDeal.id });
         expect(created.status).toBe(201);
         const taskId = created.body.data.id;
@@ -214,7 +214,7 @@ describe.skipIf(!disposable)(
           expect(task.dealIds).toEqual([linkedDeal.id]);
         }
         const viewer = await prisma.user.create({ data: { tenantId, role: 'Task Contact Reader', email: `task-context-${Date.now()}@camxian.com`, firstName: 'Context', lastName: 'Reader', emailVerified: new Date(), mustChangePassword: false } });
-        const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Task Contact Reader', permissions: { create: ['tasks', 'contacts'].map(module => ({ tenantId, module, canView: true })) } } });
+        const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Task Contact Reader', permissions: { create: ['tasks', 'contacts'].map(module => ({ module, canView: true })) } } });
         await prisma.userRole.create({ data: { tenantId, userId: viewer.id, roleId: role.id } });
         const viewerToken = (await issueAuthSession(viewer)).token;
         for (const path of [`/operations/tasks/${taskId}`, '/operations/tasks?search=Permission%20context%20task']) {
@@ -702,7 +702,7 @@ describe.skipIf(!disposable)(
       // Conversion requires an already confirmed sale; this test exercises task links.
       await scope(async () => {
         const won = await prisma.stage.create({ data: { tenantId, pipelineId: deal.pipelineId, name: 'Closed Won', order: 1, isWon: true, requiredFields: [] } });
-        await prisma.deal.create({ data: { tenantId, pipelineId: deal.pipelineId, stageId: won.id, leadId, title: 'Previously confirmed sale', wonConfirmedAt: new Date(), closedAt: new Date(), productInterests: [], tags: [] } });
+        await prisma.deal.create({ data: { tenantId, pipelineId: deal.pipelineId, stageId: won.id, leadDeals: { create: { leadId: leadId, position: 0 } }, title: 'Previously confirmed sale', wonConfirmedAt: new Date(), closedAt: new Date(), productInterests: [], tags: [] } });
       });
       const converted = await call(`/crm/leads/${leadId}/convert`, "POST", {
         accountId,

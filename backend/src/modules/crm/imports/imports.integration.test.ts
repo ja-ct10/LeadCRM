@@ -72,8 +72,8 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
   it('imports one Lead / one Product with automatic priced Deal', async () => {
     const result = await run('leads', csv([person('one@example.com', 'CCTV Surveillance System')]));
     expect(result.successfulRecords).toBe(1);
-    const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, email: 'one@example.com' }, include: { deals: true } });
-    expect(lead.productInterestIds).toEqual([cctv]); expect(lead.deals).toHaveLength(1); expect(lead.deals[0].value).toBe(25000);
+    const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, email: 'one@example.com' }, include: { leadDeals: { include: { deal: true } } } });
+    expect(lead.productInterestIds).toEqual([cctv]); expect(lead.leadDeals).toHaveLength(1); expect(lead.leadDeals[0].deal.value).toBe(25000);
   });
   it('deduplicates multiple Products, CSV email case, reimports, and concurrent same-job retries', async () => {
     const input = csv([person(' MULTI@example.com ', 'CCTV Surveillance System; cctv surveillance system;; Biometrics'), person('multi@example.com', 'Biometrics')]);
@@ -81,9 +81,9 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
     expect(preview.body.data.map((r: { status: string }) => r.status)).toEqual(['valid', 'duplicate']);
     const responses = await Promise.all([run('leads', input), run('leads', input)]);
     expect(responses[0].id).toBe(responses[1].id); expect(responses[0].duplicateRecords).toBe(1);
-    const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, email: 'multi@example.com' }, include: { deals: true } });
+    const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, email: 'multi@example.com' }, include: { leadDeals: { include: { deal: true } } } });
     expect(lead.productInterestIds.sort()).toEqual([cctv, bio].sort());
-    expect(lead.deals.map(d => d.value).sort()).toEqual([15000, 25000]);
+    expect(lead.leadDeals.map(({ deal: d }) => d.value).sort()).toEqual([15000, 25000]);
     expect(await prisma.lead.count({ where: { tenantId, email: 'multi@example.com' } })).toBe(1);
     expect((await run('leads', { ...input, idempotencyKey: randomUUID() })).successfulRecords).toBe(0);
     expect((await request('leads', '', 'POST', { ...input, csvText: input.csvText.replace('John', 'Mary') })).status).toBe(409);
@@ -92,8 +92,8 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
     const payload = csv([person('parallel@example.com', 'Biometrics')]);
     const jobs = await Promise.all([run('leads', payload), run('leads', { ...payload, idempotencyKey: randomUUID() })]);
     expect(jobs.map(j => j.successfulRecords).sort()).toEqual([0, 1]);
-    const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, email: 'parallel@example.com' }, include: { deals: true } });
-    expect(lead.deals).toHaveLength(1);
+    const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, email: 'parallel@example.com' }, include: { leadDeals: { include: { deal: true } } } });
+    expect(lead.leadDeals).toHaveLength(1);
     const priceProduct = await prisma.productInterest.create({ data: { tenantId, name: 'Preview Product', dealValue: 100 } });
     const input = csv([{ title: 'Fresh price', customer: 'parallel@example.com', productInterest: priceProduct.id, pipeline, stage }]);
     expect((await request('deals', '/preview', 'POST', input)).body.data[0].resolvedValue).toBe(100);
@@ -125,13 +125,15 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
     expect(preview.body.data.map((r: { resolvedValue?: number }) => r.resolvedValue)).toEqual([25000, 15000, undefined]);
     const result = await run('deals', input); expect(result.successfulRecords).toBe(2); expect(result.duplicateRecords).toBe(1);
     expect((await run('deals', input)).id).toBe(result.id);
-    const old = await prisma.deal.findFirstOrThrow({ where: { tenantId, title: row.title } });
+    const old = await prisma.deal.findFirstOrThrow({ where: { tenantId, title: row.title }, include: { contactDeals: true } });
     await prisma.productInterest.update({ where: { id: cctv }, data: { dealValue: 30000 } });
     const second = await run('deals', csv([{ ...row, title: '2027 CCTV Expansion' }])); expect(second.successfulRecords).toBe(1);
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: old.id } })).value).toBe(25000);
-    const next = await prisma.deal.findFirstOrThrow({ where: { tenantId, title: '2027 CCTV Expansion' } });
-    expect(next.value).toBe(30000); expect(next.productInterestId).toBe(cctv); expect(next.contactId).toBe(old.contactId);
-    expect(await prisma.contactDeal.count({ where: { tenantId, contactId: old.contactId! } })).toBe(3);
+    const next = await prisma.deal.findFirstOrThrow({ where: { tenantId, title: '2027 CCTV Expansion' }, include: { contactDeals: true } });
+    expect(next.value).toBe(30000); expect(next.productInterestId).toBe(cctv);
+    expect(next.contactDeals.map(link => link.contactId)).toEqual(old.contactDeals.map(link => link.contactId));
+    expect(old.contactDeals).toHaveLength(1);
+    expect(await prisma.contactDeal.count({ where: { tenantId, contactId: old.contactDeals[0].contactId } })).toBe(3);
   });
   it('reports unknown/inactive Products, missing relationships, invalid dates and field lengths per row', async () => {
     const result = await request('leads', '/preview', 'POST', csv([person('unknown@example.com', 'Unknown CCTV Package'), person('inactive@example.com', 'Archived Product'), { ...person('bad-email'), firstName: 'x'.repeat(101) }]));
@@ -148,11 +150,11 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
     expect(await prisma.productInterest.count({ where: { tenantId, name: 'Unknown CCTV Package' } })).toBe(0);
   });
   it('retains Deals, values and Product interests when imported Lead converts to an existing Account', async () => {
-    const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, email: 'multi@example.com' }, include: { deals: true } });
-    const qualified = await prisma.stage.findFirstOrThrow({ where: { tenantId, pipelineId: lead.deals[0].pipelineId, name: 'Qualified' } });
-    const won = await prisma.stage.findFirstOrThrow({ where: { tenantId, pipelineId: lead.deals[0].pipelineId, isWon: true } });
+    const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, email: 'multi@example.com' }, include: { leadDeals: { include: { deal: true } } } });
+    const qualified = await prisma.stage.findFirstOrThrow({ where: { tenantId, pipelineId: lead.leadDeals[0].deal.pipelineId, name: 'Qualified' } });
+    const won = await prisma.stage.findFirstOrThrow({ where: { tenantId, pipelineId: lead.leadDeals[0].deal.pipelineId, isWon: true } });
     const patch = async (suffix: string, body: unknown) => {
-      const res = await fetch(`${base}/crm/deals/${lead.deals[0].id}${suffix}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+      const res = await fetch(`${base}/crm/deals/${lead.leadDeals[0].deal.id}${suffix}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
       expect(res.status, JSON.stringify(await res.json())).toBe(200);
     };
     await patch('/stage', { stageId: qualified.id });
@@ -169,7 +171,7 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
     expect(account.productInterests.sort()).toEqual(['Biometrics', 'CCTV Surveillance System']);
     expect(await prisma.activity.count({ where: { tenantId, leadId: lead.id, type: 'conversion' } })).toBe(1);
     expect(await prisma.contactDeal.count({ where: { contactId: contact.id } })).toBe(2);
-    expect((await prisma.deal.findMany({ where: { tenantId, leadId: lead.id } })).map(d => [d.id, d.value]).sort()).toEqual(lead.deals.map(d => [d.id, d.value]).sort());
+    expect((await prisma.deal.findMany({ where: { tenantId, leadDeals: { some: { leadId: lead.id } } } })).map(d => [d.id, d.value]).sort()).toEqual(lead.leadDeals.map(({ deal: d }) => [d.id, d.value]).sort());
   });
   it('uploads source in retryable scoped chunks and rejects missing, changed and foreign chunks', async () => {
     const input = csv([{ name: 'Chunk account' }]), uploadId = randomUUID();

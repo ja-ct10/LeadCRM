@@ -188,7 +188,7 @@ const contact = await repo.createContact(req.user.tenantId, dto);
 
 ## Data Layer
 
-`DataContext` acts as the data access layer. All 30 entities are now in the Prisma schema.
+`DataContext` acts as the data access layer. The current Prisma schema has 57 models; see the [database audit](database/normalization-report.md) for ownership, compatibility fields, and live schema findings.
 Set `NEXT_PUBLIC_USE_MOCK_DATA=false` in `.env.local` to switch from localStorage to real API calls.
 Each module migrates independently — only `DataContext` internals change, all components remain untouched.
 This is the Dependency Inversion Principle applied to the data layer.
@@ -203,7 +203,8 @@ The Prisma schema includes active CRM and account-security models. Retired billi
 - [API.md](./API.md) — backend API spec
 - [capstone-documentation.md](./capstone-documentation.md) — full project documentation
 - [dashboard-kpis.md](./dashboard-kpis.md) — KPI formulas and metric definitions
-- [database/erd.md](./database/erd.md) — entity relationships and Prisma model map
+- [database/normalization-erd.md](./database/normalization-erd.md) — current entity relationships and Prisma model map
+- [database/normalization-inventory.md](./database/normalization-inventory.md) — every table, column, source reference, and normalization decision
 - [security/permission-matrix.md](./security/permission-matrix.md) — RBAC role × module matrix
 - [security/audit-log-strategy.md](./security/audit-log-strategy.md) — what gets logged and how
 - [workflows/customer-lifecycle.md](./workflows/customer-lifecycle.md) — full customer journey

@@ -43,6 +43,11 @@ beforeAll(async () => {
     INSERT INTO "Invoice" (id,"tenantId","invoiceNumber",amount,"totalAmount",frequency,"startDate","updatedAt") VALUES ('retired-invoice','migration-tenant','OLD-001',100,100,'Monthly',NOW(),NOW());
     INSERT INTO "Activity" (id,"tenantId","createdById",type,title,"invoiceId") VALUES ('keep-activity','migration-tenant','migration-user','note','Historical record','retired-invoice');`);
   for (const name of readdirSync(resolve(__dirname, '../../../../prisma/migrations')).filter(name => name >= '20261007000000' && /^\d/.test(name)).sort()) {
+    // This fixture first proves the older security cleanup preserves tokens.
+    // The later unreachable-flow retirement requires those fixtures cleared.
+    if (name === '20261031000000_retire_obsolete_infrastructure') await pg.exec('DELETE FROM "EmailVerificationToken"');
+    // This in-memory fixture exercises the new code directly, without a hosted deployment.
+    if (name === '20261102000000_retire_relationship_compatibility') await pg.exec(`COMMENT ON TABLE "MailboxThreadAssociation" IS 'canonical-crm-relations-api-verified-v1'`);
     if (name === cleanupMigration) {
       await pg.query(`UPDATE "User" SET "passwordHash"=$1, "mfaEnabled"=true, "mfaSecretEncrypted"='old-secret', "passwordChangedAt"=NOW() WHERE id='migration-user'`, [hashSync(initialPassword, 4)]);
       await pg.exec(`

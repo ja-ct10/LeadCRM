@@ -36,7 +36,7 @@ describe.skipIf(!disposable)('workflow names through authenticated HTTP and disp
     const viewer = await createUser('viewer', 'Workflow Name Viewer');
     const denied = await createUser('denied', 'Workflow Name Denied');
     const viewRole = await prisma.roleDefinition.create({ data: { tenantId, name: 'Workflow Name Viewer', permissions: { create: {
-      tenantId, module: 'workflows', canView: true, canCreate: false, canEdit: false, canDelete: false,
+      module: 'workflows', canView: true, canCreate: false, canEdit: false, canDelete: false,
     } } } });
     const deniedRole = await prisma.roleDefinition.create({ data: { tenantId, name: 'Workflow Name Denied' } });
     await prisma.userRole.createMany({ data: [{ tenantId, userId: viewer.id, roleId: viewRole.id }, { tenantId, userId: denied.id, roleId: deniedRole.id }] });

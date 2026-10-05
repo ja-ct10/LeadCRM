@@ -1,4 +1,4 @@
-> Historical schema snapshot. The removed operator, document, and login models below are not in the current database. See the [retirement report](../retired-features-cleanup.md) and `backend/prisma/schema.prisma`.
+> Historical schema snapshot. For the current 57-model design, use the [current ERD](normalization-erd.md), [complete inventory](normalization-inventory.md), and [normalization audit](normalization-report.md). The removed operator, document, and login models below are not in the current database.
 
 > Historical project/design record, not current implementation guidance. Retired SaaS access and billing descriptions below must not be implemented. Current authority: `docs/authentication.md`, `docs/crm-environments.md`, and `docs/internal-crm-cleanup.md`.
 

@@ -17,7 +17,8 @@ it('keeps CRM and team navigation without retired administrative destinations', 
 });
 it('respects custom role grants', () => {
   state.role = 'Sales'; show();
-  expect(screen.getByText('Leads')).toBeTruthy();
+  expect(screen.queryByText('Leads')).toBeNull();
+  expect(screen.getByText('Client Profiles')).toBeTruthy();
   expect(screen.getByText('Deals')).toBeTruthy();
   expect(screen.queryByText('Users')).toBeNull();
   expect(screen.queryByText('Campaigns')).toBeNull();

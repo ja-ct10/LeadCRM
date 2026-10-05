@@ -100,7 +100,7 @@ export async function seedDemoRichData() {
         assignedUserId: sId, title: 'CRM Enterprise — Tech Solutions',
         value: 450000, currency: 'PHP', priority: 'HIGH',
         expectedCloseDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        contactId: contacts[0].id,
+        contactDeals: { create: { contactId: contacts[0].id, position: 0 } },
       },
     }),
     prisma.deal.upsert({
@@ -112,7 +112,7 @@ export async function seedDemoRichData() {
         assignedUserId: aId, title: 'CRM Pro — Nexus Digital',
         value: 180000, currency: 'PHP', priority: 'MEDIUM',
         expectedCloseDate: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000),
-        contactId: contacts[1].id,
+        contactDeals: { create: { contactId: contacts[1].id, position: 0 } },
       },
     }),
     prisma.deal.upsert({
@@ -124,7 +124,7 @@ export async function seedDemoRichData() {
         assignedUserId: sId, title: 'Telecom CRM Suite — Skynet',
         value: 750000, currency: 'PHP', priority: 'HIGH',
         expectedCloseDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-        contactId: contacts[2].id,
+        contactDeals: { create: { contactId: contacts[2].id, position: 0 } },
       },
     }),
     prisma.deal.upsert({
@@ -136,7 +136,7 @@ export async function seedDemoRichData() {
         assignedUserId: aId, title: 'CRM Pro — Green Peak Energy',
         value: 95000, currency: 'PHP', priority: 'LOW',
         expectedCloseDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
-        contactId: contacts[3].id,
+        contactDeals: { create: { contactId: contacts[3].id, position: 0 } },
       },
     }),
     prisma.deal.upsert({
@@ -148,7 +148,7 @@ export async function seedDemoRichData() {
         assignedUserId: sId, title: 'CRM Enterprise + Marketing — FirstBPO',
         value: 920000, currency: 'PHP', priority: 'HIGH',
         expectedCloseDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-        contactId: contacts[4].id,
+        contactDeals: { create: { contactId: contacts[4].id, position: 0 } },
       },
     }),
   ]);
@@ -163,7 +163,7 @@ export async function seedDemoRichData() {
         title: 'Follow up with Maria Santos re: Enterprise demo',
         status: 'pending', priority: 'High',
         dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
-        contactId: contacts[0].id, dealId: deals[0].id,
+        contactLinks: { create: { contactId: contacts[0].id, position: 0 } }, dealLinks: { create: { dealId: deals[0].id, position: 0 } },
       },
     }),
     prisma.task.upsert({
@@ -174,7 +174,7 @@ export async function seedDemoRichData() {
         title: 'Prepare proposal for Nexus Digital',
         status: 'in_progress', priority: 'Medium',
         dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
-        contactId: contacts[1].id, dealId: deals[1].id,
+        contactLinks: { create: { contactId: contacts[1].id, position: 0 } }, dealLinks: { create: { dealId: deals[1].id, position: 0 } },
       },
     }),
     prisma.task.upsert({
@@ -185,7 +185,7 @@ export async function seedDemoRichData() {
         title: 'Contract review call — Skynet Telecom',
         status: 'pending', priority: 'High',
         dueDate: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000),
-        contactId: contacts[2].id, dealId: deals[2].id,
+        contactLinks: { create: { contactId: contacts[2].id, position: 0 } }, dealLinks: { create: { dealId: deals[2].id, position: 0 } },
       },
     }),
     prisma.task.upsert({
@@ -196,7 +196,7 @@ export async function seedDemoRichData() {
         title: 'Send onboarding documentation — FirstBPO',
         status: 'completed', priority: 'Medium',
         dueDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
-        contactId: contacts[4].id, dealId: deals[4].id,
+        contactLinks: { create: { contactId: contacts[4].id, position: 0 } }, dealLinks: { create: { dealId: deals[4].id, position: 0 } },
       },
     }),
   ]);

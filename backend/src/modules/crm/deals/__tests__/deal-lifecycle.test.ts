@@ -20,10 +20,10 @@ beforeEach(() => {
   vi.clearAllMocks(); state.legacyWon = false;
   state.deal = { id: 'deal', tenantId: 'tenant', title: 'Sale', pipelineId: 'pipeline', stageId: 'Lead', stage: stage('Lead'),
     createdAt: new Date('2026-10-01'), updatedAt: new Date('2026-10-01'), hasEverBeenWon: false, wonHistoryVerified: true,
-    closedAt: null, wonConfirmedAt: null, closingSnapshot: null, lostReason: null, assignedUserId: 'agent' };
+    closedAt: null, wonConfirmedAt: null, closingSnapshot: null, lostReason: null, assignedUserId: 'agent', leadDeals: [], contactDeals: [] };
   state.next = stage('Qualified');
   state.tx.deal.findFirst.mockImplementation(async () => ({ ...state.deal }));
-  state.tx.deal.findFirstOrThrow.mockImplementation(async () => ({ ...state.deal, stage: state.next }));
+  state.tx.deal.findFirstOrThrow.mockImplementation(async () => ({ ...state.deal, stage: state.next, leadDeals: [], contactDeals: [] }));
   state.tx.stage.findFirst.mockImplementation(async () => state.next);
   state.tx.deal.update.mockImplementation(async ({ data }) => { state.deal = { ...state.deal, ...data }; return state.deal; });
   state.tx.dealStageHistory.findFirst.mockImplementation(async ({ where }) => where.OR && state.legacyWon ? { id: 'old-won' } : null);
@@ -33,6 +33,14 @@ beforeEach(() => {
 const move = () => moveDealStage('deal', 'tenant', state.next.id, 'actor');
 
 describe('governed Deal stage changes', () => {
+  it('validates legacy singular requirements against canonical participants', async () => {
+    state.next.requiredFields = ['leadId', 'contactId'];
+    await expect(move()).rejects.toThrow('Missing stage requirements');
+    expect(state.tx.deal.update).not.toHaveBeenCalled();
+    state.deal.leadDeals = [{ leadId: 'lead' }];
+    state.deal.contactDeals = [{ contactId: 'contact' }];
+    await expect(move()).resolves.toBeTruthy();
+  });
   it('records an actual transition once and preserves the prior event snapshot', async () => {
     const result = await move();
     expect(result?.previousDeal.stageId).toBe('Lead');

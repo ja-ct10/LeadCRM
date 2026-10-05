@@ -24,7 +24,7 @@ describe.skipIf(!disposable)('organization and account settings over authenticat
     } });
     token = (await issueAuthSession(await createUser('Client Admin', 'settings-admin@camxian.com'))).token;
     const reader = await createUser('Settings reader', 'settings-reader@camxian.com');
-    const role = await prisma.roleDefinition.create({ data: { tenantId, name: reader.role, permissions: { create: { tenantId, module: 'settings', canView: true } } } });
+    const role = await prisma.roleDefinition.create({ data: { tenantId, name: reader.role, permissions: { create: { module: 'settings', canView: true } } } });
     await prisma.userRole.create({ data: { tenantId, userId: reader.id, roleId: role.id } });
     readerToken = (await issueAuthSession(reader)).token;
     server = app.listen(0, '127.0.0.1');

@@ -25,7 +25,7 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
   }));
   const runs = (id: string) => scope(() => workflows.getWorkflowExecutions(id, tenantId));
   const newDeal = (extra = {}) => scope(() => prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: initial.id,
-    title: 'Polish deal', value: 100, assignedUserId: actor.id, leadId: lead.id, contactId: contact.id, productInterests: [], tags: [], ...extra } }));
+    title: 'Polish deal', value: 100, assignedUserId: actor.id, leadDeals: { create: { leadId: lead.id, position: 0 } }, contactDeals: { create: { contactId: contact.id, position: 0 } }, productInterests: [], tags: [], ...extra } }));
   beforeAll(async () => {
     tenantId = (await prisma.tenant.create({ data: { name: 'Workflow polish', slug: `polish-${randomUUID()}`, status: 'ACTIVE' } })).id;
     actor = await prisma.user.create({ data: { tenantId, role: 'Client Admin', email: `polish-${randomUUID()}@camxian.com`, firstName: 'Test', lastName: 'Agent', emailVerified: new Date(), mustChangePassword: false } });

@@ -162,7 +162,6 @@ async function createImportedDeal(tx: Tx, tenantId: string, actorId: string, _jo
     const account = await tx.account.findFirstOrThrow({ where: { tenantId, id: accountId } });
     await tx.account.update({ where: { tenantId, id: accountId }, data: await productRelationData(tx, 'account', tenantId, { names: [...new Set([...account.productInterests, ...names])] }, account, true) });
   }
-  if (leadId || contactId) await tx.deal.update({ where: { tenantId, id: deal.id }, data: { leadId, contactId } });
   return deal.id;
 }
 
