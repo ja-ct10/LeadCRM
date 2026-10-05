@@ -81,21 +81,21 @@ function TimelineDrawer({ selectedUser, onClose }: TimelineDrawerProps): React.R
     try {
       const res = await auditApi.list({ limit: 100 });
       const all = (res?.data ?? []).map((entry) => ({
-        id:        entry.id,
-        userId:    entry.userId,
+        id: entry.id,
+        userId: entry.userId,
         userEmail: entry.user?.email,
-        action:    entry.action,
-        details:   entry.changeset
+        action: entry.action,
+        details: entry.changeset
           ? JSON.stringify(entry.changeset)
           : (entry.metadata ? JSON.stringify(entry.metadata) : entry.action),
         timestamp: entry.createdAt,
         ipAddress: entry.ipAddress,
       })) as AuditEntry[];
       const uEmail = selectedUser.email?.toLowerCase() ?? '';
-      const uName  = `${selectedUser.firstName ?? ''} ${selectedUser.lastName ?? ''}`.toLowerCase();
+      const uName = `${selectedUser.firstName ?? ''} ${selectedUser.lastName ?? ''}`.toLowerCase();
       const relevant = all.filter((log) => {
-        const logEmail    = log.userEmail?.toLowerCase() ?? '';
-        const detailsLow  = log.details?.toLowerCase() ?? '';
+        const logEmail = log.userEmail?.toLowerCase() ?? '';
+        const detailsLow = log.details?.toLowerCase() ?? '';
         return (
           log.userId === selectedUser.id ||
           (logEmail && logEmail === uEmail) ||
@@ -359,29 +359,29 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
           <div className="shrink-0 border-t border-[#E4E9F0] dark:border-slate-700 px-4 py-2.5 text-xs text-slate-500">{filtered.length} users in this module</div>
         </motion.aside>}
         <div className="min-w-0 flex-1 space-y-4">
-      {loading ? <TableLoadingState label="Loading users..." /> : loadError ? <DataErrorState message={loadError} onRetry={() => setReload(value => value + 1)} /> :
-        <DataGrid<User> sort={sort} sortingMode="external" onSortChange={next => setSort(next ?? { field: 'createdAt', direction: 'desc' })} columns={tableColumns.columns} data={paginated} getRowId={row => row.id} height="auto" selectable={canArchiveUsers} selectedIds={selected} onSelectionChange={setSelected} enableColumnMenu={false} ariaLabel="Team Management table" emptyMessage="No users found"
-          onRowClick={u => openUser(u)} rowActions={u => [
-            { id: 'view', label: 'View', onClick: () => openUser(u) },
-            ...((canManageUsers || canAssignRoles || canActivateUsers || canArchiveUsers) ? [
-              { id: 'edit', label: canManageUsers ? 'Edit' : 'Change access', disabled: !canManageUsers && !canAssignRoles && !canActivateUsers, onClick: () => openUser(u, true) },
-              { id: 'status', label: u.status === 'active' ? 'Mark as Inactive' : 'Mark as Active', onClick: async () => { try { const result = await usersService.update(u.id, { status: u.status === 'active' ? 'inactive' : 'active' }); if (result.data) handleSavedUser(result.data); toast.success('User status updated.'); } catch (e) { toast.error(e instanceof Error ? e.message : 'Unable to update user status.'); } } },
-              { id: 'archive', label: 'Archive', disabled: !!u.isArchived || !canArchiveUsers, onClick: () => setConfirmArchive(u) },
-            ] : []),
-          ]} />}
-      <BulkSelectionBar selectedCount={selected.size} selectedIds={selected} onClearSelection={() => setSelected(new Set())} onRemoveIds={ids => setSelected(previous => new Set([...previous].filter(id => !ids.includes(id))))}
-        actions={canArchiveUsers ? [{ id: 'archive', label: 'Archive', entityName: 'user', destructive: true, onExecute: async ids => { const result = await executeSelectedRows(ids, usersService.archive); setReload(value => value + 1); return result; } }] : []} />
+          {loading ? <TableLoadingState label="Loading users..." /> : loadError ? <DataErrorState message={loadError} onRetry={() => setReload(value => value + 1)} /> :
+            <DataGrid<User> sort={sort} sortingMode="external" onSortChange={next => setSort(next ?? { field: 'createdAt', direction: 'desc' })} columns={tableColumns.columns} data={paginated} getRowId={row => row.id} height="auto" selectable={canArchiveUsers} selectedIds={selected} onSelectionChange={setSelected} enableColumnMenu={false} ariaLabel="Team Management table" emptyMessage="No users found"
+              onRowClick={u => openUser(u)} rowActions={u => [
+                { id: 'view', label: 'View', onClick: () => openUser(u) },
+                ...((canManageUsers || canAssignRoles || canActivateUsers || canArchiveUsers) ? [
+                  { id: 'edit', label: canManageUsers ? 'Edit' : 'Change access', disabled: !canManageUsers && !canAssignRoles && !canActivateUsers, onClick: () => openUser(u, true) },
+                  { id: 'status', label: u.status === 'active' ? 'Mark as Inactive' : 'Mark as Active', onClick: async () => { try { const result = await usersService.update(u.id, { status: u.status === 'active' ? 'inactive' : 'active' }); if (result.data) handleSavedUser(result.data); toast.success('User status updated.'); } catch (e) { toast.error(e instanceof Error ? e.message : 'Unable to update user status.'); } } },
+                  { id: 'archive', label: 'Archive', disabled: !!u.isArchived || !canArchiveUsers, onClick: () => setConfirmArchive(u) },
+                ] : []),
+              ]} />}
+          <BulkSelectionBar selectedCount={selected.size} selectedIds={selected} onClearSelection={() => setSelected(new Set())} onRemoveIds={ids => setSelected(previous => new Set([...previous].filter(id => !ids.includes(id))))}
+            actions={canArchiveUsers ? [{ id: 'archive', label: 'Archive', entityName: 'user', destructive: true, onExecute: async ids => { const result = await executeSelectedRows(ids, usersService.archive); setReload(value => value + 1); return result; } }] : []} />
 
-      {/* Pagination */}
-      {!loading && !loadError && (
-        <LeadsPagination
-          currentPage={currentPage}
-          pageSize={pageSize}
-          totalRecords={totalItems}
-          onPageChange={goToPage}
-          onPageSizeChange={setPageSize}
-        />
-      )}
+          {/* Pagination */}
+          {!loading && !loadError && (
+            <LeadsPagination
+              currentPage={currentPage}
+              pageSize={pageSize}
+              totalRecords={totalItems}
+              onPageChange={goToPage}
+              onPageSizeChange={setPageSize}
+            />
+          )}
 
         </div>
       </div>

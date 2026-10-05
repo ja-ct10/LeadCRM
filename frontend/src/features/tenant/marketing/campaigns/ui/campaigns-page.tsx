@@ -64,10 +64,13 @@ export default function CampaignsPage() {
     isRefreshing,
     error: campaignsError,
     refetch: refetchCampaigns,
-  } = useCampaignsData({ query: { sort: `${sort.field}:${sort.direction}`, page: currentPage, limit: pageSize, search: searchTerm,
-    status: statusFilter.map(value => value.toUpperCase()).join(','),
-    type: typeFilter.map(value => value.toUpperCase().replace('-', '_')).join(','),
-  } });
+  } = useCampaignsData({
+    query: {
+      sort: `${sort.field}:${sort.direction}`, page: currentPage, limit: pageSize, search: searchTerm,
+      status: statusFilter.map(value => value.toUpperCase()).join(','),
+      type: typeFilter.map(value => value.toUpperCase().replace('-', '_')).join(','),
+    }
+  });
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [archiving, setArchiving] = useState<Campaign | null>(null);
@@ -81,7 +84,6 @@ export default function CampaignsPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [filterSearchTerm, setFilterSearchTerm] = useState('');
   const [selectedCampaignForReport, setSelectedCampaignForReport] = useState<Campaign | null>(null);
-  
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [newTemplateType, setNewTemplateType] = useState<'Email' | 'SMS'>('Email');
   const [newTemplate, setNewTemplate] = useState({ name: '', subject: '', content: '', category: 'Marketing' });
@@ -179,7 +181,7 @@ export default function CampaignsPage() {
     { id: 'engagement', header: 'Engagement', accessor: row => `${row.sentCount ? Math.round((row.openedCount || 0) / row.sentCount * 100) : 0}%`, width: 130 },
     { id: 'createdAt', sortable: true, header: 'Created', accessor: row => row.createdAt, width: 180 },
   ];
-  const tableColumns = useModuleTableColumns('campaigns', CAMPAIGNS_TABLE_COLUMNS, campaignColumns.filter(column => canViewReports || !['submitted','opened','clicked','engagement'].includes(column.id)));
+  const tableColumns = useModuleTableColumns('campaigns', CAMPAIGNS_TABLE_COLUMNS, campaignColumns.filter(column => canViewReports || !['submitted', 'opened', 'clicked', 'engagement'].includes(column.id)));
 
   if (showBuilder) {
     return <CampaignBuilder key={`${user?.tenantId}`} initialCampaign={editingCampaign} initialType={builderInitialType} initialContent={builderInitialContent} initialSubject={builderSubject} canSend={canSendCampaign}
@@ -259,15 +261,15 @@ export default function CampaignsPage() {
           <div className="flex items-center gap-2 mt-1">
             <span className="text-base font-bold text-slate-900 dark:text-white">{avgOpenRate.toFixed(1)}%</span>
             <div className="w-12 bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
-            <div
-              className="bg-emerald-500 h-full rounded-full transition-all duration-500"
-              style={{ width: `${Math.min(avgOpenRate, 100)}%` }}
-              role="progressbar"
-              aria-valuenow={Math.round(avgOpenRate)}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label={`Average open rate: ${avgOpenRate.toFixed(1)}%`}
-            />
+              <div
+                className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                style={{ width: `${Math.min(avgOpenRate, 100)}%` }}
+                role="progressbar"
+                aria-valuenow={Math.round(avgOpenRate)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={`Average open rate: ${avgOpenRate.toFixed(1)}%`}
+              />
             </div>
           </div>
         </div>
@@ -354,10 +356,10 @@ export default function CampaignsPage() {
       </div>
 
       {activeTab === 'all' && <>
-            {tableColumns.drawer}
-            <ModuleTableToolbar label="Campaigns" search={searchTerm} onSearch={setSearchTerm} placeholder="Search campaigns..."
-              filter={<FilterButton title="campaigns" open={showFilters} active={!!(statusFilter.length || typeFilter.length)} onClick={() => setShowFilters(!showFilters)} />}
-              refreshing={isInitialLoad || isRefreshing} onRefresh={refetchCampaigns} onManageColumns={tableColumns.openColumns} />
+        {tableColumns.drawer}
+        <ModuleTableToolbar label="Campaigns" search={searchTerm} onSearch={setSearchTerm} placeholder="Search campaigns..."
+          filter={<FilterButton title="campaigns" open={showFilters} active={!!(statusFilter.length || typeFilter.length)} onClick={() => setShowFilters(!showFilters)} />}
+          refreshing={isInitialLoad || isRefreshing} onRefresh={refetchCampaigns} onManageColumns={tableColumns.openColumns} />
       </>}
 
       {/* Tab Content */}
@@ -384,22 +386,26 @@ export default function CampaignsPage() {
                 totalRecords={totalItems}
                 onClearFilters={searchTerm || statusFilter.length || typeFilter.length ? () => { setSearchTerm(''); setStatusFilter([]); setTypeFilter([]); } : undefined}
                 filterGroups={[
-                  { id: 'status', label: 'Status', items: [
-                     { id: 'sending', label: 'Sending' },
-                     { id: 'sent', label: 'Sent to provider' },
-                     { id: 'partially_sent', label: 'Partially sent' },
-                     { id: 'failed', label: 'Failed' },
-                     { id: 'active', label: 'Active' },
-                     { id: 'scheduled', label: 'Scheduled' },
-                     { id: 'paused', label: 'Paused' },
-                     { id: 'completed', label: 'Completed' },
-                     { id: 'draft', label: 'Draft' },
-                   ].map(item => ({ ...item, isChecked: statusFilter.includes(item.id) })) },
-                  { id: 'type', label: 'Type', items: [
-                     { id: 'email', label: 'Email' },
-                     { id: 'sms', label: 'SMS' },
-                     { id: 'multi-channel', label: 'Multi-Channel' },
-                   ].map(item => ({ ...item, isChecked: typeFilter.includes(item.id) })) },
+                  {
+                    id: 'status', label: 'Status', items: [
+                      { id: 'sending', label: 'Sending' },
+                      { id: 'sent', label: 'Sent to provider' },
+                      { id: 'partially_sent', label: 'Partially sent' },
+                      { id: 'failed', label: 'Failed' },
+                      { id: 'active', label: 'Active' },
+                      { id: 'scheduled', label: 'Scheduled' },
+                      { id: 'paused', label: 'Paused' },
+                      { id: 'completed', label: 'Completed' },
+                      { id: 'draft', label: 'Draft' },
+                    ].map(item => ({ ...item, isChecked: statusFilter.includes(item.id) }))
+                  },
+                  {
+                    id: 'type', label: 'Type', items: [
+                      { id: 'email', label: 'Email' },
+                      { id: 'sms', label: 'SMS' },
+                      { id: 'multi-channel', label: 'Multi-Channel' },
+                    ].map(item => ({ ...item, isChecked: typeFilter.includes(item.id) }))
+                  },
                 ]}
                 onFilterToggle={(groupId, itemId) => {
                   const setFilter = groupId === 'status' ? setStatusFilter : setTypeFilter;
@@ -407,32 +413,32 @@ export default function CampaignsPage() {
                 }}
               />
               <div className="min-w-0 flex-1">
-            {isInitialLoad || isRefreshing ? <TableLoadingState label="Loading campaigns..." /> : <DataGrid<Campaign> sort={sort} sortingMode="external" onSortChange={next => { setSort(next ?? { field: 'createdAt', direction: 'desc' }); goToPage(1); }}
-              columns={tableColumns.columns} data={filteredCampaigns} getRowId={row => row.id} height="auto" selectable={canDeleteCampaign} selectedIds={selected} onSelectionChange={setSelected}
-              enableColumnMenu={false} ariaLabel="Campaigns table" summaryLabel={`${totalItems} total records`} onRowClick={viewCampaign}
-              rowActions={campaign => [
-                { id: 'view', label: 'View', icon: <Eye size={14} />, onClick: () => viewCampaign(campaign) },
-                ...(canDuplicateCampaign ? [{ id: 'duplicate', label: 'Duplicate', icon: <Copy size={14} />, onClick: () => void handleDuplicate(campaign) }] : []),
-                ...(canDeleteCampaign ? [{ id: 'archive', label: 'Archive', icon: <Archive size={14} />, separator: true, onClick: () => setArchiving(campaign) }] : []),
-              ]} />}
-            <BulkSelectionBar selectedCount={selected.size} selectedIds={selected} onClearSelection={() => setSelected(new Set())} onRemoveIds={ids => setSelected(previous => new Set([...previous].filter(id => !ids.includes(id))))}
-              actions={canDeleteCampaign ? [{ id: 'archive', label: 'Archive', entityName: 'campaign', destructive: true, onExecute: async ids => { const result = await executeSelectedRows(ids, campaignsApi.archive); await refetchCampaigns(); return result; } }] : []} />
-            <ConfirmActionDialog open={!!archiving} onOpenChange={open => { if (!open) setArchiving(null); }} title="Archive this campaign?" description="Campaign history and status are preserved." confirmLabel="Archive" onConfirm={async () => {
-              if (!archiving) return;
-              try { await campaignsApi.archive(archiving.id); setArchiving(null); setSelected(new Set()); await refetchCampaigns(); toast.success('Campaign archived.'); }
-              catch (e) { toast.error(e instanceof Error ? e.message : 'Unable to archive campaign.'); }
-            }} />
+                {isInitialLoad || isRefreshing ? <TableLoadingState label="Loading campaigns..." /> : <DataGrid<Campaign> sort={sort} sortingMode="external" onSortChange={next => { setSort(next ?? { field: 'createdAt', direction: 'desc' }); goToPage(1); }}
+                  columns={tableColumns.columns} data={filteredCampaigns} getRowId={row => row.id} height="auto" selectable={canDeleteCampaign} selectedIds={selected} onSelectionChange={setSelected}
+                  enableColumnMenu={false} ariaLabel="Campaigns table" summaryLabel={`${totalItems} total records`} onRowClick={viewCampaign}
+                  rowActions={campaign => [
+                    { id: 'view', label: 'View', icon: <Eye size={14} />, onClick: () => viewCampaign(campaign) },
+                    ...(canDuplicateCampaign ? [{ id: 'duplicate', label: 'Duplicate', icon: <Copy size={14} />, onClick: () => void handleDuplicate(campaign) }] : []),
+                    ...(canDeleteCampaign ? [{ id: 'archive', label: 'Archive', icon: <Archive size={14} />, separator: true, onClick: () => setArchiving(campaign) }] : []),
+                  ]} />}
+                <BulkSelectionBar selectedCount={selected.size} selectedIds={selected} onClearSelection={() => setSelected(new Set())} onRemoveIds={ids => setSelected(previous => new Set([...previous].filter(id => !ids.includes(id))))}
+                  actions={canDeleteCampaign ? [{ id: 'archive', label: 'Archive', entityName: 'campaign', destructive: true, onExecute: async ids => { const result = await executeSelectedRows(ids, campaignsApi.archive); await refetchCampaigns(); return result; } }] : []} />
+                <ConfirmActionDialog open={!!archiving} onOpenChange={open => { if (!open) setArchiving(null); }} title="Archive this campaign?" description="Campaign history and status are preserved." confirmLabel="Archive" onConfirm={async () => {
+                  if (!archiving) return;
+                  try { await campaignsApi.archive(archiving.id); setArchiving(null); setSelected(new Set()); await refetchCampaigns(); toast.success('Campaign archived.'); }
+                  catch (e) { toast.error(e instanceof Error ? e.message : 'Unable to archive campaign.'); }
+                }} />
 
-            <div className="mt-4">
-              <LeadsPagination
-                currentPage={currentPage}
-                pageSize={pageSize}
-                totalRecords={totalItems}
-                loading={isInitialLoad} refreshing={isRefreshing} disabled={isInitialLoad || isRefreshing}
-                onPageChange={goToPage}
-                onPageSizeChange={setPageSize}
-              />
-            </div>
+                <div className="mt-4">
+                  <LeadsPagination
+                    currentPage={currentPage}
+                    pageSize={pageSize}
+                    totalRecords={totalItems}
+                    loading={isInitialLoad} refreshing={isRefreshing} disabled={isInitialLoad || isRefreshing}
+                    onPageChange={goToPage}
+                    onPageSizeChange={setPageSize}
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -553,82 +559,82 @@ export default function CampaignsPage() {
       {/* Create Template Side Panel */}
       <SideSheet isOpen={isTemplateModalOpen} onClose={() => setIsTemplateModalOpen(false)} title={`Create ${newTemplateType} Template`} subtitle="Save a message to reuse in future campaigns.">
         <div className="flex h-full min-h-0 flex-col"><div className={panelBodyClass + " space-y-4"}>
-              <div>
-                <label htmlFor="template-name" className={panelLabelClass + " mb-1.5"}>Template Name <span className="text-red-500">*</span></label>
-                <input
-                  id="template-name" className={panelInputClass}
-                  placeholder="e.g. Welcome Series - Email 1"
-                  value={newTemplate.name}
-                  onChange={(e) => setNewTemplate({...newTemplate, name: e.target.value})}
-                />
-                <FieldError message={templateErrors.name} />
-              </div>
-              <div>
-                <label htmlFor="template-category" className={panelLabelClass + " mb-1.5"}>Category</label>
-                <select id="template-category"
-                  className={panelInputClass}
-                  value={newTemplate.category}
-                  onChange={(e) => setNewTemplate({...newTemplate, category: e.target.value})}
+          <div>
+            <label htmlFor="template-name" className={panelLabelClass + " mb-1.5"}>Template Name <span className="text-red-500">*</span></label>
+            <input
+              id="template-name" className={panelInputClass}
+              placeholder="e.g. Welcome Series - Email 1"
+              value={newTemplate.name}
+              onChange={(e) => setNewTemplate({ ...newTemplate, name: e.target.value })}
+            />
+            <FieldError message={templateErrors.name} />
+          </div>
+          <div>
+            <label htmlFor="template-category" className={panelLabelClass + " mb-1.5"}>Category</label>
+            <select id="template-category"
+              className={panelInputClass}
+              value={newTemplate.category}
+              onChange={(e) => setNewTemplate({ ...newTemplate, category: e.target.value })}
+            >
+              <option className="bg-gray-50 dark:bg-slate-950">Marketing</option>
+              <option className="bg-gray-50 dark:bg-slate-950">Sales</option>
+              <option className="bg-gray-50 dark:bg-slate-950">Onboarding</option>
+              <option className="bg-gray-50 dark:bg-slate-950">Support</option>
+            </select>
+          </div>
+          {newTemplateType === 'Email' && (
+            <div>
+              <label htmlFor="template-subject" className={panelLabelClass + " mb-1.5"}>Subject Line <span className="text-red-500">*</span></label>
+              <input
+                id="template-subject" className={panelInputClass}
+                placeholder="Welcome to LeadCRM!"
+                value={newTemplate.subject}
+                onChange={(e) => setNewTemplate({ ...newTemplate, subject: e.target.value })}
+              />
+              <FieldError message={templateErrors.subject} />
+            </div>
+          )}
+          <div>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+              <label htmlFor="template-content" className={panelLabelClass}>Message Content <span className="text-red-500">*</span></label>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowVarDropdown(!showVarDropdown)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-500/10 rounded-md hover:bg-blue-500/20 transition-colors duration-200 border border-blue-500/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 >
-                  <option className="bg-gray-50 dark:bg-slate-950">Marketing</option>
-                  <option className="bg-gray-50 dark:bg-slate-950">Sales</option>
-                  <option className="bg-gray-50 dark:bg-slate-950">Onboarding</option>
-                  <option className="bg-gray-50 dark:bg-slate-950">Support</option>
-                </select>
-              </div>
-              {newTemplateType === 'Email' && (
-                <div>
-                  <label htmlFor="template-subject" className={panelLabelClass + " mb-1.5"}>Subject Line <span className="text-red-500">*</span></label>
-                  <input
-                    id="template-subject" className={panelInputClass}
-                    placeholder="Welcome to LeadCRM!"
-                    value={newTemplate.subject}
-                    onChange={(e) => setNewTemplate({...newTemplate, subject: e.target.value})}
-                  />
-                  <FieldError message={templateErrors.subject} />
-                </div>
-              )}
-              <div>
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
-                  <label htmlFor="template-content" className={panelLabelClass}>Message Content <span className="text-red-500">*</span></label>
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setShowVarDropdown(!showVarDropdown)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-500/10 rounded-md hover:bg-blue-500/20 transition-colors duration-200 border border-blue-500/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                    >
-                      <Wand2 size={14} /> Insert Variable
-                    </button>
-                    {showVarDropdown && (
-                      <div className="absolute right-0 bottom-full mb-1 w-48 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/10 rounded-lg shadow-xl overflow-hidden z-50 backdrop-blur-xl">
-                        {EMAIL_VARIABLE_TOKENS.map(v => (
-                          <button
-                            key={v}
-                            type="button"
-                            onClick={() => {
-                              setNewTemplate({...newTemplate, content: newTemplate.content + v});
-                              setShowVarDropdown(false);
-                            }}
-                            className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors duration-150 cursor-pointer"
-                          >
-                            {v}
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                  <Wand2 size={14} /> Insert Variable
+                </button>
+                {showVarDropdown && (
+                  <div className="absolute right-0 bottom-full mb-1 w-48 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/10 rounded-lg shadow-xl overflow-hidden z-50 backdrop-blur-xl">
+                    {EMAIL_VARIABLE_TOKENS.map(v => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => {
+                          setNewTemplate({ ...newTemplate, content: newTemplate.content + v });
+                          setShowVarDropdown(false);
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors duration-150 cursor-pointer"
+                      >
+                        {v}
+                      </button>
+                    ))}
                   </div>
-                </div>
-                <textarea
-                  id="template-content" rows={8}
-                  className={panelInputClass + " resize-none"}
-                  placeholder={`Hi {{first_name}},\n\n...`}
-                  value={newTemplate.content}
-                  onChange={(e) => setNewTemplate({...newTemplate, content: e.target.value})}
-                ></textarea>
-                <FieldError message={templateErrors.content} />
+                )}
               </div>
+            </div>
+            <textarea
+              id="template-content" rows={8}
+              className={panelInputClass + " resize-none"}
+              placeholder={`Hi {{first_name}},\n\n...`}
+              value={newTemplate.content}
+              onChange={(e) => setNewTemplate({ ...newTemplate, content: e.target.value })}
+            ></textarea>
+            <FieldError message={templateErrors.content} />
+          </div>
           <FieldError message={templateErrors.form} />
-          </div><div className={panelFooterClass + " justify-end"}>
+        </div><div className={panelFooterClass + " justify-end"}>
             <button onClick={() => setIsTemplateModalOpen(false)} className={panelSecondaryActionClass}>Cancel</button>
             <button
               onClick={handleSaveTemplate} disabled={savingTemplate}
