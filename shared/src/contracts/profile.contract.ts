@@ -1,13 +1,32 @@
 import { z } from 'zod';
+import { isValidPhMobile, PH_MOBILE_ERROR, toE164 } from '../validation/ph-phone';
 
-const optionalText = (max: number) => z.string().trim().max(max).nullable().optional();
-export const UpdateSelfProfileSchema = z.object({
-  firstName: z.string().trim().min(1).max(100).optional(),
-  lastName: z.string().trim().min(1).max(100).optional(),
-  phone: optionalText(50),
-  jobTitle: optionalText(150),
-  department: optionalText(150),
-}).strict().refine(value => Object.keys(value).length > 0, 'No profile changes supplied');
+export const PROFILE_FIELD_LIMITS = { firstName: 50, lastName: 50, jobTitle: 100, department: 100 } as const;
+
+const optionalText = (max: number, message: string) => z.string().trim().max(max, message).nullable().optional();
+const profilePhone = z.string().nullable().optional().transform((value, context) => {
+  if (value == null) return value;
+  if (value === '') return null;
+  const localNumber = value.startsWith('+63') ? value.slice(3) : value;
+  if (!isValidPhMobile(localNumber)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: PH_MOBILE_ERROR });
+    return z.NEVER;
+  }
+  return toE164(localNumber);
+});
+export const ProfilePhoneInputSchema = z.string().refine(value => value === '' || isValidPhMobile(value), PH_MOBILE_ERROR)
+  .transform(value => value === '' ? null : toE164(value));
+
+export const SelfProfileFieldSchemas = {
+  firstName: z.string().trim().min(1, 'First name is required').max(PROFILE_FIELD_LIMITS.firstName, 'First name must not exceed 50 characters.').optional(),
+  lastName: z.string().trim().min(1, 'Last name is required').max(PROFILE_FIELD_LIMITS.lastName, 'Last name must not exceed 50 characters.').optional(),
+  phone: ProfilePhoneInputSchema,
+  jobTitle: optionalText(PROFILE_FIELD_LIMITS.jobTitle, 'Job title must not exceed 100 characters.'),
+  department: optionalText(PROFILE_FIELD_LIMITS.department, 'Department must not exceed 100 characters.'),
+};
+
+export const UpdateSelfProfileSchema = z.object({ ...SelfProfileFieldSchemas, phone: profilePhone }).strict()
+  .refine(value => Object.keys(value).length > 0, 'No profile changes supplied');
 
 export type UpdateSelfProfile = z.infer<typeof UpdateSelfProfileSchema>;
 export const AVATAR_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;

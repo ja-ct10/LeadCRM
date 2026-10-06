@@ -97,3 +97,16 @@ it('shows backend field errors below the phone field without discarding edits', 
   fireEvent.click(screen.getByText('Save Changes')); await screen.findByText('Telephone rejected');
   expect((screen.getByLabelText('Phone') as HTMLInputElement).readOnly).toBe(false);
 });
+
+it('validates organization limits and domain-only values inline', async () => {
+  render(<OrganizationSettingsForm />); await screen.findByDisplayValue('Original'); fireEvent.click(screen.getByText('Edit'));
+  fireEvent.change(name(), { target: { value: 'O'.repeat(151) } });
+  expect(screen.getByText('Organization name must not exceed 150 characters.')).toBeTruthy();
+  const domain = screen.getByRole('textbox', { name: 'Domain' }) as HTMLInputElement;
+  fireEvent.change(domain, { target: { value: 'https://camxian.com' } });
+  expect(screen.getByText('Enter a valid domain, such as camxian.com')).toBeTruthy();
+  fireEvent.change(domain, { target: { value: 'CRM.Camxian.com' } });
+  expect(screen.queryByText('Enter a valid domain, such as camxian.com')).toBeNull();
+  fireEvent.submit(name().closest('form')!);
+  expect(mocks.save).not.toHaveBeenCalled();
+});

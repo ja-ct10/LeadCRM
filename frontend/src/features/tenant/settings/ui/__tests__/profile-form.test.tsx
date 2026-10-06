@@ -52,3 +52,23 @@ it('rejects invalid file types and oversized files without uploading', async () 
   expect(mocks.error).toHaveBeenCalledTimes(2);
   expect(mocks.upload).not.toHaveBeenCalled();
 });
+
+it('shows field errors for overlong profile fields and reuses the PH mobile rule', async () => {
+  render(<ProfileForm />); fireEvent.click(screen.getByText('Edit'));
+  fireEvent.change(screen.getByLabelText('First Name'), { target: { value: 'A'.repeat(51) } });
+  expect(screen.getByText('First name must not exceed 50 characters.')).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Last Name'), { target: { value: 'B'.repeat(51) } });
+  expect(screen.getByText('Last name must not exceed 50 characters.')).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Job Title'), { target: { value: 'J'.repeat(101) } });
+  expect(screen.getByText('Job title must not exceed 100 characters.')).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Department'), { target: { value: 'D'.repeat(101) } });
+  expect(screen.getByText('Department must not exceed 100 characters.')).toBeTruthy();
+  const phone = screen.getByLabelText('Phone Number') as HTMLInputElement;
+  expect(screen.getByText('+63')).toBeTruthy();
+  fireEvent.change(phone, { target: { value: '8123456789' } });
+  expect(screen.getByText('Enter a valid 10-digit Philippine mobile number starting with 9.')).toBeTruthy();
+  fireEvent.change(phone, { target: { value: '+639123456789' } });
+  expect(screen.getByText('Enter a valid 10-digit Philippine mobile number starting with 9.')).toBeTruthy();
+  fireEvent.change(phone, { target: { value: '9123456789' } });
+  expect(screen.queryByText('Enter a valid 10-digit Philippine mobile number starting with 9.')).toBeNull();
+});

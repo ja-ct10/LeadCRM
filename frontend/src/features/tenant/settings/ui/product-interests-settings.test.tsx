@@ -79,9 +79,42 @@ it('validates money and persists only trimmed names and numeric amounts through 
   fireEvent.change(screen.getByLabelText('Deal Value (PHP)'), { target: { value: '-5' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save Product' }));
   expect(await screen.findByRole('alert')).toBeTruthy(); expect(apiClient.post).not.toHaveBeenCalled();
-  fireEvent.change(screen.getByLabelText('Deal Value (PHP)'), { target: { value: '30000.50' } });
+  fireEvent.change(screen.getByLabelText('Deal Value (PHP)'), { target: { value: '30000' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save Product' }));
-  await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith('/administration/product-interests', { name: 'Biometrics', dealValue: 30000.5 }));
+  await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith('/administration/product-interests', { name: 'Biometrics', dealValue: 30000 }));
+});
+
+it('requires both new product fields, trims the name and shows length errors inline', async () => {
+  render(<ProductsPage />); await screen.findByRole('grid');
+  fireEvent.click(screen.getByRole('button', { name: 'Add Product' }));
+  expect(screen.getAllByText('*')).toHaveLength(2);
+  fireEvent.click(screen.getByRole('button', { name: 'Save Product' }));
+  expect(await screen.findByText('Product name is required')).toBeTruthy();
+  expect(screen.getByText('Deal value is required.')).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Product Name'), { target: { value: '   ' } });
+  expect(screen.getByText('Product name is required')).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Product Name'), { target: { value: ` ${'x'.repeat(201)} ` } });
+  expect(screen.getByText('Product name must not exceed 200 characters.')).toBeTruthy();
+  expect(apiClient.post).not.toHaveBeenCalled();
+});
+
+it.each(['₱25000', '25,000', '-25000', 'abc', '12abc', '25000.50', ' '])('rejects raw new-product Deal Value %s', async amount => {
+  render(<ProductsPage />); await screen.findByRole('grid');
+  fireEvent.click(screen.getByRole('button', { name: 'Add Product' }));
+  fireEvent.change(screen.getByLabelText('Product Name'), { target: { value: ' Valid Product ' } });
+  fireEvent.change(screen.getByLabelText('Deal Value (PHP)'), { target: { value: amount } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save Product' }));
+  expect(await screen.findByRole('alert')).toBeTruthy();
+  expect(apiClient.post).not.toHaveBeenCalled();
+});
+
+it('accepts digit-only new-product values and saves the trimmed product name', async () => {
+  render(<ProductsPage />); await screen.findByRole('grid');
+  fireEvent.click(screen.getByRole('button', { name: 'Add Product' }));
+  fireEvent.change(screen.getByLabelText('Product Name'), { target: { value: '   CCTV Surveillance System   ' } });
+  fireEvent.change(screen.getByLabelText('Deal Value (PHP)'), { target: { value: '25000' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save Product' }));
+  await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith('/administration/product-interests', { name: 'CCTV Surveillance System', dealValue: 25000 }));
 });
 it('requires confirmation before archiving a product and clears bulk selection after success', async () => {
   vi.mocked(apiClient.delete).mockResolvedValue({ data: [], meta: { enabled: true } });

@@ -8,10 +8,29 @@ export function parseProductAmount(input: string): number | null {
   return Number.isFinite(amount) ? amount : null;
 }
 
+/** New catalog entries accept whole digit-only amounts in the raw form value. */
+export function parseProductCreateAmount(input: string): number | null {
+  if (!/^\d+$/.test(input)) return null;
+  const amount = Number(input);
+  return Number.isFinite(amount) ? amount : null;
+}
+
+export const PRODUCT_DEAL_VALUE_REQUIRED_ERROR = 'Deal value is required.';
+export const PRODUCT_DEAL_VALUE_DIGITS_ERROR = 'Deal value must contain digits only.';
+export const PRODUCT_DEAL_VALUE_NEGATIVE_ERROR = 'Deal value must not be negative.';
+
+const productNameSchema = z.string().trim().min(1, 'Product name is required').max(200, 'Product name must not exceed 200 characters.')
+  .refine(v => !/[\u0000-\u001f\u007f-\u009f]/.test(v), 'Control characters are not allowed');
+
 export const ProductInterestSchema = z.object({
-  name: z.string().max(200).refine(v => !/[\u0000-\u001f\u007f-\u009f]/.test(v), 'Control characters are not allowed').transform(v => v.trim()).pipe(z.string().min(1, 'Product name is required')),
+  name: productNameSchema,
   dealValue: z.number().finite().min(0).max(999_999_999_999).multipleOf(0.01),
 }).strict();
+export const ProductInterestCreateSchema = ProductInterestSchema.extend({
+  dealValue: z.number({ required_error: PRODUCT_DEAL_VALUE_REQUIRED_ERROR, invalid_type_error: PRODUCT_DEAL_VALUE_DIGITS_ERROR })
+    .finite().int(PRODUCT_DEAL_VALUE_DIGITS_ERROR).min(0, PRODUCT_DEAL_VALUE_NEGATIVE_ERROR)
+    .max(999_999_999_999),
+});
 export const ProductInterestIdSchema = z.string().uuid();
 export const ProductInterestPatchSchema = ProductInterestSchema.partial().refine(v => Object.keys(v).length > 0, 'Provide a name or Deal value');
 export const ProductInterestConfigSchema = z.array(ProductInterestSchema).max(100).refine(

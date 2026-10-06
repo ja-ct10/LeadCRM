@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Building2, Globe, Mail, Phone, Link, MapPin, Pencil, Save } from 'lucide-react';
 import { toast } from 'sonner';
-import { UpdateOrganizationSettingsSchema, formatOrganizationPhone, ORGANIZATION_PHONE_ERROR, ORGANIZATION_FIELD_LIMITS, COMPANY_INDUSTRIES, type OrganizationSettings } from '@leadcrm/shared';
+import { UpdateOrganizationSettingsSchema, formatOrganizationPhone, ORGANIZATION_PHONE_ERROR, COMPANY_INDUSTRIES, type OrganizationSettings } from '@leadcrm/shared';
 import { PageHeader } from '@/shared/components/ui/page-header';
 import { useAuth } from '@/store/AuthContext';
 import { settingsApiService } from '../services/settings.service';
@@ -103,7 +103,6 @@ export function OrganizationSettingsForm() {
       {fields.map(([key, label, Icon]) => {
         const props = {
           id: `org-${key}`, value: draft[key], readOnly: !editing || saving,
-          maxLength: ORGANIZATION_FIELD_LIMITS[key],
           required: key === 'name' || key === 'email',
           'aria-invalid': !!fieldErrors[key],
           'aria-describedby': fieldErrors[key] ? `org-${key}-error` : undefined,
@@ -113,7 +112,9 @@ export function OrganizationSettingsForm() {
               next = next.replace(/^\+63\s*/, '');
               if (!/^[0-9 ()-]*$/.test(next) || next.replace(/\D/g, '').length > (next.startsWith('0') ? 10 : 9)) { setFieldErrors(errors => ({ ...errors, phone: ORGANIZATION_PHONE_ERROR })); return; }
             }
-            setFieldErrors(errors => ({ ...errors, [key]: '' }));
+            const result = UpdateOrganizationSettingsSchema.safeParse({ [key]: next });
+            const issue = result.success ? undefined : result.error.issues.find(item => item.path[0] === key);
+            setFieldErrors(errors => ({ ...errors, [key]: issue?.message ?? '' }));
             setDraft(value => value && ({ ...value, [key]: next }));
           },
           className: `w-full min-w-0 pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white outline-none transition-colors ${editing && !saving ? 'focus:border-blue-500' : 'cursor-default'}`,

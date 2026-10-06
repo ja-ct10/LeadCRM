@@ -6,12 +6,12 @@ exports.formatOrganizationPhone = formatOrganizationPhone;
 const zod_1 = require("zod");
 const company_industries_1 = require("../constants/company-industries");
 exports.ORGANIZATION_FIELD_LIMITS = { name: 150, industry: 32, email: 254, phone: 24, domain: 253, address: 500 };
-const text = (limit, multiline = false) => zod_1.z.string().trim().max(limit, `Use at most ${limit} characters`)
+const text = (limit, multiline = false, maxMessage = `Use at most ${limit} characters`) => zod_1.z.string().trim().max(limit, maxMessage)
     .refine(value => !(multiline ? /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f<>]/ : /[\u0000-\u001f\u007f<>]/).test(value), 'Enter plain text without markup or control characters');
 const optionalText = (limit) => text(limit).nullable().optional().transform(value => value === '' ? null : value);
 exports.OrganizationRequiredFieldsSchema = zod_1.z.object({
-    name: text(exports.ORGANIZATION_FIELD_LIMITS.name).refine(value => value.length > 0, 'Organization name is required'),
-    email: zod_1.z.string().trim().min(1, 'Email is required').max(exports.ORGANIZATION_FIELD_LIMITS.email, 'Use at most 254 characters')
+    name: text(exports.ORGANIZATION_FIELD_LIMITS.name, false, 'Organization name must not exceed 150 characters.').refine(value => value.length > 0, 'Organization name is required'),
+    email: zod_1.z.string().trim().min(1, 'Email is required').max(exports.ORGANIZATION_FIELD_LIMITS.email, 'Email must not exceed 254 characters.')
         .email('Enter a valid email address').transform(value => value.toLowerCase()),
 });
 exports.ORGANIZATION_PHONE_ERROR = 'Enter a valid Philippine telephone number.';
@@ -54,8 +54,8 @@ exports.UpdateOrganizationSettingsSchema = zod_1.z.object({
     industry: optionalText(exports.ORGANIZATION_FIELD_LIMITS.industry).pipe(zod_1.z.enum(company_industries_1.COMPANY_INDUSTRIES, { errorMap: () => ({ message: 'Select a supported industry' }) }).nullable().optional()),
     email: exports.OrganizationRequiredFieldsSchema.shape.email.optional(),
     phone: organizationPhone,
-    domain: optionalText(exports.ORGANIZATION_FIELD_LIMITS.domain).transform(value => value?.replace(/^https?:\/\//i, '').replace(/\/$/, '').toLowerCase() ?? value)
+    domain: optionalText(exports.ORGANIZATION_FIELD_LIMITS.domain).transform(value => value?.toLowerCase() ?? value)
         .refine(value => value == null || /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(value), 'Enter a valid domain, such as camxian.com'),
     address: zod_1.z.string().refine(value => value === '' || value.trim().length > 0, 'Office address cannot contain only whitespace')
-        .pipe(text(exports.ORGANIZATION_FIELD_LIMITS.address, true)).nullable().optional().transform(value => value === '' ? null : value),
+        .pipe(text(exports.ORGANIZATION_FIELD_LIMITS.address, true, 'Address must not exceed 500 characters.')).nullable().optional().transform(value => value === '' ? null : value),
 }).strict().refine(value => Object.values(value).some(field => field !== undefined), 'No organization changes supplied');
