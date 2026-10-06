@@ -5,7 +5,7 @@ export const CLOSING_FIELD_TYPES = ['Text', 'Long Text', 'Number', 'Date', 'Drop
 export const ClosingFieldInputSchema = z.object({
   name: z.string().trim().min(1, 'Field name is required.').max(100),
   type: z.enum(CLOSING_FIELD_TYPES),
-  appliesTo: z.literal('Closed Won Requirements'),
+  appliesTo: z.literal('Closed Won Requirements').default('Closed Won Requirements'),
   required: z.boolean(),
   active: z.boolean().default(true),
   description: z.string().trim().max(1000).default(''),

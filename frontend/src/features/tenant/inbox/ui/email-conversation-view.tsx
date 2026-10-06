@@ -29,7 +29,6 @@ export default function EmailConversationView({ email, onBack, onEmailsChanged }
         <button disabled={!dealId || associationSaved} className="min-h-9 rounded border px-3">{associationSaved ? 'Associated' : 'Associate Deal'}</button>
         {associationSaved && <p className="w-full text-muted-foreground">Association saved for future messages. Earlier status and stage decisions are preserved.</p>}
       </form>}
-      {current.readyToClose && current.dealId && <p>This Deal may be ready to close. Review the Deal and confirm the final sale with supporting evidence.</p>}
     </div>
     <div className="min-h-0 min-w-0 flex-1"><EmailDetailView key={current.id} email={current} onBack={onBack} onEmailsChanged={onEmailsChanged} /></div>
   </div>;

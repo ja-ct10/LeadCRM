@@ -78,9 +78,12 @@ export function toBackendCreateDeal(data: Partial<any>): any {
     expectedCloseDate: toISODatetime(data.expectedCloseDate),
     leadSource: data.leadSource || undefined,
     accountId: data.accountId || data.companyId || data.organizationId || undefined,
+    industry: data.industry || undefined,
+    address: data.address || undefined,
     productInterests: data.productInterests,
     productInterestId: data.productInterestId,
     productInterestIds: data.productInterestIds,
+    productInterestOther: data.productInterestOther || undefined,
     assignedUserId: data.assignedUserId || undefined,
   };
 

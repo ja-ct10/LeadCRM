@@ -302,7 +302,7 @@ export function ActionFields({
             value={selectedPipeline}
             onChange={(event) => {
               setPipeline(event.target.value);
-              onChange({ ...action.config, stageId: '' });
+              onChange({ ...action.config, stageId: '', currentStageId: '' });
             }}
           >
             <option value="">All pipelines</option>
@@ -318,14 +318,16 @@ export function ActionFields({
         </label>
       )}
       {Object.entries(definition?.configSchema ?? {}).map(([key, field]) => {
+        if (action.type === 'move_deal_stage' && entity === 'deal' && ['targetMode', 'productInterestId', 'currentStageId'].includes(key)) return null;
         let choices =
           references(field.type, options) ??
           field.options?.map((option) => ({ id: option, name: option }));
-        if (key === 'stageId' && selectedPipeline)
+        if (['stageId', 'currentStageId'].includes(key) && selectedPipeline)
           choices =
             options.pipelines.find((entry) => entry.id === selectedPipeline)
               ?.stages ?? [];
         if (action.type === 'send_sms' && key === 'recipient') choices = (choices ?? []).filter((choice) => entity === 'deal' ? choice.id !== 'record' : entity === 'account' ? choice.id === 'primary_contact' : choice.id === 'record').map((choice) => ({ ...choice, name: choice.id === 'record' ? 'Triggering record' : choice.id === 'primary_contact' ? 'Primary contact' : 'Primary lead' }));
+        if (key === 'targetMode') choices = [{ id: 'single_match', name: 'One matching Deal (default)' }, { id: 'all_matching', name: 'All matching related Deals' }];
         const change = (value: unknown) =>
           onChange({ ...action.config, [key]: value });
         const value = String(action.config[key] ?? '');

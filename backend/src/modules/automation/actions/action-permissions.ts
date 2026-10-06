@@ -18,7 +18,8 @@ export async function assertWorkflowPermissions(draft: WorkflowDraft, tenantId: 
     if (action.type === 'send_campaign') required.push('campaigns.view', 'campaigns.send');
     if (action.type === 'send_email') required.push('campaigns.send');
     if (action.type === 'send_sms') required.push('campaigns.send', 'contacts.view', 'contacts.edit');
-    if (['assign_owner', 'update_field', 'move_deal_stage'].includes(action.type)) required.push(entity === 'deal' ? 'deals.edit' : entity === 'account' ? 'accounts.edit' : entity === 'lead' ? 'leads.edit' : 'contacts.edit');
+    if (['assign_owner', 'update_field'].includes(action.type)) required.push(entity === 'deal' ? 'deals.edit' : entity === 'account' ? 'accounts.edit' : entity === 'lead' ? 'leads.edit' : 'contacts.edit');
+    if (action.type === 'move_deal_stage') required.push('deals.view', 'deals.edit');
     if (action.type === 'update_field' && action.config.field === 'accountId') required.push('accounts.view');
     if (action.type === 'update_field' && ['contactIds', 'leadIds'].includes(String(action.config.field))) required.push(action.config.field === 'leadIds' ? 'leads.view' : 'contacts.view');
   }

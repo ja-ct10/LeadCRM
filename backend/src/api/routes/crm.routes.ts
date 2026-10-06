@@ -1,3 +1,4 @@
+import { CreateDealBatchSchema } from '@leadcrm/shared';
 import { assertPermissions } from '../../core/permissions/permission.service';
 import * as activitiesService from '../../modules/crm/activities/activities.service';
 import type { PermissionKey } from '@leadcrm/shared';
@@ -122,6 +123,7 @@ router.get('/deals/imports/:importId/results', authorize('deals.view'), dealImpo
 router.post('/deals/imports/upload', authorize('deals.create'), validate(CsvUploadChunkSchema), dealImportController.uploadCsv);
 router.post('/deals/imports/preview', authorize('deals.create'), validate(CreateCrmImportSchema), dealImportController.previewImport);
 router.post('/deals/imports', authorize('deals.create'), validate(CreateCrmImportSchema), dealImportController.createImport);
+router.post('/deals/batch', authorize('deals.create'), validate(CreateDealBatchSchema), dealController.createBatch);
 router.get(   '/deals/:id',          authorize('deals.view'),   dealController.getDealById);
 router.get('/deals/:id/closing-requirements', authorize('deals.view'), closingRequirements.readValues);
 router.patch('/deals/:id/closing-requirements', authorize('deals.edit'), closingRequirements.saveValues);

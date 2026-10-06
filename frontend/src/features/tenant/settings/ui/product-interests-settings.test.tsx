@@ -5,8 +5,10 @@ import { ProductInterestsSettings } from './product-interests-settings';
 import { ProductsPage } from './products-page';
 import { apiClient } from '@/lib/api/client';
 import { toast } from 'sonner';
+import { DEFAULT_CLOSING_FIELDS } from '@leadcrm/shared';
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { tenantId: 'one' } }) }));
+vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'one' }, user: { id: 'tester', tenantId: 'one' } }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
 vi.mock('@/lib/api/client', () => ({ apiClient: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() } }));
 const product = { id: '0ff82f9c-48e9-4e1c-8c77-8a30755d704c', name: 'CCTV Surveillance System', dealValue: 25000, active: true, createdAt: '', updatedAt: '' };
@@ -20,8 +22,9 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 it('keeps field configuration separate from product management', async () => {
+  vi.mocked(apiClient.get).mockResolvedValue({ data: DEFAULT_CLOSING_FIELDS });
   render(<ProductInterestsSettings />);
-  expect(await screen.findByText('Closed Won Requirements')).toBeTruthy();
+  expect(await screen.findByText(DEFAULT_CLOSING_FIELDS[0].name)).toBeTruthy();
   expect(screen.queryByText('Product Interest')).toBeNull();
   expect(apiClient.get).not.toHaveBeenCalledWith('/administration/product-interests', expect.anything());
   expect(screen.queryByRole('button', { name: 'Add Product' })).toBeNull();

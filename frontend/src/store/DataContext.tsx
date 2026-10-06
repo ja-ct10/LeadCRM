@@ -1,7 +1,7 @@
 'use client';
 import dynamic from 'next/dynamic';
 const ClosingRecordPanel = dynamic(() => import('@/shared/components/crm/crm-record-view').then(module => module.CrmRecordPanel), { ssr: false });
-import {taskAssociationIds, taskAssociationPatch} from "@leadcrm/shared";
+import {taskAssociationIds, taskAssociationPatch, CreateDealBatchSchema, productDealTitle, type ProductInterest} from "@leadcrm/shared";
 
 import { isOnboardingComplete, WorkflowDraftSchema, type WorkflowDraft } from "@leadcrm/shared";
 import React, {
@@ -45,6 +45,7 @@ import { uuid } from "@/lib/utils";
 
 // ── Real-API integration ─────────────────────────────────────────────────────
 import { toast } from 'sonner';
+import { apiClient, type ApiRequestError } from '@/lib/api/client';
 import { usersService } from "@/features/tenant/administration/users/services/users.service";
 import { rolesApi } from '@/shared/services/roles.api';
 import { rolesService, toSettingsRole, toSettingsPermissions, toPermissionRows } from '@/features/tenant/administration/roles/services/roles.service';
@@ -120,6 +121,7 @@ interface DataContextType {
     org: Omit<Organization, "id" | "tenantId" | "createdAt">,
   ) => Promise<string | null>;
   updateOrganization: (id: string, updates: Partial<Organization>) => Promise<void>;
+  addDeals: (deal: Record<string, unknown>) => Promise<void>;
   addDeal: (deal: Omit<Deal, "id" | "tenantId" | "createdAt">) => Promise<void>;
   updateDeal: (id: string, updates: Partial<Deal>) => Promise<void>;
   moveDealStage: (id: string, stageId: string, note?: string, lostReason?: string, handoff?: any) => Promise<void>;
@@ -763,6 +765,60 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   };
 
+
+  const dealBatchPending = useRef(false);
+  const addDeals = async (values: Record<string, unknown>): Promise<void> => {
+    if (!tenant || !user) throw new Error('Sign in before creating Deals.');
+    if (dealBatchPending.current) return;
+    dealBatchPending.current = true;
+    const storageKey = `leadcrm_pending_deals:${tenant.id}:${user.id}`;
+    try {
+      const { currency: _currency, value: _value, productInterests: _legacy, productInterestId: _single, ...common } = toBackendCreateDeal(values);
+      const fingerprint = JSON.stringify(common);
+      let pending: { fingerprint: string; idempotencyKey: string } | null = null;
+      try { pending = JSON.parse(sessionStorage.getItem(storageKey) || 'null'); } catch { /* unavailable browser storage */ }
+      if (pending && pending.fingerprint !== fingerprint) throw new Error('Retry the previous Deal submission with its original values before starting another submission.');
+      const idempotencyKey = pending?.idempotencyKey ?? crypto.randomUUID();
+      const dto = CreateDealBatchSchema.parse({ ...common, idempotencyKey });
+      sessionStorage.setItem(storageKey, JSON.stringify({ fingerprint, idempotencyKey }));
+      let created: Deal[];
+      if (!USE_MOCK_DATA) {
+        const response = await pipelineService.createDeals(dto);
+        if (!response.data) throw new Error('Unable to confirm Deal creation. Retry this submission.');
+        created = response.data.deals.map(deal => toFrontendDeal(deal) as Deal);
+        setDeals(previous => [...created, ...previous.filter(deal => !created.some(row => row.id === deal.id))]);
+      } else {
+        const receiptKey = `leadcrm_deal_batch:${tenant.id}:${user.id}:${idempotencyKey}`;
+        const saved = sessionStorage.getItem(receiptKey);
+        if (saved) created = JSON.parse(saved) as Deal[];
+        else {
+          const catalog = await apiClient.get<{ data: ProductInterest[] }>('/administration/product-interests');
+          const products = dto.productInterestIds.map(id => catalog.data.find(product => product.id === id && product.active));
+          if (products.some(product => !product)) throw new Error('A selected Product is unavailable.');
+          const timestamp = new Date().toISOString();
+          created = products.map(product => ({ ...values, id: crypto.randomUUID(), tenantId: tenant.id,
+            title: productDealTitle(dto.title, product!.name, products.length > 1), productInterestId: product!.id,
+            productInterestIds: [product!.id], productInterests: [product!.name], value: product!.dealValue, currency: 'PHP',
+            accountId: dto.accountId, organizationId: dto.accountId, contactIds: dto.contactIds ?? [], leadIds: dto.leadIds ?? [],
+            createdAt: timestamp, history: [{ stageId: dto.stageId, timestamp, userId: user.id, note: 'Deal created' }],
+          } as unknown as Deal));
+          sessionStorage.setItem(receiptKey, JSON.stringify(created));
+          for (const deal of created) {
+            addAuditLog('Deal Created', `Created ${deal.title}`, deal.id);
+            addActivity({ type: 'deal_action', relatedToType: 'deal', relatedToId: deal.id, title: `Deal created: ${deal.title}`, createdBy: user.id, createdAt: timestamp });
+          }
+        }
+        saveAndSet('leadcrm_deals', [...created, ...deals.filter(deal => !created.some(row => row.id === deal.id))], setDeals);
+      }
+      sessionStorage.removeItem(storageKey);
+      invalidatePageCache('deals');
+      toast.success(`${created.length} ${created.length === 1 ? 'Deal' : 'Deals'} created`);
+    } catch (error) {
+      const status = (error as ApiRequestError).status;
+      if (status && status >= 400 && status < 500 && status !== 408 && status !== 429) sessionStorage.removeItem(storageKey);
+      throw error;
+    } finally { dealBatchPending.current = false; }
+  };
 
   const addDeal = async (dealData: any): Promise<void> => {
     if (!tenant) return;
@@ -1764,6 +1820,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     refreshPipelines,
     updateContact,
     addDeal,
+    addDeals,
     updateDeal,
     moveDealStage,
     deleteDeal,

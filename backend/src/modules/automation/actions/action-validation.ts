@@ -1,3 +1,4 @@
+import { validateDealTargets } from './action-deal-targets';
 import { z } from 'zod';
 import { EmailSubjectSchema, type WorkflowAction, type WorkflowEntity } from '@leadcrm/shared';
 import { fieldUpdatePatch } from './action-fields';
@@ -8,7 +9,6 @@ import prisma from '../../../config/database.config';
 import { ValidationError, NotFoundError } from '../../../shared/errors/http-error';
 import { getAvailableActions } from './actions.service';
 import * as repo from './actions.repository';
-import { validateDealStageMove } from '../../crm/deals/deals.service';
 import { sanitizeCampaignHtml } from '../../marketing/campaigns/campaign-content';
 
 export function actionEntity(context: Record<string, unknown>): WorkflowEntity {
@@ -42,11 +42,12 @@ export async function validateAction(action: WorkflowAction, entity: WorkflowEnt
     } else if (typeof value !== 'string' || value.length > 10000) throw new ValidationError(`${field.label} must be text.`);
     if (typeof value === 'string' && /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value)) throw new ValidationError(`${field.label} contains control characters.`);
     if (key === 'title' && (String(value).length > 255 || /[\r\n\t]/.test(String(value)))) throw new ValidationError('Title must be at most 255 characters without control characters.');
-    if (['user', 'stage', 'template', 'campaign'].includes(field.type) && !z.string().uuid().safeParse(value).success) throw new ValidationError(`Choose a valid ${field.label}.`);
+    if (['user', 'stage', 'template', 'campaign', 'products'].includes(field.type) && !z.string().uuid().safeParse(value).success) throw new ValidationError(`Choose a valid ${field.label}.`);
     if (key === 'subject' && !EmailSubjectSchema.safeParse(value).success) throw new ValidationError('Email subject must not contain line breaks or control characters.');
     if (['title', 'description', 'body', 'message'].includes(key)) validateVariables(String(value));
     if (field.options && !field.options.includes(String(value))) throw new ValidationError(`Choose a supported ${field.label.toLowerCase()}.`);
     if (field.type === 'user' && !await repo.findUser(String(value), tenantId)) throw new NotFoundError('Active workspace user');
+    if (field.type === 'products' && !await prisma.productInterest.findFirst({ where: { tenantId, id: String(value), active: true } })) throw new NotFoundError('Product Interest');
     if (field.type === 'stage' && !await repo.findStage(String(value), tenantId)) throw new NotFoundError('Stage');
     if (field.type === 'template' && !await repo.findTemplate(String(value), tenantId)) throw new NotFoundError('Email template');
     if (field.type === 'campaign' && !await repo.findCampaign(String(value), tenantId)) throw new NotFoundError('Campaign');
@@ -65,8 +66,10 @@ export async function validateAction(action: WorkflowAction, entity: WorkflowEnt
     const stage = await repo.findStage(String(action.config.stageId), tenantId);
     if (!stage) throw new NotFoundError('Stage');
     if (stage.isLost && !String(action.config.lostReason ?? '').trim()) throw new ValidationError('Enter a reason for closing the deal as lost.');
+    if (action.config.currentStageId && (await repo.findStage(String(action.config.currentStageId), tenantId))?.pipelineId !== stage.pipelineId) throw new ValidationError('Current and target stages must belong to the same pipeline.');
+    if (entity === 'deal' && (action.config.targetMode || action.config.productInterestId || action.config.currentStageId)) throw new ValidationError('Related Deal filters require a Lead or Contact trigger.');
     if (context) {
-      await validateDealStageMove(String(context['deal.id']), tenantId, { stageId: stage.id, lostReason: String(action.config.lostReason ?? '') });
+      await validateDealTargets(action, entity, tenantId, context);
     }
   }
   if (action.type === 'send_email') await validateEmail(action, entity, tenantId, context);

@@ -30,7 +30,7 @@ export function ProductInterestSelect({ id, values, onChange, products, valueMod
       <DropdownMenuTrigger asChild><button ref={trigger} id={id} type="button" disabled={disabled} aria-label="Product Interest" className="flex min-h-11 w-full min-w-0 items-center justify-between gap-2 rounded-xl border border-input bg-background px-3 py-2 text-left text-sm focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
         <span className="min-w-0 [overflow-wrap:anywhere]">{selected.length === 0 ? 'Select product interests…' : selected.length === 1 ? labelFor(selected[0]) : `${selected.length} selected`}</span><ChevronDown className="h-4 w-4 shrink-0" />
       </button></DropdownMenuTrigger>
-      <DropdownMenuContent align="start" role="group" aria-label="Product interests" className="w-80" onKeyDown={event => {
+      <DropdownMenuContent align="start" role="group" aria-label="Product interests" className="w-80 max-w-[calc(100vw-2rem)]" onKeyDown={event => {
         if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setOpen(false); trigger.current?.focus(); }
         if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
           event.preventDefault();

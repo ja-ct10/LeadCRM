@@ -10,3 +10,5 @@ tenantModels.add('MailboxThreadAssociation');
 tenantModels.add('ClosingFieldDefinition');
 tenantModels.add('ProductInterest');
 for (const model of ['Lead', 'Contact', 'Account']) tenantChildren[model + 'ProductInterest'] = { relation: model.toLowerCase(), model };
+
+tenantModels.add('DealCreationReceipt');

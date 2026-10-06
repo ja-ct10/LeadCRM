@@ -128,9 +128,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[0].id } })).closingValues).toMatchObject({ [field.id]: 'Existing evidence' });
     expect((await call('/administration/closing-requirements', 'POST', input, agentToken)).status).toBe(403);
   });
-  it('disabled engagement preserves Deal stage while detecting Hot; enabled resolves one product Deal', async () => {
-    expect((await call('/administration/deal-stage-automation')).body.data.enabled).toBe(false);
-    expect((await call('/administration/deal-stage-automation', 'PATCH', { enabled: true }, agentToken)).status).toBe(403);
+  it('engagement updates status but retired configuration cannot enable Deal-stage changes', async () => {
     const { lead, deals } = await customer(null);
     await prisma.deal.updateMany({ where: { leadDeals: { some: { leadId: lead.id } } }, data: { stageId: stages.Lead, stageChangedAt: before } });
     const account = await prisma.emailAccount.create({ data: { tenantId, userId: agentId, email: 'sales@camxian.com', accessToken: 'test-only', scopes: [], connectedAt: before } });
@@ -140,16 +138,14 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     await scope(() => ingestMailboxMessages(account, [message('Camera quotation')], rights));
     expect((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).status).toBe('Hot');
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[0].id } })).stageId).toBe(stages.Lead);
-    expect((await call('/administration/deal-stage-automation', 'PATCH', { enabled: true })).status).toBe(200);
     await scope(() => ingestMailboxMessages(account, [message('Camera quotation')], rights));
-    expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[0].id } })).stageId).toBe(stages.Qualified);
+    expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[0].id } })).stageId).toBe(stages.Lead);
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[1].id } })).stageId).toBe(stages.Lead);
     await prisma.deal.updateMany({ where: { leadDeals: { some: { leadId: lead.id } } }, data: { stageId: stages.Lead, stageChangedAt: before } });
     await scope(() => ingestMailboxMessages(account, [message('Product quotation')], rights));
     expect(await prisma.deal.count({ where: { leadDeals: { some: { leadId: lead.id } }, stageId: stages.Lead } })).toBe(2);
-    await call('/administration/deal-stage-automation', 'PATCH', { enabled: false });
     await scope(() => ingestMailboxMessages(account, [{ ...message('Camera cancellation'), body: 'Please cancel my order. We are no longer interested.' }], rights));
-    expect((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).status).toBe('Cancelled');
+    expect((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).status).toBe('Hot');
     expect(await prisma.deal.count({ where: { leadDeals: { some: { leadId: lead.id } }, stageId: stages.Lead } })).toBe(2);
   });
   it('delivers role/owner notifications, deduplicates retries and never creates a foreign recipient', async () => {
@@ -158,7 +154,8 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     await scope(() => dispatchTenantNotifications(tenantId));
     expect(await prisma.notification.count({ where: { tenantId } })).toBe(count);
     expect(await prisma.notification.count({ where: { tenantId, userId: otherAgentId } })).toBe(0);
-    for (const type of ['deal_won', 'closing_requirements_completed', 'customer_hot', 'customer_cancelled']) expect(await prisma.notification.count({ where: { tenantId, userId: adminId, type } })).toBeGreaterThan(0);
+    for (const type of ['deal_won', 'closing_requirements_completed', 'customer_hot']) expect(await prisma.notification.count({ where: { tenantId, userId: adminId, type } })).toBeGreaterThan(0);
+    expect(await prisma.notification.count({ where: { tenantId, type: 'customer_cancelled' } })).toBe(0);
     expect(await prisma.notification.count({ where: { tenantId, userId: agentId, type: 'customer_reply' } })).toBeGreaterThan(0);
     await deliverEvent({ tenantId, eventKey: 'foreign-attempt', type: 'test', title: 'Test', ownerId: foreignId });
     expect(await prisma.notification.count({ where: { tenantId, userId: foreignId } })).toBe(0);

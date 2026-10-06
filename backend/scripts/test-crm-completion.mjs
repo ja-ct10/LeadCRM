@@ -18,10 +18,9 @@ const migrated = await db.query(`SELECT "definition" FROM "ClosingFieldDefinitio
 assert.equal(migrated.rows[0].definition.id, 'legacy-field');
 assert.equal(migrated.rows[0].definition.version, 3);
 const preferences = await db.query(`SELECT "tenantId", "value" FROM "TenantPreference" WHERE "module"='deal-stage-automation' ORDER BY "tenantId"`);
-assert.equal(preferences.rows.find(r => r.tenantId === 'migration-existing').value.enabled, true);
-assert.equal(preferences.rows.find(r => r.tenantId === 'migration-disabled').value.enabled, false);
+assert.deepEqual(preferences.rows, []);
 assert.equal((await db.query(`SELECT count(*)::int AS count FROM "TenantPreference" WHERE "id"='legacy-fields'`)).rows[0].count, 1);
-console.log('Migration preservation checks passed: existing fields, versions, preferences and automation defaults.');
+console.log('Migration preservation checks passed: fields, versions and unrelated preferences retained; retired automation settings removed.');
 const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 });
 await socket.start();
 const root = resolve(import.meta.dirname, '..');

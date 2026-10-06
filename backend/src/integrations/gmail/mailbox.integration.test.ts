@@ -7,7 +7,7 @@ import { tenantContext } from '../../core/tenant/tenant-context';
 import { issueAuthSession } from '../../core/auth/auth-session';
 import { encryptToken, decryptToken } from '../../core/encryption/crypto.service';
 import { hashToken } from '../../core/auth/session.service';
-import { ingestMailboxMessages, evaluateMailboxCold } from './mailbox-ingestion.service';
+import { ingestMailboxMessages, evaluateMailboxEngagement } from './mailbox-ingestion.service';
 import { syncMailbox, associateMailboxDeal, mailboxPermissions } from './mailbox-sync.service';
 import { beginMailboxConnection, finishMailboxConnection } from './mailbox-auth.service';
 import { moveDealStage } from '../../modules/crm/deals/deals.repository';
@@ -20,6 +20,8 @@ import app from '../../app';
 import type { GmailEmail } from './gmail.types';
 import { mailConfig } from '../../config/mail.config';
 import { validateImportRow } from '../../modules/crm/imports/import-rows.service';
+import { processBrevoEvent } from '../../modules/marketing/campaigns/brevo-webhook';
+import * as dealRepository from '../../modules/crm/deals/deals.repository';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = url.hostname === '127.0.0.1' && /^\/leadcrm_mailbox_test_\d+$/.test(url.pathname);
@@ -57,14 +59,12 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
   };
   beforeAll(async () => {
     tenantId = (await prisma.tenant.create({ data: { name: 'Mailbox tests', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } })).id;
-    // These pre-existing automation scenarios explicitly opt in; new tenants default to manual stages.
-    await prisma.tenantPreference.create({ data: { tenantId, module: 'deal-stage-automation', key: 'default', value: { enabled: true } } });
     otherTenant = (await prisma.tenant.create({ data: { name: 'Other', slug: randomUUID() } })).id;
     const user = await prisma.user.create({ data: { tenantId, email: 'mailbox-admin@camxian.com', firstName: 'Mail', lastName: 'Owner', role: 'Client Admin', mustChangePassword: false } });
     userId = user.id; token = (await issueAuthSession(user)).token;
     denied = (await issueAuthSession(await prisma.user.create({ data: { tenantId, email: 'denied-mail@camxian.com', firstName: 'Denied', lastName: 'Staff', role: 'Sales', mustChangePassword: false } }))).token;
     otherStaff = (await issueAuthSession(await prisma.user.create({ data: { tenantId, email: 'other-mail@camxian.com', firstName: 'Other', lastName: 'Staff', role: 'Client Admin', mustChangePassword: false } }))).token;
-    account = await prisma.emailAccount.create({ data: { tenantId, userId, email: user.email, accessToken: encryptToken('test-access'), refreshToken: encryptToken('test-refresh'), tokenExpiresAt: new Date(+now + day), scopes: ['https://www.googleapis.com/auth/gmail.modify'], connectedAt: before(365), lastSyncAt: now } });
+    account = await prisma.emailAccount.create({ data: { tenantId, userId, email: user.email, accessToken: encryptToken('test-access'), refreshToken: encryptToken('test-refresh'), tokenExpiresAt: new Date(+now + day), scopes: ['https://www.googleapis.com/auth/gmail.modify'], connectedAt: before(365), lastSyncAt: now, syncCursor: 'verified-history' } });
     const pipeline = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
     pipelineId = pipeline.pipeline.id;
     stages = Object.fromEntries((await prisma.stage.findMany({ where: { tenantId, pipelineId } })).map(stage => [stage.name, stage.id]));
@@ -74,25 +74,25 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
   afterEach(() => vi.unstubAllGlobals());
   afterAll(async () => { await new Promise<void>(resolve => server.close(() => resolve())); await prisma.$disconnect(); });
 
-  it('preserves source timestamps, directions and exact case/whitespace matching; skips generic replies', async () => {
+  it('preserves source timestamps, directions and exact case/whitespace matching; counts generic replies', async () => {
     const c = await customer(1, 'Cold');
     await prisma.lead.update({ where: { id: c.lead.id }, data: { email: ` ${c.email.toUpperCase()} ` } });
     const outbound = message(c.thread, c.email, 'outbound', 'Here is product information.', 9);
     const thanks = message(c.thread, c.email, 'inbound', 'Thanks', 8);
     await ingest([outbound, thanks]);
-    expect((await read(c.lead.id)).status).toBe('Cold'); expect(await stageOf(c.deals[0].id)).toBe('Lead');
+    expect((await read(c.lead.id)).status).toBe('Warm'); expect(await stageOf(c.deals[0].id)).toBe('Lead');
     const inbound = message(c.thread, c.email, 'inbound', 'How does the product work?', 7);
     await ingest([inbound]);
-    expect((await read(c.lead.id)).status).toBe('Warm'); expect(await stageOf(c.deals[0].id)).toBe('Contacted');
+    expect((await read(c.lead.id)).status).toBe('Hot'); expect(await stageOf(c.deals[0].id)).toBe('Lead');
     const activity = await prisma.activity.findFirstOrThrow({ where: { leadId: c.lead.id, type: 'email', createdAt: new Date(inbound.date) } });
     expect(activity.metadata).toMatchObject({ direction: 'inbound', providerMessageId: inbound.id });
   });
-  it('formal requests qualify; clear intent sets Hot but never closes', async () => {
+  it('reply wording does not qualify or close a Deal', async () => {
     const c = await customer();
     await ingest([message(c.thread, c.email, 'inbound', 'Please send a quotation.', 7)]);
-    expect(await stageOf(c.deals[0].id)).toBe('Qualified'); expect((await read(c.lead.id)).status).toBe('Warm');
+    expect(await stageOf(c.deals[0].id)).toBe('Lead'); expect((await read(c.lead.id)).status).toBe('Hot');
     await ingest([message(c.thread, c.email, 'inbound', 'We approve the quotation and will proceed.', 5)]);
-    expect((await read(c.lead.id)).status).toBe('Hot'); expect(await stageOf(c.deals[0].id)).toBe('Qualified');
+    expect((await read(c.lead.id)).status).toBe('Hot'); expect(await stageOf(c.deals[0].id)).toBe('Lead');
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: c.deals[0].id } })).closedAt).toBeNull();
   });
   it('retains converted Lead email aliases and original thread Deal context for the Contact', async () => {
@@ -140,16 +140,16 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     // Advance the saved association barrier into the past to represent a subsequent real response.
     await prisma.mailboxThreadAssociation.update({ where: { accountId_threadId: { accountId: account.id, threadId: c.thread } }, data: { linkedAt: before(3) } });
     await ingest([message(c.thread, c.email, 'inbound', 'We want to proceed with the product.', 2)]);
-    expect(await stageOf(c.deals[0].id)).toBe('Lead'); expect(await stageOf(c.deals[1].id)).toBe('Qualified');
+    expect(await stageOf(c.deals[0].id)).toBe('Lead'); expect(await stageOf(c.deals[1].id)).toBe('Lead');
     await expect(scope(() => associateMailboxDeal(otherTenant, userId, c.thread, c.deals[0].id))).rejects.toBeDefined();
   });
-  it('cancellation closes the relevant open Deal, keeps terminal history, and does not reopen from replies', async () => {
+  it('cancellation wording is still a reply and cannot cancel the customer or Deal', async () => {
     const c = await customer();
     await ingest([message(c.thread, c.email, 'inbound', 'Please cancel our order.', 4)]);
-    expect((await read(c.lead.id)).status).toBe('Cancelled'); expect(await stageOf(c.deals[0].id)).toBe('Closed Lost');
+    expect((await read(c.lead.id)).status).toBe('Hot'); expect(await stageOf(c.deals[0].id)).toBe('Lead');
     await ingest([message(c.thread, c.email, 'inbound', 'We want to proceed.', 2)]);
-    expect((await read(c.lead.id)).status).toBe('Cancelled'); expect(await stageOf(c.deals[0].id)).toBe('Closed Lost');
-    expect(await prisma.dealStageHistory.count({ where: { dealId: c.deals[0].id } })).toBe(1);
+    expect((await read(c.lead.id)).status).toBe('Hot'); expect(await stageOf(c.deals[0].id)).toBe('Lead');
+    expect(await prisma.dealStageHistory.count({ where: { dealId: c.deals[0].id } })).toBe(0);
   });
   it('makes message ingestion and activity idempotent, including concurrent repeats', async () => {
     const c = await customer(), inbound = message(c.thread, c.email, 'inbound', 'We want to proceed.');
@@ -157,14 +157,14 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     expect(await prisma.mailboxMessage.count({ where: { accountId: account.id, providerMessageId: inbound.id } })).toBe(1);
     expect(await prisma.activity.count({ where: { leadId: c.lead.id, type: 'email' } })).toBe(1);
     expect(await prisma.activity.count({ where: { leadId: c.lead.id, type: 'stage_change' } })).toBe(1);
-    expect(await prisma.dealStageHistory.count({ where: { dealId: c.deals[0].id } })).toBe(1);
+    expect(await prisma.dealStageHistory.count({ where: { dealId: c.deals[0].id } })).toBe(0);
   });
-  it('old mail never undoes manual status/stage changes', async () => {
+  it('verified history ages customer status without changing manual Deal stages', async () => {
     const c = await customer();
     await scope(() => updateLead(c.lead.id, tenantId, { status: 'Cold' }, userId, 'Warm'));
     await scope(() => moveDealStage(c.deals[0].id, tenantId, stages.Qualified, userId));
     await ingest([message(c.thread, c.email, 'outbound', 'Product information', 9), message(c.thread, c.email, 'inbound', 'How does the product work?', 8)]);
-    expect((await read(c.lead.id)).status).toBe('Cold'); expect(await stageOf(c.deals[0].id)).toBe('Qualified');
+    expect((await read(c.lead.id)).status).toBe('Warm'); expect(await stageOf(c.deals[0].id)).toBe('Qualified');
   });
   it('validates configured requirements, closes after the final save, and preserves related sales data', async () => {
     const c = await customer();
@@ -194,19 +194,177 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     expect(await prisma.activity.count({ where: { contactId: contact.id, type: 'stage_change' } })).toBe(1);
     await expect(scope(() => updateContact(contact.id, tenantId, { status: 'Closed' }, userId))).rejects.toBeDefined();
   });
-  it('Cold needs customer silence, unanswered outreach, and fresh sync; follow-ups do not reset the clock', async () => {
+  it('decays with fresh coverage, pauses with stale coverage and ignores outbound followups', async () => {
     const c = await customer();
-    await ingest([message(c.thread, c.email, 'inbound', 'How does the product work?', 80)]);
-    await scope(() => evaluateMailboxCold(account, permissions, now)); expect((await read(c.lead.id)).status).toBe('Warm');
-    await ingest([message(c.thread, c.email, 'outbound', 'Here is product information.', 70), message(c.thread, c.email, 'outbound', 'Following up on the product.', 1)]);
-    const savedCustomer = await read(c.lead.id); expect(savedCustomer.lastMeaningfulInboundAt).toEqual(before(80)); expect(savedCustomer.firstUnansweredOutboundAt).toEqual(before(70));
-    await prisma.emailAccount.update({ where: { id: account.id }, data: { syncError: 'Revoked' } });
-    await scope(() => evaluateMailboxCold(account, permissions, now)); expect((await read(c.lead.id)).status).toBe('Warm');
-    await prisma.emailAccount.update({ where: { id: account.id }, data: { syncError: null, lastSyncAt: now } });
-    await scope(() => evaluateMailboxCold(account, permissions, now)); expect((await read(c.lead.id)).status).toBe('Cold');
+    await ingest([message(c.thread, c.email, 'inbound', 'Thanks', 7)]);
+    expect((await read(c.lead.id)).status).toBe('Hot');
+    const future = new Date(+now + 24 * day);
+    await prisma.emailAccount.update({ where: { id: account.id }, data: { lastSyncAt: before(2) } });
+    await scope(() => evaluateMailboxEngagement(account, permissions, future));
+    expect((await read(c.lead.id)).status).toBe('Hot');
+    await prisma.emailAccount.update({ where: { id: account.id }, data: { lastSyncAt: future } });
+    await scope(() => evaluateMailboxEngagement(account, permissions, future));
+    expect((await read(c.lead.id)).status).toBe('Cold');
+    await ingest([message(c.thread, c.email, 'outbound', 'Follow-up', 0)]);
+    expect((await read(c.lead.id)).lastCustomerReplyAt).toEqual(before(7));
+    expect((await read(c.lead.id)).firstUnansweredOutboundAt).toBeNull();
+    await prisma.emailAccount.update({ where: { id: account.id }, data: { lastSyncAt: now } });
+  });
+  it('never-replied customers age from first outbound and no-history customers retain status', async () => {
+    const fresh = await customer(0, 'Warm'), waiting = await customer(0, 'Cold'), overdue = await customer(0);
+    await ingest([message(waiting.thread, waiting.email, 'outbound', 'Hello', 10), message(waiting.thread, waiting.email, 'outbound', 'Again', 1), message(overdue.thread, overdue.email, 'outbound', 'Hello', 30)]);
+    await scope(() => evaluateMailboxEngagement(account, permissions, now));
+    expect((await read(fresh.lead.id)).status).toBe('Warm');
+    expect((await read(waiting.lead.id)).status).toBe('Warm');
+    expect((await read(waiting.lead.id)).firstUnansweredOutboundAt).toEqual(before(10));
+    expect((await read(overdue.lead.id)).status).toBe('Cold');
+    const reply = message(overdue.thread, overdue.email, 'inbound', 'Noted', 0);
+    await ingest([{ ...reply, automated: true }]);
+    expect((await read(overdue.lead.id)).lastCustomerReplyAt).toBeNull();
+    await ingest([{ ...reply, id: randomUUID(), automated: false }]);
+    expect((await read(overdue.lead.id)).status).toBe('Hot');
+  });
+  it('creates a complete priced Deal set once across concurrent retries and preserves relationships', async () => {
+    const c = await customer(0);
+    const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Linked', lastName: 'Contact', email: `${randomUUID()}@example.test` } });
+    const accountRecord = await prisma.account.create({ data: { tenantId, name: 'Batch account', tags: [] } });
+    const products = await Promise.all([25000, 15000].map((value, index) => prisma.productInterest.create({ data: { tenantId, name: `Batch product ${index} ${randomUUID()}`, dealValue: value } })));
+    const dto = { idempotencyKey: randomUUID(), title: 'Installation', pipelineId, stageId: stages.Lead,
+      productInterestIds: products.map(p => p.id), leadIds: [c.lead.id], contactIds: [contact.id], accountId: accountRecord.id,
+      assignedUserId: userId, industry: 'Technology', address: '123 Main Street', priority: 'HIGH', leadSource: 'Referral', expectedCloseDate: '2026-12-01T00:00:00.000Z' };
+    const responses = await Promise.all([call('/crm/deals/batch', 'POST', dto), call('/crm/deals/batch', 'POST', dto)]);
+    expect(responses.map(r => r.status).sort()).toEqual([200, 201]);
+    const created = responses[0].body.data.deals;
+    expect(created).toHaveLength(2);
+    expect(responses[1].body.data.deals.map((d: {id: string}) => d.id)).toEqual(created.map((d: {id: string}) => d.id));
+    for (const [index, deal] of created.entries()) {
+      expect(deal).toMatchObject({ productInterestId: products[index].id, value: index ? 15000 : 25000, accountId: accountRecord.id,
+        industry: 'Technology', address: dto.address, assignedUserId: userId, priority: 'HIGH', stageId: stages.Lead,
+        title: `Installation — ${products[index].name}` });
+      expect(await prisma.leadDeal.count({ where: { tenantId, dealId: deal.id, leadId: c.lead.id } })).toBe(1);
+      expect(await prisma.contactDeal.count({ where: { tenantId, dealId: deal.id, contactId: contact.id } })).toBe(1);
+      expect(await prisma.auditLog.count({ where: { tenantId, entityId: deal.id, action: 'deal.created' } })).toBe(1);
+    }
+    await prisma.productInterest.update({ where: { id: products[0].id }, data: { dealValue: 99999 } });
+    expect((await call('/crm/deals/batch', 'POST', dto)).body.data.deals[0].value).toBe(25000);
+    expect((await call('/crm/deals/batch', 'POST', { ...dto, title: 'Changed' })).status).toBe(409);
+    const invalid = { ...dto, idempotencyKey: randomUUID(), productInterestIds: [products[0].id, randomUUID()] };
+    expect((await call('/crm/deals/batch', 'POST', invalid)).status).toBe(400);
+    expect(await prisma.dealCreationReceipt.count({ where: { tenantId, idempotencyKey: invalid.idempotencyKey } })).toBe(0);
+    expect(await prisma.deal.count({ where: { tenantId, leadDeals: { some: { leadId: c.lead.id } } } })).toBe(2);
+    expect((await call('/crm/deals/batch', 'POST', { ...dto, idempotencyKey: randomUUID(), industry: 'Made up' })).status).toBe(400);
+    expect((await call('/crm/deals/batch', 'POST', { ...dto, idempotencyKey: randomUUID(), stageId: stages['Closed Won'] })).status).toBe(400);
+    expect((await call('/crm/deals/batch', 'POST', { ...dto, idempotencyKey: randomUUID() }, denied)).status).toBe(403);
+    const foreignProduct = await prisma.productInterest.create({ data: { tenantId: otherTenant, name: 'Foreign', dealValue: 100 } });
+    expect((await call('/crm/deals/batch', 'POST', { ...dto, idempotencyKey: randomUUID(), productInterestIds: [foreignProduct.id] })).status).toBe(400);
+  });
+  it('retains the newest reply across mailboxes and delayed sync, with Contact aging after recovery', async () => {
+    const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Reply', lastName: 'Contact', email: `${randomUUID()}@example.test`, status: 'COLD' } });
+    const reply = message(randomUUID(), contact.email!, 'inbound', 'Anything at all', 2);
+    await ingest([reply]);
+    const owner = await prisma.user.create({ data: { tenantId, firstName: 'Second', lastName: 'Mailbox', email: `${randomUUID()}@camxian.com`, role: 'Client Admin' } });
+    const second = await prisma.emailAccount.create({ data: { tenantId, userId: owner.id, email: owner.email, accessToken: encryptToken('test'), lastSyncAt: now, syncCursor: 'verified-history' } });
+    await scope(() => ingestMailboxMessages(second, [{ ...message(reply.threadId, contact.email!, 'inbound', 'Older wording', 20), to: [second.email] }], permissions));
+    const snapshot = await prisma.contact.findUniqueOrThrow({ where: { id: contact.id } });
+    expect(snapshot.status).toBe('HOT'); expect(snapshot.lastCustomerReplyAt).toEqual(before(2));
+    await ingest([message(reply.threadId, contact.email!, 'outbound', 'Follow up', 1), reply]);
+    expect((await prisma.contact.findUniqueOrThrow({ where: { id: contact.id } })).lastCustomerReplyAt).toEqual(before(2));
+    const future = new Date(+now + 31 * day);
+    await prisma.emailAccount.update({ where: { id: account.id }, data: { lastSyncAt: future } });
+    await scope(() => evaluateMailboxEngagement(account, permissions, future));
+    expect((await prisma.contact.findUniqueOrThrow({ where: { id: contact.id } })).status).toBe('HOT');
+    await prisma.emailAccount.update({ where: { id: second.id }, data: { lastSyncAt: future } });
+    await scope(() => evaluateMailboxEngagement(account, permissions, future));
+    expect((await prisma.contact.findUniqueOrThrow({ where: { id: contact.id } })).status).toBe('COLD');
+    await prisma.emailAccount.update({ where: { id: account.id }, data: { lastSyncAt: now } });
+  });
+  it('keeps campaign delivery, opens and clicks outside customer engagement', async () => {
+    const c = await customer(0, 'Cold');
+    await ingest([message(c.thread, c.email, 'outbound', 'Hello', 40)]);
+    const baseline = await read(c.lead.id);
+    const campaign = await prisma.campaign.create({ data: { tenantId, name: 'Tracking only', type: 'EMAIL' } });
+    const log = await prisma.emailDeliveryLog.create({ data: { tenantId, campaignId: campaign.id, leadId: c.lead.id,
+      fromEmail: account.email, toEmail: c.email, subject: 'Tracking', status: 'sent', brevoMessageId: randomUUID() } });
+    for (const event of ['delivered', 'opened', 'click']) await processBrevoEvent({ event, email: c.email, 'message-id': log.brevoMessageId });
+    const after = await read(c.lead.id);
+    expect(after.status).toBe('Cold'); expect(after.lastCustomerReplyAt).toBeNull();
+    expect(after.firstUnansweredOutboundAt).toEqual(baseline.firstUnansweredOutboundAt);
+  });
+  it('preserves single titles, creates three independent Deals, and rolls back a failure after the first insert', async () => {
+    const products = await Promise.all([11, 22, 33].map((value, index) => prisma.productInterest.create({ data: { tenantId, name: `Set ${index} ${randomUUID()}`, dealValue: value } })));
+    const dto = { idempotencyKey: randomUUID(), pipelineId, stageId: stages.Lead, title: 'Original title', productInterestIds: [products[0].id] };
+    const single = await call('/crm/deals/batch', 'POST', dto);
+    expect(single.body.data.deals[0]).toMatchObject({ title: dto.title, value: 11 });
+    const three = await call('/crm/deals/batch', 'POST', { ...dto, idempotencyKey: randomUUID(), title: 'A'.repeat(255), productInterestIds: products.map(p => p.id) });
+    expect(three.body.data.deals).toHaveLength(3);
+    for (const [index, deal] of three.body.data.deals.entries()) {
+      expect(deal.title).toHaveLength(255); expect(deal.title.endsWith(` — ${products[index].name}`)).toBe(true);
+    }
+    const count = await prisma.deal.count({ where: { tenantId } }), audits = await prisma.auditLog.count({ where: { tenantId, action: 'deal.created' } });
+    const original = dealRepository.createDeal;
+    let calls = 0;
+    const failing = vi.spyOn(dealRepository, 'createDeal').mockImplementation(async (...args) => {
+      if (++calls === 2) throw new Error('Test failure after first insertion');
+      return original(...args);
+    });
+    const key = randomUUID();
+    try { expect((await call('/crm/deals/batch', 'POST', { ...dto, idempotencyKey: key, productInterestIds: products.map(p => p.id) })).status).toBe(500); }
+    finally { failing.mockRestore(); }
+    expect(await prisma.deal.count({ where: { tenantId } })).toBe(count);
+    expect(await prisma.auditLog.count({ where: { tenantId, action: 'deal.created' } })).toBe(audits);
+    expect(await prisma.dealCreationReceipt.count({ where: { tenantId, idempotencyKey: key } })).toBe(0);
+  });
+  it('runs only configured status workflows and resolves one related Product Deal', async () => {
+    const c = await customer(2, 'Cold');
+    const product = await prisma.productInterest.create({ data: { tenantId, name: `Workflow product ${randomUUID()}`, dealValue: 100 } });
+    await prisma.deal.update({ where: { id: c.deals[1].id }, data: { productInterestId: product.id } });
+    const workflow = await prisma.workflow.create({ data: { tenantId, name: `Reply workflow ${randomUUID()}`, trigger: 'lead.status_changed', isActive: true, activatedById: userId,
+      conditions: { operator: 'AND', conditions: [{ field: 'lead.email', operator: 'equals', value: c.email }, { field: 'lead.status', operator: 'equals', value: 'Hot' }] },
+      actions: [{ type: 'move_deal_stage', config: { stageId: stages.Contacted, currentStageId: stages.Lead, productInterestId: product.id } }] } });
+    try {
+      const definitions = await prisma.closingFieldDefinition.count({ where: { tenantId } });
+      const preview = await call(`/automation/workflows/${workflow.id}/test`, 'POST', { entityId: c.lead.id });
+      expect(preview.status).toBe(200); expect(preview.body.data.actions[0].message).toContain(c.deals[1].id);
+      expect(await stageOf(c.deals[1].id)).toBe('Lead');
+      expect(await prisma.closingFieldDefinition.count({ where: { tenantId } })).toBe(definitions);
+      const reply = message(c.thread, c.email, 'inbound', 'Thanks', 0);
+      await ingest([reply]); await ingest([reply]);
+      expect(await stageOf(c.deals[0].id)).toBe('Lead');
+      expect(await prisma.workflowExecutionRun.findFirst({ where: { workflowId: workflow.id }, include: { steps: true } })).toMatchObject({ status: 'completed' });
+      expect(await stageOf(c.deals[1].id)).toBe('Contacted');
+      expect(await prisma.workflowExecutionRun.count({ where: { tenantId, workflowId: workflow.id, status: 'completed' } })).toBe(1);
+    } finally { await prisma.workflow.update({ where: { id: workflow.id }, data: { isActive: false } }); }
+  });
+  it('requires Deal access for related Workflow previews and supports Contact junction targeting', async () => {
+    const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Workflow', lastName: 'Contact', email: `${randomUUID()}@example.test` } });
+    const c = await customer();
+    await prisma.contactDeal.create({ data: { tenantId, dealId: c.deals[0].id, contactId: contact.id, position: 0 } });
+    const workflow = await prisma.workflow.create({ data: { tenantId, name: `Contact preview ${randomUUID()}`, trigger: 'contact.status_changed', actions: [{ type: 'move_deal_stage', config: { stageId: stages.Contacted } }] } });
+    const role = await prisma.roleDefinition.create({ data: { tenantId, name: `Preview reader ${randomUUID()}`, permissions: { create: [{ module: 'workflows', canView: true }, { module: 'contacts', canView: true }] } } });
+    const viewer = await prisma.user.create({ data: { tenantId, firstName: 'Preview', lastName: 'Reader', email: `${randomUUID()}@camxian.com`, role: role.name, mustChangePassword: false } });
+    await prisma.userRole.create({ data: { tenantId, roleId: role.id, userId: viewer.id } });
+    const viewerToken = (await issueAuthSession(viewer)).token;
+    expect((await call(`/automation/workflows/${workflow.id}/test`, 'POST', { entityId: contact.id }, viewerToken)).status).toBe(403);
+    const allowed = await call(`/automation/workflows/${workflow.id}/test`, 'POST', { entityId: contact.id });
+    expect(allowed.status).toBe(200); expect(allowed.body.data.actions[0].message).toContain(c.deals[0].id);
     expect(await stageOf(c.deals[0].id)).toBe('Lead');
-    await scope(() => evaluateMailboxCold(account, permissions, now));
-    expect(await prisma.activity.count({ where: { leadId: c.lead.id, title: 'Status changed from Warm to Cold' } })).toBe(1);
+    const { dispatchAction } = await import('../../modules/automation/actions/action-dispatcher');
+    expect(await scope(() => dispatchAction({ type: 'move_deal_stage', config: { stageId: stages.Contacted } }, { 'contact.id': contact.id }, tenantId, userId))).toMatchObject({ success: true });
+    expect(await stageOf(c.deals[0].id)).toBe('Contacted');
+  });
+  it('requires explicit all-matching targeting and never bypasses Closed Won requirements', async () => {
+    const { dispatchAction } = await import('../../modules/automation/actions/action-dispatcher');
+    const c = await customer(2);
+    const context = { 'lead.id': c.lead.id };
+    const run = (config: Record<string, unknown>) => scope(() => dispatchAction({ type: 'move_deal_stage', config }, context, tenantId, userId));
+    expect((await run({ stageId: stages.Contacted })).success).toBe(false);
+    expect(await stageOf(c.deals[0].id)).toBe('Lead');
+    const all = await run({ stageId: stages.Qualified, targetMode: 'all_matching', currentStageId: stages.Lead });
+    expect(all, JSON.stringify(all)).toMatchObject({ success: true }); expect(all.output?.movedDealIds).toHaveLength(2);
+    const blocked = await run({ stageId: stages['Closed Won'], targetMode: 'all_matching' });
+    expect(blocked.success).toBe(false); expect(await stageOf(c.deals[0].id)).toBe('Qualified');
+    const none = await run({ stageId: stages.Contacted, currentStageId: stages.Lead });
+    expect(none).toMatchObject({ success: true, output: { matchedDealIds: [], unchanged: true } });
   });
   it('enforces mailbox ownership, authentication and CRM permissions', async () => {
     expect((await call('/integrations/gmail/status', 'GET', undefined, '')).status).toBe(401);
@@ -312,6 +470,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     await scope(() => syncMailbox(tenantId, userId)); expect((await prisma.emailAccount.findUniqueOrThrow({ where: { id: account.id } })).syncCursor).toBe('102');
     expire = true; await scope(() => syncMailbox(tenantId, userId)); expect((await prisma.emailAccount.findUniqueOrThrow({ where: { id: account.id } })).syncCursor).toBeNull();
     expect(await prisma.mailboxMessage.count({ where: { providerMessageId: inbound.id } })).toBe(1);
+    await prisma.emailAccount.update({ where: { id: account.id }, data: { syncCursor: '102', syncPageToken: null, syncBaselineHistoryId: null, lastSyncAt: new Date(), syncError: null } });
   });
 
   it('re-evaluates previously stored quotation requests without duplicating history or changing another Deal', async () => {
@@ -322,24 +481,24 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     await prisma.lead.update({ where: { id: c.lead.id }, data: { engagementEvaluatedAt: before(2), status: 'Warm' } });
     await prisma.mailboxMessage.update({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: request.id } }, data: { engagementRuleVersion: 0, meaningful: true } });
     await ingest([request]); await ingest([request]);
-    expect(await stageOf(c.deals[0].id)).toBe('Qualified');
+    expect(await stageOf(c.deals[0].id)).toBe('Contacted');
     expect(await stageOf(unrelated.deals[0].id)).toBe('Lead');
-    expect((await read(c.lead.id)).status).toBe('Warm');
+    expect((await read(c.lead.id)).status).toBe('Hot');
     expect(await prisma.activity.count({ where: { leadId: c.lead.id, type: 'email' } })).toBe(1);
     const history = await call(`/crm/activities?leadId=${c.lead.id}`);
     expect(history.body.data.find((a: { type: string }) => a.type === 'email').metadata.email).toMatchObject({ body: request.body, from: request.from, to: request.to, subject: request.subject, sentAt: request.date });
   });
 
-  it('keeps outgoing quotation and reviewing customer Warm, but explicit approval Hot and Qualified', async () => {
+  it('keeps outbound Warm and every genuine recent reply Hot without moving Deals', async () => {
     const c = await customer();
     await ingest([message(c.thread, c.email, 'outbound', 'We approve the quotation. Please proceed with the order.', 8)]);
     expect((await read(c.lead.id)).status).toBe('Warm'); expect(await stageOf(c.deals[0].id)).toBe('Lead');
     await ingest([message(c.thread, c.email, 'inbound', 'Could you please send me the available options and a quotation?', 7)]);
-    expect((await read(c.lead.id)).status).toBe('Warm'); expect(await stageOf(c.deals[0].id)).toBe('Qualified');
+    expect((await read(c.lead.id)).status).toBe('Hot'); expect(await stageOf(c.deals[0].id)).toBe('Lead');
     await ingest([message(c.thread, c.email, 'inbound', 'I am still deciding on the service.', 6)]);
-    expect((await read(c.lead.id)).status).toBe('Warm');
+    expect((await read(c.lead.id)).status).toBe('Hot');
     await ingest([message(c.thread, c.email, 'inbound', 'The quotation is acceptable.', 5)]);
-    expect((await read(c.lead.id)).status).toBe('Hot'); expect(await stageOf(c.deals[0].id)).toBe('Qualified');
+    expect((await read(c.lead.id)).status).toBe('Hot'); expect(await stageOf(c.deals[0].id)).toBe('Lead');
   });
 
   it('enforces required names, trims valid edits and preserves create email validation over HTTP', async () => {

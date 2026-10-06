@@ -21,10 +21,11 @@ export async function changeCustomerStatus(tx: Tx, tenantId: string, actorId: st
   }
   if (link.leadId) await tx.lead.update({ where: { tenantId, id: link.leadId }, data: { status, lastStatusChangedAt: changedAt } });
   else await tx.contact.update({ where: { tenantId, id: link.contactId }, data: { status: contactStatuses[status], lastStatusChangedAt: changedAt } });
-  await tx.activity.create({ data: { tenantId, createdById: actorId, ...link, type: 'stage_change',
+  const activity = await tx.activity.create({ data: { tenantId, createdById: actorId, ...link, type: 'stage_change',
     title: `Status changed from ${normalizeCrmStatus(current.status)} to ${status}`, description: reason,
     metadata: { source: 'customer_engagement', occurredAt: changedAt.toISOString() } } });
   if (link.leadId && status === 'Closed') await convertClosedLead(tx, tenantId, link.leadId, actorId);
+  return { eventId: activity.id, prevStatus: current.status, status, id: current.id };
 }
 
 /** Shared cancellation transition; never touches historical terminal Deals. */

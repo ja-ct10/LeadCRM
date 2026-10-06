@@ -7,8 +7,8 @@ import { tenantContext } from '../../core/tenant/tenant-context';
 import { isOnboardingComplete } from '@leadcrm/shared';
 import { AppError } from '../../shared/errors/app-error';
 import { fetchMessageDetail, getValidAccessToken, parseGmailMessage, GmailApiMessage } from './gmail.service';
-import { ingestMailboxMessages, evaluateMailboxCold, MailboxPermissions } from './mailbox-ingestion.service';
-import { normalizeEmail } from './engagement-rules';
+import { ingestMailboxMessages, evaluateMailboxEngagement, MailboxPermissions } from './mailbox-ingestion.service';
+import { normalizeEmail, ENGAGEMENT_RULE_VERSION } from './engagement-rules';
 import { GmailEmail } from './gmail.types';
 import { customerDealWhere, CustomerLink } from '../../modules/crm/engagement.service';
 import { salesTransaction } from '../../modules/crm/leads/lead-automation.service';
@@ -34,11 +34,10 @@ export async function decorateEmails(tenantId: string, userId: string, emails: G
   const account = await prisma.emailAccount.findUnique({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } } });
   if (!account) return emails;
   const saved = await prisma.mailboxMessage.findMany({ where: { tenantId, accountId: account.id, providerMessageId: { in: emails.map(email => email.id) } } });
-  const openDeals = permissions.dealsView ? await prisma.deal.findMany({ where: { tenantId, id: { in: saved.map(row => row.dealId).filter((id): id is string => !!id) }, isArchived: false, stage: { isWon: false, isLost: false } }, select: { id: true } }) : [];
   return emails.map(email => { const row = saved.find(item => item.providerMessageId === email.id); return {
     ...email, direction: row?.direction ?? (normalizeEmail(email.from) === normalizeEmail(account.email) ? 'outbound' : [...email.to, ...(email.cc ?? [])].some(address => normalizeEmail(address) === normalizeEmail(account.email)) ? 'inbound' : 'unknown'),
     leadId: permissions.leadsView ? row?.leadId : undefined, contactId: permissions.contactsView ? row?.contactId : undefined, dealId: permissions.dealsView ? row?.dealId : undefined,
-    needsDealAssociation: permissions.dealsView ? row?.needsDealAssociation : false, readyToClose: !!row?.readyToClose && openDeals.some(deal => deal.id === row.dealId),
+    needsDealAssociation: permissions.dealsView ? row?.needsDealAssociation : false,
   }; });
 }
 
@@ -74,7 +73,7 @@ export async function associateMailboxDeal(tenantId: string, userId: string, thr
     if (previous?.dealId === dealId) return;
     const value = { dealId, linkedAt: new Date() };
     await tx.mailboxThreadAssociation.upsert({ where: { accountId_threadId: key }, create: { ...key, tenantId, ...value }, update: value });
-    await tx.activity.create({ data: { tenantId, dealId, createdById: userId, type: 'note', title: 'Email conversation associated with this Deal', description: 'Staff selected this opportunity. Future customer messages may update its open stage.', metadata: { threadId, mailboxOwnerId: userId } } });
+    await tx.activity.create({ data: { tenantId, dealId, createdById: userId, type: 'note', title: 'Email conversation associated with this Deal', description: 'Staff selected this opportunity for conversation history.', metadata: { threadId, mailboxOwnerId: userId } } });
   });
   return { success: true };
 }
@@ -117,20 +116,24 @@ export async function syncMailbox(tenantId: string, userId: string) {
       ids = (list.messages ?? []).map(item => item.id); pageToken = list.nextPageToken; historyId = account.syncBaselineHistoryId!;
     }
     // Replay a bounded batch after a rule upgrade, retaining provider idempotency and
-    // the status/stage timestamp barriers that protect subsequent manual changes.
-    const pendingRules = await prisma.mailboxMessage.findMany({ where: { tenantId, accountId: account.id, direction: 'inbound', engagementRuleVersion: { lt: 1 } }, orderBy: { sentAt: 'desc' }, take: 20, select: { providerMessageId: true } });
+    // provider metadata verification for inbound and outbound history.
+    const pendingRules = await prisma.mailboxMessage.findMany({ where: { tenantId, accountId: account.id, direction: { in: ['inbound', 'outbound'] }, engagementRuleVersion: { gte: 0, lt: ENGAGEMENT_RULE_VERSION } }, orderBy: { sentAt: 'desc' }, take: 20, select: { providerMessageId: true } });
     ids = [...new Set([...ids, ...pendingRules.map(message => message.providerMessageId)])];
     const messages: GmailEmail[] = [];
     for (let offset = 0; offset < ids.length; offset += 5) {
       const batch = await Promise.all(ids.slice(offset, offset + 5).map(async id => {
         try { return parseGmailMessage(await gmailJson<GmailApiMessage>(accessToken, `messages/${encodeURIComponent(id)}?format=full`)); }
-        catch (error) { if (error instanceof AppError && error.statusCode === 404) return null; throw error; }
+        catch (error) { if (error instanceof AppError && error.statusCode === 404) {
+          await prisma.mailboxMessage.updateMany({ where: { tenantId, accountId: account!.id, providerMessageId: id, engagementRuleVersion: { lt: ENGAGEMENT_RULE_VERSION } }, data: { engagementRuleVersion: -1 } });
+          console.warn('[mailbox-sync] Historical message unavailable for verification', { accountId: account!.id, providerMessageId: id });
+          return null;
+        } throw error; }
       }));
       messages.push(...batch.filter((message): message is GmailEmail => !!message));
       const renewed = await prisma.emailAccount.updateMany({ where: { id: account.id, syncLeaseId: leaseId, isActive: true }, data: { syncLeaseUntil: new Date(Date.now() + 180000) } });
       if (!renewed.count) throw new AppError('Mailbox sync interrupted. Retry sync.', 409);
     }
-    // Include earlier messages from each conversation before classifying its reply.
+    // Preserve full conversation history and explicit Deal associations.
     // Gmail's full mailbox listing is newest-first and may split a thread across pages.
     const threadIds = [...new Set(messages.map(message => message.threadId))];
     for (let offset = 0; offset < threadIds.length; offset += 5) {
@@ -142,7 +145,7 @@ export async function syncMailbox(tenantId: string, userId: string) {
     await prisma.emailAccount.updateMany({ where: { id: account.id, syncLeaseId: leaseId, isActive: true }, data: { syncPageToken: pageToken ?? null, syncError: null,
       ...(!pageToken ? { syncCursor: historyId, lastSyncAt: new Date(), syncBaselineHistoryId: null } : {}) } });
     // Full sync is a snapshot. Catch up from its baseline before treating silence as inactivity.
-    if (!pageToken && wasHistorySync) await evaluateMailboxCold(account, permissions);
+    if (!pageToken && wasHistorySync) await evaluateMailboxEngagement(account, permissions);
     return { syncing: !!pageToken, hasMore: !!pageToken, processed: messages.length };
   } catch (error) {
     await prisma.emailAccount.updateMany({ where: { id: account.id, syncLeaseId: leaseId }, data: { syncError: 'Sync could not complete. Retry, or reconnect if Gmail access was revoked.' } });

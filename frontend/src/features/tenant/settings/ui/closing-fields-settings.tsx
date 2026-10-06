@@ -12,25 +12,25 @@ import { Button, CreateButton } from '@/shared/components/ui/button';
 import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { toast } from 'sonner';
 import { CustomFieldCard } from './custom-field-card';
-import { DealStageAutomationSettings } from './deal-stage-automation-settings';
 
 const endpoint = '/administration/closing-requirements';
 const inputClass = panelInputClass;
-const empty = (): ClosingFieldInput => ({ name: '', type: 'Text', appliesTo: 'Closed Won Requirements', required: false, active: true, options: [], description: '' });
+type FieldDraft = Omit<ClosingFieldInput, 'appliesTo'>;
+const empty = (): FieldDraft => ({ name: '', type: 'Text', required: false, active: true, options: [], description: '' });
 
 function FieldForm({ field, onSaved, onClose }: { field?: ClosingField; onSaved: () => void; onClose: () => void }) {
   const canDisable = useHasPermission('custom_fields.disable');
-  const [form, setForm] = useState<ClosingFieldInput>(() => field ? { name: field.name, type: field.type, appliesTo: field.appliesTo, required: field.required, active: field.active, options: [...field.options], description: field.description } : empty());
+  const [form, setForm] = useState<FieldDraft>(() => field ? { name: field.name, type: field.type, required: field.required, active: field.active, options: [...field.options], description: field.description } : empty());
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
-  const update = <K extends keyof ClosingFieldInput>(key: K, value: ClosingFieldInput[K]) => setForm(prev => ({ ...prev, [key]: value }));
+  const update = <K extends keyof FieldDraft>(key: K, value: FieldDraft[K]) => setForm(prev => ({ ...prev, [key]: value }));
   const error = (name: string) => errors[name] && <p role="alert" className="text-xs text-destructive">{errors[name]}</p>;
   return <form className="flex h-full min-h-0 min-w-0 flex-col" noValidate onSubmit={async event => {
     event.preventDefault();
     const parsed = ClosingFieldInputSchema.safeParse(form);
     if (!parsed.success) { setErrors(Object.fromEntries(parsed.error.issues.map(i => [String(i.path[0]), i.message]))); return; }
     setBusy(true); setErrors({});
-    try { if (field) await apiClient.patch(`${endpoint}/${field.id}`, parsed.data); else await apiClient.post(endpoint, parsed.data); toast.success(field ? 'Field updated' : 'Field created'); onSaved(); }
+    try { if (field) await apiClient.patch(`${endpoint}/${field.id}`, form); else await apiClient.post(endpoint, form); toast.success(field ? 'Field updated' : 'Field created'); onSaved(); }
     catch (e) { setErrors({ form: e instanceof Error ? e.message : 'Unable to save field.' }); }
     finally { setBusy(false); }
   }}>
@@ -38,7 +38,6 @@ function FieldForm({ field, onSaved, onClose }: { field?: ClosingField; onSaved:
       <PanelSectionHeading number={1}>Basic Information</PanelSectionHeading>
       <label className="block space-y-1.5 text-xs font-semibold">Field Name <span className="text-red-500">*</span><input autoFocus required maxLength={100} aria-invalid={!!errors.name} className={inputClass} value={form.name} onChange={e => update('name', e.target.value)} />{error('name')}</label>
       <label className="block space-y-1.5 text-xs font-semibold">Field Type <span className="text-red-500">*</span><select required disabled={!!field} className={inputClass} value={form.type} onChange={e => update('type', e.target.value as ClosingFieldInput['type'])}>{CLOSING_FIELD_TYPES.map(type => <option key={type}>{type}</option>)}</select>{field && <span className="block font-normal text-muted-foreground">Add a new field to use a different type.</span>}</label>
-      <label className="block space-y-1.5 text-xs font-semibold">Applies To <span className="text-red-500">*</span><select required className={inputClass} value={form.appliesTo} onChange={() => { }}><option>Closed Won Requirements</option></select></label>
       <label className="flex min-h-11 items-center justify-between gap-3 text-sm">Required<input type="checkbox" role="switch" aria-label="Required" checked={form.required} onChange={e => update('required', e.target.checked)} className="h-5 w-5 accent-blue-600" /></label>
       {field && <label className="flex min-h-11 items-center justify-between gap-3 text-sm">Active<input type="checkbox" role="switch" aria-label="Active" disabled={!canDisable} checked={form.active} onChange={e => update('active', e.target.checked)} className="h-5 w-5 accent-blue-600" /></label>}
       <label className="block space-y-1.5 text-xs font-semibold">Description / Help Text<textarea maxLength={1000} className={inputClass} rows={3} value={form.description} onChange={e => update('description', e.target.value)} /></label>
@@ -52,17 +51,19 @@ function FieldForm({ field, onSaved, onClose }: { field?: ClosingField; onSaved:
 
 export function ClosingFieldsSettings() {
   const canDisable = useHasPermission('custom_fields.disable');
-  const disable = async (id: string) => { try { await apiClient.patch(`${endpoint}/${id}`, { active: false }); await query.refetch(); toast.success('Field disabled'); } catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to disable field'); } };
   const canEdit = useHasPermission('custom_fields.edit'), canCreate = useHasPermission('custom_fields.create');
-  const [panel, setPanel] = useState<'list' | 'new' | ClosingField | null>(null);
-  const query = useCachedPage<ClosingField[]>({ module: 'settings', params: { closingFields: true }, fetchFn: async signal => (await apiClient.get<{ data: ClosingField[] }>(endpoint, { signal })).data });
-  const fieldCount = query.data?.length ?? 0;
-  const fieldStatus = query.isInitialLoad ? 'Loading' : query.error ? 'Unavailable' : query.data?.some(field => field.active) ? 'Enabled' : 'Setup';
+  const [panel, setPanel] = useState<'new' | ClosingField | null>(null);
+  const query = useCachedPage<ClosingField[]>({ module: 'settings', params: { closingFields: true }, disabled: false, fetchFn: async signal => (await apiClient.get<{ data: ClosingField[] }>(endpoint, { signal })).data });
+  const disable = async (id: string) => { try { await apiClient.patch(`${endpoint}/${id}`, { active: false }); await query.refetch(); toast.success('Field disabled'); } catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to disable field'); } };
   return <div className="min-w-0 space-y-5">
-    <PageHeader title="Custom Fields" subtitle="Configure additional fields used throughout LeadCRM." actions={canCreate && <CreateButton label="Add New Field" onClick={() => setPanel('new')} />} />
-    <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3"><CustomFieldCard title="Closed Won Requirements" description="Configure the information and documents needed to close a Deal as won." kind="requirements" status={fieldStatus} meta={query.isInitialLoad ? 'Loading fields…' : query.error ? 'Unable to load fields' : `${fieldCount} ${fieldCount === 1 ? 'field' : 'fields'}`} onClick={() => setPanel('list')} actions={[{ id: 'view', label: 'View requirements', onClick: () => setPanel('list') }, ...(canCreate ? [{ id: 'add', label: 'Add New Field', onClick: () => setPanel('new') }] : [])]} /><DealStageAutomationSettings /></div>
-    <SlidingDrawer isOpen={panel !== null} onClose={() => setPanel(null)} title={panel === 'list' ? 'Closed Won Requirements' : typeof panel === 'object' && panel ? 'Edit Field' : 'New Field'} subtitle={panel === 'list' ? 'Manage the fields used to close a Deal as won.' : 'Complete the custom field details below.'}>
-      {panel === 'list' ? <div className="space-y-4 px-4 py-5 sm:px-6">{query.isInitialLoad ? <TableLoadingState label="Loading requirements" /> : query.error ? <div role="alert">{query.error}<Button onClick={() => void query.refetch()}>Retry</Button></div> : <ul className="divide-y divide-border rounded-xl border border-border">{query.data?.map(field => <li key={field.id} className="flex min-w-0 items-start justify-between gap-3 p-3"><div className="min-w-0 [overflow-wrap:anywhere]"><p className="text-sm font-semibold">{field.name}</p><p className="mt-1 text-xs text-muted-foreground">{field.type} · {field.required ? 'Required' : 'Optional'} · {field.active ? 'Active' : 'Inactive'}</p>{field.type === 'Dropdown' && <p className="mt-1 text-xs text-muted-foreground">{field.options.join(', ')}</p>}{field.description && <p className="mt-1 text-xs">{field.description}</p>}</div><div className="flex shrink-0 flex-wrap gap-1">{canEdit && <Button variant="ghost" size="sm" onClick={() => setPanel(field)}>Edit</Button>}{canDisable && field.active && <Button variant="ghost" size="sm" onClick={() => void disable(field.id)}>Disable</Button>}</div></li>)}</ul>}{canCreate && <Button onClick={() => setPanel('new')}><Plus size={14} />Add New Field</Button>}</div> : panel && <FieldForm key={typeof panel === 'object' ? panel.id : 'new'} field={typeof panel === 'object' ? panel : undefined} onClose={() => setPanel(null)} onSaved={() => { void query.refetch(); setPanel(null); }} />}
+    <PageHeader title="Custom Fields" subtitle="Configure fields used by Closed Won Requirements." actions={canCreate && <CreateButton label="Add New Field" onClick={() => setPanel('new')} />} />
+    {query.isInitialLoad ? <TableLoadingState label="Loading fields" /> : query.error ? <div role="alert">{query.error}<Button onClick={() => void query.refetch()}>Retry</Button></div> :
+      <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">{query.data?.map(field => <CustomFieldCard key={field.id} title={field.name} description={field.description || `${field.type} field for Closed Won Requirements.`} kind="requirements" status={field.active ? 'Enabled' : 'Disabled'} meta={`${field.type} · ${field.required ? 'Required' : 'Optional'}`} disabled={!canEdit} onClick={() => setPanel(field)} actions={[
+        ...(canEdit ? [{ id: 'edit', label: 'Edit Field', onClick: () => setPanel(field) }] : []),
+        ...(canDisable && field.active ? [{ id: 'disable', label: 'Disable', onClick: () => void disable(field.id) }] : []),
+      ]} />)}</div>}
+    <SlidingDrawer isOpen={panel !== null} onClose={() => setPanel(null)} title={panel && typeof panel === 'object' ? 'Edit Field' : 'New Field'} subtitle="Complete the custom field details below.">
+      {panel && <FieldForm key={typeof panel === 'object' ? panel.id : 'new'} field={typeof panel === 'object' ? panel : undefined} onClose={() => setPanel(null)} onSaved={() => { void query.refetch(); setPanel(null); }} />}
     </SlidingDrawer>
-  </div >;
+  </div>;
 }

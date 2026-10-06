@@ -84,7 +84,10 @@ export function getAvailableActions(): ActionDefinition[] {
       field: { type: 'field', label: 'Field', required: true }, value: { type: 'value', label: 'New value', required: false },
       clear: { type: 'boolean', label: 'Clear value', required: false }, otherDetails: { type: 'string', label: 'Specify (optional)', required: false },
     } },
-    { type: 'move_deal_stage', label: 'Move Deal Stage', description: 'Move the deal using the pipeline transition rules.', entities: ['deal'], configSchema: {
+    { type: 'move_deal_stage', label: 'Move Deal Stage', description: 'Move the triggering Deal or explicitly filtered related Deals using pipeline transition rules.', entities: ['deal', 'lead', 'contact'], configSchema: {
+      targetMode: { type: 'select', label: 'Related Deal selection', required: false, options: ['single_match', 'all_matching'] },
+      productInterestId: { type: 'products', label: 'Product filter', required: false },
+      currentStageId: { type: 'stage', label: 'Current stage filter', required: false },
       stageId: { type: 'stage', label: 'Target stage', required: true }, lostReason: { type: 'string', label: 'Reason (required for lost stages)', required: false },
     } },
   ];

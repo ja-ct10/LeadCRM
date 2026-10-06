@@ -8,6 +8,7 @@ import * as repo from './workflows.repository';
 import { validateWorkflow, validateWorkflowConditions, validateConditionReferences } from './workflow-validation';
 import { findTrigger } from '../triggers/trigger-catalog';
 import { validateAction } from '../actions/action-validation';
+import { resolveDealTargets } from '../actions/action-deal-targets';
 import { fieldUpdatePatch } from '../actions/action-fields';
 import { evaluateCondition, evaluateRule } from './workflow-conditions';
 import { safeWorkflowError } from '../actions/action-dispatcher';
@@ -140,8 +141,11 @@ export async function testWorkflow(id: string, tenantId: string, entityId: strin
       actions.push({ type: action.type, valid: true, message: 'Disabled. This action will be skipped.' });
       continue;
     }
-    try { await validateAction(action, trigger.entity, tenantId, context); actions.push({ type: action.type, valid: true,
-      message: action.type === 'send_email' ? 'Recipient resolved; template and sender available. No email sent.' : 'Configuration and references valid. No changes made.' });
+    try { await validateAction(action, trigger.entity, tenantId, context);
+      const targets = action.type === 'move_deal_stage' ? await resolveDealTargets(action, trigger.entity, tenantId, context) : undefined;
+      actions.push({ type: action.type, valid: true,
+        message: targets ? (targets.length ? `${targets.length} matching Deal(s): ${targets.join(', ')}. No changes made.` : 'No matching Deals. This action will be a no-op.')
+          : action.type === 'send_email' ? 'Recipient resolved; template and sender available. No email sent.' : 'Configuration and references valid. No changes made.' });
       // Project validated earlier actions into this in-memory sample only.
       if (action.type === 'assign_owner') context[`${trigger.entity}.assignedUserId`] = action.config.userId;
       if (action.type === 'update_field') {

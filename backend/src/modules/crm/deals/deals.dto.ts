@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { recordName, recordText } from '../record-validation';
-import { ProductInterestIdSchema, ClosedWonConfirmationSchema } from '@leadcrm/shared';
+import { ProductInterestIdSchema, ClosedWonConfirmationSchema, DealIndustrySchema } from '@leadcrm/shared';
 
 // ID field helper — accepts any non-empty string (UUID, CUID, or custom).
 // Format validation is not a business rule; referential integrity is enforced by the DB.
@@ -29,7 +29,7 @@ export const CreateDealSchema = z.object({
 }).strict();
 
 // Manual creation accepts catalog IDs; the singular ID remains supported for existing clients.
-export const ManualCreateDealSchema = CreateDealSchema.extend({ productInterests: z.never().optional() }).refine(data => {
+export const ManualCreateDealSchema = CreateDealSchema.extend({ productInterests: z.never().optional(), industry: DealIndustrySchema.optional() }).refine(data => {
   const ids = [...new Set(data.productInterestIds ?? (data.productInterestId ? [data.productInterestId] : []))];
   return ids.length === 1 && (!data.productInterestId || data.productInterestId === ids[0]);
 }, { path: ['productInterestIds'], message: 'Select exactly one Product Interest per Deal.' });

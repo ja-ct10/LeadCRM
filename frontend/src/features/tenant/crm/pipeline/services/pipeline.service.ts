@@ -1,7 +1,7 @@
 'use client';
 
 import { apiClient } from '@/lib/api/client';
-import type { ApiResponse, PaginatedResponse, ClosedWonConfirmation } from '@leadcrm/shared';
+import type { ApiResponse, PaginatedResponse, ClosedWonConfirmation, CreateDealBatchInput, DealBatchResult } from '@leadcrm/shared';
 import type { Deal, Pipeline } from '@/store/types';
 
 export const pipelineService = {
@@ -15,6 +15,9 @@ export const pipelineService = {
     const qs = params.toString() ? `?${params.toString()}` : '';
     return apiClient.get<PaginatedResponse<Deal>>(`/crm/deals${qs}`);
   },
+
+  createDeals: (data: CreateDealBatchInput): Promise<ApiResponse<DealBatchResult<Deal>>> =>
+    apiClient.post('/crm/deals/batch', data),
 
   createDeal: (data: Partial<Deal>): Promise<ApiResponse<Deal>> =>
     apiClient.post<ApiResponse<Deal>>('/crm/deals', data),

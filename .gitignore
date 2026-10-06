@@ -61,6 +61,7 @@ backend/.env.example
 # Local database inventories contain deployment-specific identifiers.
 data/outputs/retired-features-*.json
 /data/outputs/product-normalization-tests/
+/data/outputs/engagement-implementation/
 /product-normalization-before.json
 /product-normalization-after.json
 

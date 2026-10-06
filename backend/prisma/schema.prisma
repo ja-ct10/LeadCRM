@@ -83,6 +83,7 @@ enum CampaignStatus {
 // TENANT
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Tenant {
+  dealCreationReceipts DealCreationReceipt[]
   crmImportUploads CrmImportUpload[]
   productInterestRecords ProductInterest[]
   recordFiles        RecordFile[]
@@ -430,7 +431,7 @@ model Lead {
   createdById         String?
   updatedById         String?
   lastStatusChangedAt DateTime?
-  lastMeaningfulInboundAt DateTime?
+  lastCustomerReplyAt DateTime? @map("lastMeaningfulInboundAt")
   firstUnansweredOutboundAt DateTime?
   engagementEvaluatedAt DateTime?
   isArchived          Boolean   @default(false)
@@ -504,7 +505,7 @@ model Contact {
   notes               String?
   lastContactedAt     DateTime?
   lastStatusChangedAt DateTime?
-  lastMeaningfulInboundAt DateTime?
+  lastCustomerReplyAt DateTime? @map("lastMeaningfulInboundAt")
   firstUnansweredOutboundAt DateTime?
   engagementEvaluatedAt DateTime?
   convertedAt         DateTime?
@@ -1651,4 +1652,16 @@ model MailboxThreadAssociation {
   deal Deal @relation(fields: [dealId, tenantId], references: [id, tenantId], onDelete: Restrict)
   @@id([accountId, threadId])
   @@index([tenantId, dealId])
+}
+
+// Persistent identity of a manual multi-Product Deal submission.
+model DealCreationReceipt {
+  tenantId String
+  idempotencyKey String
+  actorId String
+  requestHash String
+  dealIds String[]
+  createdAt DateTime @default(now())
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@id([tenantId, idempotencyKey])
 }

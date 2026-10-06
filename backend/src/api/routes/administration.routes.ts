@@ -2,7 +2,6 @@ import { assertPermissions } from '../../core/permissions/permission.service';
 import { CreateUsersSchema, UpdateUsersSchema } from '../../modules/administration/users/users.dto';
 import { passwordResetRateLimiter } from '../middleware/rate-limit.middleware';
 import { Router } from 'express';
-import * as dealStageAutomation from '../../modules/crm/deal-stage-automation.controller';
 import * as closingRequirements from '../../modules/crm/closing-requirements/closing-requirements.controller';
 import { listFields } from '../../modules/crm/closing-requirements/closing-requirements.service';
 import { authMiddleware } from '../middleware/auth.middleware';
@@ -31,8 +30,6 @@ router.get('/users/:id/permissions', (req, res, next) => {
   return workspaceReadyMiddleware(req, res, next);
 }, roleController.getUserPermissions);
 router.use(workspaceReadyMiddleware);
-router.get('/deal-stage-automation', authorize('custom_fields.view'), dealStageAutomation.get);
-router.patch('/deal-stage-automation', authorize('custom_fields.edit'), dealStageAutomation.update);
 router.get('/closing-requirements', authorize('custom_fields.view'), closingRequirements.list);
 router.post('/closing-requirements', authorize('custom_fields.create'), closingRequirements.create);
 router.patch('/closing-requirements/:id', authorizeFieldChanges, closingRequirements.edit);

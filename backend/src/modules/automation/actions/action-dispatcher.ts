@@ -1,3 +1,4 @@
+import { resolveDealTargets } from './action-deal-targets';
 import { EmailSubjectSchema, type WorkflowAction } from '@leadcrm/shared';
 import { AppError } from '../../../shared/errors/app-error';
 import { ValidationError } from '../../../shared/errors/http-error';
@@ -41,9 +42,17 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
     }
     if (action.type === 'send_email') return { success: true, output: await deliverEmail(action, context, tenantId) };
     if (action.type === 'move_deal_stage') {
-      if (context['deal.stageId'] === config.stageId) return { success: true, output: { unchanged: true, stageId: config.stageId } };
-      const result = await moveDealStage(entityId, tenantId, actorId, { stageId: String(config.stageId), lostReason: config.lostReason ? String(config.lostReason) : undefined });
-      return { success: true, output: { historyId: result.stageHistory?.id, stageId: config.stageId } };
+      const ids = await resolveDealTargets(action, entity, tenantId, context);
+      const movedDealIds: string[] = [];
+      for (const id of ids) {
+        try {
+          const result = await moveDealStage(id, tenantId, actorId, { stageId: String(config.stageId), lostReason: config.lostReason ? String(config.lostReason) : undefined });
+          if (result.stageHistory) movedDealIds.push(id);
+        } catch (error) {
+          return { success: false, error: safeWorkflowError(error), output: { movedDealIds, failedDealId: id, matchedDealIds: ids } };
+        }
+      }
+      return { success: true, output: { matchedDealIds: ids, movedDealIds, stageId: config.stageId, unchanged: !movedDealIds.length, ...(ids.length ? {} : { reason: 'No related Deals matched.' }) } };
     }
     if (!['assign_owner', 'update_field'].includes(action.type)) throw new ValidationError('This action is no longer available.');
     const update = action.type === 'assign_owner' ? { assignedUserId: String(config.userId) } : await fieldUpdatePatch(action, entity, tenantId);

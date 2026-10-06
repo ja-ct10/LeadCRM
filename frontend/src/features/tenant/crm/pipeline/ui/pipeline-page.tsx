@@ -30,7 +30,7 @@ import type { Deal } from '@/store/types';
 
 export default function PipelinePage({ navigate }: { navigate?: (path: string) => void }) {
   const router = useRouter();
-  const { pipelines, deals, users, addDeal, moveDealStage, refreshPipelines } = useData();
+  const { pipelines, deals, users, addDeals, moveDealStage, refreshPipelines } = useData();
   const { user, tenant } = useAuth();
   const canManageStages = useHasPermission('deals.manage_stages');
   const canCreate = useHasPermission('deals.create'), canEdit = useHasPermission('deals.edit'), canDelete = useHasPermission('deals.archive');
@@ -107,7 +107,7 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
     </div>
     {manageStages && pipeline && <PipelineStagesDialog pipelineId={pipeline.id} onClose={() => setManageStages(false)} onChanged={async () => { await refreshPipelines(); await query.refetch(); }} />}
     <DealPanel open={!!selected} deal={selected} onOpenChange={open => { if (!open) { setSelected(null); void query.refetch(); } }} />
-    <DealFormSheet isOpen={!!createStage} mode="create" onClose={() => setCreateStage(undefined)} preselect={{ pipelineId: pipeline?.id, stageId: createStage }} onSubmit={async values => { await addDeal(values as unknown as Omit<Deal, 'id' | 'tenantId' | 'createdAt'>); setCreateStage(undefined); await query.refetch(); }} />
+    <DealFormSheet isOpen={!!createStage} mode="create" onClose={() => setCreateStage(undefined)} preselect={{ pipelineId: pipeline?.id, stageId: createStage }} onSubmit={async values => { await addDeals(values); setCreateStage(undefined); await query.refetch(); }} />
     {lost && <div role="dialog" aria-modal="true" aria-label="Close Deal as lost" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"><form className="w-full max-w-sm space-y-3 rounded-xl bg-card p-4" onSubmit={e => { e.preventDefault(); void move(lost.id, lost.stageId, lostReason).catch(() => {}); }}><label className="block text-sm">Lost reason<textarea required maxLength={2000} value={lostReason} onChange={e => setLostReason(e.target.value)} className="mt-2 w-full rounded border bg-background p-2" /></label><button disabled={moving || !lostReason.trim()} className="min-h-11 rounded bg-blue-600 px-4 text-white">Save</button><button type="button" className="min-h-11 px-4" onClick={() => setLost(undefined)}>Cancel</button></form></div>}
   </div>;
 }

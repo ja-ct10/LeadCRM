@@ -19,7 +19,7 @@ Reference: [Google's Gmail error and retry guidance](https://developers.google.c
 
 ## Custom Fields
 
-Product Interest and Closed Won Requirements now use the Forms gallery proportions: a 144 px preview area, compact footer, status badge, field/product count, and the existing actions menu. Thumbnails are CSS and existing icons. Existing product navigation, field configuration, and permission checks are retained.
+Custom Fields now shows one card per saved `ClosingFieldDefinition`, with an **Edit Field** menu bound to that field's ID. **Add New Field** opens a blank drawer. The fixed Closed Won purpose is supplied by the server; the form does not expose Applies To, and field type is immutable on edit. Product management remains separate. See [current behavior and verification](engagement-deal-creation.md); the verification below records the earlier gallery release.
 
 ## Verification
 

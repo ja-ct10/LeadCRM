@@ -37,7 +37,6 @@ export interface MailboxEmail {
   contactId?: string | null;
   dealId?: string | null;
   needsDealAssociation?: boolean;
-  readyToClose?: boolean;
 }
 
 export interface MailboxUnreadCount { unreadCount: number }

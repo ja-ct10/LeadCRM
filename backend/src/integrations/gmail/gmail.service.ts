@@ -483,13 +483,13 @@ export function parseGmailMessage(data: GmailApiMessage): GmailEmail {
 
   // Extract body from parts or direct body
   const parts: GmailPart[] = [];
-  const visit = (part: GmailPart) => { if (part.body?.data) parts.push(part); part.parts?.forEach(visit); };
+  const visit = (part: GmailPart) => { parts.push(part); part.parts?.forEach(visit); };
   visit(data.payload);
   const decode = (part?: GmailPart) => part?.body?.data ? Buffer.from(part.body.data, 'base64url').toString('utf-8') : '';
   const plainText = decode(parts.find(part => part.mimeType === 'text/plain'));
   const html = decode(parts.find(part => part.mimeType === 'text/html'));
   const escape = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const body = html || `<pre>${escape(plainText || decode(parts[0]))}</pre>`;
+  const body = html || `<pre>${escape(plainText || decode(parts.find(part => part.body?.data)))}</pre>`;
 
   return {
     id: data.id,
@@ -505,7 +505,7 @@ export function parseGmailMessage(data: GmailApiMessage): GmailEmail {
     cc: parseAddressList(getHeader('Cc')),
     plainText: plainText || undefined,
     rfcMessageId: getHeader('Message-ID'),
-    automated: (!!getHeader('Auto-Submitted') && getHeader('Auto-Submitted').toLowerCase() !== 'no') || !!getHeader('List-Id') || /bulk|list|junk/i.test(getHeader('Precedence')),
+    automated: /^(?:mailer-daemon|postmaster)@/i.test(normalizeEmail(from)) || getHeader('Return-Path').trim() === '<>' || parts.some(part => /message\/(?:delivery-status|disposition-notification)/i.test(part.mimeType ?? '')) || /multipart\/report/i.test(data.payload.mimeType ?? '') || (!!getHeader('Auto-Submitted') && getHeader('Auto-Submitted').toLowerCase() !== 'no') || !!getHeader('List-Id') || /bulk|list|junk/i.test(getHeader('Precedence')),
   };
 }
 

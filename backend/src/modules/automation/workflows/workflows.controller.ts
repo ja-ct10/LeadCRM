@@ -70,6 +70,11 @@ export async function getWorkflowExecutions(req: Request, res: Response, next: N
 
 export async function testWorkflow(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    const workflow = await service.getWorkflowById(String(req.params.id), req.user!.tenantId);
+    if (/^(lead|contact)\./.test(workflow.trigger) && Array.isArray(workflow.actions) && workflow.actions.some(action =>
+      action && typeof action === 'object' && !Array.isArray(action) && action.type === 'move_deal_stage' && action.enabled !== false)) {
+      await assertPermissions(req.user!, [workflow.trigger.startsWith('lead.') ? 'leads.view' : 'contacts.view', 'deals.view', 'deals.edit']);
+    }
     res.json({ success: true, data: await service.testWorkflow(String(req.params.id), req.user!.tenantId, req.body.entityId) });
   } catch (err) { next(err); }
 }

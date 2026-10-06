@@ -5,7 +5,7 @@ For the implemented Campaigns, Templates, Target Audiences, and Brevo webhook en
 
 The backend includes implemented CRM, authentication, administration, campaigns, workflows, forms, imports, and mailbox modules. Module-specific references below describe their contracts.
 
-The Prisma schema has 57 models. See the [database audit](database/normalization-report.md) for current relations, compatibility fields, and verified deployment notes. Existing databases use the forward migration deployment command, `npm --prefix backend run db:deploy`.
+See the [database audit](database/normalization-report.md) for relations, compatibility fields, and verified deployment notes, and [engagement and Deal creation](engagement-deal-creation.md) for the additive Deal creation receipt. Existing databases use the forward migration deployment command, `npm --prefix backend run db:deploy`.
 
 Deal `leadId`/`contactId` and Task `leadId`/`contactId`/`dealId`/`accountId` remain
 public API projections of ordered junctions. Plural association fields remain
@@ -146,6 +146,7 @@ for migration verification and deployment requirements.
 |---|---|---|
 | `GET` | `/crm/deals` | List deals |
 | `POST` | `/crm/deals` | Create deal |
+| `POST` | `/crm/deals/batch` | Atomically create one Lead-stage Deal per selected canonical Product; requires `deals.create` |
 | `PUT` | `/crm/deals/:id` | Update deal |
 | `PATCH` | `/crm/deals/:id/stage` | Move deal to new stage |
 | `GET` | `/crm/deals/:id/actions` | List DealActions for a deal |
@@ -160,6 +161,21 @@ for migration verification and deployment requirements.
 
 Stage removal rejects default/won/lost stages and stages referenced by any Deal
 (including archived Deals) or stage history. It does not reassign or orphan Deals.
+
+`POST /crm/deals/batch` accepts `idempotencyKey` (UUID), unique `productInterestIds`,
+`pipelineId`, the pipeline's `Lead` `stageId`, and common `title`, `priority`,
+`expectedCloseDate`, `accountId`, `assignedUserId`, `contactIds`, `leadIds`,
+`leadSource`, `industry` (from `COMPANY_INDUSTRIES`), `address`, `billingFrequency`,
+and `productInterestOther`. Prices and currency are server-owned Product snapshots
+in PHP. The response is `{ success: true, data: { deals: Deal[], replayed: boolean } }`,
+with 201 for creation, 200 for identical replay, and 409 for an actor/payload conflict
+on a previously used key. Multi-Deal titles are `Entered title — Product name`, with
+the entered portion shortened to fit 255 characters. A single title is preserved.
+All relationships, audit records, Deals and the tenant-scoped receipt commit together.
+The existing single-Deal endpoint and response remain supported.
+
+Mailbox reply timing, related-Deal Workflow options, Custom Fields and migration
+instructions are documented in [engagement and Deal creation](engagement-deal-creation.md).
 
 Lead and Contact create requests require a trimmed, valid email of at most 254
 characters. Updates may omit email, but cannot submit an empty or invalid email.
