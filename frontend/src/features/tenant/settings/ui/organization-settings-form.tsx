@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Building2, Globe, Mail, Phone, Link, MapPin, Pencil, Save } from 'lucide-react';
 import { toast } from 'sonner';
-import { UpdateOrganizationSettingsSchema, formatOrganizationPhone, ORGANIZATION_PHONE_ERROR, COMPANY_INDUSTRIES, type OrganizationSettings } from '@leadcrm/shared';
+import { UpdateOrganizationSettingsSchema, formatOrganizationPhone, ORGANIZATION_FIELD_LIMIT_ERRORS, ORGANIZATION_FIELD_LIMITS, ORGANIZATION_PHONE_ERROR, COMPANY_INDUSTRIES, type OrganizationSettings } from '@leadcrm/shared';
 import { PageHeader } from '@/shared/components/ui/page-header';
 import { useAuth } from '@/store/AuthContext';
 import { settingsApiService } from '../services/settings.service';
@@ -51,6 +51,7 @@ export function OrganizationSettingsForm() {
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!editing || !canEdit || busy.current || !draft) return;
+    if (Object.values(fieldErrors).some(Boolean)) return;
     const parsed = UpdateOrganizationSettingsSchema.safeParse(draft);
     if (!parsed.success) {
       setFieldErrors(Object.fromEntries(parsed.error.issues.map(issue => [String(issue.path[0]), issue.message])));
@@ -111,6 +112,10 @@ export function OrganizationSettingsForm() {
             if (key === 'phone') {
               next = next.replace(/^\+63\s*/, '');
               if (!/^[0-9 ()-]*$/.test(next) || next.replace(/\D/g, '').length > (next.startsWith('0') ? 10 : 9)) { setFieldErrors(errors => ({ ...errors, phone: ORGANIZATION_PHONE_ERROR })); return; }
+            }
+            if (next.length > ORGANIZATION_FIELD_LIMITS[key]) {
+              setFieldErrors(errors => ({ ...errors, [key]: ORGANIZATION_FIELD_LIMIT_ERRORS[key] }));
+              return;
             }
             const result = UpdateOrganizationSettingsSchema.safeParse({ [key]: next });
             const issue = result.success ? undefined : result.error.issues.find(item => item.path[0] === key);

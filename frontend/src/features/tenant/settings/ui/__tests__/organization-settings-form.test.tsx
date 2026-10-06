@@ -101,12 +101,24 @@ it('shows backend field errors below the phone field without discarding edits', 
 it('validates organization limits and domain-only values inline', async () => {
   render(<OrganizationSettingsForm />); await screen.findByDisplayValue('Original'); fireEvent.click(screen.getByText('Edit'));
   fireEvent.change(name(), { target: { value: 'O'.repeat(151) } });
+  expect(name().value).toBe('Original');
   expect(screen.getByText('Organization name must not exceed 150 characters.')).toBeTruthy();
+  const email = screen.getByRole('textbox', { name: 'Email' }) as HTMLInputElement;
+  fireEvent.change(email, { target: { value: 'e'.repeat(255) } });
+  expect(email.value).toBe(saved.email);
+  expect(screen.getByText('Email must not exceed 254 characters.')).toBeTruthy();
   const domain = screen.getByRole('textbox', { name: 'Domain' }) as HTMLInputElement;
+  fireEvent.change(domain, { target: { value: 'd'.repeat(254) } });
+  expect(domain.value).toBe(saved.domain);
+  expect(screen.getByText('Domain must not exceed 253 characters.')).toBeTruthy();
   fireEvent.change(domain, { target: { value: 'https://camxian.com' } });
   expect(screen.getByText('Enter a valid domain, such as camxian.com')).toBeTruthy();
   fireEvent.change(domain, { target: { value: 'CRM.Camxian.com' } });
   expect(screen.queryByText('Enter a valid domain, such as camxian.com')).toBeNull();
+  const address = screen.getByRole('textbox', { name: 'Office Address' }) as HTMLTextAreaElement;
+  fireEvent.change(address, { target: { value: 'a'.repeat(501) } });
+  expect(address.value).toBe(saved.address);
+  expect(screen.getByText('Address must not exceed 500 characters.')).toBeTruthy();
   fireEvent.submit(name().closest('form')!);
   expect(mocks.save).not.toHaveBeenCalled();
 });

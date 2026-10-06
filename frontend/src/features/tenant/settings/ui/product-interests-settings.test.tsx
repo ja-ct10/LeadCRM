@@ -94,6 +94,7 @@ it('requires both new product fields, trims the name and shows length errors inl
   fireEvent.change(screen.getByLabelText('Product Name'), { target: { value: '   ' } });
   expect(screen.getByText('Product name is required')).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Product Name'), { target: { value: ` ${'x'.repeat(201)} ` } });
+  expect((screen.getByLabelText('Product Name') as HTMLInputElement).value).toBe('   ');
   expect(screen.getByText('Product name must not exceed 200 characters.')).toBeTruthy();
   expect(apiClient.post).not.toHaveBeenCalled();
 });
@@ -103,6 +104,7 @@ it.each(['₱25000', '25,000', '-25000', 'abc', '12abc', '25000.50', ' '])('reje
   fireEvent.click(screen.getByRole('button', { name: 'Add Product' }));
   fireEvent.change(screen.getByLabelText('Product Name'), { target: { value: ' Valid Product ' } });
   fireEvent.change(screen.getByLabelText('Deal Value (PHP)'), { target: { value: amount } });
+  expect((screen.getByLabelText('Deal Value (PHP)') as HTMLInputElement).value).toBe('');
   fireEvent.click(screen.getByRole('button', { name: 'Save Product' }));
   expect(await screen.findByRole('alert')).toBeTruthy();
   expect(apiClient.post).not.toHaveBeenCalled();

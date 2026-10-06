@@ -2,6 +2,12 @@ import { z } from 'zod';
 import { isValidPhMobile, PH_MOBILE_ERROR, toE164 } from '../validation/ph-phone';
 
 export const PROFILE_FIELD_LIMITS = { firstName: 50, lastName: 50, jobTitle: 100, department: 100 } as const;
+export const PROFILE_FIELD_LIMIT_ERRORS = {
+  firstName: `First name must not exceed ${PROFILE_FIELD_LIMITS.firstName} characters.`,
+  lastName: `Last name must not exceed ${PROFILE_FIELD_LIMITS.lastName} characters.`,
+  jobTitle: `Job title must not exceed ${PROFILE_FIELD_LIMITS.jobTitle} characters.`,
+  department: `Department must not exceed ${PROFILE_FIELD_LIMITS.department} characters.`,
+} as const;
 
 const optionalText = (max: number, message: string) => z.string().trim().max(max, message).nullable().optional();
 const profilePhone = z.string().nullable().optional().transform((value, context) => {
@@ -18,11 +24,11 @@ export const ProfilePhoneInputSchema = z.string().refine(value => value === '' |
   .transform(value => value === '' ? null : toE164(value));
 
 export const SelfProfileFieldSchemas = {
-  firstName: z.string().trim().min(1, 'First name is required').max(PROFILE_FIELD_LIMITS.firstName, 'First name must not exceed 50 characters.').optional(),
-  lastName: z.string().trim().min(1, 'Last name is required').max(PROFILE_FIELD_LIMITS.lastName, 'Last name must not exceed 50 characters.').optional(),
+  firstName: z.string().trim().min(1, 'First name is required').max(PROFILE_FIELD_LIMITS.firstName, PROFILE_FIELD_LIMIT_ERRORS.firstName).optional(),
+  lastName: z.string().trim().min(1, 'Last name is required').max(PROFILE_FIELD_LIMITS.lastName, PROFILE_FIELD_LIMIT_ERRORS.lastName).optional(),
   phone: ProfilePhoneInputSchema,
-  jobTitle: optionalText(PROFILE_FIELD_LIMITS.jobTitle, 'Job title must not exceed 100 characters.'),
-  department: optionalText(PROFILE_FIELD_LIMITS.department, 'Department must not exceed 100 characters.'),
+  jobTitle: optionalText(PROFILE_FIELD_LIMITS.jobTitle, PROFILE_FIELD_LIMIT_ERRORS.jobTitle),
+  department: optionalText(PROFILE_FIELD_LIMITS.department, PROFILE_FIELD_LIMIT_ERRORS.department),
 };
 
 export const UpdateSelfProfileSchema = z.object({ ...SelfProfileFieldSchemas, phone: profilePhone }).strict()

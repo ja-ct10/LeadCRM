@@ -9,8 +9,12 @@ export function parseProductAmount(input: string): number | null {
 }
 
 /** New catalog entries accept whole digit-only amounts in the raw form value. */
+export function isProductCreateAmountInput(input: string): boolean {
+  return /^\d*$/.test(input);
+}
+
 export function parseProductCreateAmount(input: string): number | null {
-  if (!/^\d+$/.test(input)) return null;
+  if (input.length === 0 || !isProductCreateAmountInput(input)) return null;
   const amount = Number(input);
   return Number.isFinite(amount) ? amount : null;
 }
@@ -18,8 +22,10 @@ export function parseProductCreateAmount(input: string): number | null {
 export const PRODUCT_DEAL_VALUE_REQUIRED_ERROR = 'Deal value is required.';
 export const PRODUCT_DEAL_VALUE_DIGITS_ERROR = 'Deal value must contain digits only.';
 export const PRODUCT_DEAL_VALUE_NEGATIVE_ERROR = 'Deal value must not be negative.';
+export const PRODUCT_INTEREST_NAME_MAX_LENGTH = 200;
+export const PRODUCT_INTEREST_NAME_MAX_ERROR = `Product name must not exceed ${PRODUCT_INTEREST_NAME_MAX_LENGTH} characters.`;
 
-const productNameSchema = z.string().trim().min(1, 'Product name is required').max(200, 'Product name must not exceed 200 characters.')
+const productNameSchema = z.string().trim().min(1, 'Product name is required').max(PRODUCT_INTEREST_NAME_MAX_LENGTH, PRODUCT_INTEREST_NAME_MAX_ERROR)
   .refine(v => !/[\u0000-\u001f\u007f-\u009f]/.test(v), 'Control characters are not allowed');
 
 export const ProductInterestSchema = z.object({

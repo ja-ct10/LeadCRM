@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Camera, Pencil, Shield } from 'lucide-react';
 import { toast } from 'sonner';
-import { AVATAR_MAX_BYTES, AVATAR_MIME_TYPES, ProfilePhoneInputSchema, SelfProfileFieldSchemas, UpdateSelfProfileSchema } from '@leadcrm/shared';
+import { AVATAR_MAX_BYTES, AVATAR_MIME_TYPES, isPhMobileInput, PH_MOBILE_ERROR, PROFILE_FIELD_LIMIT_ERRORS, PROFILE_FIELD_LIMITS, ProfilePhoneInputSchema, SelfProfileFieldSchemas, UpdateSelfProfileSchema } from '@leadcrm/shared';
 import { useAuth } from '@/store/AuthContext';
 import { authApi } from '@/shared/services/auth.api';
 import { UserAvatar } from '@/shared/components/user-avatar';
@@ -39,6 +39,7 @@ export function ProfileForm() {
       setFieldErrors(errors);
       return;
     }
+    if (Object.values(fieldErrors).some(Boolean)) return;
     setFieldErrors({});
     busy.current = true;
     setSaving(true);
@@ -97,6 +98,14 @@ export function ProfileForm() {
               placeholder={key === 'phone' ? '9XXXXXXXXX' : 'Not set'}
               onChange={event => {
                 const value = event.target.value;
+                if (key === 'phone' && !isPhMobileInput(value)) {
+                  setFieldErrors(current => ({ ...current, phone: PH_MOBILE_ERROR }));
+                  return;
+                }
+                if (key !== 'phone' && value.length > PROFILE_FIELD_LIMITS[key]) {
+                  setFieldErrors(current => ({ ...current, [key]: PROFILE_FIELD_LIMIT_ERRORS[key] }));
+                  return;
+                }
                 setDraft(current => ({ ...current, [key]: value }));
                 const result = (key === 'phone' ? ProfilePhoneInputSchema : SelfProfileFieldSchemas[key]).safeParse(value);
                 setFieldErrors(current => ({ ...current, [key]: result.success ? '' : result.error.issues[0].message }));

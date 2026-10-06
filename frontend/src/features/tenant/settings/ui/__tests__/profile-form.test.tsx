@@ -56,16 +56,26 @@ it('rejects invalid file types and oversized files without uploading', async () 
 it('shows field errors for overlong profile fields and reuses the PH mobile rule', async () => {
   render(<ProfileForm />); fireEvent.click(screen.getByText('Edit'));
   fireEvent.change(screen.getByLabelText('First Name'), { target: { value: 'A'.repeat(51) } });
+  expect((screen.getByLabelText('First Name') as HTMLInputElement).value).toBe('Ada');
   expect(screen.getByText('First name must not exceed 50 characters.')).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Last Name'), { target: { value: 'B'.repeat(51) } });
+  expect((screen.getByLabelText('Last Name') as HTMLInputElement).value).toBe('Lovelace');
   expect(screen.getByText('Last name must not exceed 50 characters.')).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Job Title'), { target: { value: 'J'.repeat(101) } });
+  expect((screen.getByLabelText('Job Title') as HTMLInputElement).value).toBe('');
   expect(screen.getByText('Job title must not exceed 100 characters.')).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Department'), { target: { value: 'D'.repeat(101) } });
+  expect((screen.getByLabelText('Department') as HTMLInputElement).value).toBe('');
   expect(screen.getByText('Department must not exceed 100 characters.')).toBeTruthy();
   const phone = screen.getByLabelText('Phone Number') as HTMLInputElement;
   expect(screen.getByText('+63')).toBeTruthy();
+  fireEvent.change(phone, { target: { value: '9123456789abc' } });
+  expect(phone.value).toBe('');
+  expect(screen.getByText('Enter a valid 10-digit Philippine mobile number starting with 9.')).toBeTruthy();
+  fireEvent.change(phone, { target: { value: '91234567890' } });
+  expect(phone.value).toBe('');
   fireEvent.change(phone, { target: { value: '8123456789' } });
+  expect(phone.value).toBe('8123456789');
   expect(screen.getByText('Enter a valid 10-digit Philippine mobile number starting with 9.')).toBeTruthy();
   fireEvent.change(phone, { target: { value: '+639123456789' } });
   expect(screen.getByText('Enter a valid 10-digit Philippine mobile number starting with 9.')).toBeTruthy();

@@ -2,12 +2,20 @@ import { z } from 'zod';
 import { COMPANY_INDUSTRIES } from '../constants/company-industries';
 
 export const ORGANIZATION_FIELD_LIMITS = { name: 150, industry: 32, email: 254, phone: 24, domain: 253, address: 500 } as const;
+export const ORGANIZATION_FIELD_LIMIT_ERRORS = {
+  name: `Organization name must not exceed ${ORGANIZATION_FIELD_LIMITS.name} characters.`,
+  industry: `Use at most ${ORGANIZATION_FIELD_LIMITS.industry} characters`,
+  email: `Email must not exceed ${ORGANIZATION_FIELD_LIMITS.email} characters.`,
+  phone: `Phone must not exceed ${ORGANIZATION_FIELD_LIMITS.phone} characters.`,
+  domain: `Domain must not exceed ${ORGANIZATION_FIELD_LIMITS.domain} characters.`,
+  address: `Address must not exceed ${ORGANIZATION_FIELD_LIMITS.address} characters.`,
+} as const;
 const text = (limit: number, multiline = false, maxMessage = `Use at most ${limit} characters`) => z.string().trim().max(limit, maxMessage)
   .refine(value => !(multiline ? /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f<>]/ : /[\u0000-\u001f\u007f<>]/).test(value), 'Enter plain text without markup or control characters');
-const optionalText = (limit: number) => text(limit).nullable().optional().transform(value => value === '' ? null : value);
+const optionalText = (limit: number, maxMessage = `Use at most ${limit} characters`) => text(limit, false, maxMessage).nullable().optional().transform(value => value === '' ? null : value);
 export const OrganizationRequiredFieldsSchema = z.object({
-  name: text(ORGANIZATION_FIELD_LIMITS.name, false, 'Organization name must not exceed 150 characters.').refine(value => value.length > 0, 'Organization name is required'),
-  email: z.string().trim().min(1, 'Email is required').max(ORGANIZATION_FIELD_LIMITS.email, 'Email must not exceed 254 characters.')
+  name: text(ORGANIZATION_FIELD_LIMITS.name, false, ORGANIZATION_FIELD_LIMIT_ERRORS.name).refine(value => value.length > 0, 'Organization name is required'),
+  email: z.string().trim().min(1, 'Email is required').max(ORGANIZATION_FIELD_LIMITS.email, ORGANIZATION_FIELD_LIMIT_ERRORS.email)
     .email('Enter a valid email address').transform(value => value.toLowerCase()),
 });
 
@@ -33,7 +41,7 @@ export function formatOrganizationPhone(value: string): string {
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 5)}-${digits.slice(5)}`;
 }
 
-const organizationPhone = optionalText(ORGANIZATION_FIELD_LIMITS.phone).transform((value, context) => {
+const organizationPhone = optionalText(ORGANIZATION_FIELD_LIMITS.phone, ORGANIZATION_FIELD_LIMIT_ERRORS.phone).transform((value, context) => {
   if (value == null) return value;
   const normalized = normalizeOrganizationPhone(value);
   if (!normalized) {
@@ -45,13 +53,13 @@ const organizationPhone = optionalText(ORGANIZATION_FIELD_LIMITS.phone).transfor
 
 export const UpdateOrganizationSettingsSchema = z.object({
   name: OrganizationRequiredFieldsSchema.shape.name.optional(),
-  industry: optionalText(ORGANIZATION_FIELD_LIMITS.industry).pipe(z.enum(COMPANY_INDUSTRIES, { errorMap: () => ({ message: 'Select a supported industry' }) }).nullable().optional()),
+  industry: optionalText(ORGANIZATION_FIELD_LIMITS.industry, ORGANIZATION_FIELD_LIMIT_ERRORS.industry).pipe(z.enum(COMPANY_INDUSTRIES, { errorMap: () => ({ message: 'Select a supported industry' }) }).nullable().optional()),
   email: OrganizationRequiredFieldsSchema.shape.email.optional(),
   phone: organizationPhone,
-  domain: optionalText(ORGANIZATION_FIELD_LIMITS.domain).transform(value => value?.toLowerCase() ?? value)
+  domain: optionalText(ORGANIZATION_FIELD_LIMITS.domain, ORGANIZATION_FIELD_LIMIT_ERRORS.domain).transform(value => value?.toLowerCase() ?? value)
     .refine(value => value == null || /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(value), 'Enter a valid domain, such as camxian.com'),
   address: z.string().refine(value => value === '' || value.trim().length > 0, 'Office address cannot contain only whitespace')
-    .pipe(text(ORGANIZATION_FIELD_LIMITS.address, true, 'Address must not exceed 500 characters.')).nullable().optional().transform(value => value === '' ? null : value),
+    .pipe(text(ORGANIZATION_FIELD_LIMITS.address, true, ORGANIZATION_FIELD_LIMIT_ERRORS.address)).nullable().optional().transform(value => value === '' ? null : value),
 }).strict().refine(value => Object.values(value).some(field => field !== undefined), 'No organization changes supplied');
 
 export type UpdateOrganizationSettings = z.infer<typeof UpdateOrganizationSettingsSchema>;
