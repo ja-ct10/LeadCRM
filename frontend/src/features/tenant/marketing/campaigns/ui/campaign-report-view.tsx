@@ -17,7 +17,7 @@ import { DataLoadingSkeleton } from '@/shared/components/crm/data-view-states';
 import { DataGrid, type DataGridColumnDef } from '@/shared/components/data-grid';
 import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 
-const recipientFilters = ['All recipients', 'Delivered', 'Bounced', 'Opened', 'Clicked', 'Submitted', 'Sent', 'Retrying', 'Failed', 'Pending', 'Excluded'] as const;
+const recipientFilters = ['All recipients', 'Delivered', 'Bounced', 'Opened', 'Clicked', 'Submitted', 'Sent', 'Retrying', 'Failed', 'Pending', 'Excluded', 'Requires review'] as const;
 type RecipientFilter = typeof recipientFilters[number];
 const engagement = (value: boolean, label: string) => <span aria-label={value ? label : `Not ${label.toLowerCase()}`}>
   {value ? <Check size={16} className="text-emerald-600" aria-hidden="true" /> : <span className="text-slate-400" aria-hidden="true">—</span>}
@@ -87,13 +87,14 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
   const status = current.status.replaceAll('_', ' ').replace(/\b\w/g, character => character.toUpperCase());
   const isSms = current.type.toUpperCase() === 'SMS';
   const columns: DataGridColumnDef<CampaignRecipient>[] = isSms ? recipientColumns.filter(c => !['opened', 'clicked'].includes(c.id)).map(c => c.id === 'email' ? { ...c, id: 'phone', header: 'Phone', accessor: row => row.phone || '—' } : c.id === 'actions' ? { ...c, cell: (_, row) => <Button variant="ghost" size="icon" disabled={!row.phone} aria-label={`Copy phone for ${row.name}`} title="Copy phone" onClick={async () => { try { await navigator.clipboard.writeText(row.phone || ''); toast.success('Phone copied.'); } catch { toast.error('Unable to copy phone.'); } }}><Copy size={14} /></Button> } : c) : recipientColumns;
-  const filters = isSms ? recipientFilters.filter(f => !['Delivered', 'Bounced', 'Opened', 'Clicked'].includes(f)) : recipientFilters.filter(f => !['Sent', 'Retrying', 'Excluded'].includes(f));
+  const filters = isSms ? recipientFilters.filter(f => !['Bounced', 'Opened', 'Clicked'].includes(f)) : recipientFilters.filter(f => !['Sent', 'Retrying', 'Excluded', 'Requires review'].includes(f));
   const initialLoading = loading && !report;
   const count = report?.recipientCount ?? 0;
   const metrics: { label: string; value: number | string }[] = isSms ? [
     { label: 'Recipients', value: count }, { label: 'Submitted', value: report?.sentCount ?? 0 },
-    { label: 'Sent', value: recipients.filter(r => r.deliveryStatus === 'Sent').length },
-    { label: 'Retrying', value: recipients.filter(r => r.deliveryStatus === 'Retrying').length },
+    { label: 'Sent', value: recipients.filter(r => ['Sent', 'Delivered'].includes(r.deliveryStatus)).length },
+    { label: 'Delivered', value: report?.deliveredCount ?? 0 },
+    { label: 'Requires review', value: recipients.filter(r => r.deliveryStatus === 'Requires review').length },
     { label: 'Failed', value: report?.failedCount ?? 0 },
   ] : [
     { label: 'Recipients', value: count },

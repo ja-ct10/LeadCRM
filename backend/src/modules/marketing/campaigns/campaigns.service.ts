@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import { Prisma, CampaignStatus, CampaignType } from '@prisma/client';
 import { z } from 'zod';
-import { CampaignDraftSchema, CampaignSendSchema, appendSmsFooter, renderEmailVariables, SMS_MAX_LENGTH, type CampaignSendResult } from '@leadcrm/shared';
+import { CampaignDraftSchema, CampaignSendSchema, buildFinalSms, SMS_MAX_LENGTH, type CampaignSendResult } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { AppError } from '../../../shared/errors/app-error';
@@ -41,10 +41,10 @@ export async function getCampaignReport(id: string, tenantId: string) {
       ...[recipient.submittedAt, recipient.providerUpdatedAt, recipient.sentAt, recipient.deliveredAt, recipient.openedAt, recipient.clickedAt, recipient.bouncedAt].map(at => at?.getTime() ?? 0));
     return {
       id: recipient.id, name: name || recipient.email || recipient.phone || 'Unknown recipient', email: recipient.email, phone: recipient.phone,
-      deliveryStatus: campaign.type === 'SMS' ? recipient.status === 'sent' ? 'Sent' : recipient.status === 'retrying' ? 'Retrying' : recipient.status === 'failed' ? 'Failed' : recipient.status === 'excluded' ? 'Excluded' : recipient.submittedAt ? 'Submitted' : 'Pending'
+      deliveryStatus: campaign.type === 'SMS' ? recipient.status === 'delivered' ? 'Delivered' : recipient.status === 'unknown' || ['PROVIDER_SUBMISSION_UNCONFIRMED', 'TEXTBEE_UNKNOWN_STATE'].includes(recipient.failureReason ?? '') ? 'Requires review' : recipient.status === 'sent' ? 'Sent' : recipient.status === 'retrying' ? 'Retrying' : recipient.status === 'failed' ? 'Failed' : recipient.status === 'excluded' ? 'Excluded' : recipient.submittedAt ? 'Submitted' : 'Pending'
         : recipient.bouncedAt ? 'Bounced' : recipient.deliveredAt ? 'Delivered'
         : ['failed', 'error', 'invalid_email'].includes(recipient.status) ? 'Failed' : recipient.sentAt ? 'Submitted' : 'Pending',
-      opened: !!recipient.openedAt, clicked: !!recipient.clickedAt,
+      opened: campaign.type !== 'SMS' && !!recipient.openedAt, clicked: campaign.type !== 'SMS' && !!recipient.clickedAt,
       lastActivity: last ? new Date(last).toISOString() : null, failureReason: recipient.failureReason,
     };
   });
@@ -149,7 +149,7 @@ async function prepareCampaign(id: string, tenantId: string) {
     }
     const sender = { sender_name: campaign.type === 'SMS' ? 'Camxian Technologies' : process.env.BREVO_FROM_NAME || 'LeadCRM', sender_email: organizationEmail ?? process.env.BREVO_FROM_EMAIL! };
     const sends = eligible.map(r => ({ ...r, id: randomUUID(), logId: randomUUID(), channel: campaign.type, organizationEmail,
-      ...(campaign.type === 'SMS' ? { subject: '', html: '', sms: appendSmsFooter(renderEmailVariables(campaign.body!, { ...r.personalization, ...sender }), organizationEmail!) }
+      ...(campaign.type === 'SMS' ? { subject: '', html: '', sms: buildFinalSms({ body: campaign.body!, variables: { ...r.personalization, ...sender }, organizationEmail: organizationEmail! }) }
         : { ...renderCampaignMessage(campaign.subject!, campaign.body!, { ...r.personalization, ...sender }), sms: '' }) }));
     const tooLong = sends.filter(r => r.channel === 'SMS' && r.sms.length > SMS_MAX_LENGTH).length;
     if (tooLong) throw new AppError(`${tooLong} recipient message${tooLong === 1 ? '' : 's'} exceeds the ${SMS_MAX_LENGTH}-character SMS limit after personalization.`, 400);
@@ -173,11 +173,11 @@ async function deliverPrepared(id: string, tenantId: string, userId: string, pre
       let result;
       try {
         result = recipient.channel === 'SMS'
-          ? await sendSms(recipient.phone!, recipient.sms, { organizationEmail: recipient.organizationEmail, metadata: { campaign_id: id, campaign_recipient_id: recipient.id } })
+          ? await sendSms(recipient.phone!, recipient.sms, { organizationEmail: recipient.organizationEmail })
           : await sendMail({ to: recipient.email!, subject: recipient.subject, html: recipient.html, requireDelivery: true });
       } catch (error) {
         const rejected = (error instanceof EmailSubmissionError || error instanceof SmsSubmissionError) && error.outcome === 'rejected';
-        const reason = rejected ? `${recipient.channel === 'SMS' ? 'UNISMS' : 'BREVO'}_HTTP_${error.httpStatus}` : 'PROVIDER_SUBMISSION_UNCONFIRMED';
+        const reason = rejected ? `${recipient.channel === 'SMS' ? 'TEXTBEE' : 'BREVO'}_HTTP_${error.httpStatus}` : 'PROVIDER_SUBMISSION_UNCONFIRMED';
         console.warn('[Campaigns]', { event: 'recipient_submission', campaignId: id, tenantId, recipientId: recipient.id, outcome: rejected ? 'rejected' : 'unconfirmed', httpStatus: error instanceof EmailSubmissionError ? error.httpStatus : undefined });
         // Unconfirmed requests may have been accepted: preserve them for review.
         await prisma.$transaction([
@@ -195,8 +195,8 @@ async function deliverPrepared(id: string, tenantId: string, userId: string, pre
         prisma.campaign.update({ where: { id, ...scope }, data: submitted ? { sentCount: { increment: 1 } } : { failedCount: { increment: 1 } } }),
         prisma.campaignContact.update({ where: { id: recipient.id, ...scope }, data: { status: recipient.channel === 'SMS' ? (smsStatus === 'pending' ? 'submitted' : smsStatus) : submitted ? 'sent' : 'failed', messageId: result.messageId,
           sentAt: submitted && (recipient.channel === 'EMAIL' || smsStatus === 'sent') ? now : null,
-          ...(recipient.channel === 'SMS' ? { submittedAt: now, providerUpdatedAt: now } : {}),
-          failureReason: smsStatus === 'failed' ? 'UNISMS_FAILED' : submitted ? null : 'TRANSPORT_NOT_SUBMITTED' } }),
+          ...(recipient.channel === 'SMS' ? { submittedAt: now } : {}),
+          failureReason: submitted ? null : 'TRANSPORT_NOT_SUBMITTED' } }),
         ...(recipient.channel === 'EMAIL' ? [prisma.emailDeliveryLog.update({ where: { id: recipient.logId, ...scope }, data: { status: submitted ? 'sent' : 'failed', brevoMessageId: result.messageId, sentAt: submitted ? now : null } })] : []),
       ]);
     }));
@@ -212,7 +212,7 @@ async function deliverPrepared(id: string, tenantId: string, userId: string, pre
       tx.campaignContact.count({ where: { ...where, deliveredAt: { not: null } } }),
       tx.campaignContact.count({ where: { ...where, bouncedAt: { not: null } } }),
     ]);
-    const unconfirmed = await tx.campaignContact.count({ where: { ...where, status: 'pending' } });
+    const unconfirmed = await tx.campaignContact.count({ where: { ...where, OR: [{ status: { in: ['pending', 'unknown'] } }, { failureReason: 'TEXTBEE_UNKNOWN_STATE' }] } });
     const status = unconfirmed ? 'PAUSED' : failedRecipients === prepared.length ? 'FAILED' : failedRecipients ? 'PARTIALLY_SENT' : 'SENT';
     const campaign = await tx.campaign.update({ where: { id, ...scope }, data: { status, sentCount: submittedRecipients, failedCount: failedRecipients, sentAt: submittedRecipients ? new Date() : null } });
     await tx.campaignMetrics.create({ data: { ...where, sentCount: submittedRecipients, deliveredCount, bouncedCount,

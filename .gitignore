@@ -55,8 +55,8 @@ src/main.tsx
 # Reviewed onboarding repair is maintained source, not a scratch script.
 !backend/src/scripts/fix-null-onboarding.ts
 
-# Ignored env templates
-backend/.env.example
+# Backend examples contain empty placeholders only.
+!backend/.env.example
 
 # Local database inventories contain deployment-specific identifiers.
 data/outputs/retired-features-*.json

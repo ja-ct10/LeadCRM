@@ -51,6 +51,7 @@ function deploymentPlan(records, localNames) {
     '20261104000000_user_first_login_onboarding',
     '20261105000000_module_custom_fields',
     '20261106000000_campaign_sms_snapshots',
+    '20261107000000_textbee_webhook_receipts',
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');

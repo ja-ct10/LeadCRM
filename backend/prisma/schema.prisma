@@ -1080,6 +1080,7 @@ model CampaignContact {
   personalization Json?
   messageId String? @unique
   failureReason String?
+  smsWebhookReceipts SmsWebhookReceipt[]
   id           String    @id @default(uuid())
   tenantId     String
   campaignId   String
@@ -1100,7 +1101,19 @@ model CampaignContact {
 
   @@unique([campaignId, leadId])
   @@unique([campaignId, contactId])
+  @@unique([id, tenantId])
   @@index([campaignId, tenantId, status])
+  @@index([tenantId])
+}
+
+// Delivery identities only; message bodies and gateway credentials are never stored here.
+model SmsWebhookReceipt {
+  idempotencyKey String @id
+  tenantId String
+  campaignContactId String
+  createdAt DateTime @default(now())
+  campaignContact CampaignContact @relation(fields: [campaignContactId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  @@index([campaignContactId])
   @@index([tenantId])
 }
 

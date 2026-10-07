@@ -13,3 +13,4 @@ tenantModels.add('ProductInterest');
 for (const model of ['Lead', 'Contact', 'Account']) tenantChildren[model + 'ProductInterest'] = { relation: model.toLowerCase(), model };
 
 tenantModels.add('DealCreationReceipt');
+tenantModels.add('SmsWebhookReceipt');

@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { CampaignDraftSchema, CampaignSendSchema, EMAIL_VARIABLE_TOKENS, renderEmailVariables, appendSmsFooter, SMS_MAX_LENGTH, SMS_ORGANIZATION_EMAIL_REQUIRED, type SavedAudience, type AudienceBreakdown } from '@leadcrm/shared';
+import { CampaignDraftSchema, CampaignSendSchema, EMAIL_VARIABLE_TOKENS, renderEmailVariables, buildFinalSms, smsMessageStats, SMS_MAX_LENGTH, SMS_ORGANIZATION_EMAIL_REQUIRED, type SavedAudience, type AudienceBreakdown } from '@leadcrm/shared';
 import { audiencesApi } from '@/shared/services/audiences.api';
 import { AudiencePanel, AudienceCounts, FieldError } from './audience-panel';
 import type { Campaign } from '@/store/types';
@@ -111,7 +111,7 @@ export function CampaignBuilder({
   const previewBody = () => <iframe title="Email body preview" sandbox="" className="w-full h-full min-h-48 border-0" srcDoc={DOMPurify.sanitize(getPreviewText(messageContent).replace(/\n/g, '<br>'))} />;
   let smsPreview = '', smsPreviewError = smsSettingsError;
   if (campaignType === 'SMS') {
-    try { smsPreview = appendSmsFooter(renderEmailVariables(messageContent, { first_name: 'John', last_name: 'Doe', company_name: 'Example Company', contact_number: '+639123456789', status: 'Hot', sender_name: 'Camxian Technologies', sender_email: organizationEmail || '' }), organizationEmail || ''); }
+    try { smsPreview = buildFinalSms({ body: messageContent, variables: { first_name: 'John', last_name: 'Doe', company_name: 'Example Company', contact_number: '+639123456789', status: 'Hot', sender_name: 'Camxian Technologies', sender_email: organizationEmail || '' }, organizationEmail: organizationEmail || '' }); }
     catch { smsPreviewError ||= SMS_ORGANIZATION_EMAIL_REQUIRED; }
     if (smsPreview.length > SMS_MAX_LENGTH) smsPreviewError = `SMS preview exceeds the ${SMS_MAX_LENGTH}-character limit including personalization and the contact footer.`;
   }
@@ -166,7 +166,6 @@ export function CampaignBuilder({
   const handleSend = () => save(true);
   const handleSaveDraft = () => save(false);
 
-  const charCount = smsPreview.length;
   const inputCls = 'w-full h-9 rounded-md border border-gray-200 dark:border-white/10 bg-white dark:bg-white/3 px-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500/20 transition-all duration-200';
 
   return (
@@ -280,7 +279,7 @@ export function CampaignBuilder({
                 <FieldError message={errors.body || (campaignType === 'SMS' ? smsPreviewError : '')} />
                 {campaignType === 'SMS' && (
                   <div className="flex items-center gap-4 mt-2 text-xs text-slate-500 dark:text-slate-400">
-                    <span>{charCount} / {SMS_MAX_LENGTH} characters including footer (sample recipient)</span>
+                    <span>{smsMessageStats(smsPreview).characters} characters including footer · {smsMessageStats(smsPreview).segments} SMS segment(s) · {smsMessageStats(smsPreview).encoding} (sample recipient)</span>
                   </div>
                 )}
                 <div className="mt-2.5">
@@ -332,7 +331,7 @@ export function CampaignBuilder({
                         {smsPreview || <span className="italic opacity-60">Your SMS message will appear here...</span>}
                       </div>
                       <div className="text-[10px] text-slate-400 text-right mt-1.5 pr-1">Sample preview</div>
-                      <div className="mt-auto pt-4 text-center"><div className="text-[10px] text-slate-400">{charCount} / {SMS_MAX_LENGTH} characters</div></div>
+                      <div className="mt-auto pt-4 text-center"><div className="text-[10px] text-slate-400">{smsMessageStats(smsPreview).characters} characters · {smsMessageStats(smsPreview).segments} SMS segment(s)</div></div>
                     </div>
                   ) : (
                     <div className="flex flex-col h-full bg-slate-50 dark:bg-[#131924] rounded-lg overflow-hidden border border-gray-200/50 dark:border-white/5">
@@ -360,7 +359,7 @@ export function CampaignBuilder({
                       {smsPreview || <span className="italic opacity-60">Message preview...</span>}
                     </div>
                     <div className="text-[10px] text-slate-400 text-right mt-2 pr-2">Sample preview · No delivery confirmation</div>
-                    <div className="mt-4 text-center text-xs text-slate-400">{charCount} / {SMS_MAX_LENGTH} characters</div>
+                    <div className="mt-4 text-center text-xs text-slate-400">{smsMessageStats(smsPreview).characters} characters · {smsMessageStats(smsPreview).segments} SMS segment(s)</div>
                   </div>
                 ) : (
                   <div className="flex flex-col h-full">

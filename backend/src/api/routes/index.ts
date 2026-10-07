@@ -1,5 +1,5 @@
 import { brevoWebhookRouter } from '../../modules/marketing/campaigns/brevo-webhook';
-import { unismsWebhookRouter } from '../../modules/marketing/campaigns/unisms-webhook';
+import { textbeeWebhookRouter } from '../../modules/marketing/campaigns/textbee-webhook';
 import { Router } from 'express';
 import authRoutes from './auth.routes';
 import crmRoutes from './crm.routes';
@@ -15,7 +15,7 @@ import tablePreferencesRoutes from '../../modules/preferences/table-preferences.
 import { publicFormsRouter } from './public-forms.routes';
 
 const router = Router();
-router.use('/webhooks/unisms', unismsWebhookRouter);
+router.use('/webhooks/textbee', textbeeWebhookRouter);
 
 // ── Health / version check ────────────────────────────────────────────────────
 // Unauthenticated — used to confirm which build is running on Render.

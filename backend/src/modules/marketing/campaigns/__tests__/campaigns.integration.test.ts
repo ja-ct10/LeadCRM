@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 // A send must resolve its audience on the transaction's existing connection.
 vi.hoisted(() => {
@@ -13,7 +13,7 @@ vi.hoisted(() => {
 vi.mock('../../../../shared/services/email.service', async importOriginal => ({ ...await importOriginal<object>(), sendMail: vi.fn() }));
 vi.mock('../../../../shared/services/sms.service', async importOriginal => ({ ...await importOriginal<object>(), sendSms: vi.fn() }));
 import { sendSms, SmsSubmissionError } from '../../../../shared/services/sms.service';
-import { processUniSmsEvent } from '../unisms-webhook';
+import { processTextBeeEvent } from '../textbee-webhook';
 import { seedCampaignTemplates } from '../../templates/default-templates';
 import { previewAudience } from '../audiences.service';
 import { sendMail, EmailSubmissionError } from '../../../../shared/services/email.service';
@@ -58,8 +58,8 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1`;
   }, 30000);
   beforeEach(async () => {
-    vi.stubEnv('UNISMS_API_SECRET_KEY', 'test-only'); vi.stubEnv('UNISMS_SENDER_ID', 'Camxian');
-    vi.stubEnv('UNISMS_WEBHOOK_SECRET_KEY', 'test-webhook-only');
+    vi.stubEnv('TEXTBEE_API_KEY', 'fixture-key'); vi.stubEnv('TEXTBEE_DEVICE_ID', '');
+    vi.stubEnv('TEXTBEE_WEBHOOK_SECRET', 'test-webhook-signature-only');
     vi.mocked(sendSms).mockReset().mockImplementation(async () => ({ messageId: `msg_${randomUUID()}`, submitted: true, status: 'pending' }));
     vi.mocked(sendMail).mockReset().mockImplementation(async () => ({ messageId: `<${randomUUID()}@brevo.test>`, submitted: true }));
     vi.stubEnv('BREVO_DAILY_EMAIL_LIMIT', '300'); vi.stubEnv('BREVO_SANDBOX_EMAILS', '');
@@ -395,12 +395,12 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
   });
   it('SMS preflight blocks missing organization email and any oversized personalized recipient before provider requests', async () => {
     await scoped(async () => {
-      const person = await prisma.contact.create({ data: { tenantId, firstName: 'A'.repeat(600), lastName: 'Long', phone: '+639171234567' } });
+      const person = await prisma.contact.create({ data: { tenantId, firstName: 'A'.repeat(49900), lastName: 'Long', phone: '+639171234567' } });
       const campaign = await createCampaign(tenantId, userId, { name: 'SMS preflight', type: 'SMS', audienceSource: 'CONTACTS', body: 'Hi {{first_name}}' });
       await prisma.tenant.update({ where: { id: tenantId }, data: { email: null } });
       await expect(sendCampaign(campaign.id, tenantId, userId)).rejects.toThrow('Configure the organization email');
       await prisma.tenant.update({ where: { id: tenantId }, data: { email: 'info@example.test' } });
-      await expect(sendCampaign(campaign.id, tenantId, userId)).rejects.toThrow('1 recipient message exceeds the 670-character');
+      await expect(sendCampaign(campaign.id, tenantId, userId)).rejects.toThrow('1 recipient message exceeds the 50000-character');
       expect(sendSms).not.toHaveBeenCalled();
       expect((await getCampaignById(campaign.id, tenantId)).status).toBe('DRAFT');
       expect(await prisma.campaignContact.count({ where: { campaignId: campaign.id } })).toBe(0);
@@ -412,32 +412,59 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     const campaign = await scoped(() => createCampaign(tenantId, userId, { name: 'SMS send', type: 'SMS', audienceSource: 'CONTACTS', body: 'Hi {{first_name}}, your proposal is ready.' }));
     const sends = await Promise.allSettled([scoped(() => sendCampaign(campaign.id, tenantId, userId)), scoped(() => sendCampaign(campaign.id, tenantId, userId))]);
     expect(sends.filter(r => r.status === 'fulfilled')).toHaveLength(1); expect(sendSms).toHaveBeenCalledOnce();
-    expect(vi.mocked(sendSms).mock.calls[0]).toEqual(['+639171234567', 'Hi SMS, your proposal is ready.\n\nFor product inquiries, contact Camxian Technologies at info@example.test.\nThis SMS is no-reply.', expect.objectContaining({ metadata: { campaign_id: campaign.id, campaign_recipient_id: expect.any(String) } })]);
+    expect(vi.mocked(sendSms).mock.calls[0]).toEqual(['+639171234567', 'Hi SMS, your proposal is ready.\n\nFor inquiries regarding our products and services, contact Camxian Technologies:\ninfo@example.test\n\nThis is a no-reply message.', { organizationEmail: 'info@example.test' }]);
     const row = await prisma.campaignContact.findFirstOrThrow({ where: { campaignId: campaign.id, contactId: person.id } });
     expect(row).toMatchObject({ email: null, phone: '+639171234567', status: 'submitted', sentAt: null, submittedAt: expect.any(Date), messageId: expect.stringContaining('msg_') });
     expect(await prisma.emailDeliveryLog.count({ where: { campaignId: campaign.id } })).toBe(0);
-    const event = (status: string) => ({ id: row.messageId, event: `message.${status}`, message: { reference_id: row.messageId, status, recipient: row.phone, metadata: { campaign_id: 'foreign' }, fail_reason: null } });
-    const post = (status: string, secret: string) => fetch(base + '/webhooks/unisms', { method: 'POST', headers: { 'Content-Type': 'application/json', 'webhook-secret-key': secret }, body: JSON.stringify(event(status)) });
-    expect((await post('failed', 'wrong')).status).toBe(401);
-    expect((await post('failed', '')).status).toBe(401);
-    await expect(processUniSmsEvent({ ...event('sent'), event: 'message.opened' })).rejects.toThrow();
-    await expect(processUniSmsEvent({ ...event('sent'), message: { ...event('sent').message, recipient: '+639191234567' } })).rejects.toMatchObject({ statusCode: 400 });
-    expect((await prisma.campaignContact.findUniqueOrThrow({ where: { id: row.id } })).status).toBe('submitted');
-    for (const status of ['retrying', 'failed', 'sent']) {
-      expect((await post(status, 'test-webhook-only')).status).toBe(200);
+    const event = (status: 'sent' | 'delivered' | 'failed' | 'unknown', key = status as string) => ({
+      smsId: 'sms-fixture', smsBatchId: row.messageId, recipient: row.phone, deviceId: 'device-fixture', webhookSubscriptionId: 'subscription-fixture',
+      idempotencyKey: row.id + key, webhookEvent: status === 'unknown' ? 'UNKNOWN_STATE' : 'MESSAGE_' + status.toUpperCase(), status,
+      sentAt: '2026-10-07T01:00:00.000Z', deliveredAt: '2026-10-07T01:01:00.000Z', failedAt: '2026-10-07T01:02:00.000Z',
+    });
+    const post = (body: string, secret = 'test-webhook-signature-only') => fetch(base + '/webhooks/textbee', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Signature': createHmac('sha256', secret).update(body).digest('hex') }, body });
+    expect((await post(JSON.stringify(event('failed')), 'wrong')).status).toBe(401);
+    expect((await fetch(base + '/webhooks/textbee', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(event('failed')) })).status).toBe(401);
+    await expect(processTextBeeEvent({ ...event('sent'), webhookEvent: 'MESSAGE_OPENED' })).rejects.toThrow();
+    await expect(processTextBeeEvent({ ...event('sent'), recipient: '+639191234567' })).rejects.toMatchObject({ statusCode: 400 });
+    for (const status of ['unknown', 'sent', 'delivered'] as const) {
+      // Sign intentionally formatted bytes, not JSON reserialized by the server.
+      expect((await post(JSON.stringify(event(status), null, 2))).status).toBe(200);
       const before = await prisma.campaignMetrics.count({ where: { campaignId: campaign.id } });
-      await processUniSmsEvent(event(status));
+      await processTextBeeEvent(event(status));
+      await processTextBeeEvent(event(status, status + '-duplicate'));
       expect(await prisma.campaignMetrics.count({ where: { campaignId: campaign.id } })).toBe(before);
       expect((await prisma.campaignContact.findUniqueOrThrow({ where: { id: row.id } })).status).toBe(status);
     }
-    await processUniSmsEvent(event('retrying')); // late retry cannot regress a terminal success
+    await processTextBeeEvent(event('sent', 'late-sent'));
+    await processTextBeeEvent(event('failed', 'conflicting-failed'));
+    await processTextBeeEvent(event('unknown', 'late-unknown'));
+    expect((await prisma.campaignContact.findUniqueOrThrow({ where: { id: row.id } })).status).toBe('delivered');
+    expect(await prisma.smsWebhookReceipt.count({ where: { campaignContactId: row.id } })).toBe(9);
+    expect((await post(JSON.stringify({ webhookEvent: 'MESSAGE_RECEIVED', message: 'Ignored' }))).status).toBe(200);
     const report = await request(`/marketing/campaigns/${campaign.id}/report`);
     expect(report.body.data).toMatchObject({ sentCount: 1, failedCount: 0, openedCount: 0, clickedCount: 0 });
-    expect(report.body.data.recipients.find((r: { id: string }) => r.id === row.id)).toMatchObject({ phone: row.phone, email: null, deliveryStatus: 'Sent' });
+    expect(report.body.data.recipients.find((r: { id: string }) => r.id === row.id)).toMatchObject({ phone: row.phone, email: null, deliveryStatus: 'Delivered' });
     const metrics = await request('/marketing/campaigns/metrics');
     const emailOnly = await prisma.campaign.aggregate({ where: { tenantId, type: 'EMAIL', isArchived: false }, _sum: { sentCount: true } });
     expect(metrics.body.data.emailSent).toBe(emailOnly._sum.sentCount || 0);
     expect(metrics.body.data.sent).toBeGreaterThan(metrics.body.data.emailSent);
+    await scoped(() => prisma.contact.delete({ where: { id: person.id } }));
+  });
+  it('keeps failed SMS final and counts repeated failure callbacks only once within its tenant', async () => {
+    const person = await scoped(() => prisma.contact.create({ data: { tenantId, firstName: 'Failed', lastName: 'SMS', phone: '+639171234568' } }));
+    const campaign = await scoped(() => createCampaign(tenantId, userId, { name: 'SMS failure callback', type: 'SMS', audienceSource: 'CONTACTS', body: 'Hello' }));
+    await scoped(() => sendCampaign(campaign.id, tenantId, userId));
+    const row = await prisma.campaignContact.findFirstOrThrow({ where: { campaignId: campaign.id, contactId: person.id } });
+    const event = { smsId: 'failed-fixture', smsBatchId: row.messageId, recipient: row.phone, deviceId: 'device-fixture', webhookSubscriptionId: 'subscription-fixture', idempotencyKey: row.id, webhookEvent: 'MESSAGE_FAILED', status: 'failed', failedAt: '2026-10-07T01:02:00Z' };
+    await processTextBeeEvent(event);
+    const metrics = await prisma.campaignMetrics.count({ where: { campaignId: campaign.id } });
+    await processTextBeeEvent(event);
+    await processTextBeeEvent({ ...event, idempotencyKey: row.id + '-repeated' });
+    await processTextBeeEvent({ ...event, idempotencyKey: row.id + '-late-sent', webhookEvent: 'MESSAGE_SENT', status: 'sent', sentAt: '2026-10-07T01:00:00Z' });
+    expect((await prisma.campaignContact.findUniqueOrThrow({ where: { id: row.id } })).status).toBe('failed');
+    expect(await prisma.campaign.findUniqueOrThrow({ where: { id: campaign.id } })).toMatchObject({ failedCount: 1, status: 'FAILED' });
+    expect(await prisma.campaignMetrics.count({ where: { campaignId: campaign.id } })).toBe(metrics);
+    expect(await scoped(async () => await prisma.smsWebhookReceipt.count({ where: { campaignContactId: row.id } }), otherTenantId)).toBe(0);
     await scoped(() => prisma.contact.delete({ where: { id: person.id } }));
   });
   it('keeps uncertain SMS submissions paused for review and rejects deterministic errors without retry', async () => {

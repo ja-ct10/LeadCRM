@@ -145,7 +145,7 @@ describe('campaign composer', () => {
     render(<CampaignBuilder onBack={vi.fn()} initialType="SMS" initialContent="Hi {{first_name}}, your proposal is ready." />);
     fireEvent.change(screen.getByLabelText(/Campaign Name/), { target: { value: 'SMS campaign' } });
     fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: 'ALL' } });
-    await screen.findByText(/For product inquiries, contact Camxian Technologies at info@example.test/);
+    await screen.findByText(/For inquiries regarding our products and services, contact Camxian Technologies:.*info@example.test/s);
     expect(screen.queryByLabelText(/Subject Line/)).toBeNull();
     await waitFor(() => expect(audiencesApi.preview).toHaveBeenCalledWith(expect.objectContaining({ channel: 'SMS' })));
     fireEvent.click(screen.getByRole('button', { name: 'Send Now' }));

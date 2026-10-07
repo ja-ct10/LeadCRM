@@ -1,15 +1,15 @@
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
-import { appendSmsFooter, isValidPhMobile, toE164, SMS_MAX_LENGTH, SMS_ORGANIZATION_EMAIL_REQUIRED } from '@leadcrm/shared';
+import { buildFinalSms, isValidPhMobile, toE164, SMS_MAX_LENGTH, SMS_ORGANIZATION_EMAIL_REQUIRED } from '@leadcrm/shared';
 import { ValidationError } from '../errors/http-error';
 import prisma from '../../config/database.config';
 import { tenantContext } from '../../core/tenant/tenant-context';
 
 export function isSmsConfigured(): boolean {
-  return !!process.env.UNISMS_API_SECRET_KEY?.trim() && !!process.env.UNISMS_SENDER_ID?.trim();
+  return !!process.env.TEXTBEE_API_KEY?.trim() && (!process.env.TEXTBEE_DEVICE_ID?.trim() || /^[a-f\d]{24}$/i.test(process.env.TEXTBEE_DEVICE_ID.trim()));
 }
 export function assertSmsConfigured() {
-  if (!isSmsConfigured()) throw new ValidationError('Configure the UniSMS API secret and registered Sender ID before sending SMS.');
+  if (!isSmsConfigured()) throw new ValidationError('Configure the TextBee API key and a valid optional Device ID before sending SMS. Keep an enabled Android gateway with an active SIM online.');
 }
 export function normalizeSmsPhone(value: unknown): string {
   let number = typeof value === 'string' ? value.trim().replace(/[\s().-]/g, '') : '';
@@ -29,31 +29,34 @@ export async function getSmsOrganizationEmail(tenantId: string, db: Prisma.Trans
 }
 export class SmsSubmissionError extends ValidationError {
   constructor(readonly outcome: 'rejected' | 'unconfirmed', readonly httpStatus?: number) {
-    super(outcome === 'rejected' ? `SMS provider rejected the message${httpStatus ? ` (HTTP ${httpStatus})` : ''}. Check the UniSMS secret, registered Sender ID and SMS balance.` : 'SMS submission could not be confirmed. Review the provider history before sending again.');
+    super(outcome === 'rejected' ? `SMS provider rejected the message${httpStatus ? ` (HTTP ${httpStatus})` : ''}. Check the TextBee API key, enabled Android device, SMS permission and plan allowance.` : 'SMS submission could not be confirmed. Review the provider history before sending again.');
   }
 }
-const receiptSchema = z.object({ message: z.object({ reference_id: z.string().min(1).max(500), status: z.enum(['pending', 'retrying', 'sent', 'failed']) }) });
-export interface SmsOptions { metadata?: { campaign_id: string; campaign_recipient_id: string }; organizationEmail?: string }
+const receiptSchema = z.object({ data: z.object({ success: z.literal(true), smsBatchId: z.string().regex(/^[a-f\d]{24}$/i), recipientCount: z.literal(1) }) });
+export interface SmsOptions { organizationEmail?: string }
 /** Every caller, including Workflows, gets the persisted organization footer. A
  * campaign passes the server-read email snapshot used by its complete preflight. */
-export async function sendSms(recipient: string, content: string, options: SmsOptions = {}): Promise<{ submitted: true; messageId: string; status: 'pending' | 'retrying' | 'sent' | 'failed' }> {
+export async function sendSms(recipient: string, content: string, options: SmsOptions = {}): Promise<{ submitted: true; messageId: string; status: 'pending' }> {
   assertSmsConfigured();
   const phone = normalizeSmsPhone(recipient);
   const tenantId = tenantContext.getStore()?.tenantId;
   if (!tenantId) throw new ValidationError('CRM tenant context is required for SMS.');
   const email = options.organizationEmail ?? await getSmsOrganizationEmail(tenantId);
   if (!content.trim()) throw new ValidationError('SMS message content is required.');
-  const finalContent = appendSmsFooter(content, email);
+  let finalContent: string;
+  try { finalContent = buildFinalSms({ body: content, organizationEmail: email }); }
+  catch { throw new ValidationError(SMS_ORGANIZATION_EMAIL_REQUIRED); }
   if (finalContent.length > SMS_MAX_LENGTH) throw new ValidationError(`SMS exceeds the ${SMS_MAX_LENGTH}-character limit including the contact footer.`);
   let response: Response;
   try {
-    response = await fetch('https://unismsapi.com/api/sms', { method: 'POST', signal: AbortSignal.timeout(15000),
-      headers: { Authorization: `Basic ${Buffer.from(process.env.UNISMS_API_SECRET_KEY!.trim() + ':').toString('base64')}`, 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ recipient: phone, content: finalContent, sender_id: process.env.UNISMS_SENDER_ID!.trim(), ...(options.metadata ? { metadata: options.metadata } : {}) }),
+    response = await fetch('https://api.textbee.dev/api/v1/gateway/send-sms', { method: 'POST', signal: AbortSignal.timeout(15000), redirect: 'error',
+      headers: { 'x-api-key': process.env.TEXTBEE_API_KEY!.trim(), 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ recipients: [phone], message: finalContent, ...(process.env.TEXTBEE_DEVICE_ID?.trim() ? { deviceId: process.env.TEXTBEE_DEVICE_ID.trim() } : {}) }),
     });
   } catch { throw new SmsSubmissionError('unconfirmed'); }
-  if (!response.ok) throw new SmsSubmissionError(response.status >= 500 ? 'unconfirmed' : 'rejected', response.status);
+  if (!response.ok) throw new SmsSubmissionError(response.status >= 500 || response.status === 408 ? 'unconfirmed' : 'rejected', response.status);
   const receipt = receiptSchema.safeParse(await response.json().catch(() => null));
   if (!receipt.success) throw new SmsSubmissionError('unconfirmed');
-  return { submitted: true, messageId: receipt.data.message.reference_id, status: receipt.data.message.status };
+  // One recipient per batch makes this the authoritative correlation identity.
+  return { submitted: true, messageId: receipt.data.data.smsBatchId, status: 'pending' };
 }

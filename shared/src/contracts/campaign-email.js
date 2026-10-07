@@ -3,7 +3,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.MarketingTemplateSchema = exports.CampaignSendSchema = exports.CampaignDraftSchema = exports.SMS_ORGANIZATION_EMAIL_REQUIRED = exports.SMS_MAX_LENGTH = exports.CreateAudienceSchema = exports.AudiencePreviewRequestSchema = exports.AudiencePreviewSchema = exports.AudienceConditionSchema = exports.AUDIENCE_OPERATORS = exports.AUDIENCE_FIELDS = exports.AudienceSourceSchema = exports.EmailSubjectSchema = exports.MarketingNameSchema = exports.EMAIL_VARIABLE_TOKENS = exports.EMAIL_VARIABLES = void 0;
 exports.escapeEmailHtml = escapeEmailHtml;
 exports.renderEmailVariables = renderEmailVariables;
+exports.buildFinalSms = buildFinalSms;
 exports.appendSmsFooter = appendSmsFooter;
+exports.smsMessageStats = smsMessageStats;
 const zod_1 = require("zod");
 const record_experience_1 = require("./record-experience");
 const lead_created_contract_1 = require("./lead-created.contract");
@@ -14,10 +16,9 @@ function escapeEmailHtml(value) {
 }
 function renderEmailVariables(text, values, html = false) {
     return text.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_token, key) => {
-        var _a;
         if (!exports.EMAIL_VARIABLES.includes(key))
             return '';
-        const value = Object.prototype.hasOwnProperty.call(values, key) ? (_a = values[key]) !== null && _a !== void 0 ? _a : '' : '';
+        const value = Object.prototype.hasOwnProperty.call(values, key) ? values[key] ?? '' : '';
         return html ? escapeEmailHtml(value) : value.replace(/[\x00-\x1f\x7f]/g, ' ');
     });
 }
@@ -43,23 +44,48 @@ exports.AudienceConditionSchema = zod_1.z.discriminatedUnion('field', [
         return;
     }
     const parsed = lead_created_contract_1.LeadCreatedFilterSchema.safeParse(c.operator === 'between'
-        ? Object.assign({ operator: c.operator }, (typeof c.value === 'object' ? c.value : {})) : { operator: c.operator, date: c.value });
+        ? { operator: c.operator, ...(typeof c.value === 'object' ? c.value : {}) }
+        : { operator: c.operator, date: c.value });
     if (!parsed.success)
         ctx.addIssue({ code: 'custom', path: ['value'], message: 'Enter valid dates with From on or before To.' });
 });
 exports.AudiencePreviewSchema = zod_1.z.object({ source: exports.AudienceSourceSchema, conditions: zod_1.z.array(exports.AudienceConditionSchema).max(20).default([]) }).strict();
 exports.AudiencePreviewRequestSchema = exports.AudiencePreviewSchema.extend({ channel: zod_1.z.enum(['EMAIL', 'SMS']).default('EMAIL'), page: zod_1.z.number().int().min(1).max(100000).default(1), limit: zod_1.z.number().int().min(1).max(50).default(25) });
 exports.CreateAudienceSchema = exports.AudiencePreviewSchema.extend({ name: exports.MarketingNameSchema });
-exports.SMS_MAX_LENGTH = 670;
+// Application safety bound, not a TextBee limit. TextBee documents multipart
+// segmentation but no hard message-length maximum in its public API contract.
+exports.SMS_MAX_LENGTH = 50000;
 exports.SMS_ORGANIZATION_EMAIL_REQUIRED = 'Configure the organization email in Settings → General before sending SMS campaigns.';
-/** Shared by the sample preview and every server-side SMS caller. Never truncate. */
-function appendSmsFooter(content, organizationEmail) {
+/** Shared by previews, campaign preflight and every server-side SMS caller. */
+function buildFinalSms({ body, variables, organizationEmail }) {
     const email = zod_1.z.string().trim().email().safeParse(organizationEmail);
     if (!email.success)
         throw new Error(exports.SMS_ORGANIZATION_EMAIL_REQUIRED);
-    const footer = `For product inquiries, contact Camxian Technologies at ${email.data}.\nThis SMS is no-reply.`;
-    const body = content.trim();
-    return body.endsWith(footer) ? body : `${body}\n\n${footer}`;
+    const footer = `For inquiries regarding our products and services, contact Camxian Technologies:\n${email.data}\n\nThis is a no-reply message.`;
+    let content = (variables ? renderEmailVariables(body, variables) : body).trim();
+    // Rebuilding a prepared message replaces its system footer instead of stacking it.
+    const generatedFooter = /(?:\s*\n\n)?(?:For inquiries regarding our products and services, contact Camxian Technologies:\r?\n[^\r\n]+\r?\n\r?\nThis is a no-reply message\.|For product inquiries, contact Camxian Technologies at [^\r\n]+\.\r?\nThis SMS is no-reply\.)$/;
+    while (generatedFooter.test(content))
+        content = content.replace(generatedFooter, '').trimEnd();
+    return `${content}\n\n${footer}`;
+}
+function appendSmsFooter(content, organizationEmail) {
+    return buildFinalSms({ body: content, organizationEmail });
+}
+/** GSM extension characters occupy two septets; Unicode uses UTF-16 units. */
+function smsMessageStats(message) {
+    const basic = '@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !"#¤%&\'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà';
+    const extension = '\f^{}\\[~]|€';
+    let units = 0;
+    for (const character of message) {
+        if (basic.includes(character))
+            units++;
+        else if (extension.includes(character))
+            units += 2;
+        else
+            return { characters: [...message].length, encoding: 'Unicode', segments: message.length <= 70 ? 1 : Math.ceil(message.length / 67) };
+    }
+    return { characters: [...message].length, encoding: 'GSM-7', segments: units <= 160 ? 1 : Math.ceil(units / 153) };
 }
 exports.CampaignDraftSchema = zod_1.z.object({
     name: exports.MarketingNameSchema, type: zod_1.z.enum(['EMAIL', 'SMS', 'MULTI_CHANNEL']),
@@ -68,12 +94,11 @@ exports.CampaignDraftSchema = zod_1.z.object({
     emailTemplateId: zod_1.z.string().uuid().optional().nullable(), smsTemplateId: zod_1.z.string().uuid().optional().nullable(),
 }).strict();
 exports.CampaignSendSchema = exports.CampaignDraftSchema.superRefine((v, ctx) => {
-    var _a, _b;
     if (!v.audienceSource && !v.targetAudienceId)
         ctx.addIssue({ code: 'custom', path: ['targetAudienceId'], message: 'Target audience is required.' });
-    if (v.type === 'EMAIL' && !((_a = v.subject) === null || _a === void 0 ? void 0 : _a.trim()))
+    if (v.type === 'EMAIL' && !v.subject?.trim())
         ctx.addIssue({ code: 'custom', path: ['subject'], message: 'Subject line is required.' });
-    if (!((_b = v.body) === null || _b === void 0 ? void 0 : _b.trim()))
+    if (!v.body?.trim())
         ctx.addIssue({ code: 'custom', path: ['body'], message: 'Body is required.' });
 });
 exports.MarketingTemplateSchema = zod_1.z.object({ name: exports.MarketingNameSchema, type: zod_1.z.enum(['Email', 'SMS']), category: exports.MarketingNameSchema.optional(), subject: exports.EmailSubjectSchema.optional(), content: zod_1.z.string().trim().min(1, 'Message content is required.').max(50000) }).strict().superRefine((v, ctx) => {
