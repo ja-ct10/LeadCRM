@@ -28,14 +28,14 @@ characters). Subscribe only to `MESSAGE_SENT`, `MESSAGE_DELIVERED`,
 
 `buildFinalSms()` is shared by campaign preflight, live preview and the transport.
 It renders allowed campaign variables, trims outer whitespace, and appends the
-mandatory Camxian contact block and no-reply statement once. The plain email
-comes from the persisted tenant email in Settings > General, never a fallback
-user address. Missing or invalid organization email blocks provider calls.
-Templates continue storing only editable content. Users cannot disable the
-footer. Email tapping/compose behavior belongs to the recipient's messaging app.
+fixed Camxian contact block (`+63 (28) 462-3488 or go to the official website.`)
+and no-reply statement once. SMS delivery no longer depends on an organization
+email address; an email variable appears only if a campaign author explicitly
+adds `{{sender_email}}` to its message. Templates continue storing only editable
+content. Users cannot disable the footer.
 
-The preview includes the complete personalized sample, footer and actual
-organization email, plus character count and GSM-7/Unicode segment estimates.
+The preview includes the complete personalized sample, footer, character count,
+and GSM-7/Unicode segment estimates.
 TextBee's documented segmentation is 160/153 GSM septets and 70/67 UTF-16 units;
 GSM extension characters consume two septets. The 50,000-character bound is a
 LeadCRM safety limit, not a documented TextBee maximum. Nothing is truncated.
@@ -75,7 +75,7 @@ Deploy the same verified commit and additive migration to Render, then verify
 the serving commit through the frontend proxy. Use only an approved isolated
 test recipient for one SMS. Confirm its provider batch, signed status callbacks,
 persisted recipient status and actual receipt. Ask the recipient to verify the
-plain organization email, a single no-reply footer, and email-compose behavior.
+fixed Camxian phone contact block and single no-reply footer.
 Do not infer receipt or tapping behavior from API acceptance.
 
 ## Official references

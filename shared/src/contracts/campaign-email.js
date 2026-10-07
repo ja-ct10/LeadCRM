@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MarketingTemplateSchema = exports.CampaignSendSchema = exports.CampaignDraftSchema = exports.SMS_ORGANIZATION_EMAIL_REQUIRED = exports.SMS_MAX_LENGTH = exports.CreateAudienceSchema = exports.AudiencePreviewRequestSchema = exports.AudiencePreviewSchema = exports.AudienceConditionSchema = exports.AUDIENCE_OPERATORS = exports.AUDIENCE_FIELDS = exports.AudienceSourceSchema = exports.EmailSubjectSchema = exports.MarketingNameSchema = exports.EMAIL_VARIABLE_TOKENS = exports.EMAIL_VARIABLES = void 0;
+exports.MarketingTemplateSchema = exports.CampaignSendSchema = exports.CampaignDraftSchema = exports.SMS_CAMXIAN_FOOTER = exports.SMS_MAX_LENGTH = exports.CreateAudienceSchema = exports.AudiencePreviewRequestSchema = exports.AudiencePreviewSchema = exports.AudienceConditionSchema = exports.AUDIENCE_OPERATORS = exports.AUDIENCE_FIELDS = exports.AudienceSourceSchema = exports.EmailSubjectSchema = exports.MarketingNameSchema = exports.EMAIL_VARIABLE_TOKENS = exports.EMAIL_VARIABLES = void 0;
 exports.escapeEmailHtml = escapeEmailHtml;
 exports.renderEmailVariables = renderEmailVariables;
 exports.buildFinalSms = buildFinalSms;
@@ -55,22 +55,18 @@ exports.CreateAudienceSchema = exports.AudiencePreviewSchema.extend({ name: expo
 // Application safety bound, not a TextBee limit. TextBee documents multipart
 // segmentation but no hard message-length maximum in its public API contract.
 exports.SMS_MAX_LENGTH = 50000;
-exports.SMS_ORGANIZATION_EMAIL_REQUIRED = 'Configure the organization email in Settings → General before sending SMS campaigns.';
+exports.SMS_CAMXIAN_FOOTER = 'For inquiries regarding our products and services, contact Camxian Technologies:\n+63 (28) 462-3488 or go to the official website.\n\nThis is a no-reply message.';
 /** Shared by previews, campaign preflight and every server-side SMS caller. */
-function buildFinalSms({ body, variables, organizationEmail }) {
-    const email = zod_1.z.string().trim().email().safeParse(organizationEmail);
-    if (!email.success)
-        throw new Error(exports.SMS_ORGANIZATION_EMAIL_REQUIRED);
-    const footer = `For inquiries regarding our products and services, contact Camxian Technologies:\n${email.data}\n\nThis is a no-reply message.`;
+function buildFinalSms({ body, variables }) {
     let content = (variables ? renderEmailVariables(body, variables) : body).trim();
     // Rebuilding a prepared message replaces its system footer instead of stacking it.
     const generatedFooter = /(?:\s*\n\n)?(?:For inquiries regarding our products and services, contact Camxian Technologies:\r?\n[^\r\n]+\r?\n\r?\nThis is a no-reply message\.|For product inquiries, contact Camxian Technologies at [^\r\n]+\.\r?\nThis SMS is no-reply\.)$/;
     while (generatedFooter.test(content))
         content = content.replace(generatedFooter, '').trimEnd();
-    return `${content}\n\n${footer}`;
+    return `${content}\n\n${exports.SMS_CAMXIAN_FOOTER}`;
 }
-function appendSmsFooter(content, organizationEmail) {
-    return buildFinalSms({ body: content, organizationEmail });
+function appendSmsFooter(content) {
+    return buildFinalSms({ body: content });
 }
 /** GSM extension characters occupy two septets; Unicode uses UTF-16 units. */
 function smsMessageStats(message) {

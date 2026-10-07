@@ -393,14 +393,13 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
       } finally { await prisma.lead.deleteMany({ where: { id: { in: [duplicate.id, bad.id] } } }); await prisma.contact.delete({ where: { id: contact.id } }); }
     });
   });
-  it('SMS preflight blocks missing organization email and any oversized personalized recipient before provider requests', async () => {
+  it('SMS preflight does not require organization email and still rejects an oversized personalized recipient', async () => {
     await scoped(async () => {
       const person = await prisma.contact.create({ data: { tenantId, firstName: 'A'.repeat(49900), lastName: 'Long', phone: '+639171234567' } });
       const campaign = await createCampaign(tenantId, userId, { name: 'SMS preflight', type: 'SMS', audienceSource: 'CONTACTS', body: 'Hi {{first_name}}' });
       await prisma.tenant.update({ where: { id: tenantId }, data: { email: null } });
-      await expect(sendCampaign(campaign.id, tenantId, userId)).rejects.toThrow('Configure the organization email');
-      await prisma.tenant.update({ where: { id: tenantId }, data: { email: 'info@example.test' } });
       await expect(sendCampaign(campaign.id, tenantId, userId)).rejects.toThrow('1 recipient message exceeds the 50000-character');
+      await prisma.tenant.update({ where: { id: tenantId }, data: { email: 'info@example.test' } });
       expect(sendSms).not.toHaveBeenCalled();
       expect((await getCampaignById(campaign.id, tenantId)).status).toBe('DRAFT');
       expect(await prisma.campaignContact.count({ where: { campaignId: campaign.id } })).toBe(0);
@@ -412,7 +411,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     const campaign = await scoped(() => createCampaign(tenantId, userId, { name: 'SMS send', type: 'SMS', audienceSource: 'CONTACTS', body: 'Hi {{first_name}}, your proposal is ready.' }));
     const sends = await Promise.allSettled([scoped(() => sendCampaign(campaign.id, tenantId, userId)), scoped(() => sendCampaign(campaign.id, tenantId, userId))]);
     expect(sends.filter(r => r.status === 'fulfilled')).toHaveLength(1); expect(sendSms).toHaveBeenCalledOnce();
-    expect(vi.mocked(sendSms).mock.calls[0]).toEqual(['+639171234567', 'Hi SMS, your proposal is ready.\n\nFor inquiries regarding our products and services, contact Camxian Technologies:\ninfo@example.test\n\nThis is a no-reply message.', { organizationEmail: 'info@example.test' }]);
+    expect(vi.mocked(sendSms).mock.calls[0]).toEqual(['+639171234567', 'Hi SMS, your proposal is ready.\n\nFor inquiries regarding our products and services, contact Camxian Technologies:\n+63 (28) 462-3488 or go to the official website.\n\nThis is a no-reply message.']);
     const row = await prisma.campaignContact.findFirstOrThrow({ where: { campaignId: campaign.id, contactId: person.id } });
     expect(row).toMatchObject({ email: null, phone: '+639171234567', status: 'submitted', sentAt: null, submittedAt: expect.any(Date), messageId: expect.stringContaining('msg_') });
     expect(await prisma.emailDeliveryLog.count({ where: { campaignId: campaign.id } })).toBe(0);

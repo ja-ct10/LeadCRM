@@ -53,20 +53,17 @@ export interface AudiencePreviewResult extends AudienceBreakdown { recipients: A
 // Application safety bound, not a TextBee limit. TextBee documents multipart
 // segmentation but no hard message-length maximum in its public API contract.
 export const SMS_MAX_LENGTH = 50000;
-export const SMS_ORGANIZATION_EMAIL_REQUIRED = 'Configure the organization email in Settings → General before sending SMS campaigns.';
+export const SMS_CAMXIAN_FOOTER = 'For inquiries regarding our products and services, contact Camxian Technologies:\n+63 (28) 462-3488 or go to the official website.\n\nThis is a no-reply message.';
 /** Shared by previews, campaign preflight and every server-side SMS caller. */
-export function buildFinalSms({ body, variables, organizationEmail }: { body: string; variables?: EmailVariables; organizationEmail: string }): string {
-  const email = z.string().trim().email().safeParse(organizationEmail);
-  if (!email.success) throw new Error(SMS_ORGANIZATION_EMAIL_REQUIRED);
-  const footer = `For inquiries regarding our products and services, contact Camxian Technologies:\n${email.data}\n\nThis is a no-reply message.`;
+export function buildFinalSms({ body, variables }: { body: string; variables?: EmailVariables }): string {
   let content = (variables ? renderEmailVariables(body, variables) : body).trim();
   // Rebuilding a prepared message replaces its system footer instead of stacking it.
   const generatedFooter = /(?:\s*\n\n)?(?:For inquiries regarding our products and services, contact Camxian Technologies:\r?\n[^\r\n]+\r?\n\r?\nThis is a no-reply message\.|For product inquiries, contact Camxian Technologies at [^\r\n]+\.\r?\nThis SMS is no-reply\.)$/;
   while (generatedFooter.test(content)) content = content.replace(generatedFooter, '').trimEnd();
-  return `${content}\n\n${footer}`;
+  return `${content}\n\n${SMS_CAMXIAN_FOOTER}`;
 }
-export function appendSmsFooter(content: string, organizationEmail: string): string {
-  return buildFinalSms({ body: content, organizationEmail });
+export function appendSmsFooter(content: string): string {
+  return buildFinalSms({ body: content });
 }
 /** GSM extension characters occupy two septets; Unicode uses UTF-16 units. */
 export function smsMessageStats(message: string) {

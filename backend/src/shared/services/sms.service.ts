@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
-import { buildFinalSms, isValidPhMobile, toE164, SMS_MAX_LENGTH, SMS_ORGANIZATION_EMAIL_REQUIRED } from '@leadcrm/shared';
+import { buildFinalSms, isValidPhMobile, toE164, SMS_MAX_LENGTH } from '@leadcrm/shared';
 import { ValidationError } from '../errors/http-error';
 import prisma from '../../config/database.config';
 import { tenantContext } from '../../core/tenant/tenant-context';
@@ -20,12 +20,11 @@ export function normalizeSmsPhone(value: unknown): string {
   }
   return number;
 }
-export async function getSmsOrganizationEmail(tenantId: string, db: Prisma.TransactionClient = prisma): Promise<string> {
+export async function getSmsSenderEmail(tenantId: string, db: Prisma.TransactionClient = prisma): Promise<string | null> {
   if (tenantContext.getStore()?.tenantId !== tenantId) throw new ValidationError('CRM tenant context is required for SMS.');
   const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: { email: true } });
   const parsed = z.string().trim().email().safeParse(tenant?.email);
-  if (!parsed.success) throw new ValidationError(SMS_ORGANIZATION_EMAIL_REQUIRED);
-  return parsed.data;
+  return parsed.success ? parsed.data : null;
 }
 export class SmsSubmissionError extends ValidationError {
   constructor(readonly outcome: 'rejected' | 'unconfirmed', readonly httpStatus?: number) {
@@ -33,19 +32,14 @@ export class SmsSubmissionError extends ValidationError {
   }
 }
 const receiptSchema = z.object({ data: z.object({ success: z.literal(true), smsBatchId: z.string().regex(/^[a-f\d]{24}$/i), recipientCount: z.literal(1) }) });
-export interface SmsOptions { organizationEmail?: string }
-/** Every caller, including Workflows, gets the persisted organization footer. A
- * campaign passes the server-read email snapshot used by its complete preflight. */
-export async function sendSms(recipient: string, content: string, options: SmsOptions = {}): Promise<{ submitted: true; messageId: string; status: 'pending' }> {
+/** Every caller, including Workflows, gets the shared Camxian contact footer. */
+export async function sendSms(recipient: string, content: string): Promise<{ submitted: true; messageId: string; status: 'pending' }> {
   assertSmsConfigured();
   const phone = normalizeSmsPhone(recipient);
   const tenantId = tenantContext.getStore()?.tenantId;
   if (!tenantId) throw new ValidationError('CRM tenant context is required for SMS.');
-  const email = options.organizationEmail ?? await getSmsOrganizationEmail(tenantId);
   if (!content.trim()) throw new ValidationError('SMS message content is required.');
-  let finalContent: string;
-  try { finalContent = buildFinalSms({ body: content, organizationEmail: email }); }
-  catch { throw new ValidationError(SMS_ORGANIZATION_EMAIL_REQUIRED); }
+  const finalContent = buildFinalSms({ body: content });
   if (finalContent.length > SMS_MAX_LENGTH) throw new ValidationError(`SMS exceeds the ${SMS_MAX_LENGTH}-character limit including the contact footer.`);
   let response: Response;
   try {

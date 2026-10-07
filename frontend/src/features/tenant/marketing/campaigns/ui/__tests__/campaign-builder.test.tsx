@@ -141,25 +141,16 @@ describe('campaign composer', () => {
     expect(setData).toHaveBeenCalledWith('text/plain', '{{first_name}}');
     expect(campaignsApi.send).not.toHaveBeenCalled();
   });
-  it('previews the persisted organization footer and sends SMS with channel-aware audience preview', async () => {
+  it('previews the fixed Camxian footer and sends SMS if the organization email lookup fails', async () => {
+    vi.mocked(campaignsApi.smsSettings).mockRejectedValueOnce(new Error('Settings unavailable'));
     render(<CampaignBuilder onBack={vi.fn()} initialType="SMS" initialContent="Hi {{first_name}}, your proposal is ready." />);
     fireEvent.change(screen.getByLabelText(/Campaign Name/), { target: { value: 'SMS campaign' } });
     fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: 'ALL' } });
-    await screen.findByText(/For inquiries regarding our products and services, contact Camxian Technologies:.*info@example.test/s);
+    await screen.findByText(/For inquiries regarding our products and services, contact Camxian Technologies:\s*\+63 \(28\) 462-3488 or go to the official website\.\s*This is a no-reply message\./s);
     expect(screen.queryByLabelText(/Subject Line/)).toBeNull();
     await waitFor(() => expect(audiencesApi.preview).toHaveBeenCalledWith(expect.objectContaining({ channel: 'SMS' })));
     fireEvent.click(screen.getByRole('button', { name: 'Send Now' }));
     await waitFor(() => expect(campaignsApi.send).toHaveBeenCalledOnce());
     expect(campaignsApi.create).toHaveBeenCalledWith(expect.objectContaining({ type: 'SMS', body: 'Hi {{first_name}}, your proposal is ready.' }));
   });
-  it('blocks SMS Send Now when organization email is missing', async () => {
-    vi.mocked(campaignsApi.smsSettings).mockResolvedValue({ success: true, data: { organizationEmail: null } });
-    render(<CampaignBuilder onBack={vi.fn()} initialType="SMS" initialContent="Hello" />);
-    fireEvent.change(screen.getByLabelText(/Campaign Name/), { target: { value: 'SMS' } });
-    fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: 'ALL' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Send Now' }));
-    expect(campaignsApi.send).not.toHaveBeenCalled(); expect(campaignsApi.create).not.toHaveBeenCalled();
-    expect(screen.getAllByText('Configure the organization email in Settings → General before sending SMS campaigns.').length).toBeGreaterThan(0);
-  });
-
 });

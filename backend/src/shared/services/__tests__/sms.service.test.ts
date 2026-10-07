@@ -25,27 +25,29 @@ describe('TextBee shared SMS transport', () => {
     vi.stubEnv('TEXTBEE_API_KEY', 'fixture-key'); vi.stubEnv('TEXTBEE_DEVICE_ID', 'invalid');
     await expect(send()).rejects.toThrow(/Device ID/); expect(fetch).not.toHaveBeenCalled();
   });
-  it('submits once with x-api-key, one E164 recipient, optional device and plain email footer', async () => {
+  it('submits once with x-api-key, one E164 recipient, optional device and the fixed Camxian footer', async () => {
     expect(await send()).toEqual({ submitted: true, messageId: batchId, status: 'pending' });
     const [url, init] = vi.mocked(fetch).mock.calls[0];
     expect(url).toBe('https://api.textbee.dev/api/v1/gateway/send-sms');
     expect(init?.headers).toMatchObject({ 'x-api-key': 'fixture-key' });
-    expect(JSON.parse(String(init?.body))).toEqual({ recipients: ['+639171234567'], message: 'Hello\n\nFor inquiries regarding our products and services, contact Camxian Technologies:\ninfo@example.test\n\nThis is a no-reply message.' });
+    expect(JSON.parse(String(init?.body))).toEqual({ recipients: ['+639171234567'], message: 'Hello\n\nFor inquiries regarding our products and services, contact Camxian Technologies:\n+63 (28) 462-3488 or go to the official website.\n\nThis is a no-reply message.' });
     vi.stubEnv('TEXTBEE_DEVICE_ID', '664a9b8cd0e1f2a3b4c5d6e7'); await send();
     expect(JSON.parse(String(vi.mocked(fetch).mock.calls[1][1]?.body)).deviceId).toBe('664a9b8cd0e1f2a3b4c5d6e7');
   });
-  it('blocks missing or invalid organization email and the application size bound before HTTP', async () => {
-    for (const email of [null, '', 'invalid']) {
-      vi.mocked(prisma.tenant.findUnique).mockResolvedValueOnce({ email } as never);
-      await expect(send()).rejects.toThrow('Configure the organization email in Settings → General');
-    }
+  it('does not require organization email for SMS and enforces the application size bound before HTTP', async () => {
+    vi.mocked(prisma.tenant.findUnique).mockClear();
+    await expect(send()).resolves.toMatchObject({ submitted: true });
+    expect(prisma.tenant.findUnique).not.toHaveBeenCalled();
+    vi.mocked(fetch).mockClear();
     await expect(send('a'.repeat(50000))).rejects.toThrow('50000-character'); expect(fetch).not.toHaveBeenCalled();
   });
   it('personalizes allowed variables and appends the mandatory footer exactly once', () => {
-    const input = { body: '  Hi {{first_name}}, your proposal is ready.  ', variables: { first_name: 'John' }, organizationEmail: 'info@example.test' };
+    const input = { body: '  Hi {{first_name}}, your proposal is ready.  ', variables: { first_name: 'John' } };
     const final = buildFinalSms(input);
-    expect(final).toBe('Hi John, your proposal is ready.\n\nFor inquiries regarding our products and services, contact Camxian Technologies:\ninfo@example.test\n\nThis is a no-reply message.');
+    expect(final).toBe('Hi John, your proposal is ready.\n\nFor inquiries regarding our products and services, contact Camxian Technologies:\n+63 (28) 462-3488 or go to the official website.\n\nThis is a no-reply message.');
     expect(buildFinalSms({ ...input, body: final })).toBe(final);
+    const legacy = 'Hi John, your proposal is ready.\n\nFor inquiries regarding our products and services, contact Camxian Technologies:\ninfo@example.test\n\nThis is a no-reply message.';
+    expect(buildFinalSms({ ...input, body: legacy })).toBe(final);
     expect(buildFinalSms({ ...input, body: '{{__proto__}} {{process.env.KEY}}' })).not.toContain('{{');
   });
   it('counts GSM extension and Unicode multipart segments without truncating content', async () => {

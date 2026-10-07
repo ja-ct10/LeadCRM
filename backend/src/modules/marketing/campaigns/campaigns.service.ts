@@ -8,7 +8,7 @@ import { writeAuditLog } from '../../../core/audit/audit.service';
 import { AppError } from '../../../shared/errors/app-error';
 import { getPaginationParams, paginate } from '../../../shared/helpers/pagination';
 import { sendMail, assertBrevoConfigured, EmailSubmissionError } from '../../../shared/services/email.service';
-import { sendSms, assertSmsConfigured, getSmsOrganizationEmail, SmsSubmissionError } from '../../../shared/services/sms.service';
+import { sendSms, assertSmsConfigured, getSmsSenderEmail, SmsSubmissionError } from '../../../shared/services/sms.service';
 import { audienceDefinition, campaignScope, resolveAudience } from './audiences.service';
 import { sanitizeCampaignHtml, renderCampaignMessage } from './campaign-content';
 import { findCampaignReport } from './campaigns.repository';
@@ -133,7 +133,7 @@ async function prepareCampaign(id: string, tenantId: string) {
     if (campaign.type === 'EMAIL') assertBrevoConfigured();
     else if (campaign.type === 'SMS') assertSmsConfigured();
     else throw new AppError('Send Now supports Email or SMS. Save Multi-Channel campaigns as drafts.', 400);
-    const organizationEmail = campaign.type === 'SMS' ? await getSmsOrganizationEmail(tenantId, tx) : undefined;
+    const organizationEmail = campaign.type === 'SMS' ? await getSmsSenderEmail(tenantId, tx) : undefined;
     CampaignSendSchema.parse({ name: campaign.name, type: campaign.type, subject: campaign.subject || '', body: campaign.body || '', targetAudienceId: campaign.targetAudienceId, audienceSource: campaign.audienceSource });
     const definition = await audienceDefinition(tenantId, campaign.targetAudienceId, campaign.audienceSource, tx);
     const resolved = await resolveAudience(tenantId, definition, tx, campaign.type);
@@ -147,9 +147,9 @@ async function prepareCampaign(id: string, tenantId: string) {
     const reserved = await tx.campaignEmailQuota.updateMany({ where: { day, reserved: { lte: limit - eligible.length } }, data: { reserved: { increment: eligible.length } } });
     if (!reserved.count) throw new AppError(`This campaign has ${eligible.length} eligible recipients, exceeding the available campaign allowance under the configured ${limit}/day limit. Reduce the audience or try another day.`, 409);
     }
-    const sender = { sender_name: campaign.type === 'SMS' ? 'Camxian Technologies' : process.env.BREVO_FROM_NAME || 'LeadCRM', sender_email: organizationEmail ?? process.env.BREVO_FROM_EMAIL! };
-    const sends = eligible.map(r => ({ ...r, id: randomUUID(), logId: randomUUID(), channel: campaign.type, organizationEmail,
-      ...(campaign.type === 'SMS' ? { subject: '', html: '', sms: buildFinalSms({ body: campaign.body!, variables: { ...r.personalization, ...sender }, organizationEmail: organizationEmail! }) }
+    const sender = { sender_name: campaign.type === 'SMS' ? 'Camxian Technologies' : process.env.BREVO_FROM_NAME || 'LeadCRM', sender_email: campaign.type === 'EMAIL' ? process.env.BREVO_FROM_EMAIL! : organizationEmail ?? '' };
+    const sends = eligible.map(r => ({ ...r, id: randomUUID(), logId: randomUUID(), channel: campaign.type,
+      ...(campaign.type === 'SMS' ? { subject: '', html: '', sms: buildFinalSms({ body: campaign.body!, variables: { ...r.personalization, ...sender } }) }
         : { ...renderCampaignMessage(campaign.subject!, campaign.body!, { ...r.personalization, ...sender }), sms: '' }) }));
     const tooLong = sends.filter(r => r.channel === 'SMS' && r.sms.length > SMS_MAX_LENGTH).length;
     if (tooLong) throw new AppError(`${tooLong} recipient message${tooLong === 1 ? '' : 's'} exceeds the ${SMS_MAX_LENGTH}-character SMS limit after personalization.`, 400);
@@ -173,7 +173,7 @@ async function deliverPrepared(id: string, tenantId: string, userId: string, pre
       let result;
       try {
         result = recipient.channel === 'SMS'
-          ? await sendSms(recipient.phone!, recipient.sms, { organizationEmail: recipient.organizationEmail })
+          ? await sendSms(recipient.phone!, recipient.sms)
           : await sendMail({ to: recipient.email!, subject: recipient.subject, html: recipient.html, requireDelivery: true });
       } catch (error) {
         const rejected = (error instanceof EmailSubmissionError || error instanceof SmsSubmissionError) && error.outcome === 'rejected';

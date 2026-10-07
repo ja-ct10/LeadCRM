@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { CampaignDraftSchema, CampaignSendSchema, EMAIL_VARIABLE_TOKENS, renderEmailVariables, buildFinalSms, smsMessageStats, SMS_MAX_LENGTH, SMS_ORGANIZATION_EMAIL_REQUIRED, type SavedAudience, type AudienceBreakdown } from '@leadcrm/shared';
+import { CampaignDraftSchema, CampaignSendSchema, EMAIL_VARIABLE_TOKENS, renderEmailVariables, buildFinalSms, smsMessageStats, SMS_MAX_LENGTH, type SavedAudience, type AudienceBreakdown } from '@leadcrm/shared';
 import { audiencesApi } from '@/shared/services/audiences.api';
 import { AudiencePanel, AudienceCounts, FieldError } from './audience-panel';
 import type { Campaign } from '@/store/types';
@@ -54,13 +54,11 @@ export function CampaignBuilder({
   const subjectRef = useRef<HTMLInputElement>(null), bodyRef = useRef<HTMLTextAreaElement>(null);
   const activeField = useRef<'subject' | 'body'>('body');
   const [organizationEmail, setOrganizationEmail] = useState<string | null>(null);
-  const [smsSettingsError, setSmsSettingsError] = useState('');
   useEffect(() => {
     if (campaignType !== 'SMS') return;
     let cancelled = false;
-    setSmsSettingsError('');
     campaignsApi.smsSettings().then(res => { if (!cancelled) setOrganizationEmail(res.data.organizationEmail); })
-      .catch(e => { if (!cancelled) setSmsSettingsError(e.message); });
+      .catch(() => { if (!cancelled) setOrganizationEmail(null); });
     return () => { cancelled = true; };
   }, [campaignType]);
   function insertVariable(token: string) {
@@ -109,10 +107,9 @@ export function CampaignBuilder({
   const getPreviewText = (text: string) => renderEmailVariables(text, { first_name: 'John', last_name: 'Doe', company_name: 'Example Company', contact_number: '+639123456789', status: 'HOT', sender_name: 'Configured sender', sender_email: 'sender@example.com' });
   const previewSubject = () => getPreviewText(emailSubject) || campaignName || 'Email preview';
   const previewBody = () => <iframe title="Email body preview" sandbox="" className="w-full h-full min-h-48 border-0" srcDoc={DOMPurify.sanitize(getPreviewText(messageContent).replace(/\n/g, '<br>'))} />;
-  let smsPreview = '', smsPreviewError = smsSettingsError;
+  let smsPreview = '', smsPreviewError = '';
   if (campaignType === 'SMS') {
-    try { smsPreview = buildFinalSms({ body: messageContent, variables: { first_name: 'John', last_name: 'Doe', company_name: 'Example Company', contact_number: '+639123456789', status: 'Hot', sender_name: 'Camxian Technologies', sender_email: organizationEmail || '' }, organizationEmail: organizationEmail || '' }); }
-    catch { smsPreviewError ||= SMS_ORGANIZATION_EMAIL_REQUIRED; }
+    smsPreview = buildFinalSms({ body: messageContent, variables: { first_name: 'John', last_name: 'Doe', company_name: 'Example Company', contact_number: '+639123456789', status: 'Hot', sender_name: 'Camxian Technologies', sender_email: organizationEmail || '' } });
     if (smsPreview.length > SMS_MAX_LENGTH) smsPreviewError = `SMS preview exceeds the ${SMS_MAX_LENGTH}-character limit including personalization and the contact footer.`;
   }
   async function save(send: boolean) {
