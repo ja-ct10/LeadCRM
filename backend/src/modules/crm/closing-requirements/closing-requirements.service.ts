@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
-import { ClosingFieldInputSchema, ClosingValuesPatchSchema, type ClosingField, type ClosingValues, type ClosingRequirementsState } from '@leadcrm/shared';
+import { ClosingFieldInputSchema, ClosingValuesPatchSchema, CUSTOM_FIELD_BUILT_IN_GROUPS, customFieldNameKey, isClosedWonField, normalizeCustomField, type ClosingField, type ClosingValues, type ClosingRequirementsState } from '@leadcrm/shared';
 import { salesTransaction } from '../leads/lead-automation.service';
-import { readFields, validateValues } from './closing-requirements.repository';
+import { readFields, readClosingFields, validateValues } from './closing-requirements.repository';
+import { persistValues } from './custom-field-values.repository';
 import { moveDealStage } from '../deals/deals.repository';
 import { NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 import { fireDealStageChanged, fireDealUpdated } from '../../automation/triggers/triggers.service';
@@ -14,18 +15,23 @@ export async function saveField(tenantId: string, actorId: string, input: unknow
   return salesTransaction(async tx => {
     const fields = await readFields(tx, tenantId);
     const previous = fields.find(f => f.id === id);
-    if (id && !previous) throw new NotFoundError('Closing field');
+    if (id && !previous) throw new NotFoundError('Custom field');
     const patch = input as Record<string, unknown>;
     let definitionInput = input;
-    if (previous && Object.keys(patch).length === 1 && patch.active === false) {
+    if (previous) {
       const { id: _id, version: _version, ...definition } = previous;
-      definitionInput = { ...definition, active: false };
+      definitionInput = { ...definition, ...patch };
     }
     const field = ClosingFieldInputSchema.parse(definitionInput);
-    if (!id && fields.length >= 100) throw new ValidationError('Maximum 100 closing fields.');
-    if (fields.some(f => f.id !== id && f.name.toLowerCase() === field.name.toLowerCase())) throw new ValidationError('Field names must be unique.');
+    if (!id && fields.filter(f => f.module === field.module).length >= 100) throw new ValidationError('Maximum 100 custom fields per module.');
+    const groups = [...CUSTOM_FIELD_BUILT_IN_GROUPS[field.module], ...fields.filter(f => f.module === field.module).map(f => f.group)];
+    field.group = groups.find(group => customFieldNameKey(group) === customFieldNameKey(field.group)) ?? field.group;
+    if (fields.some(f => f.id !== id && f.module === field.module && customFieldNameKey(f.group) === customFieldNameKey(field.group) && customFieldNameKey(f.name) === customFieldNameKey(field.name))) throw new ValidationError('Field names must be unique within this module and group.');
     // Keep IDs and types stable so existing values cannot change meaning after an edit.
     if (previous && previous.type !== field.type) throw new ValidationError('Field type cannot be changed. Add a new field instead.');
+    if (previous && previous.module !== field.module) throw new ValidationError('Module cannot be changed. Add a new field instead.');
+    if (previous && isClosedWonField(previous) !== isClosedWonField(field)) throw new ValidationError('Fields cannot move into or out of the Closed Won workflow. Add a new field in that context instead.');
+    if (!previous) field.order = Math.max(-1, ...fields.filter(f => f.module === field.module).map(f => f.order)) + 1;
     const saved: ClosingField = { ...field, id: id ?? randomUUID(), version: (previous?.version ?? 0) + 1 };
     const definition = saved as unknown as Prisma.InputJsonValue;
     if (previous) await tx.closingFieldDefinition.update({ where: { tenantId_id: { tenantId, id: saved.id } }, data: { definition } });
@@ -40,7 +46,7 @@ async function readState(tx: Prisma.TransactionClient, tenantId: string, dealId:
   if (!deal) throw new NotFoundError('Deal');
   const snapshot = deal.closingSnapshot as { fields?: ClosingField[]; values?: ClosingValues } | null;
   const locked = deal.stage.isWon || deal.stage.isLost || !!snapshot;
-  const fields = snapshot?.fields ?? (locked ? [] : await readFields(tx, tenantId));
+  const fields = snapshot?.fields?.map(normalizeCustomField) ?? (locked ? [] : await readClosingFields(tx, tenantId));
   const values = snapshot?.values ?? deal.closingValues as ClosingValues;
   const files = await tx.recordFile.findMany({ where: { tenantId, dealId }, select: { id: true, name: true, size: true, type: true } });
   return { fields, values, locked, closedAt: deal.wonConfirmedAt?.toISOString(), errors: locked ? {} : await validateValues(tx, tenantId, dealId, fields, values),
@@ -54,7 +60,7 @@ export async function saveValues(tenantId: string, actorId: string, dealId: stri
     const deal = await tx.deal.findFirst({ where: { id: dealId, tenantId, isArchived: false, deletedAt: null }, include: { stage: true } });
     if (!deal) throw new NotFoundError('Deal');
     if (deal.stage.isWon || deal.stage.isLost || deal.closingSnapshot) throw new ValidationError('Closed Deal evidence is preserved and cannot be edited.');
-    const fields = await readFields(tx, tenantId);
+    const fields = await readClosingFields(tx, tenantId);
     if (Object.keys(patch.values).some(id => !fields.some(f => f.id === id && f.active))) throw new ValidationError('Choose an active closing field.');
     const normalized = Object.fromEntries(Object.entries(patch.values).map(([id, value]) => [id, typeof value === 'string' ? value.trim() : value]));
     const previousValues = deal.closingValues as ClosingValues;
@@ -65,6 +71,8 @@ export async function saveValues(tenantId: string, actorId: string, dealId: stri
     const invalid = changed.filter(id => errors[id]);
     if (invalid.length) throw new ValidationError(invalid.map(id => errors[id]).join(' '));
     const updated = await tx.deal.update({ where: { id: dealId, tenantId }, data: { closingValues: values } });
+    // Compatibility JSON and normalized values commit together; frozen snapshots stay untouched.
+    await persistValues(tx, tenantId, 'deals', dealId, normalized);
     await tx.activity.create({ data: { tenantId, dealId, createdById: actorId, type: 'note', title: 'Closed Won requirements updated', description: fields.filter(f => changed.includes(f.id)).map(f => f.name).join(', '), metadata: { source: 'closing_requirements', fieldIds: changed } } });
     let transition: Awaited<ReturnType<typeof moveDealStage>> = null;
     const missingRequired = fields.some(field => field.active && field.required && errors[field.id]);

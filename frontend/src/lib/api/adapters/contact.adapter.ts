@@ -40,6 +40,7 @@ export function toBackendCreateContact(data: Record<string, any>): Record<string
       };
 
   return {
+    customFieldValues: data.customFieldValues,
     requestId: data.requestId,
     firstName,
     lastName,
@@ -68,6 +69,7 @@ export function toBackendCreateContact(data: Record<string, any>): Record<string
  */
 export function toBackendUpdateContact(data: Record<string, any>): Record<string, any> {
   const result: Record<string, any> = {};
+  if (data.customFieldValues !== undefined) result.customFieldValues = data.customFieldValues;
 
   if (data.contactPerson !== undefined || data.firstName !== undefined || data.lastName !== undefined) {
     if (data.contactPerson) {

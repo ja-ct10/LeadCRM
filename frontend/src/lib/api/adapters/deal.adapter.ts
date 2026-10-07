@@ -68,6 +68,7 @@ export function toBackendCreateDeal(data: Partial<any>): any {
   }
 
   const result: any = {
+    customFieldValues: data.customFieldValues,
     pipelineId: data.pipelineId || '',
     stageId: data.stageId || '',
     title: data.title || 'Untitled Deal',
@@ -103,6 +104,7 @@ export function toBackendCreateDeal(data: Partial<any>): any {
  */
 export function toBackendUpdateDeal(data: Partial<any>): any {
   const updateData: any = {};
+  if (data.customFieldValues !== undefined) updateData.customFieldValues = data.customFieldValues;
 
   // Note: stageId and pipelineId are intentionally excluded.
   // Stage changes MUST go through moveDealStage (PATCH /deals/:id/stage).

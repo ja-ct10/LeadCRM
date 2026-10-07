@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { DEFAULT_CLOSING_FIELDS, closingValueError, CLOSING_FILE_MAX_BYTES, type ClosingField, type ClosingValues } from '@leadcrm/shared';
+import { DEFAULT_CLOSING_FIELDS, closingValueError, CLOSING_FILE_MAX_BYTES, normalizeCustomField, isClosedWonField, type ClosingField, type ClosingValues } from '@leadcrm/shared';
 import { ValidationError } from '../../../shared/errors/http-error';
 
 type Tx = Prisma.TransactionClient;
@@ -11,8 +11,9 @@ export async function readFields(tx: Tx, tenantId: string): Promise<ClosingField
     await tx.closingFieldDefinition.createMany({ data: DEFAULT_CLOSING_FIELDS.map((field, index) => ({ tenantId, id: field.id, definition: field as unknown as Prisma.InputJsonValue, createdAt: new Date(now - DEFAULT_CLOSING_FIELDS.length + index) })), skipDuplicates: true });
     rows = await tx.closingFieldDefinition.findMany({ where: { tenantId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
   }
-  return rows.map(row => row.definition as unknown as ClosingField);
+  return rows.map(row => normalizeCustomField(row.definition as unknown as ClosingField)).sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
 }
+export async function readClosingFields(tx: Tx, tenantId: string) { return (await readFields(tx, tenantId)).filter(isClosedWonField); }
 export async function validateValues(tx: Tx, tenantId: string, dealId: string, fields: ClosingField[], values: ClosingValues) {
   const errors: Record<string, string> = {};
   for (const field of fields.filter(f => f.active)) {
@@ -28,7 +29,7 @@ export async function validateValues(tx: Tx, tenantId: string, dealId: string, f
 }
 export async function closingEvidence(tx: Tx, tenantId: string, deal: { id: string; stage: { name: string }; closingValues: Prisma.JsonValue }, actorId: string) {
   if (deal.stage.name.trim().toLowerCase() !== 'qualified') throw new ValidationError('Deal must be Qualified before completing Closed Won requirements.');
-  const fields = (await readFields(tx, tenantId)).filter(field => field.active);
+  const fields = (await readClosingFields(tx, tenantId)).filter(field => field.active);
   const values = deal.closingValues as ClosingValues;
   const errors = await validateValues(tx, tenantId, deal.id, fields.filter(field => field.required), values);
   if (Object.keys(errors).length) throw new ValidationError(`Complete all required Closed Won requirements before closing this Deal. ${Object.values(errors).join(' ')}`);

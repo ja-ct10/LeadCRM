@@ -1,4 +1,5 @@
 'use client';
+import { RecordCustomFieldDetails } from './record-custom-fields';
 import { panelSurfaceClass, panelHeaderClass, panelTitleClass, panelCloseClass } from '@/shared/components/side-panel-styles';
 
 import React, { useEffect, useId, useState } from 'react';
@@ -434,7 +435,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
                 <RelatedRecords records={deals} module="deals" empty={`No deals attached to this ${label.toLowerCase()}.`} />
                 {deals.length === 50 && <p className="px-3 pb-3 text-xs text-muted-foreground">Showing the latest 50 linked deals.</p>}
                 {creatingDeal && <div className="border-t border-border p-3"><InlineDealForm relatedRecord={{ type: module === 'leads' ? 'lead' : module === 'contacts' ? 'contact' : 'account', id }} onError={error => toast.error(error instanceof Error ? error.message : 'Failed to create deal')} onCancel={() => setCreatingDeal(false)} onSubmit={async values => {
-                  await apiClient.post('/crm/deals', { title: values.title, productInterestIds: values.productInterestIds, pipelineId: values.pipelineId, stageId: values.stageId, priority: values.priority, expectedCloseDate: values.expectedCloseDate ? new Date(values.expectedCloseDate).toISOString() : undefined, ...(module === 'leads' ? { leadIds: [id] } : module === 'contacts' ? { contactIds: [id] } : { accountId: id }) });
+                  await apiClient.post('/crm/deals', { customFieldValues: values.customFieldValues, title: values.title, productInterestIds: values.productInterestIds, pipelineId: values.pipelineId, stageId: values.stageId, priority: values.priority, expectedCloseDate: values.expectedCloseDate ? new Date(values.expectedCloseDate).toISOString() : undefined, ...(module === 'leads' ? { leadIds: [id] } : module === 'contacts' ? { contactIds: [id] } : { accountId: id }) });
                   setCreatingDeal(false); void relatedQuery.refetch();
                 }} /></div>}
               </RecordSection>}
@@ -443,6 +444,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
               {module === 'contacts' && relationships.sourceLead && canReadContacts && <RecordSection title="Related leads" count={1}><RelatedRecords records={[relationships.sourceLead]} module="leads" empty="" /></RecordSection>}
             </>}
 
+            {!USE_MOCK_DATA && <RecordCustomFieldDetails module={module} recordId={id} canEdit={canEdit} />}
             {customFields && Object.keys(customFields).length > 0 && <RecordSection title="Custom fields" count={Object.keys(customFields).length}><RecordRows rows={Object.entries(customFields)} /></RecordSection>}
           </div></TabsContent>
           <TabsContent value="files" className={cn('m-0', onClose && '[&>div]:px-[var(--panel-gutter)]')}>

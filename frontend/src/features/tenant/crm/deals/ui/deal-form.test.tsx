@@ -5,6 +5,7 @@ const product = { id: '0ff82f9c-48e9-4e1c-8c77-8a30755d704c', name: 'CCTV', deal
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ pipelines: [{ id: 'pipeline', name: 'Sales Pipeline', stages: [{ id: 'stage', name: 'Lead' }] }] }) }));
 vi.mock('@/shared/hooks/use-product-interests', () => ({ useProductInterests: () => ({ products: [product, { id: 'e47c3b8e-0b85-4f11-b9a6-2aafdd587fe5', name: 'Biometrics', dealValue: 15000 }], loading: false, error: '' }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
+vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => ({ data: { fields: [], values: {}, files: [] }, error: null, isInitialLoad: false }) }));
 vi.mock('./deal-account-field', () => ({ DealAccountField: () => null }));
 vi.mock('./deal-contacts-field', () => ({ DealContactsField: () => null }));
 vi.mock('./deal-leads-field', () => ({ DealLeadsField: () => null }));

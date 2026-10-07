@@ -19,7 +19,7 @@ export async function getCompanyById(id: string, tenantId: string) {
 
 export async function createCompany(tenantId: string, userId: string, dto: CreateCompanyDto) {
   dto = CreateCompanySchema.parse(dto);
-  const company = await repo.createCompany(tenantId, dto);
+  const company = await repo.createCompany(tenantId, dto, userId);
   await writeAuditLog({
     tenantId, userId,
     action: 'account.created', entityType: 'Account', entityId: company.id,
@@ -35,7 +35,7 @@ export async function updateCompany(
   const before = await repo.findCompanyById(id, tenantId);
   if (!before) throw new NotFoundError('Company');
 
-  const company = await repo.updateCompany(id, tenantId, dto);
+  const company = await repo.updateCompany(id, tenantId, dto, userId);
   if (!company) throw new NotFoundError('Company');
 
   const { before: cb, after: ca } = buildChangeset(

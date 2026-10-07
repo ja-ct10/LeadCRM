@@ -105,9 +105,9 @@ async function authorizeFieldChanges(req: import('express').Request, _res: impor
   try {
     const onlyDisable = Object.keys(req.body).length === 1 && req.body.active === false;
     await assertPermissions(req.user!, [onlyDisable ? 'custom_fields.disable' : 'custom_fields.edit']);
-    if (!onlyDisable && req.body.active === false) {
+    if (!onlyDisable && typeof req.body.active === 'boolean') {
       const current = (await listFields(req.user!.tenantId)).find(field => field.id === req.params.id);
-      if (current?.active) await assertPermissions(req.user!, ['custom_fields.disable']);
+      if (current && current.active !== req.body.active) await assertPermissions(req.user!, ['custom_fields.disable']);
     }
     next();
   } catch (error) { next(error); }

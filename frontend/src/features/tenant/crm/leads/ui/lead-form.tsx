@@ -1,4 +1,5 @@
 'use client';
+import { useRecordCustomFields, CustomFieldGroup, CustomFieldExtraGroups } from '@/shared/components/crm/record-custom-fields';
 import { ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
 import { CrmEmailSchema } from '@leadcrm/shared';
 
@@ -80,6 +81,7 @@ interface AddLeadFormProps {
 }
 
 export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps) {
+  const customFields = useRecordCustomFields('leads', initialData?.id);
   const { users } = useData();
   const isEdit = !!initialData;
   const requestId = useRef<string | undefined>(undefined);
@@ -178,6 +180,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
   }, [initialData, reset]);
 
   const onFormSubmit = (data: LeadFormData): void => {
+    if (!customFields.validate()) return;
     // Build phone in E.164 format from local 10-digit number
     const fullPhone = phoneLocal ? toE164(phoneLocal) : '';
 
@@ -187,6 +190,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
     // Build payload matching backend CreateContactSchema field names exactly.
     // No phantom fields — adapter handles any remaining mapping.
     const payload: Partial<Lead> = {
+      customFieldValues: customFields.payload(),
       ...(!isEdit ? { requestId: requestId.current } : {}),
       firstName: data.firstName,
       lastName: data.lastName,
@@ -272,6 +276,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
               placeholder="Enter company name"
             />
           </FieldWrap>
+          <CustomFieldGroup form={customFields} group="Basic Information" />
         </div>
 
         {/* Duplicate Detection Warning */}
@@ -308,6 +313,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
 {productError && <p role="alert" className="text-xs text-destructive">{productError}</p>}
 </FieldWrap>
           </div>
+          <CustomFieldGroup form={customFields} group="Status & Interest" />
         </div>
 
         {/* Section 3: Organization */}
@@ -328,6 +334,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
               )}
             />
           </FieldWrap>
+          <CustomFieldGroup form={customFields} group="Organization" />
         </div>
 
         {/* Section 4: Additional Information */}
@@ -391,7 +398,9 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
               />
             </div>
           </FieldWrap>
+          <CustomFieldGroup form={customFields} group="Additional Information" />
         </div>
+        <CustomFieldExtraGroups form={customFields} startNumber={5} />
 
       </div>{/* end scrollable body */}
 
@@ -406,7 +415,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
         </button>
         <button
           type="submit"
-          disabled={productsLoading || !!productError}
+          disabled={customFields.blocked || productsLoading || !!productError}
           className="px-6 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 rounded-xl transition-all shadow-lg shadow-blue-500/25"
         >
           {isEdit ? 'Save Changes' : 'Create Lead'}

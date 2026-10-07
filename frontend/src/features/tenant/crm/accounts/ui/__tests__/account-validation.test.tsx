@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ users: [] }) }));
 vi.mock('@/shared/hooks/use-product-interests', () => ({ useProductInterests: () => ({ products: [] }) }));
 vi.mock('@/shared/hooks/use-scroll-to-error', () => ({ useScrollToError: vi.fn() }));
+vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => ({ data: { fields: [], values: {}, files: [] }, error: null, isInitialLoad: false }) }));
 import { AccountFormInner } from '../account-form';
 afterEach(cleanup);
 it.each([false, true])('submits an Account without obsolete fields (edit=%s)', async edit => {

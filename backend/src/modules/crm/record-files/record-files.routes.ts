@@ -6,6 +6,9 @@ export const recordFilesRouter = Router();
 // Mounted inside authenticated CRM routes; permissions run before the binary parser.
 for (const module of ['leads', 'contacts', 'accounts', 'deals'] as const) {
   const permission = module;
+  recordFilesRouter.post(`/${module}/custom-field-uploads`, authorize(`${permission}.create`), raw({ type: 'application/octet-stream', limit: '10mb' }), async (req, res, next) => {
+    try { res.status(201).json({ success: true, data: await uploadFile(module, null, req.user!.tenantId, req.user!.userId, req.query, req.body) }); } catch (error) { next(error); }
+  });
   recordFilesRouter.get(`/${module}/:id/files`, authorize(`${permission}.view`), async (req, res, next) => {
     try { res.json({ success: true, data: await listFiles(module, String(req.params.id), req.user!.tenantId) }); } catch (error) { next(error); }
   });

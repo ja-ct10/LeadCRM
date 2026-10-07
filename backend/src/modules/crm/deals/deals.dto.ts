@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CustomFieldValuesSchema } from '@leadcrm/shared';
 import { recordName, recordText } from '../record-validation';
 import { ProductInterestIdSchema, ClosedWonConfirmationSchema, DealIndustrySchema } from '@leadcrm/shared';
 
@@ -7,6 +8,7 @@ import { ProductInterestIdSchema, ClosedWonConfirmationSchema, DealIndustrySchem
 const id = () => z.string().min(1);
 
 export const CreateDealSchema = z.object({
+  customFieldValues: CustomFieldValuesSchema.optional(),
   productInterestOther: recordText(1000).nullable().optional(),
   productInterestIds: z.array(ProductInterestIdSchema).min(1).max(100).transform(ids => [...new Set(ids)]).optional(),
   productInterestId: ProductInterestIdSchema.optional(),

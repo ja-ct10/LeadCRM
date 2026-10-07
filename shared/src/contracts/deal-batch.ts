@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CustomFieldValuesSchema } from './closing-requirements';
 import { COMPANY_INDUSTRIES } from '../constants/company-industries';
 import { ProductInterestIdSchema } from './product-interests.contract';
 
@@ -6,6 +7,7 @@ export const DealIndustrySchema = z.enum(COMPANY_INDUSTRIES);
 const text = (max: number) => z.string().trim().max(max).refine(value => !/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value), 'Unsupported control characters.');
 const id = z.string().min(1);
 export const CreateDealBatchSchema = z.object({
+  customFieldValues: CustomFieldValuesSchema.optional(),
   idempotencyKey: z.string().uuid(),
   pipelineId: id,
   stageId: id,

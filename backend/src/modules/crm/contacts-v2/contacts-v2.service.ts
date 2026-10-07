@@ -22,7 +22,7 @@ export async function getContactById(id: string, tenantId: string) {
 export async function createContact(tenantId: string, dto: Record<string, unknown>, actorId?: string) {
   dto = CreateClientContactSchema.parse(dto);
   await validateLinks(tenantId, dto);
-  const contact = await repo.createContact(tenantId, dto);
+  const contact = await repo.createContact(tenantId, dto, actorId);
   if (actorId) {
     await writeAuditLog({ tenantId, userId: actorId, action: 'contact.created', entityType: 'Contact', entityId: contact.id });
     await fireContactCreated({ tenantId, actorId, contact });

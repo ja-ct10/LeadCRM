@@ -1,4 +1,5 @@
 'use client';
+import { useRecordCustomFields, CustomFieldGroup, CustomFieldExtraGroups } from '@/shared/components/crm/record-custom-fields';
 import { PanelSectionHeading, panelBodyClass, panelFooterClass, panelInputClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
 import { ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
 import { useProductInterests } from '@/shared/hooks/use-product-interests';
@@ -49,6 +50,7 @@ interface AccountFormInnerProps {
 // ─── Form Component ────────────────────────────────────────────────────────
 
 export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormInnerProps): React.ReactElement {
+  const customFields = useRecordCustomFields('accounts', initialData?.id);
   const { products: productRecords, loading: productsLoading, error: productError } = useProductInterests();
   const PRODUCTS = productRecords.map(p => p.name);
   const { users } = useData();
@@ -97,8 +99,10 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
   const selectedActiveProducts = watch('activeProducts') || [];
 
   const onSubmit = (data: AccountFormValues): void => {
+    if (!customFields.validate()) return;
     // Build payload matching backend CreateCompanySchema field names
     const payload: Partial<Account> = {
+      customFieldValues: customFields.payload(),
       name: data.name || undefined,
       industry: data.industry || undefined,
       size: data.size || undefined,
@@ -219,6 +223,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
               </div>
             </FieldWrap>
           </div>
+          <CustomFieldGroup form={customFields} group="Basic Information" />
         </div>
 
         {/* Section 2: Address */}
@@ -272,6 +277,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
               />
             </FieldWrap>
           </div>
+          <CustomFieldGroup form={customFields} group="Address" />
         </div>
 
         {/* Section 3: Relationships */}
@@ -298,6 +304,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
               <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
             </div>
           </FieldWrap>
+          <CustomFieldGroup form={customFields} group="Relationships" />
         </div>
 
         {/* Section 4: Products & Interests */}
@@ -357,6 +364,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
               </div>
             </div>
           </FieldWrap>
+          <CustomFieldGroup form={customFields} group="Products & Interests" />
         </div>
 
         {/* Section 5: Notes */}
@@ -386,7 +394,9 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
               placeholder="Internal-only notes (not visible to the client)..."
             />
           </FieldWrap>
+          <CustomFieldGroup form={customFields} group="Notes" />
         </div>
+        <CustomFieldExtraGroups form={customFields} startNumber={6} />
       </div>
 
       {/* Sticky Footer */}
@@ -400,7 +410,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
         </button>
         <button
           type="submit"
-          disabled={isSubmitting}
+          disabled={customFields.blocked || isSubmitting}
           className="h-[42px] px-6 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 rounded-xl transition-all shadow-lg shadow-blue-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isSubmitting ? 'Saving...' : isEdit ? 'Save Changes' : 'Create Account'}

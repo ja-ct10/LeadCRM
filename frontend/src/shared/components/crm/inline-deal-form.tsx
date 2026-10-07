@@ -1,6 +1,9 @@
 'use client';
 
 import React, { useMemo } from 'react';
+import { useRecordCustomFields, CustomFieldGroup, CustomFieldExtraGroups } from './record-custom-fields';
+import { CUSTOM_FIELD_BUILT_IN_GROUPS, CLOSED_WON_GROUP, type ClosingValues } from '@leadcrm/shared';
+import { PanelSectionHeading } from '@/shared/components/side-panel-styles';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -42,6 +45,7 @@ interface InlineDealFormProps {
     organizationId?: string;
   };
   onSubmit: (data: {
+    customFieldValues?: ClosingValues;
     title: string;
     productInterestIds: string[];
     pipelineId: string;
@@ -67,6 +71,7 @@ export function InlineDealForm({
   onError,
 }: InlineDealFormProps): React.ReactElement {
   const { products, loading, error } = useProductInterests();
+  const customFields = useRecordCustomFields('deals');
   const { pipelines: allPipelines } = useData();
   const pipelines = useMemo(() => allPipelines.filter(p => p.name.trim().toLowerCase() === 'sales pipeline'), [allPipelines]);
 
@@ -111,7 +116,9 @@ export function InlineDealForm({
   }, [selectedPipelineId, pipelines]);
 
   const onFormSubmit = async (formData: InlineDealFormData): Promise<void> => {
+    if (!customFields.validate()) return;
     const payload: Parameters<typeof onSubmit>[0] = {
+      customFieldValues: customFields.payload(),
       title: formData.title,
       productInterestIds: formData.productInterestIds,
       pipelineId: formData.pipelineId,
@@ -202,12 +209,14 @@ export function InlineDealForm({
       </div>
       {!defaultPipeline && <p role="alert" className="text-xs text-destructive">Sales Pipeline is unavailable.</p>}
 
+      {CUSTOM_FIELD_BUILT_IN_GROUPS.deals.filter(group => group !== CLOSED_WON_GROUP && customFields.fields.some(field => field.group === group)).map((group, index) => <section key={group} className="min-w-0 space-y-3"><PanelSectionHeading number={index + 1}>{group}</PanelSectionHeading><CustomFieldGroup form={customFields} group={group} /></section>)}
+      <CustomFieldExtraGroups form={customFields} startNumber={4} />
       {/* Actions */}
       <div className="flex items-center gap-2 pt-1">
         <Button
           type="submit"
           size="sm"
-          disabled={isSubmitDisabled}
+          disabled={isSubmitDisabled || customFields.blocked}
           className="flex-1"
         >
           {(isSubmitting || isLoading) && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}

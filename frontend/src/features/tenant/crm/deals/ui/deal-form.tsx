@@ -1,4 +1,5 @@
 'use client';
+import { useRecordCustomFields, CustomFieldGroup, CustomFieldExtraGroups } from '@/shared/components/crm/record-custom-fields';
 import { PanelSectionHeading, panelBodyClass, panelFooterClass, panelInputClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
 import { ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
 import { useProductInterests } from '@/shared/hooks/use-product-interests';
@@ -57,8 +58,8 @@ const UpdateDealFormSchema = z.object({
   productInterests: z.array(z.string()).min(1, 'Select at least one Product Interest.').optional(),
 });
 
-export type CreateDealFormData = z.infer<typeof CreateDealFormSchema>;
-export type UpdateDealFormData = z.infer<typeof UpdateDealFormSchema>;
+export type CreateDealFormData = z.infer<typeof CreateDealFormSchema> & { customFieldValues?: import('@leadcrm/shared').ClosingValues }
+export type UpdateDealFormData = z.infer<typeof UpdateDealFormSchema> & { customFieldValues?: import('@leadcrm/shared').ClosingValues }
 type DealFormData = CreateDealFormData | UpdateDealFormData;
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -109,6 +110,7 @@ export function DealForm({
   onCancel,
   isLoading = false,
 }: DealFormProps): React.ReactElement {
+  const customFields = useRecordCustomFields('deals', initialData?.id);
   const { products, loading: productsLoading, error: productsError, refresh: refreshProducts } = useProductInterests();
   const { pipelines: allPipelines } = useData();
   const pipelines = useMemo(() => allPipelines.filter(p => p.name.trim().toLowerCase() === 'sales pipeline'), [allPipelines]);
@@ -205,9 +207,11 @@ export function DealForm({
   }, [errors, setFocus]);
 
   const onFormSubmit = async (data: CreateDealFormData): Promise<void> => {
+    if (!customFields.validate()) return;
     // Clean optional empty strings before submission.
     // currency is always PHP — not user-editable, injected here for backend compatibility.
     const cleaned = {
+      customFieldValues: customFields.payload(),
       ...data,
       currency: 'PHP',
       value: undefined,
@@ -309,6 +313,7 @@ export function DealForm({
                 aria-describedby={errors.expectedCloseDate ? `${fieldId}-expectedCloseDate-error` : undefined} className={inputCls} />
             </FieldWrap>
           </div>
+          <CustomFieldGroup form={customFields} group="Deal Information" />
         </div>
 
         {/* Section 3: Relationships */}
@@ -362,6 +367,7 @@ export function DealForm({
               )}
             />
           </FieldWrap>
+          <CustomFieldGroup form={customFields} group="Relationships" />
         </div>
 
         {/* Section 4: Additional Details */}
@@ -398,7 +404,9 @@ export function DealForm({
             />
           </FieldWrap>
 
+          <CustomFieldGroup form={customFields} group="Additional Details" />
         </div>
+        <CustomFieldExtraGroups form={customFields} startNumber={isCreateMode ? 5 : 4} />
       </div>
 
       {submitError && <p role="alert" className="px-4 py-2 text-sm text-destructive [overflow-wrap:anywhere]">{submitError}</p>}
@@ -414,7 +422,7 @@ export function DealForm({
         {hasPermission && (
           <button
             type="submit"
-            disabled={isSubmitDisabled}
+            disabled={customFields.blocked || isSubmitDisabled}
             className={cn(
               'h-[42px] px-6 py-2.5 text-sm font-semibold text-white rounded-xl transition-all shadow-lg shadow-blue-500/25',
               isSubmitDisabled

@@ -1,4 +1,5 @@
 export interface Account {
+  customFieldValues?: import('@leadcrm/shared').ClosingValues;
   id: string;
   tenantId: string;
   name: string;

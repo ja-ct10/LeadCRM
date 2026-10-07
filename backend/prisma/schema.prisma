@@ -352,6 +352,7 @@ model TenantGroupMember {
 // ORGANIZATION
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Account {
+  customFieldValues CustomFieldValue[]
   // False only for legacy rows requiring explicit product reconciliation.
   productsNormalized Boolean @default(false)
   productLinks AccountProductInterest[]
@@ -404,6 +405,7 @@ model Account {
 // LEAD
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Lead {
+  customFieldValues CustomFieldValue[]
   // False only for legacy rows requiring explicit product reconciliation.
   productsNormalized Boolean @default(false)
   productLinks LeadProductInterest[]
@@ -482,6 +484,7 @@ model Lead {
 
 // -----------------------------------------------------
 model Contact {
+  customFieldValues CustomFieldValue[]
   // False only for legacy rows requiring explicit product reconciliation.
   productsNormalized Boolean @default(false)
   productLinks ContactProductInterest[]
@@ -612,6 +615,7 @@ model Stage {
 // DEAL
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Deal {
+  customFieldValues CustomFieldValue[]
   productsNormalized Boolean @default(false)
   productInterestOther String?
   hasEverBeenWon Boolean @default(false)
@@ -857,6 +861,7 @@ model Notification {
 }
 
 model ClosingFieldDefinition {
+  values CustomFieldValue[]
   tenantId   String
   id         String
   definition Json
@@ -865,6 +870,32 @@ model ClosingFieldDefinition {
   tenant     Tenant @relation(fields: [tenantId], references: [id])
 
   @@id([tenantId, id])
+}
+
+// Evolved ClosingFieldDefinition owns both normal CRM values and closing evidence.
+// SQL enforces exactly one module-matching record reference; all FKs include tenant.
+model CustomFieldValue {
+  id String @id @default(uuid())
+  tenantId String
+  fieldId String
+  module String
+  leadId String?
+  contactId String?
+  accountId String?
+  dealId String?
+  value Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+  field ClosingFieldDefinition @relation(fields: [tenantId, fieldId], references: [tenantId, id], onDelete: Restrict)
+  lead Lead? @relation(fields: [leadId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  contact Contact? @relation(fields: [contactId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  account Account? @relation(fields: [accountId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  deal Deal? @relation(fields: [dealId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  @@unique([tenantId, fieldId, leadId])
+  @@unique([tenantId, fieldId, contactId])
+  @@unique([tenantId, fieldId, accountId])
+  @@unique([tenantId, fieldId, dealId])
+  @@index([tenantId, module, leadId, contactId, accountId, dealId])
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -1559,6 +1590,7 @@ model TaskAccount {
 }
 
 model RecordFile {
+  pendingModule String?
   dealId String?
   deal Deal? @relation(fields: [dealId, tenantId], references: [id, tenantId], onDelete: Cascade)
   @@index([tenantId, dealId])
@@ -1571,7 +1603,7 @@ model RecordFile {
   name String
   size Int
   type String
-  objectKey String @unique
+  objectKey String
   uploadedAt DateTime @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
@@ -1583,6 +1615,8 @@ model RecordFile {
   @@index([tenantId, leadId])
   @@index([tenantId, contactId])
   @@index([tenantId, accountId])
+  @@index([tenantId, pendingModule, uploadedAt])
+  @@index([objectKey])
 }
 
 // Organization-wide product defaults; Deals retain their original monetary snapshot.

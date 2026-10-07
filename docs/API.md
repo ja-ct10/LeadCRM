@@ -177,6 +177,9 @@ The existing single-Deal endpoint and response remain supported.
 Mailbox reply timing, related-Deal Workflow options, Custom Fields and migration
 instructions are documented in [engagement and Deal creation](engagement-deal-creation.md).
 
+Module-scoped field definitions, record values, uploads, permissions and the
+preserving migration are documented in [Custom Fields](custom-fields.md).
+
 Lead and Contact create requests require a trimmed, valid email of at most 254
 characters. Updates may omit email, but cannot submit an empty or invalid email.
 Accounts retain their existing email rules.

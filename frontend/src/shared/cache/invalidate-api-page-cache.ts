@@ -8,6 +8,9 @@ export function invalidateApiPageCache(path: string): void {
     return;
   }
   const modules = new Set<string>();
+  if (area === 'administration' && resource === 'closing-requirements') {
+    ['settings', 'leads', 'contacts', 'accounts', 'deals'].forEach(module => modules.add(module));
+  }
   if (['crm', 'marketing', 'automation', 'administration'].includes(area)) modules.add('archived-crm');
   if (area === 'administration' && resource === 'archived-data') {
     const type = path.split('/')[3];

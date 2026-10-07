@@ -30,8 +30,8 @@ export async function listFiles(module: FileModule, id: string, tenantId: string
   const files = await prisma.recordFile.findMany({ where: { tenantId, [links[module]]: id }, include: actor, orderBy: [{ uploadedAt: 'desc' }, { id: 'desc' }] });
   return files.map(file => metadata(file, module, id));
 }
-export async function uploadFile(module: FileModule, id: string, tenantId: string, userId: string, input: unknown, bytes: Buffer) {
-  await requireRecord(module, id, tenantId);
+export async function uploadFile(module: FileModule, id: string | null, tenantId: string, userId: string, input: unknown, bytes: Buffer) {
+  if (id) await requireRecord(module, id, tenantId);
   const submitted = UploadMetadataSchema.parse(input);
   const extension = submitted.name.split('.').pop()?.toLowerCase();
   const inferred: Record<string, string> = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', txt: 'text/plain', csv: 'text/csv', zip: 'application/zip', doc: 'application/msword', xls: 'application/vnd.ms-excel', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
@@ -49,17 +49,27 @@ export async function uploadFile(module: FileModule, id: string, tenantId: strin
     : signature.subarray(0, 4).equals(Buffer.from([208,207,17,224]));
   if (!valid) throw new AppError('File contents do not match the selected file type.', 400);
   const config = storage();
+  if (!id) {
+    // Expired drafts cannot be claimed. Remove only this uploader's abandoned
+    // drafts; record attachments and historical values are never cleanup targets.
+    const expired = await prisma.recordFile.findMany({ where: { tenantId, uploadedById: userId, pendingModule: { not: null }, uploadedAt: { lte: new Date(Date.now() - 86400000) } }, take: 100 });
+    if (expired.length) {
+      const removed = await fetch(`${config.base}/${config.bucket}`, { method: 'DELETE', headers: { ...config.headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ prefixes: expired.map(file => file.objectKey) }), signal: AbortSignal.timeout(15000) });
+      if (removed.ok) await prisma.recordFile.deleteMany({ where: { tenantId, uploadedById: userId, pendingModule: { not: null }, id: { in: expired.map(file => file.id) } } });
+    }
+    if (await prisma.recordFile.count({ where: { tenantId, uploadedById: userId, pendingModule: { not: null } } }) >= 100) throw new AppError('Too many unfinished file uploads. Save your current records or retry after old drafts expire.', 400);
+  }
   const fileId = randomUUID();
-  const key = `${encodeURIComponent(tenantId)}/${module}/${encodeURIComponent(id)}/${fileId}`;
+  const key = `${encodeURIComponent(tenantId)}/${module}/${encodeURIComponent(id ?? `pending-${userId}`)}/${fileId}`;
   const response = await fetch(`${config.base}/${config.bucket}/${key}`, { method: 'POST', headers: { ...config.headers, 'Content-Type': data.type, 'x-upsert': 'false' }, body: new Uint8Array(bytes), signal: AbortSignal.timeout(30000) });
   if (!response.ok) throw new AppError('Unable to upload file. Please try again.', 502);
   try {
     const file = await prisma.$transaction(async tx => {
-      const saved = await tx.recordFile.create({ data: { id: fileId, tenantId, [links[module]]: id, uploadedById: userId, name: data.name, size: bytes.length, type: data.type, objectKey: key }, include: actor });
-      await tx.activity.create({ data: { tenantId, createdById: userId, [links[module]]: id, type: 'file_upload', title: `Uploaded ${data.name}`, metadata: { fileId } } });
+      const saved = await tx.recordFile.create({ data: { id: fileId, tenantId, ...(id ? { [links[module]]: id } : { pendingModule: module }), uploadedById: userId, name: data.name, size: bytes.length, type: data.type, objectKey: key }, include: actor });
+      if (id) await tx.activity.create({ data: { tenantId, createdById: userId, [links[module]]: id, type: 'file_upload', title: `Uploaded ${data.name}`, metadata: { fileId } } });
       return saved;
     });
-    return metadata(file, module, id);
+    return { ...metadata(file, module, id ?? ''), ...(!id ? { url: '' } : {}) };
   } catch (error) {
     await fetch(`${config.base}/${config.bucket}`, { method: 'DELETE', headers: { ...config.headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ prefixes: [key] }), signal: AbortSignal.timeout(15000) }).catch(() => console.warn('Unable to clean up uncommitted record file'));
     throw error;

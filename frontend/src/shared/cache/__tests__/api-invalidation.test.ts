@@ -5,13 +5,14 @@ import { clearPageCache, getPageCache, setPageCache } from '../page-cache';
 beforeEach(() => {
   clearPageCache();
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true }) }));
-  for (const module of ['leads', 'contacts', 'accounts', 'campaigns', 'templates', 'pipeline', 'pipelines', 'workflows', 'reports', 'activities', 'notifications', 'archived-crm', 'counts-leads', 'counts-contacts', 'counts-accounts']) {
+  for (const module of ['settings', 'deals', 'leads', 'contacts', 'accounts', 'campaigns', 'templates', 'pipeline', 'pipelines', 'workflows', 'reports', 'activities', 'notifications', 'archived-crm', 'counts-leads', 'counts-contacts', 'counts-accounts']) {
     setPageCache(module, 'tenant-a', {}, ['before-write']);
   }
 });
 afterEach(() => { vi.unstubAllGlobals(); clearPageCache(); });
 
 it.each([
+  ['/administration/closing-requirements/123', ['settings', 'leads', 'contacts', 'accounts', 'deals']],
   ['/crm/contacts/123/archive', ['contacts', 'leads', 'accounts', 'reports', 'activities']],
   ['/crm/leads/123/restore', ['leads', 'counts-leads', 'archived-crm']],
   ['/crm/contacts/123/restore', ['contacts', 'counts-contacts', 'archived-crm']],

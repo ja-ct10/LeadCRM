@@ -9,6 +9,7 @@ import { changeCustomerStatus } from '../engagement.service';
 import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
 import { CreateDealDto, UpdateDealDto, DealsQueryParams } from './deals.dto';
+import { saveRecordValues, type BatchFiles } from '../closing-requirements/custom-field-values.repository';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { assertDealStageTransition, dealHasEverBeenWon } from './deal-lifecycle';
 
@@ -95,10 +96,10 @@ export async function findDealById(id: string, tenantId: string) {
   return deal ? withDealParticipants(deal) : null;
 }
 
-export async function createDeal(tenantId: string, ownerId: string, dto: CreateDealDto, db: Prisma.TransactionClient = prisma) {
+export async function createDeal(tenantId: string, ownerId: string, dto: CreateDealDto, db: Prisma.TransactionClient = prisma, batchFiles?: BatchFiles) {
   const stage = await db.stage.findFirst({ where: { id: dto.stageId, tenantId, pipelineId: dto.pipelineId } });
   if (!stage || stage.isWon) throw new ValidationError('New Deals require an available open stage. Confirm Closed Won through the stage action.');
-  const { leadIds, contactIds, ...dealData } = dto as CreateDealDto & { leadIds?: string[]; contactIds?: string[] };
+  const { leadIds, contactIds, customFieldValues, ...dealData } = dto as CreateDealDto & { leadIds?: string[]; contactIds?: string[] };
 
   const ids = [...new Set(dto.productInterestIds ?? (dto.productInterestId ? [dto.productInterestId] : []))];
   if (ids.length !== 1 || (dto.productInterestId && dto.productInterestId !== ids[0])) throw new ValidationError('Select exactly one Product Interest per Deal.');
@@ -112,6 +113,7 @@ export async function createDeal(tenantId: string, ownerId: string, dto: CreateD
   const deal = await db.deal.create({
     data: { ...dealData, tenantId, ownerId, productsNormalized: true } as never,
   });
+  await saveRecordValues(db, tenantId, 'deals', deal.id, customFieldValues, ownerId, batchFiles);
 
   if (leadIds && leadIds.length > 0) {
     await db.leadDeal.createMany({
@@ -152,9 +154,10 @@ export async function createDeal(tenantId: string, ownerId: string, dto: CreateD
 export async function updateDeal(id: string, tenantId: string, dto: UpdateDealDto, actorId?: string) {
   try {
     await salesTransaction(async tx => {
-      const { leadIds: _leadIds, contactIds: _contactIds, ...updateData } = dto as UpdateDealDto & { leadIds?: string[]; contactIds?: string[] };
+      const { leadIds: _leadIds, contactIds: _contactIds, customFieldValues, ...updateData } = dto as UpdateDealDto & { leadIds?: string[]; contactIds?: string[] };
       const existing = await tx.deal.findFirst({ where: { id, tenantId } });
       if (!existing) throw new Prisma.PrismaClientKnownRequestError('Deal not found', { code: 'P2025', clientVersion: '5' });
+      await saveRecordValues(tx, tenantId, 'deals', id, customFieldValues, actorId);
       const currentIds = existing.productInterestIds.length ? existing.productInterestIds : existing.productInterestId ? [existing.productInterestId] : [];
       if (dto.productInterestIds) {
         const ids = [...new Set(dto.productInterestIds)];

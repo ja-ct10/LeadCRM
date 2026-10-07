@@ -6,9 +6,9 @@ import { Badge } from '@/shared/components/ui/badge';
 import { RowActionsMenu, type RowActionItem } from '@/shared/components/data-grid/row-actions-menu';
 
 /** Uses the same preview and footer proportions as the Forms gallery. */
-export function CustomFieldCard({ title, description, kind, status, meta, href, onClick, disabled, actions }: {
+export function CustomFieldCard({ title, description, context, kind, status, meta, href, onClick, disabled, actions }: {
   title: string; description: string; kind: 'product' | 'requirements'; status: string; meta: string;
-  href?: string; onClick?: () => void; disabled?: boolean; actions: RowActionItem[];
+  context?: string; href?: string; onClick?: () => void; disabled?: boolean; actions: RowActionItem[];
 }) {
   const preview = <div aria-hidden="true" className="w-24 space-y-2 rounded-md border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-600 dark:bg-slate-900">
     <div className="h-2 w-2/3 rounded bg-slate-800 dark:bg-slate-300" />
@@ -27,6 +27,7 @@ export function CustomFieldCard({ title, description, kind, status, meta, href, 
     <div className="flex items-center justify-between gap-2 p-4">
       <div className="min-w-0">
         <h3>{href ? <Link href={href} className={titleClass} title={title}>{title}</Link> : <button type="button" disabled={disabled} onClick={onClick} className={titleClass} title={title}>{title}</button>}</h3>
+        {context && <p className="mt-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">{context}</p>}
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400"><Badge variant={status === 'Enabled' ? 'default' : 'secondary'} className="px-1 py-0 text-[10px] uppercase">{status}</Badge><span>{meta}</span></div>
       </div>
       {actions.length > 0 && <RowActionsMenu label={`${title} actions`} position="right" actions={actions} />}

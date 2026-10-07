@@ -3,6 +3,7 @@ import { assertPermissions } from '../../core/permissions/permission.service';
 import * as activitiesService from '../../modules/crm/activities/activities.service';
 import type { PermissionKey } from '@leadcrm/shared';
 import { recordFilesRouter } from '../../modules/crm/record-files/record-files.routes';
+import { customFieldsRouter } from '../../modules/crm/closing-requirements/custom-fields.routes';
 import { CreateCrmImportSchema, CsvUploadChunkSchema } from '@leadcrm/shared';
 import { importController } from '../../modules/crm/imports/imports.controller';
 import { Router } from 'express';
@@ -48,6 +49,7 @@ router.use(tenantMiddleware);
 router.use(workspaceReadyMiddleware);
 router.use(authorizeArchivedQuery);
 router.use(recordFilesRouter);
+router.use(customFieldsRouter);
 
 // ── Duplicate Detection ───────────────────────────────────────────────────
 router.post(  '/duplicate-check',    validate(DuplicateCheckSchema), (req, res, next) => authorizeAll(...req.body.entityTypes.map((type: string) => `${type}s.view` as PermissionKey))(req, res, next), duplicateDetectionController.duplicateCheck);

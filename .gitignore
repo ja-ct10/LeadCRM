@@ -67,3 +67,6 @@ data/outputs/retired-features-*.json
 
 # Local audit evidence and recovery backups may contain private account data.
 /data/outputs/database-audit/
+
+# Reproducible local custom-field browser evidence.
+/data/outputs/custom-fields-browser/

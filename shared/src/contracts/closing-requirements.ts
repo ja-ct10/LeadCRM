@@ -2,10 +2,26 @@ import { z } from 'zod';
 import { RECORD_FILE_MAX_BYTES } from './record-experience';
 
 export const CLOSING_FIELD_TYPES = ['Text', 'Long Text', 'Number', 'Date', 'Dropdown', 'File Upload'] as const;
+export const CUSTOM_FIELD_MODULES = ['leads', 'contacts', 'accounts', 'deals'] as const;
+export type CustomFieldModule = typeof CUSTOM_FIELD_MODULES[number];
+export const CUSTOM_FIELD_MODULE_LABELS: Record<CustomFieldModule, string> = { leads: 'Leads', contacts: 'Contacts', accounts: 'Accounts', deals: 'Deals' };
+export const CLOSED_WON_GROUP = 'Closed Won Requirements';
+export const CUSTOM_FIELD_BUILT_IN_GROUPS: Record<CustomFieldModule, readonly string[]> = {
+  leads: ['Basic Information', 'Status & Interest', 'Organization', 'Additional Information'],
+  contacts: ['Basic Information', 'Status & Classification', 'Relationships', 'Additional Information'],
+  accounts: ['Basic Information', 'Address', 'Relationships', 'Products & Interests', 'Notes'],
+  deals: ['Deal Information', 'Relationships', 'Additional Details', CLOSED_WON_GROUP],
+};
+export const customFieldNameKey = (value: string) => value.trim().toLowerCase();
 export const ClosingFieldInputSchema = z.object({
   name: z.string().trim().min(1, 'Field name is required.').max(100),
   type: z.enum(CLOSING_FIELD_TYPES),
-  appliesTo: z.literal('Closed Won Requirements').default('Closed Won Requirements'),
+  // Retained only for old API clients. Module/group are the canonical context.
+  appliesTo: z.literal('Closed Won Requirements').optional(),
+  module: z.enum(CUSTOM_FIELD_MODULES).default('deals'),
+  group: z.string().trim().min(1, 'Group / Section is required.').max(100).default(CLOSED_WON_GROUP),
+  visibleInForm: z.boolean().default(true),
+  order: z.number().int().min(0).max(100000).default(0),
   required: z.boolean(),
   active: z.boolean().default(true),
   description: z.string().trim().max(1000).default(''),
@@ -18,6 +34,11 @@ export const ClosingFieldInputSchema = z.object({
 export type ClosingFieldInput = z.infer<typeof ClosingFieldInputSchema>;
 export type ClosingField = ClosingFieldInput & { id: string; version: number };
 export type ClosingValues = Record<string, string | number | null>;
+export const CustomFieldValuesSchema = z.record(z.string().min(1).max(100), z.union([z.string().max(10000), z.number().finite(), z.null()])).refine(v => Object.keys(v).length <= 100, 'Supply at most 100 field values.');
+export interface CustomFieldState { fields: ClosingField[]; values: ClosingValues; files: { id: string; name: string; url: string }[] }
+export const isClosedWonField = (field: Pick<ClosingField, 'module' | 'group'>) => field.module === 'deals' && customFieldNameKey(field.group) === customFieldNameKey(CLOSED_WON_GROUP);
+/** Legacy definitions/snapshots retain their IDs and original context. */
+export const normalizeCustomField = (field: ClosingField): ClosingField => ({ ...field, module: field.module ?? 'deals', group: field.group ?? CLOSED_WON_GROUP, visibleInForm: field.visibleInForm ?? true, order: field.order ?? 0 });
 export const ClosingValuesPatchSchema = z.object({ values: z.record(z.string().min(1).max(100), z.union([z.string().max(10000), z.number().finite(), z.null()])).refine(v => Object.keys(v).length > 0 && Object.keys(v).length <= 100, 'Supply 1–100 field values.') }).strict();
 export interface ClosingRequirementsState {
   fields: ClosingField[];
@@ -33,7 +54,7 @@ export const DEFAULT_CLOSING_FIELDS: ClosingField[] = [
   { id: 'reference-number', name: 'Reference Number', type: 'Text', required: false },
   { id: 'required-document', name: 'Required Document', type: 'File Upload', required: false },
   { id: 'closing-notes', name: 'Closing Notes', type: 'Long Text', required: false },
-].map(field => ({ options: [], description: '', active: true, appliesTo: 'Closed Won Requirements', version: 1, ...field })) as ClosingField[];
+].map((field, order) => ({ options: [], description: '', active: true, module: 'deals', group: CLOSED_WON_GROUP, visibleInForm: true, order, version: 1, ...field })) as ClosingField[];
 
 /** File IDs are checked against tenant/Deal-owned persistent records by the backend. */
 export function closingValueError(field: ClosingField, value: unknown): string | undefined {

@@ -12,6 +12,7 @@ import type { Contact as SharedContact, CreateContactRequest, UpdateContactReque
  * firstName/lastName are optional to stay assignable from Contact (which has them optional).
  */
 export interface Lead extends Omit<SharedContact, 'firstName' | 'lastName'> {
+  customFieldValues?: import('@leadcrm/shared').ClosingValues;
   firstName?: string;
   lastName?: string;
 

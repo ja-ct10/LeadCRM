@@ -1,4 +1,5 @@
 import { normalizeProductOther } from '../leads/product-snapshots';
+import { saveRecordValues } from '../closing-requirements/custom-field-values.repository';
 import { productRelationData } from '../leads/product-relations';
 import { parseLeadCreatedFilter } from '../leads/lead-created-filter';
 import { convertClosedLead } from '../leads/lead-conversion.service';
@@ -87,10 +88,15 @@ export async function createContact(
   dto: CreateContactDto,
   createdById?: string,
 ) {
-  const { requestId, productInterest, ...fields } = dto;
+  const { requestId, productInterest, customFieldValues, ...fields } = dto;
   if (dto.status === 'Closed') throw new ValidationError('Confirm a related Deal as Closed Won before setting Closed.');
-  return salesTransaction(tx => createAssignedLead(tx, { ...fields, productInterestIds: productInterest ?? [], tenantId, creationKey: requestId,
-    ...(createdById ? { createdById, updatedById: createdById } : {}) }, createdById));
+  return salesTransaction(async tx => {
+    const existing = requestId ? await tx.lead.findFirst({ where: { tenantId, creationKey: requestId } }) : null;
+    const lead = await createAssignedLead(tx, { ...fields, productInterestIds: productInterest ?? [], tenantId, creationKey: requestId,
+      ...(createdById ? { createdById, updatedById: createdById } : {}) }, createdById);
+    if (!existing) await saveRecordValues(tx, tenantId, 'leads', lead.id, customFieldValues, createdById);
+    return lead;
+  });
 }
 
 export async function updateContact(
@@ -102,6 +108,7 @@ export async function updateContact(
 ) {
   try {
     const data: Record<string, unknown> = { ...dto };
+    delete data.customFieldValues;
     if (updatedById) data.updatedById = updatedById;
     // Stamp lastStatusChangedAt when status actually changes
     if (dto.status && prevStatus !== undefined && dto.status !== prevStatus) {
@@ -110,6 +117,7 @@ export async function updateContact(
     return await salesTransaction(async tx => {
       const current = await tx.lead.findFirstOrThrow({ where: { id, tenantId } });
       if (current.convertedAt) throw new ValidationError('This Lead has been converted. Update the linked Contact instead.');
+      await saveRecordValues(tx, tenantId, 'leads', id, dto.customFieldValues, updatedById);
       if (dto.status) {
         if (dto.status !== current.status) data.lastStatusChangedAt = new Date();
         else delete data.lastStatusChangedAt;

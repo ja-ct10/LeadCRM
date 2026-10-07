@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { BatchFiles } from '../closing-requirements/custom-field-values.repository';
 import { CreateDealBatchSchema, productDealTitle } from '@leadcrm/shared';
 import { ConflictError, ValidationError } from '../../../shared/errors/http-error';
 import { resolveProducts, salesTransaction, validateSalesOwner } from '../leads/lead-automation.service';
@@ -32,9 +33,10 @@ export async function createDealBatch(tenantId: string, actorId: string, input: 
     const products = await resolveProducts(tx, tenantId, dto.productInterestIds);
     const { idempotencyKey, productInterestIds: _ids, ...common } = dto;
     const deals = [];
+    const batchFiles: BatchFiles = new Map();
     for (const product of products) {
       const deal = await repo.createDeal(tenantId, actorId, { ...common, leadIds, contactIds, currency: 'PHP',
-        productInterestId: product.id, title: productDealTitle(dto.title, product.name, products.length > 1) }, tx);
+        productInterestId: product.id, title: productDealTitle(dto.title, product.name, products.length > 1) }, tx, batchFiles);
       deals.push(deal);
       await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'deal.created', entityType: 'Deal', entityId: deal.id,
         changeset: { after: { title: deal.title, value: deal.value, productInterestId: product.id, stageId: deal.stageId } } } });

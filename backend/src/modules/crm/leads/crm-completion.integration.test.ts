@@ -37,7 +37,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
   beforeAll(async () => {
     const tenant = await prisma.tenant.create({ data: { name: 'Completion tests', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } });
     tenantId = tenant.id;
-    const user = async (name: string, role: string, target = tenantId) => prisma.user.create({ data: { tenantId: target, firstName: name, lastName: 'Test', email: `${name}@camxian.com`, role, status: 'ACTIVE', mustChangePassword: false } });
+    const user = async (name: string, role: string, target = tenantId) => prisma.user.create({ data: { tenantId: target, firstName: name, lastName: 'Test', email: `${name}@camxian.com`, role, status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date() } });
     const admin = await user('admin', 'Client Admin'); adminId = admin.id; token = (await issueAuthSession(admin)).token;
     const agent = await user('sales', 'Sales Rep'); agentId = agent.id; agentToken = (await issueAuthSession(agent)).token;
     const other = await user('other', 'Sales Rep'); otherAgentId = other.id; otherToken = (await issueAuthSession(other)).token;

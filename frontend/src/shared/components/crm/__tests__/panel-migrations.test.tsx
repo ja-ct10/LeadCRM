@@ -39,6 +39,7 @@ const records = {
 beforeEach(() => {
   clearPageCache(); vi.clearAllMocks(); mocks.permissions = ['*'];
   mocks.get.mockImplementation(async (path: string) => {
+    if (path.includes('/custom-fields')) return { data: { fields: [], values: {}, files: [] } };
     if (path.includes('/closing-requirements')) return { data: { fields: [], values: {}, errors: {}, files: [], locked: false } };
     if (path.includes('/relationships')) return { data: { account: null, contact: null, sourceLead: null, deals: [], contacts: [], activities: [] } };
     if (path.includes('/activities')) return { data: [] };

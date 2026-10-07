@@ -1,3 +1,4 @@
+import { saveRecordValues } from '../closing-requirements/custom-field-values.repository';
 import { validateProductSnapshots, normalizeProductOther } from '../leads/product-snapshots';
 import { productRelationData } from '../leads/product-relations';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
@@ -87,14 +88,19 @@ export async function findContactById(id: string, tenantId: string) {
   });
 }
 
-export async function createContact(tenantId: string, dto: Record<string, unknown>) {
+export async function createContact(tenantId: string, dto: Record<string, unknown>, actorId?: string) {
   if (dto.status === 'Closed') throw new ValidationError('Confirm a related Deal as Closed Won before setting Closed.');
   dto.productInterests = await validateProductSnapshots(tenantId, dto.productInterests);
   normalizeProductOther(dto, (dto.productInterests as string[] | undefined) ?? []);
-  return salesTransaction(async tx => tx.contact.create({
-    data: { ...dto, ...await productRelationData(tx, 'contact', tenantId, { names: dto.productInterests as string[] | undefined }), tenantId, status: CrmStatusSchema.parse(dto.status).toUpperCase() } as never,
+  const { customFieldValues, ...data } = dto;
+  return salesTransaction(async tx => {
+    const contact = await tx.contact.create({
+    data: { ...data, ...await productRelationData(tx, 'contact', tenantId, { names: dto.productInterests as string[] | undefined }), tenantId, status: CrmStatusSchema.parse(dto.status).toUpperCase() } as never,
     include: CONTACT_INCLUDE,
-  }));
+    });
+    await saveRecordValues(tx, tenantId, 'contacts', contact.id, customFieldValues, actorId);
+    return contact;
+  });
 }
 
 export async function updateContact(id: string, tenantId: string, dto: Record<string, unknown>, actorId?: string) {
@@ -106,9 +112,11 @@ export async function updateContact(id: string, tenantId: string, dto: Record<st
     if (dto.productInterests !== undefined) Object.assign(dto, await productRelationData(tx, 'contact', tenantId, { names: dto.productInterests as string[] }, current, true));
     const status = dto.status === undefined ? undefined : CrmStatusSchema.parse(dto.status);
     if (status === 'Closed' && normalizeCrmStatus(current.status) !== 'Closed') await assertClosedStatus(tx, tenantId, { contactId: id });
+    const { customFieldValues, ...data } = dto;
+    await saveRecordValues(tx, tenantId, 'contacts', id, customFieldValues, actorId);
     const contact = await tx.contact.update({
       where:   { id, tenantId } as never,
-      data: { ...dto, ...(status ? { status: contactStatusValue(status), ...(status !== normalizeCrmStatus(current.status) ? { lastStatusChangedAt: new Date() } : {}) } : {}) } as never,
+      data: { ...data, ...(status ? { status: contactStatusValue(status), ...(status !== normalizeCrmStatus(current.status) ? { lastStatusChangedAt: new Date() } : {}) } : {}) } as never,
       include: CONTACT_INCLUDE,
     });
     if (status && actorId && status !== normalizeCrmStatus(current.status)) {

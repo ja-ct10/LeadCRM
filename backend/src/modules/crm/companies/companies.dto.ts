@@ -1,9 +1,11 @@
 import { z } from 'zod';
+import { CustomFieldValuesSchema } from '@leadcrm/shared';
 import { recordText, recordName } from '../record-validation';
 
 const id = () => z.string().min(1);
 
 export const CreateCompanySchema = z.object({
+  customFieldValues: CustomFieldValuesSchema.optional(),
   productInterestOther: recordText(1000).nullable().optional(),
   name:           recordName(255),
   industry:       recordText().optional(),

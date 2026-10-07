@@ -1,6 +1,7 @@
 import { validateProductSnapshots, normalizeProductOther } from '../leads/product-snapshots';
 import { productRelationData } from '../leads/product-relations';
 import { salesTransaction } from '../leads/lead-automation.service';
+import { saveRecordValues } from '../closing-requirements/custom-field-values.repository';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import prisma from '../../../config/database.config';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
@@ -65,13 +66,18 @@ export async function findCompanyById(id: string, tenantId: string) {
   });
 }
 
-export async function createCompany(tenantId: string, dto: CreateCompanyDto) {
+export async function createCompany(tenantId: string, dto: CreateCompanyDto, actorId?: string) {
   dto.productInterests = await validateProductSnapshots(tenantId, dto.productInterests);
   normalizeProductOther(dto, (dto.productInterests as string[] | undefined) ?? []);
-  return salesTransaction(async tx => tx.account.create({ data: { ...dto, ...await productRelationData(tx, 'account', tenantId, { names: dto.productInterests, activeNames: dto.activeProducts }), tenantId } as never }));
+  const { customFieldValues, ...data } = dto;
+  return salesTransaction(async tx => {
+    const account = await tx.account.create({ data: { ...data, ...await productRelationData(tx, 'account', tenantId, { names: dto.productInterests, activeNames: dto.activeProducts }), tenantId } as never });
+    await saveRecordValues(tx, tenantId, 'accounts', account.id, customFieldValues, actorId);
+    return account;
+  });
 }
 
-export async function updateCompany(id: string, tenantId: string, dto: UpdateCompanyDto) {
+export async function updateCompany(id: string, tenantId: string, dto: UpdateCompanyDto, actorId?: string) {
   const previous = await prisma.account.findFirst({ where: { id, tenantId } });
   dto.productInterests = await validateProductSnapshots(tenantId, dto.productInterests, previous?.productInterests);
   normalizeProductOther(dto, (dto.productInterests as string[] | undefined) ?? previous?.productInterests ?? [], previous?.productInterestOther);
@@ -79,7 +85,9 @@ export async function updateCompany(id: string, tenantId: string, dto: UpdateCom
       const current = await tx.account.findFirst({ where: { id, tenantId } });
       if (!current) return null;
       const relations = dto.productInterests === undefined && dto.activeProducts === undefined ? {} : await productRelationData(tx, 'account', tenantId, { names: dto.productInterests, activeNames: dto.activeProducts }, current, true);
-      return tx.account.update({ where: { id, tenantId }, data: { ...dto, ...relations } as never });
+      const { customFieldValues, ...data } = dto;
+      await saveRecordValues(tx, tenantId, 'accounts', id, customFieldValues, actorId);
+      return tx.account.update({ where: { id, tenantId }, data: { ...data, ...relations } as never });
   });
 }
 

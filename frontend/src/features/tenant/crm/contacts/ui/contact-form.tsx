@@ -1,4 +1,5 @@
 'use client';
+import { useRecordCustomFields, CustomFieldGroup, CustomFieldExtraGroups } from '@/shared/components/crm/record-custom-fields';
 import { PanelSectionHeading, panelBodyClass, panelFooterClass, panelInputClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
 import { ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
 import { CRM_STATUSES, normalizeCrmStatus } from '@leadcrm/shared';
@@ -65,6 +66,7 @@ interface ContactFormInnerProps {
 // ─── Form Component ────────────────────────────────────────────────────────
 
 export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormInnerProps): React.ReactElement {
+  const customFields = useRecordCustomFields('contacts', initialData?.id);
   const { products: productRecords, loading: productsLoading, error: productError } = useProductInterests();
   const { users } = useData();
   const isEdit = !!initialData;
@@ -121,10 +123,12 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
   const selectedProducts = watch('productInterest') || [];
 
   const onSubmit = (data: CreateContactFormValues | UpdateContactFormValues): void => {
+    if (!customFields.validate()) return;
     // Build payload using frontend Contact type field names.
     // The adapter (toBackendCreateContact/toBackendUpdateContact) handles
     // mapping to backend DTO names (e.g. leadSource → source, productInterest → productInterest).
     const cleaned: Partial<Contact> = {
+      customFieldValues: customFields.payload(),
       firstName: data.firstName || undefined,
       lastName: data.lastName || undefined,
       email: data.email || undefined,
@@ -218,6 +222,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
               placeholder="Company or organization name"
             />
           </FieldWrap>
+          <CustomFieldGroup form={customFields} group="Basic Information" />
         </div>
 
         {/* Section 2: Status & Classification */}
@@ -250,6 +255,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
               {productError && <p role="alert" className="text-xs text-destructive">{productError}</p>}
             </FieldWrap>
           </div>
+          <CustomFieldGroup form={customFields} group="Status & Classification" />
         </div>
 
         {/* Section 3: Relationships */}
@@ -294,6 +300,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
               )}
             />
           </FieldWrap>
+          <CustomFieldGroup form={customFields} group="Relationships" />
         </div>
 
         {/* Section 4: Additional Information */}
@@ -331,7 +338,9 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
               />
             </div>
           </FieldWrap>
+          <CustomFieldGroup form={customFields} group="Additional Information" />
         </div>
+        <CustomFieldExtraGroups form={customFields} startNumber={5} />
       </div>
 
       {/* Sticky Footer */}
@@ -345,7 +354,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
         </button>
         <button
           type="submit"
-          disabled={isSubmitting}
+          disabled={customFields.blocked || isSubmitting}
           className="h-[42px] px-6 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 rounded-xl transition-all shadow-lg shadow-blue-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isSubmitting ? 'Saving...' : isEdit ? 'Save Changes' : 'Create Contact'}

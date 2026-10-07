@@ -1,4 +1,4 @@
-import { CrmEmailSchema } from '@leadcrm/shared';
+import { CrmEmailSchema, CustomFieldValuesSchema } from '@leadcrm/shared';
 import { z } from 'zod';
 import { LeadStatusSchema, ProductInterestIdSchema } from '@leadcrm/shared';
 import { recordText, recordName } from '../record-validation';
@@ -10,6 +10,7 @@ const id = () => z.string().min(1);
 // accountId, assignedUserId, productInterest[], address, companyName, createdAt
 
 export const CreateContactSchema = z.object({
+  customFieldValues: CustomFieldValuesSchema.optional(),
   requestId: z.string().uuid().optional(),
   firstName:      recordName(),
   lastName:       recordName(),
@@ -27,6 +28,7 @@ export const CreateContactSchema = z.object({
 });
 
 export const UpdateContactSchema = z.object({
+  customFieldValues: CustomFieldValuesSchema.optional(),
   productInterestOther: recordText(1000).nullable().optional(),
   firstName:      recordName().optional(),
   lastName:       recordName().optional(),
