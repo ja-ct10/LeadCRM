@@ -94,6 +94,47 @@ it('reports missing configuration without attempting an upstream request', async
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
+it('allows a same-origin HTTPS mutation behind an internal HTTP container URL', async () => {
+  vi.stubEnv('NODE_ENV', 'production');
+  vi.stubEnv('API_URL', 'https://api.example.com/api/v1');
+  const fetchMock = vi.fn().mockResolvedValue(new Response('{"success":true}'));
+  vi.stubGlobal('fetch', fetchMock);
+  const req = new NextRequest('http://0.0.0.0:3000/api/proxy/auth/login', {
+    method: 'POST', headers: { host: 'app.example.com', origin: 'https://app.example.com', 'sec-fetch-site': 'same-origin' }, body: '{}',
+  });
+  expect((await POST(req, { params: Promise.resolve({ path: ['auth', 'login'] }) })).status).toBe(200);
+  expect(fetchMock).toHaveBeenCalledOnce();
+});
+
+it.each(['https://attacker.example', 'http://app.example.com', 'https://app.example.com:8443', 'null', 'https://app.example.com/path'])('blocks invalid public origin %s behind TLS ingress', async origin => {
+  vi.stubEnv('NODE_ENV', 'production');
+  const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock);
+  const req = new NextRequest('http://0.0.0.0:3000/api/proxy/auth/login', {
+    method: 'POST', headers: { host: 'app.example.com', origin, 'x-forwarded-host': 'attacker.example', 'x-forwarded-proto': 'http' }, body: '{}',
+  });
+  expect((await POST(req, { params: Promise.resolve({ path: ['auth', 'login'] }) })).status).toBe(403);
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+it('rejects cross-site fetch metadata even when the origin matches the public host', async () => {
+  vi.stubEnv('NODE_ENV', 'production');
+  const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock);
+  const req = new NextRequest('http://0.0.0.0:3000/api/proxy/auth/login', {
+    method: 'POST', headers: { host: 'app.example.com', origin: 'https://app.example.com', 'sec-fetch-site': 'cross-site' }, body: '{}',
+  });
+  expect((await POST(req, { params: Promise.resolve({ path: ['auth', 'login'] }) })).status).toBe(403);
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+it('retains same-origin HTTP mutations during local development', async () => {
+  vi.stubEnv('NODE_ENV', 'development');
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}')));
+  const req = new NextRequest('http://localhost:3000/api/proxy/auth/login', {
+    method: 'POST', headers: { host: 'localhost:3000', origin: 'http://localhost:3000' }, body: '{}',
+  });
+  expect((await POST(req, { params: Promise.resolve({ path: ['auth', 'login'] }) })).status).toBe(200);
+});
+
 it('preserves provider 502 responses and rate-limit retry guidance', async () => {
   const payload = { success: false, error: { message: 'Email provider rejected the request.' } };
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(payload), { status: 502, headers: { 'retry-after': '60' } })));

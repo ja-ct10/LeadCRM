@@ -12,7 +12,21 @@ async function proxyRequest(
   const path = '/' + params.path.join('/');
   if (!['GET', 'HEAD'].includes(req.method)) {
     const origin = req.headers.get('origin');
-    if (req.headers.get('sec-fetch-site') === 'cross-site' || (origin && origin !== req.nextUrl.origin)) {
+    // Next's URL can use the internal HTTP container address behind TLS ingress.
+    // Host is the request authority routed by ingress; never trust a caller's
+    // X-Forwarded-Host to authorize a cross-origin mutation.
+    const host = (req.headers.get('host') ?? req.nextUrl.host).toLowerCase();
+    const protocol = process.env.NODE_ENV === 'production' ? 'https:' : req.nextUrl.protocol;
+    let invalidOrigin = false;
+    if (origin) {
+      try {
+        const parsed = new URL(origin);
+        invalidOrigin = origin !== parsed.origin || parsed.host !== host || parsed.protocol !== protocol;
+      } catch {
+        invalidOrigin = true;
+      }
+    }
+    if (req.headers.get('sec-fetch-site') === 'cross-site' || invalidOrigin) {
       return NextResponse.json({ success: false, error: 'Forbidden origin.' }, { status: 403 });
     }
   }
