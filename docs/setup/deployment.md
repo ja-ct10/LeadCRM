@@ -14,6 +14,8 @@ Service worker updates bypass the browser HTTP cache and are checked on load and
 
 While canonical relationship retirement is deferred, `db:deploy` applies the reviewed independent migrations `20261103000000_reply_engagement_deal_batches` and `20261104000000_user_first_login_onboarding` without running `20261102000000_retire_relationship_compatibility`. Existing relationship columns and bridges remain intact. Unknown later migrations stop deployment for dependency review; the separate authenticated retirement command is unchanged.
 
+The independent migration list also includes `20261105000000_module_custom_fields` and additive `20261106000000_campaign_sms_snapshots`. The SMS migration adds nullable phone/submission/provider timestamps without depending on relationship retirement. Configure UniSMS backend variables and its webhook as described in [Campaigns deployment notes](../campaign-sms-improvements.md).
+
 Apply `20260919000000_internal_accounts` before deploying the new backend. Public signup, Google account authentication, OTP, subscriptions, pricing, and SaaS billing are retired. Gmail integration credentials remain separate. Follow [current authentication deployment requirements](../authentication.md#deployment). The older rollout notes below are historical.
 
 # Running LeadCRM locally and on Vercel / Render

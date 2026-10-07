@@ -70,3 +70,6 @@ data/outputs/retired-features-*.json
 
 # Reproducible local custom-field browser evidence.
 /data/outputs/custom-fields-browser/
+
+# Reproducible Campaigns browser verification artifacts.
+/data/outputs/campaign-sms/

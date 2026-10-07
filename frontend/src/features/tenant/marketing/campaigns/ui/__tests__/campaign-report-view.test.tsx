@@ -19,6 +19,22 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const select = (label: string) => { fireEvent.click(screen.getByRole('button', { name: 'Filter recipients' })); fireEvent.click(screen.getByRole('menuitemradio', { name: label })); };
 const rows = () => within(screen.getAllByRole('grid')[0]).getAllByRole('row').slice(1);
 describe('campaign report', () => {
+  it('reports SMS phone and provider states without email engagement metrics', async () => {
+    vi.mocked(campaignsApi.report).mockResolvedValue({ success: true, data: { ...response().data, type: 'SMS', recipients: [
+      { ...recipients[0], email: null, phone: '+639171234567', deliveryStatus: 'Sent', opened: false },
+      { ...recipients[1], email: null, phone: '+639181234567', deliveryStatus: 'Retrying', opened: false, clicked: false },
+      { ...recipients[2], email: null, phone: '+639191234567', deliveryStatus: 'Failed' },
+    ], failedCount: 1, topLinks: [] } } as never);
+    render(<CampaignReportView campaign={{ ...campaign, type: 'SMS' } as never} onBack={vi.fn()} />);
+    await screen.findByText('+639171234567');
+    const metrics = screen.getByRole('region', { name: 'Campaign metrics' });
+    expect(metrics.textContent).toContain('Submitted'); expect(metrics.textContent).toContain('Retrying1'); expect(metrics.textContent).toContain('Failed1');
+    expect(screen.queryByRole('columnheader', { name: 'Email' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: 'Opened' })).toBeNull(); expect(screen.queryByRole('columnheader', { name: 'Clicked' })).toBeNull();
+    expect(screen.queryByText('No clicked links recorded for this campaign.')).toBeNull();
+    select('Retrying'); expect(rows()).toHaveLength(1);
+    select('All recipients'); fireEvent.change(screen.getByLabelText('Search recipients'), { target: { value: '63919' } }); expect(rows()).toHaveLength(1);
+  });
   it('renders real counts, delivery and engagement values, dates and link data without the retired panels', async () => {
     mount(); await screen.findByText('Doris Testing');
     expect(screen.getByRole('heading', { name: 'Autumn update Report' })).toBeTruthy();

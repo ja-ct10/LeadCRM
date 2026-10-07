@@ -6,7 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
 const root = resolve(import.meta.dirname, '..');
-for (const suite of ['src/modules/marketing/campaigns/__tests__/campaigns.integration.test.ts', 'src/modules/administration/groups/groups.integration.test.ts']) {
+for (const suite of process.argv.length > 2 ? process.argv.slice(2) : ['src/modules/marketing/campaigns/__tests__/campaigns.integration.test.ts', 'src/modules/administration/groups/groups.integration.test.ts']) {
   const db = await PGlite.create();
   await replayCrmMigrations(db);
   const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 });

@@ -931,7 +931,7 @@ model TargetAudienceCondition {
   targetAudienceId String
   field            String // contact field name e.g. "status", "score", "source", "tags"
   operator         String // equals|not_equals|contains|gte|lte|in|not_in
-  value            String // stored as string, cast at query time
+  value            String // scalar string or JSON-encoded Product IDs / date range
   conditionOrder   Int      @default(0)
   createdAt        DateTime @default(now())
 
@@ -1074,6 +1074,9 @@ model CampaignMetrics {
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model CampaignContact {
   email String?
+  phone String?
+  submittedAt DateTime? // SMS provider acceptance; sentAt is provider-confirmed sent
+  providerUpdatedAt DateTime?
   personalization Json?
   messageId String? @unique
   failureReason String?
@@ -1082,7 +1085,7 @@ model CampaignContact {
   campaignId   String
   leadId       String?
   contactId   String?
-  status       String    @default("pending") // pending|sent|delivered|opened|clicked|bounced|unsubscribed
+  status       String    @default("pending") // pending|submitted|retrying|sent|failed|excluded|delivered|opened|clicked|bounced|unsubscribed
   sentAt       DateTime?
   deliveredAt  DateTime?
   openedAt     DateTime?

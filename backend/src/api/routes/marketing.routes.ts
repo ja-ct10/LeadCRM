@@ -20,6 +20,7 @@ router.use(authorizeArchivedQuery);
 const writeLimiter = rateLimit({ windowMs: 60000, limit: 30, standardHeaders: true, legacyHeaders: false });
 const sendLimiter = rateLimit({ windowMs: 60000, limit: 5, standardHeaders: true, legacyHeaders: false });
 router.get('/campaigns/metrics', authorize('campaigns.view_reports'), campaignController.getCampaignMetrics);
+router.get('/campaigns/sms-settings', authorize('campaigns.view'), campaignController.getSmsSettings);
 router.get('/audiences', authorize('campaigns.view'), audienceController.getAudiences);
 router.post('/audiences/preview', authorize('campaigns.view'), writeLimiter, audienceController.previewAudience);
 router.post('/audiences', authorize('campaigns.create'), writeLimiter, audienceController.createAudience);

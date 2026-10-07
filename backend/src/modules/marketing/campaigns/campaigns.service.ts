@@ -2,12 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import { Prisma, CampaignStatus, CampaignType } from '@prisma/client';
 import { z } from 'zod';
-import { CampaignDraftSchema, CampaignSendSchema, type CampaignSendResult } from '@leadcrm/shared';
+import { CampaignDraftSchema, CampaignSendSchema, appendSmsFooter, renderEmailVariables, SMS_MAX_LENGTH, type CampaignSendResult } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { AppError } from '../../../shared/errors/app-error';
 import { getPaginationParams, paginate } from '../../../shared/helpers/pagination';
 import { sendMail, assertBrevoConfigured, EmailSubmissionError } from '../../../shared/services/email.service';
+import { sendSms, assertSmsConfigured, getSmsOrganizationEmail, SmsSubmissionError } from '../../../shared/services/sms.service';
 import { audienceDefinition, campaignScope, resolveAudience } from './audiences.service';
 import { sanitizeCampaignHtml, renderCampaignMessage } from './campaign-content';
 import { findCampaignReport } from './campaigns.repository';
@@ -37,10 +38,11 @@ export async function getCampaignReport(id: string, tenantId: string) {
     const name = person?.tenantId === tenantId ? `${person.firstName} ${person.lastName}`.trim()
       : [snapshot?.first_name, snapshot?.last_name].filter(value => typeof value === 'string').join(' ').trim();
     const last = Math.max(latestByEmail.get((recipient.email ?? '').toLowerCase()) ?? 0,
-      ...[recipient.sentAt, recipient.deliveredAt, recipient.openedAt, recipient.clickedAt, recipient.bouncedAt].map(at => at?.getTime() ?? 0));
+      ...[recipient.submittedAt, recipient.providerUpdatedAt, recipient.sentAt, recipient.deliveredAt, recipient.openedAt, recipient.clickedAt, recipient.bouncedAt].map(at => at?.getTime() ?? 0));
     return {
-      id: recipient.id, name: name || recipient.email || 'Unknown recipient', email: recipient.email ?? '',
-      deliveryStatus: recipient.bouncedAt ? 'Bounced' : recipient.deliveredAt ? 'Delivered'
+      id: recipient.id, name: name || recipient.email || recipient.phone || 'Unknown recipient', email: recipient.email, phone: recipient.phone,
+      deliveryStatus: campaign.type === 'SMS' ? recipient.status === 'sent' ? 'Sent' : recipient.status === 'retrying' ? 'Retrying' : recipient.status === 'failed' ? 'Failed' : recipient.status === 'excluded' ? 'Excluded' : recipient.submittedAt ? 'Submitted' : 'Pending'
+        : recipient.bouncedAt ? 'Bounced' : recipient.deliveredAt ? 'Delivered'
         : ['failed', 'error', 'invalid_email'].includes(recipient.status) ? 'Failed' : recipient.sentAt ? 'Submitted' : 'Pending',
       opened: !!recipient.openedAt, clicked: !!recipient.clickedAt,
       lastActivity: last ? new Date(last).toISOString() : null, failureReason: recipient.failureReason,
@@ -95,7 +97,7 @@ async function validateReferences(tenantId: string, dto: ReturnType<typeof Campa
 export async function createCampaign(tenantId: string, userId: string, input: unknown) {
   const dto = CampaignDraftSchema.parse(input);
   await validateReferences(tenantId, dto);
-  const campaign = await prisma.campaign.create({ data: { ...dto, body: dto.body === undefined ? undefined : sanitizeCampaignHtml(dto.body), ...campaignScope(tenantId), createdById: userId } });
+  const campaign = await prisma.campaign.create({ data: { ...dto, body: dto.body === undefined ? undefined : dto.type === 'SMS' ? dto.body : sanitizeCampaignHtml(dto.body), ...campaignScope(tenantId), createdById: userId } });
   await writeAuditLog({ tenantId, userId, action: 'campaign.created', entityType: 'Campaign', entityId: campaign.id });
   return campaign;
 }
@@ -103,23 +105,23 @@ export async function updateCampaign(id: string, tenantId: string, userId: strin
   const dto = CampaignDraftSchema.partial().parse(input);
   const existing = await getCampaignById(id, tenantId);
   await validateReferences(tenantId, CampaignDraftSchema.parse({ name: existing.name, type: existing.type, audienceSource: existing.audienceSource, targetAudienceId: existing.targetAudienceId, emailTemplateId: existing.emailTemplateId, smsTemplateId: existing.smsTemplateId, ...dto }));
-  const changed = await prisma.campaign.updateMany({ where: { id, ...campaignScope(tenantId), status: 'DRAFT', isArchived: false }, data: { ...dto, body: dto.body === undefined ? undefined : sanitizeCampaignHtml(dto.body) } });
+  const changed = await prisma.campaign.updateMany({ where: { id, ...campaignScope(tenantId), status: 'DRAFT', isArchived: false }, data: { ...dto, body: dto.body === undefined ? undefined : (dto.type ?? existing.type) === 'SMS' ? dto.body : sanitizeCampaignHtml(dto.body) } });
   if (!changed.count) throw new AppError('Only draft campaigns can be edited.', 409);
   await writeAuditLog({ tenantId, userId, action: 'campaign.updated', entityType: 'Campaign', entityId: id });
   return getCampaignById(id, tenantId);
 }
 export async function getCampaignMetrics(tenantId: string) {
   const where = { ...campaignScope(tenantId), isArchived: false };
-  const [sum, active] = await Promise.all([
+  const [sum, active, email] = await Promise.all([
     prisma.campaign.aggregate({ where, _sum: { sentCount: true, openedCount: true, clickedCount: true } }),
     prisma.campaign.count({ where: { ...where, status: { in: ['ACTIVE', 'SENDING', 'SCHEDULED'] } } }),
+    prisma.campaign.aggregate({ where: { ...where, type: 'EMAIL' }, _sum: { sentCount: true } }),
   ]);
-  return { activeCampaigns: active, sent: sum._sum.sentCount || 0, opened: sum._sum.openedCount || 0, clicked: sum._sum.clickedCount || 0 };
+  return { activeCampaigns: active, sent: sum._sum.sentCount || 0, emailSent: email._sum.sentCount || 0, opened: sum._sum.openedCount || 0, clicked: sum._sum.clickedCount || 0 };
 }
 
 async function prepareCampaign(id: string, tenantId: string) {
   const scope = campaignScope(tenantId);
-  assertBrevoConfigured();
   return prisma.$transaction(async tx => {
     // The row lock also serializes draft edits and simultaneous Send Now requests.
     const claim = await tx.campaign.updateMany({ where: { id, ...scope, status: 'DRAFT', isArchived: false }, data: { status: 'SENDING' } });
@@ -128,25 +130,34 @@ async function prepareCampaign(id: string, tenantId: string) {
       throw new AppError('Campaign has already started or is not sendable.', 409);
     }
     const campaign = await tx.campaign.findFirstOrThrow({ where: { id, ...scope } });
-    if (campaign.type !== 'EMAIL') throw new AppError('Send Now currently supports EMAIL campaigns only.', 400);
+    if (campaign.type === 'EMAIL') assertBrevoConfigured();
+    else if (campaign.type === 'SMS') assertSmsConfigured();
+    else throw new AppError('Send Now supports Email or SMS. Save Multi-Channel campaigns as drafts.', 400);
+    const organizationEmail = campaign.type === 'SMS' ? await getSmsOrganizationEmail(tenantId, tx) : undefined;
     CampaignSendSchema.parse({ name: campaign.name, type: campaign.type, subject: campaign.subject || '', body: campaign.body || '', targetAudienceId: campaign.targetAudienceId, audienceSource: campaign.audienceSource });
     const definition = await audienceDefinition(tenantId, campaign.targetAudienceId, campaign.audienceSource, tx);
-    const resolved = await resolveAudience(tenantId, definition, tx);
+    const resolved = await resolveAudience(tenantId, definition, tx, campaign.type);
     const eligible = resolved.records.filter(r => !r.reason);
     if (!eligible.length) throw new AppError('No eligible recipients. Check audience exclusions.', 400);
+    if (campaign.type === 'EMAIL') {
     const limit = Number(process.env.BREVO_DAILY_EMAIL_LIMIT || 300);
     if (!Number.isSafeInteger(limit) || limit < 1) throw new AppError('Campaign daily limit is not configured correctly.', 503);
     const day = new Date().toISOString().slice(0, 10);
     await tx.campaignEmailQuota.upsert({ where: { day }, create: { day }, update: {} });
     const reserved = await tx.campaignEmailQuota.updateMany({ where: { day, reserved: { lte: limit - eligible.length } }, data: { reserved: { increment: eligible.length } } });
     if (!reserved.count) throw new AppError(`This campaign has ${eligible.length} eligible recipients, exceeding the available campaign allowance under the configured ${limit}/day limit. Reduce the audience or try another day.`, 409);
-    const sender = { sender_name: process.env.BREVO_FROM_NAME || 'LeadCRM', sender_email: process.env.BREVO_FROM_EMAIL! };
-    const sends = eligible.map(r => ({ ...r, id: randomUUID(), logId: randomUUID(), ...renderCampaignMessage(campaign.subject!, campaign.body!, { ...r.personalization, ...sender }) }));
+    }
+    const sender = { sender_name: campaign.type === 'SMS' ? 'Camxian Technologies' : process.env.BREVO_FROM_NAME || 'LeadCRM', sender_email: organizationEmail ?? process.env.BREVO_FROM_EMAIL! };
+    const sends = eligible.map(r => ({ ...r, id: randomUUID(), logId: randomUUID(), channel: campaign.type, organizationEmail,
+      ...(campaign.type === 'SMS' ? { subject: '', html: '', sms: appendSmsFooter(renderEmailVariables(campaign.body!, { ...r.personalization, ...sender }), organizationEmail!) }
+        : { ...renderCampaignMessage(campaign.subject!, campaign.body!, { ...r.personalization, ...sender }), sms: '' }) }));
+    const tooLong = sends.filter(r => r.channel === 'SMS' && r.sms.length > SMS_MAX_LENGTH).length;
+    if (tooLong) throw new AppError(`${tooLong} recipient message${tooLong === 1 ? '' : 's'} exceeds the ${SMS_MAX_LENGTH}-character SMS limit after personalization.`, 400);
     await tx.campaignContact.createMany({ data: [
-      ...sends.map(r => ({ id: r.id, ...scope, campaignId: id, leadId: r.leadId, contactId: r.contactId, email: r.email, personalization: r.personalization, status: 'pending' })),
-      ...resolved.records.filter(r => r.reason).map(r => ({ ...scope, campaignId: id, leadId: r.leadId, contactId: r.contactId, email: r.email, status: 'excluded', failureReason: r.reason })),
+      ...sends.map(r => ({ id: r.id, ...scope, campaignId: id, leadId: r.leadId, contactId: r.contactId, email: r.email, phone: r.phone, personalization: r.personalization, status: 'pending' })),
+      ...resolved.records.filter(r => r.reason).map(r => ({ ...scope, campaignId: id, leadId: r.leadId, contactId: r.contactId, email: r.email, phone: r.phone, status: 'excluded', failureReason: r.reason })),
     ] });
-    await tx.emailDeliveryLog.createMany({ data: sends.map(r => ({ id: r.logId, ...scope, campaignId: id, leadId: r.leadId, contactId: r.contactId, fromEmail: sender.sender_email, toEmail: r.email!, subject: r.subject, status: 'pending' })) });
+    if (campaign.type === 'EMAIL') await tx.emailDeliveryLog.createMany({ data: sends.map(r => ({ id: r.logId, ...scope, campaignId: id, leadId: r.leadId, contactId: r.contactId, fromEmail: sender.sender_email, toEmail: r.email!, subject: r.subject, status: 'pending' })) });
     await tx.campaign.update({ where: { id, ...scope }, data: { recipientCount: eligible.length } });
     return sends;
   }, { timeout: 30000 });
@@ -161,25 +172,32 @@ async function deliverPrepared(id: string, tenantId: string, userId: string, pre
     const results = await Promise.allSettled(prepared.slice(offset, offset + 5).map(async recipient => {
       let result;
       try {
-        result = await sendMail({ to: recipient.email!, subject: recipient.subject, html: recipient.html, requireDelivery: true });
+        result = recipient.channel === 'SMS'
+          ? await sendSms(recipient.phone!, recipient.sms, { organizationEmail: recipient.organizationEmail, metadata: { campaign_id: id, campaign_recipient_id: recipient.id } })
+          : await sendMail({ to: recipient.email!, subject: recipient.subject, html: recipient.html, requireDelivery: true });
       } catch (error) {
-        const rejected = error instanceof EmailSubmissionError && error.outcome === 'rejected';
-        const reason = rejected ? `BREVO_HTTP_${error.httpStatus}` : 'PROVIDER_SUBMISSION_UNCONFIRMED';
+        const rejected = (error instanceof EmailSubmissionError || error instanceof SmsSubmissionError) && error.outcome === 'rejected';
+        const reason = rejected ? `${recipient.channel === 'SMS' ? 'UNISMS' : 'BREVO'}_HTTP_${error.httpStatus}` : 'PROVIDER_SUBMISSION_UNCONFIRMED';
         console.warn('[Campaigns]', { event: 'recipient_submission', campaignId: id, tenantId, recipientId: recipient.id, outcome: rejected ? 'rejected' : 'unconfirmed', httpStatus: error instanceof EmailSubmissionError ? error.httpStatus : undefined });
         // Unconfirmed requests may have been accepted: preserve them for review.
         await prisma.$transaction([
           prisma.campaignContact.update({ where: { id: recipient.id, ...scope }, data: { status: rejected ? 'failed' : 'pending', failureReason: reason } }),
-          prisma.emailDeliveryLog.update({ where: { id: recipient.logId, ...scope }, data: { status: rejected ? 'failed' : 'pending', errorMessage: reason } }),
+          ...(recipient.channel === 'EMAIL' ? [prisma.emailDeliveryLog.update({ where: { id: recipient.logId, ...scope }, data: { status: rejected ? 'failed' : 'pending', errorMessage: reason } })] : []),
         ]);
         return;
       }
       const submitted = result.submitted;
+      const smsStatus = 'status' in result && typeof result.status === 'string' ? result.status : undefined;
+      const now = new Date();
       console.info('[Campaigns]', { event: 'recipient_submission', campaignId: id, tenantId, recipientId: recipient.id, outcome: submitted ? 'accepted' : 'not_submitted', messageId: result.messageId });
       await prisma.$transaction([
         // Acquire the campaign lock first, matching webhook lock order.
         prisma.campaign.update({ where: { id, ...scope }, data: submitted ? { sentCount: { increment: 1 } } : { failedCount: { increment: 1 } } }),
-        prisma.campaignContact.update({ where: { id: recipient.id, ...scope }, data: { status: submitted ? 'sent' : 'failed', messageId: result.messageId, sentAt: submitted ? new Date() : null, failureReason: submitted ? null : 'TRANSPORT_NOT_SUBMITTED' } }),
-        prisma.emailDeliveryLog.update({ where: { id: recipient.logId, ...scope }, data: { status: submitted ? 'sent' : 'failed', brevoMessageId: result.messageId, sentAt: submitted ? new Date() : null } }),
+        prisma.campaignContact.update({ where: { id: recipient.id, ...scope }, data: { status: recipient.channel === 'SMS' ? (smsStatus === 'pending' ? 'submitted' : smsStatus) : submitted ? 'sent' : 'failed', messageId: result.messageId,
+          sentAt: submitted && (recipient.channel === 'EMAIL' || smsStatus === 'sent') ? now : null,
+          ...(recipient.channel === 'SMS' ? { submittedAt: now, providerUpdatedAt: now } : {}),
+          failureReason: smsStatus === 'failed' ? 'UNISMS_FAILED' : submitted ? null : 'TRANSPORT_NOT_SUBMITTED' } }),
+        ...(recipient.channel === 'EMAIL' ? [prisma.emailDeliveryLog.update({ where: { id: recipient.logId, ...scope }, data: { status: submitted ? 'sent' : 'failed', brevoMessageId: result.messageId, sentAt: submitted ? now : null } })] : []),
       ]);
     }));
     if (results.some(result => result.status === 'rejected')) throw new AppError('Campaign delivery requires review because a result could not be saved.', 503);
@@ -189,12 +207,13 @@ async function deliverPrepared(id: string, tenantId: string, userId: string, pre
     await tx.campaign.update({ where: { id, ...scope }, data: { engagement: { increment: 0 } } });
     const where = { ...scope, campaignId: id };
     const [submittedRecipients, failedRecipients, deliveredCount, bouncedCount] = await Promise.all([
-      tx.campaignContact.count({ where: { ...where, sentAt: { not: null } } }),
-      tx.campaignContact.count({ where: { ...where, status: 'failed', sentAt: null } }),
+      tx.campaignContact.count({ where: { ...where, ...(prepared[0].channel === 'SMS' ? { submittedAt: { not: null } } : { sentAt: { not: null } }) } }),
+      tx.campaignContact.count({ where: { ...where, status: 'failed', ...(prepared[0].channel === 'EMAIL' ? { sentAt: null } : {}) } }),
       tx.campaignContact.count({ where: { ...where, deliveredAt: { not: null } } }),
       tx.campaignContact.count({ where: { ...where, bouncedAt: { not: null } } }),
     ]);
-    const status = submittedRecipients + failedRecipients < prepared.length ? 'PAUSED' : !submittedRecipients ? 'FAILED' : failedRecipients ? 'PARTIALLY_SENT' : 'SENT';
+    const unconfirmed = await tx.campaignContact.count({ where: { ...where, status: 'pending' } });
+    const status = unconfirmed ? 'PAUSED' : failedRecipients === prepared.length ? 'FAILED' : failedRecipients ? 'PARTIALLY_SENT' : 'SENT';
     const campaign = await tx.campaign.update({ where: { id, ...scope }, data: { status, sentCount: submittedRecipients, failedCount: failedRecipients, sentAt: submittedRecipients ? new Date() : null } });
     await tx.campaignMetrics.create({ data: { ...where, sentCount: submittedRecipients, deliveredCount, bouncedCount,
       openedCount: campaign.openedCount, clickedCount: campaign.clickedCount,

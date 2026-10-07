@@ -11,6 +11,11 @@ vi.hoisted(() => {
   }
 });
 vi.mock('../../../../shared/services/email.service', async importOriginal => ({ ...await importOriginal<object>(), sendMail: vi.fn() }));
+vi.mock('../../../../shared/services/sms.service', async importOriginal => ({ ...await importOriginal<object>(), sendSms: vi.fn() }));
+import { sendSms, SmsSubmissionError } from '../../../../shared/services/sms.service';
+import { processUniSmsEvent } from '../unisms-webhook';
+import { seedCampaignTemplates } from '../../templates/default-templates';
+import { previewAudience } from '../audiences.service';
 import { sendMail, EmailSubmissionError } from '../../../../shared/services/email.service';
 import prisma from '../../../../config/database.config';
 import { tenantContext } from '../../../../core/tenant/tenant-context';
@@ -24,7 +29,7 @@ import app from '../../../../app';
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_campaign_test_\d+$/.test(url.pathname);
 describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticated HTTP', () => {
-  let tenantId: string, otherTenantId: string, userId: string, audienceId: string;
+  let tenantId: string, otherTenantId: string, userId: string, audienceId: string, productId: string;
   let server: Server, base: string, token: string, deniedToken: string;
   const scoped = <T>(work: () => T, tenant = tenantId) => tenantContext.run({ tenantId: tenant }, work);
   const draft = () => scoped(() => createCampaign(tenantId, userId, { name: 'September Campaign', type: 'EMAIL', subject: 'Hello {{first_name}}', body: '<p>Hi {{first_name}}, welcome to Camxian Technologies.</p>', targetAudienceId: audienceId }));
@@ -38,13 +43,14 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     const tenant = await prisma.tenant.create({ data: { name: 'Campaign tests', slug: `campaign-${randomUUID()}`, status: 'SANDBOX', onboardingStep: 3, onboardingCompletedAt: new Date() } });
     tenantId = tenant.id;
     otherTenantId = (await prisma.tenant.create({ data: { name: 'Other', slug: `other-${randomUUID()}` } })).id;
-    const user = await prisma.user.create({ data: { tenantId, email: `seeder-${tenantId}@camxian.com`, firstName: 'Seeder', lastName: 'Admin', role: 'Client Admin', mustChangePassword: false, emailVerified: new Date() } });
+    const user = await prisma.user.create({ data: { tenantId, email: `seeder-${tenantId}@camxian.com`, firstName: 'Seeder', lastName: 'Admin', role: 'Client Admin', mustChangePassword: false, emailVerified: new Date(), onboardingCompletedAt: new Date() } });
     userId = user.id; token = (await issueAuthSession(user)).token;
-    const denied = await prisma.user.create({ data: { tenantId, email: `denied-${tenantId}@camxian.com`, firstName: 'Denied', lastName: 'User', role: 'Sales', mustChangePassword: false, emailVerified: new Date() } });
+    const denied = await prisma.user.create({ data: { tenantId, email: `denied-${tenantId}@camxian.com`, firstName: 'Denied', lastName: 'User', role: 'Sales', mustChangePassword: false, emailVerified: new Date(), onboardingCompletedAt: new Date() } });
     deniedToken = (await issueAuthSession(denied)).token;
     await scoped(async () => {
-      await prisma.lead.create({ data: { tenantId, firstName: 'Juan', lastName: 'Dela Cruz', email: 'juan.customer@example.com', productInterest: ['CRM'] } });
-      await prisma.contact.create({ data: { tenantId, firstName: 'Maria', lastName: 'Santos', email: 'maria.customer@example.com', productInterests: ['CRM'] } });
+      productId = (await prisma.productInterest.create({ data: { tenantId, name: 'CRM', dealValue: 100 } })).id;
+      await prisma.lead.create({ data: { tenantId, firstName: 'Juan', lastName: 'Dela Cruz', email: 'juan.customer@example.com', productsNormalized: true, productLinks: { create: { tenantId, productInterestId: productId } } } });
+      await prisma.contact.create({ data: { tenantId, firstName: 'Maria', lastName: 'Santos', email: 'maria.customer@example.com', productsNormalized: true, productLinks: { create: { tenantId, productInterestId: productId, interested: true } } } });
       audienceId = (await createAudience(tenantId, { name: 'All Leads & Contacts', source: 'ALL', conditions: [] })).id;
     });
     await prisma.lead.create({ data: { tenantId: otherTenantId, firstName: 'Other', lastName: 'Tenant', email: 'other@example.com', productInterest: [] } });
@@ -52,6 +58,9 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1`;
   }, 30000);
   beforeEach(async () => {
+    vi.stubEnv('UNISMS_API_SECRET_KEY', 'test-only'); vi.stubEnv('UNISMS_SENDER_ID', 'Camxian');
+    vi.stubEnv('UNISMS_WEBHOOK_SECRET_KEY', 'test-webhook-only');
+    vi.mocked(sendSms).mockReset().mockImplementation(async () => ({ messageId: `msg_${randomUUID()}`, submitted: true, status: 'pending' }));
     vi.mocked(sendMail).mockReset().mockImplementation(async () => ({ messageId: `<${randomUUID()}@brevo.test>`, submitted: true }));
     vi.stubEnv('BREVO_DAILY_EMAIL_LIMIT', '300'); vi.stubEnv('BREVO_SANDBOX_EMAILS', '');
     await prisma.campaignEmailQuota.deleteMany();
@@ -174,8 +183,8 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     const source = `transport-${randomUUID()}`;
     try {
       await scoped(async () => {
-        await prisma.lead.createMany({ data: Array.from({ length: total }, (_, i) => ({ tenantId, firstName: `Recipient${i}`, lastName: 'Test', email: `${source}-${i}@example.com`, productInterest: [], source })) });
-        const audience = await createAudience(tenantId, { name: source, source: 'LEADS', conditions: [{ field: 'source', operator: 'equals', value: source }] });
+        await prisma.lead.createMany({ data: Array.from({ length: total }, (_, i) => ({ tenantId, firstName: `Recipient${i}`, lastName: 'Test', email: `${source}-${i}@example.com`, productInterest: [], source, companyName: source })) });
+        const audience = await createAudience(tenantId, { name: source, source: 'LEADS', conditions: [{ field: 'company', operator: 'equals', value: source }] });
         const campaign = await createCampaign(tenantId, userId, { name: source, type: 'EMAIL', targetAudienceId: audience.id, subject: 'Hello', body: 'Hello' });
         const result = await sendCampaign(campaign.id, tenantId, userId);
         expect(result).toEqual({ campaignId: campaign.id, eligibleRecipients: total, submittedRecipients: total - rejected - unconfirmed, failedRecipients: rejected, status });
@@ -273,8 +282,8 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     });
     await scoped(async () => {
       const source = `batch-${randomUUID()}`;
-      await prisma.lead.createMany({ data: Array.from({ length: 12 }, (_, i) => ({ tenantId, firstName: `Customer${i}`, lastName: 'Test', email: `${source}-${i}@example.com`, productInterest: [], source })) });
-      const audience = await createAudience(tenantId, { name: 'Batch test', source: 'LEADS', conditions: [{ field: 'source', operator: 'equals', value: source }] });
+      await prisma.lead.createMany({ data: Array.from({ length: 12 }, (_, i) => ({ tenantId, firstName: `Customer${i}`, lastName: 'Test', email: `${source}-${i}@example.com`, productInterest: [], source, companyName: source })) });
+      const audience = await createAudience(tenantId, { name: 'Batch test', source: 'LEADS', conditions: [{ field: 'company', operator: 'equals', value: source }] });
       const campaign = await createCampaign(tenantId, userId, { name: 'Batch', type: 'EMAIL', targetAudienceId: audience.id, subject: 'Hi', body: 'Hello' });
       expect((await sendCampaign(campaign.id, tenantId, userId)).submittedRecipients).toBe(12);
       expect(peak).toBe(5);
@@ -284,7 +293,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
   });
   it('uses real AND conditions and validates cross-tenant template references', async () => {
     await scoped(async () => {
-      expect((await resolveAudience(tenantId, { source: 'ALL', conditions: [{ field: 'productInterest', operator: 'equals', value: 'CRM' }, { field: 'createdAt', operator: 'gte', value: '2020-01-01' }] })).breakdown.eligible).toBe(2);
+      expect((await resolveAudience(tenantId, { source: 'ALL', conditions: [{ field: 'productInterest', operator: 'equals', value: [productId] }, { field: 'createdAt', operator: 'gte', value: '2020-01-01' }] })).breakdown.eligible).toBe(2);
       await expect(createAudience(tenantId, { name: 'Unsafe', source: 'ALL', conditions: [{ field: 'passwordHash', operator: 'contains', value: 'x' }] })).rejects.toThrow();
     });
     const foreign = await scoped(() => createTemplate(otherTenantId, userId, { name: 'Foreign', type: 'Email', subject: 'Hi', content: 'Hello' }), otherTenantId);
@@ -338,4 +347,121 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     expect((await scoped(() => resolveAudience(tenantId, { source: 'ALL', conditions: [] }))).breakdown.unsubscribed).toBe(1);
     await expect(processBrevoEvent({ ...payload, 'message-id': 'unknown' })).rejects.toMatchObject({ statusCode: 503 });
   });
+  it('saves typed audience values, filters normalized products and reuses Manila calendar days for both record types', async () => {
+    await scoped(async () => {
+      const product = await prisma.productInterest.create({ data: { tenantId, name: 'Audience catalog test', dealValue: 100 } });
+      const agent = await prisma.user.create({ data: { tenantId, email: `agent-${randomUUID()}@example.test`, firstName: 'Valid', lastName: 'Agent', role: 'Sales', status: 'ACTIVE' } });
+      const createdAt = new Date('2026-10-06T16:00:00Z');
+      const lead = await prisma.lead.create({ data: { tenantId, firstName: 'Typed', lastName: 'Lead', companyName: 'Matching COMPANY', source: 'Website', status: 'Hot', assignedUserId: agent.id, createdAt, email: 'typed-lead@example.test', productsNormalized: true, productLinks: { create: { tenantId, productInterestId: product.id } } } });
+      const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Typed', lastName: 'Contact', company: 'Matching COMPANY', source: 'Website', status: 'HOT', assignedUserId: agent.id, createdAt, email: 'typed-contact@example.test', productsNormalized: true, productLinks: { create: { tenantId, productInterestId: product.id, interested: true } } } });
+      const definition = { source: 'ALL', conditions: [
+        { field: 'status', operator: 'equals', value: 'Hot' }, { field: 'source', operator: 'equals', value: 'Website' },
+        { field: 'company', operator: 'contains', value: ' matching ' }, { field: 'productInterest', operator: 'equals', value: [product.id] },
+        { field: 'assignedUserId', operator: 'equals', value: agent.id }, { field: 'createdAt', operator: 'between', value: { from: '2026-10-07', to: '2026-10-07' } },
+      ] };
+      const audience = await createAudience(tenantId, { name: 'Typed audience', ...definition });
+      expect((await getAudiences(tenantId)).find(a => a.id === audience.id)?.conditions).toEqual(audience.conditions);
+      const preview = await previewAudience(tenantId, { ...definition, limit: 1 });
+      expect(preview).toMatchObject({ eligible: 2, recipients: [{ id: contact.id, recordType: 'Contact' }], meta: { total: 2, limit: 1, hasMore: true } });
+      expect((await previewAudience(tenantId, { ...definition, page: 2, limit: 1 })).recipients[0].id).toBe(lead.id);
+      for (const source of ['LEADS', 'CONTACTS']) expect((await previewAudience(tenantId, { ...definition, source })).eligible).toBe(1);
+      const notEquals = { ...definition, conditions: [{ field: 'company', operator: 'not_equals', value: 'matching company' }] };
+      expect((await previewAudience(tenantId, notEquals)).recipients.some(r => [lead.id, contact.id].includes(r.id))).toBe(false);
+      await prisma.lead.update({ where: { id: lead.id }, data: { createdAt: new Date('2026-10-07T16:00:00Z') } });
+      expect((await previewAudience(tenantId, definition)).eligible).toBe(1);
+      await prisma.lead.delete({ where: { id: lead.id } }); await prisma.contact.delete({ where: { id: contact.id } });
+    });
+  });
+  it('rejects foreign or nonassignable relations and invalid date ranges', async () => {
+    await scoped(async () => {
+      for (const value of [userId, randomUUID()]) await expect(createAudience(tenantId, { name: 'Invalid', source: 'ALL', conditions: [{ field: 'assignedUserId', operator: 'equals', value }] })).rejects.toThrow('Assigned Agent');
+      await expect(previewAudience(tenantId, { source: 'ALL', conditions: [{ field: 'productInterest', operator: 'equals', value: [randomUUID()] }] })).rejects.toThrow('Product Interests');
+      await expect(previewAudience(tenantId, { source: 'ALL', conditions: [{ field: 'createdAt', operator: 'between', value: { from: '2026-10-08', to: '2026-10-07' } }] })).rejects.toThrow();
+    });
+  });
+  it('SMS eligibility uses normalized phones, Contact priority and do-not-contact suppression without requiring email', async () => {
+    await scoped(async () => {
+      const contact = await prisma.contact.create({ data: { tenantId, firstName: 'SMS', lastName: 'Contact', phone: '+639171234567', email: null } });
+      const duplicate = await prisma.lead.create({ data: { tenantId, firstName: 'SMS', lastName: 'Duplicate', phone: '09171234567', email: null } });
+      const bad = await prisma.lead.create({ data: { tenantId, firstName: 'SMS', lastName: 'Invalid', phone: '123' } });
+      try {
+        const result = await previewAudience(tenantId, { source: 'ALL', conditions: [], channel: 'SMS' });
+        expect(result).toMatchObject({ eligible: 1, duplicatePhone: 1, invalidPhone: 1 });
+        expect(result.recipients[0]).toMatchObject({ id: contact.id, phone: '+639171234567', email: null });
+        await prisma.contact.update({ where: { id: contact.id }, data: { doNotContact: true } });
+        expect((await previewAudience(tenantId, { source: 'ALL', conditions: [], channel: 'SMS' })).eligible).toBe(0);
+      } finally { await prisma.lead.deleteMany({ where: { id: { in: [duplicate.id, bad.id] } } }); await prisma.contact.delete({ where: { id: contact.id } }); }
+    });
+  });
+  it('SMS preflight blocks missing organization email and any oversized personalized recipient before provider requests', async () => {
+    await scoped(async () => {
+      const person = await prisma.contact.create({ data: { tenantId, firstName: 'A'.repeat(600), lastName: 'Long', phone: '+639171234567' } });
+      const campaign = await createCampaign(tenantId, userId, { name: 'SMS preflight', type: 'SMS', audienceSource: 'CONTACTS', body: 'Hi {{first_name}}' });
+      await prisma.tenant.update({ where: { id: tenantId }, data: { email: null } });
+      await expect(sendCampaign(campaign.id, tenantId, userId)).rejects.toThrow('Configure the organization email');
+      await prisma.tenant.update({ where: { id: tenantId }, data: { email: 'info@example.test' } });
+      await expect(sendCampaign(campaign.id, tenantId, userId)).rejects.toThrow('1 recipient message exceeds the 670-character');
+      expect(sendSms).not.toHaveBeenCalled();
+      expect((await getCampaignById(campaign.id, tenantId)).status).toBe('DRAFT');
+      expect(await prisma.campaignContact.count({ where: { campaignId: campaign.id } })).toBe(0);
+      await prisma.contact.delete({ where: { id: person.id } });
+    });
+  });
+  it('submits personalized SMS once, persists its reference and phone, and authenticates idempotent webhook transitions', async () => {
+    const person = await scoped(() => prisma.contact.create({ data: { tenantId, firstName: 'SMS', lastName: 'Customer', phone: '+639171234567', email: null } }));
+    const campaign = await scoped(() => createCampaign(tenantId, userId, { name: 'SMS send', type: 'SMS', audienceSource: 'CONTACTS', body: 'Hi {{first_name}}, your proposal is ready.' }));
+    const sends = await Promise.allSettled([scoped(() => sendCampaign(campaign.id, tenantId, userId)), scoped(() => sendCampaign(campaign.id, tenantId, userId))]);
+    expect(sends.filter(r => r.status === 'fulfilled')).toHaveLength(1); expect(sendSms).toHaveBeenCalledOnce();
+    expect(vi.mocked(sendSms).mock.calls[0]).toEqual(['+639171234567', 'Hi SMS, your proposal is ready.\n\nFor product inquiries, contact Camxian Technologies at info@example.test.\nThis SMS is no-reply.', expect.objectContaining({ metadata: { campaign_id: campaign.id, campaign_recipient_id: expect.any(String) } })]);
+    const row = await prisma.campaignContact.findFirstOrThrow({ where: { campaignId: campaign.id, contactId: person.id } });
+    expect(row).toMatchObject({ email: null, phone: '+639171234567', status: 'submitted', sentAt: null, submittedAt: expect.any(Date), messageId: expect.stringContaining('msg_') });
+    expect(await prisma.emailDeliveryLog.count({ where: { campaignId: campaign.id } })).toBe(0);
+    const event = (status: string) => ({ id: row.messageId, event: `message.${status}`, message: { reference_id: row.messageId, status, recipient: row.phone, metadata: { campaign_id: 'foreign' }, fail_reason: null } });
+    const post = (status: string, secret: string) => fetch(base + '/webhooks/unisms', { method: 'POST', headers: { 'Content-Type': 'application/json', 'webhook-secret-key': secret }, body: JSON.stringify(event(status)) });
+    expect((await post('failed', 'wrong')).status).toBe(401);
+    expect((await post('failed', '')).status).toBe(401);
+    await expect(processUniSmsEvent({ ...event('sent'), event: 'message.opened' })).rejects.toThrow();
+    await expect(processUniSmsEvent({ ...event('sent'), message: { ...event('sent').message, recipient: '+639191234567' } })).rejects.toMatchObject({ statusCode: 400 });
+    expect((await prisma.campaignContact.findUniqueOrThrow({ where: { id: row.id } })).status).toBe('submitted');
+    for (const status of ['retrying', 'failed', 'sent']) {
+      expect((await post(status, 'test-webhook-only')).status).toBe(200);
+      const before = await prisma.campaignMetrics.count({ where: { campaignId: campaign.id } });
+      await processUniSmsEvent(event(status));
+      expect(await prisma.campaignMetrics.count({ where: { campaignId: campaign.id } })).toBe(before);
+      expect((await prisma.campaignContact.findUniqueOrThrow({ where: { id: row.id } })).status).toBe(status);
+    }
+    await processUniSmsEvent(event('retrying')); // late retry cannot regress a terminal success
+    const report = await request(`/marketing/campaigns/${campaign.id}/report`);
+    expect(report.body.data).toMatchObject({ sentCount: 1, failedCount: 0, openedCount: 0, clickedCount: 0 });
+    expect(report.body.data.recipients.find((r: { id: string }) => r.id === row.id)).toMatchObject({ phone: row.phone, email: null, deliveryStatus: 'Sent' });
+    const metrics = await request('/marketing/campaigns/metrics');
+    const emailOnly = await prisma.campaign.aggregate({ where: { tenantId, type: 'EMAIL', isArchived: false }, _sum: { sentCount: true } });
+    expect(metrics.body.data.emailSent).toBe(emailOnly._sum.sentCount || 0);
+    expect(metrics.body.data.sent).toBeGreaterThan(metrics.body.data.emailSent);
+    await scoped(() => prisma.contact.delete({ where: { id: person.id } }));
+  });
+  it('keeps uncertain SMS submissions paused for review and rejects deterministic errors without retry', async () => {
+    await scoped(async () => {
+      const person = await prisma.contact.create({ data: { tenantId, firstName: 'Uncertain', lastName: 'SMS', phone: '+639181234567' } });
+      for (const outcome of ['unconfirmed', 'rejected'] as const) {
+        vi.mocked(sendSms).mockRejectedValueOnce(new SmsSubmissionError(outcome, outcome === 'rejected' ? 429 : undefined));
+        const campaign = await createCampaign(tenantId, userId, { name: 'SMS ' + outcome, type: 'SMS', audienceSource: 'CONTACTS', body: 'Hello' });
+        expect((await sendCampaign(campaign.id, tenantId, userId)).status).toBe(outcome === 'unconfirmed' ? 'PAUSED' : 'FAILED');
+        await expect(sendCampaign(campaign.id, tenantId, userId)).rejects.toMatchObject({ statusCode: 409 });
+      }
+      expect(sendSms).toHaveBeenCalledTimes(2);
+      await prisma.contact.delete({ where: { id: person.id } });
+    });
+  });
+  it('seeds six persisted sample templates idempotently while preserving edited and archived templates', async () => {
+    const first = await seedCampaignTemplates(prisma, tenantId);
+    expect(first).toBe(6);
+    const sample = await prisma.template.findFirstOrThrow({ where: { tenantId, name: 'Inquiry Received' } });
+    await prisma.template.update({ where: { id: sample.id }, data: { content: 'User edited', isArchived: true } });
+    expect(await seedCampaignTemplates(prisma, tenantId)).toBe(0);
+    expect(await seedCampaignTemplates(prisma, tenantId)).toBe(0);
+    expect((await prisma.template.findUniqueOrThrow({ where: { id: sample.id } }))).toMatchObject({ content: 'User edited', isArchived: true });
+    expect(await prisma.template.count({ where: { tenantId, category: 'Sales' } })).toBe(6);
+  });
+
 });

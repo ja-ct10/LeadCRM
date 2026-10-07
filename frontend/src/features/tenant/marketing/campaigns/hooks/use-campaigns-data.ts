@@ -4,12 +4,12 @@ import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { campaignsApi } from '@/shared/services/campaigns.api';
 import { templatesApi } from '@/shared/services/templates.api';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
-import type { CampaignListQuery } from '@leadcrm/shared';
+import type { CampaignListQuery, CampaignMetricsSummary } from '@leadcrm/shared';
 import type { Campaign, Template } from '@/store/types';
 
 export interface UseCampaignsDataReturn {
   total: number;
-  metrics: { activeCampaigns: number; sent: number; opened: number; clicked: number };
+  metrics: CampaignMetricsSummary;
   campaigns: Campaign[];
   templates: Template[];
   isInitialLoad: boolean;

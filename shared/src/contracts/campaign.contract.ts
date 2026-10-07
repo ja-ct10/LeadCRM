@@ -16,6 +16,15 @@ export interface CampaignResponse {
   data: Campaign;
 }
 
+export interface CampaignMetricsSummary {
+  activeCampaigns: number;
+  sent: number;
+  opened: number;
+  clicked: number;
+  /** Email-only denominator; optional during a coordinated API rollout. */
+  emailSent?: number;
+}
+
 export interface CampaignDetailResponse extends CampaignResponse {
   data: Campaign & { sendResult: CampaignSendResult };
 }
@@ -23,8 +32,9 @@ export interface CampaignDetailResponse extends CampaignResponse {
 export interface CampaignRecipient {
   id: string;
   name: string;
-  email: string;
-  deliveryStatus: 'Delivered' | 'Bounced' | 'Submitted' | 'Failed' | 'Pending';
+  email: string | null;
+  phone?: string | null;
+  deliveryStatus: 'Delivered' | 'Bounced' | 'Submitted' | 'Failed' | 'Pending' | 'Sent' | 'Retrying' | 'Excluded';
   opened: boolean;
   clicked: boolean;
   lastActivity: string | null;

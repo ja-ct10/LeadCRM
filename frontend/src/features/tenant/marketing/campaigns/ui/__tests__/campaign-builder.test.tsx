@@ -7,13 +7,14 @@ import { campaignsApi } from '@/shared/services/campaigns.api';
 import { toast } from 'sonner';
 const access = vi.hoisted(() => ({ denied: new Set<string>() }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (key: string) => !access.denied.has(key) }));
-vi.mock('@/shared/services/campaigns.api', () => ({ campaignsApi: { create: vi.fn(), update: vi.fn(), send: vi.fn(), get: vi.fn() } }));
+vi.mock('@/shared/services/campaigns.api', () => ({ campaignsApi: { create: vi.fn(), update: vi.fn(), send: vi.fn(), get: vi.fn(), smsSettings: vi.fn() } }));
 vi.mock('@/shared/services/audiences.api', () => ({ audiencesApi: { list: vi.fn(), preview: vi.fn(), create: vi.fn() } }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() } }));
-const counts = { matched: 2, eligible: 2, missingEmail: 0, invalidEmail: 0, duplicateEmail: 0, staffEmail: 0, unsubscribed: 0, blocked: 0, inactive: 0, recipientNotAllowed: 0 };
+const counts = { matched: 2, eligible: 2, missingEmail: 0, invalidEmail: 0, duplicateEmail: 0, staffEmail: 0, unsubscribed: 0, blocked: 0, inactive: 0, recipientNotAllowed: 0, recipients: [], meta: { page: 1, limit: 25, total: 2, hasMore: false } };
 const audience = { id: 'ac9a6eb7-c05a-4756-8f6b-9d678f62c559', name: 'Customers', source: 'ALL' as const, conditions: [] };
 beforeEach(() => {
   access.denied.clear();
+  vi.mocked(campaignsApi.smsSettings).mockResolvedValue({ success: true, data: { organizationEmail: 'info@example.test' } });
   vi.clearAllMocks(); vi.mocked(audiencesApi.list).mockResolvedValue({ success: true, data: [audience] });
   vi.mocked(audiencesApi.preview).mockResolvedValue({ success: true, data: counts });
   vi.mocked(campaignsApi.create).mockResolvedValue({ success: true, data: { id: 'saved-id' } as never });
@@ -123,4 +124,42 @@ describe('campaign composer', () => {
     expect((screen.getByLabelText(/Target Audience/) as HTMLSelectElement).value).toBe(audience.id);
     expect(audiencesApi.create).toHaveBeenCalledWith({ name: 'New audience', source: 'ALL', conditions: [] });
   });
+  it('inserts variables at Subject and Body selections and exposes the same chips as draggable text', async () => {
+    render(<CampaignBuilder onBack={vi.fn()} />);
+    const subject = screen.getByLabelText(/Subject Line/) as HTMLInputElement;
+    fireEvent.change(subject, { target: { value: 'Your proposal' } }); fireEvent.focus(subject); subject.setSelectionRange(5, 5);
+    fireEvent.click(screen.getByRole('button', { name: '{{first_name}}' }));
+    expect(subject.value).toBe('Your {{first_name}}proposal');
+    const body = screen.getByLabelText(/Body/) as HTMLTextAreaElement;
+    fireEvent.change(body, { target: { value: 'Thank you, customer.' } }); fireEvent.focus(body); body.setSelectionRange(11, 19);
+    fireEvent.click(screen.getByRole('button', { name: 'Insert Variable' }));
+    fireEvent.click(screen.getAllByRole('button', { name: '{{company_name}}' })[0]);
+    expect(body.value).toBe('Thank you, {{company_name}}.');
+    const setData = vi.fn(); const transfer = { setData, effectAllowed: '' };
+    const chip = screen.getByRole('button', { name: '{{first_name}}' });
+    expect(chip.getAttribute('draggable')).toBe('true'); fireEvent.dragStart(chip, { dataTransfer: transfer });
+    expect(setData).toHaveBeenCalledWith('text/plain', '{{first_name}}');
+    expect(campaignsApi.send).not.toHaveBeenCalled();
+  });
+  it('previews the persisted organization footer and sends SMS with channel-aware audience preview', async () => {
+    render(<CampaignBuilder onBack={vi.fn()} initialType="SMS" initialContent="Hi {{first_name}}, your proposal is ready." />);
+    fireEvent.change(screen.getByLabelText(/Campaign Name/), { target: { value: 'SMS campaign' } });
+    fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: 'ALL' } });
+    await screen.findByText(/For product inquiries, contact Camxian Technologies at info@example.test/);
+    expect(screen.queryByLabelText(/Subject Line/)).toBeNull();
+    await waitFor(() => expect(audiencesApi.preview).toHaveBeenCalledWith(expect.objectContaining({ channel: 'SMS' })));
+    fireEvent.click(screen.getByRole('button', { name: 'Send Now' }));
+    await waitFor(() => expect(campaignsApi.send).toHaveBeenCalledOnce());
+    expect(campaignsApi.create).toHaveBeenCalledWith(expect.objectContaining({ type: 'SMS', body: 'Hi {{first_name}}, your proposal is ready.' }));
+  });
+  it('blocks SMS Send Now when organization email is missing', async () => {
+    vi.mocked(campaignsApi.smsSettings).mockResolvedValue({ success: true, data: { organizationEmail: null } });
+    render(<CampaignBuilder onBack={vi.fn()} initialType="SMS" initialContent="Hello" />);
+    fireEvent.change(screen.getByLabelText(/Campaign Name/), { target: { value: 'SMS' } });
+    fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: 'ALL' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send Now' }));
+    expect(campaignsApi.send).not.toHaveBeenCalled(); expect(campaignsApi.create).not.toHaveBeenCalled();
+    expect(screen.getAllByText('Configure the organization email in Settings → General before sending SMS campaigns.').length).toBeGreaterThan(0);
+  });
+
 });

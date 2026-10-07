@@ -17,7 +17,7 @@ import { DataLoadingSkeleton } from '@/shared/components/crm/data-view-states';
 import { DataGrid, type DataGridColumnDef } from '@/shared/components/data-grid';
 import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 
-const recipientFilters = ['All recipients', 'Delivered', 'Bounced', 'Opened', 'Clicked'] as const;
+const recipientFilters = ['All recipients', 'Delivered', 'Bounced', 'Opened', 'Clicked', 'Submitted', 'Sent', 'Retrying', 'Failed', 'Pending', 'Excluded'] as const;
 type RecipientFilter = typeof recipientFilters[number];
 const engagement = (value: boolean, label: string) => <span aria-label={value ? label : `Not ${label.toLowerCase()}`}>
   {value ? <Check size={16} className="text-emerald-600" aria-hidden="true" /> : <span className="text-slate-400" aria-hidden="true">—</span>}
@@ -33,7 +33,7 @@ const recipientColumns: DataGridColumnDef<CampaignRecipient>[] = [
   { id: 'activity', header: 'Last Activity', accessor: row => formatDateTime(row.lastActivity), width: 220 },
   { id: 'actions', header: 'Actions', accessor: () => '', width: 80, cell: (_, row) => <Button variant="ghost" size="icon" disabled={!row.email}
     aria-label={`Copy email for ${row.name}`} title="Copy email" onClick={async () => {
-      try { await navigator.clipboard.writeText(row.email); toast.success('Email copied.'); }
+      try { await navigator.clipboard.writeText(row.email || ''); toast.success('Email copied.'); }
       catch { toast.error('Unable to copy email.'); }
     }}><Copy size={14} /></Button> },
 ];
@@ -80,14 +80,22 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
   const recipients = report?.recipients ?? [];
   const visibleRecipients = useMemo(() => recipients.filter(row => {
     const query = search.trim().toLowerCase();
-    return `${row.name} ${row.email}`.toLowerCase().includes(query) &&
+    return `${row.name} ${row.email || ''} ${row.phone || ''}`.toLowerCase().includes(query) &&
       (filter === 'All recipients' || (filter === 'Opened' ? row.opened : filter === 'Clicked' ? row.clicked : row.deliveryStatus === filter));
   }), [recipients, search, filter]);
   const current = report ?? campaign;
   const status = current.status.replaceAll('_', ' ').replace(/\b\w/g, character => character.toUpperCase());
+  const isSms = current.type.toUpperCase() === 'SMS';
+  const columns: DataGridColumnDef<CampaignRecipient>[] = isSms ? recipientColumns.filter(c => !['opened', 'clicked'].includes(c.id)).map(c => c.id === 'email' ? { ...c, id: 'phone', header: 'Phone', accessor: row => row.phone || '—' } : c.id === 'actions' ? { ...c, cell: (_, row) => <Button variant="ghost" size="icon" disabled={!row.phone} aria-label={`Copy phone for ${row.name}`} title="Copy phone" onClick={async () => { try { await navigator.clipboard.writeText(row.phone || ''); toast.success('Phone copied.'); } catch { toast.error('Unable to copy phone.'); } }}><Copy size={14} /></Button> } : c) : recipientColumns;
+  const filters = isSms ? recipientFilters.filter(f => !['Delivered', 'Bounced', 'Opened', 'Clicked'].includes(f)) : recipientFilters.filter(f => !['Sent', 'Retrying', 'Excluded'].includes(f));
   const initialLoading = loading && !report;
   const count = report?.recipientCount ?? 0;
-  const metrics = [
+  const metrics: { label: string; value: number | string }[] = isSms ? [
+    { label: 'Recipients', value: count }, { label: 'Submitted', value: report?.sentCount ?? 0 },
+    { label: 'Sent', value: recipients.filter(r => r.deliveryStatus === 'Sent').length },
+    { label: 'Retrying', value: recipients.filter(r => r.deliveryStatus === 'Retrying').length },
+    { label: 'Failed', value: report?.failedCount ?? 0 },
+  ] : [
     { label: 'Recipients', value: count },
     { label: 'Delivered', value: report?.deliveredCount ?? 0 },
     { label: 'Opened', value: report?.openedCount ?? 0 },
@@ -99,7 +107,7 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
     { label: 'Status', value: status, icon: Check },
     { label: 'Target Segment', value: current.targetAudience, icon: Target },
     { label: 'Recipients', value: `${count} recipient${count === 1 ? '' : 's'}`, icon: Users },
-    { label: 'Sent', value: formatDateTime(current.sentAt), icon: Send },
+    { label: isSms ? 'Submitted' : 'Sent', value: formatDateTime(current.sentAt), icon: Send },
   ];
 
   return <div className="w-full min-w-0 space-y-6">
@@ -122,7 +130,7 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
           <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">{metric.label}</h2>
           {initialLoading ? <div aria-hidden="true" className="h-8 w-20 animate-pulse rounded bg-slate-100 dark:bg-slate-800" /> :
             <div className="flex flex-wrap items-baseline justify-between gap-2"><span className="text-2xl font-semibold text-slate-900 dark:text-white">{metric.value.toLocaleString()}</span>
-              {index > 0 && <span className={index === 4 ? 'text-sm text-rose-600' : 'text-sm text-slate-500 dark:text-slate-400'}>{count ? Math.round(metric.value / count * 100) : 0}%</span>}
+              {index > 0 && typeof metric.value === 'number' && <span className={index === 4 ? 'text-sm text-rose-600' : 'text-sm text-slate-500 dark:text-slate-400'}>{count ? Math.round(metric.value / count * 100) : 0}%</span>}
             </div>}
         </Card>)}
       </section>
@@ -143,17 +151,17 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{initialLoading ? 'Recipient activity' : `${visibleRecipients.length} of ${recipients.length} recipients`}</p></div>
         <ModuleTableToolbar label="Recipients" search={search} onSearch={setSearch} placeholder="Search recipients..." refreshing={loading} onRefresh={fetchReport}
           filter={<DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" aria-label="Filter recipients"><Filter size={13} />{filter === 'All recipients' ? 'Filter' : filter}<ChevronDown size={13} /></Button></DropdownMenuTrigger>
-            <DropdownMenuContent align="start" aria-label="Recipient status filters">{recipientFilters.map(option => <DropdownMenuItem key={option} role="menuitemradio" aria-checked={filter === option} onSelect={() => setFilter(option)}>{option}{filter === option && <Check size={14} className="ml-auto" />}</DropdownMenuItem>)}</DropdownMenuContent>
+            <DropdownMenuContent align="start" aria-label="Recipient status filters">{filters.map(option => <DropdownMenuItem key={option} role="menuitemradio" aria-checked={filter === option} onSelect={() => setFilter(option)}>{option}{filter === option && <Check size={14} className="ml-auto" />}</DropdownMenuItem>)}</DropdownMenuContent>
           </DropdownMenu>} />
-        <DataGrid ariaLabel="Recipient performance table" columns={recipientColumns} data={visibleRecipients} getRowId={row => row.id} isLoading={initialLoading} height="auto"
+        <DataGrid ariaLabel="Recipient performance table" columns={columns} data={visibleRecipients} getRowId={row => row.id} isLoading={initialLoading} height="auto"
           emptyMessage={recipients.length ? 'No recipients match your search and filter.' : 'No recipients yet.'} />
       </section>
-      <section aria-labelledby="top-links-title" className="min-w-0 space-y-3">
+      {!isSms && <section aria-labelledby="top-links-title" className="min-w-0 space-y-3">
         <div><h2 id="top-links-title" className="text-sm font-semibold text-slate-900 dark:text-white">Top links clicked</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Links that generated engagement from this campaign</p></div>
         {initialLoading ? <div aria-hidden="true"><DataLoadingSkeleton rowCount={1} columnCount={5} /></div> : report?.topLinks.length ?
           <DataGrid ariaLabel="Top links clicked table" columns={linkColumns} data={report.topLinks} getRowId={row => row.url} height="auto" /> :
           <Card className="rounded-lg p-4 shadow-none text-xs text-slate-500 dark:text-slate-400">No clicked links recorded for this campaign.</Card>}
-      </section>
+      </section>}
     </>}
   </div>;
 }

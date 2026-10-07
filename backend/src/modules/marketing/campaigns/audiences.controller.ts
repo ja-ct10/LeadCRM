@@ -7,5 +7,5 @@ export async function createAudience(req: Request, res: Response, next: NextFunc
   try { res.status(201).json({ success: true, data: await service.createAudience(req.user!.tenantId, req.body) }); } catch (e) { next(e); }
 }
 export async function previewAudience(req: Request, res: Response, next: NextFunction) {
-  try { const result = await service.resolveAudience(req.user!.tenantId, req.body); res.json({ success: true, data: result.breakdown }); } catch (e) { next(e); }
+  try { res.json({ success: true, data: await service.previewAudience(req.user!.tenantId, req.body) }); } catch (e) { next(e); }
 }

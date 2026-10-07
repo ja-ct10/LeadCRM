@@ -9,17 +9,7 @@ export const CONTACT_STATUSES = CRM_STATUSES;
 export type ContactStatus = typeof CONTACT_STATUSES[number];
 
 // ─── Lead Source Options ───────────────────────────────────────────────────
-export const LEAD_SOURCES = [
-  'Google Ads',
-  'Referral',
-  'Email Campaign',
-  'Website',
-  'Social Media Advertisement',
-  'Direct Mail',
-  'Content Marketing',
-  'Organic',
-  'Others',
-] as const;
+export { LEAD_SOURCES } from '@leadcrm/shared';
 
 // ─── Route Paths ───────────────────────────────────────────────────────────
 export const ROUTES = {

@@ -100,7 +100,8 @@ export default function CampaignsPage() {
   const totalMessagesSent = metrics.sent;
   const totalOpened = metrics.opened;
   const totalClicked = metrics.clicked;
-  const avgOpenRate = totalMessagesSent ? totalOpened / totalMessagesSent * 100 : 0;
+  const emailSubmitted = metrics.emailSent ?? totalMessagesSent;
+  const avgOpenRate = emailSubmitted ? totalOpened / emailSubmitted * 100 : 0;
   const canCreateCampaign = useHasPermission('campaigns.create');
   const canEditCampaign = useHasPermission('campaigns.edit');
   const canDeleteCampaign = useHasPermission('campaigns.archive');

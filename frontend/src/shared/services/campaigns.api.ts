@@ -3,6 +3,7 @@
 import { apiClient } from '@/lib/api/client';
 import type { Campaign as ApiCampaign, CampaignDetailResponse as ApiCampaignDetailResponse, CampaignReportResponse as ApiCampaignReportResponse, CreateCampaignInput, CampaignSendResult } from '@leadcrm/shared';
 import type { Campaign } from '@/store/types';
+import type { CampaignMetricsSummary } from '@leadcrm/shared';
 
 export interface CampaignsResponse { success: boolean; data: Campaign[]; meta: { total: number; page: number; limit: number; hasMore: boolean }; }
 export interface CampaignResponse  { success: boolean; data: Campaign; }
@@ -23,6 +24,7 @@ function normalize(c: ApiCampaign & { targetAudience?: { name: string }; deliver
     targetAudience: c.targetAudience?.name || ({ LEADS: 'All Leads', CONTACTS: 'All Contacts', ALL: 'All Leads & Contacts' }[c.audienceSource || ''] ?? 'Not selected') };
 }
 export const campaignsApi = {
+  smsSettings: () => apiClient.get<{ success: boolean; data: { organizationEmail: string | null } }>('/marketing/campaigns/sms-settings'),
   duplicate: (id: string) => apiClient.post('/marketing/campaigns/' + id + '/duplicate', {}),
   report: async (id: string): Promise<CampaignReportResponse> => {
     const res = await apiClient.get<ApiCampaignReportResponse>('/marketing/campaigns/' + id + '/report');
@@ -45,6 +47,6 @@ export const campaignsApi = {
     return { ...res, data: normalize(res.data) };
   },
   send: (id: string) => apiClient.patch<{ success: boolean; data: CampaignSendResult }>(`/marketing/campaigns/${id}/send`),
-  metrics: () => apiClient.get<{ success: boolean; data: { activeCampaigns: number; sent: number; opened: number; clicked: number } }>('/marketing/campaigns/metrics'),
+  metrics: () => apiClient.get<{ success: boolean; data: CampaignMetricsSummary }>('/marketing/campaigns/metrics'),
   archive: (id: string) => apiClient.patch<{ success: boolean }>(`/marketing/campaigns/${id}/archive`),
 };
