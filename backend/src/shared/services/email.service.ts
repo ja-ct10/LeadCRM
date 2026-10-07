@@ -17,6 +17,8 @@ export interface SendMailOptions {
   subject: string;
   html: string;
   requireDelivery?: boolean;
+  /** Account recovery has no campaign delivery record. */
+  category?: 'password-reset';
 }
 
 /** Deployment email allowlist for non-production NODE_ENV; unrelated to CRM data scope. */
@@ -73,6 +75,7 @@ export async function sendMail(options: SendMailOptions): Promise<SendMailResult
       body: JSON.stringify({
         sender: { name: process.env.BREVO_FROM_NAME || 'LeadCRM', email: process.env.BREVO_FROM_EMAIL },
         to: [{ email: options.to }], subject: options.subject, htmlContent: options.html,
+        ...(options.category === 'password-reset' ? { tags: ['leadcrm-password-reset'] } : {}),
       }),
     });
   } catch (error) {

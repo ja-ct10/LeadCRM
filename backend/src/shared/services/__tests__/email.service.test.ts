@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sendMail, buildPasswordResetEmail, buildWelcomeEmail } from '../email.service';
 import { sanitizeCampaignHtml } from '../../../modules/marketing/campaigns/campaign-content';
-import { verifyWebhookAuthorization, BrevoEventSchema } from '../../../modules/marketing/campaigns/brevo-webhook';
+import { verifyWebhookAuthorization, BrevoEventSchema, processBrevoEvent } from '../../../modules/marketing/campaigns/brevo-webhook';
+import prisma from '../../../config/database.config';
 
 const fetchMock = vi.fn();
 beforeEach(() => {
@@ -12,6 +13,20 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 describe('existing Brevo transport', () => {
+  it('tags password recovery so its receipts do not retry against campaign tracking', async () => {
+    await sendMail({ to: 'staff@example.com', subject: 'Reset', html: 'Reset', requireDelivery: true, category: 'password-reset' });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).tags).toEqual(['leadcrm-password-reset']);
+  });
+  it.each([{ tags: ['leadcrm-password-reset'] }, { tag: '["leadcrm-password-reset"]' }])('acknowledges explicitly tagged reset receipts without database access (%j)', async tags => {
+    const lookup = vi.spyOn(prisma.emailDeliveryLog, 'findFirst');
+    await expect(processBrevoEvent({ event: 'delivered', email: 'staff@example.com', 'message-id': 'reset-message', ...tags })).resolves.toBeUndefined();
+    expect(lookup).not.toHaveBeenCalled();
+  });
+  it.each([{}, { tag: 'malformed' }, { tags: ['campaign'] }, { tags: ['prefix-leadcrm-password-reset'] }])('retains retry behavior for unclassified campaign receipts (%j)', async tags => {
+    const lookup = vi.spyOn(prisma.emailDeliveryLog, 'findFirst').mockResolvedValue(null);
+    await expect(processBrevoEvent({ event: 'delivered', email: 'staff@example.com', 'message-id': 'pending-campaign', ...tags })).rejects.toMatchObject({ statusCode: 503 });
+    expect(lookup).toHaveBeenCalledOnce();
+  });
   it.each(['', 'invalid JSON', 'null', '{}'])('retains HTTP 201 acceptance with an unusable tracking response (%s)', async body => {
     fetchMock.mockResolvedValueOnce(new Response(body, { status: 201 }));
     await expect(sendMail({ to: 'customer@example.com', subject: 'Hi', html: 'Hi' })).resolves.toEqual({ submitted: true, messageId: null });

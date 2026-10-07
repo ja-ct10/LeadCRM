@@ -41,6 +41,7 @@ export async function requestPasswordReset(dto: ForgotPasswordDto, target?: { us
     subject: 'Reset your LeadCRM password',
     html:    buildPasswordResetEmail(resetUrl),
     requireDelivery: true,
+    category: 'password-reset',
   });
   if (!submission.submitted) throw new AppError('Password reset email could not be submitted.', 502);
 }
@@ -84,4 +85,3 @@ export async function resetPasswordWithToken(dto: ResetPasswordDto): Promise<voi
     prisma.passwordResetToken.delete({ where: { token: dto.token } }),
   ]);
 }
-

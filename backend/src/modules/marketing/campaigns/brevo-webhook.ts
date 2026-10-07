@@ -12,6 +12,9 @@ export const BrevoEventSchema = z.object({
   ts_event: z.number().int().nonnegative().optional(),
   ts_epoch: z.number().int().nonnegative().optional(),
   link: z.string().max(8192).optional(),
+  tags: z.array(z.string()).optional(),
+  // Older Brevo payloads serialize the tags array as a JSON string.
+  tag: z.string().optional(),
 });
 export function verifyWebhookAuthorization(header?: string) {
   const token = process.env.BREVO_WEBHOOK_TOKEN;
@@ -22,6 +25,13 @@ export function verifyWebhookAuthorization(header?: string) {
 }
 export async function processBrevoEvent(input: unknown) {
   const event = BrevoEventSchema.parse(input);
+  let tags: unknown = event.tags;
+  if (!tags && event.tag) {
+    try { tags = JSON.parse(event.tag); } catch { tags = []; }
+  }
+  // The route authenticates Brevo before processing. Account recovery messages
+  // are deliberately untracked by campaigns; acknowledge their delivery events.
+  if (Array.isArray(tags) && tags.includes('leadcrm-password-reset')) return;
   const rawId = event['message-id'];
   const bareId = rawId.replace(/^<|>$/g, '');
   const log = await prisma.emailDeliveryLog.findFirst({ where: { brevoMessageId: { in: [rawId, bareId, `<${bareId}>`] }, toEmail: event.email.toLowerCase(), campaignId: { not: null } } });
