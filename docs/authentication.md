@@ -10,9 +10,24 @@ See [security cleanup](security-cleanup-mfa.md) for password behavior and migrat
 - Returning users who have completed setup: sign in → dashboard.
 - Existing users with `mustChangePassword=false` at migration time keep their established access; their passwords and roles are unchanged.
 
-All tenant portal accounts use an exact, case-insensitive @camxian.com domain. Subdomains and suffix lookalikes are rejected. The backend checks the domain at password login and on every authenticated request, including existing sessions. Inactive accounts and suspended/rejected workspaces are denied access.
+By default, tenant portal accounts require an exact, case-insensitive @camxian.com domain. Subdomains and suffix lookalikes are rejected. The backend checks the domain at password login and on every authenticated request, including existing sessions. Inactive accounts and suspended/rejected workspaces are denied access.
 
-For local development and automated testing only, the backend can permit exact Gmail addresses from the server-side `LEADCRM_TEST_EMAIL_ALLOWLIST` when `LEADCRM_TEST_AUTH_ENABLED=true`. The exception is active only when `NODE_ENV` is `development` or `test`; production always enforces `@camxian.com`. Keep the allowlist out of frontend variables. Test users still need real persisted User records, normal passwords/sessions, roles, and backend permissions. Turning the flag off immediately restores the normal domain restriction.
+For local development and automated testing only, the backend can permit exact Gmail addresses from the server-side `LEADCRM_TEST_EMAIL_ALLOWLIST` when `LEADCRM_TEST_AUTH_ENABLED=true`. This exception is active only when `NODE_ENV` is `development` or `test`; production always ignores these test settings. Keep allowlists out of frontend variables. Users still need real persisted User records, normal passwords/sessions, roles, and backend permissions. Turning the applicable flag off rejects Gmail accounts at login and on existing sessions.
+
+## Explicitly approved production accounts
+
+The owner's subsequent instruction permits the two named Gmail accounts in the existing live deployment. This supersedes the earlier requirement that production have no personal-email exception. Keep `NODE_ENV=production`; enable the separate backend-only settings `LEADCRM_PRODUCTION_AUTH_ENABLED=true` and `LEADCRM_PRODUCTION_EMAIL_ALLOWLIST=tironjulieann10@gmail.com,reymarkjpanes@gmail.com` only for that approved policy. These settings have no effect in development, test, or unknown environments. The development test flag still cannot enable production access.
+
+Matching remains exact after trimming/lowercasing; wildcards, Gmail dot/plus aliases and other accounts are rejected. No Google tokens, sessions, or permissions are fabricated. Disable `LEADCRM_PRODUCTION_AUTH_ENABLED` to remove this production exception immediately, including existing sessions.
+
+After `npm --prefix backend run db:deploy`, run the existing provisioning CLI against the intended production database with `NODE_ENV=production`, the production settings above, and explicit `--production`:
+
+```powershell
+npm --prefix backend run db:provision-test-user -- --production --tenant-id <production-tenant-id> --email tironjulieann10@gmail.com --first-name "Julie Ann" --last-name Tiron
+npm --prefix backend run db:provision-test-user -- --production --tenant-id <production-tenant-id> --email reymarkjpanes@gmail.com --first-name Reymark --last-name Panes
+```
+
+This deliberate operator action creates the persisted User and existing Client Admin assignment, hashes the independently generated temporary password, and submits each recipient's own welcome email. It preserves existing users unless `--reissue` is explicitly provided. `APP_URL=https://lead-crm-frontend-pi.vercel.app` supplies the approved login link. No credential is printed or returned by the CLI.
 
 ## Internal provisioning and passwords
 
@@ -38,7 +53,7 @@ All protected module APIs and mailbox operations enforce password setup first, t
 
 ## Development test-user provisioning
 
-Use only a confirmed development/test backend and database, with both test-auth environment variables configured server-side. A production backend ignores the exception even when the flag is enabled. The Vercel frontend URL alone does not establish the backend environment; `render.yaml` configures production. Do not switch production to development to permit these accounts.
+Use a confirmed development/test backend and database for the development mode, with both test-auth environment variables configured server-side. A production backend ignores this development exception even when the flag is enabled. The Vercel frontend URL alone does not establish the backend environment; `render.yaml` configures production. Do not switch production to development to permit these accounts; use the explicitly approved production policy above.
 
 After applying the migration to the confirmed development database, run the deliberate CLI for each account (replace `<development-tenant-id>` with the existing test workspace ID):
 

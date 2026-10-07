@@ -1,5 +1,7 @@
 # First login and development test access
 
+> Historical implementation report for `df476b63`. The owner's later instruction explicitly requests the two accounts in live production. See [current authentication policy](authentication.md#explicitly-approved-production-accounts) for the separate production allowlist and provisioning mode. The original checks and account status below describe the earlier development-only release.
+
 ## Implemented flow
 
 Team Management → create User and selected existing role in one transaction → generate temporary credential → store bcrypt hash → submit branded welcome email → normal password login → mandatory password change → per-user informational onboarding → Dashboard with normal permissions.

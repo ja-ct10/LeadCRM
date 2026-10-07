@@ -36,6 +36,7 @@ beforeAll(async () => {
   vi.stubEnv('APP_URL', 'https://lead-crm-frontend-pi.vercel.app');
   vi.stubEnv('LEADCRM_TEST_AUTH_ENABLED', 'true');
   vi.stubEnv('LEADCRM_TEST_EMAIL_ALLOWLIST', testers.map(user => user.email).join(','));
+  vi.stubEnv('LEADCRM_PRODUCTION_AUTH_ENABLED', 'false');
   pg = await PGlite.create();
   await replayCrmMigrations(pg, '20261104000000');
   // Verify the migration preserves established users and leaves temporary users pending.
@@ -166,6 +167,33 @@ describe.sequential('first login with real sessions and migrated disposable Post
     await expect(provisionTestUser({ tenantId, email: 'other@gmail.com', firstName: 'Other', lastName: 'User' })).rejects.toHaveProperty('statusCode', 403);
     expect(await db.user.count({ where: { email: 'other@gmail.com' } })).toBe(0);
   });
+  it.each(testers)('supports separately authorized production access for $email with normal gates', async tester => {
+    const { provisionTestUser } = await import('../provision-test-user.service');
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('LEADCRM_PRODUCTION_AUTH_ENABLED', 'true');
+    vi.stubEnv('LEADCRM_PRODUCTION_EMAIL_ALLOWLIST', testers.map(t => t.email).join(','));
+    try {
+      await expect(provisionTestUser({ tenantId, ...tester })).rejects.toHaveProperty('statusCode', 403);
+      await expect(provisionTestUser({ tenantId, email: 'other@gmail.com', firstName: 'Other', lastName: 'User', production: true })).rejects.toHaveProperty('statusCode', 403);
+      expect(await provisionTestUser({ tenantId, ...tester, reissue: true, production: true })).toMatchObject({ status: 'reissued', submitted: true });
+      const password = credentialFor(tester.email);
+      expect((await call('/auth/login', { email: tester.email, password: 'Wrong1!' }, '')).status).toBe(401);
+      const auth = await call('/auth/login', { email: tester.email, password }, '');
+      expect(auth.status).toBe(200);
+      expect((await call('/crm/leads', undefined, auth.cookie)).body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
+      expect((await call('/auth/change-password', { password }, auth.cookie)).body.error.code).toBe('PASSWORD_REUSE');
+      expect((await call('/auth/change-password', { password: 'ProductionPermanent1!' }, auth.cookie)).status).toBe(200);
+      expect((await call('/crm/leads', undefined, auth.cookie)).body.error.code).toBe('ONBOARDING_REQUIRED');
+      expect((await call('/auth/onboarding/complete', {}, auth.cookie)).status).toBe(200);
+      expect((await call('/crm/leads', undefined, auth.cookie)).status).toBe(200);
+      vi.stubEnv('LEADCRM_PRODUCTION_AUTH_ENABLED', 'false');
+      expect((await call('/auth/me', undefined, auth.cookie)).status).toBe(403);
+      expect((await call('/auth/login', { email: tester.email, password: 'ProductionPermanent1!' }, '')).status).toBe(403);
+    } finally {
+      vi.stubEnv('LEADCRM_PRODUCTION_AUTH_ENABLED', 'false');
+      vi.stubEnv('NODE_ENV', 'test');
+    }
+  }, 20_000);
   it('reissues fresh credentials deliberately, revokes prior sessions, and rejects a repeated random draw', async () => {
     const { provisionTestUser } = await import('../provision-test-user.service');
     const generator = await import('../temporary-password');

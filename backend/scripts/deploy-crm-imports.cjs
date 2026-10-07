@@ -41,6 +41,20 @@ function deploymentTarget(records, localNames) {
   return expansion;
 }
 
+// These reviewed migrations do not depend on dropping compatibility columns.
+// Keep the separate authenticated retirement gate while deploying current auth.
+function deploymentPlan(records, localNames) {
+  const target = deploymentTarget(records, localNames);
+  if (target !== relationshipExpansion) return { through: target, exclude: [] };
+  const independent = [
+    '20261103000000_reply_engagement_deal_batches',
+    '20261104000000_user_first_login_onboarding',
+  ];
+  const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
+  if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');
+  return { through: later.sort().at(-1) || target, exclude: [relationshipRetirement] };
+}
+
 async function recoverRetirement(db) {
   const records = await migrationRecords(db);
   const failed = records.filter(row => !row.finished_at && !row.rolled_back_at);
@@ -69,7 +83,7 @@ function runPrisma(args) {
   if (result.status !== 0) fail('PRISMA_ROLLOUT_FAILED');
 }
 
-function migrate(through) {
+function migrate(through, exclude = []) {
   // Prisma has no deploy-to-version option. A temporary copy of the exact checked-in
   // history lets phase 1 stop before retirement without altering migration checksums.
   const parent = realpathSync(tmpdir()), stage = mkdtempSync(join(parent, 'leadcrm-import-migrations-'));
@@ -78,7 +92,7 @@ function migrate(through) {
     mkdirSync(join(stage, 'migrations'));
     copyFileSync(join(root, 'migrations/migration_lock.toml'), join(stage, 'migrations/migration_lock.toml'));
     for (const name of readdirSync(join(root, 'migrations'))) {
-      if (/^\d+_/.test(name) && name <= through) cpSync(join(root, 'migrations', name), join(stage, 'migrations', name), { recursive: true });
+      if (/^\d+_/.test(name) && name <= through && !exclude.includes(name)) cpSync(join(root, 'migrations', name), join(stage, 'migrations', name), { recursive: true });
     }
     runPrisma(['migrate', 'deploy', '--schema', join(stage, 'schema.prisma')]);
   } finally {
@@ -96,10 +110,11 @@ async function main() {
   try {
     if (mode === '--recover') { await recoverRetirement(db); return; }
     if (mode === '--deploy') {
-      const target = deploymentTarget(await migrationRecords(db), readdirSync(join(root, 'migrations')));
+      const plan = deploymentPlan(await migrationRecords(db), readdirSync(join(root, 'migrations')));
       await db.$disconnect();
-      migrate(target);
-      if (target === expansion) console.log('CRM import expansion ready. Legacy-table retirement is deferred until deployed API verification.');
+      migrate(plan.through, plan.exclude);
+      if (plan.through === expansion) console.log('CRM import expansion ready. Legacy-table retirement is deferred until deployed API verification.');
+      if (plan.exclude.length) console.log('Independent application migrations applied. Relationship compatibility retirement remains deferred until authenticated API verification.');
       return;
     }
     const report = process.env.CRM_IMPORT_VERIFY_BROWSER_EVIDENCE
@@ -116,7 +131,7 @@ async function main() {
     }
   } finally { await db.$disconnect(); }
 }
-module.exports = { deploymentTarget, migrate, recoverRetirement, checksumMatches };
+module.exports = { deploymentTarget, deploymentPlan, migrate, recoverRetirement, checksumMatches };
 if (require.main === module) main().catch(error => {
   // Assertion/Prisma payloads can contain historical PII. Report codes only.
   console.error('[crm-import-rollout]', error.code || error.errorCode || error.name, 'Rollout stopped; legacy data has not been discarded by the verifier.');

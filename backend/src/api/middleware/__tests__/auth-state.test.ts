@@ -20,6 +20,7 @@ const request = () => ({
 });
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.stubEnv('LEADCRM_PRODUCTION_AUTH_ENABLED', 'false');
   vi.mocked(validateSession).mockResolvedValue(claims);
   vi.mocked(readAuthUser).mockResolvedValue({
     id: 'user-1', tenantId: 'tenant-1', role: 'Sales', status: 'ACTIVE',

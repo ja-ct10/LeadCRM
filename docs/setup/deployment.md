@@ -12,6 +12,8 @@ The check reads `/api/proxy/health`, so it verifies the backend actually selecte
 
 Service worker updates bypass the browser HTTP cache and are checked on load and when returning to a visible tab. Version changes purge older LeadCRM asset caches and offer a refresh after saving work. API/RSC responses are never cached by the worker. An already-open application remains its loaded version until refreshed.
 
+While canonical relationship retirement is deferred, `db:deploy` applies the reviewed independent migrations `20261103000000_reply_engagement_deal_batches` and `20261104000000_user_first_login_onboarding` without running `20261102000000_retire_relationship_compatibility`. Existing relationship columns and bridges remain intact. Unknown later migrations stop deployment for dependency review; the separate authenticated retirement command is unchanged.
+
 Apply `20260919000000_internal_accounts` before deploying the new backend. Public signup, Google account authentication, OTP, subscriptions, pricing, and SaaS billing are retired. Gmail integration credentials remain separate. Follow [current authentication deployment requirements](../authentication.md#deployment). The older rollout notes below are historical.
 
 # Running LeadCRM locally and on Vercel / Render

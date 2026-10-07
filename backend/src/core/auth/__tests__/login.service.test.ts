@@ -26,6 +26,7 @@ beforeEach(() => {
   resetDb();
   vi.mocked(signToken).mockReturnValue('server-only-token');
   vi.stubEnv('NODE_ENV', 'production');
+  vi.stubEnv('LEADCRM_PRODUCTION_AUTH_ENABLED', 'false');
   vi.mocked(comparePassword).mockResolvedValue(true);
 });
 it('login and session restore return the same Sales onboarding state', async () => {
@@ -97,7 +98,7 @@ it.each(['tironjulieann10@gmail.com', 'reymarkjpanes@gmail.com'])('rejects %s wh
   await expect(loginUser({ email: user.email, password: 'secret' })).rejects.toHaveProperty('code', 'EMPLOYEE_ACCOUNT_REQUIRED');
   expect(createSession).not.toHaveBeenCalled();
 });
-it.each(['tironjulieann10@gmail.com', 'reymarkjpanes@gmail.com'])('always rejects %s in production even when the exception is enabled', async email => {
+it.each(['tironjulieann10@gmail.com', 'reymarkjpanes@gmail.com'])('rejects %s in production when only the development exception is enabled', async email => {
   vi.stubEnv('NODE_ENV', 'production');
   vi.stubEnv('LEADCRM_TEST_AUTH_ENABLED', 'true');
   vi.stubEnv('LEADCRM_TEST_EMAIL_ALLOWLIST', 'tironjulieann10@gmail.com,reymarkjpanes@gmail.com');
