@@ -19,6 +19,7 @@ export interface AuthUser {
   website: string | null;
   currency: string | null;
   onboardingStep: number;
+  /** The authenticated user's acknowledgment, independent of the workspace's legacy setup. */
   onboardingCompletedAt: string | null;
   isTenantOwner: boolean;
   hasPassword: boolean;

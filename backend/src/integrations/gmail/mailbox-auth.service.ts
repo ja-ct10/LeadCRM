@@ -32,7 +32,7 @@ export async function finishMailboxConnection(state: string, code: string) {
   if (!session || session.userId !== userId || session.tenantId !== tenantId || session.revokedAt || session.expiresAt <= new Date()) throw new AppError('Sign in again before connecting email.', 401);
   const user = await readAuthUser(userId, tenantId);
   requireEmployeeAccount(user);
-  if (user.status !== 'ACTIVE' || user.mustChangePassword || ['SUSPENDED', 'REJECTED'].includes(user.tenantStatus ?? '') || user.role === 'Client Admin' && !isOnboardingComplete(user)) throw new AppError('Workspace access is unavailable.', 403);
+  if (user.status !== 'ACTIVE' || user.mustChangePassword || ['SUSPENDED', 'REJECTED'].includes(user.tenantStatus ?? '') || !isOnboardingComplete(user)) throw new AppError('Workspace access is unavailable.', 403);
   await assertPermissions({ userId, tenantId, role: user.role }, ['contacts.view']);
   const tokens = await exchangeCodeForTokens(code, decryptToken(challenge.verifier));
   const info = await getUserInfo(tokens.access_token);

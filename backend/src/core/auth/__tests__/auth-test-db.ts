@@ -9,6 +9,7 @@ export const user = {
   id: 'user-1', tenantId: tenant.id, email: 'alice@gmail.com', firstName: 'Alice',
   lastName: 'Owner', role: 'Sales', status: 'ACTIVE', emailVerified: new Date('2026-01-01'),
   mustChangePassword: false,
+  onboardingCompletedAt: null as Date | null,
   passwordHash: 'hash', avatarUrl: null, tenant,
 };
 const model = () => ({
@@ -27,13 +28,17 @@ export function resetDb() {
     ownerUserId: user.id, onboardingStep: 0, onboardingCompletedAt: null,
     name: 'Workspace', industry: null, companySize: null, website: null,
   });
-  Object.assign(user, { email: 'alice@camxian.com', mustChangePassword: false, role: 'Sales', status: 'ACTIVE', emailVerified: new Date('2026-01-01') });
+  Object.assign(user, { email: 'alice@camxian.com', mustChangePassword: false, onboardingCompletedAt: null, role: 'Sales', status: 'ACTIVE', emailVerified: new Date('2026-01-01') });
   db.$transaction.mockImplementation(work => work(db));
   db.user.findFirst.mockResolvedValue(user);
   db.user.findMany.mockResolvedValue([user]);
   db.user.findUnique.mockResolvedValue(user);
   db.user.findUniqueOrThrow.mockResolvedValue(user);
-  db.user.updateMany.mockResolvedValue({ count: 1 });
+  db.user.updateMany.mockImplementation(({ where, data }) => {
+    if (where.onboardingCompletedAt === null && user.onboardingCompletedAt !== null) return { count: 0 };
+    Object.assign(user, data);
+    return { count: 1 };
+  });
   db.user.create.mockImplementation(({ data }) => ({ ...user, ...data }));
   db.tenant.create.mockResolvedValue(tenant);
   db.tenant.updateMany.mockImplementation(({ where, data }) => {

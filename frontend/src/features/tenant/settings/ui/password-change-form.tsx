@@ -23,7 +23,8 @@ export function PasswordChangeForm({ onSuccess, onCancel, onBusy }: { onSuccess?
   const [confirmTouched, setConfirmTouched] = useState(false);
   const score = requirements.filter(([, check]) => check(values.password)).length;
   const passwordValid = StrongPasswordSchema.safeParse(values.password).success;
-  const canSubmit = passwordValid && values.confirm === values.password && !busy;
+  // Mandatory setup lets the server identify reuse of a weak temporary credential first.
+  const canSubmit = (passwordValid || user?.mustChangePassword && values.password.length > 0) && values.confirm === values.password && !busy;
   const confirmError = values.confirm && values.confirm !== values.password
     ? 'Passwords do not match.'
     : confirmTouched && !values.confirm ? 'Confirm your new password.' : errors.confirm;
@@ -34,7 +35,7 @@ export function PasswordChangeForm({ onSuccess, onCancel, onBusy }: { onSuccess?
     if (busy || !user) return;
     const next: typeof errors = {};
     const parsed = StrongPasswordSchema.safeParse(values.password);
-    if (!parsed.success) next.password = parsed.error.issues[0].message;
+    if (!parsed.success && !user.mustChangePassword) next.password = parsed.error.issues[0].message;
     if (!values.confirm) next.confirm = 'Confirm your new password.';
     else if (values.confirm !== values.password) next.confirm = 'Passwords do not match.';
     setErrors(next);
@@ -46,11 +47,13 @@ export function PasswordChangeForm({ onSuccess, onCancel, onBusy }: { onSuccess?
       applyAuthUser(response.data.user, user.id);
       setValues({ password: '', confirm: '' });
       setConfirmTouched(false);
-      toast.success('Password changed successfully.');
+      toast.success('Password updated successfully.');
       onSuccess?.();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to change password.';
-      setErrors({ [message.startsWith('Choose a password') ? 'password' : 'form']: message });
+      const server = error as { code?: string; fieldErrors?: { password?: string[] } };
+      const fieldMessage = server.fieldErrors?.password?.[0];
+      setErrors({ [server.code === 'PASSWORD_REUSE' || fieldMessage || message.startsWith('Choose a password') ? 'password' : 'form']: fieldMessage ?? message });
     } finally { setBusy(false); onBusy?.(false); }
   }
   return <form onSubmit={submit} noValidate className="space-y-4">

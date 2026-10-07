@@ -156,6 +156,7 @@ model User {
   lastName      String
   mustChangePassword Boolean @default(true)
   passwordChangedAt DateTime?
+  onboardingCompletedAt DateTime?
   passwordHash  String? // Legacy passwordless accounts use password recovery.
   phone         String?
   jobTitle      String?

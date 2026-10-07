@@ -23,7 +23,7 @@ beforeEach(() => {
   vi.mocked(validateSession).mockResolvedValue(claims);
   vi.mocked(readAuthUser).mockResolvedValue({
     id: 'user-1', tenantId: 'tenant-1', role: 'Sales', status: 'ACTIVE',
-    email: 'owner@camxian.com',
+    email: 'owner@camxian.com', onboardingCompletedAt: '2026-01-01',
   } as never);
 });
 it('uses the current database role instead of a stale Client Admin JWT role', async () => {
@@ -84,6 +84,21 @@ it('rejects an external employee account even with an existing signed session', 
   const next = vi.fn();
   await authMiddleware(request() as never, {} as never, next);
   expect(next).toHaveBeenCalledWith(expect.objectContaining({ code: 'EMPLOYEE_ACCOUNT_REQUIRED' }));
+});
+
+it.each(['tironjulieann10@gmail.com', 'reymarkjpanes@gmail.com'])('allows %s through a normally validated development session', async email => {
+  vi.stubEnv('NODE_ENV', 'development');
+  vi.stubEnv('LEADCRM_TEST_AUTH_ENABLED', 'true');
+  vi.stubEnv('LEADCRM_TEST_EMAIL_ALLOWLIST', 'tironjulieann10@gmail.com,reymarkjpanes@gmail.com');
+  vi.mocked(readAuthUser).mockResolvedValue({ id: 'user-1', tenantId: 'tenant-1', role: 'Sales', status: 'ACTIVE', email, onboardingCompletedAt: '2026-01-01' } as never);
+  const next = vi.fn();
+  const req = request();
+
+  await authMiddleware(req as never, {} as never, next);
+
+  expect(validateSession).toHaveBeenCalledOnce();
+  expect(req).toHaveProperty('user.email', email);
+  expect(next).toHaveBeenCalledWith();
 });
 
 

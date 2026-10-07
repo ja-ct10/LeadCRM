@@ -4,7 +4,8 @@ import { readSelfAvatar } from '../../../core/auth/profile.service';
 import { replaceUserRole } from '../roles/roles.repository';
 import { CreateUsersSchema, UpdateUsersSchema } from './users.dto';
 import { requireEmployeeAccount } from '../../../core/auth/account-access';
-import { randomBytes } from 'crypto';
+import { generateTemporaryPassword } from '../../../core/auth/temporary-password';
+import { sendWelcomeCredentials } from '../../../core/auth/welcome-credentials.service';
 import prisma from '../../../config/database.config';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { revokeAllUserSessions } from '../../../core/auth/session.service';
@@ -66,26 +67,23 @@ export async function create(tenantId: string, actorId: string, dto: {
   const existing = await prisma.user.findFirst({ where: { email: dto.email, tenantId } });
   if (existing) throw new ConflictError('A user with this email already exists in this tenant');
 
-  // New users set their own password through the existing recovery email.
-  const secureRandomPassword = randomBytes(32).toString('hex');
-  const passwordHash = await hashPassword(secureRandomPassword);
+  const temporaryPassword = generateTemporaryPassword(dto.firstName, dto.lastName);
+  const passwordHash = await hashPassword(temporaryPassword);
   const user = await prisma.$transaction(async tx => {
     const created = await tx.user.create({
       data: {
         tenantId, firstName: dto.firstName, lastName: dto.lastName,
         email: dto.email.trim().toLowerCase(), passwordHash,
-        mustChangePassword: true, role: dto.role,
+        mustChangePassword: true, onboardingCompletedAt: null, role: dto.role,
         phone: dto.phone, jobTitle: dto.jobTitle, department: dto.department,
       },
       select: SAFE_USER_SELECT,
     });
     await replaceUserRole(tx, created.id, tenantId, created.role);
+    await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'user.created', entityType: 'User', entityId: created.id, changeset: { before: null, after: { email: dto.email, role: created.role } } } });
     return created;
   });
-  await writeAuditLog({ tenantId, userId: actorId, action: 'user.created', entityType: 'User', entityId: user.id, after: { email: dto.email, role: user.role } });
-  let setupEmailSent = true;
-  try { await requestPasswordReset({ email: user.email }, { userId: user.id, tenantId }); }
-  catch { setupEmailSent = false; }
+  const setupEmailSent = await sendWelcomeCredentials(user, temporaryPassword);
   return { ...user, setupEmailSent };
 }
 

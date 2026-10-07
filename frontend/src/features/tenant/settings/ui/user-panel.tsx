@@ -78,7 +78,7 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, initiallyEdi
         : await usersService.update(saved!.id, result.data as Partial<User>);
       const persisted = response.data!;
       onSaved(persisted);
-      toast.success(creating ? 'User created' : 'User updated');
+      toast.success(creating ? 'User created successfully.' : 'User updated');
       if (creating) onClose();
       else { setSaved(persisted); setDraft(makeDraft(persisted)); setEditing(false); }
     } catch (reason) {

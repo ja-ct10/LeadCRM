@@ -2,8 +2,10 @@ import { beforeAll, afterAll, describe, expect, it, vi } from 'vitest';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { randomUUID } from 'node:crypto';
-const mail = vi.hoisted(() => ({ send: vi.fn().mockResolvedValue(undefined) }));
-vi.mock('../../../shared/services/email.service', () => ({ sendMail: mail.send, buildPasswordResetEmail: (url: string) => url }));
+const mail = vi.hoisted(() => ({ send: vi.fn().mockResolvedValue({ submitted: true }) }));
+vi.mock('../../../shared/services/email.service', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../shared/services/email.service')>(), sendMail: mail.send,
+}));
 import prisma from '../../../config/database.config';
 import { issueAuthSession } from '../../../core/auth/auth-session';
 import * as usersService from './users.service';
@@ -24,9 +26,9 @@ describe.skipIf(!disposable)('user administration and deal imports over authenti
   beforeAll(async () => {
     tenantId = (await prisma.tenant.create({ data: { name: 'User/import test', slug: `users-${Date.now()}`, onboardingStep: 3, onboardingCompletedAt: new Date() } })).id;
     otherTenant = (await prisma.tenant.create({ data: { name: 'Other', slug: `users-other-${Date.now()}` } })).id;
-    const admin = await prisma.user.create({ data: { tenantId, email: 'admin@camxian.com', firstName: 'Admin', lastName: 'Test', role: 'Client Admin', mustChangePassword: false } });
+    const admin = await prisma.user.create({ data: { tenantId, email: 'admin@camxian.com', firstName: 'Admin', lastName: 'Test', role: 'Client Admin', mustChangePassword: false, onboardingCompletedAt: new Date() } });
     token = (await issueAuthSession(admin)).token;
-    const reader = await prisma.user.create({ data: { tenantId, email: 'reader@camxian.com', firstName: 'Reader', lastName: 'Test', role: 'Reader', mustChangePassword: false } });
+    const reader = await prisma.user.create({ data: { tenantId, email: 'reader@camxian.com', firstName: 'Reader', lastName: 'Test', role: 'Reader', mustChangePassword: false, onboardingCompletedAt: new Date() } });
     readerId = reader.id;
     readerToken = (await issueAuthSession(reader)).token;
     await prisma.roleDefinition.create({ data: { tenantId, name: 'Sales representative' } });
@@ -76,7 +78,7 @@ describe.skipIf(!disposable)('user administration and deal imports over authenti
     const currentAdmin = await prisma.user.findFirstOrThrow({ where: { tenantId, role: 'Client Admin', status: 'ACTIVE' } });
     const additionalAdmin = await prisma.user.create({ data: {
       tenantId, email: `second-admin-${randomUUID()}@camxian.com`, firstName: 'Second', lastName: 'Admin',
-      role: 'Client Admin', mustChangePassword: false, emailVerified: new Date(),
+      role: 'Client Admin', mustChangePassword: false, onboardingCompletedAt: new Date(), emailVerified: new Date(),
     } });
 
     await usersService.update(additionalAdmin.id, tenantId, readerId, { status: 'INACTIVE' });

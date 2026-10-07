@@ -59,7 +59,7 @@ export async function authMiddleware(req: Request, _res: Response, next: NextFun
     if (user.mustChangePassword && !recovery) {
       throw new AppError('Change your temporary password first.', 403, 'PASSWORD_CHANGE_REQUIRED');
     }
-    if (user.role === 'Client Admin' && !isOnboardingComplete(user) && !recovery &&
+    if (!isOnboardingComplete(user) && !recovery &&
         !['/onboarding/status', '/onboarding/complete'].includes(authPath)) {
       throw new AppError('Complete the LeadCRM introduction first.', 403, 'ONBOARDING_REQUIRED');
     }

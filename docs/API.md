@@ -59,7 +59,7 @@ All paths are relative to /api/v1. See [authentication and onboarding](authentic
 | POST | /auth/forgot-password | Request password recovery |
 | POST | /auth/reset-password | Complete password recovery and revoke sessions |
 | GET | /auth/onboarding/status | Canonical account state |
-| POST | /auth/onboarding/complete | Client Admin informational acknowledgment; empty body |
+| POST | /auth/onboarding/complete | Per-user informational acknowledgment after password setup; empty body |
 
 Public signup, Google sign-in, OTP, verification, company setup, and step-progression routes are not registered. SaaS billing, seat, document-verification, pricing, checkout, and payment-method APIs are retired. Customer invoice/payment APIs and Team Management domain APIs are also removed. See [security API and migration report](security-cleanup-mfa.md).
 
@@ -78,7 +78,7 @@ avatar reference in `User.avatarUrl`. Do not expose the service key as a `NEXT_P
 
 ## CRM Endpoints (`/api/v1/crm/`)
 
-All require an authenticated session and completed workspace onboarding.
+All require an authenticated session and completed per-user onboarding.
 
 For Lead, Contact, and Account archive/restore endpoints, permissions, archived
 queries, and migration requirements, see [CRM archive verification](crm-archive-verification.md).

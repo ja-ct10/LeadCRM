@@ -438,9 +438,24 @@ export function buildPasswordResetEmail(resetUrl: string): string {
 }
 
 /**
- * Builds the HTML body for the welcome email sent after onboarding completion.
- * Professional, warm tone with quick-start tips.
+ * Temporary credential email. Plaintext is used only in the outgoing message.
  */
+export function buildWelcomeCredentialsEmail(user: { firstName: string; lastName: string; email: string }, temporaryPassword: string): string {
+  const escape = (text: string) => text.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]!));
+  const loginUrl = new URL('/login', process.env.APP_URL || 'http://localhost:3000').href;
+  return wrapEmailShell(`
+    <h1 style="font-size:26px;color:#0f172a;margin:0 0 20px">Welcome to LeadCRM</h1>
+    <p style="line-height:1.7">Hello ${escape(`${user.firstName} ${user.lastName}`)}, your LeadCRM account has been created.</p>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:24px;margin:24px 0;overflow-wrap:anywhere">
+      <p><strong>Email:</strong><br>${escape(user.email)}</p>
+      <p style="margin-top:16px"><strong>Temporary Password:</strong><br><span style="font-family:monospace;font-size:18px">${escape(temporaryPassword)}</span></p>
+    </div>
+    <p style="line-height:1.7">For security, you must create a new password the first time you sign in. You will then see a short introduction to LeadCRM.</p>
+    <p style="margin:28px 0"><a href="${escape(loginUrl)}" style="display:inline-block;background:#2563eb;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:700">Log in to LeadCRM</a></p>
+    <p style="font-size:13px;line-height:1.7">Login: <a href="${escape(loginUrl)}">${escape(loginUrl)}</a><br>Keep this temporary credential private. Do not share it with anyone.</p>
+  `, 'You are receiving this email because an administrator created your LeadCRM account.');
+}
+
 export function buildWelcomeEmail(firstName: string, tenantName: string): string {
   const appUrl = process.env.APP_URL || 'http://localhost:3000';
 
@@ -511,4 +526,3 @@ export function buildWelcomeEmail(firstName: string, tenantName: string): string
 
   return wrapEmailShell(bodyContent, "You're receiving this email because you completed your LeadCRM setup.");
 }
-

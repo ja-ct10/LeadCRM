@@ -5,7 +5,7 @@ const SETUP_ROUTES = ['/change-password', '/onboarding', '/company-setup', '/ver
 export function getAccountDestination(user: User | null): string {
   if (!user) return '/login';
   if (user.mustChangePassword) return '/change-password';
-  if (user.role === 'Client Admin' && !isOnboardingComplete(user)) return '/onboarding';
+  if (!isOnboardingComplete(user)) return '/onboarding';
   return '/dashboard';
 }
 export function resolveAuthRoute(user: User | null, pathname: string): string | null {

@@ -20,7 +20,7 @@ describe.skipIf(!disposable)('organization and account settings over authenticat
     tenantId = tenant.id;
     otherTenantId = (await prisma.tenant.create({ data: { name: 'Other tenant', slug: `settings-other-${Date.now()}` } })).id;
     const createUser = (role: string, email: string) => prisma.user.create({ data: {
-      tenantId, role, email, firstName: 'Settings', lastName: 'Test', mustChangePassword: false,
+      tenantId, role, email, firstName: 'Settings', lastName: 'Test', mustChangePassword: false, onboardingCompletedAt: new Date(),
     } });
     token = (await issueAuthSession(await createUser('Client Admin', 'settings-admin@camxian.com'))).token;
     const reader = await createUser('Settings reader', 'settings-reader@camxian.com');
@@ -58,13 +58,13 @@ describe.skipIf(!disposable)('organization and account settings over authenticat
 
   it('rejects invalid values for every editable field without writing them', async () => {
     const before = (await call('/administration/organization-settings')).body.data;
-    for (const payload of [{ name: 'x'.repeat(151) }, { email: '' }, { email: 'abc..test@camxian.com' }, { domain: 'arbitrary text' }, { industry: 'Unsupported' }, { address: '   ' }, { address: 'x'.repeat(501) }]) {
+    for (const payload of [{ name: 'x'.repeat(151) }, { email: '' }, { email: 'abc..test@camxian.com' }, { domain: 'arbitrary text' }, { domain: 'https://camxian.com/' }, { industry: 'Unsupported' }, { address: '   ' }, { address: 'x'.repeat(501) }]) {
       const result = await call('/administration/organization-settings', 'PATCH', payload);
       expect(result.status).toBe(400);
       expect(result.body.fieldErrors).toHaveProperty(Object.keys(payload)[0]);
       expect((await call('/administration/organization-settings')).body.data).toEqual(before);
     }
-    const result = await call('/administration/organization-settings', 'PATCH', { email: ' INFO@Camxian.com ', domain: 'https://Camxian.com/' });
+    const result = await call('/administration/organization-settings', 'PATCH', { email: ' INFO@Camxian.com ', domain: 'Camxian.com' });
     expect(result.body.data).toMatchObject({ email: 'info@camxian.com', domain: 'camxian.com' });
   });
 

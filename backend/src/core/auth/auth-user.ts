@@ -21,6 +21,7 @@ export interface AuthUserSource {
   passwordHash?: string | null;
   passwordChangedAt?: Date | null;
   mustChangePassword?: boolean;
+  onboardingCompletedAt?: Date | null;
   phone?: string | null;
   jobTitle?: string | null;
   department?: string | null;
@@ -62,8 +63,8 @@ export function buildAuthUserResponse(user: AuthUserSource): AuthUser {
     companySize: tenant?.companySize ?? null,
     website: tenant?.website ?? null,
     currency: tenant?.currency ?? null,
-    onboardingStep: tenant?.onboardingStep ?? 0,
-    onboardingCompletedAt: tenant?.onboardingCompletedAt?.toISOString() ?? null,
+    onboardingStep: user.onboardingCompletedAt ? 3 : 0,
+    onboardingCompletedAt: user.onboardingCompletedAt?.toISOString() ?? null,
     isTenantOwner: tenant?.ownerUserId === user.id,
     hasPassword: Boolean(user.passwordHash),
     passwordChangedAt: user.passwordChangedAt?.toISOString() ?? null,

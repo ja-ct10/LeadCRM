@@ -26,7 +26,7 @@ export const usersService = {
   create: async (data: Partial<User>): Promise<ApiResponse<User>> => {
     const dto = userAdapter.toCreateDTO(data);
     const res = await apiClient.post<ApiResponse<UserDTO>>('/administration/users', dto);
-    if (res.data?.setupEmailSent === false) toast.warning('User created, but the setup email could not be sent. Use Send Password Reset to retry.');
+    if (res.data?.setupEmailSent === false) toast.warning('Account created, but the welcome email could not be submitted. Use Send Password Reset to establish a password.');
     return {
       ...res,
       data: userAdapter.toModel(res.data as UserDTO),

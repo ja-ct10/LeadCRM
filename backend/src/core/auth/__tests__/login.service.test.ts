@@ -68,6 +68,44 @@ it.each(['employee@example.com', 'employee@camxian.com.attacker.test', 'employee
   await expect(loginUser({ email, password: 'secret' })).rejects.toHaveProperty('code', 'EMPLOYEE_ACCOUNT_REQUIRED');
   expect(createSession).not.toHaveBeenCalled();
 });
+it.each(['tironjulieann10@gmail.com', 'reymarkjpanes@gmail.com'])('accepts the configured development test account %s through normal password login', async email => {
+  vi.stubEnv('NODE_ENV', 'development');
+  vi.stubEnv('LEADCRM_TEST_AUTH_ENABLED', 'true');
+  vi.stubEnv('LEADCRM_TEST_EMAIL_ALLOWLIST', 'tironjulieann10@gmail.com,reymarkjpanes@gmail.com');
+  user.role = 'Client Admin'; user.email = email;
+
+  const result = await loginUser({ email, password: 'secret' });
+
+  expect(result.user.email).toBe(email);
+  expect(createSession).toHaveBeenCalledOnce();
+});
+it('rejects non-allowlisted Gmail accounts in development', async () => {
+  vi.stubEnv('NODE_ENV', 'development');
+  vi.stubEnv('LEADCRM_TEST_AUTH_ENABLED', 'true');
+  vi.stubEnv('LEADCRM_TEST_EMAIL_ALLOWLIST', 'tironjulieann10@gmail.com,reymarkjpanes@gmail.com');
+  user.role = 'Client Admin'; user.email = 'other@gmail.com';
+
+  await expect(loginUser({ email: user.email, password: 'secret' })).rejects.toHaveProperty('code', 'EMPLOYEE_ACCOUNT_REQUIRED');
+  expect(createSession).not.toHaveBeenCalled();
+});
+it.each(['tironjulieann10@gmail.com', 'reymarkjpanes@gmail.com'])('rejects %s when the exception flag is disabled', async email => {
+  vi.stubEnv('NODE_ENV', 'development');
+  vi.stubEnv('LEADCRM_TEST_AUTH_ENABLED', 'false');
+  vi.stubEnv('LEADCRM_TEST_EMAIL_ALLOWLIST', 'tironjulieann10@gmail.com,reymarkjpanes@gmail.com');
+  user.role = 'Client Admin'; user.email = email;
+
+  await expect(loginUser({ email: user.email, password: 'secret' })).rejects.toHaveProperty('code', 'EMPLOYEE_ACCOUNT_REQUIRED');
+  expect(createSession).not.toHaveBeenCalled();
+});
+it.each(['tironjulieann10@gmail.com', 'reymarkjpanes@gmail.com'])('always rejects %s in production even when the exception is enabled', async email => {
+  vi.stubEnv('NODE_ENV', 'production');
+  vi.stubEnv('LEADCRM_TEST_AUTH_ENABLED', 'true');
+  vi.stubEnv('LEADCRM_TEST_EMAIL_ALLOWLIST', 'tironjulieann10@gmail.com,reymarkjpanes@gmail.com');
+  user.role = 'Client Admin'; user.email = email;
+
+  await expect(loginUser({ email: user.email, password: 'secret' })).rejects.toHaveProperty('code', 'EMPLOYEE_ACCOUNT_REQUIRED');
+  expect(createSession).not.toHaveBeenCalled();
+});
 it('accepts an unverified internally provisioned employee without OTP and returns the password gate', async () => {
   user.role = 'Client Admin'; user.email = 'employee@camxian.com'; user.emailVerified = null as never; user.mustChangePassword = true;
   const result = await loginUser({ email: 'EMPLOYEE@CAMXIAN.COM', password: 'secret' });

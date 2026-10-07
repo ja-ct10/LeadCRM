@@ -25,8 +25,9 @@ it('uses persisted onboarding despite a localStorage completion flag', () => {
 it('sends returning admins to the dashboard', () => {
   expect(getAccountDestination({ ...user, onboardingStep: 3, onboardingCompletedAt: '2026-01-01' })).toBe('/dashboard');
 });
-it('preserves normal and custom role access without Client Admin onboarding', () => {
-  expect(getAccountDestination({ ...user, role: 'Sales' })).toBe('/dashboard');
+it.each(['Sales', 'Custom Role'])('requires per-user onboarding for %s and allows completed users', role => {
+  expect(getAccountDestination({ ...user, role })).toBe('/onboarding');
+  expect(getAccountDestination({ ...user, role, onboardingCompletedAt: '2026-01-01' })).toBe('/dashboard');
 });
 it('requires authentication', () => {
   auth.user = null; render(<AuthGuard>Protected content</AuthGuard>);

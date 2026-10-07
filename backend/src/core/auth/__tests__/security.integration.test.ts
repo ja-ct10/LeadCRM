@@ -73,7 +73,7 @@ beforeAll(async () => {
   const { hashPassword } = await import('../../../shared/helpers/crypto');
   const tenant = await db.tenant.create({ data: { name: 'Security test', slug: 'security-test', status: 'ACTIVE', onboardingStep: 3, onboardingCompletedAt: new Date() } });
   tenantId = tenant.id;
-  const user = await db.user.create({ data: { tenantId, email, firstName: 'Security', lastName: 'Test', role: 'Client Admin', passwordHash: await hashPassword(initialPassword), mustChangePassword: false } });
+  const user = await db.user.create({ data: { tenantId, email, firstName: 'Security', lastName: 'Test', role: 'Client Admin', passwordHash: await hashPassword(initialPassword), mustChangePassword: false, onboardingCompletedAt: new Date() } });
   userId = user.id;
   http = createServer((await import('../../../app')).default);
   await new Promise<void>(resolve => http.listen(0, '127.0.0.1', resolve));
@@ -146,7 +146,7 @@ describe.sequential('security flows on migrated PostgreSQL', () => {
     }
     expect((await call('/crm/accounts/migration-account')).status).toBe(404);
     expect((await call('/crm/accounts', undefined, '')).status).toBe(401);
-    const reader = await db.user.create({ data: { tenantId, email: 'reader@camxian.com', firstName: 'Read', lastName: 'Only', role: 'Viewer', mustChangePassword: false } });
+    const reader = await db.user.create({ data: { tenantId, email: 'reader@camxian.com', firstName: 'Read', lastName: 'Only', role: 'Viewer', mustChangePassword: false, onboardingCompletedAt: new Date() } });
     const { issueAuthSession } = await import('../auth-session');
     const readCookie = `leadcrm_token=${(await issueAuthSession(reader)).token}`;
     expect((await call('/crm/accounts', { name: 'Forbidden' }, readCookie)).status).toBe(403);

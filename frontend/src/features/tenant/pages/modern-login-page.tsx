@@ -10,7 +10,7 @@ import { CamxianBrandPanel } from './camxian-brand-panel';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  password: z.string().min(1, 'Password is required').max(72, 'Password is too long'),
 });
 
 interface ResendPasswordButtonProps {

@@ -21,7 +21,9 @@ Module._resolveFilename = function (request, parent, isMain, options) { return r
 const db = require(resolve(root, 'dist/backend/src/config/database.config.js')).default;
 const { hashPassword } = require(resolve(root, 'dist/backend/src/shared/helpers/crypto.js'));
 const tenant = await db.tenant.create({ data: { name: 'Security Preview', slug: 'security-preview', status: 'ACTIVE', onboardingStep: 3, onboardingCompletedAt: new Date() } });
-await db.user.create({ data: { tenantId: tenant.id, email: 'preview@camxian.com', firstName: 'Security', lastName: 'Preview', role: 'Client Admin', mustChangePassword: false, passwordHash: await hashPassword('Preview2026!') } });
+const firstLogin = process.argv.includes('--first-login');
+await db.user.create({ data: { tenantId: tenant.id, email: 'preview@camxian.com', firstName: 'Security', lastName: 'Preview', role: 'Client Admin', mustChangePassword: firstLogin, onboardingCompletedAt: firstLogin ? null : new Date(), passwordHash: await hashPassword('Preview2026!') } });
+if (firstLogin) await db.user.create({ data: { tenantId: tenant.id, email: 'tour@camxian.com', firstName: 'Tour', lastName: 'Preview', role: 'Client Admin', mustChangePassword: false, onboardingCompletedAt: null, passwordHash: await hashPassword('Preview2026!') } });
 const app = require(resolve(root, 'dist/backend/src/app.js')).default;
 const http = app.listen(4011, '127.0.0.1', () => console.log('Disposable security preview backend: http://127.0.0.1:4011'));
 process.on('SIGINT', async () => { http.close(); await db.$disconnect(); await socket.stop(); await pg.close(); process.exit(0); });

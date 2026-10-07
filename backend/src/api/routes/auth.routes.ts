@@ -8,7 +8,7 @@ import { authMiddleware } from '../middleware/auth.middleware';
 import { validate } from '../middleware/validate.middleware';
 import { LoginSchema, ForgotPasswordSchema, ResetPasswordSchema } from '../../core/auth/auth.dto';
 import * as authController from '../../core/auth/auth.controller';
-import { ChangePasswordSchema } from '../../core/auth/change-password.service';
+import { PasswordChangeRequestSchema } from '../../core/auth/change-password.service';
 import { changePasswordController } from '../../core/auth/change-password.controller';
 
 const router = Router();
@@ -25,7 +25,7 @@ router.post('/logout', authController.logout);
 router.get('/me', authMiddleware, authController.me);
 router.post('/forgot-password', passwordResetRateLimiter, validate(ForgotPasswordSchema), authController.forgotPassword);
 router.post('/reset-password', passwordResetRateLimiter, validate(ResetPasswordSchema), authController.resetPassword);
-router.post('/change-password', authRateLimiter, authMiddleware, validate(ChangePasswordSchema), changePasswordController);
+router.post('/change-password', authRateLimiter, authMiddleware, validate(PasswordChangeRequestSchema), changePasswordController);
 router.get('/onboarding/status', authMiddleware, authController.getOnboardingStatus);
 router.post('/onboarding/complete', authMiddleware, authController.completeOnboarding);
 export default router;
