@@ -1,10 +1,11 @@
 // @vitest-environment node
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { POST, PATCH, GET } from '../route';
 import { rewriteSetCookie } from '@/lib/auth/cookies';
 
-afterEach(() => vi.unstubAllGlobals());
+beforeEach(() => vi.stubEnv('API_URL', 'http://localhost:4000/api/v1'));
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 it('rejects cross-origin security mutations before forwarding', async () => {
   const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock);
   const req = new NextRequest('https://app.example.com/api/proxy/auth/change-password', { method: 'POST', headers: { origin: 'https://attacker.example', 'sec-fetch-site': 'cross-site' }, body: '{}' });
@@ -82,4 +83,29 @@ it('preserves the backend 401 when the incoming request has no session', async (
   const response = await GET(req, { params: Promise.resolve({ path: ['crm', 'leads'] }) });
   expect(response.status).toBe(401);
   expect(fetchMock.mock.calls[0][1].headers.Cookie).toBeUndefined();
+});
+
+it('reports missing configuration without attempting an upstream request', async () => {
+  vi.stubEnv('API_URL', '');
+  const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock);
+  const response = await GET(new NextRequest('https://app.example.com/api/proxy/health'), { params: Promise.resolve({ path: ['health'] }) });
+  expect(response.status).toBe(503);
+  expect((await response.json()).error.code).toBe('PROXY_CONFIGURATION_ERROR');
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+it('preserves provider 502 responses and rate-limit retry guidance', async () => {
+  const payload = { success: false, error: { message: 'Email provider rejected the request.' } };
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(payload), { status: 502, headers: { 'retry-after': '60' } })));
+  const response = await POST(new NextRequest('https://app.example.com/api/proxy/auth/forgot-password', { method: 'POST', body: '{}' }), { params: Promise.resolve({ path: ['auth', 'forgot-password'] }) });
+  expect(response.status).toBe(502);
+  expect(await response.json()).toEqual(payload);
+  expect(response.headers.get('retry-after')).toBe('60');
+});
+
+it('distinguishes an unreachable upstream from a backend provider rejection', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch failed')));
+  const response = await GET(new NextRequest('https://app.example.com/api/proxy/health'), { params: Promise.resolve({ path: ['health'] }) });
+  expect(response.status).toBe(502);
+  expect((await response.json()).error.code).toBe('PROXY_UPSTREAM_UNREACHABLE');
 });

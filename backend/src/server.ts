@@ -5,27 +5,9 @@ import { startMailboxScheduler } from './integrations/gmail/mailbox-sync.service
 import { startCampaignScheduler } from './core/scheduler/campaign-scheduler.service';
 import { purgeExpiredSessions } from './core/auth/session.service';
 import { startImportCleanupScheduler } from './modules/crm/imports/import-cleanup.service';
+import { validateEnvironment } from './config/validate-env';
 
-// Guard against missing required env vars at startup
-const REQUIRED_ENV = ['DATABASE_URL', 'JWT_SECRET'];
-for (const key of REQUIRED_ENV) {
-  if (!process.env[key]) {
-    throw new Error(`Missing required environment variable: ${key}`);
-  }
-}
-
-// Email service — fail fast in production if Brevo is not configured.
-// Discovering a missing API key on the first password recovery request is worse
-// than a clean startup failure with a clear diagnostic message.
-if (process.env.NODE_ENV === 'production') {
-  const brevoKey = process.env.BREVO_API_KEY;
-  if (!brevoKey || !brevoKey.startsWith('xkeysib-') || brevoKey.trim().length < 20) {
-    throw new Error(
-      '[EmailService] BREVO_API_KEY is missing or invalid. ' +
-      'Set the real xkeysib-... key in your Render environment variables before starting the server.',
-    );
-  }
-}
+validateEnvironment();
 
 const PORT = process.env.PORT ?? 4000;
 

@@ -3,29 +3,7 @@ export const maxDuration = 60;
 
 import { NextRequest, NextResponse } from 'next/server';
 import { forwardAuthCookies } from '@/lib/auth/cookies';
-
-// Prefer the server-only API_URL env var (set in Vercel dashboard, never
-// exposed to the browser bundle). Fall back to NEXT_PUBLIC_API_URL for
-// environments that only configure the public var. Final fallback to
-// localhost for local dev only.
-const BACKEND_URL =
-  process.env.API_URL ??
-  process.env.NEXT_PUBLIC_API_URL ??
-  'http://localhost:4000/api/v1';
-
-// Warn at cold-start when the proxy would route to localhost — that address
-// is unreachable from Vercel serverless and every request returns 502.
-// The message surfaces in Vercel function logs so the misconfiguration is
-// immediately visible instead of silently producing "incorrect credentials".
-if (BACKEND_URL.includes('localhost')) {
-  console.warn(
-    '[Proxy] WARNING: BACKEND_URL resolved to localhost (%s). ' +
-    'Set API_URL (or NEXT_PUBLIC_API_URL) in your Vercel environment variables ' +
-    'to point at the production backend (e.g. https://your-app.onrender.com/api/v1). ' +
-    'All proxied requests will fail until this is corrected.',
-    BACKEND_URL,
-  );
-}
+import { getBackendUrl } from '@/lib/server/backend-url';
 
 async function proxyRequest(
   req: NextRequest,
@@ -38,7 +16,15 @@ async function proxyRequest(
       return NextResponse.json({ success: false, error: 'Forbidden origin.' }, { status: 403 });
     }
   }
-  const url = BACKEND_URL + path + req.nextUrl.search;
+  let backendUrl: string;
+  try { backendUrl = getBackendUrl(); } catch {
+    console.error('[Proxy] Invalid API_URL configuration.');
+    return NextResponse.json(
+      { success: false, error: { code: 'PROXY_CONFIGURATION_ERROR', message: 'Backend is not configured. Set a valid server-only API_URL.' } },
+      { status: 503 },
+    );
+  }
+  const url = backendUrl + path + req.nextUrl.search;
 
   const token = req.cookies.get('leadcrm_token')?.value;
   const headers: Record<string, string> = {
@@ -49,14 +35,15 @@ async function proxyRequest(
   // Forward the HttpOnly cookie server-side — this is the whole reason the
   // proxy exists. Browsers block third-party cookies on cross-origin fetches,
   // so the browser sends the cookie to same-origin /api/proxy, and this
-  // serverless function forwards it to the Render backend via a server-to-server
+  // route handler forwards it to the backend via a server-to-server
   // request that is never subject to third-party cookie restrictions.
   if (token) {
     headers['Cookie'] = `leadcrm_token=${token}`;
   }
 
   // Forward the real client IP so the backend rate limiter sees the actual
-  // user address rather than the Vercel edge node IP.
+  // user address rather than the hosting proxy IP. The backend trusts only
+  // ingress addresses configured in TRUSTED_PROXIES.
   const clientIp =
     req.headers.get('x-forwarded-for') ??
     req.headers.get('x-real-ip') ??
@@ -94,6 +81,8 @@ async function proxyRequest(
 
     const disposition = backendRes.headers.get('content-disposition');
     if (disposition) response.headers.set('Content-Disposition', disposition);
+    const retryAfter = backendRes.headers.get('retry-after');
+    if (retryAfter) response.headers.set('Retry-After', retryAfter);
     response.headers.set('X-Content-Type-Options', 'nosniff');
 
     // Forward and rewrite Set-Cookie headers from the backend to the browser.
@@ -112,7 +101,7 @@ async function proxyRequest(
     console.error('[Proxy] Backend fetch failed for %s %s: %s', req.method, path, message);
 
     if (isTimeout) {
-      // Render Free tier cold start exceeded the 25s proxy timeout.
+      // The backend exceeded the 25s proxy timeout.
       // Return 503 so the frontend can show a "server waking up" message.
       return NextResponse.json(
         { success: false, error: { message: 'The server is warming up. Please wait a moment and try again.' } },
@@ -124,9 +113,8 @@ async function proxyRequest(
       {
         success: false,
         error: {
-          message: BACKEND_URL.includes('localhost')
-            ? 'Backend is not configured. Set API_URL in your Vercel environment variables.'
-            : 'Unable to reach the server. Please try again in a moment.',
+          code: 'PROXY_UPSTREAM_UNREACHABLE',
+          message: 'Unable to reach the server. Please try again in a moment.',
         },
       },
       { status: 502 },

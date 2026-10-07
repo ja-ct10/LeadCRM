@@ -1,5 +1,9 @@
 # Internal CRM deployment update
 
+For the Hostinger/Coolify deployment and the source-derived variable contract,
+see [Coolify production configuration](coolify-production.md). `API_URL` is now
+the only server-side backend authority; `NEXT_PUBLIC_API_URL` is not consumed.
+
 Deploy the backend and frontend from the same reviewed revision. A successful Vercel frontend deployment does not deploy Render. The Vercel server-only `API_URL` must target that backend's `/api/v1`; keep production mock flags disabled. Use the root workspace lockfile, `render.yaml` build/start commands, and confirm required migrations are applied before accepting traffic. Do not reset or drop historical data.
 
 Before accepting a release, run this read-only check with the intended full Git SHA:
@@ -41,8 +45,8 @@ both depend on shared source under `shared/`. Keep the repository root lockfile.
 
 Local backend settings include APP_URL=http://localhost:3000 and
 ALLOWED_ORIGINS=http://localhost:3000. The frontend's server-only API_URL must be
-http://localhost:4000/api/v1. NEXT_PUBLIC_API_URL remains a legacy fallback; do not
-omit /api/v1 when using it.
+http://localhost:4000/api/v1. Production build/start requires an explicit HTTPS
+API_URL ending in /api/v1. NEXT_PUBLIC_API_URL is not a fallback.
 
 Use NEXT_PUBLIC_USE_MOCK_AUTH=false and NEXT_PUBLIC_USE_MOCK_DATA=false to verify
 real password authentication. Gmail connection credentials are configured only on the backend; see the work email OAuth section below.

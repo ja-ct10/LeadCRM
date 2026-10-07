@@ -18,12 +18,12 @@ const router = Router();
 router.use('/webhooks/textbee', textbeeWebhookRouter);
 
 // ── Health / version check ────────────────────────────────────────────────────
-// Unauthenticated — used to confirm which build is running on Render.
+// Unauthenticated — used to confirm the serving revision on either host.
 // GET /api/v1/health  →  { status, commit, env }
 router.get('/health', (_req, res) => {
   res.json({
     status:    'ok',
-    commit:    process.env.RENDER_GIT_COMMIT ?? 'unknown',
+    commit:    process.env.SOURCE_COMMIT ?? process.env.RENDER_GIT_COMMIT ?? 'unknown',
     env:       process.env.NODE_ENV ?? 'development',
     capabilities: ['canonical-crm-relations-v1'],
   });

@@ -1,25 +1,16 @@
 import type { NextConfig } from 'next';
 import { PHASE_DEVELOPMENT_SERVER } from 'next/constants';
+import { getBackendUrl } from './src/lib/server/backend-url';
 
 export default function nextConfig(phase: string): NextConfig {
-  // Sanitize the URL to prevent trailing slashes or whitespace breaking the destination
-  const rawBackendUrl = process.env.API_URL?.trim();
-  const backendUrl = rawBackendUrl && rawBackendUrl.startsWith('http')
-    ? rawBackendUrl.replace(/\/+$/, '')
-    : 'http://ul2i77dyydgvdcrc7zpppay2.201.18.217.88.sslip.io/api/v1';
+  // Validate at build/start. The route handler is the sole forwarding layer so
+  // cookie handling and the runtime API_URL cannot be bypassed by a rewrite.
+  getBackendUrl();
 
   return {
     distDir: phase === PHASE_DEVELOPMENT_SERVER ? '.next-dev' : '.next',
     async headers() {
       return [{ source: '/sw.js', headers: [{ key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' }] }];
-    },
-    async rewrites() {
-      return [
-        {
-          source: '/api/proxy/:path*',
-          destination: `${backendUrl}/:path*`,
-        },
-      ];
     },
   };
 }
