@@ -1,52 +1,31 @@
 import * as repo from './contacts.repository';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { NotFoundError, ValidationError } from '../../../shared/errors/http-error';
-import { CreateContactDto, UpdateContactDto, ConvertContactDto } from './contacts.dto';
+import { CreateContactSchema, UpdateContactSchema, ConvertContactSchema, CreateContactDto, UpdateContactDto, ConvertContactDto } from './contacts.dto';
 import { paginate } from '../../../shared/helpers/pagination';
-import { fireLeadCreated, fireLeadStatusChanged, fireContactCreated, fireContactStatusChanged, fireContactUpdated, fireDealUpdated } from '../../automation/triggers/triggers.service';
+import { fireLeadStatusChanged, fireContactCreated, fireContactStatusChanged, fireContactUpdated, fireDealUpdated } from '../../automation/triggers/triggers.service';
 import { createNotification } from '../../notifications/notifications.service';
 import { salesTransaction } from '../leads/lead-automation.service';
 import { convertClosedLead } from '../leads/lead-conversion.service';
 import { assertClosedStatus, changeCustomerStatus } from '../engagement.service';
 import { normalizeCrmStatus } from '@leadcrm/shared';
 import { fireLeadUpdated } from '../../automation/triggers/triggers.service';
-import { recordChanges, customFieldChangeTracker } from '../record-updates';
+import { recordChanges } from '../record-updates';
 
 export async function getContacts(tenantId: string, query: Record<string, unknown>) {
   const result = await repo.findAllContacts(tenantId, query);
-  return paginate(result.data, result.total, { page: result.page, limit: result.limit });
+  return { ...paginate(result.data, result.total, { page: result.page, limit: result.limit }), facets: result.facets };
 }
 
 export async function getContactById(id: string, tenantId: string) {
   const contact = await repo.findContactById(id, tenantId);
-  if (!contact) throw new NotFoundError('Contact');
+  if (!contact) throw new NotFoundError('Lead');
   return contact;
 }
 
 export async function createContact(tenantId: string, userId: string, dto: CreateContactDto) {
+  dto = CreateContactSchema.parse(dto);
   const contact = await repo.createContact(tenantId, dto, userId);
-
-  await writeAuditLog({
-    tenantId, userId,
-    action:     'contact.created',
-    entityType: 'Contact',
-    entityId:   contact.id,
-    after:      { firstName: dto.firstName, lastName: dto.lastName },
-  });
-
-  // This service owns Lead rows; Contact events come from contacts-v2.
-  await fireLeadCreated({
-    tenantId,
-    actorId: userId,
-    lead: {
-      id:             contact.id,
-      status:         String((contact as Record<string, unknown>).status ?? ''),
-      source:         (contact as Record<string, unknown>).source as string | null ?? null,
-      score:          Number((contact as Record<string, unknown>).score ?? 0),
-      assignedUserId: (contact as Record<string, unknown>).assignedUserId as string | null ?? null,
-      companyName:    (contact as Record<string, unknown>).companyName as string | null ?? null,
-    },
-  });
 
   // Notify the assigned user when a lead is directly assigned to them on creation.
   // Only fires when the creator is NOT the assignee (no self-notification).
@@ -71,40 +50,11 @@ export async function createContact(tenantId: string, userId: string, dto: Creat
 export async function updateContact(
   id: string, tenantId: string, userId: string, dto: UpdateContactDto,
 ) {
-  const before = await repo.findContactById(id, tenantId);
-  if (!before) throw new NotFoundError('Contact');
-  const withCustomChanges = await customFieldChangeTracker(tenantId, 'leads', id, dto.customFieldValues);
-
-  const contact = await repo.updateContact(id, tenantId, dto, userId, before.status);
-  if (!contact) throw new NotFoundError('Contact');
-
-  await writeAuditLog({
-    tenantId, userId,
-    action:     'contact.updated',
-    entityType: 'Contact',
-    entityId:   id,
+  dto = UpdateContactSchema.parse(dto);
+  return repo.updateContact(id, tenantId, dto, userId, undefined, async (before, contact, changes) => {
+    if (changes.changedFields.length) await fireLeadUpdated({ tenantId, actorId: userId, record: contact, changedFields: changes.changedFields, changes });
+    if (contact.status !== before.status) await fireLeadStatusChanged({ tenantId, actorId: userId, lead: contact, prevStatus: before.status });
   });
-
-  const changes = await withCustomChanges(recordChanges(before, contact));
-  if (changes.changedFields.length) await fireLeadUpdated({ tenantId, actorId: userId, record: contact, changedFields: changes.changedFields, changes });
-
-  // This service owns Leads; Contact events belong to contacts-v2.
-  if (dto.status && dto.status !== before.status) {
-    await fireLeadStatusChanged({
-      tenantId,
-      actorId: userId,
-      lead: {
-        id:             id,
-        updatedAt:      (contact as Record<string, unknown>).updatedAt as Date,
-        status:         dto.status,
-        score:          Number((contact as Record<string, unknown>).score ?? 0),
-        assignedUserId: (contact as Record<string, unknown>).assignedUserId as string | null ?? null,
-      },
-      prevStatus: before.status,
-    });
-  }
-
-  return contact;
 }
 
 export async function archiveContact(id: string, tenantId: string, userId: string) {
@@ -123,10 +73,10 @@ export async function restoreContact(id: string, tenantId: string, userId: strin
 
 /** The legacy endpoint uses the same successful-sales conversion transaction. */
 export async function convertContact(id: string, tenantId: string, userId: string, dto: ConvertContactDto) {
+  dto = ConvertContactSchema.parse(dto);
   const committed = await salesTransaction(async tx => {
-    const lead = await tx.lead.findFirst({ where: { tenantId, id } });
+    const lead = await tx.lead.findFirst({ where: { tenantId, id, isArchived: false, deletedAt: null } });
     if (!lead) throw new NotFoundError('Lead');
-    if (dto.createContact === false) throw new ValidationError('Closed Lead conversion requires a Contact.');
     if (dto.createDeal) throw new ValidationError('Complete an existing Deal before converting this Lead.');
     if (dto.dealId && !await tx.deal.findFirst({ where: { tenantId, id: dto.dealId,
       leadDeals: { some: { tenantId, leadId: id } } } })) throw new ValidationError('Choose a Deal already associated with this Lead.');
@@ -142,7 +92,7 @@ export async function convertContact(id: string, tenantId: string, userId: strin
       ...(dto.contactId ? { contactId: dto.contactId } : {}), ...(dto.accountId ? { accountId: dto.accountId } : {}),
       ...(!lead.companyName?.trim() && dto.accountName?.trim() ? { companyName: dto.accountName.trim() } : {}),
     } });
-    await changeCustomerStatus(tx, tenantId, userId, { leadId: id }, 'Closed', 'Staff confirmed completed sales conversion.', new Date());
+    if (!lead.convertedAt) await changeCustomerStatus(tx, tenantId, userId, { leadId: id }, 'Closed', 'Staff confirmed completed sales conversion.', new Date());
     const converted = await convertClosedLead(tx, tenantId, id, userId);
     const account = converted.accountId ? await tx.account.findFirst({ where: { tenantId, id: converted.accountId } }) : null;
     const deal = dto.dealId ? await tx.deal.findFirst({ where: { tenantId, id: dto.dealId } }) : null;

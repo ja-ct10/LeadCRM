@@ -36,3 +36,4 @@ export * from './contracts/group.contract';
 export * from './constants/company-industries';
 
 export * from './contracts/deal-batch';
+export * from './contracts/lead.contract';

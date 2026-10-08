@@ -1,4 +1,6 @@
 import { CreateDealBatchSchema } from '@leadcrm/shared';
+import prisma from '../../config/database.config';
+import { NotFoundError } from '../../shared/errors/http-error';
 import { assertPermissions } from '../../core/permissions/permission.service';
 import * as activitiesService from '../../modules/crm/activities/activities.service';
 import type { PermissionKey } from '@leadcrm/shared';
@@ -14,7 +16,7 @@ import { authorize, authorizeAll, authorizeArchivedQuery } from '../middleware/r
 import { validate } from '../middleware/validate.middleware';
 
 // Controllers
-import * as contactController      from '../../modules/crm/contacts/contacts.controller';
+import * as leadController      from '../../modules/crm/contacts/contacts.controller';
 import * as contactsV2Controller   from '../../modules/crm/contacts-v2/contacts-v2.controller';
 import * as companyController      from '../../modules/crm/companies/companies.controller';
 import * as dealController         from '../../modules/crm/deals/deals.controller';
@@ -58,20 +60,20 @@ router.post(  '/duplicate-check',    validate(DuplicateCheckSchema), (req, res, 
 router.post(  '/merge/preview',      validate(MergePreviewSchema), (req, res, next) => authorize(`${req.body.entityType}s.edit` as PermissionKey)(req, res, next),  mergeController.mergePreview);
 router.post(  '/merge',              validate(MergeExecuteSchema), (req, res, next) => authorizeAll(`${req.body.entityType}s.edit` as PermissionKey, `${req.body.entityType}s.archive` as PermissionKey)(req, res, next),  mergeController.mergeExecute);
 
-// ── Leads (canonical name; /contacts kept as alias for backward compat) ──
-router.get(   '/leads',              authorize('leads.view'),   contactController.getContacts);
+// ── Leads (legacy contacts implementation path; distinct from the Contact API) ──
+router.get(   '/leads',              authorize('leads.view'),   leadController.getContacts);
 router.get(   '/leads/imports',      authorize('leads.view'),   leadImportController.listImports);
 router.get(   '/leads/imports/:importId',         authorize('leads.view'),   leadImportController.getImport);
 router.get(   '/leads/imports/:importId/results', authorize('leads.view'),   leadImportController.getImportResults);
 router.post('/leads/imports/upload', authorize('leads.import'), validate(CsvUploadChunkSchema), leadImportController.uploadCsv);
 router.post('/leads/imports/preview', authorize('leads.import'), validate(CreateCrmImportSchema), leadImportController.previewImport);
 router.post(  '/leads/imports',      authorize('leads.import'), validate(CreateCrmImportSchema), leadImportController.createImport);
-router.get(   '/leads/:id',          authorize('leads.view'),   contactController.getContactById);
-router.post(  '/leads',              authorize('leads.create'), validate(CreateContactSchema),  contactController.createContact);
-router.put(   '/leads/:id',          authorize('leads.edit'),   validate(UpdateContactSchema),  contactController.updateContact);
-router.patch( '/leads/:id/archive',  authorize('leads.archive'), contactController.archiveContact);
-router.patch( '/leads/:id/restore',  authorizeAll('archived_data.restore', 'leads.view'), contactController.restoreContact);
-router.post(  '/leads/:id/convert',  authorize('leads.edit'), validate(ConvertContactSchema), (req, res, next) => { const keys: import('../../shared/constants/permissions').PermissionKey[] = []; if (req.body.createContact && !req.body.contactId) keys.push('contacts.create'); if (req.body.contactId) keys.push('contacts.view'); if (req.body.accountName && !req.body.accountId) keys.push('accounts.create'); if (req.body.accountId) keys.push('accounts.view'); if (req.body.createDeal && !req.body.dealId) keys.push('deals.create'); if (req.body.dealId) keys.push('deals.view'); return authorizeAll(...keys)(req,res,next); }, contactController.convertContact);
+router.get(   '/leads/:id',          authorize('leads.view'),   leadController.getContactById);
+router.post(  '/leads',              authorize('leads.create'), validate(CreateContactSchema),  leadController.createContact);
+router.put(   '/leads/:id',          authorize('leads.edit'),   validate(UpdateContactSchema), (req, res, next) => req.body.status === 'Closed' ? authorizeAll('contacts.create', 'contacts.view', 'accounts.create', 'accounts.view', 'deals.view')(req, res, next) : next(), leadController.updateContact);
+router.patch( '/leads/:id/archive',  authorize('leads.archive'), leadController.archiveContact);
+router.patch( '/leads/:id/restore',  authorizeAll('archived_data.restore', 'leads.view'), leadController.restoreContact);
+router.post(  '/leads/:id/convert', authorizeAll('leads.edit', 'contacts.create', 'contacts.view', 'accounts.create', 'accounts.view', 'deals.view'), validate(ConvertContactSchema), leadController.convertContact);
 router.get(   '/leads/:id/relationships', authorize('leads.view'), relationshipsController.getLeadRelationships);
 
 // ── Contacts (reads from Contact table, separate from Leads) ─────────────────
@@ -166,6 +168,9 @@ async function authorizeActivity(req: import('express').Request, _res: import('e
     const modules = Object.entries(keys).filter(([key]) => (existing as Record<string, unknown>)[key] || input[key]).map(([,module]) => module);
     const required = (modules.length ? modules : Object.values(keys)).map(module => (module + (req.method === 'GET' ? '.view' : '.edit')) as PermissionKey);
     await assertPermissions(req.user!, required);
+    // A normal Lead endpoint cannot reveal an archived Lead's activity by ID.
+    const leadIds = [...new Set([input.leadId, (existing as { leadId?: string }).leadId].filter(Boolean).map(String))];
+    if (leadIds.length && await prisma.lead.count({ where: { tenantId: req.user!.tenantId, id: { in: leadIds }, isArchived: false, deletedAt: null } }) !== leadIds.length) throw new NotFoundError('Active Lead');
     next();
   } catch (error) { next(error); }
 }

@@ -1,3 +1,4 @@
+import { fireDealCreated } from '../../automation/triggers/triggers.service';
 import { productRelationData } from '../../crm/leads/product-relations';
 import { Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
@@ -10,7 +11,7 @@ import { tenantContext } from '../../../core/tenant/tenant-context';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 import { sendMail } from '../../../shared/services/email.service';
 import { normalizePhone } from '../../crm/duplicate-detection/duplicate-detection.service';
-import { createAssignedLead, createProductDeals, productConfiguration, salesTransaction, resolveProducts, salesPipeline } from '../../crm/leads/lead-automation.service';
+import { afterSalesCommit, createAssignedLead, createProductDeals, productConfiguration, salesTransaction, resolveProducts, salesPipeline } from '../../crm/leads/lead-automation.service';
 
 export class SubmissionValidationError extends ValidationError {
   constructor(public fieldErrors: Record<string, string>) { super('Please check the highlighted fields.'); }
@@ -35,7 +36,7 @@ export async function submitPublicForm(publicId: string, body: unknown) {
   return tenantContext.run(scope, async () => {
     for (let attempt = 0; attempt < 4; attempt++) {
       try {
-        const accepted = await prisma.$transaction(async tx => {
+        const accepted = await salesTransaction(async tx => {
           const live = await tx.marketingForm.findFirst({ where: { ...publicWhere(publicId), ...scope } });
           if (!live?.publishedConfig) throw new NotFoundError('Form');
           if (live.publishedVersion !== input.version) throw new ConflictError('This form has changed. Reload it before submitting.');
@@ -108,13 +109,13 @@ export async function submitPublicForm(publicId: string, body: unknown) {
             await tx.lead.update({ where: { id: leadId, ...scope }, data: {
               ...await productRelationData(tx, 'lead', scope.tenantId, { names: [...new Set([...lead.productInterest, ...resolvedProducts.map(p => p.name)])] }, lead, true),
             } });
-            await createProductDeals(tx, scope.tenantId, leadId);
+            await createProductDeals(tx, scope.tenantId, leadId, live.createdById);
           }
           if (!leadId && !contactId) {
             const names = (mapped.fullName || '').split(/\s+/);
             const created = await createAssignedLead(tx, { ...scope, firstName: mapped.firstName || names[0] || 'Website', lastName: mapped.lastName || names.slice(1).join(' ') || 'Inquiry',
-              email, phone, companyName: mapped.companyName || null, website: mapped.website || null, address: mapped.address || null,
-              productInterestIds: selectedProducts, source: 'Website' });
+              email, phone, companyName: mapped.companyName || null, address: mapped.address || null,
+              productInterestIds: selectedProducts, source: 'Website' }, live.createdById);
             leadId = created.id;
           }
           const submission = await tx.formSubmission.create({ data: { ...scope, formId: live.id, requestKey: input.requestId, publishedVersion: live.publishedVersion,
@@ -133,13 +134,14 @@ export async function submitPublicForm(publicId: string, body: unknown) {
                 pipelineId: pipeline.id, stageId: initial.id, productInterestId: product.id, productsNormalized: true,
                 value: Number(product.dealValue), currency: 'PHP', assignedUserId: customer.assignedUserId, ownerId: customer.assignedUserId,
                 automationKey: `form:${submission.id}:${product.id}`, leadSource: 'Website', tags: [] } });
+              afterSalesCommit(() => fireDealCreated({ tenantId: scope.tenantId, actorId: live.createdById, deal }));
               await tx.contactDeal.create({ data: { ...scope, contactId, dealId: deal.id, addedById: live.createdById } });
               await tx.activity.create({ data: { ...scope, contactId, dealId: deal.id, createdById: live.createdById,
                 type: 'deal_action', title: `Deal created for ${product.name}`, description: 'New website inquiry from an existing Contact.' } });
             }
           }
           return { submission, notificationEmail: config.settings.notificationEmail };
-        }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 15000 });
+        });
         // Notification cannot roll back accepted data. Do not include visitor HTML or identity in mail/logs.
         if (accepted.notificationEmail) {
           let status = 'failed';

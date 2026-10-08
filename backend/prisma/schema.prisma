@@ -406,7 +406,6 @@ model Lead {
   // False only for legacy rows requiring explicit product reconciliation.
   productsNormalized Boolean @default(false)
   productLinks LeadProductInterest[]
-  productInterestOther String?
   creationKey String?
   @@unique([tenantId, creationKey])
   formSubmissions FormSubmission[]
@@ -420,8 +419,6 @@ model Lead {
   lastName            String
   phone               String?
   email               String?
-  description         String?   @db.Text
-  website             String?
   productInterest     String[] @default([])
   productInterestIds  String[] @default([])
   source              String?

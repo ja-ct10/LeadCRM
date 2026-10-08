@@ -1,3 +1,4 @@
+import { LEAD_SOURCES } from '@leadcrm/shared';
 import React from 'react';
 import { Search, X, User, Briefcase } from 'lucide-react';
 import { TrelloFilter, FilterOption } from '@/shared/components/trello-filter';
@@ -66,7 +67,7 @@ export function ClientFilters({
     label: st
   }));
 
-  const sourceOptions: FilterOption[] = ['Facebook', 'Google', 'Referral', 'Website', 'Other'].map(src => ({
+  const sourceOptions: FilterOption[] = LEAD_SOURCES.map(src => ({
     id: src,
     label: src
   }));

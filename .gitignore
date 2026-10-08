@@ -88,3 +88,6 @@ data/outputs/retired-features-*.json
 
 # Reproducible Workflow responsive and persistence evidence.
 /data/outputs/workflow-browser/
+
+# Reproducible local Leads acceptance screenshots and logs.
+/data/outputs/lead-polish-browser/

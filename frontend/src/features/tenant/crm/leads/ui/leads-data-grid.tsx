@@ -11,6 +11,8 @@
 
 'use client';
 
+import { useRouter } from 'next/navigation';
+import { recordEmailComposeHref } from '@/features/tenant/inbox/services/compose-navigation';
 import React, { useMemo, useCallback } from 'react';
 import { Phone, Mail, ExternalLink, GitMerge } from 'lucide-react';
 import {
@@ -130,6 +132,7 @@ export function LeadsDataGrid({
 }: LeadsDataGridProps): React.ReactElement {
   // ─── Cell Renderers ────────────────────────────────────────────────────
 
+  const router = useRouter();
   const cellRenderers: CellRendererMap<Lead> = useMemo(() => ({
 
     // ── Name (pinned left) ─────────────────────────────────────────────
@@ -179,7 +182,7 @@ export function LeadsDataGrid({
       if (!row.email) return <span className="text-[#d1d5db] select-none text-center block">—</span>;
       return (
         <a
-          href={`mailto:${row.email}`}
+          href={recordEmailComposeHref(row.email ?? '') ?? undefined}
           title={row.email}
           onClick={(e) => e.stopPropagation()}
           className="inline-flex items-center justify-center w-7 h-7 rounded-md text-[#5A6B85] hover:text-[#1a73e8] hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
@@ -331,7 +334,7 @@ export function LeadsDataGrid({
       id: 'email',
       label: 'Email',
       icon: <Mail size={14} />,
-      onClick: (lead: Lead) => { if (lead.email) window.open(`mailto:${lead.email}`, '_self'); },
+      onClick: (lead: Lead) => { if (lead.email) router.push(recordEmailComposeHref(lead.email ?? '') ?? '/inbox'); },
       visible: (lead: Lead) => Boolean(lead.email),
     },
   ], []);
@@ -346,7 +349,7 @@ export function LeadsDataGrid({
     const actions = buildDefaultRowActions({
       onView: () => onRowClick(lead),
       onEdit: onEdit ? () => onEdit(lead) : undefined,
-      onSendEmail: lead.email ? () => window.open(`mailto:${lead.email}`, '_self') : undefined,
+      onSendEmail: lead.email ? () => router.push(recordEmailComposeHref(lead.email ?? '') ?? '/inbox') : undefined,
       onConvert: canEdit && onConvert ? () => onConvert(lead) : undefined,
       onArchive: onArchive ? () => onArchive(lead) : undefined,
       onCopyUrl: () => {

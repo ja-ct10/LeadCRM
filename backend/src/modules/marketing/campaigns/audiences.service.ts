@@ -4,7 +4,7 @@ import { AudienceSourceSchema, AudiencePreviewSchema, AudiencePreviewRequestSche
 import prisma from '../../../config/database.config';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { AppError } from '../../../shared/errors/app-error';
-import { resolveProducts } from '../../crm/leads/lead-automation.service';
+import { resolveProducts, validateSalesOwner } from '../../crm/leads/lead-automation.service';
 import { normalizeSmsPhone } from '../../../shared/services/sms.service';
 
 export function campaignScope(tenantId: string) {
@@ -55,8 +55,7 @@ export async function validateAudienceReferences(tenantId: string, dto: Audience
   for (const c of dto.conditions) {
     if (c.field === 'productInterest') await resolveProducts(db, tenantId, c.value);
     if (c.field === 'assignedUserId') {
-      const user = await db.user.findFirst({ where: { tenantId, id: c.value }, select: { role: true, status: true } });
-      if (!user || !isAssignableAgent(user)) throw new AppError('Select an active Assigned Agent in this workspace.', 400);
+      await validateSalesOwner(db, tenantId, c.value);
     }
   }
 }

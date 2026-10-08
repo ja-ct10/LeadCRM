@@ -1,20 +1,35 @@
+import { cancelOpenDeals } from '../engagement.service';
 import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
 import { ValidationError } from '../../../shared/errors/http-error';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { fireLeadCreated, fireDealCreated, fireDealUpdated } from '../../automation/triggers/triggers.service';
+import { isAssignableAgent } from '@leadcrm/shared';
 import { ProductInterestIdSchema } from '@leadcrm/shared';
 import { productRelationData } from './product-relations';
 
 type Tx = Prisma.TransactionClient;
 export const crmScope = (tenantId: string) => ({ tenantId });
 
-/** Retry database serialization conflicts, including first-use preference races. */
+// Each serialization attempt gets its own effects. Failed attempts are discarded.
+const committedEffects = new AsyncLocalStorage<Array<() => Promise<void>>>();
+export function afterSalesCommit(effect: () => Promise<void>) {
+  const effects = committedEffects.getStore();
+  if (!effects) throw new Error('Sales writes require salesTransaction.');
+  effects.push(effect);
+}
+/** Serializable writes with side effects dispatched only after the successful commit. */
 export async function salesTransaction<T>(work: (tx: Tx) => Promise<T>): Promise<T> {
   for (let attempt = 0; ; attempt++) {
-    try { return await prisma.$transaction(work, { isolationLevel: 'Serializable', timeout: 20000 }); }
+    const effects: Array<() => Promise<void>> = [];
+    let result: T;
+    try { result = await committedEffects.run(effects, () => prisma.$transaction(work, { isolationLevel: 'Serializable', timeout: 20000 })); }
     catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && ['P2034', 'P2002'].includes(error.code) && attempt < 4) continue;
       throw error;
     }
+    for (const effect of effects) await effect();
+    return result;
   }
 }
 
@@ -33,16 +48,13 @@ export async function resolveProducts(tx: Tx, tenantId: string, ids: string[]) {
 export async function eligibleAgents(tx: Tx, tenantId: string) {
   const users = await tx.user.findMany({ where: { tenantId, status: 'ACTIVE', role: { notIn: ['Client Admin', 'Guest'] } },
     include: { userRoles: { where: { tenantId, role: { tenantId, isArchived: false, NOT: { name: { equals: 'Guest', mode: 'insensitive' } } } }, include: { role: { include: { permissions: { where: { tenantId } } } } } } }, orderBy: { id: 'asc' } });
-  return users.filter(user => ['leads', 'deals'].every(module => {
+  return users.filter(user => isAssignableAgent({ ...user, assignableAgent: ['leads', 'deals'].every(module => {
     const permissions = user.userRoles.flatMap(link => link.role.permissions).filter(p => p.module === module);
     return permissions.some(p => p.canView) && permissions.some(p => p.canEdit);
-  }));
+  }) }));
 }
 
 export async function validateSalesOwner(tx: Tx, tenantId: string, id: string) {
-  // Client Admin already supports explicit ownership; never included in automatic rotation.
-  const admin = await tx.user.findFirst({ where: { tenantId, id, status: 'ACTIVE', role: 'Client Admin' } });
-  if (admin) return admin;
   const owner = (await eligibleAgents(tx, tenantId)).find(user => user.id === id);
   if (!owner) throw new ValidationError('Choose an active sales agent with Lead and Deal permissions in this workspace.');
   return owner;
@@ -70,18 +82,22 @@ export async function createProductDeals(tx: Tx, tenantId: string, leadId: strin
   const lead = await tx.lead.findFirstOrThrow({ where: { id: leadId, ...scope } });
   const selected = await tx.productInterest.findMany({ where: { tenantId, active: true, id: { in: lead.productInterestIds } } });
   if (!selected.length || lead.isArchived || lead.convertedAt) return;
-  const agent = lead.assignedUserId ? await validateSalesOwner(tx, tenantId, lead.assignedUserId) : undefined;
+  const agent = lead.assignedUserId ? await tx.user.findFirst({ where: { tenantId, id: lead.assignedUserId }, select: { firstName: true, lastName: true } }) : undefined;
   const { pipeline, initial } = await salesPipeline(tx, tenantId);
   for (const product of selected) {
     const automationKey = `${lead.id}:${product.id}`;
     const existing = await tx.deal.findFirst({ where: { ...scope, OR: [{ automationKey }, { leadDeals: { some: { tenantId, leadId: lead.id } }, productInterestId: product.id }] } });
     if (existing) {
-      if (!existing.assignedUserId && lead.assignedUserId) await tx.deal.update({ where: { id: existing.id, ...scope }, data: { assignedUserId: lead.assignedUserId, ownerId: lead.assignedUserId } });
+      if (!existing.assignedUserId && lead.assignedUserId && !existing.isArchived) {
+        const updated = await tx.deal.update({ where: { id: existing.id, ...scope }, data: { assignedUserId: lead.assignedUserId, ownerId: lead.assignedUserId } });
+        afterSalesCommit(() => fireDealUpdated({ tenantId, actorId, record: updated, changedFields: ['assignedUserId'] }));
+      }
       continue;
     }
     const deal = await tx.deal.create({ data: { ...scope, automationKey, title: `${lead.firstName} ${lead.lastName} – ${product.name}`.slice(0, 255),
       productInterestId: product.id, productsNormalized: true, value: Number(product.dealValue), assignedUserId: lead.assignedUserId, ownerId: lead.assignedUserId,
       pipelineId: pipeline.id, stageId: initial.id, accountId: lead.accountId, leadSource: lead.source, tags: [] } });
+    afterSalesCommit(() => fireDealCreated({ tenantId, actorId, deal }));
     await tx.leadDeal.create({ data: { ...scope, leadId: lead.id, dealId: deal.id, addedById: actorId } });
     if (actorId || lead.assignedUserId) await tx.activity.create({ data: { ...scope, dealId: deal.id, createdById: (actorId ?? lead.assignedUserId)!,
       type: 'deal_action', title: `Deal created for ${product.name}; ${agent ? 'assigned to ' + agent.firstName + ' ' + agent.lastName : 'awaiting assignment'}`, description: "System created this Deal from the Lead's Product Interest." } });
@@ -109,7 +125,7 @@ export async function createAssignedLead(tx: Tx, input: Prisma.LeadUncheckedCrea
     if (existing) return existing;
   }
   if (input.status === 'Closed') throw new ValidationError('Confirm a related Deal as Closed Won before closing this customer.');
-  if (input.accountId && !await tx.account.findFirst({ where: { ...scope, id: input.accountId, isArchived: false } })) throw new ValidationError('Account is unavailable in this workspace.');
+  if (input.accountId && !await tx.account.findFirst({ where: { ...scope, id: input.accountId, isArchived: false, deletedAt: null } })) throw new ValidationError('Account is unavailable in this workspace.');
   // API callers provide IDs. Trusted imports may still provide historical names; resolve them here.
   const products = input.productInterestIds
     ? await resolveProducts(tx, scope.tenantId, input.productInterestIds as string[])
@@ -119,10 +135,14 @@ export async function createAssignedLead(tx: Tx, input: Prisma.LeadUncheckedCrea
   const lead = await tx.lead.create({ data: { ...input, ...scope, ...relations, assignedUserId: null } });
   const agent = await resolveSalesAgent(tx, scope.tenantId, input.assignedUserId);
   if (agent) {
-    await tx.lead.update({ where: { id: lead.id, ...scope }, data: { assignedUserId: agent.id } });
+    await tx.lead.update({ where: { id: lead.id, ...scope }, data: { assignedUserId: agent.id, updatedAt: lead.createdAt } });
     await tx.activity.create({ data: { ...scope, leadId: lead.id, createdById: actorId ?? agent.id, type: 'assignment',
       title: `Lead ${agent ? 'assigned to ' + agent.firstName + ' ' + agent.lastName : 'awaiting assignment'}`, description: `${input.assignedUserId ? 'Explicit' : 'System round-robin'} assignment.` } });
   }
+  if (actorId) await tx.auditLog.create({ data: { ...scope, userId: actorId, action: 'lead.created', entityType: 'Lead', entityId: lead.id } });
+  const assignedLead = await tx.lead.findFirstOrThrow({ where: { id: lead.id, ...scope }, include: { assignedUser: { select: { id: true, firstName: true, lastName: true } } } });
+  afterSalesCommit(() => fireLeadCreated({ tenantId: scope.tenantId, actorId, lead: assignedLead }));
   await createProductDeals(tx, scope.tenantId, lead.id, actorId);
-  return tx.lead.findFirstOrThrow({ where: { id: lead.id, ...scope }, include: { assignedUser: { select: { id: true, firstName: true, lastName: true } } } });
+  if (lead.status === 'Cancelled' && actorId) await cancelOpenDeals(tx, scope.tenantId, actorId, { leadId: lead.id }, 'Staff created a cancelled opportunity.');
+  return assignedLead;
 }

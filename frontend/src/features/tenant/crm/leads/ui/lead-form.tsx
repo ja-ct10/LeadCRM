@@ -1,5 +1,5 @@
 'use client';
-import { LEAD_SOURCES } from '@leadcrm/shared';
+import { CreateLeadSchema, LEAD_SOURCES, LeadNameSchema, OptionalLeadSourceSchema } from '@leadcrm/shared';
 import { useRecordCustomFields, CustomFieldGroup, CustomFieldExtraGroups } from '@/shared/components/crm/record-custom-fields';
 import { ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
 import { CrmEmailSchema } from '@leadcrm/shared';
@@ -28,27 +28,19 @@ import {
   ChevronDown,
 } from 'lucide-react';
 
-// ── Zod schemas mirroring backend CreateContactSchema / UpdateContactSchema ──
-// Backend route POST /crm/leads validates against CreateContactSchema from contacts.dto.ts.
-
-// Unified form schema — used for both Create and Edit.
-// On create: firstName + lastName are required (min 1).
-// On edit: all fields pre-populated, same constraints apply for non-empty values.
-// Backend UpdateContactSchema makes all fields optional, but the form always
-// sends populated values (pre-filled from initialData), so using the Create schema
-// for validation is correct for both modes.
+// Shared Lead constraints; controls use empty strings for unselected relationships.
 const LeadFormSchema = z.object({
-  firstName: z.string().trim().min(1, 'First name is required').max(100, 'Max 100 characters'),
-  lastName: z.string().trim().min(1, 'Last name is required').max(100, 'Max 100 characters'),
+  firstName: LeadNameSchema,
+  lastName: LeadNameSchema,
   email: CrmEmailSchema,
   phone: z.string().optional(),
-  companyName: z.string().optional(),
+  companyName: CreateLeadSchema.shape.companyName,
   status: LeadStatusSchema,
-  source: z.string().optional(),
+  source: OptionalLeadSourceSchema.optional(),
   accountId: z.string().optional(),
   assignedUserId: z.string().optional(),
-  productInterest: z.array(z.string()).optional(),
-  address: z.string().optional(),
+  productInterest: CreateLeadSchema.shape.productInterest,
+  address: CreateLeadSchema.shape.address,
 });
 
 type LeadFormData = z.infer<typeof LeadFormSchema>;
@@ -144,7 +136,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
         phone: phone,
         companyName: initialData.companyName || '',
         status: normalizeCrmStatus(initialData.status),
-        source: initialData.leadSource || initialData.source || '',
+        source: OptionalLeadSourceSchema.safeParse(initialData.leadSource || initialData.source || '').data ?? '',
         accountId: initialData.accountId || initialData.organizationId || '',
         assignedUserId: initialData.assignedUserId || '',
         productInterest: initialData.productInterests || initialData.productInterest || [],
@@ -172,7 +164,8 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
   }, [initialData, reset]);
 
   const onFormSubmit = (data: LeadFormData): void => {
-    if (!customFields.validate()) return;
+    setPhoneTouched(true);
+    if (validatePhMobile(phoneLocal) || !customFields.validate()) return;
     // Build phone in E.164 format from local 10-digit number
     const fullPhone = phoneLocal ? toE164(phoneLocal) : '';
 
@@ -187,14 +180,14 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
       firstName: data.firstName,
       lastName: data.lastName,
       email: data.email || undefined,
-      phone: fullPhone || undefined,
-      companyName: data.companyName || undefined,
+      phone: fullPhone,
+      companyName: data.companyName?.trim() ?? '',
       status: data.status || 'Warm',
-      source: data.source || undefined,
-      accountId: data.accountId || undefined,
-      assignedUserId: data.assignedUserId || undefined,
+      ...((data.source || !initialData || OptionalLeadSourceSchema.safeParse(initialData.leadSource || initialData.source || '').success) ? { source: data.source ?? '' } : {}),
+      accountId: data.accountId || (isEdit ? '' : undefined),
+      assignedUserId: data.assignedUserId || (isEdit ? '' : undefined),
       productInterest: productInterest,
-      address: data.address || undefined,
+      address: data.address?.trim() ?? '',
     };
 
     onSave(payload);
@@ -216,7 +209,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FieldWrap label="First Name *" htmlFor={`${fieldId}-firstName`} error={errors.firstName?.message}>
               <input
-                {...register('firstName')}
+                {...register('firstName')} maxLength={100} required aria-required="true"
                 id={`${fieldId}-firstName`}
                 aria-invalid={!!errors.firstName}
                 aria-describedby={errors.firstName ? `${fieldId}-firstName-error` : undefined}
@@ -226,7 +219,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
             </FieldWrap>
             <FieldWrap label="Last Name *" htmlFor={`${fieldId}-lastName`} error={errors.lastName?.message}>
               <input
-                {...register('lastName')}
+                {...register('lastName')} maxLength={100} required aria-required="true"
                 id={`${fieldId}-lastName`}
                 aria-invalid={!!errors.lastName}
                 aria-describedby={errors.lastName ? `${fieldId}-lastName-error` : undefined}
@@ -260,7 +253,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
           </div>
           <FieldWrap htmlFor={`${fieldId}-companyName`} error={errors.companyName?.message} label="Company Name">
             <input
-              {...register('companyName')}
+              {...register('companyName')} maxLength={2000}
               id={`${fieldId}-companyName`}
               aria-invalid={!!errors.companyName}
               aria-describedby={errors.companyName ? `${fieldId}-companyName-error` : undefined}
@@ -375,7 +368,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
             <div className="relative">
               <MapPin className="absolute left-3.5 top-3 text-slate-400" size={14} />
               <textarea
-                {...register('address')}
+                {...register('address')} maxLength={2000}
                 id={`${fieldId}-address`}
                 aria-invalid={!!errors.address}
                 aria-describedby={errors.address ? `${fieldId}-address-error` : undefined}

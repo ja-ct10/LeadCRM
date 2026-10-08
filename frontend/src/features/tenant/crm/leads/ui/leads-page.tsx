@@ -1,4 +1,5 @@
 'use client';
+import { LEAD_SOURCES } from '@leadcrm/shared';
 import { assignedAgentName } from '@/shared/utils/assigned-agents';
 
 import { LeadCreatedFilter, createdFilterCondition, emptyCreatedFilter, type CreatedFilterDraft } from './lead-created-filter';
@@ -149,18 +150,12 @@ export default function LeadsPage(): React.ReactElement {
 
   // Build FilterCondition[] from the filter rail state.
   // Only fields the backend repository handles are included.
-  // System filters (touched/untouched) remain client-side — no DB equivalent.
-  // The 'my' tab sends an assignedUserId filter; 'active' tab sends a status filter.
+  // Every visible filter is applied before server pagination.
+  // Tab scope is combined with the rail filters by the backend.
   const serverFilters = useMemo((): import('@leadcrm/shared').FilterCondition[] => {
     const conditions: import('@leadcrm/shared').FilterCondition[] = [];
 
-    // Tab filter
-    if (activeTab === 'my' && user?.id) {
-      conditions.push({ field: 'assignedUserId', operator: 'equals', value: user.id });
-    }
-    if (activeTab === 'active') {
-      conditions.push({ field: 'status', operator: 'in', value: ['Hot', 'Warm'] });
-    }
+    if (activeTab === 'my' || activeTab === 'active') conditions.push({ field: 'scope', operator: 'equals', value: activeTab });
 
     // Status filter
     if (selectedStatuses.length > 0) {
@@ -177,12 +172,15 @@ export default function LeadsPage(): React.ReactElement {
       conditions.push({ field: 'assignedUserId', operator: 'in', value: selectedOwners });
     }
 
+    if (selectedRelated.length) conditions.push({ field: 'related', operator: 'in', value: selectedRelated });
+    if (selectedSystemFilters.length) conditions.push({ field: 'system', operator: 'in', value: selectedSystemFilters });
     conditions.push(...createdFilterCondition(createdFilter));
     return conditions;
-  }, [activeTab, user?.id, selectedStatuses, selectedSources, selectedOwners, createdFilter]);
+  }, [activeTab, user?.id, selectedStatuses, selectedSources, selectedOwners, createdFilter, selectedRelated, selectedSystemFilters]);
 
   const {
     leads,
+    facets,
     meta: leadsMeta,
     isInitialLoad: isLeadsInitialLoad,
     isRefreshing: isLeadsRefreshing,
@@ -243,23 +241,7 @@ export default function LeadsPage(): React.ReactElement {
     persistFilters(conditions);
   }, [selectedStatuses, selectedSources, selectedOwners, selectedRelated, selectedSystemFilters, createdFilter, persistFilters]);
 
-  // ── Filtered Data ─────────────────────────────────────────────────────
-  // Status/source/owner/tab filters are now server-side via serverFilters.
-  // The `leads` array contains only the current page, already filtered.
-  // `activeLeads` aliases the current page for filter group count computations;
-  // counts are approximate (current page only) — server handles actual filtering.
-  // selectedRelated (has_email/has_phone) and selectedSystemFilters (touched/untouched)
-  // remain client-side: no direct DB field equivalent, applied to current page.
-  const activeLeads = useMemo(
-    () => leads.filter((l) => {
-      if (highlightId) return !l.isArchived;
-      if (selectedRelated.includes('has_email') && !l.email) return false;
-      if (selectedRelated.includes('has_phone') && !l.phone) return false;
-      return true;
-    }),
-    [leads, selectedRelated, highlightId],
-  );
-
+  const activeLeads = leads;
 
   // ── Helpers ──────────────────────────────────────────────────────────
   const getOwnerName = (userId?: string): string => assignedAgentName(users, userId);
@@ -268,7 +250,7 @@ export default function LeadsPage(): React.ReactElement {
   // The hook re-fetches automatically when `currentPage` or other params change.
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, activeTab, selectedStatuses, selectedSources, selectedOwners, selectedRelated, pageSize, sort]);
+  }, [debouncedSearch, activeTab, selectedStatuses, selectedSources, selectedOwners, selectedRelated, selectedSystemFilters, createdFilter, pageSize, sort]);
 
   // ── Helpers ──────────────────────────────────────────────────────────
   const getInitials = (lead: Lead): string => {
@@ -312,22 +294,9 @@ export default function LeadsPage(): React.ReactElement {
 
 
   // ── Filter groups for the rail ───────────────────────────────────────
-  const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    activeLeads.forEach((l) => {
-      counts[l.status] = (counts[l.status] ?? 0) + 1;
-    });
-    return counts;
-  }, [activeLeads]);
-
-  const touchedCount = activeLeads.filter((l) => l.lastUpdated || l.updateStatus).length;
-  const untouchedCount = activeLeads.length - touchedCount;
-
-  const distinctSources = useMemo(() => {
-    const set = new Set<string>();
-    activeLeads.forEach((l) => { if (l.leadSource && isCurrentLeadSource(l.leadSource)) set.add(l.leadSource); });
-    return Array.from(set);
-  }, [activeLeads]);
+  const statusCounts = useMemo(() => Object.fromEntries(['Hot','Warm','Cold','Closed','Cancelled'].map(status => [status, facets?.['status:' + status] ?? 0])), [facets]);
+  const touchedCount = facets?.touched ?? 0, untouchedCount = facets?.untouched ?? 0;
+  const distinctSources = LEAD_SOURCES;
 
   const filterGroups = useMemo(() => [
     {
@@ -353,13 +322,13 @@ export default function LeadsPage(): React.ReactElement {
         ...distinctSources.map((source) => ({
           id: `source:${source}`,
           label: `Source: ${source}`,
-          count: activeLeads.filter((l) => l.leadSource === source).length,
+          count: facets?.['source:' + source] ?? 0,
           isChecked: selectedSources.includes(source),
         })),
-        ...getAssignableAgents(users).slice(0, 5).map((u) => ({
+        ...getAssignableAgents(users).map((u) => ({
           id: `owner:${u.id}`,
-          label: `Owner: ${u.firstName} ${u.lastName}`,
-          count: activeLeads.filter((l) => l.assignedUserId === u.id).length,
+          label: `Assigned Agent: ${u.firstName} ${u.lastName}`,
+          count: facets?.['owner:' + u.id] ?? 0,
           isChecked: selectedOwners.includes(u.id),
         })),
       ],
@@ -369,11 +338,11 @@ export default function LeadsPage(): React.ReactElement {
       label: 'Filter By Related Modules',
       isExpanded: true,
       items: [
-        { id: 'has_email', label: 'Leads with Email', count: activeLeads.filter((l) => Boolean(l.email)).length, isChecked: selectedRelated.includes('has_email') },
-        { id: 'has_phone', label: 'Leads with Phone', count: activeLeads.filter((l) => Boolean(l.phone)).length, isChecked: selectedRelated.includes('has_phone') },
+        { id: 'has_email', label: 'Leads with Email', count: facets?.has_email ?? 0, isChecked: selectedRelated.includes('has_email') },
+        { id: 'has_phone', label: 'Leads with Phone', count: facets?.has_phone ?? 0, isChecked: selectedRelated.includes('has_phone') },
       ],
     },
-  ], [touchedCount, untouchedCount, selectedSystemFilters, statusCounts, selectedStatuses, distinctSources, activeLeads, selectedSources, users, selectedOwners, selectedRelated]);
+  ], [touchedCount, untouchedCount, selectedSystemFilters, statusCounts, selectedStatuses, distinctSources, facets, selectedSources, users, selectedOwners, selectedRelated]);
 
   const handleFilterToggle = useCallback((groupId: string, itemId: string) => {
     if (groupId === 'system') {

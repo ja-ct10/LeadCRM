@@ -35,15 +35,9 @@ interface ConvertFormState {
   accountName: string;
   accountId: string;
   // Contact
-  contactMode: 'create' | 'existing' | 'skip';
+  contactMode: 'create' | 'existing';
   contactId: string;
-  // Deal
-  createDeal: boolean;
-  dealMode: 'create' | 'existing';
-  dealTitle: string;
-  dealValue: number | undefined;
-  dealId: string;
-  dealPipelineId: string;
+
 }
 
 type Step = 1 | 2 | 3 | 4 | 5;
@@ -51,7 +45,7 @@ type Step = 1 | 2 | 3 | 4 | 5;
 // ─── Component ─────────────────────────────────────────────────────────────
 
 export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertLeadDialogProps): React.ReactElement {
-  const { refreshContacts, refreshOrganizations, refreshDeals, pipelines } = useData();
+  const { refreshContacts, refreshOrganizations, refreshDeals } = useData();
   const [step, setStep] = useState<Step>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -61,12 +55,7 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
     accountId: lead.accountId || lead.organizationId || '',
     contactMode: 'create',
     contactId: '',
-    createDeal: false,
-    dealMode: 'create',
-    dealTitle: `${lead.firstName || ''} ${lead.lastName || ''} - Opportunity`.trim(),
-    dealValue: undefined,
-    dealId: '',
-    dealPipelineId: pipelines[0]?.id || '',
+
   });
 
   const leadName = `${lead.firstName || ''} ${lead.lastName || ''}`.trim() || 'Unnamed Lead';
@@ -75,13 +64,9 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
   const canGoNext = useCallback((): boolean => {
     switch (step) {
       case 1: return true; // Review step is always valid
-      case 2: return form.accountMode === 'existing' ? !!form.accountId : !!form.accountName;
+      case 2: return form.accountMode === 'create' || !!form.accountId;
       case 3: return form.contactMode === 'existing' ? !!form.contactId : true;
-      case 4: {
-        if (!form.createDeal) return true;
-        if (form.dealMode === 'existing') return !!form.dealId;
-        return !!form.dealTitle;
-      }
+      case 4: return true;
       case 5: return true;
       default: return false;
     }
@@ -103,30 +88,10 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
         payload.accountName = form.accountName;
       }
 
-      // Contact
-      if (form.contactMode === 'create') {
-        payload.createContact = true;
-      } else if (form.contactMode === 'existing' && form.contactId) {
-        payload.createContact = false;
-        payload.contactId = form.contactId;
-      } else {
-        payload.createContact = false;
-      }
-
-      // Deal
-      if (form.createDeal) {
-        if (form.dealMode === 'existing' && form.dealId) {
-          payload.createDeal = false;
-          payload.dealId = form.dealId;
-        } else {
-          payload.createDeal = true;
-          payload.dealTitle = form.dealTitle;
-          if (form.dealValue) payload.dealValue = form.dealValue;
-          if (form.dealPipelineId) payload.dealPipelineId = form.dealPipelineId;
-        }
-      } else {
-        payload.createDeal = false;
-      }
+      payload.createContact = true;
+      if (form.contactMode === 'existing' && form.contactId) payload.contactId = form.contactId;
+      payload.createDeal = false;
+      if (!payload.accountName) delete payload.accountName;
 
       await apiClient.post(`/crm/leads/${lead.id}/convert`, payload);
 
@@ -227,9 +192,7 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
         <button type="button" onClick={() => setForm((f) => ({ ...f, contactMode: 'existing' }))} className={cn(radioCls, form.contactMode === 'existing' ? radioActiveCls : radioInactiveCls)}>
           Use existing contact
         </button>
-        <button type="button" onClick={() => setForm((f) => ({ ...f, contactMode: 'skip' }))} className={cn(radioCls, form.contactMode === 'skip' ? radioActiveCls : radioInactiveCls)}>
-          Skip (no contact)
-        </button>
+
       </div>
       {form.contactMode === 'create' && (
         <div className={cn(cardCls, 'text-sm space-y-1')}>
@@ -255,84 +218,8 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
 
   const renderStep4 = (): React.ReactElement => (
     <div className="space-y-4">
-      <h3 className="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-        <Briefcase size={18} className="text-purple-500" /> Deal (Optional)
-      </h3>
-      <p className="text-sm text-slate-500 dark:text-slate-400">Optionally create or link a deal for this conversion.</p>
-      <div className="space-y-2">
-        <label className="flex items-center gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={form.createDeal}
-            onChange={(e) => setForm((f) => ({ ...f, createDeal: e.target.checked }))}
-            className="w-4 h-4 rounded border-gray-300 dark:border-white/20 text-blue-500 focus:ring-blue-500"
-          />
-          <span className="text-sm text-slate-700 dark:text-slate-300">Create or link a deal</span>
-        </label>
-      </div>
-      {form.createDeal && (
-        <>
-          <div className="space-y-2">
-            <button type="button" onClick={() => setForm((f) => ({ ...f, dealMode: 'create' }))} className={cn(radioCls, form.dealMode === 'create' ? radioActiveCls : radioInactiveCls)}>
-              Create new deal
-            </button>
-            <button type="button" onClick={() => setForm((f) => ({ ...f, dealMode: 'existing' }))} className={cn(radioCls, form.dealMode === 'existing' ? radioActiveCls : radioInactiveCls)}>
-              Link to existing deal
-            </button>
-          </div>
-          {form.dealMode === 'create' && (
-            <div className="space-y-3">
-              <div>
-                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Deal Title <span className="text-red-500">*</span></label>
-                <input
-                  value={form.dealTitle}
-                  onChange={(e) => setForm((f) => ({ ...f, dealTitle: e.target.value }))}
-                  className={inputCls}
-                  placeholder="Deal title"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Value</label>
-                <input
-                  type="number"
-                  value={form.dealValue || ''}
-                  onChange={(e) => setForm((f) => ({ ...f, dealValue: e.target.value ? Number(e.target.value) : undefined }))}
-                  className={inputCls}
-                  placeholder="0.00"
-                  min="0"
-                  step="0.01"
-                />
-              </div>
-              {pipelines.length > 0 && (
-                <div>
-                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Pipeline</label>
-                  <select
-                    value={form.dealPipelineId}
-                    onChange={(e) => setForm((f) => ({ ...f, dealPipelineId: e.target.value }))}
-                    className={inputCls}
-                  >
-                    {pipelines.map((p) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-          )}
-          {form.dealMode === 'existing' && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Select Deal</label>
-              <EntityCombobox
-                entityType="leads"
-                value={form.dealId || null}
-                onChange={(id) => setForm((f) => ({ ...f, dealId: id || '' }))}
-                placeholder="Search deals..."
-              />
-              <p className="text-xs text-slate-400">Note: Deal search uses existing lead/contact records for linking.</p>
-            </div>
-          )}
-        </>
-      )}
+      <h3 className="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2"><Briefcase size={18} className="text-blue-500" /> Deal</h3>
+      <p className="text-sm text-slate-500 dark:text-slate-400">A related Deal must already be confirmed Closed Won. Conversion preserves all existing Deals, Products, prices, and sales history.</p>
     </div>
   );
 
@@ -345,15 +232,15 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
       <div className={cn(cardCls, 'space-y-3')}>
         <div className="flex items-start gap-2 text-sm">
           <Check size={16} className="text-green-500 mt-0.5 shrink-0" />
-          <span className="text-slate-700 dark:text-slate-300">Lead status will change to <strong>Converted</strong></span>
+          <span className="text-slate-700 dark:text-slate-300">Lead status will change to <strong>Closed</strong></span>
         </div>
         <div className="flex items-start gap-2 text-sm">
           <Check size={16} className="text-blue-500 mt-0.5 shrink-0" />
           <span className="text-slate-700 dark:text-slate-300">
-            Account: {form.accountMode === 'create' ? `Create "${form.accountName}"` : 'Link to existing account'}
+            Account: {!form.accountName.trim() && form.accountMode === 'create' ? 'Keep existing account, or none' : form.accountMode === 'create' ? `Create "${form.accountName}"` : 'Link to existing account'}
           </span>
         </div>
-        {form.contactMode !== 'skip' && (
+        {(
           <div className="flex items-start gap-2 text-sm">
             <Check size={16} className="text-green-500 mt-0.5 shrink-0" />
             <span className="text-slate-700 dark:text-slate-300">
@@ -361,19 +248,12 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
             </span>
           </div>
         )}
-        {form.createDeal && (
-          <div className="flex items-start gap-2 text-sm">
-            <Check size={16} className="text-purple-500 mt-0.5 shrink-0" />
-            <span className="text-slate-700 dark:text-slate-300">
-              Deal: {form.dealMode === 'create' ? `Create "${form.dealTitle}"` : 'Link to existing deal'}
-            </span>
-          </div>
-        )}
+
       </div>
       <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
         <AlertTriangle size={16} className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
         <p className="text-xs text-amber-700 dark:text-amber-300">
-          This action will convert the lead and set its status to &quot;Converted&quot;. This cannot be easily reversed.
+          This action will convert the lead and set its status to &quot;Closed&quot;. This cannot be easily reversed.
         </p>
       </div>
     </div>

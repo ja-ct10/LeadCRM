@@ -1,3 +1,5 @@
+import { assertNoOwnership } from './user-deactivation.service';
+import { eligibleAgents } from '../../crm/leads/lead-automation.service';
 import { requestPasswordReset } from '../../../core/auth/password-reset.service';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import { readSelfAvatar } from '../../../core/auth/profile.service';
@@ -43,13 +45,14 @@ export async function getAll(tenantId: string, query: Record<string, unknown>) {
     prisma.user.findMany({ where: ids ? { ...where, id: { in: ids } } : where, skip: ids ? 0 : skip, take: limit, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], select: SAFE_USER_SELECT }),
     prisma.user.count({ where }),
   ]);
-  return paginate(orderPage(data, ids), total, { page, limit });
+  const assignable = new Set((await eligibleAgents(prisma, tenantId)).map(user => user.id));
+  return paginate(orderPage(data, ids).map(user => ({ ...user, assignableAgent: assignable.has(user.id) })), total, { page, limit });
 }
 
 export async function getById(id: string, tenantId: string) {
   const user = await prisma.user.findFirst({ where: { id, tenantId }, select: SAFE_USER_SELECT });
   if (!user) throw new NotFoundError('User');
-  return user;
+  return { ...user, assignableAgent: (await eligibleAgents(prisma, tenantId)).some(agent => agent.id === id) };
 }
 
 export async function getAvatar(id: string, tenantId: string, avatarId: string) {
@@ -108,6 +111,7 @@ export async function update(id: string, tenantId: string, actorId: string, dto:
   let user;
   try {
     user = await prisma.$transaction(async tx => {
+      if (dto.status === 'INACTIVE') await assertNoOwnership(tx, tenantId, id);
       if (protectsLastClientAdmin) {
         const activeAdmins = await tx.user.count({ where: { tenantId, role: 'Client Admin', status: 'ACTIVE' } });
         if (activeAdmins <= 1) throw new ConflictError('At least one active Client Admin must remain.');
@@ -133,7 +137,10 @@ export async function archive(id: string, tenantId: string, actorId: string) {
   if (existing.role === 'Client Admin') throw new ForbiddenError('Client Admin cannot be archived');
   if (id === actorId) throw new ForbiddenError('Cannot archive your own account');
 
-  await prisma.user.update({ where: { id }, data: { status: 'INACTIVE' } });
+  await prisma.$transaction(async tx => {
+    await assertNoOwnership(tx, tenantId, id);
+    await tx.user.update({ where: { id, tenantId }, data: { status: 'INACTIVE' } });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   await revokeAllUserSessions(id);
   await writeAuditLog({ tenantId, userId: actorId, action: 'user.archived', entityType: 'User', entityId: id, after: { status: 'INACTIVE' }, severity: 'WARNING' });
 }
@@ -162,6 +169,7 @@ export async function bulkUpdate(ids: string[], tenantId: string, actorId: strin
   }
 
   if (dto.status !== undefined && (ids.includes(actorId) || await prisma.user.count({ where: { id: { in: ids }, tenantId, role: 'Client Admin' } }))) throw new ForbiddenError('Cannot change your own or Client Admin status in bulk');
+  if (dto.status === 'INACTIVE') throw new ConflictError('Deactivate users individually to review CRM ownership.');
   await prisma.$transaction(async tx => {
     const where = { id: { in: ids }, tenantId };
     if (dto.role) {

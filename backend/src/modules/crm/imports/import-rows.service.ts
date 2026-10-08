@@ -125,8 +125,8 @@ export async function validateImportRow(tx: Tx, module: CrmImportModule, tenantI
 async function createLead(tx: Tx, tenantId: string, actorId: string, jobId: string, row: ResolvedRow) {
   const d = row.data, names = row.products.map(p => p.name);
   return (await createAssignedLead(tx, { tenantId, firstName: d.firstName, lastName: d.lastName,
-    email: d.email, phone: d.phone, companyName: d.companyName, address: d.address, website: d.website, source: d.source,
-    description: d.description, status: d.status, productInterestIds: row.products.map(p => p.id), productInterest: names,
+    email: d.email, phone: d.phone, companyName: d.companyName, address: d.address, source: d.source,
+    status: d.status, productInterestIds: row.products.map(p => p.id), productInterest: names,
     createdById: actorId, updatedById: actorId, creationKey: `${jobId}:${row.rowNumber}`,
   }, actorId)).id;
 }

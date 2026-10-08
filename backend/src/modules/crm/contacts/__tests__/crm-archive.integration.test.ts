@@ -63,8 +63,8 @@ beforeAll(async () => {
   const tenant = await db.tenant.create({ data: { name: 'Archive test', slug: 'archive-test', status: 'ACTIVE', onboardingStep: 3, onboardingCompletedAt: new Date() } });
   tenantId = tenant.id;
   otherTenantId = (await db.tenant.create({ data: { name: 'Other tenant', slug: 'other-archive-test' } })).id;
-  const admin = await db.user.create({ data: { tenantId, email: 'archive@camxian.com', firstName: 'Archive', lastName: 'Admin', role: 'Client Admin', mustChangePassword: false } });
-  const viewer = await db.user.create({ data: { tenantId, email: 'viewer@camxian.com', firstName: 'Read', lastName: 'Only', role: 'Archive Viewer', mustChangePassword: false } });
+  const admin = await db.user.create({ data: { tenantId, email: 'archive@camxian.com', firstName: 'Archive', lastName: 'Admin', role: 'Client Admin', mustChangePassword: false, onboardingCompletedAt: new Date() } });
+  const viewer = await db.user.create({ data: { tenantId, email: 'viewer@camxian.com', firstName: 'Read', lastName: 'Only', role: 'Archive Viewer', mustChangePassword: false, onboardingCompletedAt: new Date() } });
   const role = await db.roleDefinition.create({ data: { tenantId, name: 'Archive Viewer', permissions: { create: ['leads', 'contacts', 'archived_data'].map(module => ({ module, canView: true, canEdit: false, canDelete: false })) } } });
   await db.userRole.create({ data: { tenantId, userId: viewer.id, roleId: role.id } });
   const { issueAuthSession } = await import('../../../../core/auth/auth-session');
@@ -133,8 +133,9 @@ describe.sequential('CRM archive and restore through authenticated HTTP and Post
   it('accepts only the supported Lead statuses and persists edits through the authenticated API', async () => {
     const lead = await create('leads');
     expect((await call(`leads/${lead.id}`, 'PUT', adminCookie, { status: 'Inquiry' })).status).toBe(400);
-    expect((await call(`leads/${lead.id}`, 'PUT', adminCookie, { status: 'Hot', description: '<script>alert(1)</script> Follow up' })).status).toBe(200);
-    expect(await db.lead.findUniqueOrThrow({ where: { id: lead.id } })).toMatchObject({ status: 'Hot', description: 'Follow up' });
+    expect((await call(`leads/${lead.id}`, 'PUT', adminCookie, { description: 'Retired' })).status).toBe(400);
+    expect((await call(`leads/${lead.id}`, 'PUT', adminCookie, { status: 'Hot', address: 'Follow up address' })).status).toBe(200);
+    expect(await db.lead.findUniqueOrThrow({ where: { id: lead.id } })).toMatchObject({ status: 'Hot', address: 'Follow up address' });
   });
   it.each(['leads', 'contacts', 'accounts'] as const)('%s uploads private file bytes, lists saved history and downloads after a separate request', async module => {
     const row = await create(module);

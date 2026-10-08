@@ -13,7 +13,8 @@ export async function productRelationData(tx: Prisma.TransactionClient, kind: Ki
   selection: Selection, previous?: Previous, updating = false) {
   const catalog = await tx.productInterest.findMany({ where: { tenantId } });
   const previousNames = [...(previous?.productInterest ?? previous?.productInterests ?? []), ...(previous?.activeProducts ?? [])];
-  const priorLinks = !previous?.id || kind === 'lead' ? [] : kind === 'contact'
+  const priorLinks = !previous?.id ? [] : kind === 'lead'
+    ? await tx.leadProductInterest.findMany({ where: { tenantId, leadId: previous.id } }) : kind === 'contact'
     ? await tx.contactProductInterest.findMany({ where: { tenantId, contactId: previous.id } })
     : await tx.accountProductInterest.findMany({ where: { tenantId, accountId: previous.id } });
   const previousIds = [...(previous?.productInterestIds ?? []), ...priorLinks.map(link => link.productInterestId)];

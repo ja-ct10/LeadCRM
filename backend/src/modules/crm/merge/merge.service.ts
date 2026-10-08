@@ -1,4 +1,6 @@
+import { salesTransaction, validateSalesOwner } from '../leads/lead-automation.service';
 import { productRelationData } from '../leads/product-relations';
+import { serializeLead } from '../leads/lead-serializer';
 import prisma from '../../../config/database.config';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { NotFoundError, ValidationError } from '../../../shared/errors/http-error';
@@ -20,8 +22,8 @@ const SYSTEM_FIELDS = new Set([
 // Fields that are mergeable for each entity type
 const LEAD_MERGE_FIELDS = [
   'firstName', 'lastName', 'email', 'phone', 'companyName', 'address',
-  'description', 'website', 'productInterest', 'source', 'assignedUserId',
-  'status', 'accountId', 'lastStatusChangedAt',
+  'productInterest', 'source', 'assignedUserId',
+  'accountId',
 ];
 
 const CONTACT_MERGE_FIELDS = [
@@ -70,6 +72,7 @@ export async function execute(params: MergeExecuteParams): Promise<MergeExecuteR
 // ── Lead Merge ────────────────────────────────────────────────────────────────
 
 async function previewLeadMerge(tenantId: string, primaryId: string, secondaryId: string): Promise<MergePreviewResult> {
+  if (primaryId === secondaryId) throw new ValidationError('Choose two different Leads.');
   const [primary, secondary] = await Promise.all([
     prisma.lead.findFirst({ where: { id: primaryId, tenantId } }),
     prisma.lead.findFirst({ where: { id: secondaryId, tenantId } }),
@@ -77,8 +80,8 @@ async function previewLeadMerge(tenantId: string, primaryId: string, secondaryId
 
   if (!primary) throw new NotFoundError('Primary lead');
   if (!secondary) throw new NotFoundError('Secondary lead');
-  if (primary.status === 'Merged') throw new ValidationError('Primary lead has already been merged');
-  if (secondary.status === 'Merged') throw new ValidationError('Secondary lead has already been merged');
+  if (primary.isArchived || primary.convertedAt || primary.status === 'Merged') throw new ValidationError('Primary lead has already been merged');
+  if (secondary.isArchived || secondary.convertedAt || secondary.status === 'Merged') throw new ValidationError('Secondary lead has already been merged');
 
   const fieldComparisons = buildFieldComparisons(primary, secondary, LEAD_MERGE_FIELDS);
 
@@ -88,8 +91,8 @@ async function previewLeadMerge(tenantId: string, primaryId: string, secondaryId
   ]);
 
   return {
-    primary: primary as unknown as Record<string, unknown>,
-    secondary: secondary as unknown as Record<string, unknown>,
+    primary: serializeLead(primary),
+    secondary: serializeLead(secondary),
     fieldComparisons,
     relationshipCounts: { primary: primaryCounts, secondary: secondaryCounts },
   };
@@ -99,33 +102,41 @@ async function executeLeadMerge(
   tenantId: string, userId: string, primaryId: string, secondaryId: string,
   fieldResolutions: Record<string, 'primary' | 'secondary'>,
 ): Promise<MergeExecuteResult> {
-  const [primary, secondary] = await Promise.all([
-    prisma.lead.findFirst({ where: { id: primaryId, tenantId } }),
-    prisma.lead.findFirst({ where: { id: secondaryId, tenantId } }),
-  ]);
+  if (primaryId === secondaryId) throw new ValidationError('Choose two different Leads.');
+  const result = await salesTransaction(async tx => {
+    const [primary, secondary] = await Promise.all([
+      tx.lead.findFirst({ where: { id: primaryId, tenantId } }),
+      tx.lead.findFirst({ where: { id: secondaryId, tenantId } }),
+    ]);
 
-  if (!primary) throw new NotFoundError('Primary lead');
-  if (!secondary) throw new NotFoundError('Secondary lead');
-  if (primary.status === 'Merged') throw new ValidationError('Primary lead has already been merged');
-  if (secondary.status === 'Merged') throw new ValidationError('Secondary lead has already been merged');
+    if (!primary) throw new NotFoundError('Primary lead');
+    if (!secondary) throw new NotFoundError('Secondary lead');
+    if (primary.isArchived || primary.convertedAt || primary.status === 'Merged') throw new ValidationError('Primary lead has already been merged');
+    if (secondary.isArchived || secondary.convertedAt || secondary.status === 'Merged') throw new ValidationError('Secondary lead has already been merged');
 
-  const mergedData = resolveFields(primary, secondary, fieldResolutions, LEAD_MERGE_FIELDS);
+    const mergedData = resolveFields(primary, secondary, fieldResolutions, LEAD_MERGE_FIELDS);
 
-  const result = await prisma.$transaction(async (tx) => {
+    if (mergedData.assignedUserId && mergedData.assignedUserId !== primary.assignedUserId) await validateSalesOwner(tx, tenantId, String(mergedData.assignedUserId));
     // 1. Reassign relationships
     const reassignedCounts = await repo.reassignLeadRelationships(tx, primaryId, secondaryId, tenantId);
 
-    if (mergedData.productInterest !== undefined) Object.assign(mergedData, await productRelationData(tx, 'lead', tenantId, { names: mergedData.productInterest as string[] }, { productInterest: [...primary.productInterest, ...secondary.productInterest] }, true));
+    if (mergedData.productInterest !== undefined) {
+      const selected = fieldResolutions.productInterest === 'secondary' ? secondary : primary;
+      const { productsNormalized } = await tx.lead.findFirstOrThrow({ where: { tenantId, id: selected.id }, select: { productsNormalized: true } });
+      Object.assign(mergedData, await productRelationData(tx, 'lead', tenantId,
+        productsNormalized ? { ids: selected.productInterestIds } : { names: selected.productInterest },
+        { productInterest: [...primary.productInterest, ...secondary.productInterest], productInterestIds: [...primary.productInterestIds, ...secondary.productInterestIds] }, true));
+    }
     // 2. Update primary with resolved fields
     const updatedPrimary = await tx.lead.update({
-      where: { id: primaryId } as never,
+      where: { id: primaryId, tenantId } as never,
       data: { ...mergedData, updatedById: userId } as never,
     });
 
     // 3. Archive secondary
     await tx.lead.update({
-      where: { id: secondaryId } as never,
-      data: { status: 'Merged', updatedById: userId } as never,
+      where: { id: secondaryId, tenantId } as never,
+      data: { isArchived: true, deletedAt: new Date(), deletedBy: userId, updatedById: userId } as never,
     });
 
     // 4. Activity on primary
@@ -138,19 +149,13 @@ async function executeLeadMerge(
       } as never,
     });
 
+    await tx.auditLog.create({ data: { tenantId, userId, action: 'lead.merged', entityType: 'Lead', entityId: primaryId, metadata: { secondaryId, mergedFields: Object.keys(fieldResolutions) } } });
     return { mergedRecord: updatedPrimary, reassignedCounts };
   });
 
-  await writeAuditLog({
-    tenantId, userId,
-    action: 'lead.merged',
-    entityType: 'Lead',
-    entityId: primaryId,
-    after: { secondaryId, mergedFields: Object.keys(fieldResolutions) },
-  });
 
   return {
-    mergedRecord: result.mergedRecord as unknown as Record<string, unknown>,
+    mergedRecord: serializeLead(result.mergedRecord),
     archivedRecordId: secondaryId,
     reassignedCounts: result.reassignedCounts,
   };

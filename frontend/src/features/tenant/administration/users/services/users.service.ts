@@ -1,5 +1,7 @@
 'use client';
 
+import { invalidatePageCache } from '@/shared/cache/page-cache';
+import type { DeactivationImpact } from '@leadcrm/shared';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
 import type { ApiResponse, PaginatedResponse } from '@leadcrm/shared';
@@ -7,6 +9,24 @@ import type { User } from '@/store/types';
 import { userAdapter, UserDTO } from '../adapters/user.adapter';
 
 export const usersService = {
+  getDirectory: async (): Promise<PaginatedResponse<User>> => {
+    const data: User[] = [];
+    let page = 1;
+    for (;;) {
+      const response = await usersService.getAll({ page, limit: 100 });
+      data.push(...(response.data ?? []));
+      if (!response.meta?.hasMore) return { ...response, data };
+      page++;
+    }
+  },
+  deactivationImpact: (id: string) => apiClient.get<ApiResponse<DeactivationImpact>>(`/administration/users/${id}/deactivation-impact`),
+  deactivate: async (id: string, replacementAgentId: string | null) => {
+    const res = await apiClient.post<ApiResponse<{ user: UserDTO; impact: DeactivationImpact }>>(`/administration/users/${id}/deactivate`, { replacementAgentId });
+    if (!res.data) throw new Error('Unable to deactivate user.');
+    for (const module of ['leads', 'contacts', 'accounts', 'deals', 'users', 'dashboard']) invalidatePageCache(module, res.data.user.tenantId);
+    window.dispatchEvent(new Event('leadcrm:users-changed'));
+    return { user: userAdapter.toModel(res.data.user), impact: res.data.impact };
+  },
   getAll: async (params?: Record<string, unknown>): Promise<PaginatedResponse<User>> => {
     const res = await apiClient.get<PaginatedResponse<UserDTO>>('/administration/users', { params });
     return {

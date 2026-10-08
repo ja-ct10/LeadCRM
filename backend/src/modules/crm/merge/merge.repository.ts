@@ -89,9 +89,18 @@ export async function reassignLeadRelationships(
     }
   }
 
+  // Files follow the surviving record. Conflicting custom values remain on the
+  // archived source; missing fields are copied with their original timestamps.
+  await tx.recordFile.updateMany({ where: { tenantId, leadId: secondaryId }, data: { leadId: primaryId } });
+  const values = await tx.customFieldValue.findMany({ where: { tenantId, leadId: secondaryId } });
+  for (const value of values) await tx.customFieldValue.upsert({
+    where: { tenantId_fieldId_leadId: { tenantId, fieldId: value.fieldId, leadId: primaryId } },
+    create: { tenantId, fieldId: value.fieldId, module: 'leads', leadId: primaryId, value: value.value as Prisma.InputJsonValue, createdAt: value.createdAt, updatedAt: value.updatedAt }, update: {},
+  });
   // CampaignContacts
+  const primaryCampaigns = await tx.campaignContact.findMany({ where: { tenantId, leadId: primaryId }, select: { campaignId: true } });
   const campaigns = await tx.campaignContact.updateMany({
-    where: { leadId: secondaryId, tenantId },
+    where: { leadId: secondaryId, tenantId, campaignId: { notIn: primaryCampaigns.map(row => row.campaignId) } },
     data: { leadId: primaryId },
   });
 

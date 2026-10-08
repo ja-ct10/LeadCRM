@@ -82,16 +82,16 @@ export function toBackendUpdateContact(data: Record<string, any>): Record<string
     }
   }
 
-  if (data.email !== undefined) result.email = data.email || undefined;
-  if (data.phone !== undefined) result.phone = data.phone || undefined;
-  if (data.companyName !== undefined) result.companyName = data.companyName || undefined;
+  if (data.email !== undefined) result.email = data.email;
+  if (data.phone !== undefined) result.phone = data.phone ?? '';
+  if (data.companyName !== undefined) result.companyName = data.companyName ?? '';
   if (data.status !== undefined) result.status = toBackendStatus(data.status);
-  if (data.leadSource !== undefined || data.source !== undefined) result.source = data.leadSource || data.source || undefined;
-  if (data.accountId !== undefined) result.accountId = data.accountId || undefined;
-  if (data.assignedUserId !== undefined) result.assignedUserId = data.assignedUserId || undefined;
+  if (data.leadSource !== undefined || data.source !== undefined) result.source = data.leadSource ?? data.source ?? '';
+  if (data.accountId !== undefined) result.accountId = data.accountId || null;
+  if (data.assignedUserId !== undefined) result.assignedUserId = data.assignedUserId || null;
   if (data.productInterests !== undefined) result.productInterest = data.productInterests;
   else if (data.productInterest !== undefined) result.productInterest = data.productInterest ? (Array.isArray(data.productInterest) ? data.productInterest : [data.productInterest]) : [];
-  if (data.address !== undefined) result.address = data.address || undefined;
+  if (data.address !== undefined) result.address = data.address ?? '';
 
   return result;
 }
@@ -115,6 +115,8 @@ export function toFrontendContact(backendContact: any): Record<string, any> {
     tenantId: backendContact.tenantId || '',
     organizationId: backendContact.organizationId || backendContact.accountId || undefined,
     accountId: backendContact.accountId || undefined,
+    contactId: backendContact.contactId,
+    convertedAt: backendContact.convertedAt,
     companyName: backendContact.companyName || backendContact.company || backendContact.account?.name || backendContact.organization?.name || '',
     contactPerson: contactPerson || 'Unknown',
     firstName,

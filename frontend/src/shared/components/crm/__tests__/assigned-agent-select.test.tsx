@@ -9,8 +9,8 @@ it('excludes Client Admin users while preserving other assignable users and the 
       id="assigned-agent"
       value=""
       users={[
-        { id: 'admin', role: 'Client Admin', firstName: 'Admin', lastName: 'User' },
-        { id: 'sales', role: 'Sales', firstName: 'Sales', lastName: 'User' },
+        { status: 'ACTIVE', assignableAgent: true, id: 'admin', role: 'Client Admin', firstName: 'Admin', lastName: 'User' },
+        { status: 'ACTIVE', assignableAgent: true, id: 'sales', role: 'Sales', firstName: 'Sales', lastName: 'User' },
       ] as never}
       placeholder="Assign automatically"
       className="select"

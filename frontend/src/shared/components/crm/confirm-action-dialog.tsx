@@ -20,6 +20,8 @@ export interface ConfirmActionDialogProps {
   variant?: 'default' | 'destructive';
   onConfirm: () => void | Promise<void>;
   isLoading?: boolean;
+  confirmDisabled?: boolean;
+  children?: React.ReactNode;
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────
@@ -44,6 +46,8 @@ export function ConfirmActionDialog({
   variant = 'default',
   onConfirm,
   isLoading = false,
+  confirmDisabled = false,
+  children,
 }: ConfirmActionDialogProps): React.ReactElement | null {
   const [internalLoading, setInternalLoading] = useState(false);
   const loading = isLoading || internalLoading;
@@ -61,7 +65,7 @@ export function ConfirmActionDialog({
         if (!latest.current.loading) latest.current.onOpenChange(false);
       }
       if (event.key !== 'Tab' || !dialog) return;
-      const buttons = Array.from(dialog.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+      const buttons = Array.from(dialog.querySelectorAll<HTMLElement>('button:not(:disabled), select:not(:disabled), input:not(:disabled), textarea:not(:disabled)'));
       const first = buttons[0], last = buttons[buttons.length - 1];
       if (!first) { event.preventDefault(); dialog.focus(); return; }
       if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
@@ -102,7 +106,7 @@ export function ConfirmActionDialog({
 
       {/* Dialog */}
       <div
-        className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 w-full max-w-md animate-in fade-in-0 zoom-in-95"
+        className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 w-[calc(100%_-_2rem)] max-w-md max-h-[90dvh] overflow-y-auto animate-in fade-in-0 zoom-in-95"
         role="alertdialog"
         ref={dialogRef}
         tabIndex={-1}
@@ -159,6 +163,7 @@ export function ConfirmActionDialog({
               </div>
             )}
 
+            {children}
             {warning && (
               <div className={cn(
                 'flex items-start gap-2 p-2.5 rounded-lg text-xs',
@@ -185,7 +190,7 @@ export function ConfirmActionDialog({
             <button
               type="button"
               onClick={handleConfirm}
-              disabled={loading}
+              disabled={loading || confirmDisabled}
               className={cn(
                 'px-4 py-2 text-sm font-medium rounded-lg transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed',
                 isDestructive

@@ -1,11 +1,10 @@
-import { LEAD_STATUSES } from '@leadcrm/shared';
 import type { ImportModuleConfig } from '../types/import.types';
 
 /**
  * Import configuration for the Leads module.
  *
- * Required fields: firstName, lastName, email, phone, companyName, address
- * Optional fields: website, source, description, status
+ * Required fields: firstName, lastName, email
+ * Optional fields match the current Lead form; Closed requires a completed Deal.
  */
 export const leadImportConfig: ImportModuleConfig = {
   moduleKey: 'leads',
@@ -40,54 +39,43 @@ export const leadImportConfig: ImportModuleConfig = {
       type: 'email',
       autoMapPatterns: ['email', 'email address', 'email_address', 'e-mail', 'emailaddress'],
     },
+  ],
+
+  optionalFields: [
+    {
+      key: 'address',
+      label: 'Full Address',
+      required: false,
+      type: 'text',
+      autoMapPatterns: ['full address', 'address', 'full_address', 'street address', 'location', 'street_address'],
+    },
+
+    {
+      key: 'companyName',
+      label: 'Company Name',
+      required: false,
+      type: 'text',
+      autoMapPatterns: ['company name', 'company', 'company_name', 'organization', 'org', 'organisation'],
+    },
+
     {
       key: 'phone',
       label: 'Phone Number',
-      required: true,
+      required: false,
       type: 'phone',
       autoMapPatterns: [
         'phone number', 'phone', 'mobile', 'mobile number', 'phone_number',
         'telephone', 'tel', 'mobile_number', 'contact number', 'contact_number',
       ],
     },
-    {
-      key: 'companyName',
-      label: 'Company Name',
-      required: true,
-      type: 'text',
-      autoMapPatterns: ['company name', 'company', 'company_name', 'organization', 'org', 'organisation'],
-    },
-    {
-      key: 'address',
-      label: 'Full Address',
-      required: true,
-      type: 'text',
-      autoMapPatterns: ['full address', 'address', 'full_address', 'street address', 'location', 'street_address'],
-    },
-  ],
 
-  optionalFields: [
     { key: 'productInterest', label: 'Product Interest', required: false, type: 'text', autoMapPatterns: ['product interest', 'product interests', 'product_interest', 'products', 'product'] },
-    {
-      key: 'website',
-      label: 'Website',
-      required: false,
-      type: 'url',
-      autoMapPatterns: ['website', 'web', 'url', 'site', 'homepage', 'web_site'],
-    },
     {
       key: 'source',
       label: 'Lead Source',
       required: false,
       type: 'text',
       autoMapPatterns: ['source', 'lead source', 'lead_source', 'referral source', 'channel'],
-    },
-    {
-      key: 'description',
-      label: 'Description',
-      required: false,
-      type: 'text',
-      autoMapPatterns: ['description', 'notes', 'note', 'comments', 'comment', 'remarks'],
     },
     {
       key: 'status',

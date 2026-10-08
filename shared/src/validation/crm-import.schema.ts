@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { LeadNameSchema, LeadPhoneSchema, OptionalLeadSourceSchema } from '../contracts/lead.contract';
 
 export const CSV_MAX_BYTES = 10 * 1024 * 1024;
 export const CSV_MAX_ROWS = 5000;
@@ -20,7 +21,7 @@ const person = {
   phone: required('Phone Number', 50), companyName: required('Company Name', 200),
   address: required('Full Address', 500), productInterest: products,
 };
-export const ImportLeadRowSchema = z.object({ ...person, website, source: optional(100), description: optional(2000),
+export const ImportLeadRowSchema = z.object({ ...person, firstName: LeadNameSchema, lastName: LeadNameSchema, phone: LeadPhoneSchema.optional().default(''), companyName: optional(2000), address: optional(2000), source: OptionalLeadSourceSchema.optional().default(''),
   status: optional(30).transform(v => v ? v[0].toUpperCase() + v.slice(1).toLowerCase() : 'Warm')
     .pipe(z.enum(['Hot', 'Warm', 'Cold', 'Cancelled'], { errorMap: () => ({ message: 'Status must be Hot, Warm, Cold or Cancelled. Close customers through a confirmed Closed Won Deal.' }) })),
 }).strict();
@@ -42,7 +43,7 @@ export const ImportDealRowSchema = z.object({
 }).strict();
 export const importRowSchemas = { leads: ImportLeadRowSchema, contacts: ImportContactRowSchema, accounts: ImportAccountRowSchema, deals: ImportDealRowSchema };
 export const importRequiredFields: Record<CrmImportModule, string[]> = {
-  leads: ['firstName', 'lastName', 'email', 'phone', 'companyName', 'address'],
+  leads: ['firstName', 'lastName', 'email'],
   contacts: ['firstName', 'lastName', 'email', 'phone', 'companyName', 'address'],
   accounts: ['name'], deals: ['title', 'productInterest', 'pipeline', 'stage'],
 };

@@ -50,6 +50,8 @@ router.delete('/product-interests/:id', authorize('products.archive'), productIn
 router.patch('/organization-settings', authorize('settings.edit'), validate(UpdateOrganizationSettingsSchema), organizationSettings.update);
 
 // -- Users ---------------------------------------------
+router.get('/users/:id/deactivation-impact', authorizeAll('users.activate', 'users.view'), authorizeClientAdmin, userController.deactivationImpact);
+router.post('/users/:id/deactivate', authorizeAll('users.activate', 'users.view'), authorizeClientAdmin, userController.deactivate);
 router.get(   '/users',                  authorize('users.view'),   userController.getAll);
 router.get(   '/users/:id',              authorize('users.view'),   userController.getById);
 router.get(   '/users/:id/avatar/:avatarId', authorize('users.view'), userController.getAvatar);
@@ -86,7 +88,7 @@ router.delete('/groups/:id/members/:userId', authorizeClientAdmin, authorize('gr
 
 function authorizeClientAdmin(req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) {
   if (req.user?.role === 'Client Admin') return next();
-  next(new ForbiddenError('Only Client Admin users can add or remove group members.'));
+  next(new ForbiddenError('Only Client Admin users can perform this administrative operation.'));
 }
 
 

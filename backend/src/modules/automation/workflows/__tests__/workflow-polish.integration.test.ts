@@ -194,23 +194,26 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
       expect.objectContaining({ kind: 'account', id: account.id }),
     ]));
   });
-  it('treats empty and Others separately and persists optional details through Update Fields', async () => {
+  it('treats empty and catalog Others separately without retired Lead details', async () => {
+    const legacy = await create({ isActive: false, actions: [{ type: 'update_field', config: { field: 'productInterestIds', value: [others.id], otherDetails: 'Historical details' } }] });
+    expect(legacy.actions[0].config.otherDetails).toBe('Historical details');
+    await expect(scope(() => workflows.toggleWorkflow(legacy.id, tenantId, actor.id, true))).rejects.toThrow('retired product details');
     const workflow = await create({ conditions: { operator: 'AND', conditions: [{ field: 'lead.productInterestIds', operator: 'is_empty', value: null }] },
-      actions: [{ type: 'update_field', config: { field: 'productInterestIds', value: [others.id], otherDetails: 'Custom service' } }] });
+      actions: [{ type: 'update_field', config: { field: 'productInterestIds', value: [others.id] } }] });
     await scope(() => updateLead(lead.id, tenantId, actor.id, { address: randomUUID() }));
     const updated = await scope(() => prisma.lead.findFirstOrThrow({ where: { tenantId, id: lead.id } }));
-    expect(updated.productInterest).toEqual(['Others']); expect(updated.productInterestOther).toBe('Custom service');
+    expect(updated.productInterest).toEqual(['Others']); expect(updated).not.toHaveProperty('productInterestOther');
     expect(await runs(workflow.id)).toHaveLength(1); // own update cannot loop
     await scope(() => updateLead(lead.id, tenantId, actor.id, { address: randomUUID() }));
     expect((await runs(workflow.id)).filter(r => r.status === 'completed')).toHaveLength(1);
     await scope(() => updateLead(lead.id, tenantId, actor.id, { productInterest: [] }));
     // The still-active empty-interest workflow intentionally selects Others again.
     await scope(() => workflows.toggleWorkflow(workflow.id, tenantId, actor.id, false));
-    const clearing = await create({ actions: [{ type: 'update_field', config: { field: 'productInterestIds', value: [others.id], otherDetails: 'Saved details', clear: true } }] });
+    const clearing = await create({ actions: [{ type: 'update_field', config: { field: 'productInterestIds', value: [others.id], clear: true } }] });
     await scope(() => updateLead(lead.id, tenantId, actor.id, { address: randomUUID() }));
     expect((await runs(clearing.id))[0].status).toBe('completed');
     const empty = await scope(() => prisma.lead.findFirstOrThrow({ where: { tenantId, id: lead.id } }));
-    expect(empty.productInterest).toEqual([]); expect(empty.productInterestOther).toBeNull();
+    expect(empty.productInterest).toEqual([]); expect(empty).not.toHaveProperty('productInterestOther');
   });
   it('preserves legacy price actions for review and prevents historical price changes', async () => {
     const deal = await newDeal({ productInterestId: others.id, productInterestIds: [others.id], productInterests: ['Others'] });

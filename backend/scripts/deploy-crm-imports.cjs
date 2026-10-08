@@ -15,6 +15,7 @@ const root = resolve(__dirname, '../prisma');
 const expansion = '20261027000000_crm_import_integrity';
 const retirement = '20261028000000_retire_legacy_crm_imports';
 const relationshipExpansion = '20261101000000_expand_canonical_relationships';
+const leadRetirement = '20261112000000_retire_lead_nonform_columns';
 const relationshipRetirement = '20261102000000_retire_relationship_compatibility';
 const legacyTables = ['Lead', 'Contact', 'Account', 'Deal'].flatMap(module => [`${module}Import`, `${module}ImportResult`]);
 
@@ -45,7 +46,8 @@ function deploymentTarget(records, localNames) {
 // Keep the separate authenticated retirement gate while deploying current auth.
 function deploymentPlan(records, localNames) {
   const target = deploymentTarget(records, localNames);
-  if (target !== relationshipExpansion) return { through: target, exclude: [] };
+  const excludeLead = localNames.includes(leadRetirement) && !records.some(row => row.migration_name === leadRetirement && finished(row)) ? [leadRetirement] : [];
+  if (target !== relationshipExpansion) return { through: target, exclude: excludeLead };
   const independent = [
     '20261103000000_reply_engagement_deal_batches',
     '20261104000000_user_first_login_onboarding',
@@ -54,10 +56,13 @@ function deploymentPlan(records, localNames) {
     '20261107000000_textbee_webhook_receipts',
     '20261108000000_campaign_delivered_status',
     '20261109000000_campaign_final_statuses',
+    '20261110000000_preserve_retired_lead_fields',
+    '20261111000000_crm_ownership_safety',
+    leadRetirement,
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');
-  return { through: later.sort().at(-1) || target, exclude: [relationshipRetirement] };
+  return { through: later.sort().at(-1) || target, exclude: [relationshipRetirement, ...excludeLead] };
 }
 
 async function recoverRetirement(db) {
@@ -119,7 +124,7 @@ async function main() {
       await db.$disconnect();
       migrate(plan.through, plan.exclude);
       if (plan.through === expansion) console.log('CRM import expansion ready. Legacy-table retirement is deferred until deployed API verification.');
-      if (plan.exclude.length) console.log('Independent application migrations applied. Relationship compatibility retirement remains deferred until authenticated API verification.');
+      if (plan.exclude.length) console.log('Independent application migrations applied. Guarded column retirements remain deferred until authenticated API verification.');
       return;
     }
     const report = process.env.CRM_IMPORT_VERIFY_BROWSER_EVIDENCE

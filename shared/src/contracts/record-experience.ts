@@ -1,13 +1,14 @@
 import { z } from 'zod';
 
 export const CRM_STATUSES = ['Hot', 'Warm', 'Cold', 'Closed', 'Cancelled'] as const;
-export const LEAD_SOURCES = ['Google Ads', 'Referral', 'Email Campaign', 'Website', 'Social Media Advertisement', 'Direct Mail', 'Content Marketing', 'Organic', 'Others'] as const;
+export const LEAD_SOURCES = ['Google Ads', 'Referral', 'Email Campaign', 'Website', 'Social Media Advertisement', 'Direct Mail', 'Content Marketing', 'Others'] as const;
 export const LeadSourceSchema = z.enum(LEAD_SOURCES);
 export const COMPANY_SIZE_OPTIONS = ['1-10', '11-50', '51-200', '200+'] as const;
 
 /** Keep assignment eligibility consistent between CRM controls and audience validation. */
-export function isAssignableAgent(user: { role?: string | null; status?: string | null }): boolean {
-  return user.role?.trim().toLowerCase() !== 'client admin' && (!user.status || user.status.toUpperCase() === 'ACTIVE');
+export function isAssignableAgent(user: { role?: string | null; status?: string | null; isArchived?: boolean; assignableAgent?: boolean }): boolean {
+  return !user.isArchived && !['client admin', 'guest'].includes(user.role?.trim().toLowerCase() ?? '')
+    && user.status?.toUpperCase() === 'ACTIVE' && user.assignableAgent === true;
 }
 export const CrmStatusSchema = z.enum(CRM_STATUSES);
 export type CrmStatus = z.infer<typeof CrmStatusSchema>;

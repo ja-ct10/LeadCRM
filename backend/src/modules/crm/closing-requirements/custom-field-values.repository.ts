@@ -9,10 +9,10 @@ export const recordLinks = { leads: 'leadId', contacts: 'contactId', accounts: '
 export type BatchFiles = Map<string, RecordFile>;
 
 export async function requireCustomFieldRecord(tx: Tx, tenantId: string, module: CustomFieldModule, id: string, editing = false) {
-  const where = { tenantId, id, ...(editing ? { isArchived: false, deletedAt: null } : {}) };
+  const where = { tenantId, id, ...(editing || module === 'leads' ? { isArchived: false, deletedAt: null } : {}) };
   const record = module === 'leads' ? await tx.lead.findFirst({ where }) : module === 'contacts' ? await tx.contact.findFirst({ where }) : module === 'accounts' ? await tx.account.findFirst({ where }) : await tx.deal.findFirst({ where });
   if (!record) throw new NotFoundError('Record');
-  if (editing && 'convertedAt' in record && record.convertedAt) throw new ValidationError('This Lead has been converted. Update the linked Contact instead.');
+  if (editing && module === 'leads' && 'convertedAt' in record && record.convertedAt) throw new ValidationError('This Lead has been converted. Update the linked Contact instead.');
   return record;
 }
 

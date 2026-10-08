@@ -12,6 +12,13 @@ function Editor({ entity, config }: { entity: WorkflowEntity; config: Record<str
   return <><ActionFields action={action} entity={entity} options={options} onChange={config => setAction({ ...action, config })} /><output data-testid="config">{JSON.stringify(action.config)}</output></>;
 }
 describe('workflow polish controls', () => {
+  it('preserves retired Lead details for review and removes them explicitly', () => {
+    render(<Editor entity="lead" config={{ field: 'productInterestIds', value: ['others'], otherDetails: 'Saved service' }} />);
+    expect(screen.queryByLabelText('Specify (optional)')).toBeNull();
+    expect(screen.getByText(/Additional Product details are retired for Leads/).textContent).toContain('Saved service');
+    fireEvent.click(screen.getByRole('button', { name: 'Remove retired setting' }));
+    expect(JSON.parse(screen.getByTestId('config').textContent!)).toEqual({ field: 'productInterestIds', value: ['others'] });
+  });
   it('hides the value control for empty Product Interest and keeps Others a real selection', () => {
     const onChange = vi.fn();
     const trigger = WORKFLOW_TRIGGERS.find(t => t.type === 'lead.updated');
@@ -27,8 +34,8 @@ describe('workflow polish controls', () => {
     expect(screen.queryByRole('option', { name: 'Currency' })).toBeNull();
     expect(WORKFLOW_TRIGGERS.find(t => t.type === 'deal.updated')?.fields.some(f => f.field === 'deal.value')).toBe(true);
   });
-  it('allows optional Others details and requires an explicit clear choice', () => {
-    render(<Editor entity="lead" config={{ field: 'productInterestIds', value: [] }} />);
+  it('keeps optional Others details for Contacts and requires an explicit clear choice', () => {
+    render(<Editor entity="contact" config={{ field: 'productInterestIds', value: [] }} />);
     fireEvent.click(screen.getByLabelText('Others'));
     fireEvent.change(screen.getByLabelText('Specify (optional)'), { target: { value: 'Consulting' } });
     expect(JSON.parse(screen.getByTestId('config').textContent!)).toMatchObject({ value: ['others'], otherDetails: 'Consulting' });

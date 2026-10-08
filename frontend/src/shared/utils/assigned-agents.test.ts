@@ -4,10 +4,10 @@ import { getAssignableAgents } from './assigned-agents';
 
 it('excludes Client Admin by role while keeping other assignable users', () => {
   const users = [
-    { id: 'admin', role: 'Client Admin' },
-    { id: 'admin-case', role: ' client admin ' },
-    { id: 'sales', role: 'Sales' },
-    { id: 'support', role: 'Support Agent' },
+    { status: 'ACTIVE', assignableAgent: true, id: 'admin', role: 'Client Admin' },
+    { status: 'ACTIVE', assignableAgent: true, id: 'admin-case', role: ' client admin ' },
+    { status: 'ACTIVE', assignableAgent: true, id: 'sales', role: 'Sales' },
+    { status: 'ACTIVE', assignableAgent: true, id: 'support', role: 'Support Agent' },
   ] as User[];
 
   expect(getAssignableAgents(users).map(user => user.id)).toEqual(['sales', 'support']);

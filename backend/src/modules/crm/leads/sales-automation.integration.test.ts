@@ -89,10 +89,10 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     expect(await prisma.lead.count({ where: { tenantId } })).toBe(before);
   });
   it('creates unassigned Deals when no agent is eligible and assigns them without duplicating', async () => {
-    await prisma.user.updateMany({ where: { id: { in: agentIds }, tenantId }, data: { status: 'INACTIVE' } });
+    await prisma.rolePermission.updateMany({ where: { tenantId, module: 'leads' }, data: { canEdit: false } });
     const lead = await create(); expect(lead.assignedUserId).toBeNull();
     expect(await prisma.deal.count({ where: { leadDeals: { some: { leadId: lead.id } } } })).toBe(1);
-    await prisma.user.updateMany({ where: { id: { in: agentIds }, tenantId }, data: { status: 'ACTIVE' } });
+    await prisma.rolePermission.updateMany({ where: { tenantId, module: 'leads' }, data: { canEdit: true } });
     await scope(() => updateContact(lead.id, tenantId, { assignedUserId: agentIds[0] }, adminId));
     expect((await prisma.deal.findFirstOrThrow({ where: { leadDeals: { some: { leadId: lead.id } } } })).assignedUserId).toBe(agentIds[0]);
   });
@@ -245,7 +245,8 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     }
     expect((await request(endpoint + '/invalid', 'PATCH', { name: 'A' })).status).toBe(400);
     expect((await request(endpoint + '/' + randomUUID(), 'PATCH', { name: 'A' })).status).toBe(404);
-    const lead = (await request('/crm/leads', 'POST', { email: 'fixture@example.test', firstName: 'Snapshot', lastName: 'Test', productInterest: [product.id], value: 1, dealValue: 2 })).body.data;
+    expect((await request('/crm/leads', 'POST', { email: 'fixture@example.test', firstName: 'Snapshot', lastName: 'Test', productInterest: [product.id], value: 1, dealValue: 2 })).status).toBe(400);
+    const lead = (await request('/crm/leads', 'POST', { email: 'fixture@example.test', firstName: 'Snapshot', lastName: 'Test', productInterest: [product.id] })).body.data;
     const deal = await prisma.deal.findFirstOrThrow({ where: { leadDeals: { some: { leadId: lead.id } } } });
     expect(deal.value).toBe(25000);
     expect((await request('/crm/deals/' + deal.id, 'PUT', { value: 1 })).status).toBe(400);

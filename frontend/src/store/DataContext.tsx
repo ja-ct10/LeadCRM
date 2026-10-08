@@ -265,6 +265,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     void refreshRoles();
   }, [refreshRoles]);
   const [users, setUsers] = useState<User[]>([]);
+  useEffect(() => {
+    let active = true;
+    const refresh = () => { if (!workspaceReady || USE_MOCK_DATA) return; void usersService.getDirectory().then(result => { if (active) setUsers(result.data ?? []); }).catch(() => {}); };
+    window.addEventListener('leadcrm:users-changed', refresh);
+    return () => { active = false; window.removeEventListener('leadcrm:users-changed', refresh); };
+  }, [dataIdentity, workspaceReady]);
+
   const [tasks, setTasks] = useState<Task[]>([]);
   const taskRows = useMemo(() => USE_MOCK_DATA ? tasks.map(task => ({
     ...task,
@@ -340,7 +347,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           organizationsService.getAll({ limit: 100 }),
           pipelineService.getDeals(undefined, 100),
           pipelineService.getPipelines(),
-          loadShared ? usersService.getAll({ limit: 200 }) : Promise.resolve(null),
+          loadShared ? usersService.getDirectory() : Promise.resolve(null),
         ]);
 
         if (!isCurrent()) return;

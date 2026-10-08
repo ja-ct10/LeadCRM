@@ -11,7 +11,7 @@ it('retries reuse the converted identity and preserve original Deal and conversi
   const { lead, deal } = await fixture.inquiry('Repeat customer');
   const first = await fixture.convert(lead.id);
   const original = await fixture.db.deal.findUniqueOrThrow({ where: { id: deal.id } });
-  const second = await fixture.convert(lead.id, { contactId: 'must-not-replace-identity' });
+  const second = await fixture.convert(lead.id, { contactId: '8f4c4b89-a3f6-4f14-b7ce-0db7ec7cff2c' });
   expect(second.contact.id).toBe(first.contact.id);
   expect(second.lead.convertedAt).toEqual(first.lead.convertedAt);
   expect(await fixture.db.deal.findUniqueOrThrow({ where: { id: deal.id } })).toEqual(original);
@@ -43,4 +43,22 @@ it('keeps the real Lead list paginated, scoped and searchable after conversion',
     expect(result.data.map(row => row.id)).toEqual([lead.id]);
     expect(result.meta).toMatchObject({ page: 1, limit, total: 1, hasMore: false });
   }
+});
+it('preserves distinct Product IDs when a retired catalog name is reused', async () => {
+  const { lead } = await fixture.inquiry('Product identity customer');
+  await fixture.db.productInterest.update({ where: { id: 'product' }, data: { active: false } });
+  const duplicate = await fixture.db.productInterest.create({ data: { tenantId: 'conversion', name: 'CRM Enterprise', dealValue: 900 } });
+  const account = await fixture.db.account.create({ data: { tenantId: 'conversion', name: lead.companyName!, productsNormalized: true,
+    productLinks: { create: { productInterestId: duplicate.id, position: 0, interested: true, activeProduct: true } } } });
+  const existing = await fixture.db.contact.create({ data: { tenantId: 'conversion', firstName: 'Existing', lastName: 'Customer', email: lead.email,
+    accountId: account.id, productsNormalized: true, productLinks: { create: { productInterestId: duplicate.id, position: 0, interested: true, activeProduct: true } } } });
+  const result = await fixture.convert(lead.id);
+  expect(result.contact.id).toBe(existing.id);
+  const contactLinks = await fixture.db.contactProductInterest.findMany({ where: { contactId: existing.id } });
+  expect(contactLinks.map(link => link.productInterestId).sort()).toEqual([duplicate.id, 'product'].sort());
+  expect(contactLinks.every(link => link.interested && link.activeProduct)).toBe(true);
+  const accountLinks = await fixture.db.accountProductInterest.findMany({ where: { accountId: account.id } });
+  expect(accountLinks.map(link => link.productInterestId).sort()).toEqual([duplicate.id, 'product'].sort());
+  expect(accountLinks.find(link => link.productInterestId === 'product')?.activeProduct).toBe(false);
+  expect(await fixture.db.contact.findFirst({ where: { id: existing.id }, select: { productsNormalized: true } })).toEqual({ productsNormalized: true });
 });

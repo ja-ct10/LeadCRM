@@ -17,7 +17,7 @@ function storage() {
   return { base: `${url.replace(/\/$/, '')}/storage/v1/object`, bucket: encodeURIComponent(bucket), headers: { Authorization: `Bearer ${key}`, apikey: key } };
 }
 async function requireRecord(module: FileModule, id: string, tenantId: string) {
-  const where = { id, tenantId, isArchived: false };
+  const where = { id, tenantId, isArchived: false, deletedAt: null };
   const record = module === 'leads' ? await prisma.lead.findFirst({ where }) : module === 'contacts' ? await prisma.contact.findFirst({ where }) : module === 'deals' ? await prisma.deal.findFirst({ where }) : await prisma.account.findFirst({ where });
   if (!record) throw new AppError('Record not found.', 404);
   return record;

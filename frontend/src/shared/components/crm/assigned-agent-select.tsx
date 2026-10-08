@@ -28,6 +28,8 @@ export function AssignedAgentSelect({
   onBlur?: () => void;
   onChange: (value: string) => void;
 }): ReactElement {
+  const options = getAssignableAgents(users);
+  const historical = value && !options.some(user => user.id === value) ? users.find(user => user.id === value) : undefined;
   return (
     <div className="relative">
       <select
@@ -41,7 +43,8 @@ export function AssignedAgentSelect({
         onChange={(event) => onChange(event.target.value)}
       >
         <option value="">{placeholder}</option>
-        {getAssignableAgents(users).map((user) => (
+        {value && !options.some(user => user.id === value) && <option value={value} disabled>{historical ? `${historical.firstName} ${historical.lastName}` : 'Current assigned agent'} (unavailable)</option>}
+        {options.map((user) => (
           <option key={user.id} value={user.id}>
             {user.firstName} {user.lastName}
           </option>

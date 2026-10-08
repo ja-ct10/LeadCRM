@@ -1,4 +1,6 @@
 'use client';
+import type { DeactivationImpact } from '@leadcrm/shared';
+import { AssignedAgentSelect } from '@/shared/components/crm/assigned-agent-select';
 import { CreateButton } from '@/shared/components/ui/button';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -113,12 +115,25 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
   const [confirmArchive, setConfirmArchive] = useState<User | null>(null);
   const [statusChangeUser, setStatusChangeUser] = useState<User | null>(null);
   const [changingStatus, setChangingStatus] = useState(false);
+  const [impact, setImpact] = useState<DeactivationImpact | null>(null);
+  const [replacement, setReplacement] = useState('');
+  const [reassignUser, setReassignUser] = useState<User | null>(null);
+  const [preflighting, setPreflighting] = useState(false);
+  const beginStatusChange = async (target: User) => {
+    if (preflighting) return;
+    setReplacement(''); setImpact(null);
+    if (target.status !== 'active') { setStatusChangeUser(target); return; }
+    setPreflighting(true);
+    try {
+      const result = await usersService.deactivationImpact(target.id);
+      if (!result.data) throw new Error('Unable to check CRM ownership.');
+      setImpact(result.data); setReassignUser(target);
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to check CRM ownership.'); }
+    finally { setPreflighting(false); }
+  };
 
   const filtered = useMemo(() => {
     return tenantUsers.filter((u) => {
-      // The user API represents archived users with INACTIVE status. Include
-      // those rows only when the administrator explicitly filters for Inactive.
-      if (u.isArchived && !statusFilter.includes('inactive')) return false;
       const matchSearch = !search || `${u.firstName} ${u.lastName} ${u.email}`.toLowerCase().includes(search.toLowerCase());
       const matchRole = roleFilter.length === 0 || roleFilter.includes(u.role);
       const matchStatus = statusFilter.length === 0 || statusFilter.some((s) => s.toLowerCase() === (u.status ?? '').toLowerCase());
@@ -160,13 +175,28 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
     const nextStatus = statusChangeUser.status === 'active' ? 'inactive' : 'active';
     setChangingStatus(true);
     try {
-      const result = await usersService.update(statusChangeUser.id, { status: nextStatus });
-      if (!result.data) throw new Error('Unable to update user status.');
-      handleSavedUser(result.data, false);
-      setStatusChangeUser(null);
-      toast.success(`User ${nextStatus === 'active' ? 'activated' : 'deactivated'}.`);
+      if (nextStatus === 'inactive') {
+        const result = await usersService.deactivate(statusChangeUser.id, replacement || null);
+        handleSavedUser(result.user, false);
+        toast.success(result.impact.total ? 'CRM records transferred successfully and user deactivated.' : 'User deactivated successfully.');
+      } else {
+        const result = await usersService.update(statusChangeUser.id, { status: nextStatus });
+        if (!result.data) throw new Error('Unable to update user status.');
+        handleSavedUser(result.data, false);
+        window.dispatchEvent(new Event('leadcrm:users-changed'));
+        toast.success('User activated.');
+      }
+      setStatusChangeUser(null); setReassignUser(null); setImpact(null); setReplacement('');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Unable to update user status.');
+      toast.error(error instanceof Error ? error.message : 'Unable to reassign CRM records. The user was not deactivated.');
+      if (nextStatus === 'inactive') {
+        setStatusChangeUser(null); setReplacement(''); setReload(value => value + 1);
+        try {
+          const refreshed = await usersService.deactivationImpact(statusChangeUser.id);
+          if (!refreshed.data) throw new Error('Ownership counts unavailable.');
+          setImpact(refreshed.data); setReassignUser(statusChangeUser);
+        } catch { setReassignUser(null); setImpact(null); }
+      }
     } finally {
       setChangingStatus(false);
     }
@@ -183,7 +213,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
     { id: 'activity', header: 'Actions', accessor: () => '', width: 90, cell: (_, u) => {
       const active = u.status === 'active';
       const label = active ? `Deactivate ${u.firstName} ${u.lastName}` : `Activate ${u.firstName} ${u.lastName}`;
-      return <button type="button" aria-label={label} title={active ? 'Deactivate user' : 'Activate user'} disabled={!canActivateUsers} className="min-h-11 min-w-11 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => setStatusChangeUser(u)}>{active ? <UserX size={16} /> : <UserCheck size={16} />}</button>;
+      return <button type="button" aria-label={label} title={active ? 'Deactivate user' : 'Activate user'} disabled={!canActivateUsers || preflighting} className="min-h-11 min-w-11 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => void beginStatusChange(u)}>{active ? <UserX size={16} /> : <UserCheck size={16} />}</button>;
     } },
   ];
 
@@ -222,7 +252,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
                 { id: 'view', label: 'View', onClick: () => openUser(u) },
                 ...((canManageUsers || canAssignRoles || canActivateUsers || canArchiveUsers) ? [
                   { id: 'edit', label: canManageUsers ? 'Edit' : 'Change access', disabled: !canManageUsers && !canAssignRoles && !canActivateUsers, onClick: () => openUser(u, true) },
-                  { id: 'status', label: u.status === 'active' ? 'Deactivate' : 'Activate', disabled: !canActivateUsers, onClick: () => setStatusChangeUser(u) },
+                  { id: 'status', label: u.status === 'active' ? 'Deactivate' : 'Activate', disabled: !canActivateUsers, onClick: () => void beginStatusChange(u) },
                   { id: 'archive', label: 'Archive', disabled: !!u.isArchived || !canArchiveUsers, onClick: () => setConfirmArchive(u) },
                 ] : []),
               ]} />}
@@ -277,11 +307,25 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
         )}
       </AnimatePresence>
       <ConfirmActionDialog
+        open={!!reassignUser && !statusChangeUser}
+        onOpenChange={open => { if (!open) { setReassignUser(null); setImpact(null); setReplacement(''); } }}
+        title="Reassign CRM Records"
+        description={impact?.total ? `${reassignUser?.firstName} ${reassignUser?.lastName} currently owns CRM records that must be reassigned before the account can be deactivated.` : 'No active CRM records are assigned to this user.'}
+        confirmLabel="Continue"
+        confirmDisabled={!!impact?.total && !replacement}
+        onConfirm={() => setStatusChangeUser(reassignUser)}
+      >
+        <dl className="grid grid-cols-2 gap-2 text-sm">{Object.entries(impact?.counts ?? {}).map(([label, count]) => <React.Fragment key={label}><dt className="capitalize">{label}</dt><dd className="text-right">{count}</dd></React.Fragment>)}</dl>
+        {!!impact?.total && <div className="space-y-2"><label htmlFor="deactivation-agent" className="text-sm font-medium">Assigned Agent <span className="text-red-500">*</span></label>
+          <AssignedAgentSelect id="deactivation-agent" value={replacement} onChange={setReplacement} users={allUsers.filter(user => user.id !== reassignUser?.id)} placeholder="Select agent" className="w-full rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-slate-900 px-3 py-2.5 pr-8 text-sm" />
+        </div>}
+      </ConfirmActionDialog>
+      <ConfirmActionDialog
         open={!!statusChangeUser}
-        onOpenChange={(open) => { if (!open && !changingStatus) setStatusChangeUser(null); }}
+        onOpenChange={(open) => { if (!open && !changingStatus) { setStatusChangeUser(null); setReassignUser(null); setReplacement(''); setImpact(null); } }}
         title={statusChangeUser?.status === 'active' ? 'Deactivate this user?' : 'Activate this user?'}
         description={statusChangeUser?.status === 'active'
-          ? `Deactivate ${statusChangeUser.firstName} ${statusChangeUser.lastName}? They will lose access to this workspace.`
+          ? `Deactivate ${statusChangeUser.firstName} ${statusChangeUser.lastName}? ${impact?.total ? `${impact.counts.leads} Leads, ${impact.counts.contacts} Contacts, ${impact.counts.accounts} Accounts, and ${impact.counts.deals} Deals will be reassigned to ${allUsers.find(user => user.id === replacement)?.firstName ?? ''} ${allUsers.find(user => user.id === replacement)?.lastName ?? ''}. ` : ''}They will lose access to this workspace.`
           : `Activate ${statusChangeUser?.firstName ?? ''} ${statusChangeUser?.lastName ?? ''}? They will regain access to this workspace.`}
         confirmLabel={statusChangeUser?.status === 'active' ? 'Deactivate' : 'Activate'}
         variant={statusChangeUser?.status === 'active' ? 'destructive' : 'default'}

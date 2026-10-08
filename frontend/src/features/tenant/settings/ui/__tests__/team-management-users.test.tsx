@@ -1,20 +1,20 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-const mocks = vi.hoisted(() => ({ list: vi.fn(), update: vi.fn(), archive: vi.fn() }));
+const mocks = vi.hoisted(() => ({ list: vi.fn(), update: vi.fn(), archive: vi.fn(), impact: vi.fn(), deactivate: vi.fn() }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'admin', tenantId: 't' }, userCan: () => true }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ roles: [{ id: 'r', name: 'Sales', isArchived: false, isSystemRole: false }], refreshRoles: vi.fn() }) }));
-vi.mock('@/features/tenant/administration/users/services/users.service', () => ({ usersService: { getAll: mocks.list, update: mocks.update, archive: mocks.archive } }));
+vi.mock('@/features/tenant/administration/users/services/users.service', () => ({ usersService: { getAll: mocks.list, update: mocks.update, archive: mocks.archive, deactivationImpact: mocks.impact, deactivate: mocks.deactivate } }));
 import { UsersSubTab } from '../team-management-users';
 beforeEach(() => { vi.resetAllMocks(); vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(cleanup);
 it('confirms activation and deactivation, updates the persisted row immediately, and confirms bulk archive', async () => {
   const active = { id: 'a', tenantId: 't', firstName: 'Ana', lastName: 'Sales', role: 'Sales', status: 'active', email: 'a@example.com' };
   mocks.list.mockResolvedValue({ data: [active], meta: { hasMore: false } });
-  mocks.update
-    .mockResolvedValueOnce({ data: { ...active, status: 'inactive' } })
-    .mockResolvedValueOnce({ data: { ...active, status: 'active' } });
+  mocks.impact.mockResolvedValue({ data: { userId: 'a', total: 0, counts: { leads: 0, contacts: 0, accounts: 0, deals: 0 } } });
+  mocks.deactivate.mockResolvedValue({ user: { ...active, status: 'inactive' }, impact: { total: 0 } });
+  mocks.update.mockResolvedValueOnce({ data: { ...active, status: 'active' } });
   mocks.archive.mockResolvedValue(undefined);
   render(<UsersSubTab />);
   fireEvent.click(await screen.findByRole('button', { name: 'Row actions' }));
@@ -23,8 +23,9 @@ it('confirms activation and deactivation, updates the persisted row immediately,
   expect(screen.queryByRole('menuitem', { name: 'Activate' })).toBeNull();
   fireEvent.click(screen.getByRole('menuitem', { name: 'Deactivate' }));
   expect(mocks.update).not.toHaveBeenCalled();
+  fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
   fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Deactivate' }));
-  await waitFor(() => expect(mocks.update).toHaveBeenCalledWith('a', { status: 'inactive' }));
+  await waitFor(() => expect(mocks.deactivate).toHaveBeenCalledWith('a', null));
   expect(await screen.findByText('inactive')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Activate Ana Sales' }));
   fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Activate' }));

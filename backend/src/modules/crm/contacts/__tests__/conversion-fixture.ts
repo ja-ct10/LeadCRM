@@ -20,13 +20,15 @@ export async function conversionFixture() {
   const inquiry = async (companyName = 'Customer company', won = true) => {
     const id = randomUUID();
     const lead = await db.lead.create({ data: { tenantId: 'conversion', firstName: 'John', lastName: 'Smith', email: `${id}@example.test`, phone: '+639000000001', companyName,
-      address: 'Makati', source: 'Website', description: 'Original inquiry', assignedUserId: 'actor', status: 'Warm', productsNormalized: true,
+      address: 'Makati', source: 'Website', assignedUserId: 'actor', status: 'Warm', productsNormalized: true,
       productLinks: { create: { productInterestId: 'product', position: 0 } } } });
+    await db.closingFieldDefinition.upsert({ where: { tenantId_id: { tenantId: 'conversion', id: 'retired-lead-description' } }, create: { tenantId: 'conversion', id: 'retired-lead-description', definition: { id: 'retired-lead-description', active: false, module: 'leads' } }, update: {} });
+    await db.customFieldValue.create({ data: { tenantId: 'conversion', leadId: lead.id, fieldId: 'retired-lead-description', module: 'leads', value: 'Original inquiry' } });
     const deal = await db.deal.create({ data: { tenantId: 'conversion', title: 'Original sale', pipelineId: 'p', stageId: won ? 'won' : 'open',
       wonConfirmedAt: won ? new Date() : null, hasEverBeenWon: won, wonHistoryVerified: true, value: 12500, productInterestId: 'product', productsNormalized: true,
       leadDeals: { create: { leadId: lead.id, position: 0 } } } });
     return { lead, deal };
   };
-  const convert = (id: string, extra: Record<string, unknown> = {}) => convertContact(id, 'conversion', 'actor', { createContact: true, createDeal: false, dealPriority: 'MEDIUM', ...extra } as never);
+  const convert = (id: string, extra: Record<string, unknown> = {}) => convertContact(id, 'conversion', 'actor', { createContact: true, createDeal: false, ...extra } as never);
   return { db, inquiry, convert, getContacts, close: async () => { await db.$disconnect(); await socket.stop(); await pg.close(); } };
 }

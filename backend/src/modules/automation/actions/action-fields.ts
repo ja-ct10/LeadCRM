@@ -13,6 +13,10 @@ export async function fieldUpdatePatch(action: WorkflowAction, entity: WorkflowE
   const config = action.config;
   for (const key of Object.keys(config)) if (!['field', 'value', 'clear', 'otherDetails'].includes(key)) throw new ValidationError(`Remove unsupported action setting: ${key}.`);
   if (config.clear !== undefined && typeof config.clear !== 'boolean') throw new ValidationError('Choose whether to clear the field.');
+  if (entity === 'lead' && config.otherDetails) {
+    if (incomplete) return {}; // Keep existing drafts readable without restoring a retired column.
+    throw new ValidationError('Lead Product Interests use catalog Products. Remove the retired product details setting.');
+  }
   if (entity === 'deal' && ['value', 'currency', 'productInterestIds'].includes(String(config.field))) {
     if (incomplete) return {}; // Preserve old steps in drafts/disabled form for review.
     throw new ValidationError('Deal Product and value are historical snapshots. Disable or remove this action.');
@@ -54,7 +58,7 @@ export async function fieldUpdatePatch(action: WorkflowAction, entity: WorkflowE
     const others = products.some(p => p.name.trim().toLowerCase() === 'others');
     if (config.otherDetails !== undefined && (typeof config.otherDetails !== 'string' || config.otherDetails.length > 1000)) throw new ValidationError('Product interest details must be at most 1000 characters.');
     if (!others && config.otherDetails && config.clear !== true) throw new ValidationError('Select Others before specifying another product interest.');
-    if (field.field !== 'activeProductIds') input.productInterestOther = others ? String(config.otherDetails ?? '').trim() || null : null;
+    if (entity !== 'lead' && field.field !== 'activeProductIds') input.productInterestOther = others ? String(config.otherDetails ?? '').trim() || null : null;
   } else if (config.otherDetails) throw new ValidationError('Additional interest details are only available for Product Interest.');
   const schema = entity === 'lead' ? UpdateContactSchema : entity === 'contact' ? UpdateClientContactSchema : entity === 'account' ? UpdateCompanySchema : UpdateDealSchema;
   const parsed = schema.strict().safeParse(input);

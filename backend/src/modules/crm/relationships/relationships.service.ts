@@ -11,7 +11,7 @@ const DEFAULT_LIMIT = 10;
  */
 export async function getLeadRelationships(id: string, tenantId: string, limit = DEFAULT_LIMIT, includeTasks = false) {
   const lead = await prisma.lead.findFirst({
-    where: { id, tenantId },
+    where: { id, tenantId, isArchived: false, deletedAt: null },
     select: { id: true, contactId: true, accountId: true },
   });
   if (!lead) throw new NotFoundError('Lead');
