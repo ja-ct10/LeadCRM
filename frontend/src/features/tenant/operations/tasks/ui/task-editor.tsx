@@ -1,4 +1,5 @@
 "use client";
+import { DatePicker } from "@/shared/components/ui/date-time-picker";
 import { taskRecordOptions } from "../task-relations";
 import { useEffect, useId, useRef, useState } from "react";
 import {
@@ -77,6 +78,21 @@ export function TaskEditor({
       task?.dueDate ?? new Date(Date.now() + 86400000).toISOString(),
     ),
   );
+  const [dueDraft, setDueDraft] = useState<string | null>(null);
+  const dueTrigger = useRef<HTMLButtonElement>(null);
+  const [, refreshClock] = useState(0);
+  useEffect(() => {
+    if (dueDraft === null) return;
+    const timer = setInterval(() => refreshClock(value => value + 1), 1000);
+    return () => clearInterval(timer);
+  }, [dueDraft !== null]);
+  const resolvedDraft = dueDraft === null ? '' : resolveManilaTaskDueDateTime(dueDraft);
+  const draftValid = !!resolvedDraft && resolvedDraft.slice(0, 10) >= manilaCurrentDate() && !isPastManilaTaskDueDateTime(resolvedDraft);
+  const closeDuePicker = () => { setDueDraft(null); dueTrigger.current?.focus({ preventScroll: true }); };
+  const draftHour = Number(dueDraft?.slice(11, 13) || 0);
+  const changeTime = (hour: number, minute = dueDraft?.slice(14, 16) || '00') => {
+    setDueDraft(`${dueDraft?.slice(0, 10)}T${String(hour).padStart(2, '0')}:${minute}`);
+  };
   const [assignedUserId, setOwner] = useState(
     task?.assignedUserId ?? user?.id ?? "",
   );
@@ -350,19 +366,20 @@ export function TaskEditor({
                 </section>
                 <section className="space-y-4">
                   <PanelSectionHeading number={2}>Schedule &amp; Assignment</PanelSectionHeading>
-                  <label className="block space-y-1.5">
-                    <span className={panelLabelClass}>
-                      Due date and time <span className="text-red-500">*</span>
-                    </span>
-                    <input
-                      className={panelInputClass}
-                      type="datetime-local"
-                      required
-                      value={dueDate}
-                      min={task ? undefined : `${manilaCurrentDate()}T00:00`}
-                      onChange={(e) => setDueDate(resolveManilaTaskDueDateTime(e.target.value))}
-                    />
-                  </label>
+                  <div className="min-w-0 space-y-1.5">
+                    <label htmlFor={`${heading}-due`} className={panelLabelClass}>Due date and time <span className="text-red-500">*</span></label>
+                    <button id={`${heading}-due`} ref={dueTrigger} type="button" className={panelInputClass + " text-left"} aria-expanded={dueDraft !== null} aria-controls={`${heading}-due-picker`} onClick={() => { if (dueDraft === null) setDueDraft(dueDate); else closeDuePicker(); }}>{dueDate.replace('T', ' ')}</button>
+                    {dueDraft !== null && <div id={`${heading}-due-picker`} role="group" aria-label="Choose due date and time" className="min-w-0 space-y-3 rounded-xl border border-border bg-card p-3" onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeDuePicker(); } }}>
+                      <DatePicker inline value={dueDraft.slice(0, 10)} minDate={manilaCurrentDate()} todayDate={manilaCurrentDate()} onChange={date => setDueDraft(`${date}T${dueDraft.slice(11)}`)} />
+                      <div className="grid min-w-0 grid-cols-3 gap-2">
+                        <label className="min-w-0 text-xs">Hour<select aria-label="Due hour" className={panelInputClass} value={draftHour % 12 || 12} onChange={event => changeTime(Number(event.target.value) % 12 + (draftHour >= 12 ? 12 : 0))}>{Array.from({ length: 12 }, (_, i) => i + 1).map(hour => <option key={hour}>{hour}</option>)}</select></label>
+                        <label className="min-w-0 text-xs">Minute<select aria-label="Due minute" className={panelInputClass} value={dueDraft.slice(14, 16)} onChange={event => changeTime(draftHour, event.target.value)}>{Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0')).map(minute => <option key={minute}>{minute}</option>)}</select></label>
+                        <label className="min-w-0 text-xs">AM/PM<select aria-label="Due period" className={panelInputClass} value={draftHour >= 12 ? 'PM' : 'AM'} onChange={event => changeTime(draftHour % 12 + (event.target.value === 'PM' ? 12 : 0))}><option>AM</option><option>PM</option></select></label>
+                      </div>
+                      {resolvedDraft !== dueDraft && <p className="text-xs text-muted-foreground">Next occurrence: {resolvedDraft.replace('T', ' ')}</p>}
+                      <div className="flex flex-wrap justify-end gap-2"><Button type="button" variant="outline" onClick={closeDuePicker}>Cancel</Button><Button type="button" disabled={!draftValid} onClick={() => { if (!draftValid) return; setDueDate(resolvedDraft); closeDuePicker(); }}>Done</Button></div>
+                    </div>}
+                  </div>
                   <TaskSelector
                     appearance="panel"
                     kind="user"

@@ -8,6 +8,8 @@ interface DatePickerProps {
   value: string;
   onChange: (date: string) => void;
   minDate?: string;
+  inline?: boolean;
+  todayDate?: string;
   placeholder?: string;
   id?: string;
 }
@@ -45,15 +47,15 @@ function getFirstDayOfMonth(year: number, month: number): number {
   return new Date(year, month, 1).getDay();
 }
 
-export function DatePicker({ value, onChange, minDate, placeholder = 'Select date', id }: DatePickerProps): React.ReactElement {
+export function DatePicker({ value, onChange, minDate, inline = false, todayDate, placeholder = 'Select date', id }: DatePickerProps): React.ReactElement {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   const today = new Date();
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const todayStr = todayDate || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-  const initial = value ? new Date(value + 'T00:00:00') : today;
+  const initial = new Date((value || todayStr) + 'T00:00:00');
   const [viewYear, setViewYear] = useState(initial.getFullYear());
   const [viewMonth, setViewMonth] = useState(initial.getMonth());
 
@@ -94,25 +96,10 @@ export function DatePicker({ value, onChange, minDate, placeholder = 'Select dat
   for (let i = 0; i < firstDay; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
 
-  return (
-    <div className="relative">
-      <button
-        ref={triggerRef}
-        type="button"
-        id={id}
-        onClick={() => open ? setOpen(false) : handleOpen()}
-        className="w-full h-9 rounded-md border border-gray-200 dark:border-white/8 bg-white dark:bg-white/2 px-3 text-sm text-left flex items-center gap-2 text-slate-900 dark:text-white cursor-pointer focus:outline-none focus:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500/20 transition-all duration-200"
-      >
-        <Calendar size={14} className="text-slate-400 shrink-0" />
-        <span className={value ? '' : 'text-slate-400'}>{value ? formatDisplayDate(value) : placeholder}</span>
-      </button>
-
-      {open && createPortal(
-        <>
-          <div className="fixed inset-0 z-299" onClick={() => setOpen(false)} />
+  const calendar = (
           <div
-            className="fixed z-300 w-64 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-lg shadow-xl p-3"
-            style={{ top: pos.top, left: pos.left }}
+            className={`${inline ? "w-full" : "fixed z-300 w-64"} bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-lg shadow-xl p-3`}
+            style={inline ? undefined : { top: pos.top, left: pos.left }}
           >
             <div className="flex items-center justify-between mb-2">
               <button type="button" onClick={prevMonth} className="p-1 rounded hover:bg-slate-100 dark:hover:bg-white/5 text-slate-600 dark:text-slate-300 cursor-pointer transition-colors duration-200" aria-label="Previous month">
@@ -141,7 +128,7 @@ export function DatePicker({ value, onChange, minDate, placeholder = 'Select dat
                     type="button"
                     disabled={disabled}
                     onClick={() => selectDay(day)}
-                    className={`h-8 w-8 mx-auto rounded-md text-xs font-medium transition-all duration-200
+                    className={`h-8 ${inline ? 'w-full max-w-8' : 'w-8'} mx-auto rounded-md text-xs font-medium transition-all duration-200
                       ${disabled ? 'text-slate-300 dark:text-slate-600 cursor-not-allowed' : 'cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-500/10'}
                       ${selected ? 'bg-blue-600 text-white hover:bg-blue-700 dark:hover:bg-blue-700' : ''}
                       ${isToday && !selected ? 'border border-blue-500/50 text-blue-600 dark:text-blue-400' : ''}
@@ -154,9 +141,28 @@ export function DatePicker({ value, onChange, minDate, placeholder = 'Select dat
               })}
             </div>
           </div>
+  );
+
+  return (
+    <div className="relative">
+      {!inline && <button
+        ref={triggerRef}
+        type="button"
+        id={id}
+        onClick={() => open ? setOpen(false) : handleOpen()}
+        className="w-full h-9 rounded-md border border-gray-200 dark:border-white/8 bg-white dark:bg-white/2 px-3 text-sm text-left flex items-center gap-2 text-slate-900 dark:text-white cursor-pointer focus:outline-none focus:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500/20 transition-all duration-200"
+      >
+        <Calendar size={14} className="text-slate-400 shrink-0" />
+        <span className={value ? '' : 'text-slate-400'}>{value ? formatDisplayDate(value) : placeholder}</span>
+      </button>}
+
+      {(inline || open) && (inline ? calendar : createPortal(
+        <>
+          <div className="fixed inset-0 z-299" onClick={() => setOpen(false)} />
+          {calendar}
         </>,
         document.body
-      )}
+      ))}
     </div>
   );
 }

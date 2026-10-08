@@ -5,7 +5,7 @@ import prisma from '../../../config/database.config';
 import { issueAuthSession } from '../../../core/auth/auth-session';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { salesPipeline, salesTransaction } from '../leads/lead-automation.service';
-import type { ClosingField, CustomFieldModule } from '@leadcrm/shared';
+import { CUSTOM_FIELD_BUILT_IN_GROUPS, type ClosingField, type CustomFieldModule } from '@leadcrm/shared';
 import app from '../../../app';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
@@ -16,7 +16,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
     return { status: response.status, body: await response.json() };
   }
   async function field(module: CustomFieldModule, name: string, extra: Record<string, unknown> = {}): Promise<ClosingField> {
-    const result = await call('/administration/closing-requirements', 'POST', { module, group: 'Additional Information', name, type: 'Text', required: false, ...extra });
+    const result = await call('/administration/closing-requirements', 'POST', { module, group: CUSTOM_FIELD_BUILT_IN_GROUPS[module][0], name, type: 'Text', required: false, ...extra });
     expect(result.status, JSON.stringify(result.body)).toBe(200); return result.body.data;
   }
   const person = () => ({ firstName: 'Custom', lastName: 'Tester', email: `${randomUUID()}@example.test` });
@@ -53,11 +53,11 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
   });
 
   it('scopes groups and definitions by module; normalizes names and rejects unsafe changes', async () => {
-    const original = await field('contacts', '  Preferred Contact Time  ', { group: '  Technical Requirements  ' });
-    const sameGroup = await field('contacts', 'Capacity', { group: 'technical requirements' });
-    expect(sameGroup.group).toBe('Technical Requirements'); expect(original.name).toBe('Preferred Contact Time');
-    expect((await call('/administration/closing-requirements', 'POST', { module: 'contacts', group: 'technical requirements', name: ' preferred contact time ', type: 'Text', required: false })).status).toBe(400);
-    await field('leads', 'Preferred Contact Time', { group: 'Technical Requirements' });
+    const original = await field('contacts', '  Preferred Contact Time  ', { group: '  Additional Information  ' });
+    const sameGroup = await field('contacts', 'Capacity', { group: 'additional information' });
+    expect(sameGroup.group).toBe('Additional Information'); expect(original.name).toBe('Preferred Contact Time');
+    expect((await call('/administration/closing-requirements', 'POST', { module: 'contacts', group: 'additional information', name: ' preferred contact time ', type: 'Text', required: false })).status).toBe(400);
+    await field('leads', 'Preferred Contact Time', { group: 'Additional Information' });
     const list = (await call('/crm/contacts/custom-fields')).body.data as ClosingField[];
     expect(list.every(f => f.module === 'contacts')).toBe(true);
     for (const patch of [{ module: 'leads' }, { type: 'Number' }, { name: '   ' }, { group: '  ' }, { name: 'x'.repeat(101) }]) expect((await call(`/administration/closing-requirements/${original.id}`, 'PATCH', patch)).status).toBe(400);
@@ -68,8 +68,8 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
   });
 
   it('persists custom Account groups and validates every supported scalar type', async () => {
-    const number = await field('accounts', 'Server Count', { type: 'Number', group: 'Technical Details' });
-    const date = await field('accounts', 'Inspection', { type: 'Date', group: 'Technical Details' });
+    const number = await field('accounts', 'Server Count', { type: 'Number', group: 'Basic Information' });
+    const date = await field('accounts', 'Inspection', { type: 'Date', group: 'Basic Information' });
     const choice = await field('accounts', 'Service', { type: 'Dropdown', options: ['Gold', 'Silver'] });
     const text = await field('accounts', 'Short text');
     const long = await field('accounts', 'Long text', { type: 'Long Text' });
@@ -188,4 +188,31 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
       expect(await prisma.recordFile.count({ where: { tenantId } })).toBe(2);
     } finally { storage.mockRestore(); vi.unstubAllEnvs(); }
   });
+  it('preserves legacy groups on edit but prevents creating arbitrary or mismatched groups', async () => {
+    const existing = await field('contacts', 'Legacy note');
+    await prisma.closingFieldDefinition.update({ where: { tenantId_id: { tenantId, id: existing.id } }, data: { definition: { ...existing, group: 'Legacy Section' } } });
+    expect((await call(`/administration/closing-requirements/${existing.id}`, 'PATCH', { name: 'Renamed legacy' })).status).toBe(200);
+    const list = (await call('/administration/closing-requirements')).body.data as ClosingField[];
+    expect(list.find(f => f.id === existing.id)?.group).toBe('Legacy Section');
+    for (const group of ['Legacy Section', 'Closed Won Requirements', 'New arbitrary section']) {
+      expect((await call('/administration/closing-requirements', 'POST', { module: 'contacts', group, name: 'Invalid group', type: 'Text', required: false })).status).toBe(400);
+    }
+  });
+  it('automatically assigns Accounts through the existing sales rotation and excludes Client Admin', async () => {
+    const agents = [];
+    const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Sales Agent' } });
+    for (const module of ['leads', 'deals']) await prisma.rolePermission.create({ data: { tenantId, roleId: role.id, module, canView: true, canEdit: true } });
+    for (let i = 0; i < 2; i++) {
+      const agent = await prisma.user.create({ data: { tenantId, firstName: 'Agent', lastName: String(i), email: `${randomUUID()}@camxian.com`, role: 'Sales Agent', status: 'ACTIVE' } });
+      await prisma.userRole.create({ data: { tenantId, userId: agent.id, roleId: role.id } });
+      agents.push(agent.id);
+    }
+    const first = await call('/crm/accounts', 'POST', { name: 'First automatic' });
+    const second = await call('/crm/accounts', 'POST', { name: 'Second automatic' });
+    expect(first.status).toBe(201); expect(second.status).toBe(201);
+    expect(new Set([first.body.data.assignedUserId, second.body.data.assignedUserId])).toEqual(new Set(agents));
+    expect(first.body.data.assignedUserId).not.toBe(actorId);
+    expect((await call(`/crm/accounts/${first.body.data.id}`)).body.data.assignedUserId).toBe(first.body.data.assignedUserId);
+  });
+
 });

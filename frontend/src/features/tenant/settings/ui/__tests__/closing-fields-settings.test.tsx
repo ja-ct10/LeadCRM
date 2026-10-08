@@ -62,3 +62,15 @@ it('discards unsaved New Field values after closing', () => {
   expect(screen.queryByLabelText(/Applies To/)).toBeNull();
   expect((screen.getByLabelText(/Field Name/) as HTMLInputElement).value).toBe('');
 });
+
+it('limits groups to the selected module and clears an incompatible selection', () => {
+  render(<ClosingFieldsSettings />);
+  fireEvent.click(screen.getByRole('button', { name: 'Add New Field' }));
+  const groups = screen.getByLabelText(/Group \/ Section/) as HTMLSelectElement;
+  expect(groups.tagName).toBe('SELECT');
+  fireEvent.change(groups, { target: { value: 'Organization' } });
+  fireEvent.change(screen.getByLabelText('Module *'), { target: { value: 'deals' } });
+  expect(groups.value).toBe('');
+  expect([...groups.options].map(option => option.value)).toContain('Closed Won Requirements');
+  expect([...groups.options].map(option => option.value)).not.toContain('Organization');
+});

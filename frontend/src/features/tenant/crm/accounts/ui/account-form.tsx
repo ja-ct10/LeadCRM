@@ -114,9 +114,9 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
       country: 'Philippines',
       assignedUserId: data.assignedUserId || undefined,
       notes: data.notes || undefined,
-      internalNotes: data.internalNotes || undefined,
+      ...(isEdit ? { internalNotes: data.internalNotes || undefined, activeProducts: data.activeProducts } : {}),
       productInterests: data.productInterests ?? [],
-      activeProducts: data.activeProducts && data.activeProducts.length > 0 ? data.activeProducts : undefined,
+
     };
 
     onSave(payload);
@@ -294,7 +294,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
                 aria-describedby={errors.assignedUserId ? `${fieldId}-assignedUserId-error` : undefined}
                 className={`${selectCls} ${errors.assignedUserId ? inputErrorCls : ''}`}
               >
-                <option value="">Unassigned</option>
+                <option value="">{isEdit ? 'Unassigned' : 'Assign automatically'}</option>
                 {getAssignableAgents(users).map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.firstName} {u.lastName}
@@ -318,7 +318,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
 </FieldWrap>
 
           {/* Active Products (multi-select chips) */}
-          <FieldWrap label="Active Products">
+          {isEdit && <FieldWrap label="Active Products">
             <div className="space-y-2">
               {/* Selected chips */}
               {selectedActiveProducts.length > 0 && (
@@ -363,7 +363,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
                 <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
               </div>
             </div>
-          </FieldWrap>
+          </FieldWrap>}
           <CustomFieldGroup form={customFields} group="Products & Interests" />
         </div>
 
@@ -383,7 +383,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
             />
           </FieldWrap>
 
-          <FieldWrap label="Internal Notes" htmlFor={`${fieldId}-internalNotes`} error={errors.internalNotes?.message}>
+          {isEdit && <FieldWrap label="Internal Notes" htmlFor={`${fieldId}-internalNotes`} error={errors.internalNotes?.message}>
             <textarea
               {...register('internalNotes')}
               id={`${fieldId}-internalNotes`}
@@ -393,7 +393,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
               className={`w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all resize-none ${errors.internalNotes ? inputErrorCls : ''}`}
               placeholder="Internal-only notes (not visible to the client)..."
             />
-          </FieldWrap>
+          </FieldWrap>}
           <CustomFieldGroup form={customFields} group="Notes" />
         </div>
         <CustomFieldExtraGroups form={customFields} startNumber={6} />

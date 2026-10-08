@@ -11,6 +11,7 @@ import { CrmStatusIndicator } from '../crm-status';
 const transport = vi.hoisted(() => ({ post: vi.fn(), put: vi.fn() }));
 vi.mock('@/lib/api/client', () => ({ apiClient: transport }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ users: [] }) }));
+vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => ({ data: { fields: [], values: {}, files: [] }, isInitialLoad: false, refetch: vi.fn() }) }));
 vi.mock('@/shared/hooks/use-duplicate-check', () => ({ useDuplicateCheck: () => ({ matches: [], hasDuplicates: false }) }));
 vi.mock('@/shared/hooks/use-scroll-to-error', () => ({ useScrollToError: () => {} }));
 vi.mock('@/shared/components/entity-combobox', () => ({ EntityCombobox: () => null }));

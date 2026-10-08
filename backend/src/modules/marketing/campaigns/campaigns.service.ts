@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import { Prisma, CampaignStatus, CampaignType } from '@prisma/client';
 import { z } from 'zod';
-import { CampaignDraftSchema, CampaignSendSchema, buildFinalSms, SMS_MAX_LENGTH, type CampaignSendResult } from '@leadcrm/shared';
+import { CreateCampaignDraftSchema, CampaignDraftSchema, CampaignSendSchema, buildFinalSms, SMS_MAX_LENGTH, type CampaignSendResult } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { AppError } from '../../../shared/errors/app-error';
@@ -95,7 +95,7 @@ async function validateReferences(tenantId: string, dto: ReturnType<typeof Campa
   if (dto.targetAudienceId && dto.audienceSource) throw new AppError('Select a saved audience or a source, not both.', 400);
 }
 export async function createCampaign(tenantId: string, userId: string, input: unknown) {
-  const dto = CampaignDraftSchema.parse(input);
+  const dto = CreateCampaignDraftSchema.parse(input);
   await validateReferences(tenantId, dto);
   const campaign = await prisma.campaign.create({ data: { ...dto, body: dto.body === undefined ? undefined : dto.type === 'SMS' ? dto.body : sanitizeCampaignHtml(dto.body), ...campaignScope(tenantId), createdById: userId } });
   await writeAuditLog({ tenantId, userId, action: 'campaign.created', entityType: 'Campaign', entityId: campaign.id });

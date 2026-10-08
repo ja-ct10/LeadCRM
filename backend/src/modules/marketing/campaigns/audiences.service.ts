@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Prisma, ContactStatus } from '@prisma/client';
-import { AudiencePreviewSchema, AudiencePreviewRequestSchema, CreateAudienceSchema, CRM_STATUSES, isAssignableAgent, LeadCreatedFilterSchema, leadCreatedBounds, type AudienceInput, type AudienceBreakdown, type AudiencePreviewResult, type EmailVariables } from '@leadcrm/shared';
+import { AudienceSourceSchema, AudiencePreviewSchema, AudiencePreviewRequestSchema, CreateAudienceSchema, CRM_STATUSES, isAssignableAgent, LeadCreatedFilterSchema, leadCreatedBounds, type AudienceInput, type AudienceBreakdown, type AudiencePreviewResult, type EmailVariables } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { AppError } from '../../../shared/errors/app-error';
@@ -11,6 +11,25 @@ export function campaignScope(tenantId: string) {
   const context = tenantContext.getStore();
   if (!context || context.tenantId !== tenantId) throw new AppError('CRM tenant context is required.', 403);
   return { tenantId };
+}
+
+/** CRM scalar fields used by audience matching; never a paginated UI cache. */
+async function companyValues(tenantId: string, source: AudienceInput['source'], db: Prisma.TransactionClient = prisma) {
+  const where = { ...campaignScope(tenantId), isArchived: false, deletedAt: null };
+  const [leads, contacts] = await Promise.all([
+    source === 'CONTACTS' ? [] : db.lead.findMany({ where, distinct: ['companyName'], select: { companyName: true } }),
+    source === 'LEADS' ? [] : db.contact.findMany({ where, distinct: ['company', 'accountId'], select: { company: true, account: { select: { name: true } } } }),
+  ]);
+  return [...leads.map(row => row.companyName), ...contacts.map(row => row.account?.name || row.company)].filter((value): value is string => !!value?.trim());
+}
+export async function audienceCompanies(tenantId: string, input: unknown) {
+  const source = AudienceSourceSchema.parse(input);
+  const names = new Map<string, string>();
+  for (const value of (await companyValues(tenantId, source)).sort()) {
+    const name = value.trim();
+    if (!names.has(name.toLowerCase())) names.set(name.toLowerCase(), name);
+  }
+  return [...names.values()].sort((a, b) => a.localeCompare(b));
 }
 
 // Preserve the string column: scalars stay readable, structured values are JSON.
@@ -49,6 +68,10 @@ export async function createAudience(tenantId: string, input: unknown) {
   const dto = CreateAudienceSchema.parse(input), scope = campaignScope(tenantId);
   return prisma.$transaction(async tx => {
     await validateAudienceReferences(tenantId, dto, tx);
+    if (dto.conditions.some(c => c.field === 'company')) {
+      const available = new Set((await companyValues(tenantId, dto.source, tx)).map(value => value.trim().toLowerCase()));
+      for (const c of dto.conditions) if (c.field === 'company' && !available.has(c.value.toLowerCase())) throw new AppError('Select an existing company for this source.', 400);
+    }
     const row = await tx.targetAudience.create({ data: { ...scope, name: dto.name, source: dto.source,
       conditions: { create: dto.conditions.map((c, i) => ({ field: c.field, operator: c.operator, value: typeof c.value === 'string' ? c.value : JSON.stringify(c.value), conditionOrder: i })) } } });
     return { id: row.id, ...dto };
@@ -64,7 +87,7 @@ export async function audienceDefinition(tenantId: string, id?: string | null, s
 }
 
 // Only validated fields are mapped; no request keys become raw query fragments.
-export function conditionsFor(input: AudienceInput, lead: boolean): Prisma.LeadWhereInput[] | Prisma.ContactWhereInput[] {
+export function conditionsFor(input: AudienceInput, lead: boolean, companies?: string[]): Prisma.LeadWhereInput[] | Prisma.ContactWhereInput[] {
   return input.conditions.map(c => {
     switch (c.field) {
       case 'createdAt': {
@@ -78,8 +101,18 @@ export function conditionsFor(input: AudienceInput, lead: boolean): Prisma.LeadW
       }
       case 'source': return { source: c.operator === 'not_equals' ? { not: c.value } : { equals: c.value } };
       case 'company': {
+        const contactCompany = (scalar: Prisma.StringNullableFilter): Prisma.ContactWhereInput => ({ OR: [
+          { account: { is: { name: scalar as Prisma.StringFilter } } },
+          { account: { is: null }, company: scalar },
+          { account: { is: { name: '' } }, company: scalar },
+        ] });
+        const matches = companies?.filter(value => value.trim().toLowerCase() === c.value.trim().toLowerCase());
+        if (matches && c.operator !== 'contains') {
+          const scalar = { [c.operator === 'not_equals' ? 'notIn' : 'in']: [...new Set([c.value, ...matches])], mode: 'insensitive' as const };
+          return lead ? { companyName: scalar } : contactCompany(scalar);
+        }
         const scalar = { ...(c.operator === 'not_equals' ? { not: c.value } : c.operator === 'contains' ? { contains: c.value } : { equals: c.value }), mode: 'insensitive' as const };
-        return lead ? { companyName: scalar } : { company: scalar };
+        return lead ? { companyName: scalar } : contactCompany(scalar);
       }
       case 'assignedUserId': return { assignedUserId: c.operator === 'not_equals' ? { not: c.value } : { equals: c.value } };
       case 'productInterest': {
@@ -126,6 +159,7 @@ async function visitBatches<T extends { id: string }>(read: (cursor?: string) =>
 export async function resolveAudience(tenantId: string, input: unknown, db: Prisma.TransactionClient = prisma, channel: 'EMAIL' | 'SMS' = 'EMAIL', page?: { page: number; limit: number }) {
   const dto = AudiencePreviewSchema.parse(input), scope = campaignScope(tenantId);
   await validateAudienceReferences(tenantId, dto, db);
+  const companies = dto.conditions.some(c => c.field === 'company') ? await companyValues(tenantId, dto.source, db) : undefined;
   const staff = new Set<string>(), suppressed = new Map<string, string>();
   const batch = (cursor?: string) => ({ take: 250, orderBy: { id: 'asc' as const }, where: { ...scope, ...(cursor ? { id: { gt: cursor } } : {}) } });
   if (channel === 'EMAIL') {
@@ -150,8 +184,8 @@ export async function resolveAudience(tenantId: string, input: unknown, db: Pris
   if (dto.source !== 'LEADS') {
     let cursor: string | undefined;
     for (;;) {
-      const rows = await db.contact.findMany({ where: { ...scope, AND: conditionsFor(dto, false) as Prisma.ContactWhereInput[], ...(cursor ? { id: { gt: cursor } } : {}) }, take: 250, orderBy: { id: 'asc' }, select: { id: true, email: true, firstName: true, lastName: true, company: true, phone: true, status: true, doNotContact: true, isArchived: true, deletedAt: true } });
-      for (const c of rows) retain({ contactId: c.id, email: c.email, phone: c.phone, reason: c.doNotContact ? (channel === 'SMS' ? 'DO_NOT_CONTACT' : 'UNSUBSCRIBED') : c.isArchived || c.deletedAt || c.status === 'CANCELLED' ? 'INACTIVE' : null, personalization: { first_name: c.firstName, last_name: c.lastName, company_name: c.company || '', contact_number: c.phone || '', status: c.status } });
+      const rows = await db.contact.findMany({ where: { ...scope, AND: conditionsFor(dto, false, companies) as Prisma.ContactWhereInput[], ...(cursor ? { id: { gt: cursor } } : {}) }, take: 250, orderBy: { id: 'asc' }, select: { id: true, email: true, firstName: true, lastName: true, company: true, account: { select: { name: true } }, phone: true, status: true, doNotContact: true, isArchived: true, deletedAt: true } });
+      for (const c of rows) retain({ contactId: c.id, email: c.email, phone: c.phone, reason: c.doNotContact ? (channel === 'SMS' ? 'DO_NOT_CONTACT' : 'UNSUBSCRIBED') : c.isArchived || c.deletedAt || c.status === 'CANCELLED' ? 'INACTIVE' : null, personalization: { first_name: c.firstName, last_name: c.lastName, company_name: c.account?.name || c.company || '', contact_number: c.phone || '', status: c.status } });
       if (rows.length < 250) break;
       cursor = rows[rows.length - 1].id;
     }
@@ -159,7 +193,7 @@ export async function resolveAudience(tenantId: string, input: unknown, db: Pris
   if (dto.source !== 'CONTACTS') {
     let cursor: string | undefined;
     for (;;) {
-      const rows = await db.lead.findMany({ where: { ...scope, AND: conditionsFor(dto, true) as Prisma.LeadWhereInput[], ...(cursor ? { id: { gt: cursor } } : {}) }, take: 250, orderBy: { id: 'asc' }, select: { id: true, email: true, firstName: true, lastName: true, companyName: true, phone: true, status: true, isArchived: true, deletedAt: true, convertedAt: true } });
+      const rows = await db.lead.findMany({ where: { ...scope, AND: conditionsFor(dto, true, companies) as Prisma.LeadWhereInput[], ...(cursor ? { id: { gt: cursor } } : {}) }, take: 250, orderBy: { id: 'asc' }, select: { id: true, email: true, firstName: true, lastName: true, companyName: true, phone: true, status: true, isArchived: true, deletedAt: true, convertedAt: true } });
       for (const l of rows) retain({ leadId: l.id, email: l.email, phone: l.phone, reason: l.isArchived || l.deletedAt || l.convertedAt || ['archived', 'converted', 'cancelled'].includes(l.status.toLowerCase()) ? 'INACTIVE' : null, personalization: { first_name: l.firstName, last_name: l.lastName, company_name: l.companyName || '', contact_number: l.phone || '', status: l.status } });
       if (rows.length < 250) break;
       cursor = rows[rows.length - 1].id;

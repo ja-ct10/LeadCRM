@@ -1,3 +1,4 @@
+import { resolveSalesAgent } from '../leads/lead-automation.service';
 import { validateProductSnapshots, normalizeProductOther } from '../leads/product-snapshots';
 import { productRelationData } from '../leads/product-relations';
 import { salesTransaction } from '../leads/lead-automation.service';
@@ -71,7 +72,8 @@ export async function createCompany(tenantId: string, dto: CreateCompanyDto, act
   normalizeProductOther(dto, (dto.productInterests as string[] | undefined) ?? []);
   const { customFieldValues, ...data } = dto;
   return salesTransaction(async tx => {
-    const account = await tx.account.create({ data: { ...data, ...await productRelationData(tx, 'account', tenantId, { names: dto.productInterests, activeNames: dto.activeProducts }), tenantId } as never });
+    const agent = await resolveSalesAgent(tx, tenantId, dto.assignedUserId);
+    const account = await tx.account.create({ data: { ...data, assignedUserId: agent?.id ?? null, ...await productRelationData(tx, 'account', tenantId, { names: dto.productInterests, activeNames: dto.activeProducts }), tenantId } as never });
     await saveRecordValues(tx, tenantId, 'accounts', account.id, customFieldValues, actorId);
     return account;
   });

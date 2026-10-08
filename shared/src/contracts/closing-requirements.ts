@@ -12,6 +12,8 @@ export const CUSTOM_FIELD_BUILT_IN_GROUPS: Record<CustomFieldModule, readonly st
   accounts: ['Basic Information', 'Address', 'Relationships', 'Products & Interests', 'Notes'],
   deals: ['Deal Information', 'Relationships', 'Additional Details', CLOSED_WON_GROUP],
 };
+export const customFieldGroupOptions = (module: CustomFieldModule, previous?: { module: CustomFieldModule; group: string }): string[] =>
+  [...new Set([...CUSTOM_FIELD_BUILT_IN_GROUPS[module], ...(previous?.module === module ? [previous.group] : [])])];
 export const customFieldNameKey = (value: string) => value.trim().toLowerCase();
 export const ClosingFieldInputSchema = z.object({
   name: z.string().trim().min(1, 'Field name is required.').max(100),

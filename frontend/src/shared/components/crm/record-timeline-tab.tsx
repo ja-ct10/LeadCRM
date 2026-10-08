@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   FileText,
   Phone,
@@ -249,6 +249,15 @@ export function RecordTimelineTab({
   const [searchTerm, setSearchTerm] = useState('');
   const [visibleCount, setVisibleCount] = useState(20);
   const [composerOpen, setComposerOpen] = useState(false);
+  const composerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!composerOpen) return;
+    const composer = composerRef.current;
+    const container = composer?.closest<HTMLElement>('[data-record-scroll]');
+    if (!composer || !container) return;
+    container.scrollTo({ top: container.scrollTop + composer.getBoundingClientRect().top - container.getBoundingClientRect().top, behavior: 'smooth' });
+    composer.querySelector<HTMLElement>('textarea, input, button')?.focus({ preventScroll: true });
+  }, [composerOpen]);
 
   const filters = ACTIVITY_FILTERS;
 
@@ -291,7 +300,7 @@ export function RecordTimelineTab({
   return (
     <div className={cn('w-full min-w-0', compact ? 'space-y-3 px-3 py-4 sm:space-y-4 sm:px-4 sm:py-5' : 'space-y-4 px-[var(--panel-gutter,1.5rem)] py-5')}>
       {/* Quick Composer */}
-      {canLog && (!compact || composerOpen) ? <QuickComposer key={recordId} module={module} recordId={recordId} onCreated={() => { setComposerOpen(false); onActivityCreated?.(); }} /> : !compact && canCreate ? <p className="rounded-lg border border-border p-3 text-sm text-muted-foreground">Activity history is available below. Quick Log is currently unavailable for this record.</p> : null}
+      {canLog && (!compact || composerOpen) ? <div ref={composerRef}><QuickComposer key={recordId} module={module} recordId={recordId} onCreated={() => { setComposerOpen(false); onActivityCreated?.(); }} /></div> : !compact && canCreate ? <p className="rounded-lg border border-border p-3 text-sm text-muted-foreground">Activity history is available below. Quick Log is currently unavailable for this record.</p> : null}
       <h3 className={cn('font-semibold uppercase tracking-[0.14em] text-muted-foreground', compact ? 'text-[11px] sm:text-xs' : 'text-xs')}>Activity Timeline{!loading && !error ? ` (${activities.length})` : ''}</h3>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
 

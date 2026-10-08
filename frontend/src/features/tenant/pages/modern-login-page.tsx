@@ -5,6 +5,7 @@ import { useAuth } from '@/store/AuthContext';
 import { ArrowLeft, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';
+import { PasswordStrengthMeter } from '@/shared/components/password-strength-meter';
 import { StrongPasswordSchema } from '@leadcrm/shared';
 import { CamxianBrandPanel } from './camxian-brand-panel';
 
@@ -72,6 +73,9 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
   const [resetToken, setResetToken] = useState('');
   const [resetPassword, setResetPassword] = useState('');
   const [resetConfirm, setResetConfirm] = useState('');
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetConfirmTouched, setResetConfirmTouched] = useState(false);
+  const resetMismatch = resetConfirm && resetConfirm !== resetPassword ? 'Passwords do not match.' : resetConfirmTouched && !resetConfirm ? 'Confirm your new password.' : '';
   const [resetSuccess, setResetSuccess] = useState(false);
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -160,7 +164,10 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
       toast.error('Passwords do not match.');
       return;
     }
-    const ok = await confirmPasswordReset(resetToken, resetPassword);
+    if (resetBusy) return;
+    setResetBusy(true);
+    let ok = false;
+    try { ok = await confirmPasswordReset(resetToken, resetPassword); } finally { setResetBusy(false); }
     if (ok) {
       setResetSuccess(true);
     } else {
@@ -218,6 +225,8 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                       className="w-full h-11 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-xl px-4 pr-11 text-slate-900 dark:text-white text-sm placeholder:text-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
                       required
                       minLength={8}
+                      maxLength={72}
+                      autoComplete="new-password"
                       placeholder="At least 8 characters"
                     />
                     <button
@@ -229,6 +238,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                     </button>
                   </div>
                 </div>
+                <PasswordStrengthMeter password={resetPassword} hideWhenEmpty={false} />
                 <div>
                   <label htmlFor="confirm-password" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
                     Confirm Password
@@ -238,6 +248,11 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                       id="confirm-password"
                       type={showResetConfirm ? 'text' : 'password'}
                       value={resetConfirm}
+                      maxLength={72}
+                      autoComplete="new-password"
+                      aria-invalid={!!resetMismatch}
+                      aria-describedby={resetMismatch ? "reset-confirm-error" : undefined}
+                      onBlur={() => setResetConfirmTouched(true)}
                       onChange={(e) => setResetConfirm(e.target.value)}
                       className="w-full h-11 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-xl px-4 pr-11 text-slate-900 dark:text-white text-sm placeholder:text-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
                       required
@@ -252,9 +267,11 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                     </button>
                   </div>
                 </div>
+                {resetMismatch && <p id="reset-confirm-error" role="alert" className="text-xs text-red-600">{resetMismatch}</p>}
                 <button
                   type="submit"
-                  className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold transition-colors active:scale-95"
+                  disabled={resetBusy || !StrongPasswordSchema.safeParse(resetPassword).success || resetPassword !== resetConfirm}
+                  className="disabled:opacity-50 disabled:cursor-not-allowed w-full h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold transition-colors active:scale-95"
                 >
                   Reset Password
                 </button>

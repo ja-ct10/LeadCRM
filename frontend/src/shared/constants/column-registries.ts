@@ -16,6 +16,7 @@ import type { ColumnDefinition } from '@leadcrm/shared';
 export const LEADS_COLUMN_REGISTRY: ColumnDefinition[] = [
   // ── Leads ──────────────────────────────────────────────────
   { id: 'firstName',           label: 'Name',                          required: true,  defaultVisible: true,  defaultOrder: 0,  group: 'Leads',              priority: 'required' },
+  { id: 'assignedUserId',      label: 'Assigned Agent',                required: false, defaultVisible: true,  defaultOrder: 3,  group: 'Leads',              priority: 'medium' },
   { id: 'phoneAction',         label: '📞',                            required: false, defaultVisible: false,  defaultOrder: 1,  group: 'Leads',              priority: 'high' },
   { id: 'emailAction',         label: '✉',                             required: false, defaultVisible: false,  defaultOrder: 2,  group: 'Leads',              priority: 'high' },
   { id: 'email',               label: 'Email address',                 required: false, defaultVisible: true, defaultOrder: 4,  group: 'Leads',              priority: 'low' },
@@ -139,7 +140,7 @@ export const CONTACTS_COLUMN_REGISTRY: ColumnDefinition[] = [
   { id: 'companyName',     label: 'Company',           required: false, defaultVisible: true,  defaultOrder: 4, group: 'Organization',  priority: 'high' },
   { id: 'status',          label: 'Status',            required: false, defaultVisible: true,  defaultOrder: 5, group: 'Contact Info',  priority: 'medium' },
   { id: 'source',          label: 'Source',            required: false, defaultVisible: false, defaultOrder: 6, group: 'Contact Info',  priority: 'medium' },
-  { id: 'assignedUserId',  label: 'Assigned To',       required: false, defaultVisible: true,  defaultOrder: 7, group: 'Contact Info',  priority: 'medium' },
+  { id: 'assignedUserId',  label: 'Assigned Agent',       required: false, defaultVisible: true,  defaultOrder: 7, group: 'Contact Info',  priority: 'medium' },
   { id: 'accountId',       label: 'Account',           required: false, defaultVisible: false, defaultOrder: 8, group: 'Organization',  priority: 'low' },
   { id: 'createdAt',       label: 'Created Date',      required: false, defaultVisible: true,  defaultOrder: 9, group: 'System',        priority: 'low' },
 ];

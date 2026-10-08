@@ -73,3 +73,6 @@ data/outputs/retired-features-*.json
 
 # Reproducible Campaigns browser verification artifacts.
 /data/outputs/campaign-sms/
+
+# Reproducible local UI acceptance screenshots and logs.
+/data/outputs/ui-fixes-browser/

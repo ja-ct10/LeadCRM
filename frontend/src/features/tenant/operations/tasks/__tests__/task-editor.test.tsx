@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 const mocks = vi.hoisted(() => ({
   addTask: vi.fn(),
@@ -64,8 +65,11 @@ it('labels the existing task assignee Assigned Agent in the detail panel', () =>
 });
 it("uses the Philippine calendar minimum and does not show a timezone label", () => {
   render(<TaskEditor onClose={vi.fn()} />);
-  const dueDate = screen.getByLabelText("Due date and time *") as HTMLInputElement;
-  expect(dueDate.min).toBe(`${manilaCurrentDate()}T00:00`);
+  fireEvent.click(screen.getByLabelText("Due date and time *"));
+  const today = Number(manilaCurrentDate().slice(-2));
+  const picker = screen.getByRole('group', { name: 'Choose due date and time' });
+  if (today > 1) expect((within(picker).getByRole('button', { name: String(today - 1) }) as HTMLButtonElement).disabled).toBe(true);
+  expect((within(picker).getByRole('button', { name: String(today) }) as HTMLButtonElement).disabled).toBe(false);
   expect(screen.queryByText("Asia/Manila")).toBeNull();
 });
 beforeEach(() => {
@@ -216,4 +220,20 @@ it("does not offer Lead relationship changes without Lead edit permission", asyn
   );
   await screen.findByText("No related contacts for the selected leads.");
   expect(screen.queryByRole("button", { name: "Create a contact" })).toBeNull();
+});
+
+it('keeps picker changes as a draft until Done and discards them on Cancel', () => {
+  render(<TaskEditor onClose={vi.fn()} />);
+  const trigger = screen.getByLabelText('Due date and time *');
+  const original = trigger.textContent;
+  fireEvent.click(trigger);
+  fireEvent.change(screen.getByLabelText('Due minute'), { target: { value: '17' } });
+  expect(trigger.textContent).toBe(original);
+  fireEvent.click(within(screen.getByRole('group', { name: 'Choose due date and time' })).getByRole('button', { name: 'Cancel' }));
+  expect(trigger.textContent).toBe(original);
+  fireEvent.click(trigger);
+  fireEvent.change(screen.getByLabelText('Due minute'), { target: { value: '23' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+  expect(trigger.textContent).toContain(':23');
+  expect(screen.queryByRole('group', { name: 'Choose due date and time' })).toBeNull();
 });

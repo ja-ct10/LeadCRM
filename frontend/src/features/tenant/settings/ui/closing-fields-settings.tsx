@@ -3,7 +3,7 @@ import { PageHeader } from '@/shared/components/ui/page-header';
 import { PanelSectionHeading, panelBodyClass, panelFooterClass, panelInputClass, panelPrimaryButtonClass, panelSecondaryButtonClass } from '@/shared/components/side-panel-styles';
 import { useState } from 'react';
 import { Plus, X } from 'lucide-react';
-import { CLOSING_FIELD_TYPES, ClosingFieldInputSchema, CUSTOM_FIELD_MODULES, CUSTOM_FIELD_MODULE_LABELS, CUSTOM_FIELD_BUILT_IN_GROUPS, normalizeCustomField, isClosedWonField, type CustomFieldModule, type ClosingField, type ClosingFieldInput } from '@leadcrm/shared';
+import { customFieldGroupOptions, CLOSING_FIELD_TYPES, ClosingFieldInputSchema, CUSTOM_FIELD_MODULES, CUSTOM_FIELD_MODULE_LABELS, CUSTOM_FIELD_BUILT_IN_GROUPS, normalizeCustomField, isClosedWonField, type CustomFieldModule, type ClosingField, type ClosingFieldInput } from '@leadcrm/shared';
 import { apiClient } from '@/lib/api/client';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
@@ -18,10 +18,10 @@ const inputClass = panelInputClass;
 type FieldDraft = Omit<ClosingFieldInput, 'appliesTo'>;
 const empty = (module: CustomFieldModule): FieldDraft => ({ name: '', type: 'Text', module, group: CUSTOM_FIELD_BUILT_IN_GROUPS[module][0], visibleInForm: true, order: 0, required: false, active: true, options: [], description: '' });
 
-function FieldForm({ field, fields, module, onSaved, onClose }: { field?: ClosingField; fields: ClosingField[]; module: CustomFieldModule; onSaved: () => void; onClose: () => void }) {
+function FieldForm({ field, module, onSaved, onClose }: { field?: ClosingField; module: CustomFieldModule; onSaved: () => void; onClose: () => void }) {
   const canDisable = useHasPermission('custom_fields.disable');
   const [form, setForm] = useState<FieldDraft>(() => field ? { name: field.name, type: field.type, module: field.module, group: field.group, visibleInForm: field.visibleInForm, order: field.order, required: field.required, active: field.active, options: [...field.options], description: field.description } : empty(module));
-  const groups = [...new Set([...CUSTOM_FIELD_BUILT_IN_GROUPS[form.module], ...fields.filter(f => f.module === form.module).map(f => f.group)])];
+  const groups = customFieldGroupOptions(form.module, field);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const update = <K extends keyof FieldDraft>(key: K, value: FieldDraft[K]) => setForm(prev => ({ ...prev, [key]: value }));
@@ -30,6 +30,7 @@ function FieldForm({ field, fields, module, onSaved, onClose }: { field?: Closin
     event.preventDefault();
     const parsed = ClosingFieldInputSchema.safeParse(form);
     if (!parsed.success) { setErrors(Object.fromEntries(parsed.error.issues.map(i => [String(i.path[0]), i.message]))); return; }
+    if (!groups.includes(form.group)) { setErrors({ group: 'Select a section for this module.' }); return; }
     setBusy(true); setErrors({});
     try { if (field) await apiClient.patch(`${endpoint}/${field.id}`, form); else await apiClient.post(endpoint, form); toast.success(field ? 'Field updated' : 'Field created'); onSaved(); }
     catch (e) { setErrors({ form: e instanceof Error ? e.message : 'Unable to save field.' }); }
@@ -39,8 +40,8 @@ function FieldForm({ field, fields, module, onSaved, onClose }: { field?: Closin
       <PanelSectionHeading number={1}>Basic Information</PanelSectionHeading>
       <label className="block space-y-1.5 text-xs font-semibold">Field Name <span className="text-red-500">*</span><input autoFocus required maxLength={100} aria-invalid={!!errors.name} className={inputClass} value={form.name} onChange={e => update('name', e.target.value)} />{error('name')}</label>
       <label className="block space-y-1.5 text-xs font-semibold">Field Type <span className="text-red-500">*</span><select required disabled={!!field} className={inputClass} value={form.type} onChange={e => update('type', e.target.value as ClosingFieldInput['type'])}>{CLOSING_FIELD_TYPES.map(type => <option key={type}>{type}</option>)}</select>{field && <span className="block font-normal text-muted-foreground">Add a new field to use a different type.</span>}</label>
-      <label className="block space-y-1.5 text-xs font-semibold">Module <span className="text-red-500">*</span><select required disabled={!!field} className={inputClass} value={form.module} onChange={e => { const selected = e.target.value as CustomFieldModule; setForm(prev => ({ ...prev, module: selected, group: CUSTOM_FIELD_BUILT_IN_GROUPS[selected][0] })); }}>{CUSTOM_FIELD_MODULES.map(value => <option key={value} value={value}>{CUSTOM_FIELD_MODULE_LABELS[value]}</option>)}</select>{field && <span className="block font-normal text-muted-foreground">The module stays fixed to preserve record values.</span>}{error('module')}</label>
-      <label className="block space-y-1.5 text-xs font-semibold">Group / Section <span className="text-red-500">*</span><input required list="custom-field-groups" maxLength={100} className={inputClass} value={form.group} disabled={!!field && isClosedWonField(field)} onChange={e => update('group', e.target.value)} aria-invalid={!!errors.group} /><datalist id="custom-field-groups">{groups.filter(group => !field || (group === 'Closed Won Requirements') === isClosedWonField(field)).map(group => <option key={group} value={group} />)}</datalist><span className="block font-normal text-muted-foreground">Choose an existing section or enter a new group name.</span>{error('group')}</label>
+      <label className="block space-y-1.5 text-xs font-semibold">Module <span className="text-red-500">*</span><select required disabled={!!field} className={inputClass} value={form.module} onChange={e => { const selected = e.target.value as CustomFieldModule; setForm(prev => ({ ...prev, module: selected, group: CUSTOM_FIELD_BUILT_IN_GROUPS[selected].includes(prev.group) ? prev.group : '' })); }}>{CUSTOM_FIELD_MODULES.map(value => <option key={value} value={value}>{CUSTOM_FIELD_MODULE_LABELS[value]}</option>)}</select>{field && <span className="block font-normal text-muted-foreground">The module stays fixed to preserve record values.</span>}{error('module')}</label>
+      <label className="block space-y-1.5 text-xs font-semibold">Group / Section <span className="text-red-500">*</span><select required className={inputClass} value={form.group} disabled={!!field && isClosedWonField(field)} onChange={e => update('group', e.target.value)} aria-invalid={!!errors.group}><option value="">Select a section</option>{groups.filter(group => !field || (group === 'Closed Won Requirements') === isClosedWonField(field)).map(group => <option key={group} value={group}>{group}</option>)}</select>{error('group')}</label>
       <label className="flex min-h-11 items-center justify-between gap-3 text-sm">Required<input type="checkbox" role="switch" aria-label="Required" checked={form.required} onChange={e => update('required', e.target.checked)} className="h-5 w-5 accent-blue-600" /></label>
       <label className="flex min-h-11 items-center justify-between gap-3 text-sm">Visible in Form<input type="checkbox" role="switch" aria-label="Visible in Form" checked={form.visibleInForm} onChange={e => update('visibleInForm', e.target.checked)} className="h-5 w-5 accent-blue-600" /></label>
       {isClosedWonField(form) && <p className="text-xs text-muted-foreground">These fields are completed in the Closed Won workflow. Required fields remain enforced there regardless of visibility in ordinary Deal forms.</p>}
@@ -84,7 +85,7 @@ export function ClosingFieldsSettings() {
         ...(canDisable && field.active ? [{ id: 'disable', label: 'Disable', onClick: () => void disable(field.id) }] : []),
       ]} />)}</div>}
     <SlidingDrawer isOpen={panel !== null} onClose={() => setPanel(null)} title={panel && typeof panel === 'object' ? 'Edit Field' : 'New Field'} subtitle="Complete the custom field details below.">
-      {panel && <FieldForm key={typeof panel === 'object' ? panel.id : 'new'} field={typeof panel === 'object' ? panel : undefined} fields={fields} module={module || 'leads'} onClose={() => setPanel(null)} onSaved={() => { void query.refetch(); setPanel(null); }} />}
+      {panel && <FieldForm key={typeof panel === 'object' ? panel.id : 'new'} field={typeof panel === 'object' ? panel : undefined} module={module || 'leads'} onClose={() => setPanel(null)} onSaved={() => { void query.refetch(); setPanel(null); }} />}
     </SlidingDrawer>
   </div>;
 }

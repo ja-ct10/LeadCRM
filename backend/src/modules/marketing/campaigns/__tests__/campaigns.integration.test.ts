@@ -356,7 +356,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
       const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Typed', lastName: 'Contact', company: 'Matching COMPANY', source: 'Website', status: 'HOT', assignedUserId: agent.id, createdAt, email: 'typed-contact@example.test', productsNormalized: true, productLinks: { create: { tenantId, productInterestId: product.id, interested: true } } } });
       const definition = { source: 'ALL', conditions: [
         { field: 'status', operator: 'equals', value: 'Hot' }, { field: 'source', operator: 'equals', value: 'Website' },
-        { field: 'company', operator: 'contains', value: ' matching ' }, { field: 'productInterest', operator: 'equals', value: [product.id] },
+        { field: 'company', operator: 'equals', value: 'Matching COMPANY' }, { field: 'productInterest', operator: 'equals', value: [product.id] },
         { field: 'assignedUserId', operator: 'equals', value: agent.id }, { field: 'createdAt', operator: 'between', value: { from: '2026-10-07', to: '2026-10-07' } },
       ] };
       const audience = await createAudience(tenantId, { name: 'Typed audience', ...definition });
@@ -488,6 +488,38 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     expect(await seedCampaignTemplates(prisma, tenantId)).toBe(0);
     expect((await prisma.template.findUniqueOrThrow({ where: { id: sample.id } }))).toMatchObject({ content: 'User edited', isArchived: true });
     expect(await prisma.template.count({ where: { tenantId, category: 'Sales' } })).toBe(6);
+  });
+
+  it('loads normalized tenant company choices for every source and matches whitespace variants', async () => {
+    await scoped(async () => {
+      await prisma.lead.create({ data: { tenantId, firstName: 'Company', lastName: 'Lead', email: 'company-lead@external.test', companyName: '  McDonalds  ' } });
+      await prisma.contact.create({ data: { tenantId, firstName: 'Company', lastName: 'Contact', email: 'company-contact@external.test', company: 'mcdonalds' } });
+      await prisma.contact.create({ data: { tenantId, firstName: 'Other', lastName: 'Contact', email: 'other-company@external.test', company: 'Contact Only' } });
+      const account = await prisma.account.create({ data: { tenantId, name: 'Linked Company' } });
+      await prisma.contact.create({ data: { tenantId, firstName: 'Linked', lastName: 'Contact', email: 'linked-company@external.test', company: 'Old scalar', accountId: account.id } });
+    });
+    await scoped(() => prisma.lead.create({ data: { tenantId: otherTenantId, firstName: 'Other', lastName: 'Tenant', companyName: 'Foreign Company' } }), otherTenantId);
+    const all = await request('/marketing/audiences/companies?source=ALL');
+    expect(all.status).toBe(200);
+    expect(all.body.data.filter((value: string) => value.toLowerCase() === 'mcdonalds')).toHaveLength(1);
+    expect(all.body.data).not.toContain('Foreign Company');
+    expect(all.body.data).toContain('Linked Company'); expect(all.body.data).not.toContain('Old scalar');
+    const linked = await request('/marketing/audiences/preview', 'POST', { source: 'CONTACTS', conditions: [{ field: 'company', operator: 'equals', value: 'Linked Company' }] });
+    expect(linked.body.data.matched).toBe(1); expect(linked.body.data.recipients[0].company).toBe('Linked Company');
+    const leads = await request('/marketing/audiences/companies?source=LEADS');
+    expect(leads.body.data).toContain('McDonalds'); expect(leads.body.data).not.toContain('Contact Only');
+    expect((await request('/marketing/audiences/companies?source=CONTACTS')).body.data).toContain('Contact Only');
+    const definition = { source: 'ALL', conditions: [{ field: 'company', operator: 'equals', value: 'McDonalds' }] };
+    const preview = await request('/marketing/audiences/preview', 'POST', definition);
+    expect(preview.status).toBe(200); expect(preview.body.data.matched).toBe(2);
+    expect((await request('/marketing/audiences', 'POST', { name: 'Company audience', ...definition })).status).toBe(201);
+    expect((await request('/marketing/audiences', 'POST', { name: 'Invalid company', source: 'ALL', conditions: [{ field: 'company', operator: 'equals', value: 'Invented' }] })).status).toBe(400);
+    expect((await request('/marketing/audiences/companies', 'GET', undefined, deniedToken)).status).toBe(403);
+  });
+  it('rejects new Multi campaigns while preserving historical reads', async () => {
+    expect((await request('/marketing/campaigns', 'POST', { name: 'New Multi', type: 'MULTI_CHANNEL' })).status).toBe(400);
+    const historical = await scoped(() => prisma.campaign.create({ data: { tenantId, name: 'Historical Multi', type: 'MULTI_CHANNEL', status: 'DRAFT', createdById: userId } }));
+    expect((await request(`/marketing/campaigns/${historical.id}`)).body.data.type).toBe('MULTI_CHANNEL');
   });
 
 });

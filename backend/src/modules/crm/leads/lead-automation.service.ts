@@ -88,6 +88,20 @@ export async function createProductDeals(tx: Tx, tenantId: string, leadId: strin
   }
 }
 
+/** Shared transactional rotation for new CRM records. */
+export async function resolveSalesAgent(tx: Tx, tenantId: string, assignedUserId?: string | null) {
+  const agents = await eligibleAgents(tx, tenantId);
+  let agent = assignedUserId ? await validateSalesOwner(tx, tenantId, assignedUserId) : undefined;
+  if (!agent && agents.length) {
+    const key = { tenantId: tenantId, module: 'lead-assignment', key: 'default' };
+    const cursor = await tx.tenantPreference.findUnique({ where: { tenantId_module_key: key } });
+    const lastId = typeof cursor?.value === 'string' ? cursor.value : '';
+    agent = agents[(agents.findIndex(user => user.id === lastId) + 1) % agents.length];
+    await tx.tenantPreference.upsert({ where: { tenantId_module_key: key }, create: { ...key, value: agent.id }, update: { value: agent.id } });
+  }
+  return agent;
+}
+
 export async function createAssignedLead(tx: Tx, input: Prisma.LeadUncheckedCreateInput, actorId?: string) {
   const scope = crmScope(input.tenantId);
   if (input.creationKey) {
@@ -103,15 +117,7 @@ export async function createAssignedLead(tx: Tx, input: Prisma.LeadUncheckedCrea
   if (!input.productInterestIds && new Set((input.productInterest ?? []) as string[]).size !== products.length) throw new ValidationError('Unknown Product Interest');
   const relations = await productRelationData(tx, 'lead', scope.tenantId, { ids: products.map(p => p.id) });
   const lead = await tx.lead.create({ data: { ...input, ...scope, ...relations, assignedUserId: null } });
-  const agents = await eligibleAgents(tx, scope.tenantId);
-  let agent = input.assignedUserId ? await validateSalesOwner(tx, scope.tenantId, input.assignedUserId) : undefined;
-  if (!agent && agents.length) {
-    const key = { tenantId: scope.tenantId, module: 'lead-assignment', key: 'default' };
-    const cursor = await tx.tenantPreference.findUnique({ where: { tenantId_module_key: key } });
-    const lastId = typeof cursor?.value === 'string' ? cursor.value : '';
-    agent = agents[(agents.findIndex(user => user.id === lastId) + 1) % agents.length];
-    await tx.tenantPreference.upsert({ where: { tenantId_module_key: key }, create: { ...key, value: agent.id }, update: { value: agent.id } });
-  }
+  const agent = await resolveSalesAgent(tx, scope.tenantId, input.assignedUserId);
   if (agent) {
     await tx.lead.update({ where: { id: lead.id, ...scope }, data: { assignedUserId: agent.id } });
     await tx.activity.create({ data: { ...scope, leadId: lead.id, createdById: actorId ?? agent.id, type: 'assignment',

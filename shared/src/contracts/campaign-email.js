@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MarketingTemplateSchema = exports.CampaignSendSchema = exports.CampaignDraftSchema = exports.SMS_CAMXIAN_FOOTER = exports.SMS_MAX_LENGTH = exports.CreateAudienceSchema = exports.AudiencePreviewRequestSchema = exports.AudiencePreviewSchema = exports.AudienceConditionSchema = exports.AUDIENCE_OPERATORS = exports.AUDIENCE_FIELDS = exports.AudienceSourceSchema = exports.EmailSubjectSchema = exports.MarketingNameSchema = exports.EMAIL_VARIABLE_TOKENS = exports.EMAIL_VARIABLES = void 0;
+exports.MarketingTemplateSchema = exports.CampaignSendSchema = exports.CreateCampaignDraftSchema = exports.CampaignDraftSchema = exports.SMS_CAMXIAN_FOOTER = exports.SMS_MAX_LENGTH = exports.CreateAudienceSchema = exports.AudiencePreviewRequestSchema = exports.AudiencePreviewSchema = exports.AudienceConditionSchema = exports.AUDIENCE_OPERATORS = exports.AUDIENCE_FIELDS = exports.AudienceSourceSchema = exports.EmailSubjectSchema = exports.MarketingNameSchema = exports.EMAIL_VARIABLE_TOKENS = exports.EMAIL_VARIABLES = void 0;
 exports.escapeEmailHtml = escapeEmailHtml;
 exports.renderEmailVariables = renderEmailVariables;
 exports.buildFinalSms = buildFinalSms;
@@ -29,9 +29,9 @@ exports.AUDIENCE_FIELDS = ['status', 'source', 'company', 'productInterest', 'as
 exports.AUDIENCE_OPERATORS = ['equals', 'not_equals', 'contains', 'any', 'gte', 'lte', 'between'];
 const equality = zod_1.z.enum(['equals', 'not_equals']);
 exports.AudienceConditionSchema = zod_1.z.discriminatedUnion('field', [
-    zod_1.z.object({ field: zod_1.z.literal('status'), operator: equality, value: record_experience_1.CrmStatusSchema }).strict(),
-    zod_1.z.object({ field: zod_1.z.literal('source'), operator: equality, value: record_experience_1.LeadSourceSchema }).strict(),
-    zod_1.z.object({ field: zod_1.z.literal('company'), operator: zod_1.z.enum(['equals', 'not_equals', 'contains']), value: zod_1.z.string().trim().min(1, 'Value is required.').max(200).regex(/^[^\x00-\x1f\x7f]*$/) }).strict(),
+    zod_1.z.object({ field: zod_1.z.literal('status'), operator: equality, value: zod_1.z.enum(record_experience_1.CrmStatusSchema.options, { errorMap: () => ({ message: 'Select a status.' }) }) }).strict(),
+    zod_1.z.object({ field: zod_1.z.literal('source'), operator: equality, value: zod_1.z.enum(record_experience_1.LeadSourceSchema.options, { errorMap: () => ({ message: 'Select a source.' }) }) }).strict(),
+    zod_1.z.object({ field: zod_1.z.literal('company'), operator: zod_1.z.enum(['equals', 'not_equals', 'contains']), value: zod_1.z.string().trim().min(1, 'Select a company.').max(200).regex(/^[^\x00-\x1f\x7f]*$/) }).strict(),
     zod_1.z.object({ field: zod_1.z.literal('productInterest'), operator: equality, value: zod_1.z.array(zod_1.z.string().uuid()).min(1, 'Select a Product Interest.').max(100).transform(ids => [...new Set(ids)]) }).strict(),
     zod_1.z.object({ field: zod_1.z.literal('assignedUserId'), operator: equality, value: zod_1.z.string().uuid('Select an Assigned Agent.') }).strict(),
     zod_1.z.object({ field: zod_1.z.literal('createdAt'), operator: zod_1.z.enum(['any', 'gte', 'lte', 'between']), value: zod_1.z.union([zod_1.z.string(), zod_1.z.object({ from: zod_1.z.string(), to: zod_1.z.string() }).strict(), zod_1.z.null()]) }).strict(),
@@ -47,7 +47,7 @@ exports.AudienceConditionSchema = zod_1.z.discriminatedUnion('field', [
         ? { operator: c.operator, ...(typeof c.value === 'object' ? c.value : {}) }
         : { operator: c.operator, date: c.value });
     if (!parsed.success)
-        ctx.addIssue({ code: 'custom', path: ['value'], message: 'Enter valid dates with From on or before To.' });
+        ctx.addIssue({ code: 'custom', path: ['value'], message: c.operator === 'between' ? 'Enter valid dates with From on or before To.' : 'Select a valid date.' });
 });
 exports.AudiencePreviewSchema = zod_1.z.object({ source: exports.AudienceSourceSchema, conditions: zod_1.z.array(exports.AudienceConditionSchema).max(20).default([]) }).strict();
 exports.AudiencePreviewRequestSchema = exports.AudiencePreviewSchema.extend({ channel: zod_1.z.enum(['EMAIL', 'SMS']).default('EMAIL'), page: zod_1.z.number().int().min(1).max(100000).default(1), limit: zod_1.z.number().int().min(1).max(50).default(25) });
@@ -89,6 +89,7 @@ exports.CampaignDraftSchema = zod_1.z.object({
     audienceSource: exports.AudienceSourceSchema.optional().nullable(), targetAudienceId: zod_1.z.string().uuid().optional().nullable(),
     emailTemplateId: zod_1.z.string().uuid().optional().nullable(), smsTemplateId: zod_1.z.string().uuid().optional().nullable(),
 }).strict();
+exports.CreateCampaignDraftSchema = exports.CampaignDraftSchema.extend({ type: zod_1.z.enum(['EMAIL', 'SMS'], { errorMap: () => ({ message: 'Select Email or SMS.' }) }) });
 exports.CampaignSendSchema = exports.CampaignDraftSchema.superRefine((v, ctx) => {
     if (!v.audienceSource && !v.targetAudienceId)
         ctx.addIssue({ code: 'custom', path: ['targetAudienceId'], message: 'Target audience is required.' });

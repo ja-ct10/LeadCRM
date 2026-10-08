@@ -9,3 +9,7 @@ export async function createAudience(req: Request, res: Response, next: NextFunc
 export async function previewAudience(req: Request, res: Response, next: NextFunction) {
   try { res.json({ success: true, data: await service.previewAudience(req.user!.tenantId, req.body) }); } catch (e) { next(e); }
 }
+
+export async function audienceCompanies(req: Request, res: Response, next: NextFunction) {
+  try { res.json({ success: true, data: await service.audienceCompanies(req.user!.tenantId, req.query.source ?? 'ALL') }); } catch (e) { next(e); }
+}

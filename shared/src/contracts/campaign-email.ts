@@ -22,9 +22,9 @@ export const AUDIENCE_FIELDS = ['status', 'source', 'company', 'productInterest'
 export const AUDIENCE_OPERATORS = ['equals', 'not_equals', 'contains', 'any', 'gte', 'lte', 'between'] as const;
 const equality = z.enum(['equals', 'not_equals']);
 export const AudienceConditionSchema = z.discriminatedUnion('field', [
-  z.object({ field: z.literal('status'), operator: equality, value: CrmStatusSchema }).strict(),
-  z.object({ field: z.literal('source'), operator: equality, value: LeadSourceSchema }).strict(),
-  z.object({ field: z.literal('company'), operator: z.enum(['equals', 'not_equals', 'contains']), value: z.string().trim().min(1, 'Value is required.').max(200).regex(/^[^\x00-\x1f\x7f]*$/) }).strict(),
+  z.object({ field: z.literal('status'), operator: equality, value: z.enum(CrmStatusSchema.options, { errorMap: () => ({ message: 'Select a status.' }) }) }).strict(),
+  z.object({ field: z.literal('source'), operator: equality, value: z.enum(LeadSourceSchema.options, { errorMap: () => ({ message: 'Select a source.' }) }) }).strict(),
+  z.object({ field: z.literal('company'), operator: z.enum(['equals', 'not_equals', 'contains']), value: z.string().trim().min(1, 'Select a company.').max(200).regex(/^[^\x00-\x1f\x7f]*$/) }).strict(),
   z.object({ field: z.literal('productInterest'), operator: equality, value: z.array(z.string().uuid()).min(1, 'Select a Product Interest.').max(100).transform(ids => [...new Set(ids)]) }).strict(),
   z.object({ field: z.literal('assignedUserId'), operator: equality, value: z.string().uuid('Select an Assigned Agent.') }).strict(),
   z.object({ field: z.literal('createdAt'), operator: z.enum(['any', 'gte', 'lte', 'between']), value: z.union([z.string(), z.object({ from: z.string(), to: z.string() }).strict(), z.null()]) }).strict(),
@@ -37,7 +37,7 @@ export const AudienceConditionSchema = z.discriminatedUnion('field', [
   const parsed = LeadCreatedFilterSchema.safeParse(c.operator === 'between'
     ? { operator: c.operator, ...(typeof c.value === 'object' ? c.value : {}) }
     : { operator: c.operator, date: c.value });
-  if (!parsed.success) ctx.addIssue({ code: 'custom', path: ['value'], message: 'Enter valid dates with From on or before To.' });
+  if (!parsed.success) ctx.addIssue({ code: 'custom', path: ['value'], message: c.operator === 'between' ? 'Enter valid dates with From on or before To.' : 'Select a valid date.' });
 });
 export type AudienceCondition = z.infer<typeof AudienceConditionSchema>;
 export const AudiencePreviewSchema = z.object({ source: AudienceSourceSchema, conditions: z.array(AudienceConditionSchema).max(20).default([]) }).strict();
@@ -83,6 +83,7 @@ export const CampaignDraftSchema = z.object({
   audienceSource: AudienceSourceSchema.optional().nullable(), targetAudienceId: z.string().uuid().optional().nullable(),
   emailTemplateId: z.string().uuid().optional().nullable(), smsTemplateId: z.string().uuid().optional().nullable(),
 }).strict();
+export const CreateCampaignDraftSchema = CampaignDraftSchema.extend({ type: z.enum(['EMAIL', 'SMS'], { errorMap: () => ({ message: 'Select Email or SMS.' }) }) });
 export const CampaignSendSchema = CampaignDraftSchema.superRefine((v, ctx) => {
   if (!v.audienceSource && !v.targetAudienceId) ctx.addIssue({ code: 'custom', path: ['targetAudienceId'], message: 'Target audience is required.' });
   if (v.type === 'EMAIL' && !v.subject?.trim()) ctx.addIssue({ code: 'custom', path: ['subject'], message: 'Subject line is required.' });

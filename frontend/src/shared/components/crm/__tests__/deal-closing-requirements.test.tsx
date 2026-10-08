@@ -64,3 +64,14 @@ it('locks every open inline editor when the backend confirms closing', async () 
   expect(screen.queryByRole('textbox')).toBeNull();
   expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
 });
+
+it('uses the shared collapse and restores the same requirement content', () => {
+  const view = render(<DealClosingRequirements dealId="deal" canEdit onSaved={() => {}} />);
+  const toggle = screen.getByRole('button', { name: 'Closed Won Requirements' });
+  fireEvent.click(toggle);
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  expect(screen.queryByRole('progressbar')).toBeNull();
+  view.rerender(<DealClosingRequirements dealId="deal" canEdit focusRequested onSaved={() => {}} />);
+  expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  expect(screen.getByRole('progressbar')).toBeTruthy();
+});

@@ -1,4 +1,5 @@
 'use client';
+import { assignedAgentName } from '@/shared/utils/assigned-agents';
 
 import { LeadCreatedFilter, createdFilterCondition, emptyCreatedFilter, type CreatedFilterDraft } from './lead-created-filter';
 import { isCurrentLeadSource } from '@/lib/constants';
@@ -261,11 +262,7 @@ export default function LeadsPage(): React.ReactElement {
 
 
   // ── Helpers ──────────────────────────────────────────────────────────
-  const getOwnerName = (userId?: string): string => {
-    if (!userId) return 'Unassigned';
-    const u = users.find((usr) => usr.id === userId);
-    return u ? `${u.firstName} ${u.lastName}` : 'Unknown';
-  };
+  const getOwnerName = (userId?: string): string => assignedAgentName(users, userId);
 
   // Reset to page 1 whenever the query params that affect server results change.
   // The hook re-fetches automatically when `currentPage` or other params change.

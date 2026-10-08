@@ -415,14 +415,14 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
         </TabsList></div>
         </div>
       </header>
-      <div className={cn('min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain', onClose ? 'bg-white dark:bg-slate-900' : 'bg-muted/20')}>
+      <div data-record-scroll className={cn('min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain', onClose ? 'bg-white dark:bg-slate-900' : 'bg-muted/20')}>
         <div className={cn('mx-auto w-full min-w-0', !onClose && 'max-w-[1440px]')}>
           <TabsContent value="activity" forceMount className={cn('m-0', onClose && '[&>div]:px-[var(--panel-gutter)]')}>
             <RecordTimelineTab compact activities={timeline.activities} module={module} recordId={id} loading={activityLoading} error={activityError} onActivityCreated={refresh}
               tasks={<RecordSection title="Tasks" count={taskCount}><RelatedTasks links={links} onCountChange={setTaskCount} /></RecordSection>} />
           </TabsContent>
           <TabsContent value="details" forceMount className={cn('m-0 p-4', onClose && 'px-[var(--panel-gutter)]')}><div className="space-y-3">
-            {module === 'deals' && !USE_MOCK_DATA && <DealClosingRequirements dealId={id} canEdit={canEdit} onSaved={() => { for (const key of ['deals', 'leads', 'contacts', 'accounts', 'activities']) invalidatePageCache(key, tenant?.id || user?.tenantId || ''); refresh(); }} />}
+            {module === 'deals' && !USE_MOCK_DATA && <DealClosingRequirements focusRequested={closingAttention} dealId={id} canEdit={canEdit} onSaved={() => { for (const key of ['deals', 'leads', 'contacts', 'accounts', 'activities']) invalidatePageCache(key, tenant?.id || user?.tenantId || ''); refresh(); }} />}
             <RecordSection title="About">
               <InlineEditRows rows={aboutRows} canEdit={canEdit && !USE_MOCK_DATA} onSave={saveField} />
             </RecordSection>

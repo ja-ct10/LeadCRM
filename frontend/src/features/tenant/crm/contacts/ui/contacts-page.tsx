@@ -1,4 +1,5 @@
 ﻿'use client';
+import { assignedAgentName } from '@/shared/utils/assigned-agents';
 
 import { useConfirmDialog } from '@/shared/hooks/use-confirm-dialog';
 import { Button } from '@/shared/components/ui/button';
@@ -443,11 +444,7 @@ export default function ContactsPage(): React.ReactElement {
           selectedIds={contactSelectedIds}
           onSelectionChange={setContactSelectedIds}
           getAccountName={getAccountName}
-          getAssignedUserName={(userId) => {
-            if (!userId) return '—';
-            const u = users.find((usr) => usr.id === userId);
-            return u ? `${u.firstName} ${u.lastName}` : '—';
-          }}
+          getAssignedUserName={(userId) => assignedAgentName(users, userId)}
           canEdit={canEdit}
           canArchive={canDelete}
           onEdit={(contact) => { setEditingContact(contact); setIsFormOpen(true); }}

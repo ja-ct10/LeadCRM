@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
-import { ClosingFieldInputSchema, ClosingValuesPatchSchema, CUSTOM_FIELD_BUILT_IN_GROUPS, customFieldNameKey, isClosedWonField, normalizeCustomField, type ClosingField, type ClosingValues, type ClosingRequirementsState } from '@leadcrm/shared';
+import { customFieldGroupOptions, ClosingFieldInputSchema, ClosingValuesPatchSchema, customFieldNameKey, isClosedWonField, normalizeCustomField, type ClosingField, type ClosingValues, type ClosingRequirementsState } from '@leadcrm/shared';
 import { salesTransaction } from '../leads/lead-automation.service';
 import { readFields, readClosingFields, validateValues } from './closing-requirements.repository';
 import { persistValues } from './custom-field-values.repository';
@@ -24,8 +24,9 @@ export async function saveField(tenantId: string, actorId: string, input: unknow
     }
     const field = ClosingFieldInputSchema.parse(definitionInput);
     if (!id && fields.filter(f => f.module === field.module).length >= 100) throw new ValidationError('Maximum 100 custom fields per module.');
-    const groups = [...CUSTOM_FIELD_BUILT_IN_GROUPS[field.module], ...fields.filter(f => f.module === field.module).map(f => f.group)];
+    const groups = customFieldGroupOptions(field.module, previous);
     field.group = groups.find(group => customFieldNameKey(group) === customFieldNameKey(field.group)) ?? field.group;
+    if (!groups.includes(field.group)) throw new ValidationError('Select a section for this module.');
     if (fields.some(f => f.id !== id && f.module === field.module && customFieldNameKey(f.group) === customFieldNameKey(field.group) && customFieldNameKey(f.name) === customFieldNameKey(field.name))) throw new ValidationError('Field names must be unique within this module and group.');
     // Keep IDs and types stable so existing values cannot change meaning after an edit.
     if (previous && previous.type !== field.type) throw new ValidationError('Field type cannot be changed. Add a new field instead.');

@@ -1,15 +1,17 @@
 'use client';
 
-import { useId, useState, type ReactNode, type ComponentType } from 'react';
+import { useEffect, useId, useState, type ReactNode, type ComponentType } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-export function RecordSection({ title, count, actions, children, icon: Icon }: {
+export function RecordSection({ title, count, actions, children, icon: Icon, forceOpen = false }: {
+  forceOpen?: boolean;
   title: string; count?: number; actions?: ReactNode; children: ReactNode;
   icon?: ComponentType<{ className?: string }>;
 }) {
   const [open, setOpen] = useState(true);
   const id = useId();
+  useEffect(() => { if (forceOpen) setOpen(true); }, [forceOpen]);
   return <section className="min-w-0 overflow-hidden rounded-xl border border-border bg-card">
     <div className={cn('flex flex-wrap items-center gap-x-1.5 px-2.5 py-1 sm:gap-x-2 sm:px-3', open && 'border-b border-border/60')}>
       <button type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)} className="flex min-h-9 min-w-0 flex-1 items-center gap-1.5 rounded text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring sm:min-h-10 sm:gap-2 sm:text-[11px]">
