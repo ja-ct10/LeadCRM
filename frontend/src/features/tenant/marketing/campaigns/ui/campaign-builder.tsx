@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 import {
   ArrowLeft, Send, Mail, MessageSquare, Plus,
   Wand2, Monitor, Smartphone, Zap, Tags, Loader2,
-  EyeOff, Eye,
+  PanelRight,
 } from 'lucide-react';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { campaignsApi } from '@/shared/services/campaigns.api';
@@ -133,17 +133,13 @@ export function CampaignBuilder({
         let result = (await campaignsApi.send(res.data.id)).data;
         // Each status request stays within the proxy timeout. Closing the editor
         // does not cancel a database-prepared campaign or submit it a second time.
-        for (let attempt = 0; result.status === 'SENDING' && attempt < 150; attempt++) {
+        for (let attempt = 0; (result.submissionComplete === false || (result.status === 'SENDING' && result.submissionComplete === undefined && result.submittedRecipients + result.failedRecipients < result.eligibleRecipients)) && attempt < 150; attempt++) {
           await new Promise(resolve => setTimeout(resolve, 2000));
           const current = (await campaignsApi.get(res.data.id)).data;
           result = current.sendResult;
         }
         if (result.status === 'SENDING') {
-          toast.warning('Campaign is still processing. Check its status before taking further action.');
-          onBack(); return;
-        }
-        if (result.status === 'PAUSED') {
-          toast.warning(`${result.submittedRecipients} of ${result.eligibleRecipients} ${campaignType === 'SMS' ? 'SMS messages' : 'emails'} were submitted successfully. Some results are unconfirmed; review them before sending another campaign.`);
+          toast.warning(`${result.submittedRecipients} of ${result.eligibleRecipients} ${campaignType === 'SMS' ? 'SMS messages' : 'emails'} were submitted. Waiting for provider confirmation.`);
           onBack(); return;
         }
         const message = `${result.submittedRecipients} of ${result.eligibleRecipients} ${campaignType === 'SMS' ? 'SMS messages' : 'emails'} were submitted successfully.`;
@@ -166,9 +162,9 @@ export function CampaignBuilder({
   const inputCls = 'w-full h-9 rounded-md border border-gray-200 dark:border-white/10 bg-white dark:bg-white/3 px-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500/20 transition-all duration-200';
 
   return (
-    <div className="w-full h-full flex flex-col">
+    <div className="w-full min-w-0 h-full flex flex-col">
       {/* Top Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-200 dark:border-white/5 bg-white/80 dark:bg-slate-900/70 backdrop-blur-xl px-4 sm:px-6 py-3 shrink-0 shadow-sm">
+      <div className="flex flex-col md:flex-row md:flex-wrap md:items-center justify-between gap-3 border-b border-gray-200 dark:border-white/5 bg-white/80 dark:bg-slate-900/70 backdrop-blur-xl px-3 sm:px-6 py-3 shrink-0 shadow-sm">
         <div className="flex items-center gap-3">
           <button disabled={isSending} onClick={onBack} aria-label="Back to campaigns" className="p-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-lg transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
             <ArrowLeft size={18} />
@@ -178,23 +174,18 @@ export function CampaignBuilder({
             <p className="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">Draft a new message to send to your contacts.</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 self-end sm:self-auto">
-          {/* Mobile preview toggle — hidden on lg+ where side-by-side layout handles it */}
-          <button
-            type="button"
-            onClick={() => setShowPreview((prev) => !prev)}
-            className="lg:hidden flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 border border-gray-200 dark:border-white/10 rounded-lg transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-            aria-label={showPreview ? 'Hide live preview' : 'Show live preview'}
-          >
-            {showPreview ? <EyeOff size={14} /> : <Eye size={14} />}
-            <span className="hidden xs:inline">{showPreview ? 'Hide Preview' : 'Preview'}</span>
+        <div role="group" aria-label="Campaign actions" className="flex flex-nowrap items-center gap-1.5 sm:gap-2 self-end md:self-auto">
+          <button aria-label="Save Draft" onClick={handleSaveDraft} disabled={isSending || !canWrite} className="whitespace-nowrap px-2 min-[375px]:px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 rounded-lg border border-gray-200 dark:border-white/10 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">
+            Save<span className="hidden min-[375px]:inline"> Draft</span>
           </button>
-          <button onClick={handleSaveDraft} disabled={isSending || !canWrite} className="px-3 sm:px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 rounded-lg border border-gray-200 dark:border-white/10 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">
-            Save Draft
-          </button>
-          <button onClick={handleSend} disabled={isSending || !maySend || (!!initialCampaign && initialCampaign.status.toLowerCase() !== 'draft')} className="flex items-center gap-2 px-4 sm:px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 disabled:opacity-50 disabled:cursor-not-allowed">
+          <button onClick={handleSend} disabled={isSending || !maySend || (!!initialCampaign && initialCampaign.status.toLowerCase() !== 'draft')} className="flex items-center whitespace-nowrap gap-1.5 sm:gap-2 px-2 min-[375px]:px-3 sm:px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 disabled:opacity-50 disabled:cursor-not-allowed">
             {isSending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
             {isSending ? 'Sending...' : 'Send Now'}
+          </button>
+          <button type="button" onClick={() => setShowPreview(previous => !previous)}
+            aria-label={showPreview ? 'Hide live preview' : 'Show live preview'} aria-expanded={showPreview} aria-controls="campaign-live-preview"
+            className="shrink-0 rounded-lg border border-gray-200 dark:border-white/10 p-2 text-slate-600 dark:text-slate-300 bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+            <PanelRight size={16} aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -291,9 +282,9 @@ export function CampaignBuilder({
           </div>
         </fieldset>
 
-        {/* Right Side — Live Preview: always shown on lg+, toggleable on smaller screens */}
+        {/* The single header control toggles the existing preview at every width. */}
         {(showPreview) && (
-        <div className="w-full lg:w-105 shrink-0 flex flex-col bg-linear-to-br from-slate-50 via-slate-100 to-blue-50/30 dark:from-[#030712] dark:via-[#0a1020] dark:to-blue-950/10 overflow-y-auto">
+        <div id="campaign-live-preview" className="w-full min-w-0 lg:w-105 shrink-0 flex flex-col bg-linear-to-br from-slate-50 via-slate-100 to-blue-50/30 dark:from-[#030712] dark:via-[#0a1020] dark:to-blue-950/10 overflow-y-auto">
           <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 dark:border-white/5 bg-white/50 dark:bg-white/2 backdrop-blur-lg">
             <span className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Live Preview</span>
             <div className="flex items-center gap-2">
@@ -305,15 +296,6 @@ export function CampaignBuilder({
                   <Smartphone size={14} />
                 </button>
               </div>
-              {/* Close preview — only visible on smaller screens where it can block content */}
-              <button
-                type="button"
-                onClick={() => setShowPreview(false)}
-                className="lg:hidden p-1.5 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                aria-label="Close preview"
-              >
-                <EyeOff size={14} />
-              </button>
             </div>
           </div>
           <div className="flex-1 flex items-center justify-center p-6">

@@ -23,7 +23,8 @@ export function useCampaignsData(options?: { disabled?: boolean; intervalMs?: nu
   const result = useCachedPage({
     module: 'campaigns',
     params: { canViewReports, ...options?.query, limit: options?.query?.limit ?? 25 },
-    intervalMs: options?.intervalMs ?? 2 * 60_000,
+    intervalMs: options?.intervalMs ?? 7500,
+    pauseWhenHidden: true,
     disabled: options?.disabled ?? false,
     fetchFn: async () => {
       const [campaigns, templates, metrics] = await Promise.all([

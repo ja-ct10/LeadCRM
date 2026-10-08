@@ -35,7 +35,7 @@ export function useDashboard({
     const completedTasks = tasks.filter((t) => t.status === 'completed').length;
 
     const activeCampaigns = campaigns.filter(
-      (c) => c.status === 'active' && !c.isArchived
+      (c) => c.status === 'sending' && !c.isArchived
     ).length;
 
     const conversionRate =

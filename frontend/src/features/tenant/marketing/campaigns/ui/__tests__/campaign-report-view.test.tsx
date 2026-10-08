@@ -15,24 +15,26 @@ const response = () => ({ success: true, data: { ...campaign, recipientCount: 4,
   recipients, topLinks: [{ url: 'https://camxian.com/cctv-surveillance-system', uniqueClicks: 1, totalClicks: 2, clickRate: 25, lastClicked: '2026-10-02T03:13:00Z' }] } });
 const mount = () => render(<CampaignReportView campaign={campaign as never} onBack={vi.fn()} />);
 beforeEach(() => { vi.clearAllMocks(); vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} }); vi.mocked(campaignsApi.report).mockResolvedValue(response() as never); });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 const select = (label: string) => { fireEvent.click(screen.getByRole('button', { name: 'Filter recipients' })); fireEvent.click(screen.getByRole('menuitemradio', { name: label })); };
 const rows = () => within(screen.getAllByRole('grid')[0]).getAllByRole('row').slice(1);
 describe('campaign report', () => {
   it('reports SMS phone and provider states without email engagement metrics', async () => {
     vi.mocked(campaignsApi.report).mockResolvedValue({ success: true, data: { ...response().data, type: 'SMS', recipients: [
       { ...recipients[0], email: null, phone: '+639171234567', deliveryStatus: 'Sent', opened: false },
-      { ...recipients[1], email: null, phone: '+639181234567', deliveryStatus: 'Requires review', opened: false, clicked: false },
+      { ...recipients[1], email: null, phone: '+639181234567', deliveryStatus: 'Pending', opened: false, clicked: false },
       { ...recipients[2], email: null, phone: '+639191234567', deliveryStatus: 'Failed' },
     ], failedCount: 1, topLinks: [] } } as never);
     render(<CampaignReportView campaign={{ ...campaign, type: 'SMS' } as never} onBack={vi.fn()} />);
     await screen.findByText('+639171234567');
     const metrics = screen.getByRole('region', { name: 'Campaign metrics' });
-    expect(metrics.textContent).toContain('Submitted'); expect(metrics.textContent).toContain('Requires review1'); expect(metrics.textContent).toContain('Failed1');
+    expect(within(metrics).getAllByRole('heading').map(el => el.textContent)).toEqual(['Recipients', 'Submitted', 'Sent', 'Delivered', 'Failed']);
+    expect(metrics.textContent).toContain('Failed1');
     expect(screen.queryByRole('columnheader', { name: 'Email' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: 'Opened' })).toBeNull(); expect(screen.queryByRole('columnheader', { name: 'Clicked' })).toBeNull();
     expect(screen.queryByText('No clicked links recorded for this campaign.')).toBeNull();
-    select('Requires review'); expect(rows()).toHaveLength(1);
+    select('Pending'); expect(rows()).toHaveLength(1);
+    expect(screen.queryByText('Requires review')).toBeNull();
     select('All recipients'); fireEvent.change(screen.getByLabelText('Search recipients'), { target: { value: '63919' } }); expect(rows()).toHaveLength(1);
   });
   it('renders real counts, delivery and engagement values, dates and link data without the retired panels', async () => {
@@ -41,6 +43,7 @@ describe('campaign report', () => {
     const metrics = screen.getByRole('region', { name: 'Campaign metrics' });
     expect(metrics.textContent).toContain('Recipients4'); expect(metrics.textContent).toContain('Delivered375%'); expect(metrics.textContent).toContain('Opened250%');
     expect(rows()).toHaveLength(4); expect(screen.getAllByLabelText('Opened')).toHaveLength(2); expect(screen.getAllByLabelText('Not opened')).toHaveLength(2);
+    expect(within(screen.getAllByRole('grid')[1]).getAllByRole('columnheader').map(el => el.textContent)).toEqual(['Link', 'Total Clicks', 'Click Rate', 'Last Clicked']);
     expect(screen.getAllByLabelText('Clicked')).toHaveLength(1); expect(screen.getByRole('link', { name: /camxian/ }).getAttribute('href')).toContain('/cctv-surveillance-system');
     expect(screen.queryByText(/2026-10-02T/)).toBeNull(); expect(screen.getAllByText(/Oct 2, 2026/).length).toBeGreaterThan(0);
     expect(screen.queryByText('Engagement Overview')).toBeNull(); expect(screen.queryByText('Device Breakdown')).toBeNull(); expect(screen.queryByText('Sent Overview')).toBeNull();
@@ -75,5 +78,53 @@ describe('campaign report', () => {
   it('keeps loaded data and exposes refresh failures', async () => {
     mount(); await screen.findByText('Doris Testing'); vi.mocked(campaignsApi.report).mockRejectedValueOnce(new Error('Network unavailable'));
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' })); await screen.findByRole('alert'); expect(screen.getByText('Doris Testing')).toBeTruthy();
+  });
+  it.each(['Email', 'Sms'])('updates %s from Sending to Sent automatically after provider confirmation', async type => {
+    vi.useFakeTimers();
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
+    const first = { ...response().data, type, status: 'sending', recipients: [{ ...recipients[0], deliveryStatus: 'Submitted' }] };
+    vi.mocked(campaignsApi.report).mockResolvedValueOnce({ success: true, data: first } as never);
+    const { unmount } = render(<CampaignReportView campaign={{ ...campaign, type } as never} onBack={vi.fn()} />);
+    await act(async () => {});
+    expect(screen.getAllByText('Sending').length).toBeGreaterThan(0);
+    vi.mocked(campaignsApi.report).mockResolvedValue({ success: true, data: { ...first, status: 'sent', recipients: [{ ...first.recipients[0], deliveryStatus: 'Sent' }] } } as never);
+    await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
+    expect(screen.queryByText('Sending')).toBeNull();
+    expect(screen.getAllByText('Sent').length).toBeGreaterThan(0);
+    unmount();
+  });
+  it.each(['Email', 'Sms'])('refreshes %s in place, pauses while hidden, resumes immediately and stops on unmount', async type => {
+    vi.useFakeTimers();
+    let hidden = false;
+    vi.spyOn(document, 'hidden', 'get').mockImplementation(() => hidden);
+    const first = { ...response().data, type, status: 'sent', openedCount: 0, clickedCount: 0, topLinks: [], recipients: [{ ...recipients[0], deliveryStatus: 'Sent', opened: false, clicked: false }] };
+    vi.mocked(campaignsApi.report).mockResolvedValue({ success: true, data: first } as never);
+    const { unmount } = render(<CampaignReportView campaign={{ ...campaign, type } as never} onBack={vi.fn()} />);
+    await act(async () => {});
+    expect(campaignsApi.report).toHaveBeenCalledTimes(1);
+    let resolve!: (value: never) => void;
+    vi.mocked(campaignsApi.report).mockReturnValueOnce(new Promise(done => { resolve = done; }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
+    expect(screen.getByText('Doris Testing')).toBeTruthy();
+    expect(screen.queryByRole('status', { name: 'Loading data' })).toBeNull();
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(campaignsApi.report).toHaveBeenCalledTimes(2);
+    const updated = { ...response().data, type, status: 'delivered' };
+    await act(async () => resolve({ success: true, data: updated } as never));
+    expect(screen.getByRole('heading', { name: 'Delivered', level: 2 })).toBeTruthy();
+    expect(screen.getAllByText('Delivered').length).toBeGreaterThan(1);
+    if (type === 'Email') {
+      expect(screen.getByRole('link', { name: /camxian/ })).toBeTruthy();
+      expect(screen.getAllByLabelText('Clicked')).toHaveLength(1);
+    }
+    hidden = true;
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); await vi.advanceTimersByTimeAsync(7500); });
+    expect(campaignsApi.report).toHaveBeenCalledTimes(2);
+    hidden = false;
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    expect(campaignsApi.report).toHaveBeenCalledTimes(3);
+    unmount();
+    await act(async () => { await vi.advanceTimersByTimeAsync(7500); document.dispatchEvent(new Event('visibilitychange')); });
+    expect(campaignsApi.report).toHaveBeenCalledTimes(3);
   });
 });

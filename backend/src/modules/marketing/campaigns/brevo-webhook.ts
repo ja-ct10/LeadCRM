@@ -5,17 +5,28 @@ import { z } from 'zod';
 import prisma from '../../../config/database.config';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { AppError } from '../../../shared/errors/app-error';
+import { recalculateCampaignDelivery } from './campaign-delivery-status';
 
 export const BrevoEventSchema = z.object({
   event: z.enum(['request', 'delivered', 'opened', 'unique_opened', 'click', 'soft_bounce', 'hard_bounce', 'blocked', 'spam', 'unsubscribed', 'invalid_email', 'error', 'deferred']),
   email: z.string().trim().email().max(254), 'message-id': z.string().min(1).max(500),
   ts_event: z.number().int().nonnegative().optional(),
   ts_epoch: z.number().int().nonnegative().optional(),
+  ts: z.number().int().nonnegative().optional(),
   link: z.string().max(8192).optional(),
   tags: z.array(z.string()).optional(),
   // Older Brevo payloads serialize the tags array as a JSON string.
   tag: z.string().optional(),
 });
+
+export function brevoEventTime(event: z.infer<typeof BrevoEventSchema>) {
+  const epoch = event.ts_epoch == null ? undefined : event.ts_epoch < 1e12 ? event.ts_epoch * 1000 : event.ts_epoch;
+  const seconds = event.ts_event ?? event.ts;
+  // Some payloads reuse the send epoch. Prefer event time in that case, while
+  // retaining millisecond precision for genuinely separate same-second clicks.
+  const time = seconds == null ? epoch : epoch != null && Math.floor(epoch / 1000) === seconds ? epoch : seconds * 1000;
+  return new Date(time != null && time <= Date.now() + 300_000 ? time : Date.now());
+}
 export function verifyWebhookAuthorization(header?: string) {
   const token = process.env.BREVO_WEBHOOK_TOKEN;
   if (!token || token.length < 32) throw new AppError('Webhook is not configured.', 503);
@@ -43,46 +54,42 @@ export async function processBrevoEvent(input: unknown) {
     await prisma.$transaction(async tx => {
       // Serialize events for this campaign so aggregate counters cannot overwrite newer values.
       await tx.campaign.update({ where: { id: log.campaignId!, ...scope }, data: { engagement: { increment: 0 } } });
-      const at = event.ts_event && event.ts_event <= Date.now() / 1000 + 300 ? new Date(event.ts_event * 1000) : new Date();
-      // Retain separate click events; retries must not inflate link totals.
-      const eventKey = type === 'click' && event.link
-        ? `${log.id}:click:${createHash('sha256').update(JSON.stringify([event.link ?? '', event.ts_epoch ?? event.ts_event ?? null])).digest('hex')}`
-        : `${log.id}:${type}`;
+      const at = brevoEventTime(event);
+      const legacyKey = type === 'click' && event.link
+        ? `${log.id}:click:${createHash('sha256').update(JSON.stringify([event.link, event.ts_epoch ?? event.ts_event ?? null])).digest('hex')}` : `${log.id}:${type}`;
+      // The payload's id identifies the webhook subscription, not the event.
+      // Include both provider timestamps: ts_epoch can refer to the original send.
+      const repeatable = type === 'click' || type === 'opened';
+      const eventKey = repeatable
+        ? `${log.id}:${type}:${createHash('sha256').update(JSON.stringify([event.link ?? '', event.ts_epoch ?? null, event.ts_event ?? event.ts ?? null])).digest('hex')}`
+        : legacyKey;
+      // Recognize retries of receipts saved before the expanded event key.
+      if (repeatable && await tx.emailEvent.findFirst({ where: { ...scope, deliveryLogId: log.id, providerEventKey: legacyKey,
+        createdAt: { gte: new Date(Math.floor(at.getTime() / 1000) * 1000), lt: new Date(Math.floor(at.getTime() / 1000) * 1000 + 1000) } } })) return;
       const inserted = await tx.emailEvent.createMany({ data: [{ ...scope, deliveryLogId: log.id, eventType: type,
         url: type === 'click' ? event.link : undefined, createdAt: at, providerEventKey: eventKey }], skipDuplicates: true });
       if (!inserted.count) return;
-      const blocked = ['hard_bounce', 'blocked', 'spam', 'invalid_email'].includes(type);
+      const blocked = ['hard_bounce', 'blocked', 'invalid_email'].includes(type);
       const bounced = blocked || type === 'soft_bounce';
       const current = await tx.emailDeliveryLog.findFirstOrThrow({ where: { id: log.id, ...scope } });
-      const rank: Record<string, number> = { pending: 0, sent: 1, request: 1, deferred: 1, soft_bounce: 1.5, delivered: 2, opened: 3, click: 4, clicked: 4, error: 5, invalid_email: 6, hard_bounce: 6, blocked: 6, spam: 6, unsubscribed: 7 };
+      const rank: Record<string, number> = { pending: 0, submitted: 0.5, sent: 1, request: 1, deferred: 1, soft_bounce: 1.5, delivered: 2, opened: 3, click: 4, clicked: 4, error: 5, invalid_email: 6, hard_bounce: 6, blocked: 6, spam: 6, unsubscribed: 7 };
       const eventStatus = type === 'unsubscribe' ? 'unsubscribed' : type === 'click' ? 'clicked' : type;
       const status = (rank[eventStatus] ?? 0) > (rank[current.status] ?? 0) ? eventStatus : current.status;
       await tx.campaignContact.updateMany({ where: { ...scope, campaignId: log.campaignId!, messageId: log.brevoMessageId }, data: { status,
+        ...(type === 'request' ? { sentAt: current.sentAt ?? at } : {}),
         ...(type === 'delivered' ? { deliveredAt: at } : {}),
-        ...(type === 'opened' ? { openedAt: at } : {}),
-        ...(type === 'click' ? { clickedAt: at } : {}),
+        ...(type === 'opened' ? { openedAt: current.openedAt ?? at } : {}),
+        ...(type === 'click' ? { clickedAt: current.clickedAt ?? at } : {}),
         ...(bounced ? { bouncedAt: at, ...(blocked ? { failureReason: type.toUpperCase() } : {}) } : {}),
+        ...(type === 'error' ? { failureReason: 'ERROR' } : {}),
         ...(type === 'unsubscribe' ? { unsubscribed: true } : {}),
       } });
       await tx.emailDeliveryLog.update({ where: { id: log.id, ...scope }, data: { status,
-        ...(type === 'opened' ? { openedAt: at } : {}), ...(type === 'click' ? { clickedAt: at } : {}),
+        ...(type === 'request' ? { sentAt: current.sentAt ?? at } : {}),
+        ...(type === 'opened' ? { openedAt: current.openedAt ?? at } : {}), ...(type === 'click' ? { clickedAt: current.clickedAt ?? at } : {}),
         ...(bounced ? { bouncedAt: at } : {}),
       } });
-      const where = { ...scope, campaignId: log.campaignId! };
-      const [sentCount, deliveredCount, openedCount, clickedCount, bouncedCount] = await Promise.all([
-        tx.campaignContact.count({ where: { ...where, sentAt: { not: null } } }),
-        tx.campaignContact.count({ where: { ...where, deliveredAt: { not: null } } }),
-        tx.campaignContact.count({ where: { ...where, openedAt: { not: null } } }),
-        tx.campaignContact.count({ where: { ...where, clickedAt: { not: null } } }),
-        tx.campaignContact.count({ where: { ...where, bouncedAt: { not: null } } }),
-      ]);
-      await tx.campaign.update({ where: { id: log.campaignId!, ...scope }, data: { openedCount, clickedCount } });
-      await tx.campaignMetrics.create({ data: { ...where, sentCount, deliveredCount, openedCount, clickedCount, bouncedCount,
-        openRate: sentCount ? openedCount / sentCount * 100 : 0,
-        clickRate: sentCount ? clickedCount / sentCount * 100 : 0,
-        deliveryRate: sentCount ? deliveredCount / sentCount * 100 : 0,
-        bounceRate: sentCount ? bouncedCount / sentCount * 100 : 0,
-      } });
+      await recalculateCampaignDelivery(tx, log.campaignId!, log.tenantId);
     });
   });
 }

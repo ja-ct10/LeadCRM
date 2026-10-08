@@ -16,6 +16,8 @@ test('only reviewed independent migrations can run while relationship retirement
   const names = ['20261102000000_retire_relationship_compatibility', '20261103000000_reply_engagement_deal_batches', '20261104000000_user_first_login_onboarding', '20261105000000_module_custom_fields', '20261106000000_campaign_sms_snapshots'];
   assert.deepEqual(deploymentPlan(rows, names), { through: names[4], exclude: [names[0]] });
   assert.throws(() => deploymentPlan(rows, [...names, '20261105000000_unreviewed']), /REVIEW_MIGRATIONS/);
+  const campaignMigrations = ['20261108000000_campaign_delivered_status', '20261109000000_campaign_final_statuses'];
+  assert.deepEqual(deploymentPlan(rows, [...names, ...campaignMigrations]), { through: campaignMigrations[1], exclude: [names[0]] });
   assert.throws(() => deploymentPlan([...rows, { migration_name: names[2] }], names), /FAILED_MIGRATION/);
   rows.push({ migration_name: names[0], finished_at: new Date() });
   assert.deepEqual(deploymentPlan(rows, names), { through: '\uffff', exclude: [] });

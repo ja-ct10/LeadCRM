@@ -29,6 +29,20 @@ function fill() {
   fireEvent.change(screen.getByLabelText(/Body/), { target: { value: 'Hi {{first_name}}' } });
 }
 describe('campaign composer', () => {
+  it('uses one panel toggle after Send Now and preserves preview device switching', async () => {
+    render(<CampaignBuilder onBack={vi.fn()} />);
+    const actions = screen.getByRole('group', { name: 'Campaign actions' });
+    expect([...actions.querySelectorAll('button')].map(button => button.getAttribute('aria-label') || button.textContent)).toEqual(['Save Draft', 'Send Now', 'Hide live preview']);
+    expect(document.querySelector('svg.lucide-eye, svg.lucide-eye-off')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Close preview' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Desktop preview' }));
+    expect(screen.getByRole('button', { name: 'Mobile preview' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Hide live preview' }));
+    expect(screen.queryByText('Live Preview')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Show live preview' }));
+    expect(screen.getByText('Live Preview')).toBeTruthy();
+    await act(async () => {});
+  });
   it('allows editing a draft without enabling Send', async () => {
     access.denied.add('campaigns.send');
     render(<CampaignBuilder onBack={vi.fn()} />); fill();

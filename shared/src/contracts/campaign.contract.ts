@@ -34,7 +34,7 @@ export interface CampaignRecipient {
   name: string;
   email: string | null;
   phone?: string | null;
-  deliveryStatus: 'Delivered' | 'Bounced' | 'Submitted' | 'Failed' | 'Pending' | 'Sent' | 'Retrying' | 'Excluded' | 'Requires review';
+  deliveryStatus: 'Delivered' | 'Bounced' | 'Submitted' | 'Failed' | 'Pending' | 'Sent' | 'Retrying' | 'Excluded' | 'Unknown';
   opened: boolean;
   clicked: boolean;
   lastActivity: string | null;

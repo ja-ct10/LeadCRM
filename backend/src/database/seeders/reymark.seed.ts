@@ -155,9 +155,9 @@ async function main() {
   // ── Campaigns ──────────────────────────────────────────────────────
   await prisma.campaign.createMany({
     data: [
-      { tenantId: TENANT_ID, name: 'Q3 IT Solutions Outreach', type: 'EMAIL', status: 'ACTIVE',     subject: 'Streamline your IT workflows with LeadCRM', scheduledFor: new Date(Date.now() + 3 * 86400000) },
+      { tenantId: TENANT_ID, name: 'Q3 IT Solutions Outreach', type: 'EMAIL', status: 'SENDING',     subject: 'Streamline your IT workflows with LeadCRM', scheduledFor: new Date(Date.now() + 3 * 86400000) },
       { tenantId: TENANT_ID, name: 'BPO Industry Newsletter',  type: 'EMAIL', status: 'DRAFT',      subject: 'How BPO companies are using CRM to grow 3x faster' },
-      { tenantId: TENANT_ID, name: 'Win-Back — Lost Deals',    type: 'EMAIL', status: 'COMPLETED',  subject: 'We have a special offer for you', scheduledFor: new Date(Date.now() - 10 * 86400000) },
+      { tenantId: TENANT_ID, name: 'Win-Back — Lost Deals',    type: 'EMAIL', status: 'SENDING',  subject: 'We have a special offer for you', scheduledFor: new Date(Date.now() - 10 * 86400000) },
     ],
   });
   console.log('[Seed] Campaigns created.');

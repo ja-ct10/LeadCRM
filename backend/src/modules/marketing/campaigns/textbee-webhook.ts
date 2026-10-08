@@ -5,6 +5,7 @@ import { z } from 'zod';
 import prisma from '../../../config/database.config';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { AppError } from '../../../shared/errors/app-error';
+import { recalculateCampaignDelivery } from './campaign-delivery-status';
 
 const identity = z.string().min(1).max(500);
 const timestamp = z.string().datetime({ offset: true }).transform(value => new Date(value));
@@ -45,7 +46,7 @@ export async function processTextBeeEvent(input: unknown) {
   if (recipient.campaign.type !== 'SMS' || recipient.phone !== event.recipient) throw new AppError('SMS delivery record does not match.', 400);
   return tenantContext.run({ tenantId: recipient.tenantId }, () => prisma.$transaction(async tx => {
     const where = { tenantId: recipient.tenantId, campaignId: recipient.campaignId };
-    const campaign = await tx.campaign.update({ where: { id: recipient.campaignId, tenantId: recipient.tenantId }, data: { engagement: { increment: 0 } } });
+    await tx.campaign.update({ where: { id: recipient.campaignId, tenantId: recipient.tenantId }, data: { engagement: { increment: 0 } } });
     const receipt = await tx.smsWebhookReceipt.createMany({ data: [{ idempotencyKey: event.idempotencyKey, tenantId: recipient.tenantId, campaignContactId: recipient.id }], skipDuplicates: true });
     if (!receipt.count) return;
     const current = await tx.campaignContact.findUniqueOrThrow({ where: { id: recipient.id, ...where } });
@@ -54,7 +55,7 @@ export async function processTextBeeEvent(input: unknown) {
     const status = event.webhookEvent === 'UNKNOWN_STATE' ? 'unknown' : event.status;
     const at = 'deliveredAt' in event ? event.deliveredAt : 'failedAt' in event ? event.failedAt : 'sentAt' in event ? event.sentAt : null;
     if (at && current.providerUpdatedAt && at < current.providerUpdatedAt) return;
-    if (status === current.status) return;
+    if (status === current.status && current.failureReason !== 'TEXTBEE_UNKNOWN_STATE') return;
     // UNKNOWN_STATE has no event timestamp. Preserve the confirmed sent fact,
     // while flagging it for review until a final delivery/failure arrives.
     if (status === 'unknown' && current.failureReason === 'TEXTBEE_UNKNOWN_STATE') return;
@@ -65,17 +66,7 @@ export async function processTextBeeEvent(input: unknown) {
       ...('deliveredAt' in event ? { deliveredAt: event.deliveredAt } : {}),
       failureReason: status === 'failed' ? 'TEXTBEE_FAILED' : status === 'unknown' ? 'TEXTBEE_UNKNOWN_STATE' : null,
     } });
-    const [submitted, failed, review, delivered] = await Promise.all([
-      tx.campaignContact.count({ where: { ...where, submittedAt: { not: null } } }),
-      tx.campaignContact.count({ where: { ...where, status: 'failed' } }),
-      tx.campaignContact.count({ where: { ...where, OR: [{ status: { in: ['pending', 'unknown'] } }, { failureReason: 'TEXTBEE_UNKNOWN_STATE' }] } }),
-      tx.campaignContact.count({ where: { ...where, deliveredAt: { not: null } } }),
-    ]);
-    await tx.campaign.update({ where: { id: recipient.campaignId, tenantId: recipient.tenantId }, data: {
-      sentCount: submitted, failedCount: failed,
-      ...(campaign.status === 'SENDING' ? {} : { status: review ? 'PAUSED' : failed === campaign.recipientCount ? 'FAILED' : failed ? 'PARTIALLY_SENT' : 'SENT' }),
-    } });
-    await tx.campaignMetrics.create({ data: { ...where, sentCount: submitted, deliveredCount: delivered, deliveryRate: submitted ? delivered / submitted * 100 : 0 } });
+    await recalculateCampaignDelivery(tx, recipient.campaignId, recipient.tenantId);
   }));
 }
 

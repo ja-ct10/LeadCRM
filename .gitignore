@@ -77,3 +77,8 @@ data/outputs/retired-features-*.json
 # Reproducible local UI acceptance screenshots and logs.
 /data/outputs/ui-fixes-browser/
 /data/outputs/product-share-browser/
+
+# Reproducible Campaigns status verification artifacts.
+/data/outputs/campaign-status-*.jpg
+/data/outputs/campaign-status-*.json
+/data/outputs/campaign-status-*.jsonl

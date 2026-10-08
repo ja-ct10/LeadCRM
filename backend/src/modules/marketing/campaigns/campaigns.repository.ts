@@ -10,7 +10,7 @@ export async function findCampaignReport(id: string, tenantId: string) {
         contact: { select: { tenantId: true, firstName: true, lastName: true } },
       } },
       emailDeliveryLogs: { where: { tenantId }, select: {
-        toEmail: true, EmailEvent: { where: { tenantId }, select: { eventType: true, url: true, createdAt: true } },
+        toEmail: true, brevoMessageId: true, EmailEvent: { where: { tenantId }, select: { eventType: true, url: true, createdAt: true } },
       } },
     },
   });

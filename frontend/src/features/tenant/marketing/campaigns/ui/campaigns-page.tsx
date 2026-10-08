@@ -23,6 +23,7 @@ import { SideSheet } from '@/shared/components/side-sheet';
 import { CreateActionDropdown } from '@/shared/components/crm/module-workspace';
 import { CampaignReportView } from './campaign-report-view';
 import { CampaignBuilder } from './campaign-builder';
+import { CampaignStatusBadge } from './campaign-status-badge';
 
 import { DataGrid, type DataGridColumnDef, type SortState } from '@/shared/components/data-grid';
 import { BulkSelectionBar, executeSelectedRows } from '@/shared/components/crm/bulk-selection-bar';
@@ -46,6 +47,7 @@ export default function CampaignsPage() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'all' | 'email' | 'sms'>('all');
   const [showBuilder, setShowBuilder] = useState(false);
+  const [selectedCampaignForReport, setSelectedCampaignForReport] = useState<Campaign | null>(null);
   const [builderInitialType, setBuilderInitialType] = useState<string | undefined>();
   const [builderInitialContent, setBuilderInitialContent] = useState<string | undefined>();
   const [searchTerm, setSearchTerm] = useState('');
@@ -65,6 +67,8 @@ export default function CampaignsPage() {
     error: campaignsError,
     refetch: refetchCampaigns,
   } = useCampaignsData({
+    disabled: showBuilder || !!selectedCampaignForReport,
+    intervalMs: activeTab === 'all' ? 7500 : 0,
     query: {
       sort: `${sort.field}:${sort.direction}`, page: currentPage, limit: pageSize, search: searchTerm,
       status: statusFilter.map(value => value.toUpperCase()).join(','),
@@ -79,11 +83,10 @@ export default function CampaignsPage() {
   const templates = serverTemplates;
   useEffect(() => { goToPage(1); }, [searchTerm, statusFilter, typeFilter, activeTab]);
   useEffect(() => {
-    if (!isInitialLoad && !campaignsError && currentPage > Math.max(1, Math.ceil(totalItems / pageSize))) goToPage(Math.max(1, Math.ceil(totalItems / pageSize)));
-  }, [isInitialLoad, campaignsError, currentPage, totalItems, pageSize]);
+    if (!showBuilder && !selectedCampaignForReport && !isInitialLoad && !campaignsError && currentPage > Math.max(1, Math.ceil(totalItems / pageSize))) goToPage(Math.max(1, Math.ceil(totalItems / pageSize)));
+  }, [showBuilder, selectedCampaignForReport, isInitialLoad, campaignsError, currentPage, totalItems, pageSize]);
   const [showFilters, setShowFilters] = useState(false);
   const [filterSearchTerm, setFilterSearchTerm] = useState('');
-  const [selectedCampaignForReport, setSelectedCampaignForReport] = useState<Campaign | null>(null);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [newTemplateType, setNewTemplateType] = useState<'Email' | 'SMS'>('Email');
   const [newTemplate, setNewTemplate] = useState({ name: '', subject: '', content: '', category: 'Marketing' });
@@ -144,24 +147,6 @@ export default function CampaignsPage() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'sent':
-        return <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20">{status}</span>;
-      case 'failed':
-        return <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-red-50 text-red-700 border border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20">{status}</span>;
-      case 'active':
-        return <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">active</span>;
-      case 'completed':
-        return <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-slate-500/10 text-slate-500 dark:text-slate-400 border border-slate-500/20">completed</span>;
-      case 'scheduled':
-        return <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">scheduled</span>;
-      case 'paused':
-        return <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-orange-500/10 text-orange-400 border border-orange-500/20">paused</span>;
-      default:
-        return <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-gray-100 dark:bg-slate-700/50 text-slate-700 dark:text-slate-300 border border-gray-300 dark:border-slate-600">{status}</span>;
-    }
-  };
 
   const emailTemplates = templates.filter(t => t.type === 'Email');
   const smsTemplates = templates.filter(t => t.type === 'SMS');
@@ -173,8 +158,8 @@ export default function CampaignsPage() {
   };
   const campaignColumns: DataGridColumnDef<Campaign>[] = [
     { id: 'name', sortable: true, header: 'Campaign', accessor: row => row.name, width: 260 },
-    { id: 'type', header: 'Type', accessor: row => row.type, width: 140, cell: (_, row) => <span className="flex items-center gap-2">{getTypeIcon(row.type)}{row.type}</span> },
-    { id: 'status', header: 'Status', accessor: row => row.status, width: 140, cell: (_, row) => getStatusBadge(row.status) },
+    { id: 'type', header: 'Type', accessor: row => row.type, width: 140, cell: (_, row) => <span className="flex items-center gap-2">{getTypeIcon(row.type)}{row.type.toUpperCase() === 'SMS' ? 'SMS' : row.type}</span> },
+    { id: 'status', header: 'Status', accessor: row => row.status, width: 140, cell: (_, row) => <CampaignStatusBadge status={row.status} /> },
     { id: 'target', header: 'Target', accessor: row => row.targetAudience, width: 180 },
     { id: 'submitted', header: 'Submitted', accessor: row => row.sentCount, width: 120 },
     { id: 'opened', header: 'Opened', accessor: row => row.openedCount ?? 0, width: 110 },
@@ -389,14 +374,10 @@ export default function CampaignsPage() {
                 filterGroups={[
                   {
                     id: 'status', label: 'Status', items: [
-                      { id: 'sending', label: 'Sending' },
-                      { id: 'sent', label: 'Sent to provider' },
-                      { id: 'partially_sent', label: 'Partially sent' },
+                      { id: 'sent', label: 'Sent' },
+                      { id: 'partially_sent', label: 'Partially Sent' },
+                      { id: 'delivered', label: 'Delivered' },
                       { id: 'failed', label: 'Failed' },
-                      { id: 'active', label: 'Active' },
-                      { id: 'scheduled', label: 'Scheduled' },
-                      { id: 'paused', label: 'Paused' },
-                      { id: 'completed', label: 'Completed' },
                       { id: 'draft', label: 'Draft' },
                     ].map(item => ({ ...item, isChecked: statusFilter.includes(item.id) }))
                   },
@@ -404,7 +385,6 @@ export default function CampaignsPage() {
                     id: 'type', label: 'Type', items: [
                       { id: 'email', label: 'Email' },
                       { id: 'sms', label: 'SMS' },
-                      { id: 'multi-channel', label: 'Multi-Channel' },
                     ].map(item => ({ ...item, isChecked: typeFilter.includes(item.id) }))
                   },
                 ]}
@@ -414,7 +394,7 @@ export default function CampaignsPage() {
                 }}
               />
               <div className="min-w-0 flex-1">
-                {isInitialLoad || isRefreshing ? <TableLoadingState label="Loading campaigns..." /> : <DataGrid<Campaign> sort={sort} sortingMode="external" onSortChange={next => { setSort(next ?? { field: 'createdAt', direction: 'desc' }); goToPage(1); }}
+                {isInitialLoad ? <TableLoadingState label="Loading campaigns..." /> : <DataGrid<Campaign> sort={sort} sortingMode="external" onSortChange={next => { setSort(next ?? { field: 'createdAt', direction: 'desc' }); goToPage(1); }}
                   columns={tableColumns.columns} data={filteredCampaigns} getRowId={row => row.id} height="auto" selectable={canDeleteCampaign} selectedIds={selected} onSelectionChange={setSelected}
                   enableColumnMenu={false} ariaLabel="Campaigns table" summaryLabel={`${totalItems} total records`} onRowClick={viewCampaign}
                   rowActions={campaign => [

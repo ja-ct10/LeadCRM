@@ -76,16 +76,16 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
       expect((await getAudiences(tenantId)).some(a => a.id === audienceId)).toBe(true);
       expect((await resolveAudience(tenantId, { source: 'ALL', conditions: [] })).breakdown.eligible).toBe(2);
       const result = await sendCampaign(campaign.id, tenantId, userId);
-      expect(result).toMatchObject({ eligibleRecipients: 2, submittedRecipients: 2, failedRecipients: 0, status: 'SENT' });
+      expect(result).toMatchObject({ eligibleRecipients: 2, submittedRecipients: 2, failedRecipients: 0, status: 'SENDING' });
       expect(vi.mocked(sendMail).mock.calls.map(([m]) => m.subject).sort()).toEqual(['Hello Juan', 'Hello Maria']);
-      expect(await prisma.campaignContact.count({ where: { campaignId: campaign.id, status: 'sent', messageId: { not: null } } })).toBe(2);
+      expect(await prisma.campaignContact.count({ where: { campaignId: campaign.id, status: 'submitted', sentAt: null, messageId: { not: null } } })).toBe(2);
       expect(await prisma.emailDeliveryLog.count({ where: { campaignId: campaign.id, brevoMessageId: { not: null } } })).toBe(2);
       const recipients = await prisma.campaignContact.findMany({ where: { campaignId: campaign.id } });
       expect(recipients.find(r => r.email === 'juan.customer@example.com')).toMatchObject({ leadId: expect.any(String), contactId: null });
       expect(recipients.find(r => r.email === 'maria.customer@example.com')).toMatchObject({ leadId: null, contactId: expect.any(String) });
     });
     const reloaded = await request(`/marketing/campaigns/${campaign.id}`);
-    expect(reloaded.status).toBe(200); expect(reloaded.body.data.status).toBe('SENT'); expect(reloaded.body.data.deliveredCount).toBe(0);
+    expect(reloaded.status).toBe(200); expect(reloaded.body.data.status).toBe('SENDING'); expect(reloaded.body.data.deliveredCount).toBe(0);
   });
   it('returns 202 before provider completion and persists results after the HTTP request closes', async () => {
     let release!: () => void;
@@ -101,7 +101,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
       expect((await request(`/marketing/campaigns/${campaign.id}/send`, 'PATCH')).status).toBe(409);
     } finally { release(); }
     await vi.waitFor(async () => {
-      expect((await request(`/marketing/campaigns/${campaign.id}`)).body.data).toMatchObject({ status: 'SENT', sentCount: 2, failedCount: 0 });
+      expect((await request(`/marketing/campaigns/${campaign.id}`)).body.data).toMatchObject({ status: 'SENDING', sentCount: 2, failedCount: 0 });
     });
     expect(sendMail).toHaveBeenCalledTimes(2);
   });
@@ -158,16 +158,19 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     vi.mocked(sendMail).mockRejectedValueOnce(new EmailSubmissionError('rejected', 429));
     const campaign = await draft();
     const result = await scoped(() => sendCampaign(campaign.id, tenantId, userId));
-    expect(result).toMatchObject({ submittedRecipients: 1, failedRecipients: 1, status: 'PARTIALLY_SENT' });
+    expect(result).toMatchObject({ submittedRecipients: 1, failedRecipients: 1, status: 'SENDING' });
+    const log = await prisma.emailDeliveryLog.findFirstOrThrow({ where: { campaignId: campaign.id, brevoMessageId: { not: null } } });
+    await processBrevoEvent({ event: 'request', email: log.toEmail, 'message-id': log.brevoMessageId, ts_event: Math.floor(Date.now() / 1000) });
+    expect((await scoped(() => getCampaignById(campaign.id, tenantId))).status).toBe('PARTIALLY_SENT');
     await expect(scoped(() => sendCampaign(campaign.id, tenantId, userId))).rejects.toMatchObject({ statusCode: 409 });
     await expect(scoped(() => updateCampaign(campaign.id, tenantId, userId, { name: 'Changed' }))).rejects.toMatchObject({ statusCode: 409 });
   });
   it.each([
-    { total: 1, rejected: 0, unconfirmed: 0, status: 'SENT' },
-    { total: 4, rejected: 0, unconfirmed: 0, status: 'SENT' },
-    { total: 4, rejected: 1, unconfirmed: 0, status: 'PARTIALLY_SENT' },
+    { total: 1, rejected: 0, unconfirmed: 0, status: 'SENDING' },
+    { total: 4, rejected: 0, unconfirmed: 0, status: 'SENDING' },
+    { total: 4, rejected: 1, unconfirmed: 0, status: 'SENDING' },
     { total: 4, rejected: 4, unconfirmed: 0, status: 'FAILED' },
-    { total: 4, rejected: 0, unconfirmed: 1, status: 'PAUSED' },
+    { total: 4, rejected: 0, unconfirmed: 1, status: 'SENDING' },
   ])('persists real transport outcomes: $total recipients, $rejected rejected, $unconfirmed unknown', async ({ total, rejected, unconfirmed, status }) => {
     const transport = await vi.importActual<typeof import('../../../../shared/services/email.service')>('../../../../shared/services/email.service');
     vi.mocked(sendMail).mockImplementation(transport.sendMail);
@@ -187,11 +190,11 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
         const audience = await createAudience(tenantId, { name: source, source: 'LEADS', conditions: [{ field: 'company', operator: 'equals', value: source }] });
         const campaign = await createCampaign(tenantId, userId, { name: source, type: 'EMAIL', targetAudienceId: audience.id, subject: 'Hello', body: 'Hello' });
         const result = await sendCampaign(campaign.id, tenantId, userId);
-        expect(result).toEqual({ campaignId: campaign.id, eligibleRecipients: total, submittedRecipients: total - rejected - unconfirmed, failedRecipients: rejected, status });
+        expect(result).toEqual({ campaignId: campaign.id, eligibleRecipients: total, submittedRecipients: total - rejected - unconfirmed, failedRecipients: rejected, status, submissionComplete: true });
         const response = await request(`/marketing/campaigns/${campaign.id}`);
         expect(response.body.data.sendResult).toEqual(result);
         expect(response.body.data).toMatchObject({ status, sentCount: total - rejected - unconfirmed, failedCount: rejected, openedCount: 0, clickedCount: 0, deliveredCount: 0 });
-        expect(await prisma.emailDeliveryLog.count({ where: { campaignId: campaign.id, sentAt: { not: null }, brevoMessageId: { not: null } } })).toBe(total - rejected - unconfirmed);
+        expect(await prisma.emailDeliveryLog.count({ where: { campaignId: campaign.id, status: 'submitted', sentAt: null, brevoMessageId: { not: null } } })).toBe(total - rejected - unconfirmed);
         await expect(sendCampaign(campaign.id, tenantId, userId)).rejects.toMatchObject({ statusCode: 409 });
         expect(providerRequests).toBe(total);
       });
@@ -213,7 +216,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
       expect(recipient[field]).toBeTruthy();
       expect(await prisma.emailEvent.count({ where: { deliveryLogId: log.id } })).toBe(1);
       const result = await scoped(() => getCampaignById(campaign.id, tenantId));
-      expect(result).toMatchObject({ status: 'SENT', sentCount: 2, failedCount: 0, openedCount: event === 'opened' ? 1 : 0, clickedCount: event === 'click' ? 1 : 0 });
+      expect(result).toMatchObject({ status: 'SENDING', sentCount: 2, failedCount: ['hard_bounce', 'blocked', 'invalid_email'].includes(event) ? 1 : 0, openedCount: event === 'opened' ? 1 : 0, clickedCount: event === 'click' ? 1 : 0 });
       expect(result.deliveredCount).toBe(event === 'delivered' ? 1 : 0);
       expect(result.bouncedCount).toBe(['soft_bounce', 'hard_bounce', 'blocked', 'invalid_email'].includes(event) ? 1 : 0);
       const metrics = await prisma.campaignMetrics.findFirstOrThrow({ where: { campaignId: campaign.id }, orderBy: { snapshotAt: 'desc' } });
@@ -235,16 +238,16 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     const sending = scoped(() => sendCampaign(campaign.id, tenantId, userId));
     try {
       await vi.waitFor(async () => {
-        expect(await prisma.emailDeliveryLog.count({ where: { campaignId: campaign.id, sentAt: { not: null } } })).toBe(1);
+        expect(await prisma.emailDeliveryLog.count({ where: { campaignId: campaign.id, brevoMessageId: { not: null } } })).toBe(1);
       });
-      const log = await prisma.emailDeliveryLog.findFirstOrThrow({ where: { campaignId: campaign.id, sentAt: { not: null } } });
+      const log = await prisma.emailDeliveryLog.findFirstOrThrow({ where: { campaignId: campaign.id, brevoMessageId: { not: null } } });
       const payload = { email: log.toEmail, 'message-id': log.brevoMessageId!, ts_event: Math.floor(Date.now() / 1000) };
       await processBrevoEvent({ ...payload, event: 'soft_bounce' });
       await processBrevoEvent({ ...payload, event: 'delivered' });
     } finally { release(); await sending; }
     const metrics = await prisma.campaignMetrics.findFirstOrThrow({ where: { campaignId: campaign.id }, orderBy: { snapshotAt: 'desc' } });
     expect(metrics).toMatchObject({ sentCount: 2, deliveredCount: 1, bouncedCount: 1, deliveryRate: 50, bounceRate: 50 });
-    expect(await scoped(() => getCampaignById(campaign.id, tenantId))).toMatchObject({ status: 'SENT', sentCount: 2, deliveredCount: 1, bouncedCount: 1 });
+    expect(await scoped(() => getCampaignById(campaign.id, tenantId))).toMatchObject({ status: 'SENDING', sentCount: 2, deliveredCount: 1, bouncedCount: 1 });
     expect(sendMail).toHaveBeenCalledTimes(2);
   });
   it.each(['opened', 'unique_opened'])('reports one recipient through authenticated delivery, %s and click webhooks', async openEvent => {
@@ -268,7 +271,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     expect(recipient).toMatchObject({ status: 'clicked', deliveredAt: new Date(started * 1000), openedAt: new Date((started + 1) * 1000), clickedAt: new Date((started + 2) * 1000) });
     const metrics = await prisma.campaignMetrics.findFirstOrThrow({ where: { campaignId: campaign.id }, orderBy: { snapshotAt: 'desc' } });
     expect(metrics).toMatchObject({ sentCount: 1, deliveredCount: 1, openedCount: 1, clickedCount: 1, bouncedCount: 0, openRate: 100, clickRate: 100, deliveryRate: 100, bounceRate: 0 });
-    expect(await prisma.emailEvent.count({ where: { deliveryLogId: log.id } })).toBe(3);
+    expect(await prisma.emailEvent.count({ where: { deliveryLogId: log.id } })).toBe(6);
     await expect(processBrevoEvent({ ...payload, event: 'opened', 'message-id': 'unknown-message' })).rejects.toMatchObject({ statusCode: 503 });
     await expect(processBrevoEvent({ ...payload, event: 'opened', email: 'other@example.com' })).rejects.toMatchObject({ statusCode: 503 });
     expect(sendMail).toHaveBeenCalledTimes(1);
@@ -288,7 +291,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
       expect((await sendCampaign(campaign.id, tenantId, userId)).submittedRecipients).toBe(12);
       expect(peak).toBe(5);
       await prisma.lead.deleteMany({ where: { source } });
-      expect(await prisma.campaignContact.count({ where: { campaignId: campaign.id, leadId: null, status: 'sent', email: { not: null } } })).toBe(12);
+      expect(await prisma.campaignContact.count({ where: { campaignId: campaign.id, leadId: null, status: 'submitted', email: { not: null } } })).toBe(12);
     });
   });
   it('uses real AND conditions and validates cross-tenant template references', async () => {
@@ -303,7 +306,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     const campaign = await draft(); await scoped(() => sendCampaign(campaign.id, tenantId, userId));
     const logs = await prisma.emailDeliveryLog.findMany({ where: { campaignId: campaign.id }, orderBy: { toEmail: 'asc' } });
     const started = Math.floor(Date.now() / 1000) - 120;
-    await scoped(() => prisma.campaignContact.updateMany({ where: { campaignId: campaign.id, tenantId }, data: { sentAt: new Date((started - 10) * 1000) } }));
+    await scoped(() => prisma.campaignContact.updateMany({ where: { campaignId: campaign.id, tenantId }, data: { sentAt: new Date((started - 10) * 1000), submittedAt: new Date((started - 10) * 1000) } }));
     const payload = { email: logs[0].toEmail, 'message-id': logs[0].brevoMessageId!, ts_event: started };
     await processBrevoEvent({ ...payload, event: 'delivered' });
     await processBrevoEvent({ ...payload, event: 'opened', ts_event: started + 1 });
@@ -466,19 +469,118 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     expect(await scoped(async () => await prisma.smsWebhookReceipt.count({ where: { campaignContactId: row.id } }), otherTenantId)).toBe(0);
     await scoped(() => prisma.contact.delete({ where: { id: person.id } }));
   });
-  it('keeps uncertain SMS submissions paused for review and rejects deterministic errors without retry', async () => {
+  it('keeps uncertain SMS submissions pending and rejects deterministic errors without retry', async () => {
     await scoped(async () => {
       const person = await prisma.contact.create({ data: { tenantId, firstName: 'Uncertain', lastName: 'SMS', phone: '+639181234567' } });
       for (const outcome of ['unconfirmed', 'rejected'] as const) {
         vi.mocked(sendSms).mockRejectedValueOnce(new SmsSubmissionError(outcome, outcome === 'rejected' ? 429 : undefined));
         const campaign = await createCampaign(tenantId, userId, { name: 'SMS ' + outcome, type: 'SMS', audienceSource: 'CONTACTS', body: 'Hello' });
-        expect((await sendCampaign(campaign.id, tenantId, userId)).status).toBe(outcome === 'unconfirmed' ? 'PAUSED' : 'FAILED');
+        expect((await sendCampaign(campaign.id, tenantId, userId)).status).toBe(outcome === 'unconfirmed' ? 'SENDING' : 'FAILED');
         await expect(sendCampaign(campaign.id, tenantId, userId)).rejects.toMatchObject({ statusCode: 409 });
       }
       expect(sendSms).toHaveBeenCalledTimes(2);
       await prisma.contact.delete({ where: { id: person.id } });
     });
   });
+  it.each(['EMAIL', 'SMS'] as const)('%s persists the complete delivery matrix and filters canonical statuses', async type => {
+    for (const removed of ['ACTIVE', 'SCHEDULED', 'PAUSED', 'COMPLETED']) expect((await request(`/marketing/campaigns?status=${removed}`)).status).toBe(400);
+    const campaign = await scoped(() => prisma.campaign.create({ data: { tenantId, name: `${type} matrix ${randomUUID()}`, type } }));
+    const read = async () => (await request(`/marketing/campaigns/${campaign.id}/report`)).body.data;
+    expect((await read()).status).toBe('DRAFT');
+    await scoped(() => prisma.campaign.update({ where: { id: campaign.id }, data: { status: 'SENDING', recipientCount: 5 } }));
+    const submitted = new Date(Date.now() - 60_000);
+    const rows = await scoped(async () => {
+      const result = [];
+      for (let i = 0; i < 5; i++) {
+        const messageId = `${randomUUID()}@matrix.test`, email = `${randomUUID()}@example.test`;
+        result.push(await prisma.campaignContact.create({ data: { campaignId: campaign.id, tenantId, email, phone: `+63917123000${i}`, messageId, submittedAt: submitted, status: 'submitted' } }));
+        if (type === 'EMAIL') await prisma.emailDeliveryLog.create({ data: { campaignId: campaign.id, tenantId, toEmail: email, fromEmail: 'sender@example.test', subject: 'matrix', brevoMessageId: messageId, status: 'submitted' } });
+      }
+      await prisma.campaignContact.create({ data: { campaignId: campaign.id, tenantId, status: 'excluded', failureReason: 'MISSING_ADDRESS' } });
+      return result;
+    });
+    const event = async (index: number, state: 'sent' | 'delivered' | 'failed', time = 1) => {
+      const row = rows[index], at = new Date(submitted.getTime() + time * 1000);
+      if (type === 'EMAIL') await processBrevoEvent({ event: state === 'sent' ? 'request' : state === 'failed' ? 'hard_bounce' : 'delivered', email: row.email, 'message-id': row.messageId, ts_event: Math.floor(at.getTime() / 1000) });
+      else await processTextBeeEvent({ smsId: row.id, smsBatchId: row.messageId, deviceId: 'fixture', webhookSubscriptionId: 'fixture', recipient: row.phone,
+        idempotencyKey: `${row.id}-${state}`, webhookEvent: `MESSAGE_${state.toUpperCase()}`, status: state, sentAt: at.toISOString(), deliveredAt: at.toISOString(), failedAt: at.toISOString() });
+    };
+    expect((await read()).status).toBe('SENDING');
+    for (let i = 0; i < 4; i++) await event(i, 'sent');
+    expect((await read()).status).toBe('SENDING');
+    await event(4, 'sent');
+    expect(await read()).toMatchObject({ status: 'SENT', deliveredCount: 0 });
+    for (let i = 0; i < 2; i++) await event(i, 'delivered', 2);
+    expect(await read()).toMatchObject({ status: 'SENT', recipientCount: 5, deliveredCount: 2, failedCount: 0 });
+    const filter = async (status: string) => (await request(`/marketing/campaigns?status=${status}&search=${encodeURIComponent(campaign.name)}`)).body.data;
+    expect(await filter('DELIVERED')).toHaveLength(0);
+    expect(await filter('SENT')).toHaveLength(1);
+    for (let i = 2; i < 5; i++) await event(i, 'delivered', 2);
+    expect(await read()).toMatchObject({ status: 'DELIVERED', deliveredCount: 5, failedCount: 0 });
+    expect(await filter('DELIVERED')).toHaveLength(1);
+    expect(await filter('PARTIALLY_SENT')).toHaveLength(0);
+    // Separate campaign for terminal failures: TextBee final outcomes are immutable.
+    const partial = await scoped(() => prisma.campaign.create({ data: { tenantId, name: `${type} partial`, type, status: 'SENDING', recipientCount: 5 } }));
+    await scoped(async () => {
+      for (let i = 0; i < 5; i++) {
+        const email = `${randomUUID()}@example.test`, messageId = `${randomUUID()}@matrix.test`;
+        rows[i] = await prisma.campaignContact.create({ data: { campaignId: partial.id, tenantId, email, phone: `+63917123000${i}`, messageId, submittedAt: submitted, status: 'submitted' } });
+        if (type === 'EMAIL') await prisma.emailDeliveryLog.create({ data: { campaignId: partial.id, tenantId, toEmail: email, fromEmail: 'sender@example.test', subject: 'matrix', brevoMessageId: messageId, status: 'submitted' } });
+      }
+    });
+    for (let i = 0; i < 4; i++) await event(i, 'sent');
+    await event(4, 'failed', 3);
+    expect((await request(`/marketing/campaigns/${partial.id}/report`)).body.data).toMatchObject({ status: 'PARTIALLY_SENT', failedCount: 1, deliveredCount: 0 });
+    const filteredPartial = (await request('/marketing/campaigns?status=PARTIALLY_SENT')).body.data;
+    expect(filteredPartial.some((row: { id: string }) => row.id === partial.id)).toBe(true);
+    for (let i = 0; i < 4; i++) await event(i, 'failed', 3);
+    expect((await request(`/marketing/campaigns/${partial.id}/report`)).body.data).toMatchObject({ status: 'FAILED', failedCount: 5, deliveredCount: 0 });
+  });
+
+  it('does not treat historical email acceptance timestamps as confirmed sending', async () => {
+    const campaign = await scoped(async () => {
+      const created = await prisma.campaign.create({ data: { tenantId, name: 'Legacy acceptance', type: 'EMAIL', status: 'SENDING', recipientCount: 2 } });
+      for (let i = 0; i < 2; i++) {
+        const email = `${randomUUID()}@example.test`, messageId = `${randomUUID()}@legacy.test`;
+        await prisma.campaignContact.create({ data: { campaignId: created.id, tenantId, email, messageId, status: 'sent', sentAt: new Date(Date.now() - 60_000) } });
+        await prisma.emailDeliveryLog.create({ data: { campaignId: created.id, tenantId, toEmail: email, fromEmail: 'sender@example.test', subject: 'legacy', status: 'sent', brevoMessageId: messageId } });
+      }
+      return created;
+    });
+    const rows = await prisma.campaignContact.findMany({ where: { campaignId: campaign.id } });
+    const event = (i: number, kind: string) => processBrevoEvent({ event: kind, email: rows[i].email, 'message-id': rows[i].messageId, ts_event: Math.floor(Date.now() / 1000) });
+    await event(0, 'opened');
+    await event(1, 'hard_bounce');
+    expect((await prisma.campaign.findUniqueOrThrow({ where: { id: campaign.id } })).status).toBe('SENDING');
+    const report = (await request(`/marketing/campaigns/${campaign.id}/report`)).body.data;
+    expect(report.recipients.find((row: { id: string }) => row.id === rows[0].id).deliveryStatus).toBe('Submitted');
+    await event(0, 'request');
+    expect((await prisma.campaign.findUniqueOrThrow({ where: { id: campaign.id } })).status).toBe('PARTIALLY_SENT');
+  });
+
+  it('counts separate clicks with a reused send epoch, deduplicates retries and keeps latest activity', async () => {
+    const start = Math.floor(Date.now() / 1000) - 60;
+    const campaign = await scoped(async () => {
+      const created = await prisma.campaign.create({ data: { tenantId, name: 'Repeat click fixture', type: 'EMAIL', status: 'SENDING', recipientCount: 2 } });
+      for (let i = 0; i < 2; i++) {
+        const email = `${randomUUID()}@example.test`, messageId = `${randomUUID()}@click.test`;
+        await prisma.campaignContact.create({ data: { campaignId: created.id, tenantId, email, messageId, status: 'submitted', submittedAt: new Date(start * 1000) } });
+        await prisma.emailDeliveryLog.create({ data: { campaignId: created.id, tenantId, toEmail: email, fromEmail: 'sender@example.test', subject: 'clicks', status: 'submitted', brevoMessageId: messageId } });
+      }
+      return created;
+    });
+    const logs = await prisma.emailDeliveryLog.findMany({ where: { campaignId: campaign.id } });
+    const payload = { event: 'click', email: logs[0].toEmail, 'message-id': logs[0].brevoMessageId, ts_epoch: start * 1000, link: 'https://camxian.com/product/electric-fence' };
+    for (const ts_event of [start + 1, start + 2, start + 3]) {
+      await processBrevoEvent({ ...payload, ts_event }); await processBrevoEvent({ ...payload, ts_event });
+    }
+    await processBrevoEvent({ ...payload, email: logs[1].toEmail, 'message-id': logs[1].brevoMessageId, ts_event: start + 4 });
+    const report = (await request(`/marketing/campaigns/${campaign.id}/report`)).body.data;
+    expect(report).toMatchObject({ status: 'SENDING', clickedCount: 2, deliveredCount: 0 });
+    expect(report.topLinks).toEqual([{ url: payload.link, uniqueClicks: 2, totalClicks: 4, clickRate: 100, lastClicked: new Date((start + 4) * 1000).toISOString() }]);
+    expect(report.recipients.find((row: { email: string }) => row.email === logs[0].toEmail).lastActivity).toBe(new Date((start + 3) * 1000).toISOString());
+  });
+
   it('seeds six persisted sample templates idempotently while preserving edited and archived templates', async () => {
     const first = await seedCampaignTemplates(prisma, tenantId);
     expect(first).toBe(6);

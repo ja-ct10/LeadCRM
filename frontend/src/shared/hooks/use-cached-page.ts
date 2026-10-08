@@ -12,10 +12,11 @@ interface CachedPageOptions<T> {
   intervalMs?: number;
   disabled?: boolean;
   revalidateOnInvalidation?: boolean;
+  pauseWhenHidden?: boolean;
 }
 
 /** Cache successful results together with their exact request key; always revalidate on mount. */
-export function useCachedPage<T>({ module, params, fetchFn, intervalMs, revalidateOnInvalidation = false, disabled = USE_MOCK_DATA }: CachedPageOptions<T>) {
+export function useCachedPage<T>({ module, params, fetchFn, intervalMs, pauseWhenHidden = false, revalidateOnInvalidation = false, disabled = USE_MOCK_DATA }: CachedPageOptions<T>) {
   const { tenant, user, isLoading, authError } = useAuth();
   const tenantId = tenant?.id ?? '';
   // Responses (especially notifications) can depend on the user and their role.
@@ -58,6 +59,7 @@ export function useCachedPage<T>({ module, params, fetchFn, intervalMs, revalida
         error: error instanceof Error ? error.message : 'Failed to load data',
       }));
     } finally {
+      if (activeRequest.current === controller) activeRequest.current = null;
       if (!controller.signal.aborted && latest.current.key === key) {
         setState((prev) => prev.key === key ? { ...prev, fetching: false } : prev);
       }
@@ -75,14 +77,19 @@ export function useCachedPage<T>({ module, params, fetchFn, intervalMs, revalida
 
   useEffect(() => {
     if (!enabled || !intervalMs) return;
-    const refresh = () => { void refetch(); };
+    const refresh = () => {
+      if ((pauseWhenHidden && document.hidden) || (activeRequest.current && !activeRequest.current.signal.aborted)) return;
+      void refetch();
+    };
     const interval = setInterval(refresh, intervalMs);
     window.addEventListener('focus', refresh);
+    if (pauseWhenHidden) document.addEventListener('visibilitychange', refresh);
     return () => {
       clearInterval(interval);
       window.removeEventListener('focus', refresh);
+      if (pauseWhenHidden) document.removeEventListener('visibilitychange', refresh);
     };
-  }, [enabled, intervalMs, refetch]);
+  }, [enabled, intervalMs, pauseWhenHidden, refetch]);
 
   useEffect(() => {
     if (!enabled || !revalidateOnInvalidation) return;

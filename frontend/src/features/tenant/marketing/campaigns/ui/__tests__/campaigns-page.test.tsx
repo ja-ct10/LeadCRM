@@ -56,7 +56,13 @@ it('uses the Leads blue filter state and returns to inactive when closed', () =>
 });
 it.each(['initial', 'refreshing'] as const)('keeps the campaign controls visible during %s table loading', state => {
   mocks[state] = true; render(<CampaignsPage />);
-  expect(screen.getByText('Loading campaigns...').parentElement?.querySelector('.animate-spin')).toBeTruthy();
+  if (state === 'initial') expect(screen.getByText('Loading campaigns...').parentElement?.querySelector('.animate-spin')).toBeTruthy();
   expect(screen.getByLabelText('Search campaigns')).toBeTruthy(); expect(screen.getByLabelText('Filter campaigns')).toBeTruthy();
-  expect(screen.queryByRole('grid')).toBeNull();
+  if (state === 'initial') expect(screen.queryByRole('grid')).toBeNull();
+  else expect(screen.getByRole('grid')).toBeTruthy();
+});
+it('offers only the five final statuses and Email/SMS types', () => {
+  render(<CampaignsPage />); fireEvent.click(screen.getByLabelText('Filter campaigns'));
+  const filters = screen.getAllByRole('checkbox').filter(el => !el.getAttribute('aria-label')?.startsWith('Select'));
+  expect([...new Set(filters.map(el => el.closest('label')?.textContent))]).toEqual(['Sent', 'Partially Sent', 'Delivered', 'Failed', 'Draft', 'Email', 'SMS']);
 });

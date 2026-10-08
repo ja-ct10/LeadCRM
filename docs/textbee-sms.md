@@ -59,9 +59,9 @@ keys with a composite tenant/recipient foreign key. Repeated events do not
 inflate counts, and final delivered/failed states never regress. A callback
 arriving before the submission receipt gets a retryable 503.
 
-Reports distinguish submitted, sent, delivered, failed and requires review.
-`UNKNOWN_STATE` retains any confirmed sent fact while requiring review until a
-final event arrives. SMS never fabricates opened/clicked activity. Webhook
+Reports distinguish submitted, sent, delivered, failed and pending.
+`UNKNOWN_STATE` retains any confirmed sent fact internally while displaying a
+neutral Pending recipient label until a later confirmation. SMS never fabricates opened/clicked activity. Webhook
 metrics are recomputed from persisted recipients. Existing Email history remains
 intact. Historical UniSMS callbacks are no longer processed after the switch.
 

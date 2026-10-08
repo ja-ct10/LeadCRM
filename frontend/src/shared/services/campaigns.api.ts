@@ -26,8 +26,8 @@ function normalize(c: ApiCampaign & { targetAudience?: { name: string }; deliver
 export const campaignsApi = {
   smsSettings: () => apiClient.get<{ success: boolean; data: { organizationEmail: string | null } }>('/marketing/campaigns/sms-settings'),
   duplicate: (id: string) => apiClient.post('/marketing/campaigns/' + id + '/duplicate', {}),
-  report: async (id: string): Promise<CampaignReportResponse> => {
-    const res = await apiClient.get<ApiCampaignReportResponse>('/marketing/campaigns/' + id + '/report');
+  report: async (id: string, signal?: AbortSignal): Promise<CampaignReportResponse> => {
+    const res = await apiClient.get<ApiCampaignReportResponse>('/marketing/campaigns/' + id + '/report', { signal });
     return { ...res, data: { ...normalize(res.data), sendResult: res.data.sendResult, recipients: res.data.recipients, topLinks: res.data.topLinks, deliveredCount: res.data.deliveredCount, bouncedCount: res.data.bouncedCount } };
   },
   list: async (query: Record<string, unknown> = {}): Promise<CampaignsResponse> => {

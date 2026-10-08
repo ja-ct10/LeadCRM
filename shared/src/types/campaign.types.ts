@@ -1,5 +1,5 @@
 export type CampaignType = 'EMAIL' | 'SMS' | 'MULTI_CHANNEL';
-export type CampaignStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'SCHEDULED' | 'SENDING' | 'SENT' | 'PARTIALLY_SENT' | 'FAILED';
+export type CampaignStatus = 'DRAFT' | 'SENDING' | 'SENT' | 'PARTIALLY_SENT' | 'DELIVERED' | 'FAILED';
 
 export interface Campaign {
   id: string;
@@ -7,6 +7,8 @@ export interface Campaign {
   name: string;
   type: CampaignType;
   status: CampaignStatus;
+  submissionStartedAt?: string | null;
+  submissionFinishedAt?: string | null;
   subject?: string;
   body?: string;
   audienceSource?: "LEADS" | "CONTACTS" | "ALL" | null;

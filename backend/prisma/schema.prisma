@@ -67,12 +67,9 @@ enum CampaignStatus {
   SENDING
   SENT
   PARTIALLY_SENT
+  DELIVERED
   FAILED
   DRAFT
-  ACTIVE
-  PAUSED
-  COMPLETED
-  SCHEDULED
 }
 
 
@@ -956,6 +953,8 @@ model Campaign {
   name             String
   type             CampaignType
   status           CampaignStatus @default(DRAFT)
+  submissionStartedAt DateTime?
+  submissionFinishedAt DateTime?
   subject          String?
   body             String? // inline body override when no template selected
   sentCount        Int            @default(0)
@@ -1075,7 +1074,7 @@ model CampaignMetrics {
 model CampaignContact {
   email String?
   phone String?
-  submittedAt DateTime? // SMS provider acceptance; sentAt is provider-confirmed sent
+  submittedAt DateTime? // Provider acceptance; sentAt is provider-confirmed sent
   providerUpdatedAt DateTime?
   personalization Json?
   messageId String? @unique
