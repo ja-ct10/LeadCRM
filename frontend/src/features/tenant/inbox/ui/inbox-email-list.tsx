@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Mail, Trash2, Archive, Loader2, RefreshCw, MailOpen, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { mailboxDate } from '../services/email-presentation';
 import { trashGmailEmails, archiveGmailEmails, GmailEmail } from '../services/gmail.service';
 
 interface InboxEmailListProps {
@@ -17,23 +18,7 @@ interface InboxEmailListProps {
   onPrevPage?: () => void;
 }
 
-function formatDate(dateStr: string): string {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const isToday = date.toDateString() === now.toDateString();
 
-  if (isToday) {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  }
-
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (date.toDateString() === yesterday.toDateString()) {
-    return 'Yesterday';
-  }
-
-  return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-}
 
 function extractName(from: string): string {
   const match = from.match(/^(.+?)\s*<.+>$/);
@@ -278,7 +263,7 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
                       : 'text-slate-500 dark:text-slate-500',
                   )}
                 >
-                  {email.scheduledStatus ? new Date(email.date).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : formatDate(email.date)}
+                  {email.scheduledStatus ? new Date(email.date).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : mailboxDate(email.date)}
                 </span>
               </button>
             </div>

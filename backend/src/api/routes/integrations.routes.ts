@@ -14,6 +14,9 @@ import {
   deleteDraftHandler,
   sync,
   thread,
+  threadReadState,
+  threadArchive,
+  threadTrash,
   associateDeal,
   schedule,
 } from '../../integrations/gmail/gmail.controller';
@@ -35,6 +38,9 @@ router.post('/gmail/sync', sync);
 router.get('/gmail/events', mailboxEvents);
 router.post('/gmail/scheduled', schedule);
 router.get('/gmail/threads/:threadId', thread);
+router.patch('/gmail/threads/:threadId/read-state', threadReadState);
+router.post('/gmail/threads/:threadId/archive', threadArchive);
+router.post('/gmail/threads/:threadId/trash', threadTrash);
 router.patch('/gmail/threads/:threadId/deal', requirePermission('deals.edit'), associateDeal);
 
 // ── Gmail Integration ─────────────────────────────────

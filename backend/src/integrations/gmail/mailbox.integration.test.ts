@@ -95,7 +95,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     expect((await read(c.lead.id)).status).toBe('Hot'); expect(await stageOf(c.deals[0].id)).toBe('Lead');
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: c.deals[0].id } })).closedAt).toBeNull();
   });
-  it('retains converted Lead email aliases and original thread Deal context for the Contact', async () => {
+  it('requires the current Contact email after conversion and preserves original thread history', async () => {
     const c = await customer(2);
     const outbound = message(c.thread, c.email, 'outbound', 'Here is product information.', 9);
     await ingest([outbound]);
@@ -105,7 +105,10 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
       await tx.lead.update({ where: { id: c.lead.id }, data: { status: 'Closed', contactId: contact.id } });
       await convertClosedLead(tx, tenantId, c.lead.id, userId);
     }));
-    const reply = message(c.thread, c.email, 'inbound', 'Please send a quotation.', 5);
+    const oldAliasReply = message(c.thread, c.email, 'inbound', 'Please send a quotation.', 5);
+    await ingest([oldAliasReply]);
+    expect(await prisma.mailboxMessage.count({ where: { accountId: account.id, providerMessageId: oldAliasReply.id } })).toBe(0);
+    const reply = message(c.thread, contact.email!, 'inbound', 'Please send a quotation.', 5);
     await ingest([reply]);
     const stored = await prisma.mailboxMessage.findUniqueOrThrow({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: reply.id } } });
     expect(stored).toMatchObject({ contactId: contact.id, leadId: null, dealId: c.deals[1].id });
@@ -137,6 +140,11 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     await ingest([message(c.thread, c.email, 'inbound', 'Please send a quotation.', 5)]);
     expect(await stageOf(c.deals[0].id)).toBe('Lead'); expect(await stageOf(c.deals[1].id)).toBe('Lead');
     await scope(() => associateMailboxDeal(tenantId, userId, c.thread, c.deals[1].id));
+    await scope(() => associateMailboxDeal(tenantId, userId, c.thread, c.deals[1].id));
+    expect(await prisma.activity.count({ where: { tenantId, dealId: c.deals[1].id, title: 'Email conversation associated with this Deal' } })).toBe(1);
+    const associated = await call(`/integrations/gmail/threads/${c.thread}`);
+    expect(associated.body.emails[0].dealId).toBe(c.deals[1].id);
+    expect(associated.body.emails[0].needsDealAssociation).toBe(false);
     // Advance the saved association barrier into the past to represent a subsequent real response.
     await prisma.mailboxThreadAssociation.update({ where: { accountId_threadId: { accountId: account.id, threadId: c.thread } }, data: { linkedAt: before(3) } });
     await ingest([message(c.thread, c.email, 'inbound', 'We want to proceed with the product.', 2)]);
@@ -226,12 +234,16 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
   });
   it('creates a complete priced Deal set once across concurrent retries and preserves relationships', async () => {
     const c = await customer(0);
+    const agent = await prisma.user.create({ data: { tenantId, email: `batch-agent-${randomUUID()}@camxian.com`, firstName: 'Batch', lastName: 'Agent', role: 'Sales', mustChangePassword: false, onboardingCompletedAt: new Date() } });
+    const role = await prisma.roleDefinition.create({ data: { tenantId, name: `Batch sales ${randomUUID()}` } });
+    await prisma.rolePermission.createMany({ data: ['leads', 'deals'].map(module => ({ tenantId, roleId: role.id, module, canView: true, canEdit: true })) });
+    await prisma.userRole.create({ data: { tenantId, userId: agent.id, roleId: role.id } });
     const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Linked', lastName: 'Contact', email: `${randomUUID()}@example.test` } });
     const accountRecord = await prisma.account.create({ data: { tenantId, name: 'Batch account', tags: [] } });
     const products = await Promise.all([25000, 15000].map((value, index) => prisma.productInterest.create({ data: { tenantId, name: `Batch product ${index} ${randomUUID()}`, dealValue: value } })));
     const dto = { idempotencyKey: randomUUID(), title: 'Installation', pipelineId, stageId: stages.Lead,
       productInterestIds: products.map(p => p.id), leadIds: [c.lead.id], contactIds: [contact.id], accountId: accountRecord.id,
-      assignedUserId: userId, industry: 'Technology', address: '123 Main Street', priority: 'HIGH', leadSource: 'Referral', expectedCloseDate: '2026-12-01T00:00:00.000Z' };
+      assignedUserId: agent.id, industry: 'Technology', address: '123 Main Street', priority: 'HIGH', leadSource: 'Referral', expectedCloseDate: '2026-12-01T00:00:00.000Z' };
     const responses = await Promise.all([call('/crm/deals/batch', 'POST', dto), call('/crm/deals/batch', 'POST', dto)]);
     expect(responses.map(r => r.status).sort()).toEqual([200, 201]);
     const created = responses[0].body.data.deals;
@@ -239,7 +251,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     expect(responses[1].body.data.deals.map((d: {id: string}) => d.id)).toEqual(created.map((d: {id: string}) => d.id));
     for (const [index, deal] of created.entries()) {
       expect(deal).toMatchObject({ productInterestId: products[index].id, value: index ? 15000 : 25000, accountId: accountRecord.id,
-        industry: 'Technology', address: dto.address, assignedUserId: userId, priority: 'HIGH', stageId: stages.Lead,
+        industry: 'Technology', address: dto.address, assignedUserId: agent.id, priority: 'HIGH', stageId: stages.Lead,
         title: `Installation — ${products[index].name}` });
       expect(await prisma.leadDeal.count({ where: { tenantId, dealId: deal.id, leadId: c.lead.id } })).toBe(1);
       expect(await prisma.contactDeal.count({ where: { tenantId, dealId: deal.id, contactId: contact.id } })).toBe(1);

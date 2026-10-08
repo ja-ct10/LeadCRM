@@ -7,6 +7,7 @@ export const tenantChildren: Record<string, { relation: string; model: string }>
 };
 tenantModels.add('MailboxMessage');
 tenantModels.add('ScheduledMailboxEmail');
+tenantModels.add('MailboxSendReceipt');
 tenantModels.add('MailboxThreadAssociation');
 tenantModels.add('ClosingFieldDefinition');
 tenantModels.add('CustomFieldValue');

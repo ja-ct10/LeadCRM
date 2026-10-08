@@ -53,25 +53,27 @@ export async function readMailboxThread(tenantId: string, userId: string, thread
   const account = await prisma.emailAccount.findUniqueOrThrow({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } } });
   if (!account.isActive) throw new AppError('Connect your mailbox first.', 409);
   const scope = await resolveMailboxScope(account, permissions);
-  const saved = await prisma.mailboxMessage.findMany({ where: { AND: [scopedMessagesWhere(account, scope), { threadId }] }, orderBy: { sentAt: 'asc' } });
+  const saved = await prisma.mailboxMessage.findMany({ where: { AND: [scopedMessagesWhere(account, scope), { threadId, NOT: { labels: { has: 'DRAFT' } } }] }, orderBy: [{ sentAt: 'asc' }, { id: 'asc' }] });
   if (!saved.length) throw new AppError('Conversation is outside your assigned CRM mailbox scope.', 404);
   const emails = saved.map(storedEmail);
   const decorated = await decorateEmails(tenantId, userId, emails, permissions);
   const latest = decorated[decorated.length - 1];
   const link: CustomerLink | undefined = latest?.leadId ? { leadId: latest.leadId } : latest?.contactId ? { contactId: latest.contactId } : undefined;
   const deals = link && permissions.dealsView ? await prisma.deal.findMany({ where: { ...customerDealWhere(tenantId, link), stage: { isWon: false, isLost: false } }, select: { id: true, title: true, stage: { select: { name: true } } } }) : [];
-  return { emails: decorated, dealOptions: deals.map(deal => ({ id: deal.id, title: deal.title, stage: deal.stage.name })), canAssociateDeal: permissions.dealsEdit };
+  const association = link && permissions.dealsView ? await prisma.mailboxThreadAssociation.findUnique({ where: { accountId_threadId: { accountId: account.id, threadId } } }) : null;
+  const associated = association && link ? await prisma.deal.findFirst({ where: { ...customerDealWhere(tenantId, link), id: association.dealId }, select: { id: true } }) : null;
+  return { emails: associated ? decorated.map(email => ({ ...email, dealId: associated.id, needsDealAssociation: false })) : decorated, dealOptions: deals.map(deal => ({ id: deal.id, title: deal.title, stage: deal.stage.name })), canAssociateDeal: permissions.dealsEdit && permissions.dealsView };
 }
 
 export async function associateMailboxDeal(tenantId: string, userId: string, threadId: string, dealId: string) {
   const permissions = await mailboxPermissions(tenantId, userId);
-  if (!permissions.dealsEdit) throw new AppError('Deal edit permission is required.', 403);
+  if (!permissions.dealsView || !permissions.dealsEdit) throw new AppError('Deal view and edit permissions are required.', 403);
   const account = await prisma.emailAccount.findUniqueOrThrow({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } } });
   if (!account.isActive) throw new AppError('Connect your mailbox first.', 409);
   const scope = await resolveMailboxScope(account, permissions);
   await salesTransaction(async tx => {
     const messages = await tx.mailboxMessage.findMany({ where: { AND: [scopedMessagesWhere(account, scope), { threadId }] }, distinct: ['leadId', 'contactId'], select: { leadId: true, contactId: true } });
-    const links = messages.filter(message => message.leadId || message.contactId);
+    const links = messages.filter(message => message.leadId ? scope.leadIds.includes(message.leadId) : message.contactId && scope.contactIds.includes(message.contactId));
     if (links.length !== 1) throw new AppError('This thread must have one unambiguous CRM email match.', 409);
     const link: CustomerLink = links[0].leadId ? { leadId: links[0].leadId } : { contactId: links[0].contactId! };
     if (!(link.leadId ? permissions.leadsView : permissions.contactsView)) throw new AppError('Access denied', 403);
@@ -84,6 +86,7 @@ export async function associateMailboxDeal(tenantId: string, userId: string, thr
     await tx.mailboxThreadAssociation.upsert({ where: { accountId_threadId: key }, create: { ...key, tenantId, ...value }, update: value });
     await tx.activity.create({ data: { tenantId, dealId, createdById: userId, type: 'note', title: 'Email conversation associated with this Deal', description: 'Staff selected this opportunity for conversation history.', metadata: { threadId, mailboxOwnerId: userId } } });
   });
+  await mailboxChanged(account.id);
   return { success: true };
 }
 
@@ -174,20 +177,26 @@ export async function syncMailbox(tenantId: string, userId: string, trigger: 'ma
       if (examined && Date.now() - +started > 45000) break;
       try {
         // History contains unfiltered IDs. Inspect headers before fetching any body.
-        const meta = await gmailJson<GmailApiMessage>(token, 'messages/' + encodeURIComponent(id) + '?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc');
+        const meta = await gmailJson<GmailApiMessage>(token, 'messages/' + encodeURIComponent(id) + '?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc&metadataHeaders=Message-ID');
         const email = parseGmailMessage(meta);
         if (email.labels.some(label => ['SPAM', 'TRASH'].includes(label))) {
           await prisma.mailboxMessage.updateMany({ where: { accountId: account.id, tenantId, providerMessageId: id }, data: { labels: email.labels } });
         } else if (messageInScope(email, account.email, scope)) {
-          const full = await fetchMessageDetail(token, id);
-          if (batch.drafts?.[id]) full.draftId = batch.drafts[id];
-          else if (full.labels.includes('DRAFT') && full.rfcMessageId && /^<[^\s<>]+>$/.test(full.rfcMessageId)) {
-            const params = new URLSearchParams({ maxResults: '20', q: 'rfc822msgid:' + full.rfcMessageId });
+          let draftId = batch.drafts?.[id];
+          if (!draftId && email.labels.includes('DRAFT') && email.rfcMessageId && /^<[^\s<>]+>$/.test(email.rfcMessageId)) {
+            const params = new URLSearchParams({ maxResults: '20', q: 'rfc822msgid:' + email.rfcMessageId });
             const drafts = await gmailJson<{ drafts?: { id: string; message: { id: string } }[] }>(token, 'drafts?' + params);
-            full.draftId = drafts.drafts?.find(draft => draft.message.id === id)?.id;
+            draftId = drafts.drafts?.find(draft => draft.message.id === id)?.id;
           }
-          await ingestMailboxMessages(account, [full], permissions);
-          processed++;
+          // Gmail can replace a draft's message ID while preserving its draft ID.
+          const savedDraft = email.labels.includes('DRAFT') ? await prisma.mailboxMessage.findFirst({ where: { tenantId, accountId: account.id,
+            sourceMessageId: { not: null }, OR: [{ providerMessageId: id }, ...(draftId ? [{ draftId }] : [])] }, select: { sourceMessageId: true } }) : null;
+          if (!savedDraft?.sourceMessageId || scope.draftSourceIds.includes(savedDraft.sourceMessageId)) {
+            const full = await fetchMessageDetail(token, id);
+            full.draftId = draftId;
+            await ingestMailboxMessages(account, [full], permissions);
+            processed++;
+          }
         }
       } catch (error) {
         if (!(error instanceof AppError) || error.statusCode !== 404) throw error;

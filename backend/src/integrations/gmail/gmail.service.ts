@@ -7,7 +7,8 @@ import { normalizeEmail } from './engagement-rules';
 import { readAuthUser } from '../../core/auth/auth-user';
 import { isMailboxOwner } from './mailbox-ownership';
 import { authorizedMailbox, listStoredMailbox, mailboxChanged } from './mailbox-store';
-import { assertStoredMessages, mailboxAddress, messageInScope } from './mailbox-scope';
+import { assertStoredMessages, mailboxAddress } from './mailbox-scope';
+import { assertMailboxRecipients } from './mailbox-recipient-access';
 import { ingestMailboxMessages } from './mailbox-ingestion.service';
 import { MailboxListOptions } from '@leadcrm/shared';
 import { readGmailJson, writeGmailJson } from './gmail-read';
@@ -203,13 +204,14 @@ export const fetchEmails = (tenantId: string, userId: string, options: MailboxLi
 export async function fetchMessageDetail(accessToken: string, messageId: string): Promise<GmailEmail> {
   return parseGmailMessage(await readGmailJson<GmailApiMessage>(accessToken, 'messages/' + encodeURIComponent(messageId) + '?format=full'));
 }
-export async function sendEmail(tenantId: string, userId: string, to: string | string[], subject: string, body: string, replyToMessageId?: string, draftId?: string): Promise<{ messageId: string; threadId: string }> {
+export async function sendEmail(tenantId: string, userId: string, to: string | string[], subject: string, body: string, replyToMessageId?: string, draftId?: string, forwardSourceMessageId?: string): Promise<{ messageId: string; threadId: string }> {
   const { account, scope, permissions } = await authorizedMailbox(tenantId, userId);
-  if (replyToMessageId) await assertStoredMessages(account, scope, [replyToMessageId]);
+  if (replyToMessageId) await assertStoredMessages(account, scope, [replyToMessageId], true);
+  if (forwardSourceMessageId) await assertStoredMessages(account, scope, [forwardSourceMessageId], true);
   const reply = replyToMessageId ? await prisma.mailboxMessage.findUnique({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: replyToMessageId } } }) : null;
   const recipients = Array.isArray(to) ? to : [to];
-  if (!draftId && !messageInScope({ from: account.email, to: recipients, threadId: reply?.threadId ?? '' }, account.email, scope)) throw new AppError('Choose a recipient in your assigned CRM mailbox scope.', 403);
-  const savedDraft = draftId ? await saveDraft(tenantId, userId, recipients.join(', '), subject, body, draftId, { replyToMessageId }) : null;
+  if (!draftId) await assertMailboxRecipients(account, scope, permissions, recipients, reply?.threadId);
+  const savedDraft = draftId ? await saveDraft(tenantId, userId, recipients.join(', '), subject, body, draftId, { replyToMessageId, forwardSourceMessageId }) : null;
   const accessToken = await getValidAccessToken(tenantId, userId);
   const raw = createRawMessage(recipients.join(', '), subject, body, account.email, reply?.rfcMessageId ?? undefined);
   const result = await writeGmailJson<{ id: string; threadId: string }>(accessToken, savedDraft ? 'drafts/send' : 'messages/send', 'POST', savedDraft ? { id: savedDraft.draftId } : { raw, ...(reply ? { threadId: reply.threadId } : {}) });
@@ -258,14 +260,21 @@ export async function disconnectAccount(tenantId: string, userId: string): Promi
   });
 }
 
-export async function saveDraft(tenantId: string, userId: string, to: string, subject: string, body: string, draftId?: string, options: { replyToMessageId?: string; messageId?: string } = {}): Promise<{ draftId: string; messageId: string }> {
-  const { account, scope } = await authorizedMailbox(tenantId, userId);
+export async function saveDraft(tenantId: string, userId: string, to: string, subject: string, body: string, draftId?: string, options: { replyToMessageId?: string; forwardSourceMessageId?: string; messageId?: string } = {}): Promise<{ draftId: string; messageId: string }> {
+  const { account, scope, permissions } = await authorizedMailbox(tenantId, userId);
   const recipients = to.split(',').map(value => mailboxAddress(value)).filter((value): value is string => !!value);
   if (to.trim() && recipients.length !== to.split(',').length) throw new AppError('Enter valid recipient addresses.', 400);
-  if (options.replyToMessageId) await assertStoredMessages(account, scope, [options.replyToMessageId]);
+  if (options.replyToMessageId) await assertStoredMessages(account, scope, [options.replyToMessageId], true);
+  if (options.forwardSourceMessageId) await assertStoredMessages(account, scope, [options.forwardSourceMessageId], true);
+  let sourceMessageId = options.replyToMessageId ?? options.forwardSourceMessageId;
   let reply = options.replyToMessageId ? await prisma.mailboxMessage.findUnique({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: options.replyToMessageId } } }) : null;
   if (draftId) {
     await assertDraftAccess(tenantId, userId, draftId);
+    const storedDraft = await prisma.mailboxMessage.findFirst({ where: { tenantId, accountId: account.id, draftId, labels: { has: 'DRAFT' } } });
+    if (storedDraft?.sourceMessageId) {
+      await assertStoredMessages(account, scope, [storedDraft.sourceMessageId], true);
+      sourceMessageId = storedDraft.sourceMessageId;
+    }
     if (!reply) {
       const draft = await prisma.mailboxMessage.findFirst({ where: { tenantId, accountId: account.id, draftId, labels: { has: 'DRAFT' } } });
       if (draft) {
@@ -274,14 +283,14 @@ export async function saveDraft(tenantId: string, userId: string, to: string, su
       }
     }
   }
-  if (recipients.length && !messageInScope({ from: account.email, to: recipients, threadId: reply?.threadId ?? '' }, account.email, scope)) throw new AppError('Choose a recipient in your assigned CRM mailbox scope.', 403);
+  await assertMailboxRecipients(account, scope, permissions, recipients, reply?.threadId);
   const accessToken = await getValidAccessToken(tenantId, userId);
   const raw = createRawMessage(recipients.join(', '), subject, body, account.email, reply?.rfcMessageId ?? undefined, options.messageId);
   const result = await writeGmailJson<{ id: string; message: { id: string; threadId: string } }>(accessToken, draftId ? 'drafts/' + encodeURIComponent(draftId) : 'drafts', draftId ? 'PUT' : 'POST', { message: { raw, ...(reply ? { threadId: reply.threadId } : {}) } });
   if (draftId) await prisma.mailboxMessage.updateMany({ where: { accountId: account.id, draftId, providerMessageId: { not: result.message.id } }, data: { labels: ['DELETED'] } });
   const data = { threadId: result.message.threadId, from: account.email, fromAddress: mailboxAddress(account.email)!, recipients,
     recipientAddresses: recipients, subject, body, snippet: body.replace(/<[^>]*>/g, '').slice(0, 200), labels: ['DRAFT'], direction: 'outbound',
-    sentAt: new Date(), draftId: result.id, crmDraft: true, rfcMessageId: options.messageId };
+    sentAt: new Date(), draftId: result.id, crmDraft: true, rfcMessageId: options.messageId, sourceMessageId };
   await prisma.mailboxMessage.upsert({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: result.message.id } },
     create: { ...data, tenantId, accountId: account.id, providerMessageId: result.message.id }, update: data });
   await mailboxChanged(account.id);
@@ -292,6 +301,7 @@ async function assertDraftAccess(tenantId: string, userId: string, draftId: stri
   const row = await prisma.mailboxMessage.findFirst({ where: { accountId: account.id, tenantId, draftId, labels: { has: 'DRAFT' } } });
   if (!row) throw new AppError('Draft is outside your assigned CRM mailbox scope.', 404);
   await assertStoredMessages(account, scope, [row.providerMessageId]);
+  if (row.sourceMessageId) await assertStoredMessages(account, scope, [row.sourceMessageId], true);
   if (await prisma.scheduledMailboxEmail.findFirst({ where: { accountId: account.id, draftId, status: { in: ['pending', 'claimed', 'sending', 'uncertain', 'sent'] } } })) throw new AppError('This draft belongs to a scheduled email.', 409);
   return account;
 }
@@ -303,7 +313,7 @@ export async function deleteDraft(tenantId: string, userId: string, draftId: str
 }
 async function modifyEmails(tenantId: string, userId: string, messageIds: string[], trash: boolean) {
   const { account, scope } = await authorizedMailbox(tenantId, userId);
-  await assertStoredMessages(account, scope, messageIds);
+  await assertStoredMessages(account, scope, messageIds, true);
   const token = await getValidAccessToken(tenantId, userId);
   for (const id of messageIds) {
     await writeGmailJson(token, 'messages/' + encodeURIComponent(id) + (trash ? '/trash' : '/modify'), 'POST', trash ? undefined : { removeLabelIds: ['INBOX'] });
@@ -380,6 +390,8 @@ export function parseGmailMessage(data: GmailApiMessage): GmailEmail {
     isRead,
     labels: data.labelIds ?? [],
     cc: parseAddressList(getHeader('Cc')),
+    // Invalid or multi-address Reply-To headers are not used as delivery targets.
+    replyToAddress: parseAddressList(getHeader('Reply-To')).length === 1 ? mailboxAddress(getHeader('Reply-To')) ?? null : null,
     plainText: plainText || undefined,
     rfcMessageId: getHeader('Message-ID'),
     automated: /^(?:mailer-daemon|postmaster)@/i.test(normalizeEmail(from)) || getHeader('Return-Path').trim() === '<>' || parts.some(part => /message\/(?:delivery-status|disposition-notification)/i.test(part.mimeType ?? '')) || /multipart\/report/i.test(data.payload.mimeType ?? '') || (!!getHeader('Auto-Submitted') && getHeader('Auto-Submitted').toLowerCase() !== 'no') || !!getHeader('List-Id') || /bulk|list|junk/i.test(getHeader('Precedence')),

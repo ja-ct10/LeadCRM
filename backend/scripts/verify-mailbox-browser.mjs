@@ -31,7 +31,7 @@ const { runScheduledMailboxEmails } = require('../dist/backend/src/integrations/
 const rights = { leadsView: true, contactsView: true, leadsEdit: true, contactsEdit: true, dealsEdit: true, dealsView: true };
 const realFetch = globalThis.fetch, calls = [], messages = new Map(), drafts = new Map();
 let api, frontend, browser, stopWorker, account, history = [], sends = 0;
-const checks = [], pageErrors = [];
+const checks = [], pageErrors = [], transportErrors = [];
 const apiMessage = email => ({ id: email.id, threadId: email.threadId, labelIds: email.labels, snippet: email.snippet, internalDate: String(Date.parse(email.date)), payload: { headers: [{ name: 'From', value: email.from }, { name: 'To', value: email.to.join(', ') }, { name: 'Subject', value: email.subject }, ...(email.rfcMessageId ? [{ name: 'Message-ID', value: email.rfcMessageId }] : [])], mimeType: 'text/html', body: { data: Buffer.from(email.body).toString('base64url') } } });
 globalThis.fetch = async (input, init) => {
   const url = String(input);
@@ -52,6 +52,11 @@ globalThis.fetch = async (input, init) => {
     const email = { ...draft, id: 'sent-' + randomUUID(), labels: ['SENT'], date: new Date(Date.now() - 50).toISOString() };
     messages.set(email.id, email); return Response.json({ id: email.id, threadId: email.threadId });
   }
+  if (path.endsWith('/modify') || path.endsWith('/trash')) {
+    const email = messages.get(path.split('/')[1]);
+    if (email) { const data = init?.body ? JSON.parse(init.body) : {}; email.labels = path.endsWith('/trash') ? [...email.labels, 'TRASH'] : [...new Set([...email.labels.filter(label => !(data.removeLabelIds ?? []).includes(label)), ...(data.addLabelIds ?? [])])]; }
+    return Response.json({});
+  }
   if (path.startsWith('drafts/') && init?.method !== 'DELETE') return Response.json({ message: apiMessage(drafts.get(path.slice(7))) });
   if (path.startsWith('messages/') && init?.method === undefined) return Response.json(apiMessage(messages.get(path.slice(9))));
   if (init?.method === 'DELETE') return new Response(null, { status: 204 });
@@ -61,11 +66,20 @@ globalThis.fetch = async (input, init) => {
 try {
   const tenant = await prisma.tenant.create({ data: { name: 'Mailbox Acceptance', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } });
   const user = await prisma.user.create({ data: { tenantId: tenant.id, firstName: 'Inbox', lastName: 'Tester', email: 'inbox-preview@camxian.com', role: 'Client Admin', mustChangePassword: false, onboardingCompletedAt: new Date() } });
+  await prisma.user.create({ data: { tenantId: tenant.id, firstName: 'Planning', lastName: 'Team', email: 'planning.and.implementation.team.with.a.long.address@camxian.com', role: 'Sales' } });
   const { token } = await issueAuthSession(user), scope = fn => tenantContext.run({ tenantId: tenant.id }, fn);
   account = await prisma.emailAccount.create({ data: { tenantId: tenant.id, userId: user.id, email: user.email, accessToken: encryptToken('preview-only'), tokenExpiresAt: new Date(Date.now() + 3600000), scopes: ['https://www.googleapis.com/auth/gmail.modify'], syncCursor: '100', lastSyncAt: new Date() } });
-  await prisma.lead.create({ data: { tenantId: tenant.id, assignedUserId: user.id, firstName: 'Doris', lastName: 'Customer', email: 'doris@example.test', productInterest: [] } });
+  const lead = await prisma.lead.create({ data: { tenantId: tenant.id, assignedUserId: user.id, firstName: 'Doris', lastName: 'Customer', email: 'doris@example.test', productInterest: [] } });
+  const { salesPipeline, salesTransaction } = require('../dist/backend/src/modules/crm/leads/lead-automation.service.js');
+  const { pipeline, initial } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenant.id)));
+  const deals = [];
+  for (const title of ['Telephone installation', 'Fire detection and alarm system']) deals.push(await prisma.deal.create({ data: { tenantId: tenant.id, pipelineId: pipeline.id, stageId: initial.id, title, value: 1000, leadDeals: { create: { leadId: lead.id, position: 0 } }, productInterests: [], tags: [] } }));
   const mail = (id, subject, from = 'Doris <doris@example.test>') => ({ id, threadId: id, from, to: [account.email], subject, body: '<p>We have 25 employees and need around 18 phones.</p><p>Please send your recommendation for extensions, call transfer, and an automated greeting.</p><pre>' + 'Long technical details '.repeat(20) + '</pre>', snippet: 'We have 25 employees and need around 18 phones.', labels: ['INBOX', 'UNREAD'], isRead: false, date: new Date(Date.now() - 60000).toISOString() });
   const seed = [mail('inquiry', 'Re: Thank You for Your Inquiry – IPBX/IP PHONES/PABGM Solutions'), mail('welcome', 'Welcome to LeadCRM', 'Camxian Technologies <info@camxian.com>')];
+  const older = { ...mail('earlier', 'Thank You for Your Inquiry – IPBX/IP PHONES/PABGM Solutions', account.email), threadId: 'inquiry', to: [lead.email], labels: ['SENT'], isRead: true, date: new Date(Date.now() - 120000).toISOString(), body: '<p>Thank you for your inquiry. Please tell us about your requirements.</p>' };
+  seed[0].cc = ['Planning Department <planning.and.implementation.team.with.a.long.address@camxian.com>'];
+  seed[0].body += '<div class="gmail_quote"><p>On Thursday, staff wrote:</p><blockquote>Thank you for your inquiry. Please tell us about your requirements.</blockquote></div><table><tbody><tr>' + Array.from({ length: 12 }, (_, i) => `<td>Specification${i}XXXXXXXXXXXXXXXXXXXXX</td>`).join('') + '</tr></tbody></table><p>' + 'https://example.test/'.repeat(12) + '</p><script>window.emailAttack=true</script><img src="https://tracking.example.test/pixel">';
+  seed.push(older);
   seed.forEach(email => messages.set(email.id, email)); await scope(() => ingestMailboxMessages(account, seed, rights));
   await prisma.emailAccount.update({ where: { id: account.id }, data: { syncScopeHash: (await resolveMailboxScope(account, rights)).hash } });
   api = app.listen(0, '127.0.0.1'); await new Promise(done => api.once('listening', done));
@@ -77,12 +91,13 @@ try {
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
-  const page = await context.newPage(); page.setDefaultTimeout(20000); page.on('pageerror', error => pageErrors.push(error.message));
+  const page = await context.newPage(); page.setDefaultTimeout(30000); page.on('pageerror', error => pageErrors.push(error.message));
+  page.on('requestfailed', request => { if (!request.url().includes('/events') && request.failure()?.errorText !== 'net::ERR_ABORTED') transportErrors.push({ url: request.url(), error: request.failure()?.errorText }); });
   let browserSyncs = 0; context.on('request', request => { if (request.url().includes('/integrations/gmail/sync')) browserSyncs++; });
   await page.goto(base + '/inbox'); await page.getByText(seed[0].subject, { exact: true }).waitFor();
   await page.addStyleTag({ content: 'nextjs-portal { display: none !important; }' });
   const responsive = async (label, toolbar = false) => {
-    for (const width of [1440, 768, 390, 375, 320]) {
+    for (const width of [1440, 1024, 768, 390, 375, 320]) {
       await page.setViewportSize({ width, height: 900 }); await page.waitForTimeout(350);
       const dimensions = await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth, toolbar: (() => { const bar = document.querySelector('[role="toolbar"][aria-label="Message formatting"]'); if (!bar) return null; return { width: bar.clientWidth, scroll: bar.scrollWidth, positions: [...bar.querySelectorAll('button')].map(el => Math.round(el.getBoundingClientRect().top)), sendBottom: document.querySelector('[aria-label="Send email"]').getBoundingClientRect().bottom }; })() }));
       assert.ok(dimensions.document <= width + 1, `${label}: page overflow ${JSON.stringify(dimensions)}`);
@@ -93,7 +108,27 @@ try {
   await responsive('inbox');
   await page.getByLabel('Filter emails').click(); assert.deepEqual(await page.getByRole('menuitemradio').allTextContents(), ['All emails', 'Unread only', 'Sent', 'Scheduled', 'Drafts only']);
   await page.getByRole('menuitemradio', { name: 'All emails', exact: true }).click();
-  await page.getByText(seed[0].subject, { exact: true }).click(); await page.getByRole('heading', { name: seed[0].subject }).waitFor(); await responsive('conversation');
+  await page.getByText(seed[0].subject, { exact: true }).click(); await page.getByRole('heading', { name: older.subject }).waitFor();
+  await page.getByRole('button', { name: 'Reply', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Collapse message from Doris' }).waitFor();
+  await page.locator('article').nth(1).waitFor();
+  assert.equal(await page.locator('article').count(), 2);
+  assert.equal(await page.getByRole('button', { name: 'Expand message from inbox-preview' }).getAttribute('aria-expanded'), 'false');
+  assert.equal(await page.locator('details').evaluate(el => el.open), false);
+  await responsive('conversation');
+  await page.getByText('Show trimmed content', { exact: true }).click(); assert.equal(await page.locator('details').evaluate(el => el.open), true);
+  await page.getByRole('button', { name: 'Expand message from inbox-preview' }).focus(); await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: 'Collapse message from inbox-preview' }).waitFor();
+  await responsive('expanded-conversation');
+  assert.equal(await page.locator('details').evaluate(el => el.open), true, 'Opening another message or refreshing the thread must retain expanded quotes');
+  assert.equal(await page.evaluate(() => window.emailAttack), undefined);
+  const storedRead = await prisma.mailboxMessage.findFirstOrThrow({ where: { accountId: account.id, providerMessageId: 'inquiry' } }); assert.ok(!storedRead.labels.includes('UNREAD'));
+  const readWrites = calls.filter(call => call.path === 'messages/inquiry/modify').length; assert.equal(readWrites, 1);
+  await page.getByRole('combobox', { name: 'Associate conversation with Deal' }).selectOption(deals[1].id);
+  await page.getByRole('button', { name: 'Associate Deal', exact: true }).click(); await page.getByRole('link', { name: 'View related Deal' }).waitFor();
+  assert.equal((await prisma.deal.findUniqueOrThrow({ where: { id: deals[1].id } })).stageId, initial.id);
+  await page.evaluate(() => document.documentElement.classList.add('dark')); await responsive('dark-conversation'); await page.evaluate(() => document.documentElement.classList.remove('dark'));
+  checks.push({ label: 'Vertical order, keyboard collapse, sanitized expandable quote, persisted read, one read write and Deal association without stage movement' });
   await page.getByRole('button', { name: 'Reply', exact: true }).first().click(); await page.getByLabel('To', { exact: true }).waitFor(); assert.equal(await page.getByLabel('To', { exact: true }).inputValue(), 'doris@example.test');
   await responsive('composer', true);
   await page.getByPlaceholder('Subject', { exact: true }).fill('Scheduled acceptance reply');
@@ -101,6 +136,7 @@ try {
   await page.getByLabel('Schedule send options').click(); await responsive('schedule-picker', true);
   await page.getByRole('button', { name: 'Cancel', exact: true }).click(); assert.equal(await prisma.scheduledMailboxEmail.count(), 0);
   await page.getByLabel('Schedule send options').click(); await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Compose email' }).waitFor({ state: 'hidden' }); await page.getByRole('button', { name: 'Back to inbox' }).click();
   await page.getByRole('heading', { name: 'Inbox', exact: true }).waitFor();
   const scheduled = await prisma.scheduledMailboxEmail.findFirstOrThrow(); assert.equal(scheduled.status, 'pending'); assert.equal(sends, 0);
   await page.getByLabel('Filter emails').click(); await page.getByRole('menuitemradio', { name: 'Scheduled', exact: true }).click(); await page.getByText('Scheduled acceptance reply', { exact: true }).waitFor();
@@ -126,7 +162,7 @@ try {
   await page.getByLabel('Filter emails').click(); await page.getByRole('menuitemradio', { name: 'Sent', exact: true }).click(); await page.getByText('Scheduled acceptance reply', { exact: true }).waitFor();
   checks.push({ label: 'schedule survived browser reload; controlled due time sent once; two-tab Scheduled to Sent SSE transition without loading flashes', sends });
   await page.screenshot({ path: resolve(output, 'sent-320.png') });
-  assert.deepEqual(pageErrors, []); writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, pageErrors, provider: 'Simulated. No real email sent.', backend: 'Compiled build', frontend: 'Local development server' }, null, 2));
+  assert.deepEqual(pageErrors, []); assert.deepEqual(transportErrors, []); writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, pageErrors, transportErrors, provider: 'Simulated. No real email sent.', backend: 'Compiled build', frontend: 'Local development server' }, null, 2));
   console.log(JSON.stringify({ passed: checks.length, output, sends, browserSyncs }));
 } finally {
   stopWorker?.(); await browser?.close(); frontend?.kill();

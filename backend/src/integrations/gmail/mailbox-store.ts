@@ -16,6 +16,7 @@ export async function authorizedMailbox(tenantId: string, userId: string) {
 
 export function storedEmail(row: MailboxMessage): GmailEmail {
   return { id: row.providerMessageId, threadId: row.threadId, from: row.from, to: row.recipients,
+    cc: row.ccRecipients, replyToAddress: row.replyToAddress,
     subject: row.subject, body: row.body, snippet: row.snippet, date: row.sentAt.toISOString(),
     labels: row.labels, isRead: !row.labels.includes('UNREAD'), draftId: row.draftId ?? undefined,
     direction: row.direction as GmailEmail['direction'], leadId: row.leadId, contactId: row.contactId,
@@ -30,8 +31,9 @@ export async function listStoredMailbox(tenantId: string, userId: string, input:
   const offset = options.pageToken ? Number(options.pageToken) : 0;
   if (!Number.isSafeInteger(offset) || offset < 0 || offset > 1000000) throw new AppError('Invalid mailbox page.', 400);
   if (options.filter === 'scheduled') {
+    const visibleDrafts = await prisma.mailboxMessage.findMany({ where: base, select: { draftId: true } });
     const where: Prisma.ScheduledMailboxEmailWhereInput = { tenantId, accountId: account.id, createdById: userId, status: { not: 'sent' },
-      // Failed authorization remains visible to its creator, without message body.
+      draftId: { in: visibleDrafts.flatMap(row => row.draftId ?? []) },
       ...(options.query ? { OR: [{ subject: { contains: options.query, mode: 'insensitive' } }, { recipients: { has: options.query.toLowerCase() } }] } : {}) };
     const rows = await prisma.scheduledMailboxEmail.findMany({ where, orderBy: [{ scheduledAt: options.sort === 'oldest' ? 'asc' : 'desc' }, { id: 'asc' }], skip: offset, take: options.maxResults + 1 });
     return { emails: rows.slice(0, options.maxResults).map(row => ({ id: row.id, threadId: '', from: row.recipients.join(', '), to: row.recipients,

@@ -86,6 +86,7 @@ export default function InboxPage(): React.ReactElement {
         const result = await fetchGmailEmails({ filter, sort, query: debouncedSearch.trim(), maxResults: 30, pageToken }, controller.signal);
         if (controller.signal.aborted || id !== requestId.current) return;
         setEmails(result.emails); setUnreadCount(result.unreadCount); setNextPageToken(result.nextPageToken); setError('');
+        if (result.unreadCount !== undefined) window.dispatchEvent(new CustomEvent('mailbox-unread-change', { detail: result.unreadCount }));
         loaded.current = true; pageRef.current = targetPage; tokenRef.current = pageToken; setPage(targetPage);
       } catch (error) {
         if (controller.signal.aborted || id !== requestId.current) return;
@@ -143,7 +144,7 @@ export default function InboxPage(): React.ReactElement {
   };
   const animation = shouldReduceMotion ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.2 } };
   if (selectedEmail) return <motion.div {...animation} className="flex h-full min-h-0 min-w-0 flex-col rounded-xl border border-border bg-card">
-    <EmailConversationView email={selectedEmail} revision={revision} onBack={() => setSelectedEmail(null)} onEmailsChanged={() => { void loadEmails(); setSelectedEmail(null); }} />
+    <EmailConversationView key={selectedEmail.threadId} email={selectedEmail} revision={revision} retryAt={retryAt} onBack={message => { setSelectedEmail(null); if (message) setError(message); }} onEmailsChanged={() => { void loadEmails(tokenRef.current, pageRef.current); setRevision(value => value + 1); }} />
   </motion.div>;
   return <motion.div {...animation} className="flex h-full min-h-0 min-w-0 flex-col gap-4 pb-16">
     <header><h1 className="font-display text-2xl font-bold tracking-tight">Inbox</h1>{unreadCount !== undefined && connectionStatus?.isConnected && <p className="mt-1 text-xs text-muted-foreground">{unreadCount} unread {unreadCount === 1 ? 'message' : 'messages'}</p>}</header>
@@ -164,6 +165,6 @@ export default function InboxPage(): React.ReactElement {
       {isLoadingStatus || connectionStatus?.isConnected && initialLoading ? <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" />Loading emails...</div> : !connectionStatus?.isConnected ? <InboxCurrentEmpty /> : <InboxEmailList emails={emails} onEmailClick={openEmail} refreshDisabled={refreshing} onEmailsChanged={() => loadEmails(tokenRef.current, pageRef.current)} totalCount={emails.length} currentPage={page} hasNextPage={!!nextPageToken} onNextPage={() => { if (nextPageToken) void loadEmails(nextPageToken, page + 1); }} onPrevPage={() => void loadEmails(page > 2 ? String((page - 2) * 30) : undefined, Math.max(1, page - 1))} />}
     </section>
     {connectionStatus?.isConnected && !isComposeOpen && <button aria-label="Compose new email" onClick={() => { setComposeDraft(null); setIsComposeOpen(true); }} className="fixed bottom-4 right-3 z-40 inline-flex min-h-11 items-center gap-2 rounded-2xl bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-foreground)] shadow-lg sm:bottom-6 sm:right-6 sm:px-6"><Pencil size={18} />Compose</button>}
-    <ComposeModal isOpen={isComposeOpen} onClose={() => { setIsComposeOpen(false); setComposeDraft(null); }} onSent={() => void loadEmails()} initialDraft={composeDraft} />
+    <ComposeModal isOpen={isComposeOpen} retryAt={retryAt} onClose={() => { setIsComposeOpen(false); setComposeDraft(null); }} onSent={() => void loadEmails()} initialDraft={composeDraft} />
   </motion.div>;
 }

@@ -38,6 +38,8 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
   // Fetch unread email count for inbox badge
   useEffect(() => {
     let isMounted = true;
+    const unreadChanged = (event: Event) => { const count = (event as CustomEvent<number>).detail; if (Number.isSafeInteger(count) && count >= 0) setInboxCount(count); };
+    window.addEventListener('mailbox-unread-change', unreadChanged);
     getGmailStatus()
       .then((status) => {
         if (status.isConnected) {
@@ -52,7 +54,7 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
       })
       .catch(() => { /* silently ignore � Gmail may not be connected */ });
 
-    return () => { isMounted = false; };
+    return () => { isMounted = false; window.removeEventListener('mailbox-unread-change', unreadChanged); };
   }, []);
 
   // Listen for settings tab changes to update breadcrumb

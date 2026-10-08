@@ -2,6 +2,8 @@
 
 ## Delivery status
 
+The delivery and verification observations dated 2026-10-01 below are historical, not current deployment evidence. Current conversation behavior, mailbox scope, deployment findings and checks are recorded in [Inbox conversation production report](inbox-conversation-production-report.md). The approved reply-recency rules below supersede the original semantic classification and email-driven Deal automation.
+
 Implemented on 2026-10-01. The changes extend the existing Gmail integration, CRM status adapter, Deal transitions, activity timeline, permissions, and dialog components. The Render deployment applied `20261018000000_mailbox_engagement` successfully; the frontend and backend were deployed.
 
 Google project `leadcrm-510308` has Gmail API enabled and an External/Testing web OAuth client. The production redirect URI is `https://leadcrm-backend-os8d.onrender.com/api/v1/integrations/gmail/callback`. Consent completed for the explicitly approved test mailbox. Real Gmail profile, Inbox, All conversations, Sent and thread reads succeeded. Initial sync had saved 320 messages at verification and was continuing through older mail. Complete initial sync, live refresh after token expiry and sending: **I cannot confirm this.** No send test was performed.
@@ -44,14 +46,14 @@ After deployment configuration, apply the additive migration with the existing d
 npm --prefix backend run db:deploy
 ```
 
-Then build/start the frontend and backend using the existing [architecture](ARCHITECTURE.md). The backend's persistent Node process starts mailbox sync at startup and every five minutes. Messages also requests sync while open, every minute, and exposes **Sync now**. A serverless deployment that does not run this Node process would need an equivalent scheduled worker; that hosting arrangement was not verified here.
+Then build/start the frontend and backend using the existing [architecture](ARCHITECTURE.md). The persistent backend starts the mailbox scheduler at startup, checks its queue every ten seconds, and honors `GMAIL_SYNC_INTERVAL_SECONDS` for each mailbox. Database leases prevent duplicate work. The browser consumes authenticated SSE and persisted data; it does not poll Gmail. **Sync now** requests backend work.
 
 The existing Gmail scopes are retained: `gmail.readonly`, `gmail.send`, `gmail.modify`, and `userinfo.email`. Consent must include `gmail.modify` and offline access. Google consent-screen approval and Workspace administrator policies remain external configuration requirements.
 
 ## Conversation sync, ownership, and CRM matching
 
-- Initial sync scans mail in bounded pages and expands threads so earlier outbound context is available before replies are classified. Drafts, spam, and trash are excluded from automation.
-- Incremental sync uses Gmail history IDs. An expired history cursor triggers a full rescan without deleting saved messages or CRM history. This follows [Google's synchronization guidance](https://developers.google.com/workspace/gmail/api/guides/sync).
+- Initial sync uses bounded queries for exact fixed senders and current assigned Lead/Contact addresses. Drafts, spam, and trash are excluded from automation.
+- Incremental sync checks History message metadata against current scope before fetching full content. Expired History returns to bounded scoped reconciliation, never an unscoped mailbox rescan. Saved history is retained.
 - Database leases prevent simultaneous workers from advancing the same mailbox cursor. A page is acknowledged only after ingestion succeeds; unfinished pages resume later.
 - Original Gmail timestamps and inbound/outbound direction are preserved. The connected staff mailbox is the sender for compose/reply. Replies use the original thread and RFC message references.
 - **Outbound:** sender equals the connected mailbox. **Inbound:** external sender addresses that mailbox in To/Cc. Other staff/internal or uncertain direction is excluded from customer automation.
@@ -64,40 +66,31 @@ The existing Gmail scopes are retained: `gmail.readonly`, `gmail.send`, `gmail.m
 
 Public contracts, UI labels, and history use exactly **Hot, Warm, Cold, Closed, Cancelled**. The existing uppercase Contact database enum is retained behind its adapter; no new uppercase public status values or duplicate database statuses were introduced.
 
-Classification runs entirely on the backend. It uses conservative English rules, not an AI model. It strips quoted/forwarded text and signatures, ignores automated responses, and abstains on ambiguous, conditional, reported, or negated purchase language. Unsupported wording or languages remain unchanged for manual review. This is intentionally not a claim of universal natural-language accuracy.
+Engagement runs entirely on the backend using actual customer reply recency. It does not infer sentiment, intent, purchase readiness, cancellation, or Deal stages from message text. Automated messages and staff sends are not customer replies.
 
 | Status | Implemented rule |
 | --- | --- |
-| **Hot** | Explicit purchase/proceed/approval statement with business context, such as “We approve the quotation and will proceed.” Questions, tentative language, and generic positivity do not qualify. |
-| **Warm** | Meaningful product questions, requests for information or formal quotes, discussion of requirements, comparison of options, or explicitly still deciding. A quote request can remain Warm. |
-| **Cold** | Current Warm/Hot record, at least 60 days since meaningful inbound customer activity, plus a product-related outbound message after that activity that has remained unanswered for at least 30 days. |
-| **Cancelled** | Explicit customer rejection/cancellation, such as declining a proposal or asking to stop an order. Elapsed time never produces Cancelled. |
-| **Closed** | Staff completes the structured Closed Won action for a related Deal. Email classification cannot produce Closed. |
+| **Hot** | Actual customer reply 0–7 days ago. |
+| **Warm** | Actual reply 8–29 days ago, or never replied and first outbound less than 30 days ago. |
+| **Cold** | Actual reply 30+ days ago, or never replied and first outbound 30+ days ago. |
+| **Cancelled** | Explicit CRM/business action; not inferred from email. |
+| **Closed** | Existing CRM completion / confirmed Closed Won behavior only. |
 
-“Thanks,” “Noted,” “I'll check,” “Maybe,” and “Let me ask my manager” do not produce strong automatic changes. An interested reply does not downgrade Hot. Closed and Cancelled are protected from ordinary later mail; Cold can become Warm or Hot from a meaningful new response.
+Without email history, preserve the existing/default/manual status. A genuine new customer reply can immediately change Cold or Warm to Hot. Existing Closed/Cancelled and manual-change safeguards remain.
 
 ### Cold calculation and safeguards
 
-`lastMeaningfulInboundAt` records a recognized, meaningful customer response. `firstUnansweredOutboundAt` records the first subsequent product-related staff email. Repeated follow-ups do not reset either timestamp. A new meaningful inbound response clears the unanswered timestamp.
+Legacy engagement field names remain for historical compatibility. Current evaluation uses actual customer reply and first-outbound dates under the versioned recency rules. Staff follow-ups never reset the customer reply timer.
 
-Cold requires both the 60-day inbound interval and the 30-day unanswered outbound interval. This avoids marking someone Cold merely because staff stopped writing. It also requires completed incremental sync and fresh coverage from the linked mailboxes: disconnected, failed, paginating, or more-than-24-hour-stale coverage prevents the change. A newer manual status change blocks this automated inactivity change.
+Opens, clicks, delivery, read state, viewing, and synchronization timestamps do not count as customer replies. Evaluation preserves the existing authorization and manual-status safeguards.
 
-Cold never changes a Deal to Closed Lost. It remains Cold until a meaningful re-engagement, explicit cancellation, manual edit, or confirmed win changes the status.
+Cold never changes a Deal to Closed Lost. Email engagement changes only the customer status.
 
 ## Deal progression and multiple opportunities
 
-- New automatically created and manually created Deals start in **Lead**. Duplicating a Deal creates a new Lead-stage opportunity and preserves the old record.
-- Meaningful inbound response with prior product-related outbound mail in the thread advances Lead to **Contacted**. Sending alone does not qualify.
-- Explicit quotation, proposal, contract/agreement, final/formal pricing, purchase terms, or scope-of-work requests advance an open Deal to **Qualified**. Clear proceed intent also qualifies an open Deal and may set CRM status Hot.
-- Generic product questions do not produce Qualified.
-- Automatic updates only progress Lead → Contacted → Qualified. Target-stage required fields still apply. Unrecognized/custom or ambiguous stage configurations are left unchanged.
-- Existing terminal stage flags/IDs are reused, including legacy Won/Lost names. New default pipelines use Lead, Contacted, Qualified, Closed Won, Closed Lost. No duplicate Won/Closed Won or Lost/Closed Lost stages are inserted.
-- Closed Won and Closed Lost remain terminal. A new opportunity requires a new Deal. Old messages cannot reopen a historical Deal or regress Qualified to Contacted.
+Inbox ingestion, reading, sending, replies, archive/trash, and thread association do not change Deal stage, value, status, or Closed Won state. Automatic Deal-stage movement belongs to the Workflow module and its existing authorization and required-field checks.
 
-Deal selection prefers an explicit thread association, then prior thread linkage, then exactly one open Deal. Historical terminal linkage never falls through to a new unrelated opportunity. With multiple open Deals and no clear association, stages remain unchanged and Messages offers a staff Deal selector. The selector only permits an open Deal belonging to the matched customer, requires Deal edit permission, records an activity, and applies to future messages. Product names are not guessed from free text.
-
-An explicit cancellation email sets the matched customer's status to Cancelled and closes only its resolved open Deal as Closed Lost. If the Deal is ambiguous, its stage stays unchanged. A deliberate manual customer cancellation synchronizes related open Deals through the shared cancellation function. Terminal Deals remain untouched. Closed Lost includes a business reason and stage/activity history; Cold never invokes this function.
-
+Context selection prefers explicit thread association, then prior linkage, then a unique customer-owned open Deal. Multiple open Deals require staff selection. Backend validation requires current customer scope plus Deal view/edit permissions and an open Deal belonging to that customer. Repeating the same association does not duplicate its Activity. Historical terminal linkage remains intact.
 ## Closed Won confirmation
 
 The existing shared Dialog is used when staff selects a Won stage. It requires:
@@ -106,7 +99,7 @@ The existing shared Dialog is used when staff selects a Won stage. It requires:
 - **Closed Won Date:** a valid date; the UI prevents future dates. Backend validation allows timezone-boundary tolerance of one day.
 - **Note/reference:** optional, up to 2,000 characters; mandatory for Other.
 
-Positive email intent can display “This deal may be ready to close.” It leaves the Deal Qualified and never calls the win transition itself. The backend independently validates confirmation; bypassing the dialog, bulk updates, imports, and direct creation cannot silently create a confirmed win.
+Email content does not create purchase-readiness prompts or confirm a win. The backend independently validates the existing CRM confirmation flow; Inbox association does not invoke it.
 
 Confirmation stores `closedAt` (the selected date), `wonConfirmationType`, `wonConfirmationNote`, `wonConfirmedById`, and `wonConfirmedAt`. The transition and related Lead/Contact → Closed updates run transactionally with Deal stage history and activity records. Deal value, product interests, and assignment are preserved. No payment confirmation is required.
 
@@ -131,7 +124,7 @@ Backend prefix: **`/api/v1`**. The frontend uses the existing **`/api/proxy`** f
 | `GET /integrations/gmail/status` | Safe connection status and owner email |
 | `GET /integrations/gmail/emails` | Mail listing/search/pagination |
 | `POST /integrations/gmail/sync` | Resume a sync page and evaluate engagement |
-| `GET /integrations/gmail/threads/:threadId` | Read and ingest a conversation |
+| `GET /integrations/gmail/threads/:threadId` | Read current authorized persisted conversation; no provider resync |
 | `PATCH /integrations/gmail/threads/:threadId/deal` | Save authorized manual Deal association |
 | `POST /integrations/gmail/send` | Compose/reply with connected owner identity |
 | `POST /integrations/gmail/disconnect` | Disconnect while preserving history |
@@ -154,13 +147,13 @@ Migration: **`backend/prisma/migrations/20261018000000_mailbox_engagement/migrat
 - EmailAccount lease, pagination, baseline-history, and error fields; existing cursor/token fields reused.
 - Existing business records and stage IDs are retained. Migration replay succeeded on disposable databases; production data was not migrated during this work.
 
-Mailbox endpoints enforce existing authentication, tenant readiness, employee access, active-account checks, and `contacts.view`. Mailbox identity comes from the authenticated user, never a caller-selected owner. Automation requires `contacts.edit`; Deal automation also requires Deal permissions. Manual thread association requires `deals.edit`. Scheduled runs recheck access instead of retaining stale privileges.
+Mailbox endpoints enforce authentication, tenant readiness, active staff/mailbox ownership and existing Leads/Contacts view permissions. Current assignments define scope even for Client Admin. Send, draft and schedule require the matching Lead/Contact edit permission for every recipient; thread association requires Deal view/edit. Scheduled delivery rechecks current authorization. No new permission key is introduced.
 
 Token refresh cannot reactivate a concurrently disconnected mailbox. Shared schemas validate send headers and confirmation values. Received HTML uses DOMPurify with an allowlist; scripts, remote images, tracking pixels, and unsafe markup are removed. API responses containing mailbox data use `Cache-Control: no-store`.
 
-Existing attachment/image upload and scheduled-send controls had no completed delivery implementation. They are disabled with explanatory labels instead of pretending to send those features. Ordinary message compose, reply, and drafts remain available.
+Unsupported attachment/image selection has been removed. Schedule Send is implemented with persistent server/Gmail drafts and the shared Manila picker. Ordinary compose, reply, forward, and drafts use the existing composer.
 
-## Verification actually performed
+## Historical verification on 2026-10-01 (not current acceptance)
 
 | Check | Result |
 | --- | --- |

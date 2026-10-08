@@ -16,6 +16,9 @@ export interface GmailConnectionStatus {
 export const syncGmail = () => apiClient.post<{ hasMore: boolean; processed?: number }>('/integrations/gmail/sync', {});
 export const fetchGmailThread = (threadId: string) => apiClient.get<EmailListResponse & { dealOptions: { id: string; title: string; stage: string }[]; canAssociateDeal: boolean }>(`/integrations/gmail/threads/${encodeURIComponent(threadId)}`);
 export const associateThreadDeal = (threadId: string, dealId: string) => apiClient.patch(`/integrations/gmail/threads/${encodeURIComponent(threadId)}/deal`, { dealId });
+export const setGmailThreadReadState = (threadId: string, isRead: boolean) => apiClient.patch(`/integrations/gmail/threads/${encodeURIComponent(threadId)}/read-state`, { isRead });
+export const archiveGmailThread = (threadId: string) => apiClient.post(`/integrations/gmail/threads/${encodeURIComponent(threadId)}/archive`, {});
+export const trashGmailThread = (threadId: string) => apiClient.post(`/integrations/gmail/threads/${encodeURIComponent(threadId)}/trash`, {});
 
 interface EmailListResponse {
   emails: GmailEmail[];
@@ -58,7 +61,7 @@ export async function fetchGmailEmails(options?: MailboxListOptions, signal?: Ab
   });
 }
 
-export const scheduleGmailEmail = (data: { to: string[]; subject: string; body: string; scheduledAt: string; requestId: string; draftId?: string; replyToMessageId?: string }) =>
+export const scheduleGmailEmail = (data: { to: string[]; subject: string; body: string; scheduledAt: string; requestId: string; draftId?: string; replyToMessageId?: string; forwardSourceMessageId?: string }) =>
   apiClient.post<{ id: string; status: string }>('/integrations/gmail/scheduled', data);
 export const deleteGmailDraft = (draftId: string) => apiClient.delete(`/integrations/gmail/drafts/${encodeURIComponent(draftId)}`);
 
@@ -71,8 +74,10 @@ export async function sendGmailEmail(
   body: string,
   replyToMessageId?: string,
   draftId?: string,
+  forwardSourceMessageId?: string,
+  requestId?: string,
 ): Promise<SendEmailResponse> {
-  return apiClient.post<SendEmailResponse>('/integrations/gmail/send', { to, subject, body, replyToMessageId, draftId });
+  return apiClient.post<SendEmailResponse>('/integrations/gmail/send', { to, subject, body, replyToMessageId, draftId, forwardSourceMessageId, requestId });
 }
 
 /**
@@ -105,6 +110,7 @@ export async function saveGmailDraft(
   body: string,
   draftId?: string,
   replyToMessageId?: string,
+  forwardSourceMessageId?: string,
 ): Promise<{ success: boolean; draftId: string; messageId: string }> {
-  return apiClient.post<{ success: boolean; draftId: string; messageId: string }>('/integrations/gmail/drafts', { to, subject, body, draftId, replyToMessageId });
+  return apiClient.post<{ success: boolean; draftId: string; messageId: string }>('/integrations/gmail/drafts', { to, subject, body, draftId, replyToMessageId, forwardSourceMessageId });
 }

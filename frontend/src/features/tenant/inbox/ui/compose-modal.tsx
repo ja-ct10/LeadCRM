@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { X, Minus, Maximize2, Send, Loader2, Paperclip, Link2, Smile, Image, MoreVertical, Trash2, Bold, Italic, Underline, List, ChevronDown } from 'lucide-react';
+import { X, Minus, Maximize2, Send, Loader2, Link2, Smile, MoreVertical, Trash2, Bold, Italic, Underline, List, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useReducedMotion } from 'motion/react';
 import { ManilaDateTimePicker } from '@/shared/components/ui/manila-date-time-picker';
@@ -10,47 +10,53 @@ import { SendMailboxEmailSchema } from '@leadcrm/shared';
 import { sendGmailEmail, saveGmailDraft, scheduleGmailEmail, deleteGmailDraft } from '../services/gmail.service';
 import EmojiPicker from './emoji-picker';
 import { safeMailboxHtml } from '../services/email-html';
+import type { MailboxComposeDraft } from '../services/email-presentation';
+import type { ApiRequestError } from '@/lib/api/client';
 
 interface ComposeModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSent: () => void;
-  initialDraft?: { to: string; subject: string; body: string; draftId?: string; replyToMessageId?: string } | null;
+  initialDraft?: MailboxComposeDraft | null;
+  retryAt?: number;
 }
 
-interface Attachment {
-  name: string;
-  size: number;
-  type: string;
-}
-
-export default function ComposeModal({ isOpen, onClose, onSent, initialDraft }: ComposeModalProps): React.ReactElement | null {
+export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, retryAt = 0 }: ComposeModalProps): React.ReactElement | null {
   const [to, setTo] = useState('');
   const [subject, setSubject] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [actionRetryAt, setActionRetryAt] = useState(0);
+  const [, refreshCooldown] = useState(0);
+  const pauseUntil = Math.max(retryAt, actionRetryAt), paused = pauseUntil > Date.now();
   const [toError, setToError] = useState<string | null>(null);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showScheduleMenu, setShowScheduleMenu] = useState(false);
   const scheduleRequest = useRef<{ key: string; id: string } | null>(null);
+  const sendRequest = useRef<{ key: string; id: string } | null>(null);
   const mutationPending = useRef(false);
   const [currentDraftId, setCurrentDraftId] = useState<string | undefined>(undefined);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [draftSaved, setDraftSaved] = useState(false);
   const shouldReduceMotion = useReducedMotion();
   const toInputRef = useRef<HTMLInputElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
+  const minimizedBody = useRef('');
   const emojiRef = useRef<HTMLDivElement>(null);
   const linkRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLDivElement>(null);
   const scheduleRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!pauseUntil) return;
+    const timer = setTimeout(() => { setActionRetryAt(0); refreshCooldown(value => value + 1); }, Math.max(0, pauseUntil - Date.now()));
+    return () => clearTimeout(timer);
+  }, [pauseUntil]);
 
   // Focus the "To" field when opened
   useEffect(() => {
@@ -62,7 +68,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft }: 
   // Every new compose starts with its explicit draft or an empty recipient.
   useEffect(() => {
     if (isOpen) {
-      setError(null); setShowScheduleMenu(false); scheduleRequest.current = null;
+      setError(null); setShowScheduleMenu(false); scheduleRequest.current = null; sendRequest.current = null;
       setTo(initialDraft?.to ?? '');
       setSubject(initialDraft?.subject ?? '');
       setCurrentDraftId(initialDraft?.draftId);
@@ -73,6 +79,13 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft }: 
       return () => clearTimeout(timer);
     }
   }, [isOpen, initialDraft]);
+
+  useEffect(() => {
+    if (!isMinimized && editorRef.current && minimizedBody.current) {
+      editorRef.current.innerHTML = minimizedBody.current;
+      minimizedBody.current = '';
+    }
+  }, [isMinimized]);
 
   // Close popups on outside click
   useEffect(() => {
@@ -116,11 +129,16 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft }: 
   if (!isOpen) return null;
 
   const getEditorContent = (): string => {
-    return editorRef.current?.innerHTML ?? '';
+    return safeMailboxHtml(editorRef.current?.innerHTML ?? '');
+  };
+  const actionFailed = (error: unknown, fallback: string) => {
+    setError(error instanceof Error ? error.message : fallback);
+    const request = error as ApiRequestError;
+    setActionRetryAt(Date.parse(request.retryAt ?? '') || (request.status === 429 ? Date.now() + 60000 : 0));
   };
 
   const handleSend = async (scheduledAt?: string): Promise<void> => {
-    if (mutationPending.current) return;
+    if (mutationPending.current || paused) return;
     if (!to.trim()) {
       setError('Please specify at least one recipient');
       return;
@@ -149,18 +167,20 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft }: 
 
     try {
       if (scheduledAt) {
-        const payload = { to: recipients, subject: subject.trim() || '(no subject)', body: htmlBody, scheduledAt, draftId: currentDraftId, replyToMessageId: initialDraft?.replyToMessageId };
+        const payload = { to: recipients, subject: subject.trim() || '(no subject)', body: htmlBody, scheduledAt, draftId: currentDraftId, replyToMessageId: initialDraft?.replyToMessageId, forwardSourceMessageId: initialDraft?.forwardSourceMessageId };
         const key = JSON.stringify(payload);
         if (scheduleRequest.current?.key !== key) scheduleRequest.current = { key, id: crypto.randomUUID() };
         await scheduleGmailEmail({ ...payload, requestId: scheduleRequest.current.id });
       } else {
-        await sendGmailEmail(recipients, subject.trim() || '(no subject)', htmlBody, initialDraft?.replyToMessageId, currentDraftId);
+        const key = JSON.stringify([recipients, subject, htmlBody, initialDraft?.replyToMessageId, currentDraftId, initialDraft?.forwardSourceMessageId]);
+        if (sendRequest.current?.key !== key) sendRequest.current = { key, id: crypto.randomUUID() };
+        await sendGmailEmail(recipients, subject.trim() || '(no subject)', htmlBody, initialDraft?.replyToMessageId, currentDraftId, initialDraft?.forwardSourceMessageId, sendRequest.current.id);
       }
       resetForm();
       onSent();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send email');
+      actionFailed(err, 'Failed to send email');
     } finally {
       mutationPending.current = false; setIsSending(false);
     }
@@ -171,7 +191,6 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft }: 
     setSubject('');
     setError(null);
     setToError(null);
-    setAttachments([]);
     setIsMinimized(false);
     setIsFullscreen(false);
     setShowEmojiPicker(false);
@@ -180,53 +199,37 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft }: 
     setShowScheduleMenu(false);
     setCurrentDraftId(undefined);
     setDraftSaved(false);
+    minimizedBody.current = '';
     if (editorRef.current) editorRef.current.innerHTML = '';
   };
 
   const handleSaveDraft = async (): Promise<void> => {
-    if (mutationPending.current) return;
-    const htmlBody = editorRef.current?.innerHTML ?? '';
+    if (mutationPending.current || paused) return;
+    const htmlBody = getEditorContent();
     if (!to.trim() && !subject.trim() && !htmlBody.trim()) {
       return; // Nothing to save
     }
 
     mutationPending.current = true; setIsSavingDraft(true);
     try {
-      const result = await saveGmailDraft(to.trim(), subject.trim(), htmlBody, currentDraftId, initialDraft?.replyToMessageId);
+      const result = await saveGmailDraft(to.trim(), subject.trim(), htmlBody, currentDraftId, initialDraft?.replyToMessageId, initialDraft?.forwardSourceMessageId);
       setCurrentDraftId(result.draftId);
       setDraftSaved(true);
       // Reset saved indicator after 3 seconds
       setTimeout(() => setDraftSaved(false), 3000);
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Draft was not saved.');
+      actionFailed(error, 'Draft was not saved.');
     } finally {
       mutationPending.current = false; setIsSavingDraft(false);
     }
   };
 
   const handleDiscard = async (): Promise<void> => {
-    if (mutationPending.current) return;
+    if (mutationPending.current || currentDraftId && paused) return;
     mutationPending.current = true;
     try { if (currentDraftId) await deleteGmailDraft(currentDraftId); resetForm(); onSent(); onClose(); }
-    catch (error) { setError(error instanceof Error ? error.message : 'Draft could not be deleted.'); }
+    catch (error) { actionFailed(error, 'Draft could not be deleted.'); }
     finally { mutationPending.current = false; }
-  };
-
-  // Attach file
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>): void => {
-    const files = e.target.files;
-    if (!files) return;
-    const newAttachments: Attachment[] = Array.from(files).map((f) => ({
-      name: f.name,
-      size: f.size,
-      type: f.type,
-    }));
-    setAttachments((prev) => [...prev, ...newAttachments]);
-    e.target.value = '';
-  };
-
-  const removeAttachment = (index: number): void => {
-    setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
   // Insert emoji at cursor position in the editor
@@ -256,12 +259,6 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft }: 
     }
   };
 
-  const formatSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
   const springTransition = shouldReduceMotion
     ? { duration: 0 }
     : { type: 'spring' as const, damping: 30, stiffness: 280 };
@@ -287,7 +284,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft }: 
               <Maximize2 className="w-3.5 h-3.5" />
             </button>
             <button
-              onClick={() => { if (!isSending) { resetForm(); onClose(); } }}
+              onClick={() => { if (!mutationPending.current) { resetForm(); onClose(); } }}
               className="p-1.5 text-slate-400 hover:text-white rounded transition-colors cursor-pointer"
               aria-label="Close"
             >
@@ -311,6 +308,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft }: 
       className={`${containerClasses} flex flex-col border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 shadow-2xl`}
       role="dialog"
       aria-label="Compose email"
+      onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); if (showEmojiPicker || showLinkInput || showMoreMenu || showScheduleMenu) { setShowEmojiPicker(false); setShowLinkInput(false); setShowMoreMenu(false); setShowScheduleMenu(false); } else if (!mutationPending.current) { resetForm(); onClose(); } } }}
     >
       {/* Title Bar */}
       <div className="flex items-center justify-between px-4 py-2.5 bg-slate-800 dark:bg-slate-800 rounded-t-xl shrink-0">
@@ -319,7 +317,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft }: 
         </span>
         <div className="flex items-center gap-0.5">
           <button
-            onClick={() => setIsMinimized(true)}
+            onClick={() => { minimizedBody.current = getEditorContent(); setIsMinimized(true); }}
             className="p-1.5 text-slate-400 hover:text-white rounded transition-colors cursor-pointer"
             aria-label="Minimize"
           >
@@ -333,7 +331,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft }: 
             <Maximize2 className="w-3.5 h-3.5" />
           </button>
           <button
-            onClick={() => { if (!isSending) { resetForm(); onClose(); } }}
+            onClick={() => { if (!mutationPending.current) { resetForm(); onClose(); } }}
             className="p-1.5 text-slate-400 hover:text-white rounded transition-colors cursor-pointer"
             aria-label="Close"
           >
@@ -352,6 +350,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft }: 
             ref={toInputRef}
             id="compose-to"
             type="email"
+            multiple
             value={to}
             onChange={(e) => {
               setTo(e.target.value);
@@ -368,7 +367,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft }: 
                 setToError(null);
               }
             }}
-            className={`flex-1 py-2.5 text-[13px] text-slate-900 dark:text-white bg-transparent focus:outline-none ${toError ? 'text-red-500 dark:text-red-400' : ''}`}
+            className={`min-w-0 flex-1 py-2.5 text-[13px] text-slate-900 dark:text-white bg-transparent focus:outline-none ${toError ? 'text-red-500 dark:text-red-400' : ''}`}
           />
         </div>
         {toError && (
@@ -386,7 +385,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft }: 
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
           placeholder="Subject"
-          className="flex-1 py-2.5 text-[13px] text-slate-900 dark:text-white bg-transparent placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none"
+          className="min-w-0 flex-1 py-2.5 text-[13px] text-slate-900 dark:text-white bg-transparent placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none"
         />
       </div>
 
@@ -400,40 +399,18 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft }: 
           aria-multiline="true"
           onKeyUp={updateActiveFormats}
           onMouseUp={updateActiveFormats}
+          onPaste={event => { event.preventDefault(); const html = event.clipboardData.getData('text/html'); document.execCommand(html ? 'insertHTML' : 'insertText', false, html ? safeMailboxHtml(html) : event.clipboardData.getData('text/plain')); }}
           className="w-full flex-1 px-4 py-3 text-[13px] text-slate-900 dark:text-white bg-transparent focus:outline-none overflow-y-auto leading-relaxed min-h-[100px] [&_a]:text-blue-500 [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mb-0.5"
           suppressContentEditableWarning
         />
 
-        {/* Attachments list */}
-        {attachments.length > 0 && (
-          <div className="px-4 py-2 border-t border-gray-100 dark:border-white/[0.05] shrink-0">
-            <div className="flex flex-wrap gap-2">
-              {attachments.map((file, index) => (
-                <div
-                  key={`${file.name}-${index}`}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-gray-200 dark:border-white/[0.08] text-xs"
-                >
-                  <Paperclip className="w-3 h-3 text-slate-400" />
-                  <span className="text-slate-700 dark:text-slate-300 truncate max-w-[120px]">{file.name}</span>
-                  <span className="text-slate-400 dark:text-slate-500">{formatSize(file.size)}</span>
-                  <button
-                    onClick={() => removeAttachment(index)}
-                    className="p-0.5 text-slate-400 hover:text-red-500 transition-colors cursor-pointer"
-                    aria-label={`Remove ${file.name}`}
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Error */}
+      {paused && <p role="status" className="px-4 py-1.5 text-xs text-muted-foreground">Gmail updates are temporarily paused. Your message remains open.</p>}
       {error && (
         <div className="px-4 py-1.5 shrink-0">
-          <p className="text-xs text-red-500 dark:text-red-400">{error}</p>
+          <p role="alert" className="text-xs text-red-500 dark:text-red-400">{error}</p>
         </div>
       )}
 
@@ -444,7 +421,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft }: 
           <div className="flex items-center" ref={scheduleRef}>
             <button
               onClick={() => void handleSend()}
-              disabled={isSending || isSavingDraft}
+              disabled={isSending || isSavingDraft || paused}
               className="inline-flex items-center gap-2 h-9 px-4 rounded-l-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-[13px] font-medium active:scale-95 transition-all cursor-pointer"
               aria-label="Send email"
             >
@@ -456,7 +433,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft }: 
               <span>{isSending ? 'Sending...' : 'Send'}</span>
             </button>
             <button
-              disabled={isSending || isSavingDraft}
+              disabled={isSending || isSavingDraft || paused}
               onClick={() => setShowScheduleMenu(value => !value)}
               aria-expanded={showScheduleMenu}
               title="Schedule send"
@@ -468,7 +445,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft }: 
 
             {showScheduleMenu && <div className="absolute bottom-[112px] left-2 right-2 z-30 max-h-[calc(100dvh-180px)] overflow-y-auto rounded-xl bg-card shadow-xl sm:left-3 sm:right-auto sm:w-96">
               <p className="px-3 py-2 text-sm font-semibold">Schedule send</p>
-              <ManilaDateTimePicker value={manilaLocalDateTime(new Date(Date.now() + 3600000))} busy={isSending} onCancel={() => setShowScheduleMenu(false)} onDone={value => void handleSend(manilaTaskDueInstant(value))} />
+              <ManilaDateTimePicker value={manilaLocalDateTime(new Date(Date.now() + 3600000))} busy={isSending || isSavingDraft || paused} onCancel={() => setShowScheduleMenu(false)} onDone={value => void handleSend(manilaTaskDueInstant(value))} />
             </div>}
           </div>
 
@@ -509,24 +486,6 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft }: 
 
             {/* Divider */}
             <div className="w-px h-5 bg-gray-200 dark:bg-white/[0.08] mx-1" />
-
-            {/* Attach file */}
-            <button
-              disabled
-              className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-              aria-label="Attach file"
-              title="Send attachments from Gmail"
-            >
-              <Paperclip className="w-4 h-4" />
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              onChange={handleFileSelect}
-              className="hidden"
-              aria-hidden="true"
-            />
 
             {/* Insert link */}
             <div className="static" ref={linkRef}>
@@ -594,15 +553,6 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft }: 
               </AnimatePresence>
             </div>
 
-            {/* Insert image */}
-            <button
-              disabled
-              className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-              aria-label="Insert image"
-              title="Send images from Gmail"
-            >
-              <Image className="w-4 h-4" />
-            </button>
           {/* Draft status */}
           {draftSaved && (
             <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium mr-1">
@@ -618,7 +568,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft }: 
           {/* Save Draft */}
           <button
             onClick={handleSaveDraft}
-            disabled={isSavingDraft || isSending}
+            disabled={isSavingDraft || isSending || paused}
             className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 transition-colors cursor-pointer"
             aria-label="Save as draft"
             title="Save as draft"
@@ -661,12 +611,6 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft }: 
                   >
                     Clear subject
                   </button>
-                  <button
-                    onClick={() => { setAttachments([]); setShowMoreMenu(false); }}
-                    className="w-full px-3 py-2 text-left text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.05] transition-colors cursor-pointer"
-                  >
-                    Remove all attachments
-                  </button>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -675,6 +619,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft }: 
           {/* Discard */}
           <button
             onClick={() => void handleDiscard()}
+            disabled={isSavingDraft || isSending || !!currentDraftId && paused}
             className="p-2 text-slate-400 hover:text-red-500 dark:hover:text-red-400 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             aria-label="Discard draft"
             title="Discard"

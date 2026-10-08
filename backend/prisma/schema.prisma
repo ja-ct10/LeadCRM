@@ -1349,6 +1349,7 @@ model EmailAccount {
   mailboxVersion Int @default(0)
   messages MailboxMessage[]
   scheduledEmails ScheduledMailboxEmail[]
+  sendReceipts MailboxSendReceipt[]
 
   @@unique([tenantId, userId, provider])
   @@index([tenantId, userId])
@@ -1356,6 +1357,22 @@ model EmailAccount {
 
   @@unique([id, tenantId])
   threadAssociations MailboxThreadAssociation[]
+}
+
+// Durable interactive-send claims prevent retrying uncertain provider deliveries.
+model MailboxSendReceipt {
+  id String @id @default(uuid())
+  tenantId String
+  accountId String
+  requestId String
+  payloadHash String
+  status String @default("sending")
+  providerMessageId String?
+  providerThreadId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  account EmailAccount @relation(fields: [accountId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  @@unique([accountId, requestId])
 }
 
 // One-time OAuth challenges are bound to the initiating staff session.
@@ -1380,6 +1397,9 @@ model MailboxMessage {
   fromAddress String @default("")
   recipients String[]
   recipientAddresses String[] @default([])
+  ccRecipients String[] @default([])
+  replyToAddress String?
+  sourceMessageId String?
   draftId String?
   crmDraft Boolean @default(false)
   subject String

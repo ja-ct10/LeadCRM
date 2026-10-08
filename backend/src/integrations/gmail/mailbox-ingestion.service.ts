@@ -78,13 +78,16 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
       if (!await tx.emailAccount.findFirst({ where: { id: account.id, tenantId: account.tenantId, userId: account.userId, isActive: true } })) return;
       const key = { accountId: account.id, providerMessageId: email.id };
       const existing = await tx.mailboxMessage.findUnique({ where: { accountId_providerMessageId: key } });
+      const previousDraft = email.labels.includes('DRAFT') && email.draftId ? await tx.mailboxMessage.findFirst({ where: { tenantId: account.tenantId, accountId: account.id, draftId: email.draftId, sourceMessageId: { not: null } }, select: { sourceMessageId: true, crmDraft: true } }) : null;
+      const sourceDraft = previousDraft ?? existing;
+      if (email.labels.includes('DRAFT') && sourceDraft?.sourceMessageId && !scope.draftSourceIds.includes(sourceDraft.sourceMessageId)) return;
       const excluded = email.labels.some(label => ['SPAM', 'TRASH', 'DELETED'].includes(label));
       if (excluded) {
         if (existing) await tx.mailboxMessage.update({ where: { id: existing.id }, data: { labels: email.labels, direction: 'unknown', meaningful: false, engagementRuleVersion: ENGAGEMENT_RULE_VERSION } });
         return;
       }
       if (existing?.engagementRuleVersion === ENGAGEMENT_RULE_VERSION && !existing.labels.includes('DRAFT') && !email.labels.includes('DRAFT')) {
-        await tx.mailboxMessage.update({ where: { id: existing.id }, data: { labels: email.labels, fromAddress: mailboxAddress(email.from) ?? '', recipientAddresses: [...email.to, ...(email.cc ?? [])].flatMap(value => mailboxAddress(value) ?? []), ...(email.draftId ? { draftId: email.draftId } : {}) } });
+        await tx.mailboxMessage.update({ where: { id: existing.id }, data: { labels: email.labels, fromAddress: mailboxAddress(email.from) ?? '', recipientAddresses: [...email.to, ...(email.cc ?? [])].flatMap(value => mailboxAddress(value) ?? []), ccRecipients: email.cc ?? [], replyToAddress: email.replyToAddress ? mailboxAddress(email.replyToAddress) ?? null : null, ...(email.draftId ? { draftId: email.draftId } : {}) } });
         return;
       }
       const from = normalizeEmail(email.from), recipients = [...email.to, ...(email.cc ?? [])].map(normalizeEmail);
@@ -100,7 +103,9 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
       const dealId = explicitIds.length === 1 ? explicitIds[0] : !explicitIds.length && deals.length === 1 ? deals[0].id : undefined;
       const genuineReply = direction === 'inbound' && !email.automated && !FIXED_MAILBOX_SENDERS.includes(from) && !email.labels.includes('DRAFT');
       const data = { ...key, threadId: email.threadId, direction, from: email.from, recipients: email.to, subject: email.subject,
+        ccRecipients: email.cc ?? [], replyToAddress: email.replyToAddress ? mailboxAddress(email.replyToAddress) ?? null : null,
         fromAddress: mailboxAddress(email.from) ?? '', recipientAddresses: recipients.flatMap(value => mailboxAddress(value) ?? []), draftId: email.draftId,
+        ...(email.labels.includes('DRAFT') && sourceDraft ? { sourceMessageId: sourceDraft.sourceMessageId, crmDraft: sourceDraft.crmDraft } : {}),
         body: email.body, snippet: email.snippet, labels: email.labels, sentAt, rfcMessageId: email.rfcMessageId,
         leadId: link?.leadId ?? null, contactId: link?.contactId ?? null, dealId, meaningful: genuineReply,
         readyToClose: false, needsDealAssociation: !!link && !dealId && deals.length > 1, engagementRuleVersion: ENGAGEMENT_RULE_VERSION };

@@ -14,20 +14,24 @@ export type ClosedWonConfirmation = z.infer<typeof ClosedWonConfirmationSchema>;
 const header = z.string().trim().min(1).max(998).refine(value => !/[\r\n]/.test(value), 'Invalid email header');
 const recipient = z.string().trim().max(254).email().refine(value => !/[\r\n]/.test(value), 'Invalid email address');
 export const SendMailboxEmailSchema = z.object({
+  requestId: z.string().uuid().optional(),
   to: z.union([recipient, z.array(recipient).min(1).max(50)]),
   subject: header,
   body: z.string().trim().min(1).max(200000),
   replyToMessageId: z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200).optional(),
+  forwardSourceMessageId: z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200).optional(),
   draftId: z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200).optional(),
 }).strict();
 
 export const MAILBOX_FILTERS = ['all', 'unread', 'sent', 'scheduled', 'drafts'] as const;
+export const MailboxReadStateSchema = z.object({ isRead: z.boolean() }).strict();
 export const SaveMailboxDraftSchema = z.object({
   to: z.string().max(998).refine(value => !/[\r\n]/.test(value)),
   subject: z.string().max(998).refine(value => !/[\r\n]/.test(value)),
   body: z.string().max(200000),
   draftId: z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200).optional(),
   replyToMessageId: SendMailboxEmailSchema.shape.replyToMessageId,
+  forwardSourceMessageId: SendMailboxEmailSchema.shape.forwardSourceMessageId,
 }).strict();
 export const MailboxListSchema = z.object({
   filter: z.enum(MAILBOX_FILTERS).default('all'),
@@ -49,6 +53,8 @@ export interface MailboxEmail {
   draftId?: string;
   from: string;
   to: string[];
+  cc?: string[];
+  replyToAddress?: string | null;
   subject: string;
   snippet: string;
   body: string;

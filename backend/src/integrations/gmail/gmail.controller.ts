@@ -1,8 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { SendMailboxEmailSchema, SaveMailboxDraftSchema, MailboxListSchema, ScheduleMailboxEmailSchema } from '@leadcrm/shared';
+import { SendMailboxEmailSchema, SaveMailboxDraftSchema, MailboxListSchema, ScheduleMailboxEmailSchema, MailboxReadStateSchema } from '@leadcrm/shared';
+import { mutateMailboxThread } from './mailbox-thread-actions';
+import { sendMailboxEmail } from './mailbox-send.service';
 import { scheduleMailboxEmail } from './scheduled-mailbox.service';
-import { fetchEmails, fetchUnreadCount, sendEmail, getConnectionStatus, disconnectAccount, trashEmails, archiveEmails, saveDraft, deleteDraft } from './gmail.service';
+import { fetchEmails, fetchUnreadCount, getConnectionStatus, disconnectAccount, trashEmails, archiveEmails, saveDraft, deleteDraft } from './gmail.service';
 import { beginMailboxConnection, finishMailboxConnection } from './mailbox-auth.service';
 import { syncMailbox, readMailboxThread, decorateEmails, mailboxPermissions, associateMailboxDeal } from './mailbox-sync.service';
 import { AppError } from '../../shared/errors/app-error';
@@ -53,6 +55,15 @@ export async function schedule(req: Request, res: Response, next: NextFunction) 
 export async function thread(req: Request, res: Response, next: NextFunction) {
   try { res.json(await readMailboxThread(req.user!.tenantId, req.user!.userId, providerId.parse(req.params.threadId))); } catch (error) { next(error); }
 }
+export async function threadReadState(req: Request, res: Response, next: NextFunction) {
+  try { const { isRead } = MailboxReadStateSchema.parse(req.body); res.json(await mutateMailboxThread(req.user!.tenantId, req.user!.userId, providerId.parse(req.params.threadId), isRead ? 'read' : 'unread')); } catch (error) { next(error); }
+}
+export async function threadArchive(req: Request, res: Response, next: NextFunction) {
+  try { res.json(await mutateMailboxThread(req.user!.tenantId, req.user!.userId, providerId.parse(req.params.threadId), 'archive')); } catch (error) { next(error); }
+}
+export async function threadTrash(req: Request, res: Response, next: NextFunction) {
+  try { res.json(await mutateMailboxThread(req.user!.tenantId, req.user!.userId, providerId.parse(req.params.threadId), 'trash')); } catch (error) { next(error); }
+}
 export async function associateDeal(req: Request, res: Response, next: NextFunction) {
   try { const { dealId } = z.object({ dealId: z.string().min(1).max(200) }).strict().parse(req.body); res.json(await associateMailboxDeal(req.user!.tenantId, req.user!.userId, providerId.parse(req.params.threadId), dealId)); } catch (error) { next(error); }
 }
@@ -60,7 +71,7 @@ export async function send(req: Request, res: Response, next: NextFunction) {
   try {
     const { userId, tenantId } = req.user!;
     const data = SendMailboxEmailSchema.parse(req.body);
-    const result = await sendEmail(tenantId, userId, data.to, data.subject, data.body, data.replyToMessageId, data.draftId);
+    const result = await sendMailboxEmail(tenantId, userId, data);
     // A sync failure after Gmail accepted the send must not invite a duplicate send.
     let syncPending = false;
     try { await readMailboxThread(tenantId, userId, result.threadId); } catch { syncPending = true; }
@@ -84,7 +95,7 @@ export async function archive(req: Request, res: Response, next: NextFunction) {
 export async function saveDraftHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const data = SaveMailboxDraftSchema.parse(req.body);
-    res.json({ success: true, ...await saveDraft(req.user!.tenantId, req.user!.userId, data.to, data.subject, data.body, data.draftId, { replyToMessageId: data.replyToMessageId }) });
+    res.json({ success: true, ...await saveDraft(req.user!.tenantId, req.user!.userId, data.to, data.subject, data.body, data.draftId, { replyToMessageId: data.replyToMessageId, forwardSourceMessageId: data.forwardSourceMessageId }) });
   } catch (error) { next(error); }
 }
 export async function deleteDraftHandler(req: Request, res: Response, next: NextFunction) {
